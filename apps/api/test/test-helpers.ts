@@ -58,7 +58,7 @@ export class TestServer {
     const apiKeyStore = new FsApiKeyStore(new LocalFsBlobStore(keysDir));
 
     const apiKey = generateApiKey();
-    const created = await apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, createdAt: new Date().toISOString() });
+    const created = await apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, principalKind: 'service', createdAt: new Date().toISOString() });
     if (!created.ok) throw created.error;
 
     const server = createHttpServer({ apiKeyStore, ...deps });
@@ -84,7 +84,7 @@ export class TestServer {
    */
   async issueAdditionalIdentity(identityId: string): Promise<{ readonly apiKey: string; readonly identityId: string }> {
     const apiKey = generateApiKey();
-    const created = await this.apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, createdAt: new Date().toISOString() });
+    const created = await this.apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, principalKind: 'service', createdAt: new Date().toISOString() });
     if (!created.ok) throw created.error;
     return { apiKey, identityId };
   }

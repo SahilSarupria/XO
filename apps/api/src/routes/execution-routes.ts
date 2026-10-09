@@ -3,7 +3,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { requirePrincipal, requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
@@ -96,7 +96,7 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     if (!graphFound.ok) throw graphFound.error;
 
     const executionStore = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const created = await executionStore.create(workspace.workspaceId, workspace.identityId, { compilationId, capabilityId, input });
+    const created = await executionStore.create(workspace.workspaceId, requirePrincipal(req), { compilationId, capabilityId, input });
     if (!created.ok) throw created.error;
 
     // 5 (input validation) + 7 (invoke) both happen inside

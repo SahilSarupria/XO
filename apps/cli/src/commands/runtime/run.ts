@@ -27,6 +27,10 @@ export interface RunOptions {
   readonly grantedPermissionIds?: readonly string[];
 }
 
+/** P1.0 M1 kill switch for model-assisted execution. Typed `boolean` (not a literal) so the guarded code stays type-checked. */
+const AI_EXECUTION_ENABLED: boolean = false;
+export const AI_EXECUTION_DISABLED_MESSAGE = 'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
+
 /**
  * This command does no planning, execution, prompt assembly, retrieval,
  * or provider-call logic of its own — it bootstraps a `Runtime` (mounts
@@ -156,8 +160,19 @@ export async function runCommand(options: RunOptions, resolveProvider: () => imp
     deterministicSkipReason = deterministic.reason;
   }
 
-  // --- AI-provider path (unchanged behavior) — a provider is resolved
-  // only now, only because it's actually needed.
+  // --- AI-provider path — P1.0 M1: DISABLED. `ExecutionEngine` is built
+  // below with no `permissionGate` (allow-all) and the CLI has no
+  // authenticated principal, so model-assisted execution would run with
+  // no effective capability authorization. It stays unavailable until
+  // the authorization gate (P1.0 M2) is enforced on this path. Refused
+  // BEFORE the provider is resolved, so no API key/endpoint is read or
+  // used. The deterministic path above is unaffected. The switch is a
+  // code constant, not a flag, env var or config value.
+  if (!AI_EXECUTION_ENABLED) {
+    return withDeterministicSkipNote(failWith(AI_EXECUTION_DISABLED_MESSAGE));
+  }
+
+  // A provider is resolved only now, only because it's actually needed.
   const providerResult = resolveProvider();
   if (!providerResult.ok) {
     return withDeterministicSkipNote(failWith(providerResult.error));

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertAuthenticatedPrincipal, toPrincipalSnapshot, type AuthenticatedPrincipal } from '@xo/permissions';
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
@@ -33,7 +34,8 @@ function decodeRecord(bytes: Uint8Array): ExecutionRecord | undefined {
 export class FsExecutionStore implements ExecutionStore {
   constructor(private readonly store: BlobStore) {}
 
-  async create(workspaceId: string, identityId: string, input: CreateExecutionInput): Promise<Result<ExecutionRecord, XoError>> {
+  async create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateExecutionInput): Promise<Result<ExecutionRecord, XoError>> {
+    assertAuthenticatedPrincipal(principal); // fail closed: only an authenticated principal may initiate
     let executionId = mintExecutionId();
     let attempts = 0;
     while (await this.store.has(metadataKey(executionId))) {
@@ -44,7 +46,8 @@ export class FsExecutionStore implements ExecutionStore {
     const record: ExecutionRecord = {
       executionId,
       workspaceId,
-      identityId,
+      identityId: principal.id,
+      initiator: toPrincipalSnapshot(principal),
       compilationId: input.compilationId,
       capabilityId: input.capabilityId,
       status: 'failed', // placeholder until `complete()` — see doc comment below
@@ -132,6 +135,7 @@ export class FsExecutionStore implements ExecutionStore {
       ...(input.decisionData !== undefined ? { decisionData: input.decisionData } : {}),
       resolvedAt: new Date().toISOString(),
       resolverIdentityId: input.resolverIdentityId,
+      resolver: input.resolver,
       resumeOutcome: input.resumeOutcome,
     };
 

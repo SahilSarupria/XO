@@ -11,6 +11,12 @@ import { FsWorkflowExecutionStore, mintWorkflowExecutionId } from '../src/workfl
 import { FsExecutionStore } from '../src/executions/fs-execution-store.js';
 import { StaleWorkflowRevisionError } from '../src/workflows/workflow-execution.js';
 import { openApiDocument } from '../src/openapi.js';
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
+function asAuthenticated(id: string) {
+  const p = establishAuthenticatedPrincipal({ kind: 'service', id });
+  if (!p.ok) throw p.error;
+  return p.value;
+}
 
 // ---------------------------------------------------------------------------
 // Wire shapes (only what these tests read)
@@ -581,7 +587,7 @@ test('FsWorkflowExecutionStore.save is compare-and-swap: a stale expected revisi
   await withTempDir('xo-p08-store-', async (dir) => {
     const store = new FsWorkflowExecutionStore(new LocalFsBlobStore(dir));
     const id = mintWorkflowExecutionId();
-    const created = await store.create('ws_x', 'ident_x', { workflowExecutionId: id, compilationId: 'comp_x', workflowId: 'wf_x', workflowName: 'x', input: {}, steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }] });
+    const created = await store.create('ws_x', asAuthenticated('ident_x'), { workflowExecutionId: id, compilationId: 'comp_x', workflowId: 'wf_x', workflowName: 'x', input: {}, steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }] });
     assert.ok(created.ok);
     assert.equal(created.value.revision, 0);
 
@@ -641,7 +647,7 @@ test('recovery A — a step left `running` whose execution never completed is re
     // Reproduce exactly what a crash between "step marked running" and "execution completed" leaves on disk:
     // an ExecutionRecord created but never completed, and a workflow record that says the step is running.
     const execStore = new FsExecutionStore(new LocalFsBlobStore(join(env.dataDir, env.workspace.workspaceId, 'executions')));
-    const orphan = await execStore.create(env.workspace.workspaceId, env.workspace.identityId, { compilationId: env.compilationId, capabilityId: IDS.hitlB, input: HITL_CHAIN_INPUT });
+    const orphan = await execStore.create(env.workspace.workspaceId, asAuthenticated(env.workspace.identityId), { compilationId: env.compilationId, capabilityId: IDS.hitlB, input: HITL_CHAIN_INPUT });
     assert.ok(orphan.ok);
     const crashed = { ...waiting, status: 'running', steps: waiting.steps.map((s, i) => (i === 1 ? { ...s, status: 'running', executionId: orphan.value.executionId } : s)) } as Record<string, unknown>;
     delete crashed['pendingHumanTask'];

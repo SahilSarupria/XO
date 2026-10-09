@@ -1,4 +1,5 @@
 import type { Result } from '@xo/types';
+import type { AuthenticatedPrincipal, Principal } from '@xo/permissions';
 import type { NotFoundError, XoError } from '@xo/errors';
 
 /**
@@ -63,6 +64,8 @@ export interface HumanTaskInfo {
   readonly resolvedAt?: string;
   /** Always `req.identity.identityId` at resolution time — never client-supplied (same discipline as `ApprovalRecord.approverIdentityId`). */
   readonly resolverIdentityId?: string;
+  /** P1.0 M1 — the authenticated principal that resolved the task. Distinct from `ExecutionRecord.initiator`: resolving never replaces the initiator. */
+  readonly resolver?: Principal;
   readonly resumeOutcome?: HumanTaskResumeOutcome;
 }
 
@@ -70,6 +73,8 @@ export interface ExecutionRecord {
   readonly executionId: string;
   readonly workspaceId: string;
   readonly identityId: string;
+  /** P1.0 M1 — immutable attribution snapshot of the authenticated principal that initiated this execution (`identityId` above equals `initiator.id`). Set once at creation from `req.principal`, never changed by `complete()` or a human-task resolution — a resolver is recorded separately in `humanTask.resolver`. Absent on records written before M1 (never back-filled or guessed). Attribution only: not proof of authorization. */
+  readonly initiator?: Principal;
   readonly compilationId: string;
   readonly capabilityId: string;
   /**
@@ -119,6 +124,7 @@ export interface ResolveHumanTaskInput {
   readonly decision: HumanTaskDecision;
   readonly decisionData?: Readonly<Record<string, unknown>>;
   readonly resolverIdentityId: string;
+  readonly resolver: Principal;
   readonly resumeOutcome: HumanTaskResumeOutcome;
 }
 
@@ -132,7 +138,7 @@ export type ResolveHumanTaskFailure = { readonly kind: 'not_a_human_task' } | { 
 
 /** Scoped to exactly one workspace by construction — see `ApprovalStore`'s identical doc comment. */
 export interface ExecutionStore {
-  create(workspaceId: string, identityId: string, input: CreateExecutionInput): Promise<Result<ExecutionRecord, XoError>>;
+  create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateExecutionInput): Promise<Result<ExecutionRecord, XoError>>;
   complete(executionId: string, outcome: ExecutionOutcomeInput): Promise<Result<ExecutionRecord, XoError>>;
   get(executionId: string): Promise<Result<ExecutionRecord, NotFoundError>>;
   list(): Promise<Result<readonly ExecutionRecord[], XoError>>;

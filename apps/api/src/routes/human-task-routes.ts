@@ -3,7 +3,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceExecutionsStore, workspaceCompilationsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { requirePrincipal, requireOwnedWorkspace, workspaceExecutionsStore, workspaceCompilationsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -120,7 +120,7 @@ export function registerHumanTaskRoutes(router: Router, workspaceStore: Workspac
     // capability approval used the exact same boundary). A real
     // reviewer-role RBAC system is explicitly out of this milestone's
     // scope; this comment documents that gap rather than hiding it.
-    const identity = workspace.identityId; // the workspace owner's identity — see requireOwnedWorkspace
+    const resolver = requirePrincipal(req); // P1.0 M1: the authenticated resolving principal (never body-supplied)
 
     const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
     const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
@@ -128,7 +128,7 @@ export function registerHumanTaskRoutes(router: Router, workspaceStore: Workspac
     // The lock + pre-check + `attemptResume` + store-write sequence lives
     // in `executions/resolve-human-task.ts` (extracted in P0.8 so the
     // workflow resume route reuses it verbatim) — see that file's doc comment.
-    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, identity);
+    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver);
 
     switch (outcome.kind) {
       case 'not_found':

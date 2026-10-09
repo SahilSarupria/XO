@@ -40,6 +40,10 @@ import { registerMovedStub } from '../moved-stub.js';
  * already-documented risk for a future slice.
  */
 
+/** P1.0 M1 kill switch for the model-assisted execution route. Typed `boolean` (not a literal) so the guarded code below stays type-checked. */
+const AI_EXECUTION_ENABLED: boolean = false;
+export const AI_EXECUTION_DISABLED_MESSAGE = 'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
+
 async function bootstrapRuntime(store: BlobStore): Promise<{ readonly runtime: Runtime; readonly installer: PackageInstaller; readonly bootstrapWarnings: readonly string[] }> {
   const installer = new PackageInstaller(store);
   const runtime = new Runtime(installer);
@@ -134,7 +138,21 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
   }
 
   async function execute(req: ApiRequest): Promise<ApiResponse> {
+    // Ownership first (uniform 404 for a foreign/unknown workspace is preserved).
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+
+    // P1.0 M1 — AI execution is DISABLED. This route constructs
+    // `ExecutionEngine` with no `permissionGate` (allow-all), so a caller
+    // holding any API key could drive a model with caller-supplied
+    // provider credentials/endpoint and no capability authorization. It
+    // stays unavailable until the authorization gate (P1.0 M2) is
+    // effective on this path. Refused before the provider is resolved,
+    // so no caller-supplied key/base-url/endpoint header is read or used.
+    // The re-enable switch is deliberately a code change, not config or a
+    // request field.
+    if (!AI_EXECUTION_ENABLED) {
+      throw new XoError(ErrorCode.UNIMPLEMENTED, AI_EXECUTION_DISABLED_MESSAGE);
+    }
 
     const providerResult = resolveProvider(req);
     if (!providerResult.ok) {

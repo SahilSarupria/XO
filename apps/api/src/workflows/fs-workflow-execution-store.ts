@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertAuthenticatedPrincipal, toPrincipalSnapshot, type AuthenticatedPrincipal } from '@xo/permissions';
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
@@ -26,7 +27,8 @@ function decodeRecord(bytes: Uint8Array): WorkflowExecutionRecord | undefined {
 export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
   constructor(private readonly store: BlobStore) {}
 
-  async create(workspaceId: string, identityId: string, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>> {
+  async create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>> {
+    assertAuthenticatedPrincipal(principal); // fail closed
     if (!isValidWorkflowExecutionId(input.workflowExecutionId)) return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid workflow execution id'));
     if (await this.store.has(metadataKey(input.workflowExecutionId))) return err(new XoError(ErrorCode.ALREADY_EXISTS, `workflow execution "${input.workflowExecutionId}" already exists`));
 
@@ -34,7 +36,8 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
     const record: WorkflowExecutionRecord = {
       workflowExecutionId: input.workflowExecutionId,
       workspaceId,
-      identityId,
+      identityId: principal.id,
+      initiator: toPrincipalSnapshot(principal),
       compilationId: input.compilationId,
       workflowId: input.workflowId,
       workflowName: input.workflowName,

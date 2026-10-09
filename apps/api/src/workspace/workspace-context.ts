@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
+import { isAuthenticatedPrincipal, type AuthenticatedPrincipal } from '@xo/permissions';
 import type { ApiRequest } from '../http/types.js';
 import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
 
@@ -16,6 +17,23 @@ import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
  */
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
+}
+
+/**
+ * P1.0 M1 — the authenticated initiating principal of this request, or a
+ * fail-closed error. Protected execution paths call this (after
+ * `requireOwnedWorkspace`) instead of reading identity ad hoc; there is
+ * deliberately no fallback principal, so a request that somehow reached a
+ * protected path unauthenticated is refused rather than attributed to a
+ * default. The principal must also agree with `req.identity` (the
+ * workspace-ownership identity).
+ */
+export function requirePrincipal(req: ApiRequest): AuthenticatedPrincipal {
+  const principal = req.principal;
+  if (!isAuthenticatedPrincipal(principal) || req.identity === undefined || principal.id !== req.identity.identityId) {
+    throw new XoError(ErrorCode.UNKNOWN, 'internal error: protected route reached with no authenticated principal');
+  }
+  return principal;
 }
 
 /**

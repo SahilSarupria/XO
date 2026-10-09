@@ -22,7 +22,7 @@
  * through the HTTP layer.
  *
  * Usage:
- *   node --import tsx scripts/manage-keys.ts issue <identityId> [--creator-did <did>] [--dir <dir>]
+ *   node --import tsx scripts/manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--dir <dir>]
  *   node --import tsx scripts/manage-keys.ts revoke <identityId> [--dir <dir>]
  *
  * `--dir` defaults to `API_KEYS_DIR` if set, else `.xo-data/api-keys`
@@ -33,6 +33,7 @@
 import { LocalFsBlobStore } from '@xo/storage';
 import { FsApiKeyStore } from '../src/auth/fs-api-key-store.js';
 import { generateApiKey, hashApiKey } from '../src/auth/api-key.js';
+import { parsePrincipal } from '@xo/permissions';
 
 function parseFlags(args: readonly string[]): { readonly positionals: string[]; readonly flags: Record<string, string> } {
   const positionals: string[] = [];
@@ -60,12 +61,22 @@ function resolveDir(flags: Record<string, string>): string {
 }
 
 async function issue(identityId: string, flags: Record<string, string>): Promise<void> {
+  // P1.0 M1: a key is bound to a principal at issuance, by the operator.
+  // There is no default kind — omitting --kind is an error, not "service".
+  const principal = parsePrincipal({ kind: flags['kind'], id: identityId, ...(flags['org'] !== undefined ? { orgId: flags['org'] } : {}) });
+  if (!principal.ok) {
+    console.error(`failed to issue key: ${principal.error.message} (pass --kind human|service)`);
+    process.exitCode = 1;
+    return;
+  }
   const store = new FsApiKeyStore(new LocalFsBlobStore(resolveDir(flags)));
   const rawKey = generateApiKey();
   const creatorDid = flags['creator-did'];
   const result = await store.create({
     keyHash: hashApiKey(rawKey),
     identityId,
+    principalKind: principal.value.kind,
+    ...(principal.value.orgId !== undefined ? { orgId: principal.value.orgId } : {}),
     createdAt: new Date().toISOString(),
     ...(creatorDid !== undefined ? { creatorDid } : {}),
   });
@@ -109,7 +120,7 @@ async function main(): Promise<void> {
   }
 
   console.error('Usage:');
-  console.error('  manage-keys.ts issue <identityId> [--creator-did <did>] [--dir <dir>]');
+  console.error('  manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--dir <dir>]');
   console.error('  manage-keys.ts revoke <identityId> [--dir <dir>]');
   process.exitCode = 1;
 }

@@ -1,4 +1,5 @@
 import { err, ok, type Result } from '@xo/types';
+import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { CapabilityInputSchema } from '@xo/types';
 import { ErrorCode, NotFoundError, RuntimeError, XoError } from '@xo/errors';
 import { lowerCapabilitiesToManifest } from '@xo/compiler';
@@ -84,6 +85,8 @@ const activeDrives = new Set<string>();
 
 export interface WorkflowRunnerContext {
   readonly workspace: WorkspaceRecord;
+  /** P1.0 M1 — the authenticated principal driving this call (start, resume, or HITL resolution). Step executions are initiated by it; it never defaults and is never replaced by a worker. */
+  readonly principal: AuthenticatedPrincipal;
   readonly compilationStore: CompilationStore;
   readonly approvalStore: ApprovalStore;
   readonly executionStore: ExecutionStore;
@@ -309,7 +312,7 @@ class RecordingStepExecutor {
     }
 
     const workspace = this.ctx.workspace;
-    const created = await this.ctx.executionStore.create(workspace.workspaceId, workspace.identityId, { compilationId: this.runtime.compilation.compilationId, capabilityId: step.capabilityId, input: request.input });
+    const created = await this.ctx.executionStore.create(workspace.workspaceId, this.ctx.principal, { compilationId: this.runtime.compilation.compilationId, capabilityId: step.capabilityId, input: request.input });
     if (!created.ok) throw created.error;
     const executionId = created.value.executionId;
 
@@ -565,7 +568,7 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
   const workflowExecutionId = mintWorkflowExecutionId();
   activeDrives.add(workflowExecutionId);
   try {
-    const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.workspace.identityId, {
+    const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
       workflowExecutionId,
       compilationId: request.compilationId,
       workflowId: request.workflowId,
@@ -674,7 +677,7 @@ export async function resumeWorkflowExecution(ctx: WorkflowRunnerContext, workfl
 
       if (exec.humanTask?.status === 'pending') {
         if (request.decision === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"decision" is required: the pending human task has not been resolved yet', { context: { reason: 'decision_required', workflowExecutionId } });
-        const outcome = await resolveHumanTaskExecution(ctx.executionStore, ctx.compilationStore, pending.executionId, request.decision, request.data, ctx.workspace.identityId);
+        const outcome = await resolveHumanTaskExecution(ctx.executionStore, ctx.compilationStore, pending.executionId, request.decision, request.data, ctx.principal);
         switch (outcome.kind) {
           case 'not_found':
             throw outcome.error;
