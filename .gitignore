@@ -7,3 +7,12 @@ coverage/
 .env
 .env.local
 .turbo/
+
+# Environment & secrets
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Generated XO package archives (built by `xo pack` / `xo build`; not source)
+*.xo
