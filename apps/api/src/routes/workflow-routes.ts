@@ -1,9 +1,10 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, workspaceWorkflowExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { requirePrincipal, requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, workspaceWorkflowExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -68,9 +69,10 @@ function boundedPlainObject(value: unknown, field: string, maxBytes: number): Re
 }
 
 export function registerWorkflowRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
-  function runnerContext(workspace: WorkspaceRecord): WorkflowRunnerContext {
+  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal): WorkflowRunnerContext {
     return {
       workspace,
+      principal,
       compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
       approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
       executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),
@@ -81,7 +83,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
   // GET /workspaces/:workspaceId/workflows[?compilationId=]
   async function listWorkflows(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const ctx = runnerContext(workspace);
+    const ctx = runnerContext(workspace, requirePrincipal(req));
     const only = req.query.get('compilationId');
 
     const listed = await ctx.compilationStore.list();
@@ -124,7 +126,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     if (body['workflowId'] !== undefined && body['workflowId'] !== workflowId) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"workflowId" in the body, if present, must equal the workflowId in the path');
     const input = body['input'] === undefined ? {} : boundedPlainObject(body['input'], 'input', MAX_WORKFLOW_INPUT_BYTES);
 
-    const ctx = runnerContext(workspace);
+    const ctx = runnerContext(workspace, requirePrincipal(req));
     const record = await startWorkflowExecution(ctx, { compilationId: body['compilationId'], workflowId, input });
     // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
     return json(record.status === 'failed' ? 200 : 201, await toWorkflowExecutionView(ctx, record));
@@ -132,7 +134,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const ctx = runnerContext(workspace);
+    const ctx = runnerContext(workspace, requirePrincipal(req));
     const records = await listWorkflowExecutions(ctx);
     return json(200, { workflowExecutions: await Promise.all(records.map((r) => toWorkflowExecutionView(ctx, r))) });
   }
@@ -141,7 +143,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const id = req.params['workflowExecutionId'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow execution id');
-    const ctx = runnerContext(workspace);
+    const ctx = runnerContext(workspace, requirePrincipal(req));
     const record = await getWorkflowExecution(ctx, id);
     return json(200, await toWorkflowExecutionView(ctx, record));
   }
@@ -175,7 +177,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
       ...(typeof body['expectedRevision'] === 'number' ? { expectedRevision: body['expectedRevision'] } : {}),
     };
 
-    const ctx = runnerContext(workspace);
+    const ctx = runnerContext(workspace, requirePrincipal(req));
     // Ownership of the workflow execution is implicit in the workspace-scoped store: an id from another workspace simply does not exist here (404).
     const record = await resumeWorkflowExecution(ctx, id, request);
     return json(200, await toWorkflowExecutionView(ctx, record));

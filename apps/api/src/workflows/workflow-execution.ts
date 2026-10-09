@@ -1,4 +1,5 @@
 import type { Result } from '@xo/types';
+import type { AuthenticatedPrincipal, Principal } from '@xo/permissions';
 import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
 
 /**
@@ -78,6 +79,8 @@ export interface WorkflowExecutionRecord {
   readonly workflowExecutionId: string;
   readonly workspaceId: string;
   readonly identityId: string;
+  /** P1.0 M1 — immutable attribution snapshot of the authenticated principal that started this workflow (`identityId` equals `initiator.id`). Absent on pre-M1 records. Resumes by other principals never replace it. */
+  readonly initiator?: Principal;
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
@@ -174,7 +177,7 @@ export class StaleWorkflowRevisionError extends WorkflowConflictError {
 
 /** Scoped to exactly one workspace by construction — same design as `ExecutionStore`. */
 export interface WorkflowExecutionStore {
-  create(workspaceId: string, identityId: string, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>>;
+  create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>>;
   get(workflowExecutionId: string): Promise<Result<WorkflowExecutionRecord, NotFoundError>>;
   list(): Promise<Result<readonly WorkflowExecutionRecord[], XoError>>;
   /**

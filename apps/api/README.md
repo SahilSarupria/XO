@@ -65,7 +65,7 @@ an oversight.
 | POST | `/packages/lock` | `xo lock` exactly (writes `xo.lock`) |
 | GET | `/packages/:name/:version/manifest` | `PackageInstaller.getManifest` |
 | GET | `/runtime/context` | `Runtime.bootstrap()` + `.context()` |
-| POST | `/runtime/execute` | `xo run` |
+| POST | `/runtime/execute` | `xo run` — **disabled (501), see "Runtime execution"** |
 | POST | `/compiler/compile` | `compileXoir` (isolated — see below) |
 
 `build`/`pack` stay CLI-only, per the brief — they take local source
@@ -180,7 +180,7 @@ be invented later.
 `apps/api/scripts/manage-keys.ts`:
 
 ```
-node --import tsx scripts/manage-keys.ts issue <identityId> [--creator-did <did>] [--dir <dir>]
+node --import tsx scripts/manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--dir <dir>]
 node --import tsx scripts/manage-keys.ts revoke <identityId> [--dir <dir>]
 ```
 
@@ -202,7 +202,9 @@ writing into the same store isn't a new trust boundary. This mirrors how
 `apps/cli`'s commands operate directly on local registry/store
 directories rather than going through HTTP.
 
-`issue` prints the raw key to stdout exactly once — same practice as
+`--kind human|service` is **mandatory** (there is no default kind) and
+`<identityId>` becomes the principal's stable id — see "Principal and key
+binding (P1.0 M1)" below. `issue` prints the raw key to stdout exactly once — same practice as
 GitHub/Stripe token issuance, and consistent with `ApiKeyStore` itself
 never persisting or returning the raw key again after creation.
 
@@ -235,6 +237,50 @@ accidentally public:
 
 Every other route in the table above requires `Authorization: Bearer
 <key>`.
+
+### Principal and key binding (P1.0 M1)
+
+Authentication now resolves an authenticated **principal**
+(`@xo/permissions`' `Principal`: `kind` = `human` | `service`, a stable
+`id`, optional `orgId`) in addition to `req.identity`. Both come from the
+same server-side key record (`ApiKeyRecord.identityId`, `principalKind`,
+`orgId`), written only by `manage-keys.ts issue`. `req.principal.id ===
+req.identity.identityId` always. Nothing in request headers, query
+strings or bodies is ever consulted for identity; a client claiming an
+identity (e.g. `x-xo-principal`, `"identityId"`/`"initiator"` in a body)
+is ignored. The principal is persisted as an immutable `initiator`
+snapshot on execution and workflow-execution records, and the resolver of
+a human task is recorded separately as `humanTask.resolver` (it never
+replaces `initiator`).
+
+- **Existing keys without a principal binding now get `401`.** A key
+  issued before M1 has no `principalKind`; it is *not* given a default
+  principal and gains nothing — it fails closed with `401` (`API key is
+  not bound to a valid principal`). Keys whose record holds an invalid
+  kind/id/orgId also get `401`.
+- **Required operator migration:** for each affected identity, issue a
+  new key with an explicit kind and the same stable identity, hand it to
+  the caller, and revoke the old one:
+  ```
+  node --import tsx scripts/manage-keys.ts revoke <identityId>   # revokes ALL existing keys for that identity (unbound ones already 401; this is hygiene)
+  node --import tsx scripts/manage-keys.ts issue <identityId> --kind human|service [--org <orgId>]
+  ```
+  `revoke` is per identity, so it must run *before* issuing the
+  replacement (run after, it would revoke the new key too). Reusing the
+  same `<identityId>` preserves workspace ownership (workspaces are owned
+  by `identityId`).
+- **No in-place "bind existing key" tool exists.** That would be a
+  migration mechanism needing review (it would attach a principal kind to
+  a credential whose holder is unknown); it is proposed, not built — see
+  the M1 report.
+- **A principal grants no permission.** It identifies the initiator for
+  attribution. `orgId` is a label, not proof of membership. Authorization
+  is **not** implemented for all execution paths: the permission gate is
+  still empty for compiled capabilities and defaults to allow-all in the
+  runtime; only workspace ownership and the capability approval record
+  gate API execution today. Authorization is the next milestone (P1.0 M2),
+  and P1.0 as a whole is not complete. Nothing here makes XO
+  production-ready.
 
 ### Auth vs. permissions
 
@@ -272,6 +318,19 @@ regardless of what triggered them, since they're never the caller's fault.
 The full reasoning per code group is inline in `error-mapping.ts` itself.
 
 ## Runtime execution — provider configuration
+
+> **AI execution is disabled (P1.0 M1).** `POST
+> /workspaces/:workspaceId/runtime/execute` always responds `501` (after
+> the workspace-ownership check, so a foreign/unknown workspace is still
+> the uniform `404`), before any provider is resolved or any `x-xo-*`
+> header is read. It would otherwise build the engine with no
+> permission gate; it stays off until authorization is enforced on this
+> path (P1.0 M2). The CLI likewise refuses to enter its AI path
+> (`xo run`/`xo query` print `AI-assisted execution is disabled…` for a
+> capability the deterministic router declines; deterministic execution
+> is unaffected). Re-enabling is a code change (`AI_EXECUTION_ENABLED`),
+> not configuration. The provider-configuration description below is
+> retained for when it is re-enabled and currently has no effect.
 
 `apps/cli/src/commands/runtime/provider-factory.ts` resolves a
 `ModelProvider` from CLI flags (`--provider`, `--api-key`, ...) with an
@@ -396,6 +455,11 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
   valid for a grace period" flow. Real key-rotation UX (multiple active
   keys per identity with staggered expiry) is a reasonable next step but
   wasn't built here, per the brief's explicit scope.
+- **Keys issued before P1.0 M1 no longer authenticate** (401) until
+  re-issued with `--kind`; there is no in-place binding tool (proposed
+  for review, not built).
+- **A principal is not authorization.** See "Principal and key binding
+  (P1.0 M1)". Authorization is not yet enforced on all execution paths.
 - **No scoping/RBAC on top of auth yet.** `req.identity` is resolved and
   attached, but nothing currently reads it to decide what a given key is
   *allowed* to do — every valid key can call every non-exempt route.

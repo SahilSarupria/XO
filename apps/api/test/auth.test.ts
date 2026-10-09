@@ -109,7 +109,7 @@ test('a fresh key issued to a different identity after a revocation authenticate
     assert.equal(revoked.ok, true);
 
     const newKey = generateApiKey();
-    const created = await server.apiKeyStore.create({ keyHash: hashApiKey(newKey), identityId: 'second-identity', createdAt: new Date().toISOString() });
+    const created = await server.apiKeyStore.create({ keyHash: hashApiKey(newKey), identityId: 'second-identity', principalKind: 'service', createdAt: new Date().toISOString() });
     assert.equal(created.ok, true);
 
     const res = await server.request('GET', '/registry/search', undefined, { authorization: `Bearer ${newKey}` });
@@ -129,7 +129,7 @@ test('FsApiKeyStore never persists the raw key — only its hash is ever written
     const blobStore = new LocalFsBlobStore(dir);
     const store = new FsApiKeyStore(blobStore);
     const rawKey = generateApiKey();
-    const created = await store.create({ keyHash: hashApiKey(rawKey), identityId: 'id-1', createdAt: new Date().toISOString() });
+    const created = await store.create({ keyHash: hashApiKey(rawKey), identityId: 'id-1', principalKind: 'service', createdAt: new Date().toISOString() });
     assert.equal(created.ok, true);
 
     const listed = await blobStore.list('api-keys/');
@@ -148,7 +148,7 @@ test('FsApiKeyStore never persists the raw key — only its hash is ever written
 test('FsApiKeyStore.create() rejects a second record with the same key hash', async () => {
   await withTempDir('xo-api-keys-', async (dir) => {
     const store = new FsApiKeyStore(new LocalFsBlobStore(dir));
-    const record = { keyHash: hashApiKey(generateApiKey()), identityId: 'id-1', createdAt: new Date().toISOString() };
+    const record = { keyHash: hashApiKey(generateApiKey()), identityId: 'id-1', principalKind: 'service' as const, createdAt: new Date().toISOString() };
     assert.equal((await store.create(record)).ok, true);
     const second = await store.create(record);
     assert.equal(second.ok, false);
@@ -169,7 +169,7 @@ test('FsApiKeyStore.revokeByIdentity() is idempotent — revoking twice succeeds
   await withTempDir('xo-api-keys-', async (dir) => {
     const store = new FsApiKeyStore(new LocalFsBlobStore(dir));
     const rawKey = generateApiKey();
-    await store.create({ keyHash: hashApiKey(rawKey), identityId: 'id-1', createdAt: new Date().toISOString() });
+    await store.create({ keyHash: hashApiKey(rawKey), identityId: 'id-1', principalKind: 'service', createdAt: new Date().toISOString() });
 
     const first = await store.revokeByIdentity('id-1');
     assert.equal(first.ok, true);
@@ -199,8 +199,8 @@ test('FsApiKeyStore.revokeByIdentity() only revokes keys for the matching identi
     const store = new FsApiKeyStore(new LocalFsBlobStore(dir));
     const keyA = generateApiKey();
     const keyB = generateApiKey();
-    await store.create({ keyHash: hashApiKey(keyA), identityId: 'identity-a', createdAt: new Date().toISOString() });
-    await store.create({ keyHash: hashApiKey(keyB), identityId: 'identity-b', createdAt: new Date().toISOString() });
+    await store.create({ keyHash: hashApiKey(keyA), identityId: 'identity-a', principalKind: 'service', createdAt: new Date().toISOString() });
+    await store.create({ keyHash: hashApiKey(keyB), identityId: 'identity-b', principalKind: 'service', createdAt: new Date().toISOString() });
 
     const revoked = await store.revokeByIdentity('identity-a');
     assert.equal(revoked.ok, true);
@@ -221,7 +221,7 @@ test('concurrent key creation for distinct identities all succeed without clobbe
     const rawKeys = Array.from({ length: 10 }, () => generateApiKey());
 
     const results = await Promise.all(
-      rawKeys.map((rawKey, i) => store.create({ keyHash: hashApiKey(rawKey), identityId: `concurrent-${i}`, createdAt: new Date().toISOString() })),
+      rawKeys.map((rawKey, i) => store.create({ keyHash: hashApiKey(rawKey), identityId: `concurrent-${i}`, principalKind: 'service', createdAt: new Date().toISOString() })),
     );
     assert.ok(results.every((r) => r.ok));
 

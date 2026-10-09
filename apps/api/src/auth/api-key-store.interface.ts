@@ -12,6 +12,17 @@ export interface ApiKeyRecord {
   readonly identityId: string;
   /** See `identity.ts`'s `ApiKeyIdentity.creatorDid` doc comment. */
   readonly creatorDid?: string;
+  /**
+   * P1.0 M1 — the principal kind this key authenticates as. Server-side
+   * data written only by the operator key-issuance path
+   * (`scripts/manage-keys.ts`); never client-supplied. A record with no
+   * (or an invalid) kind does NOT authenticate: there is no default
+   * principal, so keys issued before M1 must be re-issued with a kind.
+   * `identityId` above is the principal's stable id.
+   */
+  readonly principalKind?: 'human' | 'service';
+  /** P1.0 M1 — optional organizational scope label for the principal. NOT proof of membership or authorization. */
+  readonly orgId?: string;
   readonly createdAt: string;
   /** Unset for an active key; set (ISO timestamp) once revoked. Revocation marks in place — a record is never deleted, so "was this key ever valid, and when did it stop being" stays answerable. */
   readonly revokedAt?: string;

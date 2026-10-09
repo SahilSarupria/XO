@@ -100,75 +100,51 @@ test('GET /workspaces/:workspaceId/runtime/context reflects a real installed (ca
   });
 });
 
-test('POST /workspaces/:workspaceId/runtime/execute rejects a request missing "input"', async () => {
+// P1.0 M1 — AI-assisted execution is DISABLED until the authorization gate
+// (M2) is effective on this path. The five pre-M1 tests that exercised this
+// route's request validation / provider resolution (missing "input", neither
+// capabilityId nor query, unknown provider, missing API key, ollama with no
+// model) tested behaviour of a path that is now refused before any of it
+// runs; they are replaced by the assertions below (and the provider
+// resolver itself stays covered by provider-factory.test.ts).
+test('POST /workspaces/:workspaceId/runtime/execute is disabled (501) for every body/header combination, before any provider is resolved', async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { query: 'anything' }, { 'x-xo-api-key': 'fake-key' });
-      assert.equal(res.status, 400);
-      assert.equal(res.json<{ error: { code: string } }>().error.code, 'XO_RUNTIME_INVALID_REQUEST');
+      const url = `/workspaces/${workspace.workspaceId}/runtime/execute`;
+      const attempts: ReadonlyArray<{ readonly body: unknown; readonly headers?: Record<string, string> }> = [
+        { body: { input: 'hi', query: 'q' } },
+        { body: { query: 'anything' } }, // would have been a 400 (missing input) pre-M1
+        { body: { input: 'hello' } }, // would have been a 400 (no capabilityId/query) pre-M1
+        { body: { input: 'hi', query: 'q' }, headers: { 'x-xo-provider': 'not-a-real-provider' } },
+        { body: { input: 'hi', query: 'q' }, headers: { 'x-xo-provider': 'ollama', 'x-xo-base-url': 'http://127.0.0.1:1', 'x-xo-api-key': 'k' } },
+      ];
+      for (const attempt of attempts) {
+        const res = await server.request('POST', url, attempt.body, attempt.headers);
+        assert.equal(res.status, 501);
+        const message = res.json<{ error: { message: string } }>().error.message;
+        assert.match(message, /AI-assisted execution is disabled/);
+        assert.doesNotMatch(message, /not-a-real-provider|127\.0\.0\.1|advertises no models|API key/);
+      }
     } finally {
       await server.stop();
     }
   });
 });
 
-test('POST /workspaces/:workspaceId/runtime/execute rejects a request with neither "capabilityId" nor "query"', async () => {
+test('POST /workspaces/:workspaceId/runtime/execute: a different identity still gets the uniform 404 (ownership is checked before the disable), and no credential gets 401', async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
-      const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { input: 'hello' }, { 'x-xo-api-key': 'fake-key' });
-      assert.equal(res.status, 400);
-    } finally {
-      await server.stop();
-    }
-  });
-});
-
-test('POST /workspaces/:workspaceId/runtime/execute reports 400 for an unknown provider id', async () => {
-  await withTempDir('xo-api-data-', async (dataDir) => {
-    const server = await TestServer.start({ workspaceDataDir: dataDir });
-    try {
-      const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, { 'x-xo-provider': 'not-a-real-provider' });
-      assert.equal(res.status, 400);
-      assert.match(res.json<{ error: { message: string } }>().error.message, /unknown provider/);
-    } finally {
-      await server.stop();
-    }
-  });
-});
-
-test('POST /workspaces/:workspaceId/runtime/execute reports 400 when the default (anthropic) provider has no API key configured', async () => {
-  await withTempDir('xo-api-data-', async (dataDir) => {
-    // Explicitly clear rather than assume the sandbox happens to have
-    // no ANTHROPIC_API_KEY set — this test's whole point is "no key
-    // resolves anywhere", so it shouldn't depend on ambient env state.
-    const previous = process.env['ANTHROPIC_API_KEY'];
-    delete process.env['ANTHROPIC_API_KEY'];
-    const server = await TestServer.start({ workspaceDataDir: dataDir });
-    try {
-      const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' });
-      assert.equal(res.status, 400);
-      assert.match(res.json<{ error: { message: string } }>().error.message, /API key/);
-    } finally {
-      await server.stop();
-      if (previous !== undefined) process.env['ANTHROPIC_API_KEY'] = previous;
-    }
-  });
-});
-
-test('POST /workspaces/:workspaceId/runtime/execute reports 400 for the ollama provider (no key needed) with no model specified, since it advertises none of its own', async () => {
-  await withTempDir('xo-api-data-', async (dataDir) => {
-    const server = await TestServer.start({ workspaceDataDir: dataDir });
-    try {
-      const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, { 'x-xo-provider': 'ollama' });
-      assert.equal(res.status, 400);
-      assert.match(res.json<{ error: { message: string } }>().error.message, /advertises no models/);
+      const owner = await createWorkspace(server);
+      const other = await server.issueAdditionalIdentity('identity-b');
+      const foreign = await server.request('POST', `/workspaces/${owner.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, TestServer.authHeader(other.apiKey));
+      assert.equal(foreign.status, 404);
+      const unknown = await server.request('POST', `/workspaces/ws_does_not_exist/runtime/execute`, { input: 'hi', query: 'q' });
+      assert.equal(unknown.status, 404);
+      const none = await server.request('POST', `/workspaces/${owner.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, {}, { skipAuth: true });
+      assert.equal(none.status, 401);
     } finally {
       await server.stop();
     }

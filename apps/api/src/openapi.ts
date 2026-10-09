@@ -16,18 +16,20 @@ export const openApiDocument = {
     title: 'XO Platform API',
     version: '0.1.0',
     description:
-      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations.',
+      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations. AUTH (P1.0 M1): every route except /health and /openapi.json requires Authorization: Bearer <API key>. A key authenticates only if its server-side record is bound to a valid principal (kind human|service, stable id, optional orgId); keys issued before M1 have no binding and receive 401 until the operator re-issues them with an explicit --kind (scripts/manage-keys.ts). A principal identifies the initiator for attribution only — it grants NO permission, and capability-level authorization is NOT yet enforced on every execution path (planned P1.0 M2). This document does not describe a production-ready security posture.',
   },
+  security: [{ bearerAuth: [] }],
   servers: [{ url: 'http://localhost:4000' }],
   paths: {
     '/health': {
       get: {
         summary: 'Liveness check',
+        security: [],
         responses: { '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' } } } } } } },
       },
     },
     '/openapi.json': {
-      get: { summary: 'This document', responses: { '200': { description: 'OK' } } },
+      get: { summary: 'This document', security: [], responses: { '200': { description: 'OK' } } },
     },
 
     '/workspaces': {
@@ -201,7 +203,7 @@ export const openApiDocument = {
         ],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision'], properties: { decision: { type: 'string', enum: ['approve', 'reject'] }, data: { type: 'object' } } } } } },
         responses: {
-          '200': { description: 'ExecutionRecord — status now "succeeded" (approve, resumed) or "rejected" (reject), or "failed" if resume genuinely errored (bad decision data, binding no longer resolves, permission denied, or resume_unsupported); humanTask.status is "resolved" in every case' },
+          '200': { description: 'ExecutionRecord — status now "succeeded" (approve, resumed) or "rejected" (reject), or "failed" if resume genuinely errored (bad decision data, binding no longer resolves, permission denied, or resume_unsupported); humanTask.status is "resolved" in every case. The record\'s `initiator` is unchanged; the authenticated resolving principal (taken from the API key, never from the body) is recorded as humanTask.resolver' },
           '400': { description: 'Invalid decision/data, or this execution was never waiting_for_human' },
           '404': { description: 'Unknown execution, or workspace not owned by the caller' },
           '409': { description: 'Already resolved — body is the ORIGINAL (unmodified) record' },
@@ -326,7 +328,8 @@ export const openApiDocument = {
           'Body: { compilationId, capabilityId, input }. No client-supplied runtime declaration, execution class, or identity is ever accepted — the declaration is always re-derived server-side from the stored, compiled graph. Execution is synchronous: the response always reports a finished outcome. status "succeeded": the real deterministic (or other resolved) result. status "waiting_for_human": an honest human-in-the-loop escalation — this milestone does not implement HITL resume; the execution record is terminal. status "failed": rejected before running (not approved, unresolved/ambiguous/denied binding, invalid input) or a genuine runtime failure — always a structured errorCode/errorMessage, never a fabricated success. Permission gate: RuleBasedPolicy([]) (deny-by-default for any capability that declares required permissions; today\'s compiled capabilities typically declare none) — never an unrestricted allow-all gate.',
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['compilationId', 'capabilityId'], properties: { compilationId: { type: 'string' }, capabilityId: { type: 'string' }, input: { type: 'object' } } } } } },
         responses: {
-          '201': { description: 'ExecutionRecord, status succeeded or waiting_for_human' },
+          '201': { description: 'ExecutionRecord (includes `initiator`: the authenticated principal, never client-supplied), status succeeded or waiting_for_human' },
+          '401': { description: 'Missing, invalid, revoked, or principal-unbound API key' },
           '200': { description: 'ExecutionRecord, status failed (unapproved, unresolved, invalid input, or runtime failure — still a structured, persisted record)' },
           '404': { description: 'Unknown workspace/compilation/capability, or not owned by the caller' },
         },
@@ -474,8 +477,8 @@ export const openApiDocument = {
     },
     '/workspaces/{workspaceId}/runtime/execute': {
       post: {
-        summary: 'Execute a capability request against this workspace\'s runtime (mirrors `xo run`)',
-        description: 'Provider selection is via headers (x-xo-provider, x-xo-api-key, x-xo-base-url, x-xo-endpoint, x-xo-api-version), matching the CLI\'s --provider/--api-key flags. See runtime/provider-factory.ts. NOTE: this route does not yet enforce a permission gate on individual capability execution (flagged, unaddressed — see the P0 audit and P0.2 report\'s "compatibility risks").',
+        summary: 'DISABLED (P1.0 M1): AI-assisted execution — always responds 501 after the workspace-ownership check',
+        description: 'AI-assisted execution is disabled. This route would construct the execution engine with no permission gate and read provider credentials/endpoint from request headers, so it stays unavailable until capability authorization is enforced on this path (planned P1.0 M2). The workspace-ownership check still runs first (foreign or unknown workspace => the same 404), then the route responds 501 before any provider is resolved or any x-xo-* header is read. The body and headers documented below describe the route\'s retained, currently UNREACHABLE behaviour; they have no effect today. Deterministic execution (POST /workspaces/{workspaceId}/executions) is unaffected. Re-enabling is a code change, not configuration.',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,
@@ -498,7 +501,7 @@ export const openApiDocument = {
             },
           },
         },
-        responses: { '200': { description: 'Execution completed' }, '403': { description: 'Safety-blocked' }, '404': { description: 'Workspace not found or not owned by the caller' }, '429': { description: 'Budget exceeded' }, '502': { description: 'Provider/execution failure' } },
+        responses: { '501': { description: 'AI-assisted execution is disabled (always returned today, for every body/header combination)' }, '401': { description: 'Missing, invalid, revoked, or principal-unbound API key' }, '200': { description: 'Execution completed (UNREACHABLE while disabled)' }, '403': { description: 'Safety-blocked' }, '404': { description: 'Workspace not found or not owned by the caller' }, '429': { description: 'Budget exceeded' }, '502': { description: 'Provider/execution failure' } },
       },
     },
 
@@ -521,7 +524,24 @@ export const openApiDocument = {
   },
 
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        description: 'API key issued by an operator with scripts/manage-keys.ts issue <identityId> --kind human|service [--org <orgId>]. 401 when the key is missing, unrecognized, revoked, or its record has no valid principal binding (keys issued before P1.0 M1). The caller never supplies its own identity: headers, query parameters and body fields claiming an identity are ignored.',
+      },
+    },
     schemas: {
+      Principal: {
+        type: 'object',
+        description: 'P1.0 M1 attribution snapshot of the authenticated initiator, as persisted on execution and workflow-execution records (initiator) and on resolved human tasks (humanTask.resolver). Attribution only: it grants no permission, orgId is a label and not proof of membership, and records are mutable files with no integrity protection yet. Absent on records written before M1.',
+        required: ['kind', 'id'],
+        properties: {
+          kind: { type: 'string', enum: ['human', 'service'] },
+          id: { type: 'string', description: 'Stable identity; equals the API key record\'s identityId. 1-128 chars of letters, digits and . _ : @ - ; starts alphanumeric.' },
+          orgId: { type: 'string', description: 'Optional organizational scope label (same character rules as id).' },
+        },
+      },
       WorkflowView: {
         type: 'object',
         description: 'API-safe view of one CandidateWorkflow with its executability audit, ordered steps, and proven data-flow evidence.',

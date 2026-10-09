@@ -1,4 +1,5 @@
 import { AuthError, ErrorCode } from '@xo/errors';
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
 import { Sha256Hasher } from '@xo/crypto';
 import type { ApiKeyStore } from '../auth/api-key-store.interface.js';
 import { hashApiKey } from '../auth/api-key.js';
@@ -74,6 +75,20 @@ export function createApiKeyAuth(store: ApiKeyStore): Middleware {
       throw new AuthError(ErrorCode.AUTH_KEY_REVOKED, 'API key has been revoked');
     }
 
+    // P1.0 M1: the principal is derived ONLY from the server-side key
+    // record. No header, query parameter or body field is ever consulted
+    // for identity, and a record without a valid principal binding fails
+    // closed (no default / fabricated principal). The message names no
+    // key material.
+    const principal = establishAuthenticatedPrincipal({
+      kind: found.value.principalKind,
+      id: found.value.identityId,
+      ...(found.value.orgId !== undefined ? { orgId: found.value.orgId } : {}),
+    });
+    if (!principal.ok) {
+      throw new AuthError(ErrorCode.AUTH_KEY_INVALID, 'API key is not bound to a valid principal (re-issue the key with a principal kind)');
+    }
+    req.principal = principal.value;
     req.identity = found.value.creatorDid !== undefined ? { identityId: found.value.identityId, creatorDid: found.value.creatorDid } : { identityId: found.value.identityId };
     return next();
   };

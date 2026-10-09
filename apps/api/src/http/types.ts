@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import type { Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
+import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { ApiKeyIdentity } from '../auth/identity.js';
 
 /**
@@ -39,6 +40,15 @@ export interface ApiRequest {
    * constructing a new request for downstream code to receive.
    */
   identity?: ApiKeyIdentity;
+
+  /**
+   * P1.0 M1 — the authenticated initiating principal, set by the same
+   * auth middleware, from the same server-side key record, as `identity`
+   * (`principal.id === identity.identityId` always). Present on every
+   * authenticated request; absent only on auth-exempt routes. Never
+   * derived from request data.
+   */
+  principal?: AuthenticatedPrincipal;
 }
 
 /**
