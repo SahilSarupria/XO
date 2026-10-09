@@ -1,0 +1,38 @@
+{
+  "name": "@xo/compiler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The first real Experience Compiler frontend: PDF -> Corporate Contract Lawyer XOIR graph. Implements @xo/compiler-core's Compiler interface. No external runtime dependencies — PDF parsing is pure Node (built-in zlib only).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts test/**/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
+    "@xo/xoir": "0.1.0",
+    "@xo/compiler-core": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/ai-core": "0.1.0",
+    "@xo/package-sdk": "0.1.0",
+    "@xo/capability-contract": "0.1.0",
+    "@xo/permissions": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/workflow-composer": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

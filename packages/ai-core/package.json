@@ -1,0 +1,33 @@
+{
+  "name": "@xo/ai-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The AI Capability Layer — the sole interface between the compiler (and anything else) and AI providers. Exposes typed semantic capabilities (extractEntities, extractKnowledge, ...), never provider-specific APIs. Routes, retries, falls back, caches, rate-limits, circuit-breaks, and cost-accounts across pluggable providers (OpenAI, Anthropic, Gemini, Azure OpenAI, Ollama, or a deterministic replay/test provider) without callers ever depending on a specific one.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
+    "@xo/observability": "0.1.0",
+    "@xo/crypto": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/testing": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

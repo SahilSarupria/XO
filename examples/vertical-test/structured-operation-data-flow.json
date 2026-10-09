@@ -1,0 +1,22 @@
+[
+  {
+    "type": "operation",
+    "name": "calculate_brokerage",
+    "inputs": {
+      "premium": { "type": "number" },
+      "rate": { "type": "number" }
+    },
+    "outputs": {
+      "brokerage": { "type": "number" }
+    }
+  },
+  {
+    "type": "operation",
+    "name": "record_brokerage",
+    "requires": ["calculate_brokerage"],
+    "inputs": {
+      "brokerage": { "type": "number" }
+    },
+    "outputs": {}
+  }
+]

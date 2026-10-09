@@ -1,0 +1,33 @@
+{
+  "name": "@xo/marketplace-world",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Translates the XO ecosystem into Atlas's spatial model. Sits above @xo/atlas, below the marketplace UI.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/*.test.js",
+    "clean": "rm -rf dist dist-test"
+  },
+  "dependencies": {
+    "@xo/atlas": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

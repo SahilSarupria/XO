@@ -1,0 +1,2 @@
+# Default owners for everything, until per-package owners are assigned.
+*       @xo-platform/founding-engineers

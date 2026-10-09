@@ -1,0 +1,671 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "runtime-mechanics",
+  "evaluationVersion": "p0.9c-1",
+  "caseCount": 1,
+  "evaluatedCaseCount": 1,
+  "harnessErrorCount": 0,
+  "measured": true,
+  "aggregate": {
+    "metrics": [
+      {
+        "id": "capabilityPrecision",
+        "stage": "capabilities",
+        "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+        "numerator": 8,
+        "denominator": 8,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "capabilityRecall",
+        "stage": "capabilities",
+        "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+        "numerator": 8,
+        "denominator": 8,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "compileOutcomeAccuracy",
+        "stage": "compile",
+        "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+        "numerator": 1,
+        "denominator": 1,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "dataFlowCorrectness",
+        "stage": "workflows",
+        "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+        "numerator": 1,
+        "denominator": 1,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "executionClassAccuracy",
+        "stage": "capabilities",
+        "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+        "numerator": 8,
+        "denominator": 8,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "deterministic_rule->deterministic_rule": 4,
+          "human_in_the_loop->human_in_the_loop": 3,
+          "not_executable->not_executable": 1
+        }
+      },
+      {
+        "id": "executionCorrectness",
+        "stage": "execution",
+        "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+        "numerator": 9,
+        "denominator": 9,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "executionProvenanceAgreement",
+        "stage": "execution",
+        "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+        "numerator": 10,
+        "denominator": 10,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "state.match": 10,
+          "state.not_exercised": 3
+        }
+      },
+      {
+        "id": "observedSourceRefCoverage",
+        "stage": "compile",
+        "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+        "numerator": 15,
+        "denominator": 15,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "resolutionAccuracy",
+        "stage": "capabilities",
+        "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+        "numerator": 8,
+        "denominator": 8,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "runtimeDataFlowTransfer",
+        "stage": "execution",
+        "definition": "expected producer->consumer injections the RUNTIME actually performed (consumer received the producer value) / expected injections",
+        "numerator": 2,
+        "denominator": 2,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "structuredIoAccuracy",
+        "stage": "capabilities",
+        "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+        "numerator": 3,
+        "denominator": 3,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowExecutabilityAccuracy",
+        "stage": "workflows",
+        "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+        "numerator": 4,
+        "denominator": 4,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowPrecision",
+        "stage": "workflows",
+        "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+        "numerator": 4,
+        "denominator": 4,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowRecall",
+        "stage": "workflows",
+        "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+        "numerator": 4,
+        "denominator": 4,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowStructureAccuracy",
+        "stage": "workflows",
+        "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+        "numerator": 4,
+        "denominator": 4,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      }
+    ],
+    "observed": {
+      "nodeCountsByKind": {
+        "capability": 8,
+        "concept": 3,
+        "decision_node": 4
+      },
+      "capabilities": {
+        "total": 8,
+        "byResolution": {
+          "resolved": 7,
+          "unresolved": 1
+        },
+        "byExecutionClass": {
+          "deterministic_rule": 4,
+          "human_in_the_loop": 3,
+          "not_executable": 1
+        }
+      },
+      "workflows": {
+        "total": 4,
+        "totalSteps": 8,
+        "byExecutability": {
+          "executable_candidate": 2,
+          "not_executable_yet": 1,
+          "semantically_invalid": 1
+        }
+      },
+      "executions": {
+        "total": 9,
+        "byOutcome": {
+          "not_executable": 1,
+          "succeeded": 2,
+          "waiting_for_human": 1,
+          "workflow:completed": 2,
+          "workflow:not_executable_yet": 2,
+          "workflow:waiting_for_human": 1
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "caseId": "runtime-mechanics",
+      "status": "evaluated",
+      "entry": "xoir",
+      "attribution": {
+        "configurationId": "cfg_471dc8723842e880",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "xoir",
+          "sources": [],
+          "xoir": "packages/benchmark/fixtures/xoir/runtime-mechanics.xoir.json",
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "serialized_xoir",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [],
+          "producerDistribution": {
+            "nodeCount": 15,
+            "total": {
+              "producers": {},
+              "unattributed": 15
+            },
+            "byKind": {
+              "capability": {
+                "producers": {},
+                "unattributed": 8
+              },
+              "concept": {
+                "producers": {},
+                "unattributed": 3
+              },
+              "decision_node": {
+                "producers": {},
+                "unattributed": 4
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "skipped",
+          "note": "entry is a serialized XOIR graph: source ingestion/extraction is not exercised; the real pipeline is entered at the packaging/contract stage"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "5831feca3a3a7198",
+        "capabilities": "5a819540e3890846",
+        "workflows": "e463e12c82c56670",
+        "execution": "1b13fedf065ebcff"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 8,
+          "concept": 3,
+          "decision_node": 4
+        },
+        "capabilities": {
+          "total": 8,
+          "byResolution": {
+            "resolved": 7,
+            "unresolved": 1
+          },
+          "byExecutionClass": {
+            "deterministic_rule": 4,
+            "human_in_the_loop": 3,
+            "not_executable": 1
+          }
+        },
+        "workflows": {
+          "total": 4,
+          "totalSteps": 8,
+          "byExecutability": {
+            "executable_candidate": 2,
+            "not_executable_yet": 1,
+            "semantically_invalid": 1
+          }
+        },
+        "executions": {
+          "total": 9,
+          "byOutcome": {
+            "not_executable": 1,
+            "succeeded": 2,
+            "waiting_for_human": 1,
+            "workflow:completed": 2,
+            "workflow:not_executable_yet": 2,
+            "workflow:waiting_for_human": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityPrecision",
+          "stage": "capabilities",
+          "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+          "numerator": 8,
+          "denominator": 8,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 8,
+          "denominator": 8,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "dataFlowCorrectness",
+          "stage": "workflows",
+          "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 8,
+          "denominator": 8,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "deterministic_rule->deterministic_rule": 4,
+            "human_in_the_loop->human_in_the_loop": 3,
+            "not_executable->not_executable": 1
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 9,
+          "denominator": 9,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionProvenanceAgreement",
+          "stage": "execution",
+          "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+          "numerator": 10,
+          "denominator": 10,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "state.match": 10,
+            "state.not_exercised": 3
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 15,
+          "denominator": 15,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 8,
+          "denominator": 8,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "runtimeDataFlowTransfer",
+          "stage": "execution",
+          "definition": "expected producer->consumer injections the RUNTIME actually performed (consumer received the producer value) / expected injections",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "structuredIoAccuracy",
+          "stage": "capabilities",
+          "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+          "numerator": 3,
+          "denominator": 3,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowPrecision",
+          "stage": "workflows",
+          "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowStructureAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "cycle-x",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_cycle_x"
+        },
+        {
+          "id": "cycle-y",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_cycle_y"
+        },
+        {
+          "id": "flow-a",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_flow_a"
+        },
+        {
+          "id": "flow-b",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_flow_b"
+        },
+        {
+          "id": "hitl-a",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_hitl_a"
+        },
+        {
+          "id": "hitl-b",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_hitl_b"
+        },
+        {
+          "id": "hitl-c",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_hitl_c"
+        },
+        {
+          "id": "orphan",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_bm_orphan"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "cap-human-review",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "cap-orphan-not-executable",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "cap-over-threshold",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "cap-under-threshold",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-cycle-refused",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-flow-injects-false",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-flow-injects-true",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-hitl-waits",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-orphan-refused",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-cycle-invalid",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_f5adb0b05d625bd4"
+        },
+        {
+          "id": "wf-hitl-in-the-middle",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_c6072bcbc30faf5f"
+        },
+        {
+          "id": "wf-orphan-not-executable",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_2712bc8327dcad94"
+        },
+        {
+          "id": "wf-proven-flow",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_8dcd10e6cfff65fe"
+        }
+      ]
+    }
+  ]
+}

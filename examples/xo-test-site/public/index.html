@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>XO Platform — Test Console</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">XO</span>
+    <span class="brand-name">Platform Test Console</span>
+    <span class="badge">unofficial test harness — not part of the product</span>
+  </div>
+  <div class="status" id="statusBar">
+    <span id="healthDot" class="dot dot-unknown"></span>
+    <span id="healthText">not checked</span>
+    <span class="sep">·</span>
+    <span id="wsIndicator">no workspace selected</span>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="connect">Connect</button>
+  <button class="tab" data-tab="workspaces">Workspaces</button>
+  <button class="tab" data-tab="sources">Sources &amp; Compile</button>
+  <button class="tab" data-tab="capabilities">Capabilities &amp; Executions</button>
+  <button class="tab" data-tab="humantasks">Human Tasks</button>
+  <button class="tab" data-tab="workflows">Workflows</button>
+  <button class="tab" data-tab="runtime">Runtime Console</button>
+  <button class="tab" data-tab="registry">Registry &amp; Packages</button>
+  <button class="tab" data-tab="compilerplay">Compiler Playground</button>
+</nav>
+
+<main id="panels">
+
+  <section class="panel active" id="panel-connect">
+    <h2>Connect</h2>
+    <p class="hint">
+      This page talks to <code>/api/*</code>, which <code>server.mjs</code> proxies straight through
+      to your real <code>apps/api</code> process (default <code>http://127.0.0.1:4000</code>) — same
+      origin, so there's nothing to configure on the API side. Every route except
+      <code>/health</code> and <code>/openapi.json</code> requires an API key issued via
+      <code>apps/api/scripts/manage-keys.ts</code>. See the README for the exact commands.
+    </p>
+
+    <div class="card">
+      <h3>API Key</h3>
+      <div class="row">
+        <input id="apiKeyInput" type="password" placeholder="xoak_..." autocomplete="off" />
+        <button id="saveKeyBtn">Save</button>
+        <button id="clearKeyBtn" class="secondary">Clear</button>
+      </div>
+      <p class="hint small">Stored only in this browser's <code>localStorage</code>, sent as <code>Authorization: Bearer &lt;key&gt;</code>.</p>
+    </div>
+
+    <div class="card">
+      <h3>Health check</h3>
+      <div class="row">
+        <button id="checkHealthBtn">GET /health</button>
+        <button id="checkOpenApiBtn" class="secondary">GET /openapi.json</button>
+      </div>
+      <pre id="connectOutput" class="output"></pre>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-workspaces">
+    <h2>Workspaces</h2>
+    <p class="hint">Everything below is workspace-scoped. Create or pick a workspace here — the selection applies to every other tab.</p>
+
+    <div class="card">
+      <h3>Create workspace</h3>
+      <div class="row">
+        <input id="wsNameInput" placeholder="name (optional)" />
+        <button id="wsCreateBtn">POST /workspaces</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Your workspaces</h3>
+      <div class="row">
+        <button id="wsListBtn">GET /workspaces</button>
+      </div>
+      <div id="wsList" class="list"></div>
+    </div>
+
+    <pre id="wsOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-sources">
+    <h2>Sources &amp; Compile</h2>
+    <p class="hint workspace-required">Select a workspace in the <b>Workspaces</b> tab first.</p>
+
+    <div class="card">
+      <h3>Upload a source document</h3>
+      <p class="hint small">Supported: pdf, html, htm, json, csv, txt, md, png, jpg, jpeg, gif, webp.</p>
+      <div class="row">
+        <input id="sourceFileInput" type="file" />
+        <button id="sourceUploadBtn">Upload</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Sources in this workspace</h3>
+      <div class="row"><button id="sourceListBtn">Refresh list</button></div>
+      <div id="sourceList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Compilations in this workspace</h3>
+      <div class="row"><button id="compilationListBtn">Refresh list</button></div>
+      <div id="compilationList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Capabilities from a compilation</h3>
+      <p class="hint small">A capability must be <b>approved</b> here before it can be executed — that's enforced server-side.</p>
+      <div class="row">
+        <input id="capCompilationIdInput" placeholder="compilationId" />
+        <button id="capListBtn">GET capabilities</button>
+      </div>
+      <div id="capFromCompilationList" class="list"></div>
+    </div>
+
+    <pre id="sourcesOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-capabilities">
+    <h2>Capabilities &amp; Executions</h2>
+    <p class="hint workspace-required">Select a workspace first. Run a capability discovered from a compilation on the previous tab.</p>
+
+    <div class="card">
+      <h3>Execute a capability</h3>
+      <div class="row">
+        <input id="execCompilationIdInput" placeholder="compilationId" />
+        <input id="execCapabilityIdInput" placeholder="capabilityId" />
+      </div>
+      <label class="field-label">input (JSON object)</label>
+      <textarea id="execInputTextarea" rows="4">{}</textarea>
+      <div class="row"><button id="execRunBtn">POST /executions</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Executions in this workspace</h3>
+      <div class="row"><button id="execListBtn">Refresh list</button></div>
+      <div id="execList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Resolve a human-in-the-loop execution</h3>
+      <div class="row">
+        <input id="resolveExecIdInput" placeholder="executionId" />
+        <select id="resolveDecisionSelect">
+          <option value="approve">approve</option>
+          <option value="reject">reject</option>
+        </select>
+      </div>
+      <label class="field-label">data (optional JSON object)</label>
+      <textarea id="resolveDataTextarea" rows="2"></textarea>
+      <div class="row"><button id="resolveBtn">POST /executions/:id/resolve</button></div>
+    </div>
+
+    <pre id="execOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-humantasks">
+    <h2>Human Tasks</h2>
+    <p class="hint workspace-required">Select a workspace first. Every execution that ever became <code>waiting_for_human</code> shows up here.</p>
+
+    <div class="card">
+      <div class="row"><button id="htListBtn">GET /human-tasks</button></div>
+      <div id="htList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Resolve</h3>
+      <div class="row">
+        <input id="htExecIdInput" placeholder="executionId" />
+        <select id="htDecisionSelect">
+          <option value="approve">approve</option>
+          <option value="reject">reject</option>
+        </select>
+      </div>
+      <label class="field-label">data (optional JSON object)</label>
+      <textarea id="htDataTextarea" rows="2"></textarea>
+      <div class="row"><button id="htResolveBtn">POST resolve</button></div>
+    </div>
+
+    <pre id="htOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-workflows">
+    <h2>Workflows</h2>
+    <p class="hint workspace-required">Select a workspace first. Workflows are derived automatically from succeeded compilations.</p>
+
+    <div class="card">
+      <h3>Discover workflows</h3>
+      <div class="row">
+        <input id="wfCompilationFilterInput" placeholder="compilationId filter (optional)" />
+        <button id="wfListBtn">GET /workflows</button>
+      </div>
+      <div id="wfList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Start a workflow execution</h3>
+      <div class="row">
+        <input id="wfStartCompilationIdInput" placeholder="compilationId" />
+        <input id="wfStartWorkflowIdInput" placeholder="workflowId" />
+      </div>
+      <label class="field-label">input (optional JSON object)</label>
+      <textarea id="wfStartInputTextarea" rows="3">{}</textarea>
+      <div class="row"><button id="wfStartBtn">POST /workflows/:id/executions</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Workflow executions</h3>
+      <div class="row"><button id="wfxListBtn">Refresh list</button></div>
+      <div id="wfxList" class="list"></div>
+    </div>
+
+    <div class="card">
+      <h3>Resume a workflow execution</h3>
+      <div class="row">
+        <input id="wfxResumeIdInput" placeholder="workflowExecutionId" />
+        <select id="wfxDecisionSelect">
+          <option value="">(none — continue after external resolve)</option>
+          <option value="approve">approve</option>
+          <option value="reject">reject</option>
+        </select>
+      </div>
+      <div class="row">
+        <input id="wfxExpectedStepInput" placeholder="expectedStepExecutionId (optional)" />
+        <input id="wfxExpectedRevInput" placeholder="expectedRevision (optional)" />
+      </div>
+      <label class="field-label">data (optional JSON object)</label>
+      <textarea id="wfxDataTextarea" rows="2"></textarea>
+      <div class="row"><button id="wfxResumeBtn">POST resume</button></div>
+    </div>
+
+    <pre id="wfOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-runtime">
+    <h2>Runtime Console</h2>
+    <p class="hint workspace-required">Select a workspace first.</p>
+
+    <div class="card">
+      <h3>Bootstrap / mounted state</h3>
+      <div class="row"><button id="rtContextBtn">GET /runtime/context</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Ad-hoc execute</h3>
+      <div class="row">
+        <input id="rtCapabilityIdInput" placeholder="capabilityId (optional)" />
+        <input id="rtQueryInput" placeholder="query (optional)" />
+      </div>
+      <label class="field-label">input (raw string, per API)</label>
+      <textarea id="rtInputTextarea" rows="2"></textarea>
+      <div class="row">
+        <input id="rtModelInput" placeholder="model (optional)" />
+        <input id="rtHostFamilyInput" placeholder="hostFamily (optional)" />
+      </div>
+      <div class="row">
+        <input id="rtHostCapsInput" placeholder="hostCapabilities, comma separated (optional)" />
+      </div>
+      <div class="row">
+        <input id="rtTokenBudgetInput" placeholder="tokenBudget (optional)" />
+        <input id="rtMaxTokensInput" placeholder="maxTokens (optional)" />
+      </div>
+      <details>
+        <summary>Provider headers (optional — x-xo-*)</summary>
+        <div class="row">
+          <input id="rtProviderInput" placeholder="x-xo-provider" />
+          <input id="rtProviderKeyInput" placeholder="x-xo-api-key" type="password" />
+        </div>
+        <div class="row">
+          <input id="rtProviderBaseUrlInput" placeholder="x-xo-base-url" />
+          <input id="rtProviderEndpointInput" placeholder="x-xo-endpoint" />
+          <input id="rtProviderApiVersionInput" placeholder="x-xo-api-version" />
+        </div>
+      </details>
+      <div class="row"><button id="rtExecuteBtn">POST /runtime/execute</button></div>
+    </div>
+
+    <pre id="rtOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-registry">
+    <h2>Registry &amp; Packages</h2>
+    <p class="hint workspace-required">Select a workspace first (registry routes are workspace-bound). Package validation at the bottom is not.</p>
+
+    <div class="card">
+      <h3>Publish a .xo package</h3>
+      <div class="row">
+        <input id="pkgFileInput" type="file" accept=".xo" />
+        <button id="pkgPublishBtn">POST /registry/packages</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>List by creator</h3>
+      <div class="row">
+        <input id="pkgCreatorInput" placeholder="creator DID" />
+        <button id="pkgListByCreatorBtn">GET /registry/packages?creator=</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Get / inspect a package</h3>
+      <div class="row">
+        <input id="pkgIdInput" placeholder="package id" />
+        <button id="pkgGetBtn">GET</button>
+        <button id="pkgInspectBtn" class="secondary">GET .../inspect</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Search</h3>
+      <div class="row">
+        <input id="pkgSearchInput" placeholder="query" />
+        <button id="pkgSearchBtn">GET /registry/search?q=</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Benchmarks</h3>
+      <div class="row">
+        <input id="benchPkgIdInput" placeholder="package id" />
+        <input id="benchCategoryInput" placeholder="category" />
+        <input id="benchScoreInput" placeholder="score (number)" />
+        <label class="checkbox"><input id="benchChallengeableInput" type="checkbox" /> challengeable</label>
+      </div>
+      <div class="row">
+        <button id="benchRecordBtn">POST record benchmark</button>
+        <button id="benchListBtn" class="secondary">GET benchmarks for package</button>
+      </div>
+      <div class="row">
+        <input id="benchIdInput" placeholder="benchmarkId" />
+        <button id="benchGetBtn" class="secondary">GET one benchmark</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Licenses</h3>
+      <div class="row">
+        <input id="licPkgIdInput" placeholder="package id" />
+        <input id="licTierInput" placeholder="tier" />
+      </div>
+      <label class="field-label">royaltySplit (JSON array of {role, basisPoints})</label>
+      <textarea id="licRoyaltyTextarea" rows="2">[{"role":"primary_author","basisPoints":10000}]</textarea>
+      <div class="row"><button id="licCreateBtn">POST /registry/licenses</button></div>
+      <div class="row">
+        <input id="licGetIdInput" placeholder="license id" />
+        <button id="licGetBtn" class="secondary">GET license</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Ledger verify</h3>
+      <div class="row">
+        <input id="ledgerHashInput" placeholder="entryHash" />
+        <button id="ledgerVerifyBtn">GET verify</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Dependency resolve / lock / manifest</h3>
+      <div class="row">
+        <input id="depNameAtVersionInput" placeholder="name@version, e.g. corp-lawyer@1.4.0" />
+      </div>
+      <div class="row">
+        <button id="depResolveBtn">POST /packages/resolve</button>
+        <button id="depLockBtn" class="secondary">POST /packages/lock</button>
+      </div>
+      <div class="row">
+        <input id="manifestNameInput" placeholder="name" />
+        <input id="manifestVersionInput" placeholder="version" />
+        <button id="manifestGetBtn">GET manifest</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Validate a .xo archive (workspace-independent)</h3>
+      <div class="row">
+        <input id="validateFileInput" type="file" accept=".xo" />
+      </div>
+      <label class="field-label">publicKeys (optional JSON: {"did:xo:...": "-----BEGIN PUBLIC KEY-----..."})</label>
+      <textarea id="validatePublicKeysTextarea" rows="2"></textarea>
+      <div class="row"><button id="validateBtn">POST /packages/validate</button></div>
+    </div>
+
+    <pre id="registryOutput" class="output"></pre>
+  </section>
+
+  <section class="panel" id="panel-compilerplay">
+    <h2>Compiler Playground</h2>
+    <p class="hint">
+      Direct access to <code>POST /compiler/compile</code>. Only <code>kind: "xoir"</code> is supported
+      over HTTP today (knowledge/capability/combined return 501) — see the API's own docs.
+      Not workspace-scoped.
+    </p>
+
+    <div class="card">
+      <div class="row">
+        <input id="compileGraphIdInput" placeholder="graphId (optional)" />
+      </div>
+      <label class="field-label">graph (XoirGraph JSON)</label>
+      <textarea id="compileGraphTextarea" rows="10" placeholder='{"nodes": [], "edges": []}'></textarea>
+      <div class="row"><button id="compileRunBtn">POST /compiler/compile</button></div>
+    </div>
+
+    <pre id="compileOutput" class="output"></pre>
+  </section>
+
+</main>
+
+<footer class="foot">
+  Talking to <code id="apiTargetLabel">/api → (see server.mjs XO_API_URL)</code> — temporary test harness, not shipped with the product.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "sourcePath": "/home/claude/workspace/examples/vertical-test/burglary-policy.pdf",
+  "pageCount": 5,
+  "metadata": {
+    "title": "OmniOMS Output Generation",
+    "author": "Newgen Software Technologies Ltd.",
+    "subject": "Report/Letter/Contract",
+    "creator": "OmniOMS",
+    "producer": "iText® Core 7.2.5 (oem version), pdfCalligraph 3.0.1 (oem version) ©2000-2023 iText Group NV, NEWGEN SOFTWARE TECHNOLOGIES; modified using iText® Core 7.2.5 (oem version) ©2000-2023 iText Group NV, NEWGEN SOFTWARE TECHNOLOGIES",
+    "creationDate": "D:20260806214939+05'30'",
+    "modificationDate": "D:20260806214939+05'30'"
+  },
+  "pages": [
+    {
+      "pageNumber": 1,
+      "requiresOcr": false,
+      "textLength": 142,
+      "textRunCount": 6
+    },
+    {
+      "pageNumber": 2,
+      "requiresOcr": false,
+      "textLength": 1863,
+      "textRunCount": 131
+    },
+    {
+      "pageNumber": 3,
+      "requiresOcr": false,
+      "textLength": 2179,
+      "textRunCount": 151
+    },
+    {
+      "pageNumber": 4,
+      "requiresOcr": false,
+      "textLength": 1955,
+      "textRunCount": 84
+    },
+    {
+      "pageNumber": 5,
+      "requiresOcr": false,
+      "textLength": 970,
+      "textRunCount": 23
+    }
+  ]
+}

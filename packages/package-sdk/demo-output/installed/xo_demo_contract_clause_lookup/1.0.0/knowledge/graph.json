@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "id": "contract_clause_indemnification",
+      "type": "clause_type",
+      "label": "Indemnification Clause"
+    },
+    {
+      "id": "contract_clause_limitation_of_liability",
+      "type": "clause_type",
+      "label": "Limitation of Liability Clause"
+    }
+  ],
+  "edges": [
+    {
+      "from": "contract_clause_indemnification",
+      "to": "contract_clause_limitation_of_liability",
+      "relation": "commonly_paired_with"
+    }
+  ]
+}

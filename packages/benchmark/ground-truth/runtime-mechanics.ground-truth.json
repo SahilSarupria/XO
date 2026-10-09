@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "runtime-mechanics",
+  "cases": [
+    {
+      "caseId": "runtime-mechanics",
+      "authoring": "Hand-built XOIR graph entering the real pipeline at the packaging/contract stage. It measures contracts, workflow composition/audit, the runtime bridge and the executor - NOT source extraction (suite description). The graph itself is the ground truth.",
+      "expectationsFingerprint": "3667e1c4ec1d46ed",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No fact expectations. The graph holds 3 concepts and 4 decision nodes but the case does not measure semantic extraction, so they are not asserted. (The suite description says 'closed world everywhere'; that is true of capabilities and workflows only.)"
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported_by_construction",
+          "justification": "The graph has exactly eight capability nodes and all eight are expected."
+        },
+        {
+          "scope": "workflows",
+          "declared": "closed",
+          "support": "supported_by_construction",
+          "justification": "The four expected workflows are the complete set the graph's edges define."
+        }
+      ],
+      "entries": [
+        {
+          "category": "capability",
+          "id": "flow-a",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_flow_a",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "flow-b",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_flow_b",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "hitl-a",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_hitl_a",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "hitl-b",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_hitl_b",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "hitl-c",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_hitl_c",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "orphan",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_orphan",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "cycle-x",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_cycle_x",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "capability",
+          "id": "cycle-y",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: node cap_bm_cycle_y",
+          "note": "hand-built: resolution, class, inputs and outputs are defined by the fixture builder (packages/benchmark/fixtures/build-xoir-fixtures.ts)."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-proven-flow",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: the capabilities and edges of this workflow",
+          "note": "hand-built graph; order, executability, step classes and data flow follow from its edges and rules."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-hitl-in-the-middle",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: the capabilities and edges of this workflow",
+          "note": "hand-built graph; order, executability, step classes and data flow follow from its edges and rules."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-orphan-not-executable",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: the capabilities and edges of this workflow",
+          "note": "hand-built graph; order, executability, step classes and data flow follow from its edges and rules."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-cycle-invalid",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: the capabilities and edges of this workflow",
+          "note": "hand-built graph; order, executability, step classes and data flow follow from its edges and rules."
+        },
+        {
+          "category": "execution",
+          "id": "cap-over-threshold",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "cap-under-threshold",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "cap-human-review",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "cap-orphan-not-executable",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "wf-flow-injects-true",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "wf-flow-injects-false",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "wf-hitl-waits",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "wf-orphan-refused",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        },
+        {
+          "category": "execution",
+          "id": "wf-cycle-refused",
+          "identity": "explicit",
+          "source": "fixtures/xoir/runtime-mechanics.xoir.json: behavior of the graph's rules/edges",
+          "note": "outcome follows from the hand-built rule thresholds and edges (a runtime-mechanics check, not source extraction)."
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "not_measurable",
+          "topic": "semantic facts (3 concepts, 4 decision nodes)",
+          "note": "Present in the hand-built graph but not asserted: the case exercises mechanics, not extraction."
+        }
+      ]
+    }
+  ]
+}

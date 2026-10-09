@@ -1,0 +1,458 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "suiteId": "runtime-mechanics",
+      "reportFile": "baselines/runtime-mechanics.report.json",
+      "reportSha256": "4d9ac4acf2b317db6a60a17e42459238b58bd6387886550f0241bc565b5e79f9",
+      "evaluationVersion": "p0.9c-1",
+      "status": "accepted",
+      "metricIds": [
+        "capabilityPrecision",
+        "capabilityRecall",
+        "compileOutcomeAccuracy",
+        "dataFlowCorrectness",
+        "executionClassAccuracy",
+        "executionCorrectness",
+        "executionProvenanceAgreement",
+        "observedSourceRefCoverage",
+        "resolutionAccuracy",
+        "runtimeDataFlowTransfer",
+        "structuredIoAccuracy",
+        "workflowExecutabilityAccuracy",
+        "workflowPrecision",
+        "workflowRecall",
+        "workflowStructureAccuracy"
+      ],
+      "metricDefinitionsSha256": "84470fdbc31e4ef9b6db501f9ada388faf595a23a1ebc593167f5156d48d893a",
+      "cases": [
+        {
+          "caseId": "runtime-mechanics",
+          "configurationId": "cfg_471dc8723842e880",
+          "fixtures": [
+            {
+              "path": "packages/benchmark/fixtures/xoir/runtime-mechanics.xoir.json",
+              "sha256": "9a8d2138ced1b9ca4e1c0043786236859a44fc34cb25db1650b163cb3e3233f9"
+            }
+          ],
+          "expectationsFingerprint": "3667e1c4ec1d46ed",
+          "goldenState": "recorded"
+        }
+      ],
+      "knownDrift": [],
+      "declaredGoldenChanges": [],
+      "declaredPopulationChanges": [],
+      "refreshRecord": "baselines/refresh/p09c-final.refresh.json",
+      "predecessor": "baselines/archive/runtime-mechanics.p0.9c-1.1b98f1acd213.report.json",
+      "history": [
+        {
+          "step": "P0.9C final closure",
+          "note": "accepted baseline: byte-identical to the final evaluation (reproduced by 3 separate runs); refreshed together with the other suite's baseline; predecessor baselines/archive/runtime-mechanics.p0.9c-1.1b98f1acd213.report.json retained unchanged (sha256 1b98f1acd213e7503e180f0d6bb86698d791ef5da323b770da6981cf140680e4); evaluation version unchanged (p0.9c-1)."
+        }
+      ]
+    },
+    {
+      "suiteId": "vertical-fixtures",
+      "reportFile": "baselines/vertical-fixtures.report.json",
+      "reportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
+      "evaluationVersion": "p0.9c-1",
+      "status": "accepted",
+      "metricIds": [
+        "capabilityPrecision",
+        "capabilityRecall",
+        "compileOutcomeAccuracy",
+        "crossPathConsistency",
+        "dataFlowCorrectness",
+        "executionClassAccuracy",
+        "executionCorrectness",
+        "executionProvenanceAgreement",
+        "observedSourceRefCoverage",
+        "producerAttributionCorrectness",
+        "producerAttributionCoverage",
+        "provenanceChainCoverage",
+        "provenanceCompleteness",
+        "resolutionAccuracy",
+        "semanticCorrectness",
+        "semanticPrecision",
+        "semanticRecall",
+        "spuriousCapabilityAvoidance",
+        "spuriousFactAvoidance",
+        "structuredIoAccuracy",
+        "workflowExecutabilityAccuracy",
+        "workflowPrecision",
+        "workflowRecall",
+        "workflowStructureAccuracy"
+      ],
+      "metricDefinitionsSha256": "1791bd2a93410b1c0ae947d585d1e200120c3c77e1d4ef2a488098b8fc4a5076",
+      "cases": [
+        {
+          "caseId": "aastha-operations",
+          "configurationId": "cfg_98e08887156d2f71",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/Aastha.pdf",
+              "sha256": "6877e63a10e8c55979a268539a7ffa8c344f5dfb4c7e02c67d28829e23e69a79"
+            }
+          ],
+          "expectationsFingerprint": "bbcc3cdac2c9a97c",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "configurationId": "cfg_16cd4f9f0545f53e",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/burglary-policy.pdf",
+              "sha256": "528618cce224836c7bc3817d24af0d2cc82690fefd09c759a82add83de06306e"
+            }
+          ],
+          "expectationsFingerprint": "2384164b83638c58",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "configurationId": "cfg_889c8bc8f21c0fb9",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf",
+              "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
+            }
+          ],
+          "expectationsFingerprint": "fc7333250a689842",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "multidoc-burglary-claims",
+          "configurationId": "cfg_9eaf4efcca458878",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test-multidoc/claims-procedure.txt",
+              "sha256": "93cf81232f785dc6cf0e7f9cc5ec4f55bd1a809015cc7cb2cfce5bf8eb422dc7"
+            },
+            {
+              "path": "examples/vertical-test-multidoc/policy.txt",
+              "sha256": "e41bab780dd2d4f3ded15b2867ae24f70e5d239079ec3e1aba675d696ef2b1a0"
+            },
+            {
+              "path": "examples/vertical-test-multidoc/supporting-rules.txt",
+              "sha256": "c60ab3dd30bf5f6e133f8bc9b1234c6cc161d5e96da4f701d8265105fbadd10a"
+            }
+          ],
+          "expectationsFingerprint": "6eb147408d795389",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "configurationId": "cfg_1acb6dca566d3a11",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/openapi-operation-data-flow.json",
+              "sha256": "9fd14279a528e3d9bca91e3e71179aa370db71020c8d2d4fd78076ae106163f5"
+            }
+          ],
+          "expectationsFingerprint": "b294e8d762ce826c",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "configurationId": "cfg_0fd1e4f4cee16037",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/structured-operation-data-flow.json",
+              "sha256": "304949bf1c98d2dc5c781af3ed72a4bbfd657ea00ff75a9ac2530b46ed1f2b08"
+            }
+          ],
+          "expectationsFingerprint": "b294e8d762ce826c",
+          "goldenState": "recorded"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "configurationId": "cfg_6b0e7ca77c84c10d",
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/synthetic-claim-rules.txt",
+              "sha256": "3d6e8087f6dd3ea7330427827c79c0343481b761fa1a249b3c238cda4496acac"
+            }
+          ],
+          "expectationsFingerprint": "e3f18bb648927dce",
+          "goldenState": "recorded"
+        }
+      ],
+      "knownDrift": [],
+      "declaredGoldenChanges": [],
+      "declaredPopulationChanges": [],
+      "refreshRecord": "baselines/refresh/p09c-final.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json",
+      "history": [
+        {
+          "step": "P0.9C final closure",
+          "note": "accepted baseline: byte-identical to the final evaluation (reproduced by 3 separate runs); refreshed together with the other suite's baseline; predecessor baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json retained unchanged (sha256 ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406); evaluation version unchanged (p0.9c-1)."
+        }
+      ]
+    },
+    {
+      "suiteId": "runtime-mechanics",
+      "reportFile": "baselines/archive/runtime-mechanics.p0.9c-1.1b98f1acd213.report.json",
+      "reportSha256": "1b98f1acd213e7503e180f0d6bb86698d791ef5da323b770da6981cf140680e4",
+      "evaluationVersion": "p0.9c-1",
+      "status": "historical",
+      "metricIds": [
+        "capabilityPrecision",
+        "capabilityRecall",
+        "compileOutcomeAccuracy",
+        "dataFlowCorrectness",
+        "executionClassAccuracy",
+        "executionCorrectness",
+        "observedSourceRefCoverage",
+        "resolutionAccuracy",
+        "runtimeDataFlowTransfer",
+        "structuredIoAccuracy",
+        "workflowExecutabilityAccuracy",
+        "workflowPrecision",
+        "workflowRecall",
+        "workflowStructureAccuracy"
+      ],
+      "metricDefinitionsSha256": "221b89e459f183b4aadc7e15f78ca8816e09992bb4aa08a85ba76cf38b38c6cd",
+      "cases": [
+        {
+          "caseId": "runtime-mechanics",
+          "configurationId": "cfg_471dc8723842e880",
+          "fixtures": [
+            {
+              "path": "packages/benchmark/fixtures/xoir/runtime-mechanics.xoir.json",
+              "sha256": "9a8d2138ced1b9ca4e1c0043786236859a44fc34cb25db1650b163cb3e3233f9"
+            }
+          ],
+          "expectationsFingerprint": "3667e1c4ec1d46ed",
+          "goldenState": "recorded"
+        }
+      ],
+      "knownDrift": [],
+      "declaredGoldenChanges": [],
+      "history": [
+        {
+          "step": "P0.9C Step 1",
+          "note": "regenerated once, only to add the new representation fields (evaluation version, attribution); its historical metric content is byte-identical after stripping them (pinned by hash in attribution.test.ts)."
+        },
+        {
+          "step": "P0.9C Step 7",
+          "note": "identity manifest created from the committed bytes; the baseline file was NOT modified. It lacks the Step 4-6 metrics and reports executionProvenanceAgreement as an expected addition."
+        },
+        {
+          "step": "P0.9C final closure",
+          "note": "retained as the historical predecessor of the accepted baseline; bytes unchanged (moved to baselines/archive/runtime-mechanics.p0.9c-1.1b98f1acd213.report.json)."
+        }
+      ]
+    },
+    {
+      "suiteId": "vertical-fixtures",
+      "reportFile": "baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json",
+      "reportSha256": "ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406",
+      "evaluationVersion": null,
+      "status": "historical",
+      "metricIds": [
+        "capabilityPrecision",
+        "capabilityRecall",
+        "compileOutcomeAccuracy",
+        "dataFlowCorrectness",
+        "executionClassAccuracy",
+        "executionCorrectness",
+        "observedSourceRefCoverage",
+        "provenanceCompleteness",
+        "resolutionAccuracy",
+        "semanticCorrectness",
+        "semanticPrecision",
+        "semanticRecall",
+        "spuriousCapabilityAvoidance",
+        "spuriousFactAvoidance",
+        "structuredIoAccuracy",
+        "workflowExecutabilityAccuracy",
+        "workflowPrecision",
+        "workflowRecall",
+        "workflowStructureAccuracy"
+      ],
+      "metricDefinitionsSha256": "cce9034d67a6f214e40f2a053aa5e76d09deaf8d639f5576c793769a6e340d8a",
+      "cases": [
+        {
+          "caseId": "aastha-operations",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/Aastha.pdf",
+              "sha256": "6877e63a10e8c55979a268539a7ffa8c344f5dfb4c7e02c67d28829e23e69a79"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/burglary-policy.pdf",
+              "sha256": "528618cce224836c7bc3817d24af0d2cc82690fefd09c759a82add83de06306e"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf",
+              "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "multidoc-burglary-claims",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test-multidoc/claims-procedure.txt",
+              "sha256": "93cf81232f785dc6cf0e7f9cc5ec4f55bd1a809015cc7cb2cfce5bf8eb422dc7"
+            },
+            {
+              "path": "examples/vertical-test-multidoc/policy.txt",
+              "sha256": "e41bab780dd2d4f3ded15b2867ae24f70e5d239079ec3e1aba675d696ef2b1a0"
+            },
+            {
+              "path": "examples/vertical-test-multidoc/supporting-rules.txt",
+              "sha256": "c60ab3dd30bf5f6e133f8bc9b1234c6cc161d5e96da4f701d8265105fbadd10a"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/openapi-operation-data-flow.json",
+              "sha256": "9fd14279a528e3d9bca91e3e71179aa370db71020c8d2d4fd78076ae106163f5"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/structured-operation-data-flow.json",
+              "sha256": "304949bf1c98d2dc5c781af3ed72a4bbfd657ea00ff75a9ac2530b46ed1f2b08"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "configurationId": null,
+          "fixtures": [
+            {
+              "path": "examples/vertical-test/synthetic-claim-rules.txt",
+              "sha256": "3d6e8087f6dd3ea7330427827c79c0343481b761fa1a249b3c238cda4496acac"
+            }
+          ],
+          "expectationsFingerprint": null,
+          "goldenState": "unrecoverable"
+        }
+      ],
+      "knownDrift": [
+        {
+          "caseId": "burglary-policy-schedule",
+          "metricId": "observedSourceRefCoverage",
+          "reason": "P0.9A table quarantine intentionally removed table-derived concept nodes; the evaluated population shrank while coverage stays 100%",
+          "evidence": "measured at Step 7: concept nodes 211 -> 200, observed nodes 495 -> 484; documented as known stale-baseline drift in the Step 1 CHANGELOG entry"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "stage": "compile",
+          "reason": "same cause: the compile output (node population) changed with the table quarantine",
+          "evidence": "Step 1 CHANGELOG (known stale-baseline drift); concept nodes 211 -> 200"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "stage": "compile",
+          "reason": "intentional post-baseline P0.9A/P0.9B change to compile output; observed summaries (counts, resolution distribution) are identical",
+          "evidence": "Step 1 CHANGELOG (OpenAPI/structured fingerprints differ). NOT re-verified at field level: the baseline stores only the stage hash, so the exact field cannot be recovered"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "stage": "capabilities",
+          "reason": "intentional post-baseline P0.9A/P0.9B change to capability output; observed summaries identical",
+          "evidence": "Step 1 CHANGELOG; not re-verified at field level (hash only)"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "stage": "compile",
+          "reason": "intentional post-baseline P0.9A/P0.9B change to compile output; observed summaries identical",
+          "evidence": "Step 1 CHANGELOG; not re-verified at field level (hash only)"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "stage": "capabilities",
+          "reason": "intentional post-baseline P0.9A/P0.9B change to capability output; observed summaries identical",
+          "evidence": "Step 1 CHANGELOG; not re-verified at field level (hash only)"
+        }
+      ],
+      "declaredGoldenChanges": [
+        {
+          "caseId": "aastha-operations",
+          "fromFingerprint": "eaf93c35e6241f7a",
+          "toFingerprint": "bbcc3cdac2c9a97c",
+          "reason": "a workflow step matcher contained a literal period that no capability name can contain, so it could never match",
+          "evidence": "CHANGELOG.md Step 3: matchesName false with the period and true without; same defect as the sibling capability expectation fixed in Layer 1B",
+          "affectedMetrics": [
+            "workflowRecall"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 3 (no metric value changed; the miss is re-attributed from capabilities to workflows)"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "fromFingerprint": "9a958b11c1dbbf26",
+          "toFingerprint": "b294e8d762ce826c",
+          "reason": "added producedBy \"structured-operation\" to the two operation expectations",
+          "evidence": "CHANGELOG.md Step 4: the source format determines the extractor (capabilities/hybrid-extractor.ts); confirmed on the real pipeline",
+          "affectedMetrics": [
+            "producerAttributionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "fromFingerprint": "9a958b11c1dbbf26",
+          "toFingerprint": "b294e8d762ce826c",
+          "reason": "same four-line addition as the structured case (identical expectations)",
+          "evidence": "CHANGELOG.md Step 4",
+          "affectedMetrics": [
+            "producerAttributionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        }
+      ],
+      "history": [
+        {
+          "step": "before P0.9A",
+          "note": "generated; never regenerated since (Step 1 CHANGELOG: known stale-baseline drift). Carries no evaluationVersion and no attribution: it predates both."
+        },
+        {
+          "step": "P0.9C Step 7",
+          "note": "identity manifest created from the committed bytes; the baseline file was NOT modified. Fixture hashes are as of this audit; the golden state at generation time is unrecoverable (null)."
+        },
+        {
+          "step": "P0.9C final closure",
+          "note": "retained as the historical predecessor of the accepted baseline; bytes unchanged (moved to baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json)."
+        }
+      ]
+    }
+  ]
+}

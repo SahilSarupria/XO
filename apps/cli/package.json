@@ -1,0 +1,43 @@
+{
+  "name": "@xo/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "xo command-line tool — package lifecycle (init/build/pack/inspect/verify/install/uninstall/diff/fingerprint), compilation (compile/capabilities/create against @xo/compiler), and run against @xo/runtime.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "xo": "./bin/xo.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
+    "@xo/config": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/storage": "0.1.0",
+    "@xo/package-sdk": "0.1.0",
+    "@xo/registry-core": "0.1.0",
+    "@xo/registry": "0.1.0",
+    "@xo/ai-core": "0.1.0",
+    "@xo/runtime": "0.1.0",
+    "@xo/compiler": "0.1.0",
+    "@xo/xoir": "0.1.0",
+    "@xo/capability-contract": "0.1.0",
+    "@xo/permissions": "0.1.0",
+    "@xo/workflow-composer": "0.1.0",
+    "@xo/benchmark": "0.1.0",
+    "adm-zip": "^0.5.16"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0",
+    "@types/adm-zip": "^0.5.5"
+  }
+}

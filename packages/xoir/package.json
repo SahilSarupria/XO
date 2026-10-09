@@ -1,0 +1,32 @@
+{
+  "name": "@xo/xoir",
+  "version": "0.1.0",
+  "private": true,
+  "description": "XOIR — the Experience Object Intermediate Representation. Canonical, model-agnostic, profession-agnostic typed property graph that every compiler frontend compiles into, every optimization pass transforms, and every XO package is generated from.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/serialization": "0.1.0",
+    "@xo/logger": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "xo-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "XO Platform monorepo — Module 1: engineering foundation (no compiler/runtime/registry business logic).",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b tsconfig.json",
+    "clean": "npm run clean --workspaces --if-present && rm -rf node_modules/.cache",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish",
+    "prepare": "husky || true",
+    "dev:atlas-playground": "node apps/atlas-playground/scripts/dev.mjs",
+    "e2e:pdf": "node --import tsx examples/e2e-pdf/run.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "eslint": "^9.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.2.0",
+    "@typescript-eslint/parser": "^8.2.0",
+    "prettier": "^3.3.3",
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.9",
+    "@changesets/cli": "^2.27.7",
+    "@types/node": "^20.14.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{md,json,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

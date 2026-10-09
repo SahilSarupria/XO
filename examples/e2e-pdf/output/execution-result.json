@@ -1,0 +1,4 @@
+{
+  "executed": false,
+  "reason": "No executable capability is declared on the mounted package, so there is nothing for ExecutionEngine.execute() to legitimately run against. This is boundary #2's concrete consequence for this document, not a bug in ExecutionEngine, CapabilityNegotiator, or CapabilityRegistry, all of which are confirmed real/working (see runtime/test/execution-engine.test.ts, which exercises the identical ExecutionEngine class against a fixture package that DOES declare capabilities). A future document/domain hint that causes extractCapabilityGraph() to produce real Capability output, PLUS a hand-authored manifest CapabilityDeclaration attributable to that output (there is still no automatic converter — see boundary #2), would be the way to reach this stage for real."
+}

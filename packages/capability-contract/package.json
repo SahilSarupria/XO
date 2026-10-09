@@ -1,0 +1,31 @@
+{
+  "name": "@xo/capability-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Projects a compiler-discovered XOIR capability (plus any linked reasoning nodes) into a portable SemanticCapabilityContract, and resolves that contract to an executable implementation via a small, extensible set of BindingResolvers. Depends only on @xo/xoir and @xo/types, so it is importable by both @xo/compiler (which builds contracts) and @xo/runtime (which resolves/executes them) without either depending on the other.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/crypto": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/types": "0.1.0",
+    "@xo/xoir": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

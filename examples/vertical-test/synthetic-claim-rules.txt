@@ -1,0 +1,7 @@
+# Synthetic Insurance Claim Policy (Test Fixture)
+
+This is a synthetic, non-real document created solely to exercise the XO compiler's automatic capability discovery pipeline end to end. It does not represent any real insurer's underwriting rules and must never be treated as one.
+
+## Claim Assessment
+
+If the claim assessment amount exceeds 10000, then deny the claim.

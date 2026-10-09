@@ -1,0 +1,39 @@
+{
+  "name": "@xo/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HTTP service exposing @xo/registry, @xo/package-sdk, @xo/runtime, and (behind an isolated adapter) @xo/compiler over a plain node:http server \u2014 no external framework, see README.md.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts",
+    "keys": "node --import tsx scripts/manage-keys.ts"
+  },
+  "dependencies": {
+    "@xo/ai-core": "0.1.0",
+    "@xo/capability-contract": "0.1.0",
+    "@xo/compiler": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
+    "@xo/package-sdk": "0.1.0",
+    "@xo/permissions": "0.1.0",
+    "@xo/registry": "0.1.0",
+    "@xo/registry-core": "0.1.0",
+    "@xo/runtime": "0.1.0",
+    "@xo/storage": "0.1.0",
+    "@xo/types": "0.1.0",
+    "@xo/workflow-composer": "0.1.0",
+    "@xo/xoir": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/benchmark": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

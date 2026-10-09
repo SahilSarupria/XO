@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "id": "unauthorized_practice_of_law",
+      "trigger": "hard",
+      "description": "Never represent output as formal legal advice from a licensed attorney."
+    }
+  ]
+}

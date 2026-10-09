@@ -1,0 +1,352 @@
+{
+  "schemaVersion": 1,
+  "refreshedAt": "2026-10-09T06:28:35Z",
+  "refreshedTogether": true,
+  "scope": "P0.9C final closure",
+  "evaluationVersion": "p0.9c-1",
+  "evaluatorChanges": "none to metric, evaluation or report semantics; evaluation version unchanged (p0.9c-1). The only code change is the baseline classification policy (Decision C: declared FUTURE population changes classify as population_change; historical known_historical_drift records are not rewritten).",
+  "step8SelfTest": {
+    "matrixRows": 49,
+    "detected": 45,
+    "notDetected": 2,
+    "notObservable": 1,
+    "notApplicable": 1,
+    "falsePassAttempts": 7,
+    "unexpectedFalsePass": 0,
+    "evaluatorInternalMutationsKilled": "12/12",
+    "note": "no semantic evaluator changes after Step 8"
+  },
+  "policyChanges": [
+    "Decision C: a declared FUTURE change of the evaluated population classifies as population_change (manifest field declaredPopulationChanges), never known_historical_drift"
+  ],
+  "deferred": [
+    "Decision A: observation-level run-specific guard NOT implemented (deferred post-P0.9C hardening)",
+    "Decision B: greedy matching limitation L3 NOT fixed (accepted known limitation)"
+  ],
+  "knownLimitations": [
+    "L3 greedy matching",
+    "run-specific values inside hashed observation properties are not detected (M-runspecific-hashed)",
+    "selected, not exhaustive, mutation coverage; only four of eight cases directly mutated",
+    "API, CLI and installed-package paths not exercised by the cross-path evaluation",
+    "ExperienceUnit link not observable at the XOIR level"
+  ],
+  "step7Predecessor": {
+    "reports": {
+      "runtime-mechanics": "1b98f1acd213e7503e180f0d6bb86698d791ef5da323b770da6981cf140680e4",
+      "vertical-fixtures": "ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406"
+    },
+    "note": "Step 7 identity manifest; baseline bytes untouched until this refresh"
+  },
+  "suites": [
+    {
+      "suiteId": "runtime-mechanics",
+      "fromReportSha256": "1b98f1acd213e7503e180f0d6bb86698d791ef5da323b770da6981cf140680e4",
+      "toReportSha256": "4d9ac4acf2b317db6a60a17e42459238b58bd6387886550f0241bc565b5e79f9",
+      "evaluationVersion": {
+        "from": "p0.9c-1",
+        "to": "p0.9c-1"
+      },
+      "reason": "P0.9C final closure: controlled joint refresh of both baselines to the evaluation as it stands after Steps 1-8 (evaluation version p0.9c-1 unchanged), so that the accepted baseline equals the reviewed final evaluation and the predecessor is retained",
+      "dispositions": [
+        {
+          "differenceId": "metric|runtime-mechanics|executionProvenanceAgreement",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        }
+      ],
+      "declaredGoldenChanges": [],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — P0.9C final closure; packages/benchmark/P09C_FINAL_REPORT.md",
+      "predecessorRetainedAs": "baselines/archive/runtime-mechanics.p0.9c-1.1b98f1acd213.report.json",
+      "counts": {
+        "semantic_regression": 0,
+        "semantic_improvement": 0,
+        "expected_metric_addition": 1,
+        "golden_expectation_change": 0,
+        "configuration_change": 0,
+        "population_change": 0,
+        "evaluation_version_change": 0,
+        "representation_only": 0,
+        "known_historical_drift": 0,
+        "not_comparable": 0
+      },
+      "decision": "compatible"
+    },
+    {
+      "suiteId": "vertical-fixtures",
+      "fromReportSha256": "ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406",
+      "toReportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
+      "evaluationVersion": {
+        "from": null,
+        "to": "p0.9c-1"
+      },
+      "reason": "P0.9C final closure: controlled joint refresh of both baselines to the evaluation as it stands after Steps 1-8 (evaluation version p0.9c-1 unchanged), so that the accepted baseline equals the reviewed final evaluation and the predecessor is retained",
+      "dispositions": [
+        {
+          "differenceId": "attribution|aastha-operations",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|burglary-policy-schedule",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|commercial-property-policy",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|multidoc-burglary-claims",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|openapi-operation-data-flow",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|structured-operation-data-flow",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "attribution|synthetic-claim-rules",
+          "disposition": "accepted",
+          "reason": "descriptive attribution metadata added by Step 1; feeds no metric"
+        },
+        {
+          "differenceId": "evaluation_version",
+          "disposition": "accepted",
+          "reason": "the historical baseline predates evaluation versioning; the current evaluation version is p0.9c-1 and was NOT changed during closure"
+        },
+        {
+          "differenceId": "golden|aastha-operations",
+          "disposition": "accepted",
+          "reason": "declared and reviewed golden change (Step 3) already recorded in the manifest; no expectation changed in the final evaluation"
+        },
+        {
+          "differenceId": "golden|openapi-operation-data-flow",
+          "disposition": "accepted",
+          "reason": "declared and reviewed golden change (Step 3) already recorded in the manifest; no expectation changed in the final evaluation"
+        },
+        {
+          "differenceId": "golden|structured-operation-data-flow",
+          "disposition": "accepted",
+          "reason": "declared and reviewed golden change (Step 3) already recorded in the manifest; no expectation changed in the final evaluation"
+        },
+        {
+          "differenceId": "metric|aastha-operations|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|aastha-operations|executionProvenanceAgreement",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|aastha-operations|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|aastha-operations|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|executionProvenanceAgreement",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|openapi-operation-data-flow|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|openapi-operation-data-flow|producerAttributionCorrectness",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|openapi-operation-data-flow|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|openapi-operation-data-flow|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|structured-operation-data-flow|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|structured-operation-data-flow|producerAttributionCorrectness",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|structured-operation-data-flow|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|structured-operation-data-flow|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|synthetic-claim-rules|crossPathConsistency",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|synthetic-claim-rules|executionProvenanceAgreement",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|synthetic-claim-rules|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "metric|synthetic-claim-rules|provenanceChainCoverage",
+          "disposition": "accepted",
+          "reason": "a metric introduced by P0.9C Steps 4-6 after the baseline was produced; absent in the baseline, not zero (METRIC_INTRODUCED_IN)"
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|compile",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        },
+        {
+          "differenceId": "output|openapi-operation-data-flow|capabilities",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        },
+        {
+          "differenceId": "output|openapi-operation-data-flow|compile",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        },
+        {
+          "differenceId": "output|structured-operation-data-flow|capabilities",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        },
+        {
+          "differenceId": "output|structured-operation-data-flow|compile",
+          "disposition": "accepted",
+          "reason": "declared historical drift (P0.9A/P0.9B intentional changes) recorded in the manifest with reason and evidence"
+        }
+      ],
+      "declaredGoldenChanges": [
+        {
+          "caseId": "aastha-operations",
+          "fromFingerprint": "eaf93c35e6241f7a",
+          "toFingerprint": "bbcc3cdac2c9a97c",
+          "reason": "a workflow step matcher contained a literal period that no capability name can contain, so it could never match",
+          "evidence": "CHANGELOG.md Step 3: matchesName false with the period and true without; same defect as the sibling capability expectation fixed in Layer 1B",
+          "affectedMetrics": [
+            "workflowRecall"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 3 (no metric value changed; the miss is re-attributed from capabilities to workflows)"
+        },
+        {
+          "caseId": "structured-operation-data-flow",
+          "fromFingerprint": "9a958b11c1dbbf26",
+          "toFingerprint": "b294e8d762ce826c",
+          "reason": "added producedBy \"structured-operation\" to the two operation expectations",
+          "evidence": "CHANGELOG.md Step 4: the source format determines the extractor (capabilities/hybrid-extractor.ts); confirmed on the real pipeline",
+          "affectedMetrics": [
+            "producerAttributionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        },
+        {
+          "caseId": "openapi-operation-data-flow",
+          "fromFingerprint": "9a958b11c1dbbf26",
+          "toFingerprint": "b294e8d762ce826c",
+          "reason": "same four-line addition as the structured case (identical expectations)",
+          "evidence": "CHANGELOG.md Step 4",
+          "affectedMetrics": [
+            "producerAttributionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        }
+      ],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — P0.9C final closure; packages/benchmark/P09C_FINAL_REPORT.md",
+      "predecessorRetainedAs": "baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json",
+      "counts": {
+        "semantic_regression": 0,
+        "semantic_improvement": 0,
+        "expected_metric_addition": 26,
+        "golden_expectation_change": 3,
+        "configuration_change": 0,
+        "population_change": 0,
+        "evaluation_version_change": 1,
+        "representation_only": 7,
+        "known_historical_drift": 6,
+        "not_comparable": 0
+      },
+      "decision": "review_required"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../logger" },
+    { "path": "../xoir" },
+    { "path": "../compiler-core" },
+    { "path": "../observability" },
+    { "path": "../package-sdk" },
+    { "path": "../capability-contract" },
+    { "path": "../permissions" },
+    { "path": "../storage" },
+    { "path": "../crypto" },
+    { "path": "../ai-core" }
+  ]
+}

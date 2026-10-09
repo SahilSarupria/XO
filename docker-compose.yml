@@ -1,0 +1,54 @@
+version: "3.9"
+
+# Module 1 provides no service that talks to these yet — no compiler,
+# runtime, or registry implementation exists. This compose file exists so
+# `docker compose up` gives every future module the same local backing
+# services from day one, and so this module's Docker environment is
+# genuinely exercisable rather than aspirational.
+#
+# See docs/adr/0006-storage-and-databases.md for why these three.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: xo
+      POSTGRES_PASSWORD: xo_dev_only
+      POSTGRES_DB: xo_registry
+    ports:
+      - "5432:5432"
+    volumes:
+      - xo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xo -d xo_registry"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Knowledge-graph backend for larger XOs than InMemoryGraphStore should
+  # hold. Optional in Module 1 — nothing yet talks to it — profiled out of
+  # the default `docker compose up` to keep local dev light.
+  neo4j:
+    image: neo4j:5-community
+    profiles: ["graph"]
+    environment:
+      NEO4J_AUTH: neo4j/xo_dev_only
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - xo_neo4j_data:/data
+
+volumes:
+  xo_postgres_data:
+  xo_neo4j_data:

@@ -1,0 +1,1 @@
+{"version":3,"file":"capability-descriptor.d.ts","sourceRoot":"","sources":["capability-descriptor.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,qBAAqB,EAAE,MAAM,WAAW,CAAC;AAEvD;;;;;;;;;;;;;;;GAeG;AACH,MAAM,WAAW,oBAAoB;IACnC,QAAQ,CAAC,WAAW,EAAE,qBAAqB,CAAC;IAC5C,QAAQ,CAAC,WAAW,EAAE,MAAM,CAAC;IAC7B,QAAQ,CAAC,cAAc,EAAE,MAAM,CAAC;CACjC"}

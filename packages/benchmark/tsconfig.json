@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../xoir" },
+    { "path": "../capability-contract" },
+    { "path": "../compiler" },
+    { "path": "../permissions" },
+    { "path": "../runtime" },
+    { "path": "../workflow-composer" }
+  ]
+}

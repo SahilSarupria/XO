@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/types" },
+    { "path": "../../packages/errors" },
+    { "path": "../../packages/logger" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/crypto" },
+    { "path": "../../packages/storage" },
+    { "path": "../../packages/package-sdk" },
+    { "path": "../../packages/registry-core" },
+    { "path": "../../packages/registry" },
+    { "path": "../../packages/ai-core" },
+    { "path": "../../packages/permissions" },
+    { "path": "../../packages/capability-contract" },
+    { "path": "../../packages/runtime" },
+    { "path": "../../packages/workflow-composer" },
+    { "path": "../../packages/compiler" },
+    { "path": "../../packages/xoir" },
+    { "path": "../../packages/benchmark" }
+  ]
+}

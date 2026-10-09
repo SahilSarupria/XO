@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../storage" },
+    { "path": "../logger" },
+    { "path": "../observability" },
+    { "path": "../package-sdk" },
+    { "path": "../permissions" },
+    { "path": "../capability-contract" },
+    { "path": "../xoir" },
+    { "path": "../workflow-composer" }
+  ]
+}

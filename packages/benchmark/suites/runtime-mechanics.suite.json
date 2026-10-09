@@ -1,0 +1,390 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "runtime-mechanics",
+  "description": "Contracts -> workflow composition/audit -> runtime, on a hand-built XOIR graph.",
+  "sourceRoot": "../../..",
+  "cases": [
+    {
+      "caseId": "runtime-mechanics",
+      "description": "HAND-BUILT XOIR graph (packages/benchmark/fixtures/build-xoir-fixtures.ts) entering the real pipeline at the packaging/contract stage. It exists because no real source yet compiles to a multi-step executable workflow with a proven, wired producer->consumer binding. It measures contracts, workflow composition/audit, the runtime bridge and the executor \u2014 NOT source extraction. Closed world everywhere: the graph is small and fully known.",
+      "xoir": "packages/benchmark/fixtures/xoir/runtime-mechanics.xoir.json",
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "flow-a",
+              "name": {
+                "equals": "Check claim threshold"
+              },
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule",
+              "outputs": [
+                "matched"
+              ]
+            },
+            {
+              "id": "flow-b",
+              "name": {
+                "equals": "Authorize payout"
+              },
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule",
+              "inputs": [
+                "matched",
+                "payout_amount"
+              ],
+              "outputs": []
+            },
+            {
+              "id": "hitl-a",
+              "name": {
+                "equals": "Screen the claim"
+              },
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule"
+            },
+            {
+              "id": "hitl-b",
+              "name": {
+                "equals": "Underwriter review of the flagged claim"
+              },
+              "resolution": "resolved",
+              "executionClass": "human_in_the_loop"
+            },
+            {
+              "id": "hitl-c",
+              "name": {
+                "equals": "Release the settlement"
+              },
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule"
+            },
+            {
+              "id": "orphan",
+              "name": {
+                "equals": "Assess the overall situation"
+              },
+              "resolution": "unresolved",
+              "executionClass": "not_executable"
+            },
+            {
+              "id": "cycle-x",
+              "name": {
+                "equals": "Cycle member X"
+              },
+              "resolution": "resolved",
+              "executionClass": "human_in_the_loop"
+            },
+            {
+              "id": "cycle-y",
+              "name": {
+                "equals": "Cycle member Y"
+              },
+              "resolution": "resolved",
+              "executionClass": "human_in_the_loop"
+            }
+          ]
+        },
+        "workflows": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "wf-proven-flow",
+              "steps": [
+                {
+                  "equals": "Check claim threshold"
+                },
+                {
+                  "equals": "Authorize payout"
+                }
+              ],
+              "ordered": true,
+              "executability": "executable_candidate",
+              "stepClasses": [
+                "deterministic_rule",
+                "deterministic_rule"
+              ],
+              "dataFlow": {
+                "closedWorld": true,
+                "bindings": [
+                  {
+                    "producer": {
+                      "equals": "Check claim threshold"
+                    },
+                    "output": "matched",
+                    "consumer": {
+                      "equals": "Authorize payout"
+                    },
+                    "input": "matched",
+                    "status": "proven"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "wf-hitl-in-the-middle",
+              "steps": [
+                {
+                  "equals": "Screen the claim"
+                },
+                {
+                  "equals": "Underwriter review of the flagged claim"
+                },
+                {
+                  "equals": "Release the settlement"
+                }
+              ],
+              "ordered": true,
+              "executability": "executable_candidate",
+              "stepClasses": [
+                "deterministic_rule",
+                "human_in_the_loop",
+                "deterministic_rule"
+              ]
+            },
+            {
+              "id": "wf-orphan-not-executable",
+              "steps": [
+                {
+                  "equals": "Assess the overall situation"
+                }
+              ],
+              "executability": "not_executable_yet"
+            },
+            {
+              "id": "wf-cycle-invalid",
+              "steps": [
+                {
+                  "equals": "Cycle member X"
+                },
+                {
+                  "equals": "Cycle member Y"
+                }
+              ],
+              "executability": "semantically_invalid"
+            }
+          ]
+        }
+      },
+      "execution": [
+        {
+          "id": "cap-over-threshold",
+          "kind": "capability",
+          "target": {
+            "equals": "Check claim threshold"
+          },
+          "expect": {
+            "outcome": "succeeded",
+            "output": {
+              "matched": true,
+              "outcome": "flag for payout"
+            }
+          },
+          "input": {
+            "claim_amount": 15000
+          }
+        },
+        {
+          "id": "cap-under-threshold",
+          "kind": "capability",
+          "target": {
+            "equals": "Check claim threshold"
+          },
+          "expect": {
+            "outcome": "succeeded",
+            "output": {
+              "matched": false
+            }
+          },
+          "input": {
+            "claim_amount": 5000
+          }
+        },
+        {
+          "id": "cap-human-review",
+          "kind": "capability",
+          "target": {
+            "equals": "Underwriter review of the flagged claim"
+          },
+          "expect": {
+            "outcome": "waiting_for_human"
+          },
+          "input": {}
+        },
+        {
+          "id": "cap-orphan-not-executable",
+          "kind": "capability",
+          "target": {
+            "equals": "Assess the overall situation"
+          },
+          "expect": {
+            "outcome": "not_executable"
+          },
+          "input": {}
+        },
+        {
+          "id": "wf-flow-injects-true",
+          "kind": "workflow",
+          "steps": [
+            {
+              "equals": "Check claim threshold"
+            },
+            {
+              "equals": "Authorize payout"
+            }
+          ],
+          "input": {
+            "claim_amount": 15000,
+            "payout_amount": 800
+          },
+          "expect": {
+            "status": "completed",
+            "steps": [
+              {
+                "capability": {
+                  "equals": "Check claim threshold"
+                },
+                "output": {
+                  "matched": true
+                }
+              },
+              {
+                "capability": {
+                  "equals": "Authorize payout"
+                },
+                "output": {
+                  "matched": true,
+                  "outcome": "release payout"
+                }
+              }
+            ],
+            "injections": [
+              {
+                "producer": {
+                  "equals": "Check claim threshold"
+                },
+                "output": "matched",
+                "consumer": {
+                  "equals": "Authorize payout"
+                },
+                "input": "matched"
+              }
+            ]
+          }
+        },
+        {
+          "id": "wf-flow-injects-false",
+          "kind": "workflow",
+          "steps": [
+            {
+              "equals": "Check claim threshold"
+            },
+            {
+              "equals": "Authorize payout"
+            }
+          ],
+          "input": {
+            "claim_amount": 100,
+            "payout_amount": 800
+          },
+          "expect": {
+            "status": "completed",
+            "steps": [
+              {
+                "capability": {
+                  "equals": "Check claim threshold"
+                },
+                "output": {
+                  "matched": false
+                }
+              }
+            ],
+            "injections": [
+              {
+                "producer": {
+                  "equals": "Check claim threshold"
+                },
+                "output": "matched",
+                "consumer": {
+                  "equals": "Authorize payout"
+                },
+                "input": "matched"
+              }
+            ]
+          }
+        },
+        {
+          "id": "wf-hitl-waits",
+          "kind": "workflow",
+          "steps": [
+            {
+              "equals": "Screen the claim"
+            },
+            {
+              "equals": "Underwriter review of the flagged claim"
+            },
+            {
+              "equals": "Release the settlement"
+            }
+          ],
+          "input": {
+            "screening_score": 90,
+            "settlement_amount": 800
+          },
+          "expect": {
+            "status": "waiting_for_human",
+            "steps": [
+              {
+                "capability": {
+                  "equals": "Screen the claim"
+                },
+                "output": {
+                  "matched": true
+                }
+              },
+              {
+                "capability": {
+                  "equals": "Underwriter review of the flagged claim"
+                },
+                "outputStatus": "escalation_required"
+              }
+            ]
+          }
+        },
+        {
+          "id": "wf-orphan-refused",
+          "kind": "workflow",
+          "steps": [
+            {
+              "equals": "Assess the overall situation"
+            }
+          ],
+          "input": {},
+          "expect": {
+            "status": "not_executable_yet"
+          }
+        },
+        {
+          "id": "wf-cycle-refused",
+          "kind": "workflow",
+          "steps": [
+            {
+              "equals": "Cycle member X"
+            },
+            {
+              "equals": "Cycle member Y"
+            }
+          ],
+          "input": {},
+          "expect": {
+            "status": "not_executable_yet"
+          }
+        }
+      ]
+    }
+  ]
+}

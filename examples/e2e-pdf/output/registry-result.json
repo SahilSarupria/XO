@@ -1,0 +1,108 @@
+{
+  "publish": {
+    "id": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+    "manifest": {
+      "formatVersion": "1.0",
+      "name": "xo_e2e_burglary_policy",
+      "version": "1.0.0",
+      "creatorDid": "did:xo:e2e-pdf-harness",
+      "compatibility": {
+        "modelFamilies": [
+          {
+            "family": "claude",
+            "minCapability": [
+              "chat"
+            ],
+            "consumes": [
+              "knowledge_graph"
+            ]
+          }
+        ],
+        "fallbackPolicy": "degrade_gracefully"
+      },
+      "components": {
+        "benchmark_suite": {
+          "path": "evaluation/benchmark_suite.json",
+          "hash": "sha256:e0ab24f50c8a372e295a283ba4cab449dd247bd4642fded42325ddca349bdab1",
+          "required": true
+        },
+        "knowledge_graph": {
+          "path": "knowledge/compiled-xoir.json",
+          "hash": "sha256:01122c336b9b7cfdba5280139a82f3fb95fd90c8756f79cb60872e7938623bf0",
+          "required": false
+        },
+        "safety_rules": {
+          "path": "safety/rules.json",
+          "hash": "sha256:da506c8a9c8a9f31aa00eaeef23d49764b9ace97158a1a0a7aa628e6d446b0fb",
+          "required": true
+        }
+      },
+      "merkleRoot": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+      "signatures": [
+        {
+          "signerDid": "did:xo:e2e-pdf-harness",
+          "role": "creator",
+          "signature": "/iprc+gofoaJYAz3u+GCBpw4Bx9raSny9DXsZGd5ZpKgq0FSJrsMUxRieB5KbZ/cufL3seROdtiEFTfsE9WVBA=="
+        }
+      ]
+    },
+    "publishedAt": "2026-08-23T07:38:48.963Z",
+    "ledgerEntryHash": "sha256:519b1966c8d2089c1bd6b9a4a3c64bc6f91081d0a6822f0cd8b6ea37fd9c2fe8"
+  },
+  "search": [
+    {
+      "id": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+      "name": "xo_e2e_burglary_policy"
+    }
+  ],
+  "resolve": {
+    "id": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+    "manifest": {
+      "formatVersion": "1.0",
+      "name": "xo_e2e_burglary_policy",
+      "version": "1.0.0",
+      "creatorDid": "did:xo:e2e-pdf-harness",
+      "compatibility": {
+        "modelFamilies": [
+          {
+            "family": "claude",
+            "minCapability": [
+              "chat"
+            ],
+            "consumes": [
+              "knowledge_graph"
+            ]
+          }
+        ],
+        "fallbackPolicy": "degrade_gracefully"
+      },
+      "components": {
+        "benchmark_suite": {
+          "path": "evaluation/benchmark_suite.json",
+          "hash": "sha256:e0ab24f50c8a372e295a283ba4cab449dd247bd4642fded42325ddca349bdab1",
+          "required": true
+        },
+        "knowledge_graph": {
+          "path": "knowledge/compiled-xoir.json",
+          "hash": "sha256:01122c336b9b7cfdba5280139a82f3fb95fd90c8756f79cb60872e7938623bf0",
+          "required": false
+        },
+        "safety_rules": {
+          "path": "safety/rules.json",
+          "hash": "sha256:da506c8a9c8a9f31aa00eaeef23d49764b9ace97158a1a0a7aa628e6d446b0fb",
+          "required": true
+        }
+      },
+      "merkleRoot": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+      "signatures": [
+        {
+          "signerDid": "did:xo:e2e-pdf-harness",
+          "role": "creator",
+          "signature": "/iprc+gofoaJYAz3u+GCBpw4Bx9raSny9DXsZGd5ZpKgq0FSJrsMUxRieB5KbZ/cufL3seROdtiEFTfsE9WVBA=="
+        }
+      ]
+    },
+    "publishedAt": "2026-08-23T07:38:48.963Z"
+  },
+  "limitation": "RegistryClient/FsPackageRepository store and return PackageRecord (manifest + publishedAt) only — no component-byte storage or retrieval API exists anywhere in packages/registry or packages/registry-core."
+}

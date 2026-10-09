@@ -1,0 +1,3 @@
+/** Stage 6's target shape: extractCapabilities(). Professional capabilities the source material demonstrates (e.g. Contract Review, Risk Analysis, Negotiation, Clause Comparison, Compliance Analysis) — named "AiExtractedCapability" here to avoid colliding with this package's own "AI capability" terminology (extractEntities() etc. are AI capabilities; a "Contract Review" finding is a professional capability the source demonstrates). */
+export {};
+//# sourceMappingURL=capabilities.js.map

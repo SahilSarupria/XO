@@ -1,0 +1,396 @@
+{
+  "harness": "examples/e2e-pdf",
+  "fixture": "/home/claude/workspace/examples/vertical-test/burglary-policy.pdf",
+  "generatedAt": "2026-08-23T07:38:48.974Z",
+  "overallResult": "PASS",
+  "firstBlockingBoundary": null,
+  "firstHardError": null,
+  "boundaries": {
+    "pdf_ingestion": {
+      "status": "PASS",
+      "reason": "Loaded 5 page(s) from a real PDF via NodePdfLoader.",
+      "detail": {
+        "pageCount": 5,
+        "metadata": {
+          "title": "OmniOMS Output Generation",
+          "author": "Newgen Software Technologies Ltd.",
+          "subject": "Report/Letter/Contract",
+          "creator": "OmniOMS",
+          "producer": "iText® Core 7.2.5 (oem version), pdfCalligraph 3.0.1 (oem version) ©2000-2023 iText Group NV, NEWGEN SOFTWARE TECHNOLOGIES; modified using iText® Core 7.2.5 (oem version) ©2000-2023 iText Group NV, NEWGEN SOFTWARE TECHNOLOGIES",
+          "creationDate": "D:20260806214939+05'30'",
+          "modificationDate": "D:20260806214939+05'30'"
+        },
+        "pagesRequiringOcr": 0
+      }
+    },
+    "document_parsing": {
+      "status": "PASS",
+      "reason": "parseDocument() produced a structural tree (74 block(s), body font 8.5pt).",
+      "detail": {
+        "bodyFontSizePt": 8.5,
+        "topLevelSubsections": 2,
+        "totalBlocks": 74
+      }
+    },
+    "semantic_chunking": {
+      "status": "PASS",
+      "reason": "chunkDocument() produced 93 ExperienceUnit(s).",
+      "detail": {
+        "unitCount": 93,
+        "relationshipCount": 132
+      }
+    },
+    "knowledge_extraction": {
+      "status": "PASS",
+      "reason": "extractKnowledgeGraph() (rule-based) produced 249 node(s), 369 edge(s).",
+      "detail": {
+        "nodeCount": 249,
+        "edgeCount": 369
+      }
+    },
+    "capability_extraction": {
+      "status": "PASS",
+      "reason": "extractCapabilityGraph() (rule-based) produced 5 compiler Capability object(s).",
+      "detail": {
+        "capabilityCount": 5,
+        "sample": [
+          {
+            "id": "cap_246763ceb306ba832b281f0defb16470",
+            "canonicalName": "Contact and 9821631474 AASTHA",
+            "aliases": [],
+            "description": "Policy Number D279250237 Receipt Number RA322234012\n\nInvoice Number IA274016654 Invoice date 06-Aug-2026\n\nPolicy Issue Date 06-Aug-2026 From 08-Aug-2026 00:00:01 Period of Insurance Policy Tenure 365 days To 07-Aug-2027 23:59:59\n\n1004249 Partner Code and Partner Contact and 9821631474  AASTHA INSURANCE BROKER aastha9ins@rediffmail.com Name Email ID  PRIVATE LIMITED",
+            "category": "communication",
+            "confidence": 0.45,
+            "provenance": [
+              {
+                "experienceUnitId": "eu_db2842c3438ee563d4af511848512233",
+                "documentPath": "/home/claude/workspace/examples/vertical-test/burglary-policy.pdf",
+                "pages": [
+                  2
+                ],
+                "sectionPath": [
+                  "Digit Burglary Insurance Policy",
+                  "Policy Schedule",
+                  "Policy Details:"
+                ],
+                "charOffsetRange": [
+                  0,
+                  367
+                ],
+                "confidence": 0.45
+              }
+            ],
+            "inputs": [],
+            "outputs": [],
+            "dependencies": [],
+            "requiredKnowledgeNodeIds": [
+              "kn_334a36440fc39c7d0a989c7e195ebaa8",
+              "kn_356957eb4bf6af0dafd6ccd9dfd8b14b",
+              "kn_59f39d070f6cf4d46328be990ae36831",
+              "kn_7b4a2e2ac86f624c164ad15e076862f6",
+              "kn_861322372f3268dd4626ba0850337958",
+              "kn_870e4c14d8d65223670dad95b50ed62c",
+              "kn_abf85898b1aae99f2090210e7537003f",
+              "kn_ad8341d1755cf1c5b476f21d93707b2d",
+              "kn_cbba4cf7f62e7d7bf0c97296f52dee18",
+              "kn_cbd0c5b3024de93cf6502621ac9af549",
+              "kn_ef5b6b63797cd7ae0d2e47a77deac3e3",
+              "kn_ff420ab8295a62c85a888d59d18dca79"
+            ],
+            "relatedConcepts": [
+              "9821"
+            ],
+            "requiredPermissions": [],
+            "invocationHints": [],
+            "examples": [],
+            "signature": {
+              "inputs": [],
+              "outputs": [],
+              "sideEffects": [],
+              "requiredResources": [],
+              "determinism": "unknown",
+              "idempotent": "unknown",
+              "executionMode": "unknown",
+              "estimatedCost": "unknown"
+            },
+            "metadata": {}
+          },
+          {
+            "id": "cap_8eb40cf730c87711eb2fb21e811cd138",
+            "canonicalName": "Schedule Action",
+            "aliases": [],
+            "description": "Policy Schedule",
+            "category": "planning",
+            "confidence": 0.45,
+            "provenance": [
+              {
+                "experienceUnitId": "eu_ec5ae3ced064772b98b6435980efb711",
+                "documentPath": "/home/claude/workspace/examples/vertical-test/burglary-policy.pdf",
+                "pages": [
+                  1
+                ],
+                "sectionPath": [
+                  "Digit Burglary Insurance Policy",
+                  "Policy Schedule"
+                ],
+                "charOffsetRange": [
+                  0,
+                  15
+                ],
+                "confidence": 0.45
+              }
+            ],
+            "inputs": [],
+            "outputs": [],
+            "dependencies": [],
+            "requiredKnowledgeNodeIds": [
+              "kn_6217c8eb46c8f3076dd1a6e11f754c0b",
+              "kn_f9c927ad5c1b6218790c05fc5910702f"
+            ],
+            "relatedConcepts": [
+              "Policy Schedule"
+            ],
+            "requiredPermissions": [],
+            "invocationHints": [],
+            "examples": [],
+            "signature": {
+              "inputs": [],
+              "outputs": [],
+              "sideEffects": [],
+              "requiredResources": [],
+              "determinism": "unknown",
+              "idempotent": "unknown",
+              "executionMode": "unknown",
+              "estimatedCost": "unknown"
+            },
+            "metadata": {}
+          },
+          {
+            "id": "cap_915ec7f5b134c31082b29a710001769a",
+            "canonicalName": "Contact No Email ID",
+            "aliases": [],
+            "description": "GST State Code 27 GSTIN Number Unregistered\n\nxxxxxxxxx7 axxxxxxxxxxxxx7@gxxxxxcom Contact No Email ID",
+            "category": "communication",
+            "confidence": 0.45,
+            "provenance": [
+              {
+                "experienceUnitId": "eu_5674847e1ec19b555c0d6081c0e64734",
+                "documentPath": "/home/claude/workspace/examples/vertical-test/burglary-policy.pdf",
+                "pages": [
+                  2
+                ],
+                "sectionPath": [
+                  "Digit Burglary Insurance Policy",
+                  "Policy Schedule",
+                  "Insured Details:",
+                  "https:"
+                ],
+                "charOffsetRange": [
+                  0,
+                  101
+                ],
+                "confidence": 0.45
+              }
+            ],
+            "inputs": [],
+            "outputs": [],
+            "dependencies": [],
+            "requiredKnowledgeNodeIds": [
+              "kn_005a325f2a1bdf3238688c80fc3cdfec",
+              "kn_50a235aef706b48935dc5c58eae60a7e",
+              "kn_a7417c9b6e0a4f8da92996c084fa982d"
+            ],
+            "relatedConcepts": [],
+            "requiredPermissions": [],
+            "invocationHints": [],
+            "examples": [],
+            "signature": {
+              "inputs": [],
+              "outputs": [],
+              "sideEffects": [],
+              "requiredResources": [],
+              "determinism": "unknown",
+              "idempotent": "unknown",
+              "executionMode": "unknown",
+              "estimatedCost": "unknown"
+            },
+            "metadata": {}
+          }
+        ]
+      }
+    },
+    "reasoning_extraction": {
+      "status": "PASS",
+      "reason": "extractReasoningGraph() (rule-based) produced 8 node(s).",
+      "detail": {
+        "nodeCount": 8,
+        "edgeCount": 0
+      }
+    },
+    "xoir_compilation": {
+      "status": "PASS",
+      "reason": "compileXoir() ran the full convert -> validate -> normalize pipeline and returned a CompiledXoirResult.",
+      "detail": {
+        "stats": {
+          "nodeCount": 262,
+          "edgeCount": 420,
+          "nodesByKind": {
+            "capability": 5,
+            "concept": 247,
+            "constraint": 9,
+            "heuristic": 1
+          },
+          "edgesByKind": {
+            "REFERENCES": 283,
+            "PART_OF": 86,
+            "REQUIRES": 51
+          }
+        }
+      }
+    },
+    "xoir_validation": {
+      "status": "PASS",
+      "reason": "Compiled XOIR is valid and normalized (262 node(s), 420 edge(s)).",
+      "detail": {
+        "stats": {
+          "nodeCount": 262,
+          "edgeCount": 420,
+          "nodesByKind": {
+            "capability": 5,
+            "concept": 247,
+            "constraint": 9,
+            "heuristic": 1
+          },
+          "edgesByKind": {
+            "REFERENCES": 283,
+            "PART_OF": 86,
+            "REQUIRES": 51
+          }
+        }
+      }
+    },
+    "package_creation": {
+      "status": "PASS",
+      "reason": "Built and signed a real .xo package (58890 bytes) via ManifestBuilder + Ed25519Signer + packBundle().",
+      "detail": {
+        "name": "xo_e2e_burglary_policy",
+        "version": "1.0.0",
+        "merkleRoot": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+        "componentCount": 3,
+        "archiveBytes": 58890,
+        "archivePath": "/tmp/xo-e2e-pdf-zjl6kz/xo_e2e_burglary_policy-1.0.0.xo"
+      }
+    },
+    "package_verification": {
+      "status": "PASS",
+      "reason": "Round-tripped .xo archive validated (schema, hashes, Merkle root, signature) via PackageValidator + PackageVerifier.",
+      "detail": {
+        "valid": true,
+        "signatureVerified": true
+      }
+    },
+    "registry_publish": {
+      "status": "PASS",
+      "reason": "Published to an isolated local FsPackageRepository, content-addressed by manifest.merkleRoot (\"sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15\"), with a ledger entry.",
+      "detail": {
+        "id": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+        "publishedAt": "2026-08-23T07:38:48.963Z",
+        "ledgerEntryHash": "sha256:519b1966c8d2089c1bd6b9a4a3c64bc6f91081d0a6822f0cd8b6ea37fd9c2fe8"
+      }
+    },
+    "registry_resolve": {
+      "status": "PASS",
+      "reason": "RegistryClient.get() resolved the published PackageRecord by content-addressed id. LIMITATION (boundary #1, see README): this record carries only { id, manifest, publishedAt } — no component bytes. It cannot, by itself, be turned back into an installable .xo bundle; step 12 below installs from the local archive at \"/tmp/xo-e2e-pdf-zjl6kz/xo_e2e_burglary_policy-1.0.0.xo\" instead, exactly because the registry does not offer a byte-level resolve path.",
+      "detail": {
+        "record": {
+          "id": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+          "manifest": {
+            "formatVersion": "1.0",
+            "name": "xo_e2e_burglary_policy",
+            "version": "1.0.0",
+            "creatorDid": "did:xo:e2e-pdf-harness",
+            "compatibility": {
+              "modelFamilies": [
+                {
+                  "family": "claude",
+                  "minCapability": [
+                    "chat"
+                  ],
+                  "consumes": [
+                    "knowledge_graph"
+                  ]
+                }
+              ],
+              "fallbackPolicy": "degrade_gracefully"
+            },
+            "components": {
+              "benchmark_suite": {
+                "path": "evaluation/benchmark_suite.json",
+                "hash": "sha256:e0ab24f50c8a372e295a283ba4cab449dd247bd4642fded42325ddca349bdab1",
+                "required": true
+              },
+              "knowledge_graph": {
+                "path": "knowledge/compiled-xoir.json",
+                "hash": "sha256:01122c336b9b7cfdba5280139a82f3fb95fd90c8756f79cb60872e7938623bf0",
+                "required": false
+              },
+              "safety_rules": {
+                "path": "safety/rules.json",
+                "hash": "sha256:da506c8a9c8a9f31aa00eaeef23d49764b9ace97158a1a0a7aa628e6d446b0fb",
+                "required": true
+              }
+            },
+            "merkleRoot": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+            "signatures": [
+              {
+                "signerDid": "did:xo:e2e-pdf-harness",
+                "role": "creator",
+                "signature": "/iprc+gofoaJYAz3u+GCBpw4Bx9raSny9DXsZGd5ZpKgq0FSJrsMUxRieB5KbZ/cufL3seROdtiEFTfsE9WVBA=="
+              }
+            ]
+          },
+          "publishedAt": "2026-08-23T07:38:48.963Z"
+        },
+        "searchHitCount": 1,
+        "ledgerVerified": true
+      }
+    },
+    "package_install_load": {
+      "status": "PASS",
+      "reason": "Installed via PackageInstaller (local LocalFsBlobStore) and mounted via Runtime.mount() — both from the local .xo archive, not the registry (see boundary #1).",
+      "detail": {
+        "installedAt": "2026-08-23T07:38:48.968Z",
+        "mountedPackages": [
+          "xo_e2e_burglary_policy@1.0.0"
+        ]
+      }
+    },
+    "runtime_capability_discovery": {
+      "status": "PASS",
+      "reason": "CapabilityRegistry.all() ran successfully and (accurately) discovered 0 capabilities — the mounted manifest declares none, because extractCapabilityGraph() found none in the source PDF (step 5) and this harness never fabricates a manifest CapabilityDeclaration from compiler output (boundary #2). Discovery itself is not blocked; there is simply nothing to discover for this specific document.",
+      "detail": {
+        "capabilities": [],
+        "mountedPackageCount": 1
+      }
+    },
+    "runtime_execution": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No executable capability is declared on the mounted package, so there is nothing for ExecutionEngine.execute() to legitimately run against. This is boundary #2's concrete consequence for this document, not a bug in ExecutionEngine, CapabilityNegotiator, or CapabilityRegistry, all of which are confirmed real/working (see runtime/test/execution-engine.test.ts, which exercises the identical ExecutionEngine class against a fixture package that DOES declare capabilities). A future document/domain hint that causes extractCapabilityGraph() to produce real Capability output, PLUS a hand-authored manifest CapabilityDeclaration attributable to that output (there is still no automatic converter — see boundary #2), would be the way to reach this stage for real."
+    },
+    "persistence": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No execution occurred (see runtime_execution) — nothing to persist."
+    },
+    "memory": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No execution occurred (see runtime_execution) — no memory was read or written."
+    }
+  },
+  "knownArchitecturalBoundaries": {
+    "registry_artifact_storage": "RegistryClient/FsPackageRepository store and return only { id, manifest, publishedAt } (a PackageRecord). No component-byte storage/retrieval API exists in packages/registry or packages/registry-core, so a package cannot be reconstituted from the registry alone; the local .xo archive remains the real install/load source.",
+    "compiler_capability_vs_runtime_capability_declaration": "packages/compiler's Capability (capabilities/types.ts) and @xo/types' manifest CapabilityDeclaration (xo-capability.ts) are structurally unrelated types. No converter between them exists anywhere in this repo. This harness never fabricates one; a package's manifest.capabilities only ever reflects capabilities this harness can honestly attribute to real extraction output.",
+    "xoir_has_no_manifest_component_kind": "@xo/types' ComponentKind union has no \"xoir\" entry. This harness embeds the compiled XOIR's canonical JSON (@xo/xoir#toJson) inside the existing knowledge_graph component slot as the closest legitimate fit, and separately preserves it unmodified as output/compiled-xoir.json."
+  },
+  "isolatedRunDirectory": "/tmp/xo-e2e-pdf-zjl6kz",
+  "note": "Temporary package/registry/install/runtime-store state lived under isolatedRunDirectory for this run only and is not committed to the repository."
+}

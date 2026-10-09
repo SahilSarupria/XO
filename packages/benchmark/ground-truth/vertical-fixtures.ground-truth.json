@@ -1,0 +1,1208 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "vertical-fixtures",
+  "cases": [
+    {
+      "caseId": "synthetic-claim-rules",
+      "authoring": "Authored from the fixture's own text (one IF/THEN rule under '## Claim Assessment'); suite description: 'small enough that the semantic ground truth is COMPLETE'. Execution thresholds follow from the rule's own comparison.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "decision_node"
+          ],
+          "support": "supported",
+          "justification": "The source contains exactly one conditional rule; every other sentence is a disclaimer or a heading. One expected decision_node is therefore the complete set."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "One rule yields exactly its condition-heading capability and its action capability under XO's documented rule-lowering convention; the source has no other task or obligation. Names are the convention's output (derived), but the SET is bounded by the single rule."
+        },
+        {
+          "scope": "workflows",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "A single rule gives one condition->action pair; no other sequence exists in the source."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "rule-deny-over-10000",
+          "identity": "explicit",
+          "assertions": "strongly_evidenced",
+          "source": "'## Claim Assessment': 'If the claim assessment amount exceeds 10000, then deny the claim.' (page 1)",
+          "note": "outcome/condition text is verbatim; the structuredCondition/structuredAction assertions encode XO's structured schema for '> 10000' / 'deny'."
+        },
+        {
+          "category": "fact",
+          "id": "concept-claim-assessment",
+          "identity": "strongly_evidenced",
+          "source": "heading '## Claim Assessment'",
+          "note": "a heading named as a concept by XO's convention; the source does not define it."
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-it",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'It' in the disclaimer paragraph",
+          "note": "a pronoun is not a domain concept (linguistic reason; the word does occur capitalised in the source)."
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-this",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'This' in the disclaimer paragraph"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-if",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'If' in the rule sentence"
+        },
+        {
+          "category": "capability",
+          "id": "cap-claim-assessment",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "heading + rule under '## Claim Assessment'",
+          "note": "name is the heading, title-cased by XO's naming convention; resolution/class/inputs follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "cap-deny-the-claim",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "action 'deny the claim' of the single rule",
+          "note": "name is the action clause title-cased by XO's naming convention."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-assess-then-deny",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "the single rule: condition (assess) -> action (deny)",
+          "note": "the ordering is the rule's condition->action structure; 'not_executable_yet' is the composer's contract (no proven data-flow binding), not something the source states."
+        },
+        {
+          "category": "execution",
+          "id": "over-threshold",
+          "identity": "explicit",
+          "source": "rule: amount 15000 exceeds 10000 -> deny"
+        },
+        {
+          "category": "execution",
+          "id": "at-threshold",
+          "identity": "explicit",
+          "source": "rule: 'exceeds 10000' is strict, so 10000 does not match"
+        },
+        {
+          "category": "execution",
+          "id": "below-threshold",
+          "identity": "explicit",
+          "source": "rule: 5000 does not exceed 10000"
+        },
+        {
+          "category": "execution",
+          "id": "missing-input",
+          "identity": "derived",
+          "source": "no fixture clause; runtime input-validation contract"
+        },
+        {
+          "category": "execution",
+          "id": "wrong-type",
+          "identity": "derived",
+          "source": "no fixture clause; runtime input-validation contract"
+        },
+        {
+          "category": "execution",
+          "id": "wf-refused-without-proven-order",
+          "identity": "derived",
+          "source": "no fixture clause; composer/runtime contract (no proven binding => not_executable_yet)"
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "not_established",
+          "topic": "other capabilities from the disclaimer text",
+          "note": "The disclaimer says the document is synthetic and 'must never be treated' as real rules; it states no task. Not ground truth."
+        }
+      ],
+      "expectationsFingerprint": "e3f18bb648927dce"
+    },
+    {
+      "caseId": "commercial-property-policy",
+      "authoring": "Authored by reading the PDF's own text (pdftotext) independently of XO: 22 conditional rules as heuristics, the rule/action capabilities that Appendix A's cases A-H rely on, and Appendix A's expected outcomes as execution cases (suite description). Known real gaps are recorded as EXPECTED failures and are what the baseline records.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "heuristic"
+          ],
+          "support": "questionable",
+          "justification": "The 22 facts are 22 of the source's conditional statements, but clause 10.4 ('Where a loss appears suspicious, the claim may be referred for enhanced review') has the same explicit conditional form as included rules and is not listed, and 4.5, 5.4, 5.6 and 8.4 ('may be denied unless ...') are conditional exceptions. Section 10 is titled 'Ambiguous and Semantic Provisions', so the omission may be deliberate, but the suite does not say so. XO does not currently emit a heuristic for them, so no measurement is affected today; a future correct extraction would be scored as unexpected."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "open",
+          "support": "supported",
+          "justification": "18 of the many statable duties; the golden list is deliberately partial (rules and operational actions Appendix A relies on)."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "Two workflows are asserted; the source states no general process order, so completeness cannot be claimed."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "r2.4-manager-approval-over-10k",
+          "identity": "explicit",
+          "assertions": "strongly_evidenced",
+          "source": "clause 2.4 (page 1)"
+        },
+        {
+          "category": "fact",
+          "id": "r2.5-cap-at-sum-insured",
+          "identity": "explicit",
+          "source": "clause 2.5 (page 1)"
+        },
+        {
+          "category": "fact",
+          "id": "r6.4-materially-incorrect-claim",
+          "identity": "explicit",
+          "source": "clause 6.4 (page 1)"
+        },
+        {
+          "category": "fact",
+          "id": "r6.5-materially-incorrect-proposal",
+          "identity": "explicit",
+          "source": "clause 6.5 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r7.1-approval-over-10k-docs-present",
+          "identity": "explicit",
+          "source": "clause 7.1 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r7.2-adjuster-over-100k",
+          "identity": "explicit",
+          "assertions": "strongly_evidenced",
+          "source": "clause 7.2 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r7.3-no-approval-at-or-below-10k",
+          "identity": "explicit",
+          "source": "clause 7.3 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r7.6-expired-policy-review",
+          "identity": "explicit",
+          "source": "clause 7.6 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r7.7-flood-denied",
+          "identity": "explicit",
+          "source": "clause 7.7 (page 2)",
+          "note": "the clause carries an 'unless a flood endorsement is recorded' exception that belongs to the same rule."
+        },
+        {
+          "category": "fact",
+          "id": "r7.8-theft-police-report",
+          "identity": "explicit",
+          "source": "clause 7.8 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r8.1-notification-within-7-days",
+          "identity": "strongly_evidenced",
+          "source": "clause 8.1 (page 2)",
+          "note": "a stated rule whose conditional form is implicit (a participial subject, not an 'If/When' clause)."
+        },
+        {
+          "category": "fact",
+          "id": "r8.2-notification-after-7-days",
+          "identity": "strongly_evidenced",
+          "source": "clause 8.2 (page 2)",
+          "note": "a stated rule whose conditional form is implicit (a participial subject, not an 'If/When' clause)."
+        },
+        {
+          "category": "fact",
+          "id": "r9.1-route-to-manager",
+          "identity": "explicit",
+          "source": "clause 9.1 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r9.2-assign-loss-adjuster",
+          "identity": "explicit",
+          "source": "clause 9.2 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r9.3-return-missing-documents",
+          "identity": "explicit",
+          "source": "clause 9.3 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r9.4-record-denial-reason",
+          "identity": "explicit",
+          "source": "clause 9.4 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r9.5-record-settlement-amount",
+          "identity": "explicit",
+          "source": "clause 9.5 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r11.1-active-policy-proceed-to-assessment",
+          "identity": "explicit",
+          "source": "clause 11.1 (page 2)",
+          "note": "compound condition (four conjuncts); the expectation requires the extracted condition to carry the first and the last."
+        },
+        {
+          "category": "fact",
+          "id": "r11.2-both-approvals-over-100k",
+          "identity": "explicit",
+          "source": "clause 11.2 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r11.3-approval-only-between-10k-and-100k",
+          "identity": "explicit",
+          "source": "clause 11.3 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r11.4-block-settlement",
+          "identity": "explicit",
+          "source": "clause 11.4 (page 2)"
+        },
+        {
+          "category": "fact",
+          "id": "r11.5-flood-endorsement-exception",
+          "identity": "explicit",
+          "source": "clause 11.5 (page 2)"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-flood-endorsement-fragment",
+          "identity": "strongly_evidenced",
+          "source": "clause 7.7 (page 2): '...must be denied unless a flood endorsement is recorded'",
+          "note": "the trap string is XO's fragment of that exception; the basis (the exception is part of rule 7.7, not a rule) is the clause text."
+        },
+        {
+          "category": "capability",
+          "id": "c2.4-manager-approval-over-10k",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 2.4 (page 1)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c7.1-manager-approval-required",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.1 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c7.2-adjuster-assessment",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.2 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c7.3-manager-approval-not-required",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.3 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c7.8-police-report",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.8 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c8.1-notification-satisfied",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 8.1 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c8.2-notification-not-satisfied",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 8.2 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c11.2-both-approvals",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 11.2 (page 2)",
+          "note": "name is the clause's action, title-cased by XO's convention; resolution / class / input names follow the rule-lowering contract."
+        },
+        {
+          "category": "capability",
+          "id": "c7.7-claim-must-be-denied",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.7 (page 2)",
+          "note": "documented in the suite description as an EXPECTED current failure (missing denial / coverage-review capability)."
+        },
+        {
+          "category": "capability",
+          "id": "c7.6-refer-for-coverage-review",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 7.6 (page 2)",
+          "note": "documented in the suite description as an EXPECTED current failure (missing denial / coverage-review capability)."
+        },
+        {
+          "category": "capability",
+          "id": "cA.H-review-not-covered-hitl",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "Appendix A, Case H (page 3): 'policy expired before loss -> coverage review / not covered under standard rule'",
+          "note": "Case H names an OUTCOME, not an operator task; the capability name is a parse of that outcome text. Kept (removing it would be a judgment made because of current behavior) but not treated as firm ground truth."
+        },
+        {
+          "category": "capability",
+          "id": "c9.1-route-to-manager",
+          "identity": "strongly_evidenced",
+          "source": "clause 9.1",
+          "note": "name is the clause's action, title-cased by XO's convention."
+        },
+        {
+          "category": "capability",
+          "id": "c9.2-assign-adjuster",
+          "identity": "strongly_evidenced",
+          "source": "clause 9.2",
+          "note": "name is the clause's action, title-cased by XO's convention."
+        },
+        {
+          "category": "capability",
+          "id": "c9.3-return-documents",
+          "identity": "strongly_evidenced",
+          "source": "clause 9.3",
+          "note": "name is the clause's action, title-cased by XO's convention."
+        },
+        {
+          "category": "capability",
+          "id": "c9.5-record-settlement",
+          "identity": "strongly_evidenced",
+          "source": "clause 9.5",
+          "note": "name is the clause's action, title-cased by XO's convention."
+        },
+        {
+          "category": "capability",
+          "id": "c4.1-notify-within-7-days",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 4.1",
+          "note": "an obligation with no decision structure; 'unresolved / not_executable' follows XO's execution-class semantics, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "c10.2-request-information",
+          "identity": "strongly_evidenced",
+          "assertions": "strongly_evidenced",
+          "source": "clause 10.2",
+          "note": "section 10 is titled 'Ambiguous and Semantic Provisions' and the Benchmark-intent paragraph says such provisions need model-assisted interpretation, which supports unresolved / not_executable."
+        },
+        {
+          "category": "capability",
+          "id": "c10.3-reasonable-precautions",
+          "identity": "strongly_evidenced",
+          "assertions": "strongly_evidenced",
+          "source": "clause 10.3",
+          "note": "section 10 is titled 'Ambiguous and Semantic Provisions' and the Benchmark-intent paragraph says such provisions need model-assisted interpretation, which supports unresolved / not_executable."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-action",
+          "identity": "strongly_evidenced",
+          "source": "clauses 1.1, 1.4, 2.2, 2.3, 3.1, 5.6 and section 12",
+          "note": "the word occurs only as the noun (7x) plus one 'scheduled' (11.1); no clause tells anyone to schedule anything."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-record-action",
+          "identity": "strongly_evidenced",
+          "source": "no clause names a 'Record Action'",
+          "note": "a generic verb+Action label; the document states specific recording duties (clauses 9.4, 9.5) that are separate capabilities."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-review-action",
+          "identity": "strongly_evidenced",
+          "source": "no clause names a 'Review Action'",
+          "note": "a generic verb+Action label; the document states specific review duties (clauses 7.6, 10.4) with their own wording."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-fragment-higher-deductible",
+          "identity": "strongly_evidenced",
+          "source": "clause 3.1 (page 1): '...unless the Schedule specifies a higher deductible'",
+          "note": "fragment of an exception clause."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-fragment-must-bear",
+          "identity": "strongly_evidenced",
+          "source": "clause 1.4 (page 1): '...stated in the Schedule that the Insured must bear'",
+          "note": "fragment of a definition."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-fragment-not-excluded",
+          "identity": "strongly_evidenced",
+          "source": "clause 11.1 (page 2): '...the property is scheduled, and the loss is not excluded'",
+          "note": "the trap string is XO's truncated form; the basis (clause 11.1 is one conditional, not an action) is the clause text."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-hitl-coverage-review",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "Appendix A, Case H (page 3); no sequence in the source",
+          "note": "a ONE-step workflow: the fixture states no process order here. Depends on the ambiguous capability cA.H."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-notification-alternatives-not-executable",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clauses 8.1 and 8.2 (page 2): mutually exclusive outcomes of one notification",
+          "note": "a NEGATIVE expectation: two alternatives must not be chained as a sequence. 'not_executable_yet' is the composer's contract."
+        },
+        {
+          "category": "execution",
+          "id": "A-manager-approval-required",
+          "identity": "explicit",
+          "source": "Appendix A Case A; clause 7.1"
+        },
+        {
+          "category": "execution",
+          "id": "A2-approval-over-10k",
+          "identity": "strongly_evidenced",
+          "source": "clause 2.4: 15000 exceeds 10,000"
+        },
+        {
+          "category": "execution",
+          "id": "B-manager-approval-not-required",
+          "identity": "explicit",
+          "source": "Appendix A Case B; clause 7.3"
+        },
+        {
+          "category": "execution",
+          "id": "B2-no-approval-below-10k",
+          "identity": "strongly_evidenced",
+          "source": "clause 2.4: 5000 does not exceed 10,000"
+        },
+        {
+          "category": "execution",
+          "id": "C-adjuster-assessment",
+          "identity": "strongly_evidenced",
+          "source": "Appendix A Case C; clause 7.2: 150000 > 100,000"
+        },
+        {
+          "category": "execution",
+          "id": "C2-both-approvals",
+          "identity": "explicit",
+          "source": "Appendix A Case C; clause 11.2"
+        },
+        {
+          "category": "execution",
+          "id": "E-theft-police-report",
+          "identity": "strongly_evidenced",
+          "source": "Appendix A Case E; clause 7.8"
+        },
+        {
+          "category": "execution",
+          "id": "E2-no-police-report-for-fire",
+          "identity": "strongly_evidenced",
+          "source": "clause 7.8: the condition is loss type = theft, so fire does not match"
+        },
+        {
+          "category": "execution",
+          "id": "F-notification-5-days",
+          "identity": "explicit",
+          "source": "Appendix A Case F; clause 8.1"
+        },
+        {
+          "category": "execution",
+          "id": "G-notification-12-days",
+          "identity": "explicit",
+          "source": "Appendix A Case G; clause 8.2"
+        },
+        {
+          "category": "execution",
+          "id": "G2-12-days-does-not-satisfy",
+          "identity": "strongly_evidenced",
+          "source": "clause 8.1: 12 days is not within 7"
+        },
+        {
+          "category": "execution",
+          "id": "H-coverage-review-human",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "Appendix A Case H (page 3)"
+        },
+        {
+          "category": "execution",
+          "id": "inv-missing-input",
+          "identity": "derived",
+          "source": "no fixture clause; runtime input-validation contract"
+        },
+        {
+          "category": "execution",
+          "id": "inv-wrong-type",
+          "identity": "derived",
+          "source": "no fixture clause; runtime input-validation contract"
+        },
+        {
+          "category": "execution",
+          "id": "unres-notify-obligation",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 4.1 (obligation, unresolved by XO's execution-class semantics)"
+        },
+        {
+          "category": "execution",
+          "id": "wf-hitl-review",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "Appendix A Case H; depends on the ambiguous capability cA.H"
+        },
+        {
+          "category": "execution",
+          "id": "wf-notification-pair-refused",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clauses 8.1 / 8.2 are alternatives"
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "ambiguous",
+          "topic": "clause 10.4 and the other conditional exceptions (4.5, 5.4, 5.6, 8.4, 3.1)",
+          "note": "Explicit conditional wording, but not in the golden set and not declared out of scope. Kept unmeasured; see the closed-world 'facts' assessment."
+        },
+        {
+          "status": "ambiguous",
+          "topic": "clauses 10.1 / 10.5 (semantic provisions)",
+          "note": "Stated as needing interpretation; no objective expected capability or fact can be established."
+        },
+        {
+          "status": "open_world",
+          "topic": "definitions 1.1-1.4 as concept facts, deductible/limit amounts (3.x, section 12), exclusions (5.x), warranties 5.7-5.8",
+          "note": "Real content, not in the golden set; only heuristic-kind facts are declared closed."
+        },
+        {
+          "status": "not_established",
+          "topic": "a process order across sections 7 and 9",
+          "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
+        }
+      ],
+      "expectationsFingerprint": "fc7333250a689842"
+    },
+    {
+      "caseId": "aastha-operations",
+      "authoring": "Aastha Insurance Operations and Procedures (a real operational procedure). Suite description: ground truth is the imperative tasks of sections 3-5, read independently of XO; every task is performed by a person or external system, hence human_in_the_loop. Later additions (t2.3, t3.3a) were verified against independent pdftotext (CHANGELOG). NOTE: the description says 'sections 3-5' but the list includes t2.3 from section 2, and t4.1 is passive, not imperative.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No fact expectations; semantic content of the SOP is not measured."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "questionable",
+          "justification": "The claim is 'one capability per stated task'. The task/description boundary is a judgment: the list includes passive statements (2.3 'The CRM generates', 4.1 'invoices are created') but not the equally passive 2.2 'Policy Entry: ... are logged into the CRM', and XO's extra capability 'Generate via direct sales referral partners digital' (from the descriptive §2 item 1) is scored unexpected. The inclusion criterion is not stated precisely enough to call the list complete."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "Three ordered lists in the source are asserted; other process orders are not stated, so completeness cannot be claimed."
+        }
+      ],
+      "entries": [
+        {
+          "category": "capability",
+          "id": "t2.3-generate-policy-booking-report",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "§2 item 3 (page 1): 'The CRM generates a \"Policy Booking Report\"...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement. non-imperative statement; the matcher is XO's verb-normalised form ('Generate a ...'). Added by Layer 2B after verification against pdftotext (CHANGELOG)."
+        },
+        {
+          "category": "capability",
+          "id": "t3.1-request-insurer-statements",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 1 (page 1): 'Request insurer-wise brokerage statements ...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t3.2-map-crm-to-insurer-data",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 2 (page 1): 'Map the CRM policy records against the raw data ...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t3.3a-identify-actual-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 3, bullet 1 (page 1): 'Identify \"Actual\" brokerage (Basic + Incentives).'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement. added after Layer 0 fixed the source-text corruption (CHANGELOG)."
+        },
+        {
+          "category": "capability",
+          "id": "t3.3-identify-discrepancies",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 3, bullet 2 (page 1): 'Identify discrepancies: ...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t3.4-match-crm-vs-statements",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 4, bullet 1 (page 1)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t3.4-verify-expected-vs-actual-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 4, bullet 2 (page 1)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t3.4-reconcile-invoice-vs-receipt",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 4, bullet 3 (page 1)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement. matcher's embedded period removed in Layer 1B (CHANGELOG)."
+        },
+        {
+          "category": "capability",
+          "id": "t3.4-validate-tds-gst",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§3 item 4, bullet 4 (page 2)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t4.1-create-invoices-in-tally",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "§4 item 1 (page 2): 'Sales invoices are created in Tally Prime based solely on the validated data ...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement. passive statement rather than an imperative, and the matcher ('in Tally Prime') is a weak substring; identity rests on the section's role in the process."
+        },
+        {
+          "category": "capability",
+          "id": "t4.2-record-incoming-payments",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§4 item 2, bullet 1 (page 2)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t4.2-calculate-and-book-tds",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§4 item 2, bullet 2 (page 2)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t4.2-reconcile-invoice-balance",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§4 item 2, bullet 3 (page 2)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t5.1-generate-monthly-mis",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§5 item 1 (page 2): 'Generate monthly MIS reports for IRDAI compliance, including: ...'",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "t5.2-calculate-channel-revenue-share",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "§5 item 2 (page 2)",
+          "note": "expected resolved / human_in_the_loop: the document's tasks are performed by people or external systems (suite description); this is a classification rule, not a source statement."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-receipts-and-bookkeeping",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "§4 item 2, bullets 1-3 (page 2): an ordered list",
+          "note": "'executable_candidate' / HITL step classes are the composer's contract."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-reconciliation-tasks",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "§3 item 4, bullets 1-4 (pages 1-2): an ordered list",
+          "note": "exact step set = the source's own four-bullet list. The current composer produces a 7-step workflow that contains these four plus three from items 2-3, so the expectation is not met: a real composer gap, kept. A punctuation defect in the third step matcher (which made it unsatisfiable and mis-attributed the miss to capability discovery) was corrected in Step 3 (CHANGELOG)."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-partner-payouts",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "§5 item 2 (page 2); no sequence in the source",
+          "note": "a ONE-step workflow: the source states no order; relies on the composer emitting single-step workflows."
+        },
+        {
+          "category": "execution",
+          "id": "map-records-escalates",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "§3 item 2 (a person maps the records)"
+        },
+        {
+          "category": "execution",
+          "id": "request-statements-is-a-human-task",
+          "identity": "derived",
+          "assertions": "derived",
+          "source": "§3 item 1 (a person requests statements)",
+          "note": "currently fails: the capability resolves as unresolved / not_executable."
+        },
+        {
+          "category": "execution",
+          "id": "wf-partner-payouts-escalates",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "§5 item 2; depends on the one-step workflow"
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "ambiguous",
+          "topic": "§2 item 2 'Policy Entry' (policies and endorsements are logged into the CRM)",
+          "note": "A passive process statement. Not in the golden set; the closed-world capability declaration makes its treatment unclear."
+        },
+        {
+          "status": "ambiguous",
+          "topic": "§2 item 1 'Sales Sourcing' (business is generated via direct sales, partners, ...)",
+          "note": "Descriptive, not a task. XO emits a capability for it, scored unexpected."
+        },
+        {
+          "status": "not_established",
+          "topic": "prohibitions and notes ('Actual brokerage data is not stored here'; 'TDS ... is not deducted at the invoicing stage')",
+          "note": "Constraints, not tasks; no capability or fact is expected."
+        },
+        {
+          "status": "not_established",
+          "topic": "cross-section process order (sales -> reconciliation -> invoicing -> reporting)",
+          "note": "Implied by section numbering and by 'based solely on the validated data', but never stated as a workflow."
+        },
+        {
+          "status": "not_established",
+          "topic": "MIS report contents under §5 item 1 (insurer-wise, top 10 client-wise, channel-wise)",
+          "note": "List items describing a report, not separate tasks."
+        },
+        {
+          "status": "not_established",
+          "topic": "emergency / escalation / planned-vs-unplanned procedures",
+          "note": "The SOP states none."
+        }
+      ],
+      "expectationsFingerprint": "bbcc3cdac2c9a97c"
+    },
+    {
+      "caseId": "burglary-policy-schedule",
+      "authoring": "Digit burglary policy schedule PDF: mostly data fields and contact details. Ground truth is small and negative-heavy (suite description): the one real conditional, the one operator instruction, and field-label / contact-detail fragments that are not capabilities.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "supported",
+          "justification": "Two facts asserted; the schedule holds further conditionals (e.g. cheque-dishonour voiding) and many warranties that are deliberately not enumerated."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "open",
+          "support": "supported",
+          "justification": "The document is data fields and notices; only one instruction is asserted and completeness is not claimed."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No workflow expectations."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "warranty-information-incorrect",
+          "identity": "explicit",
+          "source": "Important Notice 3 (page 4): 'the policy is not valid, if any of the information provided is incorrect'",
+          "note": "no evidence spec in the suite for this fact."
+        },
+        {
+          "category": "fact",
+          "id": "warranted-clauses-present",
+          "identity": "explicit",
+          "source": "'Special Conditions and Exclusions' (page 3): five 'Warranted that ...' lines",
+          "note": "an EXISTENCE check: one expectation stands for any of the five clauses; intentionally partial."
+        },
+        {
+          "category": "capability",
+          "id": "validate-policy-copy",
+          "identity": "ambiguous",
+          "assertions": "derived",
+          "source": "'Validate your Policy Copy' (pages 1 and 4)",
+          "note": "a link caption addressed to the policyholder, not an operator procedure; other instructions ('Click here to view the certificate', 'please call our Call Center') are equally imperative and are not asserted. Kept, flagged."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-contact-no-email-id",
+          "identity": "explicit",
+          "source": "field labels 'Contact No' ... 'Email ID' (page 2)",
+          "note": "table field labels, not an action."
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-action",
+          "identity": "strongly_evidenced",
+          "source": "'Policy Schedule' is a title (page 1); no clause tells anyone to schedule anything"
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-partner-contact-row",
+          "identity": "explicit",
+          "source": "'AASTHA INSURANCE BROKER ... aastha9ins@...' contact table (page 2)",
+          "note": "a contact-details table row."
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "open_world",
+          "topic": "cheque-dishonour voiding (Important Notice 1), FIR / Non Traceable Certificate duty, individual warranties, Kutcha-construction definition, excess clause",
+          "note": "Explicit content that is not in the golden set; open world, so absence is not scored."
+        },
+        {
+          "status": "not_measurable",
+          "topic": "policy schedule data fields (numbers, dates, addresses, premium table)",
+          "note": "Data, not expertise; no capability or workflow ground truth exists for them."
+        }
+      ],
+      "expectationsFingerprint": "2384164b83638c58"
+    },
+    {
+      "caseId": "multidoc-burglary-claims",
+      "authoring": "Three plain-English policy documents compiled together; ground truth from reading them (suite description): named obligations and the two quoted definitions. Exercises multi-source provenance (each fact must cite the right file).",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "supported",
+          "justification": "Four facts asserted; the documents contain more (other definitions-by-implication, obligations) that are deliberately not enumerated."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "open",
+          "support": "supported",
+          "justification": "Six obligations asserted; at least five more stated duties exist (keep locks in working order, provide evidence, permit inspection, first-loss average, arbitration referral), so the list is demonstrably partial."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No workflow expectations."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "definition-forcible-and-violent-entry",
+          "identity": "explicit",
+          "source": "supporting-rules.txt: '\"Forcible and violent entry\" means ...'"
+        },
+        {
+          "category": "fact",
+          "id": "definition-premises",
+          "identity": "explicit",
+          "source": "supporting-rules.txt: '\"Premises\" means ...'"
+        },
+        {
+          "category": "fact",
+          "id": "exclusion-employee-theft",
+          "identity": "explicit",
+          "source": "supporting-rules.txt: 'The insurer shall not be liable for loss or damage caused by theft ...'"
+        },
+        {
+          "category": "fact",
+          "id": "duty-notify-police",
+          "identity": "explicit",
+          "source": "claims-procedure.txt: '... the insured shall notify the police immediately ...'"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-the",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'The' (The insured shall ...)",
+          "note": "a function word is not a domain concept (linguistic reason; the word does occur capitalised in the source)."
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-where",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'Where' (Where a sum insured is expressed as ...)"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-upon",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'Upon' (Upon discovery of any loss ...)"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-concept-any",
+          "identity": "strongly_evidenced",
+          "source": "sentence-initial 'Any' (Any dispute as to the amount ...)"
+        },
+        {
+          "category": "capability",
+          "id": "ob-notify-police",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "claims-procedure.txt: 'the insured shall notify the police immediately'",
+          "note": "class human_in_the_loop is a classification rule (an insured's duty), not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "ob-notify-insurer-48h",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "claims-procedure.txt: 'shall notify the insurer of the loss within 48 hours'",
+          "note": "class human_in_the_loop is a classification rule (an insured's duty), not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "ob-notify-material-change-30d",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "policy.txt: 'shall notify the insurer in writing within 30 days of any material change'",
+          "note": "class human_in_the_loop is a classification rule (an insured's duty), not a source statement."
+        },
+        {
+          "category": "capability",
+          "id": "ob-acknowledge-claim-5-days",
+          "identity": "explicit",
+          "source": "claims-procedure.txt: 'The insurer shall acknowledge receipt of a claim within 5 business days'"
+        },
+        {
+          "category": "capability",
+          "id": "ob-appoint-loss-adjuster",
+          "identity": "explicit",
+          "source": "claims-procedure.txt: '...shall appoint a loss adjuster ...'"
+        },
+        {
+          "category": "capability",
+          "id": "ob-settle-or-decline-30-days",
+          "identity": "explicit",
+          "source": "claims-procedure.txt: 'shall settle or decline a claim within 30 days'"
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-schedule-action",
+          "identity": "strongly_evidenced",
+          "source": "the word 'Schedule' occurs only as the noun ('described in the Schedule') across the three documents"
+        }
+      ],
+      "unestablished": [
+        {
+          "status": "open_world",
+          "topic": "remaining insured/insurer duties and the arbitration, first-loss and average provisions",
+          "note": "Stated in the documents, not in the golden set; absence is not scored."
+        },
+        {
+          "status": "not_established",
+          "topic": "a claims process order across the three documents",
+          "note": "The claims procedure lists duties in a natural order but does not state a workflow."
+        }
+      ],
+      "expectationsFingerprint": "6eb147408d795389"
+    },
+    {
+      "caseId": "structured-operation-data-flow",
+      "authoring": "Operation contract whose inputs, outputs and requires dependency are stated explicitly in the source (suite description): calculate_brokerage(premium, rate) -> brokerage; record_brokerage(brokerage) requires calculate_brokerage. Equivalent content in two formats (the api benchmark-equivalence test relies on this).",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No fact expectations."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "The structured-operation-data-flow.json source declares exactly two operations; the expected set is the whole set and every name and parameter is stated."
+        },
+        {
+          "scope": "workflows",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "The only stated dependency is record_brokerage requires calculate_brokerage; one workflow is the complete set, and its single binding is the only output/input name match."
+        }
+      ],
+      "entries": [
+        {
+          "category": "capability",
+          "id": "op-calculate-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "operation entries: calculate_brokerage (inputs premium, rate; output brokerage)",
+          "note": "resolution 'unresolved' / class 'not_executable': no implementation is bound to the operation (suite description); this is the contract for unimplemented operations, not a source statement. Step 4 adds producedBy 'structured-operation': established by the fixture's SOURCE FORMAT (a structured / OpenAPI source is lowered only by the structured-operation extractor, capabilities/hybrid-extractor.ts) — derived from architecture, not from observed output."
+        },
+        {
+          "category": "capability",
+          "id": "op-record-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "operation entries: record_brokerage (input brokerage; no outputs)",
+          "note": "same as above. Step 4 adds producedBy 'structured-operation': established by the fixture's SOURCE FORMAT (a structured / OpenAPI source is lowered only by the structured-operation extractor, capabilities/hybrid-extractor.ts) — derived from architecture, not from observed output."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "operation 'record_brokerage' 'requires' ['calculate_brokerage']",
+          "note": "the order is the stated dependency; the 'proven' binding follows from the output/input name match plus that dependency; 'not_executable_yet' and step classes are the composer's contract."
+        },
+        {
+          "category": "execution",
+          "id": "run-unimplemented-operation",
+          "identity": "derived",
+          "source": "no implementation behind the operation (suite description)"
+        },
+        {
+          "category": "execution",
+          "id": "wf-refused-unimplemented",
+          "identity": "derived",
+          "source": "no implementation behind the operations (suite description)"
+        }
+      ],
+      "unestablished": [],
+      "expectationsFingerprint": "b294e8d762ce826c"
+    },
+    {
+      "caseId": "openapi-operation-data-flow",
+      "authoring": "Operation contract whose inputs, outputs and requires dependency are stated explicitly in the source (suite description): calculate_brokerage(premium, rate) -> brokerage; record_brokerage(brokerage) requires calculate_brokerage. Equivalent content in two formats (the api benchmark-equivalence test relies on this).",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No fact expectations."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "The openapi-operation-data-flow.json source declares exactly two operations; the expected set is the whole set and every name and parameter is stated."
+        },
+        {
+          "scope": "workflows",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "The only stated dependency is record_brokerage requires calculate_brokerage; one workflow is the complete set, and its single binding is the only output/input name match."
+        }
+      ],
+      "entries": [
+        {
+          "category": "capability",
+          "id": "op-calculate-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "operationId paths: calculate_brokerage (inputs premium, rate; output brokerage)",
+          "note": "resolution 'unresolved' / class 'not_executable': no implementation is bound to the operation (suite description); this is the contract for unimplemented operations, not a source statement. Step 4 adds producedBy 'structured-operation': established by the fixture's SOURCE FORMAT (a structured / OpenAPI source is lowered only by the structured-operation extractor, capabilities/hybrid-extractor.ts) — derived from architecture, not from observed output."
+        },
+        {
+          "category": "capability",
+          "id": "op-record-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "operationId paths: record_brokerage (input brokerage; no outputs)",
+          "note": "same as above. Step 4 adds producedBy 'structured-operation': established by the fixture's SOURCE FORMAT (a structured / OpenAPI source is lowered only by the structured-operation extractor, capabilities/hybrid-extractor.ts) — derived from architecture, not from observed output."
+        },
+        {
+          "category": "workflow",
+          "id": "wf-brokerage",
+          "identity": "explicit",
+          "assertions": "derived",
+          "source": "'x-requires' on operationId record_brokerage",
+          "note": "the order is the stated dependency; the 'proven' binding follows from the output/input name match plus that dependency; 'not_executable_yet' and step classes are the composer's contract."
+        },
+        {
+          "category": "execution",
+          "id": "run-unimplemented-operation",
+          "identity": "derived",
+          "source": "no implementation behind the operation (suite description)"
+        },
+        {
+          "category": "execution",
+          "id": "wf-refused-unimplemented",
+          "identity": "derived",
+          "source": "no implementation behind the operations (suite description)"
+        }
+      ],
+      "unestablished": [],
+      "expectationsFingerprint": "b294e8d762ce826c"
+    }
+  ]
+}

@@ -1,0 +1,247 @@
+{
+  "formatVersion": 1,
+  "sources": [
+    {
+      "id": "source-762aa76c-0424-4311-9f55-47f6f1eabdf7",
+      "path": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf",
+      "fileName": "XO_Commercial_Property_Test_Policy_Compatible.pdf",
+      "sourceType": "pdf",
+      "byteLength": 39456,
+      "importedAt": 1787478790951
+    }
+  ],
+  "lastCompilation": {
+    "id": "compile-e57e85e4-f00b-4e5a-bdb2-10043c6ae1fc",
+    "startedAt": 1787478795126,
+    "finishedAt": 1787478795126,
+    "status": "succeeded",
+    "sourceIds": [
+      "source-762aa76c-0424-4311-9f55-47f6f1eabdf7"
+    ],
+    "sources": [
+      {
+        "sourceId": "src_f78cad57a8e0ec468aaec69706b25910",
+        "sourceType": "pdf",
+        "sourcePath": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf",
+        "semanticExtractionAvailable": true,
+        "unitCount": 16,
+        "qualityState": "trusted"
+      }
+    ],
+    "valid": true,
+    "stats": {
+      "nodeCount": 122,
+      "edgeCount": 256,
+      "nodesByKind": {
+        "capability": 10,
+        "concept": 63,
+        "constraint": 28,
+        "heuristic": 21
+      },
+      "edgesByKind": {
+        "COMPLEMENTS": 2,
+        "EXTENDS": 1,
+        "REFERENCES": 99,
+        "PART_OF": 15,
+        "SUPERSEDES": 1,
+        "REQUIRES": 138
+      }
+    },
+    "diagnosticCounts": {
+      "error": 0,
+      "warning": 0,
+      "info": 0
+    },
+    "xoirArtifactFile": "compile-e57e85e4-f00b-4e5a-bdb2-10043c6ae1fc.json"
+  },
+  "lastPackage": null,
+  "selectedCapabilityId": null,
+  "selectedDiagnosticIndex": null,
+  "compilationHistory": [
+    {
+      "id": "compile-e57e85e4-f00b-4e5a-bdb2-10043c6ae1fc",
+      "startedAt": 1787478795126,
+      "finishedAt": 1787478795126,
+      "status": "succeeded",
+      "sourceIds": [
+        "source-762aa76c-0424-4311-9f55-47f6f1eabdf7"
+      ],
+      "sources": [
+        {
+          "sourceId": "src_f78cad57a8e0ec468aaec69706b25910",
+          "sourceType": "pdf",
+          "sourcePath": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf",
+          "semanticExtractionAvailable": true,
+          "unitCount": 16,
+          "qualityState": "trusted"
+        }
+      ],
+      "valid": true,
+      "stats": {
+        "nodeCount": 122,
+        "edgeCount": 256,
+        "nodesByKind": {
+          "capability": 10,
+          "concept": 63,
+          "constraint": 28,
+          "heuristic": 21
+        },
+        "edgesByKind": {
+          "COMPLEMENTS": 2,
+          "EXTENDS": 1,
+          "REFERENCES": 99,
+          "PART_OF": 15,
+          "SUPERSEDES": 1,
+          "REQUIRES": 138
+        }
+      },
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "xoirArtifactFile": "compile-e57e85e4-f00b-4e5a-bdb2-10043c6ae1fc.json"
+    },
+    {
+      "id": "compile-c81e0eec-53d6-4fbe-b972-d801d00e30a1",
+      "startedAt": 1787478780620,
+      "finishedAt": 1787478780620,
+      "status": "failed",
+      "sourceIds": [
+        "source-b0e5a377-b5c8-4bc7-8492-6b59cd3fbbb3"
+      ],
+      "sources": [],
+      "valid": false,
+      "stats": null,
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "failureMessage": "Studio does not have permission to access this location (native filesystem capability scope): [fs.readFile] C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf — forbidden path: C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf, maybe it is not allowed on the scope for `allow-read-file` permission in your capability file"
+    },
+    {
+      "id": "compile-abd8253d-ffe9-4d65-8d21-0280b85aaf0c",
+      "startedAt": 1787478774654,
+      "finishedAt": 1787478774654,
+      "status": "failed",
+      "sourceIds": [
+        "source-b0e5a377-b5c8-4bc7-8492-6b59cd3fbbb3"
+      ],
+      "sources": [],
+      "valid": false,
+      "stats": null,
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "failureMessage": "Studio does not have permission to access this location (native filesystem capability scope): [fs.readFile] C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf — forbidden path: C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf, maybe it is not allowed on the scope for `allow-read-file` permission in your capability file"
+    },
+    {
+      "id": "compile-027cf97a-6241-4938-a71c-5caf7dfedabf",
+      "startedAt": 1787350097584,
+      "finishedAt": 1787350097584,
+      "status": "succeeded",
+      "sourceIds": [
+        "source-b0e5a377-b5c8-4bc7-8492-6b59cd3fbbb3"
+      ],
+      "sources": [
+        {
+          "sourceId": "src_f78cad57a8e0ec468aaec69706b25910",
+          "sourceType": "pdf",
+          "sourcePath": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\XO_Commercial_Property_Test_Policy_Compatible.pdf",
+          "semanticExtractionAvailable": true,
+          "unitCount": 16,
+          "qualityState": "trusted"
+        }
+      ],
+      "valid": true,
+      "stats": {
+        "nodeCount": 87,
+        "edgeCount": 147,
+        "nodesByKind": {
+          "capability": 10,
+          "concept": 63,
+          "constraint": 13,
+          "reasoning_step": 1
+        },
+        "edgesByKind": {
+          "COMPLEMENTS": 2,
+          "EXTENDS": 1,
+          "REFERENCES": 99,
+          "PART_OF": 15,
+          "REQUIRES": 30
+        }
+      },
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "xoirArtifactFile": "compile-027cf97a-6241-4938-a71c-5caf7dfedabf.json"
+    },
+    {
+      "id": "compile-0737b260-cdf0-4f5e-bde0-8c43371b811d",
+      "startedAt": 1787319687630,
+      "finishedAt": 1787319687630,
+      "status": "succeeded",
+      "sourceIds": [
+        "source-2d8f1ab6-4145-4950-a5be-640706a5fd30"
+      ],
+      "sources": [
+        {
+          "sourceId": "src_d18142f8d5533c6686e7170491ff7d02",
+          "sourceType": "pdf",
+          "sourcePath": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\burglary-policy.pdf",
+          "semanticExtractionAvailable": true,
+          "unitCount": 93,
+          "qualityState": "trusted"
+        }
+      ],
+      "valid": true,
+      "stats": {
+        "nodeCount": 254,
+        "edgeCount": 390,
+        "nodesByKind": {
+          "capability": 5,
+          "concept": 247,
+          "constraint": 2
+        },
+        "edgesByKind": {
+          "REFERENCES": 283,
+          "PART_OF": 86,
+          "REQUIRES": 21
+        }
+      },
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "xoirArtifactFile": "compile-0737b260-cdf0-4f5e-bde0-8c43371b811d.json"
+    },
+    {
+      "id": "compile-a984bf31-b891-4160-8268-2554e0dd54b4",
+      "startedAt": 1787220650262,
+      "finishedAt": 1787220650262,
+      "status": "blocked",
+      "sourceIds": [
+        "source-90ed9fa7-04be-423b-9d24-18b2ba16beeb"
+      ],
+      "sources": [],
+      "valid": false,
+      "stats": null,
+      "diagnosticCounts": {
+        "error": 0,
+        "warning": 0,
+        "info": 0
+      },
+      "failureMessage": "Native compiler bridge unavailable: compiler sidecar exited before it received the full request (exit status: exit code: 1). stderr: node:fs:3273\r\n    const out = binding.lstat(base, false, undefined, true /* throwIfNoEntry */);\r\n                        ^\r\n\r\nError: EISDIR: illegal operation on a directory, lstat 'C:'\r\n    at Object.realpathSync (node:fs:3273:25)\r\n    at toRealPath (node:internal/modules/helpers:70:13)\r\n    at Module._findPath (node:internal/modules/cjs/loader:855:22)\r\n    at resolveMainPath (node:internal/modules/run_main:35:21)\r\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:146:20)\r\n    at node:internal/main/run_main_module:33:47 {\r\n  errno: -4068,\r\n  code: 'EISDIR',\r\n  syscall: 'lstat',\r\n  path: 'C:'\r\n}\r\n\r\nNode.js v26.6.0\n(low-level pipe error, not the real cause: The pipe has been ended. (os error 109))"
+    }
+  ],
+  "selectedSourceIds": [
+    "source-762aa76c-0424-4311-9f55-47f6f1eabdf7"
+  ],
+  "selectedCompilationId": null
+}

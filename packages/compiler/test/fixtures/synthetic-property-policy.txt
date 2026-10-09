@@ -1,0 +1,42 @@
+# Synthetic Property Insurance Policy (Non-Real, Test Fixture)
+
+This is a synthetic, non-real property insurance policy document created
+solely to exercise the XO compiler's semantic extraction pipeline end to
+end. It does not represent any real insurer's terms and must never be
+treated as one.
+
+## Policy Details
+
+Partner Contact and8827461093 QUICKSURE BROKERS PRIVATE LIMITED
+
+Region(E)
+
+Renewal(s)
+
+PlanOpted(Yes / No)
+
+## Coverage Terms
+
+Send a confirmation notice to the policyholder upon issuance of this policy.
+
+Contact the claims department within 30 days of any loss event.
+
+## Exclusions
+
+Flood damage is excluded.
+
+War and nuclear risk are not covered.
+
+## Warranties
+
+Warranted that a working smoke detector is installed on every floor.
+
+Warranted that the property is not vacant for more than 60 consecutive days.
+
+## Claim Assessment
+
+If the claim assessment amount exceeds 5000, then reject the claim.
+
+## General Terms
+
+Subject to satisfactory proof of loss, the insurer will process the claim within 14 days.

@@ -1,0 +1,57 @@
+{
+  "compatibility": {
+    "fallbackPolicy": "degrade_gracefully",
+    "modelFamilies": [
+      {
+        "consumes": [
+          "knowledge_graph",
+          "safety_rules",
+          "benchmark_suite"
+        ],
+        "family": "claude",
+        "minCapability": [
+          "chat",
+          "tool_use"
+        ]
+      },
+      {
+        "consumes": [
+          "knowledge_graph"
+        ],
+        "family": "generic",
+        "minCapability": [
+          "chat"
+        ]
+      }
+    ]
+  },
+  "components": {
+    "benchmark_suite": {
+      "hash": "sha256:22daa71f73ac068a224e8669b07bdd91fa454cdf374c2f7a8b81013fd01488c9",
+      "path": "evaluation/benchmark_suite.json",
+      "required": true
+    },
+    "knowledge_graph": {
+      "hash": "sha256:b9654fb164a37d3c6df2f86719b8c689d1a1ccd724c8866bf6cf3e2642bd2440",
+      "path": "knowledge/graph.json",
+      "required": false
+    },
+    "safety_rules": {
+      "hash": "sha256:5723d5a7f6e3c60ebc129e323465bf5aff47bdaf847d72387a578e139ef703ed",
+      "path": "safety/rules.json",
+      "required": true
+    }
+  },
+  "creatorDid": "did:xo:package-sdk-example",
+  "formatVersion": "1.0",
+  "merkleRoot": "sha256:e7dc02baa76b1fac361b56dacffc20dbf9eedbb2e274c0c7641bbcaacbe3342b",
+  "name": "xo_demo_contract_clause_lookup",
+  "signatures": [
+    {
+      "role": "creator",
+      "signature": "Qakyfn77KPiAz/OsS+VV2EXtQL7TzAIHHlfCYgVa8UyOcuUmFmcE/nu9rgk6Ju4RfcHPcWH/4rthsp9vM16WBg==",
+      "signerDid": "did:xo:package-sdk-example-creator"
+    }
+  ],
+  "version": "1.0.0"
+}

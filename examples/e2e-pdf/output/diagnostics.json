@@ -1,0 +1,27 @@
+{
+  "validation": {
+    "valid": true,
+    "issues": []
+  },
+  "diagnostics": [],
+  "passRuns": [
+    {
+      "passName": "xoir-validation",
+      "durationMs": 22.180912000000035,
+      "diagnostics": [],
+      "cancelled": false
+    },
+    {
+      "passName": "reasoning-validation",
+      "durationMs": 0.9216959999998835,
+      "diagnostics": [],
+      "cancelled": false
+    },
+    {
+      "passName": "xoir-normalization",
+      "durationMs": 10.961618000000044,
+      "diagnostics": [],
+      "cancelled": false
+    }
+  ]
+}

@@ -1,0 +1,573 @@
+{
+  "schemaVersion": 1,
+  "id": "bm_runtime_mechanics",
+  "nodes": [
+    {
+      "id": "cap_bm_cycle_x",
+      "kind": "capability",
+      "properties": {
+        "name": "Cycle member X",
+        "description": "Cycle member X (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:2aa93f68a64e04a5ab3d1d3aa0345c52df6637347efc8484a72ab79bea21201d"
+    },
+    {
+      "id": "cap_bm_cycle_y",
+      "kind": "capability",
+      "properties": {
+        "name": "Cycle member Y",
+        "description": "Cycle member Y (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:59aa7894724a044cc17496f27c0ed256399c1a84a70a41defb9b457556ecc572"
+    },
+    {
+      "id": "cap_bm_flow_a",
+      "kind": "capability",
+      "properties": {
+        "name": "Check claim threshold",
+        "description": "Check claim threshold (benchmark fixture)",
+        "outputs": [
+          "matched: Whether the threshold rule matched"
+        ]
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:a9c50c788d02bca15946ce20d53aa2094ad3c3af1dbb8dc8ddc97d7e8a2cd65d"
+    },
+    {
+      "id": "cap_bm_flow_b",
+      "kind": "capability",
+      "properties": {
+        "name": "Authorize payout",
+        "description": "Authorize payout (benchmark fixture)",
+        "inputs": [
+          "matched: Whether the threshold rule matched",
+          "payout amount: The payout amount to authorize"
+        ]
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:4975515b22c66fe12e0a69991ae7520b95fc5632f9a838c7b0a419d4926c1b1c"
+    },
+    {
+      "id": "cap_bm_hitl_a",
+      "kind": "capability",
+      "properties": {
+        "name": "Screen the claim",
+        "description": "Screen the claim (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:eeabda2c07ff2b6060acac1aebe45a38f114440c24ef59b331f008adb24208bb"
+    },
+    {
+      "id": "cap_bm_hitl_b",
+      "kind": "capability",
+      "properties": {
+        "name": "Underwriter review of the flagged claim",
+        "description": "Underwriter review of the flagged claim (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:caa80647c626e236ad9431a89ece93563c60194242e8ee4ea3da904ee69a16e1"
+    },
+    {
+      "id": "cap_bm_hitl_c",
+      "kind": "capability",
+      "properties": {
+        "name": "Release the settlement",
+        "description": "Release the settlement (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:3d6a351da8ae634396c4b876ed91b75f7d48afd4aca13854e7729ef40ac7f9d5"
+    },
+    {
+      "id": "cap_bm_orphan",
+      "kind": "capability",
+      "properties": {
+        "name": "Assess the overall situation",
+        "description": "Assess the overall situation (benchmark fixture)"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:0af3fb11681d412cf1c3271e53d6102fdd045e68a7752b49fac620408fc0f3cf"
+    },
+    {
+      "id": "concept_bm_cycle_x",
+      "kind": "concept",
+      "properties": {
+        "name": "Perform cycle member X",
+        "text": "Perform cycle member X"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.7,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {},
+        "subtype": "action"
+      },
+      "hash": "sha256:9585ae3aceda64488743a845211c05bc466392f97bdfadf56de98de89a22b283"
+    },
+    {
+      "id": "concept_bm_cycle_y",
+      "kind": "concept",
+      "properties": {
+        "name": "Perform cycle member Y",
+        "text": "Perform cycle member Y"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.7,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {},
+        "subtype": "action"
+      },
+      "hash": "sha256:e332a5121cf831cb3b19c30adb07e2ab9ebc3da06c8f56bb19b498eb956409e3"
+    },
+    {
+      "id": "concept_bm_hitl_b",
+      "kind": "concept",
+      "properties": {
+        "name": "Underwriter reviews the flagged claim",
+        "text": "Underwriter reviews the flagged claim"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.7,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {},
+        "subtype": "action"
+      },
+      "hash": "sha256:d703baebbaaea11dc22b70772811328781995e1171a20b104cd660007c512c14"
+    },
+    {
+      "id": "decision_bm_flow_a",
+      "kind": "decision_node",
+      "properties": {
+        "question": "the claim amount exceeds 10000",
+        "outcome": "flag for payout"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:45b60b08bc01b4a69196e1598c2a0181f9f0348eefceba6b3a86311f2a560afa"
+    },
+    {
+      "id": "decision_bm_flow_b",
+      "kind": "decision_node",
+      "properties": {
+        "question": "the payout amount exceeds 500",
+        "outcome": "release payout"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:82f9cd8b42723b1df79c4aadfaf8f7d8a296caac2ccc20ad2b514678f21861f4"
+    },
+    {
+      "id": "decision_bm_hitl_a",
+      "kind": "decision_node",
+      "properties": {
+        "question": "the screening score exceeds 70",
+        "outcome": "screening passed"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:71a9c2ca4739db13f76bb30ca921669f52376d666fb633b23838063ac23892c9"
+    },
+    {
+      "id": "decision_bm_hitl_c",
+      "kind": "decision_node",
+      "properties": {
+        "question": "the settlement amount exceeds 500",
+        "outcome": "settlement released"
+      },
+      "version": 1,
+      "metadata": {
+        "confidence": 0.8,
+        "sourceRefs": [
+          {
+            "documentPath": "bm-runtime-mechanics.fixture",
+            "pages": [
+              1
+            ]
+          }
+        ],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:9bc0407475327876285db30edf2849bd5d4a7a886805cae81f898f385dac1a08"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_cap_bm_cycle_x_requires_cap_bm_cycle_y",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_cycle_x",
+      "toId": "cap_bm_cycle_y",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:d4791f0a0947b487e94b0764ce332a6a59e54b2a7de280820f601765cd05a2d7"
+    },
+    {
+      "id": "edge_cap_bm_cycle_x_requires_concept_bm_cycle_x",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_cycle_x",
+      "toId": "concept_bm_cycle_x",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:d11e679eb70dd505d4c126529f0f6fbd7eabcc252f5308a47715806595b8c909"
+    },
+    {
+      "id": "edge_cap_bm_cycle_y_requires_cap_bm_cycle_x",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_cycle_y",
+      "toId": "cap_bm_cycle_x",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:5d1eed9cd2b362528eb6996ba621b63a611aad719b5cc97878a6c1112a339213"
+    },
+    {
+      "id": "edge_cap_bm_cycle_y_requires_concept_bm_cycle_y",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_cycle_y",
+      "toId": "concept_bm_cycle_y",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:66a857c21ef675295b0c1438b3d16fc02128b6bd848f4ba1276757c3a9a31ab8"
+    },
+    {
+      "id": "edge_cap_bm_flow_a_requires_decision_bm_flow_a",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_flow_a",
+      "toId": "decision_bm_flow_a",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:423b61a8d94719d76524642daa52e9ddcd75ca462d32d740c2b9df939a8e42a4"
+    },
+    {
+      "id": "edge_cap_bm_flow_b_requires_cap_bm_flow_a",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_flow_b",
+      "toId": "cap_bm_flow_a",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:06663763fa230365e2e5204bdfe8e461361efbe0a1edeec929ad4391727c09c2"
+    },
+    {
+      "id": "edge_cap_bm_flow_b_requires_decision_bm_flow_b",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_flow_b",
+      "toId": "decision_bm_flow_b",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:e94f27bfe0d37df45fef8e4c2d03bf4489aca87fa6843b5e0cac0cad3edd3022"
+    },
+    {
+      "id": "edge_cap_bm_hitl_a_requires_decision_bm_hitl_a",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_hitl_a",
+      "toId": "decision_bm_hitl_a",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:f7f7b22ce3e61b7ff9c992be46229119f5a578d782cfb117935ee55b5b8aa03f"
+    },
+    {
+      "id": "edge_cap_bm_hitl_b_requires_cap_bm_hitl_a",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_hitl_b",
+      "toId": "cap_bm_hitl_a",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:24a70bab4dc999b220a227686b456348c12255cb75595f65dbb5fafe27f07665"
+    },
+    {
+      "id": "edge_cap_bm_hitl_b_requires_concept_bm_hitl_b",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_hitl_b",
+      "toId": "concept_bm_hitl_b",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:d2cbc3527139bca17fac5fbc9a3edcd7e69d34dd8b416cfe17cd53d631b37810"
+    },
+    {
+      "id": "edge_cap_bm_hitl_c_requires_cap_bm_hitl_b",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_hitl_c",
+      "toId": "cap_bm_hitl_b",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:3ab6f3dd94c5f00e37ac574e0d98a6cae92b8567f41ae2d4e89c0c2366dec804"
+    },
+    {
+      "id": "edge_cap_bm_hitl_c_requires_decision_bm_hitl_c",
+      "kind": "REQUIRES",
+      "fromId": "cap_bm_hitl_c",
+      "toId": "decision_bm_hitl_c",
+      "properties": {},
+      "metadata": {
+        "confidence": 1,
+        "sourceRefs": [],
+        "tags": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "custom": {}
+      },
+      "hash": "sha256:8a8019bfabd9c3877d8eb8e6b47880c0848a1f640373ed38ed6d52ddd2f317a7"
+    }
+  ]
+}

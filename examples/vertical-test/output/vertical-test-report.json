@@ -1,0 +1,419 @@
+{
+  "fixture": {
+    "path": "C:\\project\\XO marketplace\\xo-platform\\examples\\vertical-test\\synthetic-claim-rules.txt",
+    "synthetic": true,
+    "note": "This fixture is a synthetic test document authored solely to exercise this pipeline. It is not a real insurance policy."
+  },
+  "steps": {
+    "compile": {
+      "status": "PASS",
+      "detail": "compileSources() -> compileXoir() produced a valid XOIR graph (9 node(s), 5 edge(s)) from the synthetic source, with no hand-written capability id anywhere in this script.",
+      "data": {
+        "stats": {
+          "nodeCount": 9,
+          "edgeCount": 5,
+          "nodesByKind": {
+            "capability": 2,
+            "concept": 5,
+            "constraint": 1,
+            "decision_node": 1
+          },
+          "edgesByKind": {
+            "REFERENCES": 1,
+            "PART_OF": 1,
+            "REQUIRES": 3
+          }
+        }
+      }
+    },
+    "capability_discovery": {
+      "status": "PASS",
+      "detail": "Discovered 2 capability node(s) in the compiled XOIR; 2 of them have linked decision/heuristic/constraint rules.",
+      "data": {
+        "discovered": [
+          {
+            "id": "cap_127a166917537b0c6ef03f67c3bc9333",
+            "name": "Claim Assessment",
+            "ruleCount": 1
+          },
+          {
+            "id": "cap_rule_389a051e6431d3bcf13d842eeb5279d2",
+            "name": "Deny The Claim",
+            "ruleCount": 1
+          }
+        ]
+      }
+    },
+    "contract_selected": {
+      "status": "PASS",
+      "detail": "Selected contract \"cap_127a166917537b0c6ef03f67c3bc9333\" (name \"Claim Assessment\"), automatically, because it is the one discovered capability with linked rules — not because this script names it.",
+      "data": {
+        "contract": {
+          "id": "cap_127a166917537b0c6ef03f67c3bc9333",
+          "name": "Claim Assessment",
+          "description": "If the claim assessment amount exceeds 10000, then deny the claim.",
+          "category": "analysis",
+          "inputs": [],
+          "outputs": [],
+          "requiredPermissions": [],
+          "determinism": "unknown",
+          "rules": [
+            {
+              "sourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+              "kind": "decision_node",
+              "condition": "the claim assessment amount exceeds 10000",
+              "outcome": "deny the claim",
+              "exceptionConditions": [],
+              "confidence": 0.5,
+              "structuredCondition": {
+                "type": "comparison",
+                "field": "the claim assessment amount",
+                "operator": ">",
+                "value": 10000
+              },
+              "structuredAction": {
+                "type": "action",
+                "action": "deny",
+                "target": "the claim"
+              }
+            }
+          ],
+          "confidence": 0.65,
+          "sourceRefs": [
+            {
+              "documentPath": "src_b1ed0cca72a46c732466af8bb926e608",
+              "pages": [
+                1
+              ],
+              "sectionPath": [
+                "Synthetic Insurance Claim Policy (Test Fixture)",
+                "Claim Assessment"
+              ]
+            }
+          ],
+          "sourceXoirNodeIds": [
+            "cap_127a166917537b0c6ef03f67c3bc9333",
+            "rn_fc3b5ae955472c976c9cb6c9214407f8"
+          ]
+        }
+      }
+    },
+    "contract_embed": {
+      "status": "PASS",
+      "detail": "Contract embedded into capability node \"cap_127a166917537b0c6ef03f67c3bc9333\"'s properties; xoir-to-package.ts required zero changes (verified in the design report) since it copies node.properties through opaquely."
+    },
+    "binding_resolution_pre_package": {
+      "status": "PASS",
+      "detail": "resolveCapabilityBinding() -> \"resolved\" (binding \"binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver\", implementationClass \"deterministic_rule\")",
+      "data": {
+        "status": "resolved",
+        "binding": {
+          "id": "binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver",
+          "contractId": "cap_127a166917537b0c6ef03f67c3bc9333",
+          "implementationClass": "deterministic_rule",
+          "resolverName": "structured-comparison-resolver",
+          "description": "Deterministic decision-table evaluator compiled from 1 structured-comparison rule(s) linked to contract \"cap_127a166917537b0c6ef03f67c3bc9333\"",
+          "derivation": {
+            "rules": [
+              {
+                "sourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+                "check": {
+                  "kind": "comparison",
+                  "inputKey": "claim_assessment_amount",
+                  "operator": ">",
+                  "value": 10000
+                },
+                "outcome": "deny the claim"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "package_creation": {
+      "status": "PASS",
+      "detail": "packageXoirGraph() produced a PackageBundle (4 component(s) included).",
+      "data": {
+        "components": [
+          {
+            "kind": "benchmark_suite",
+            "included": true,
+            "nodeCount": 0,
+            "reason": "No evaluation_artifact nodes present — this pipeline has no Benchmark Synthesizer (EXPERIENCE_COMPILER.md §7) yet, so no benchmark items were generated. This is an honestly-empty suite, not a placeholder score."
+          },
+          {
+            "kind": "case_library",
+            "included": false,
+            "reason": "no failure_case/success_pattern nodes — no extractor in this codebase produces them yet"
+          },
+          {
+            "kind": "decision_trees",
+            "included": true,
+            "nodeCount": 1,
+            "reason": "lowered from XOIR (1 node(s))"
+          },
+          {
+            "kind": "finetune",
+            "included": false,
+            "reason": "no fine-tuning/weights pipeline exists in this compiler"
+          },
+          {
+            "kind": "knowledge_graph",
+            "included": true,
+            "nodeCount": 7,
+            "reason": "lowered from XOIR (7 node(s))"
+          },
+          {
+            "kind": "long_term_memory_graph",
+            "included": false,
+            "reason": "no memory_unit nodes — no extractor in this codebase produces them yet"
+          },
+          {
+            "kind": "lora",
+            "included": false,
+            "reason": "no fine-tuning/weights pipeline exists in this compiler"
+          },
+          {
+            "kind": "prompt_strategies",
+            "included": false,
+            "reason": "no Prompt Optimization pass exists in this compiler (EXPERIENCE_COMPILER.md §4.2)"
+          },
+          {
+            "kind": "reasoning_traces",
+            "included": false,
+            "reason": "no reasoning_step nodes in this XOIR graph"
+          },
+          {
+            "kind": "safety_rules",
+            "included": true,
+            "nodeCount": 1,
+            "reason": "lowered from XOIR (1 constraint/safety_policy/risk_policy/escalation_rule node(s))"
+          }
+        ]
+      }
+    },
+    "package_signed": {
+      "status": "PASS",
+      "detail": "Signed with a real Ed25519 keypair and archived to \"C:\\Users\\sahil_qx\\AppData\\Local\\Temp\\xo-vertical-test-hjVtE4\\xo_vertical_test_claim_evaluation-1.0.0.xo\" (3785 bytes)."
+    },
+    "package_validation": {
+      "status": "PASS",
+      "detail": "Round-tripped .xo archive validated (schema, hashes, Merkle root, signature).",
+      "data": {
+        "valid": true,
+        "signatureVerified": true
+      }
+    },
+    "package_install": {
+      "status": "PASS",
+      "detail": "Installed via PackageInstaller (isolated local LocalFsBlobStore).",
+      "data": {
+        "installedAt": "2026-08-29T07:06:24.855Z"
+      }
+    },
+    "runtime_discovery": {
+      "status": "PASS",
+      "detail": "Read the SemanticCapabilityContract back out of the INSTALLED package's knowledge_graph.json (no @xo/xoir involved on this read path) — contract survived the full compile -> package -> sign -> archive -> validate -> install round-trip byte-for-byte.",
+      "data": {
+        "contractId": "cap_127a166917537b0c6ef03f67c3bc9333",
+        "ruleCount": 1
+      }
+    },
+    "binding_resolution": {
+      "status": "PASS",
+      "detail": "resolveCapabilityBinding() resolved binding \"binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver\" from the package-round-tripped contract.",
+      "data": {
+        "derivation": {
+          "rules": [
+            {
+              "sourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+              "check": {
+                "kind": "comparison",
+                "inputKey": "claim_assessment_amount",
+                "operator": ">",
+                "value": 10000
+              },
+              "outcome": "deny the claim"
+            }
+          ]
+        }
+      }
+    },
+    "discovery_not_authority": {
+      "status": "PASS",
+      "detail": "Confirmed: a resolved binding is NOT reachable through RuntimeCapabilityExecutor until explicitly registered (error: XO_RUNTIME_CAPABILITY_NOT_FOUND)."
+    },
+    "runtime_registration": {
+      "status": "PASS",
+      "detail": "Registered as a RuntimeCapabilityDeclaration, requiring permission \"runtime.execute\"."
+    },
+    "execution_denied": {
+      "status": "PASS",
+      "detail": "Correctly denied: XO_RUNTIME_PERMISSION_DENIED.",
+      "data": {
+        "code": "XO_RUNTIME_PERMISSION_DENIED",
+        "message": "Permission \"runtime.execute\" required by Runtime capability \"cap_127a166917537b0c6ef03f67c3bc9333\" was not granted: No policy rule matched; falling back to default effect (DENY)"
+      }
+    },
+    "execution_allowed": {
+      "status": "PASS",
+      "detail": "Executed successfully once permission was granted.",
+      "data": {
+        "output": {
+          "matched": true,
+          "ruleSourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+          "outcome": "deny the claim"
+        }
+      }
+    },
+    "receipt": {
+      "status": "PASS",
+      "detail": "Built an ExecutionReceipt carrying contractId/bindingId/sourceXoirNodeIds — the provenance chain from execution back through the binding and contract to the original XOIR node ids.",
+      "data": {
+        "receipt": {
+          "receiptId": "receipt_plan_vertical_test_1_1787987184862",
+          "requestId": "req_vertical_test_1",
+          "planId": "plan_vertical_test_1",
+          "packagesUsed": [],
+          "componentHashes": [],
+          "capabilitiesInvoked": [
+            "cap_127a166917537b0c6ef03f67c3bc9333"
+          ],
+          "executionDurationMs": 0,
+          "tokenUsage": {
+            "promptTokens": 0,
+            "completionTokens": 0
+          },
+          "validationResults": {
+            "valid": true,
+            "issues": []
+          },
+          "errors": [],
+          "createdAt": "2026-08-29T07:06:24.862Z",
+          "contractId": "cap_127a166917537b0c6ef03f67c3bc9333",
+          "bindingId": "binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver",
+          "sourceXoirNodeIds": [
+            "cap_127a166917537b0c6ef03f67c3bc9333",
+            "rn_fc3b5ae955472c976c9cb6c9214407f8"
+          ]
+        }
+      }
+    },
+    "persistence": {
+      "status": "PASS",
+      "detail": "Receipt persisted via FileRuntimeStore."
+    },
+    "determinism": {
+      "status": "PASS",
+      "detail": "Repeat execution with identical input produced a deep-equal output.",
+      "data": {
+        "first": {
+          "matched": true,
+          "ruleSourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+          "outcome": "deny the claim"
+        },
+        "second": {
+          "matched": true,
+          "ruleSourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+          "outcome": "deny the claim"
+        }
+      }
+    },
+    "no_match_case": {
+      "status": "PASS",
+      "detail": "A claim amount below the threshold correctly produced no rule match: {\"matched\":false}"
+    }
+  },
+  "discoveredContract": {
+    "id": "cap_127a166917537b0c6ef03f67c3bc9333",
+    "name": "Claim Assessment",
+    "description": "If the claim assessment amount exceeds 10000, then deny the claim.",
+    "category": "analysis",
+    "inputs": [],
+    "outputs": [],
+    "requiredPermissions": [],
+    "determinism": "unknown",
+    "rules": [
+      {
+        "sourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+        "kind": "decision_node",
+        "condition": "the claim assessment amount exceeds 10000",
+        "outcome": "deny the claim",
+        "exceptionConditions": [],
+        "confidence": 0.5,
+        "structuredCondition": {
+          "type": "comparison",
+          "field": "the claim assessment amount",
+          "operator": ">",
+          "value": 10000
+        },
+        "structuredAction": {
+          "type": "action",
+          "action": "deny",
+          "target": "the claim"
+        }
+      }
+    ],
+    "confidence": 0.65,
+    "sourceRefs": [
+      {
+        "documentPath": "src_b1ed0cca72a46c732466af8bb926e608",
+        "pages": [
+          1
+        ],
+        "sectionPath": [
+          "Synthetic Insurance Claim Policy (Test Fixture)",
+          "Claim Assessment"
+        ]
+      }
+    ],
+    "sourceXoirNodeIds": [
+      "cap_127a166917537b0c6ef03f67c3bc9333",
+      "rn_fc3b5ae955472c976c9cb6c9214407f8"
+    ]
+  },
+  "binding": {
+    "id": "binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver",
+    "derivation": {
+      "rules": [
+        {
+          "sourceNodeId": "rn_fc3b5ae955472c976c9cb6c9214407f8",
+          "check": {
+            "kind": "comparison",
+            "inputKey": "claim_assessment_amount",
+            "operator": ">",
+            "value": 10000
+          },
+          "outcome": "deny the claim"
+        }
+      ]
+    }
+  },
+  "receipt": {
+    "receiptId": "receipt_plan_vertical_test_1_1787987184862",
+    "requestId": "req_vertical_test_1",
+    "planId": "plan_vertical_test_1",
+    "packagesUsed": [],
+    "componentHashes": [],
+    "capabilitiesInvoked": [
+      "cap_127a166917537b0c6ef03f67c3bc9333"
+    ],
+    "executionDurationMs": 0,
+    "tokenUsage": {
+      "promptTokens": 0,
+      "completionTokens": 0
+    },
+    "validationResults": {
+      "valid": true,
+      "issues": []
+    },
+    "errors": [],
+    "createdAt": "2026-08-29T07:06:24.862Z",
+    "contractId": "cap_127a166917537b0c6ef03f67c3bc9333",
+    "bindingId": "binding_cap_127a166917537b0c6ef03f67c3bc9333_structured-comparison-resolver",
+    "sourceXoirNodeIds": [
+      "cap_127a166917537b0c6ef03f67c3bc9333",
+      "rn_fc3b5ae955472c976c9cb6c9214407f8"
+    ]
+  }
+}

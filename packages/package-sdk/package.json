@@ -1,0 +1,35 @@
+{
+  "name": "@xo/package-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Canonical infrastructure for building, validating, signing, packing, installing, and diffing .xo packages (SPECIFICATION.md §1). Used by every future tool — CLI, Studio, Registry, Marketplace, CI/CD, enterprise servers — that needs to touch the package format. Not a CLI, not the registry, not the compiler, not the runtime.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts",
+    "example": "node --import tsx examples/create-demo-package.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/serialization": "0.1.0",
+    "@xo/storage": "0.1.0",
+    "@xo/logger": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/testing": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

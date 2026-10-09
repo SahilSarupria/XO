@@ -1,0 +1,17 @@
+{
+  "domain": "demo.contract-clause-lookup",
+  "description": "A minimal end-to-end demo XO used to exercise every stage of @xo/package-sdk. Not a real professional-capability package.",
+  "scope": [
+    "contract clause identification",
+    "clause pairing suggestions"
+  ],
+  "limitations": [
+    "not legal advice",
+    "covers only two example clause types",
+    "demo data, not production-quality"
+  ],
+  "tags": [
+    "demo",
+    "package-sdk-example"
+  ]
+}

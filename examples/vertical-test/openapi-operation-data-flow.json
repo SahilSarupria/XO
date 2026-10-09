@@ -1,0 +1,65 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "Brokerage Operations API (SEMANTIC CONTRACT / OPENAPI OPERATION PROOF — not a real customer API)", "version": "1.0.0" },
+  "paths": {
+    "/brokerage/calculate": {
+      "post": {
+        "operationId": "calculate_brokerage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "premium": { "type": "number" },
+                  "rate": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "brokerage": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/brokerage/record": {
+      "post": {
+        "operationId": "record_brokerage",
+        "x-requires": ["calculate_brokerage"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brokerage": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "properties": {} }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

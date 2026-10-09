@@ -1,0 +1,42 @@
+{
+  "inspection": {
+    "name": "xo_e2e_burglary_policy",
+    "version": "1.0.0",
+    "creatorDid": "did:xo:e2e-pdf-harness",
+    "fingerprint": "sha256:c4e0447a767ed379bbc41e4443c3a9ab70cabd38d812332a502f588abd9a70da",
+    "merkleRoot": "sha256:3ec734b03de0b23294bd7bed7807bf0186ecbbb0306dcb225fc1a2ee85175e15",
+    "signatureCount": 1,
+    "components": [
+      {
+        "kind": "benchmark_suite",
+        "path": "evaluation/benchmark_suite.json",
+        "hash": "sha256:e0ab24f50c8a372e295a283ba4cab449dd247bd4642fded42325ddca349bdab1",
+        "required": true,
+        "size": 17
+      },
+      {
+        "kind": "knowledge_graph",
+        "path": "knowledge/compiled-xoir.json",
+        "hash": "sha256:01122c336b9b7cfdba5280139a82f3fb95fd90c8756f79cb60872e7938623bf0",
+        "required": false,
+        "size": 564668
+      },
+      {
+        "kind": "safety_rules",
+        "path": "safety/rules.json",
+        "hash": "sha256:da506c8a9c8a9f31aa00eaeef23d49764b9ace97158a1a0a7aa628e6d446b0fb",
+        "required": true,
+        "size": 12
+      }
+    ],
+    "totalComponentBytes": 564697,
+    "declaredFamilies": [
+      "claude"
+    ]
+  },
+  "validationReport": {
+    "valid": true,
+    "issues": []
+  },
+  "signatureVerified": true
+}

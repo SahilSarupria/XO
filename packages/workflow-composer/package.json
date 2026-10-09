@@ -1,0 +1,32 @@
+{
+  "name": "@xo/workflow-composer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Foundation for automatic capability -> workflow composition: given a set of already-discovered XOIR capabilities and their relationships, deterministically proposes one or more CandidateWorkflow objects (ordered steps, precedence rationale, evidence, confidence, unresolved gaps). Does not execute workflows and does not discover or invent capabilities — it composes what @xo/compiler and @xo/xoir already produced.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/xoir": "0.1.0",
+    "@xo/capability-contract": "0.1.0",
+    "@xo/crypto": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}
