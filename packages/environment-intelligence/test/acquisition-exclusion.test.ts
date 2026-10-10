@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MockClock } from '@xo/testing';
 import { DiscoveryErrorCode, acquireSourceContent, discoverSource, type AuthorizationPort, type FilesystemScope } from '../src/index.js';
@@ -55,6 +56,18 @@ test('direct acquisition under an excluded directory is rejected: no read, no ev
       assert.equal(mixed.value.evidence.length, 1);
       assert.equal(mixed.value.evidence[0]?.resourceKey, 'ok.txt');
     }
+  });
+});
+
+test('an in-root symlink alias cannot bypass excluded-directory policy', async () => {
+  await withSandbox(async ({ root }) => {
+    await put(join(root, '.ssh', 'notes.txt'), 'DO-NOT-READ-KEY-12345');
+    await symlink(join(root, '.ssh'), join(root, 'alias'));
+    const { acquire } = await setup(root);
+    const result = await acquire(['alias/notes.txt']);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.error.code, DiscoveryErrorCode.SCOPE_VIOLATION);
+    assert.ok(!JSON.stringify(result).includes('DO-NOT-READ-KEY-12345'));
   });
 });
 
