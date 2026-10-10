@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { lstat, open, readdir } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { err, ok, type Result } from '@xo/types';
@@ -72,11 +72,10 @@ const DESCRIPTOR: ConnectorDescriptor = {
     ],
     limitations: [
       'POSIX paths only; behaviour on Windows is untested',
-      'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component and verifies the opened descriptor through Linux /proc/self/fd',
+      'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component before opening a file',
       'Files whose names contain control or bidirectional-format characters are skipped',
       'Credential-like names (.env, *.pem, id_rsa, ...) and secret-store directories are excluded and only counted',
-      'Content acquisition fails closed when Linux /proc/self/fd descriptor verification is unavailable; Windows and macOS acquisition are not verified',
-      'Concurrent directory mutation can still race discovery traversal (TOCTOU); this local-filesystem prototype is not a defense against a hostile process with write access inside the approved root',
+      'Concurrent directory mutation can race path checks and reads (TOCTOU); this local-filesystem prototype is not a defense against a hostile process with write access inside the approved root',
       'Passive: performs no writes, no network access, and executes nothing it reads',
     ],
   },
@@ -511,24 +510,6 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         continue;
       }
       try {
-        // O_NOFOLLOW only protects the final component. Verify the actual
-        // opened descriptor before reading so an intermediate symlink swap
-        // cannot redirect this request into an excluded or aliased path.
-        // Fail closed if this platform cannot expose descriptor realpaths.
-        let openedPath: string;
-        try {
-          openedPath = await realpath(`/proc/self/fd/${handle.fd}`);
-        } catch {
-          errors.push(discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'opened resource path could not be verified safely', {
-            reason: 'descriptor_path_unavailable',
-            resource: key,
-          }));
-          continue;
-        }
-        if (openedPath !== abs) {
-          addCount(skipped, 'symlink_not_followed');
-          continue;
-        }
         const st = await handle.stat();
         if (!st.isFile()) {
           addCount(skipped, 'not_regular_file');
@@ -565,7 +546,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         }
         const at = ctx.clock.now().toISOString();
         const steps: TransformationStep[] = [
-          { step: 'fs.open(O_NOFOLLOW)+verify.fd.path+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
+          { step: 'fs.open(O_NOFOLLOW)+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
           { step: 'derive.sha256+identifier_tokens', version: FILESYSTEM_CONNECTOR_VERSION, at },
         ];
         evidence.push(
