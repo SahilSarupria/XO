@@ -90,7 +90,11 @@ export async function resolveInside(realRoot: string, resourceKey: string): Prom
       if ((await lstat(current)).isSymbolicLink()) return violation('symlink_not_followed');
     } catch (e) {
       const code = errnoOf(e);
-      if (code === 'ENOENT') return err(discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }));
+      if (code === 'ENOENT') {
+        return err(
+          discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }),
+        );
+      }
       return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }));
     }
   }
