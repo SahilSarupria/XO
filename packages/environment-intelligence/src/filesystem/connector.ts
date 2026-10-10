@@ -101,6 +101,20 @@ function isSensitiveName(name: string, extra: ReadonlySet<string>): boolean {
   return extra.has(lower) || SENSITIVE_FILE_PATTERNS.some((re) => re.test(name));
 }
 
+/** The single directory-exclusion rule, shared by discovery and acquisition. Names are compared case-insensitively. */
+function isExcludedDirectoryName(name: string, extra: ReadonlySet<string>): boolean {
+  const lower = name.toLowerCase();
+  return EXCLUDED_DIRECTORY_NAMES.has(lower) || extra.has(lower);
+}
+
+/** True when ANY directory segment of a source-relative key (every segment except the last) is excluded. */
+function hasExcludedDirectorySegment(resourceKey: string, extra: ReadonlySet<string>): boolean {
+  return resourceKey
+    .split('/')
+    .slice(0, -1)
+    .some((segment) => isExcludedDirectoryName(segment, extra));
+}
+
 interface FileMeta {
   readonly key: string;
   readonly name: string;
@@ -313,7 +327,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           continue;
         }
         if (st.isDirectory()) {
-          if (EXCLUDED_DIRECTORY_NAMES.has(name.toLowerCase()) || extraExcluded.has(name.toLowerCase())) {
+          if (isExcludedDirectoryName(name, extraExcluded)) {
             addCount(skipped, 'excluded_directory');
             continue;
           }
@@ -443,18 +457,26 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       );
     }
     // Fail closed: validate EVERY key against the scope before reading ANY file, and before asking the gate.
+    // Exclusion policy is applied to the whole path (not only the basename) and is identical to discovery's,
+    // so a directly requested key under an excluded directory is never opened. Excluded keys are counted, not read.
+    const extraExcludedForContent = new Set((request.scope.extraExcludedNames ?? []).map((n) => n.toLowerCase()));
     const resolved: { key: string; abs: string }[] = [];
+    let excludedCount = 0;
     for (const key of request.resourceKeys) {
       const inside = await resolveInside(realRoot, key);
       if (!inside.ok) return inside;
+      if (hasExcludedDirectorySegment(key, extraExcludedForContent)) {
+        excludedCount += 1;
+        continue;
+      }
       resolved.push({ key, abs: inside.value });
     }
     const auth = await this.authorize(ctx, 'acquire_content', PERMISSION_READ, realRoot);
     if (!auth.ok) return auth;
 
     const startMs = ctx.clock.now().getTime();
-    const extraExcludedForContent = new Set((request.scope.extraExcludedNames ?? []).map((n) => n.toLowerCase()));
     const skipped = new Map<string, number>();
+    if (excludedCount > 0) skipped.set('excluded_directory', excludedCount);
     const hit = new Set<string>();
     const errors: DiscoveryError[] = [];
     const evidence: Evidence[] = [];
