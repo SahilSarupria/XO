@@ -24,11 +24,12 @@
     { "path": "packages/runtime-core" },
     { "path": "packages/runtime" },
     { "path": "packages/permissions" },
+    { "path": "packages/environment-intelligence" },
     { "path": "packages/registry-core" },
     { "path": "packages/registry" },
     { "path": "packages/atlas" },
     { "path": "packages/marketplace-world" },
     { "path": "apps/cli" },
-    { "path": "apps/api" },
+    { "path": "apps/api" }
   ]
 }
