@@ -72,10 +72,11 @@ const DESCRIPTOR: ConnectorDescriptor = {
     ],
     limitations: [
       'POSIX paths only; behaviour on Windows is untested',
-      'Symlinks are never followed; they are counted and skipped',
+      'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component and verifies the opened descriptor through Linux /proc/self/fd',
       'Files whose names contain control or bidirectional-format characters are skipped',
       'Credential-like names (.env, *.pem, id_rsa, ...) and secret-store directories are excluded and only counted',
-      'A path could change between check and read (TOCTOU); content reads use O_NOFOLLOW and re-verify the opened file is regular',
+      'Content acquisition fails closed when Linux /proc/self/fd descriptor verification is unavailable; Windows and macOS acquisition are not verified',
+      'Concurrent directory mutation can still race discovery traversal (TOCTOU); this local-filesystem prototype is not a defense against a hostile process with write access inside the approved root',
       'Passive: performs no writes, no network access, and executes nothing it reads',
     ],
   },
@@ -564,7 +565,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         }
         const at = ctx.clock.now().toISOString();
         const steps: TransformationStep[] = [
-          { step: 'fs.open(O_NOFOLLOW)+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
+          { step: 'fs.open(O_NOFOLLOW)+verify.fd.path+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
           { step: 'derive.sha256+identifier_tokens', version: FILESYSTEM_CONNECTOR_VERSION, at },
         ];
         evidence.push(
