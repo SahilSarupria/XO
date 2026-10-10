@@ -1,10 +1,29 @@
 import { PackageId } from '@xo/types';
-import { resolveManifestCapabilityPermissions, type CapabilityPermissionRegistry, type PermissionManager, type PermissionRequirement } from '@xo/permissions';
+import {
+  authorizeCapabilityExecution,
+  isAuthorizationSubject,
+  PERMISSION_FREE,
+  resolveDeclaredPermissionIds,
+  resolveManifestCapabilityPermissions,
+  unresolvedDeclaration,
+  type AuthorizationSubject,
+  type CapabilityPermissionRegistry,
+  type PermissionDeclaration,
+  type PermissionManager,
+  type PermissionRequirement,
+} from '@xo/permissions';
 import type { ExecutionRequest } from '../execution/execution-request.js';
 import type { PermissionGate, PermissionGateVerdict } from './permission-gate.interface.js';
 
 export interface PermissionManagerGateOptions {
   readonly manager: PermissionManager;
+  /**
+   * P1.0 M2 — REQUIRED. Who the gated executions are performed for: an
+   * `AuthenticatedPrincipal` or a `TrustedExecutionContext`. Verified when
+   * the gate is created and again on every check. NOT the requesting
+   * package/capability, which the gate derives from the mounted package.
+   */
+  readonly subject: AuthorizationSubject;
   /**
    * An optional *supplementary* requirement source, for capabilities that
    * aren't backed by a manifest at all (e.g. a built-in Runtime
@@ -14,7 +33,7 @@ export interface PermissionManagerGateOptions {
    * nothing needs to be registered here for an ordinary manifest-declared
    * capability to be enforced.
    */
-  readonly registry?: Pick<CapabilityPermissionRegistry, 'resolve'>;
+  readonly registry?: Pick<CapabilityPermissionRegistry, 'resolve' | 'has'>;
 }
 
 /**
@@ -55,35 +74,68 @@ export interface PermissionManagerGateOptions {
  * *before* calling `Runtime.execute`, e.g. during planning).
  */
 export function createPermissionManagerGate(options: PermissionManagerGateOptions): PermissionGate {
+  // P1.0 M2: a gate with no verified subject or no policy must not exist.
+  if (!isAuthorizationSubject(options.subject)) {
+    throw new Error('createPermissionManagerGate requires a verified AuthenticatedPrincipal or TrustedExecutionContext as `subject`');
+  }
+  if (options.manager === undefined || options.manager === null || typeof options.manager.check !== 'function') {
+    throw new Error('createPermissionManagerGate requires a PermissionManager');
+  }
+  const subject = options.subject;
+
   return {
-    async check(mountedPackage, capabilityId, _request: ExecutionRequest): Promise<PermissionGateVerdict> {
+    async check(mountedPackage, capabilityId, request: ExecutionRequest): Promise<PermissionGateVerdict> {
+      void request;
+      const label = `"${mountedPackage.name}@${mountedPackage.version}"`;
       const manifestResolution = resolveManifestCapabilityPermissions(mountedPackage.manifest);
       if (!manifestResolution.ok) {
         return {
           allowed: false,
-          reason: `"${mountedPackage.name}@${mountedPackage.version}" has malformed permission declaration(s) in its manifest, so capability "${capabilityId}" cannot be authorized: ${manifestResolution.error.join('; ')}`,
+          reason: `${label} has malformed permission declaration(s) in its manifest, so capability "${capabilityId}" cannot be authorized: ${manifestResolution.error.join('; ')}`,
         };
       }
 
+      // Authoritative declaration sources, all additive:
+      //  (1) manifest `permissions[]` entries naming this capability,
+      //  (2) this capability's own `execution.requiredPermissionIds`,
+      //  (3) the optional host-populated registry.
+      // At least ONE source must make an EXPLICIT statement. No statement at
+      // all is `unresolved` (denied) — never "permission-free".
       const manifestRequirements = manifestResolution.value.get(capabilityId) ?? [];
-      const registryRequirements = options.registry?.resolve(capabilityId) ?? [];
-      const requirements: readonly PermissionRequirement[] = [...manifestRequirements, ...registryRequirements];
-      if (requirements.length === 0) return { allowed: true };
-
-      const packageId = PackageId(`${mountedPackage.name}@${mountedPackage.version}`);
-
-      for (const requirement of requirements) {
-        const decision = await options.manager.check({
-          permission: requirement.permission,
-          ...(requirement.scope !== undefined ? { scope: requirement.scope } : {}),
-          requester: { packageId, capabilityId },
-        });
-        if (decision.effect !== 'allow') {
-          if (requirement.optional) continue;
-          return { allowed: false, reason: `Permission "${requirement.permission}" required by capability "${capabilityId}" was not granted: ${decision.reason}` };
+      const capabilityDecl = (mountedPackage.manifest.capabilities ?? []).find((c) => c.id === capabilityId);
+      const executionIds: unknown = capabilityDecl?.execution?.requiredPermissionIds;
+      let executionDeclaration: PermissionDeclaration | undefined;
+      if (executionIds !== undefined) {
+        executionDeclaration = resolveDeclaredPermissionIds(executionIds, `capability "${capabilityId}" execution.requiredPermissionIds`);
+        if (executionDeclaration.kind === 'unresolved') {
+          return { allowed: false, reason: `${label}: ${executionDeclaration.reason}` };
         }
       }
-      return { allowed: true };
+      const registryDeclared = options.registry?.has(capabilityId) === true;
+      const registryRequirements = options.registry?.resolve(capabilityId) ?? [];
+
+      const requirements: PermissionRequirement[] = [
+        ...manifestRequirements,
+        ...(executionDeclaration?.kind === 'required' ? executionDeclaration.requirements : []),
+        ...registryRequirements,
+      ];
+      const explicitlyDeclared = manifestRequirements.length > 0 || executionDeclaration !== undefined || registryDeclared;
+
+      const declaration: PermissionDeclaration = !explicitlyDeclared
+        ? unresolvedDeclaration(
+            `${label} declares no permission requirements for capability "${capabilityId}" (declare execution.requiredPermissionIds: [] to state that none are needed)`,
+          )
+        : requirements.length === 0
+          ? PERMISSION_FREE
+          : { kind: 'required', requirements };
+
+      const outcome = await authorizeCapabilityExecution({
+        manager: options.manager,
+        subject,
+        requester: { packageId: PackageId(`${mountedPackage.name}@${mountedPackage.version}`), capabilityId },
+        declaration,
+      });
+      return outcome.allowed ? { allowed: true } : { allowed: false, reason: outcome.reason };
     },
   };
 }

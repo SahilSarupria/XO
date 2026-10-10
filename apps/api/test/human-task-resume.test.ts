@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { RuntimeCapabilityRegistry, RuntimeCapabilityExecutor, registerResolvedCapabilityBinding } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishAuthenticatedPrincipal, PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 import type { SemanticCapabilityContract, CapabilityBinding } from '@xo/capability-contract';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { TestServer } from './test-helpers.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
 interface SourceWire {
@@ -22,7 +22,9 @@ interface ExecutionWire {
   readonly humanTask?: { readonly status: string; readonly resumeOutcome?: { readonly kind: string } };
 }
 
-const COMMERCIAL_PROPERTY_PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const COMMERCIAL_PROPERTY_PDF = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 const HITL_CAPABILITY_ID = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522';
 
 async function createWorkspace(server: TestServer): Promise<WorkspaceRecord> {
@@ -39,7 +41,11 @@ async function uploadAndCompile(server: TestServer, workspaceId: string): Promis
 
 async function approveAndExecuteHitl(server: TestServer, workspaceId: string, compilationId: string): Promise<ExecutionWire> {
   await server.request('POST', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${HITL_CAPABILITY_ID}/approve`);
-  const execRes = await server.request('POST', `/workspaces/${workspaceId}/executions`, { compilationId, capabilityId: HITL_CAPABILITY_ID, input: {} });
+  const execRes = await server.request('POST', `/workspaces/${workspaceId}/executions`, {
+    compilationId,
+    capabilityId: HITL_CAPABILITY_ID,
+    input: {},
+  });
   assert.equal(execRes.status, 201);
   return execRes.json<ExecutionWire>();
 }
@@ -55,7 +61,10 @@ test('reject decision produces a terminal rejected outcome and never invokes the
     const { compilationId } = await uploadAndCompile(server, workspace.workspaceId);
     const execution = await approveAndExecuteHitl(server, workspace.workspaceId, compilationId);
 
-    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'reject', data: { note: 'not authorized' } });
+    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'reject',
+      data: { note: 'not authorized' },
+    });
     assert.equal(res.status, 200);
     const resolved = res.json<ExecutionWire>();
     assert.equal(resolved.status, 'rejected');
@@ -75,10 +84,14 @@ test('a second, conflicting decision after a reject still cannot overwrite the o
     const { compilationId } = await uploadAndCompile(server, workspace.workspaceId);
     const execution = await approveAndExecuteHitl(server, workspace.workspaceId, compilationId);
 
-    const first = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'reject' });
+    const first = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'reject',
+    });
     assert.equal(first.status, 200);
 
-    const second = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve' });
+    const second = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'approve',
+    });
     assert.equal(second.status, 409);
     const body = second.json<ExecutionWire>();
     assert.equal(body.status, 'rejected'); // still rejected, never flipped to succeeded
@@ -129,6 +142,12 @@ test('duplicate concurrent resolve requests cannot both execute the continuation
 // resolver list or any compiler/capability-contract internal.
 // ---------------------------------------------------------------------
 
+function fixtureSubject() {
+  const r = establishAuthenticatedPrincipal({ kind: 'human', id: 'fixture-resolver' });
+  if (!r.ok) throw r.error;
+  return r.value;
+}
+
 function buildTestFixture(): { readonly contract: SemanticCapabilityContract; readonly binding: CapabilityBinding } {
   const contract: SemanticCapabilityContract = {
     id: 'cap_test_resume_fixture',
@@ -172,7 +191,11 @@ test('mechanism-level: the generic resume machinery produces a genuinely differe
   const registered = registerResolvedCapabilityBinding(registry, contract, binding);
   assert.equal(registered.ok, true);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: fixtureSubject(),
+  });
 
   // Original execution: escalates, exactly like the production fixture.
   const original = await executor.execute({ capabilityId: contract.id, input: { amount: 21 } });
@@ -182,7 +205,10 @@ test('mechanism-level: the generic resume machinery produces a genuinely differe
   // Resume with the human's approval merged into input — the SAME
   // pattern `resumeCapabilityExecution` uses — genuinely produces a
   // different, real computed value.
-  const resumed = await executor.execute({ capabilityId: contract.id, input: { amount: 21, humanDecision: { decision: 'approve', data: {} } } });
+  const resumed = await executor.execute({
+    capabilityId: contract.id,
+    input: { amount: 21, humanDecision: { decision: 'approve', data: {} } },
+  });
   assert.equal(resumed.ok, true);
   const resumedOutput = (resumed as { ok: true; value: { output: { status?: string; approvedTotal?: number } } }).value.output;
   assert.equal(resumedOutput.status, 'computed');
@@ -198,8 +224,15 @@ test('mechanism-level: required permissions are genuinely re-checked (fail-close
   assert.equal(registered.ok, true);
 
   // The exact fail-closed pattern resume-human-task.ts/execute-capability.ts use — an empty rule list, never allowAllPermissionGate.
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const result = await executor.execute({ capabilityId: contractRequiringPermission.id, input: { amount: 1, humanDecision: { decision: 'approve', data: {} } } });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: fixtureSubject(),
+  });
+  const result = await executor.execute({
+    capabilityId: contractRequiringPermission.id,
+    input: { amount: 1, humanDecision: { decision: 'approve', data: {} } },
+  });
 
   // Fail-closed: denied, never silently allowed through.
   assert.equal(result.ok, false);

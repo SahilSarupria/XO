@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { compileSources } from '@xo/compiler';
 import { composeWorkflows } from '@xo/workflow-composer';
@@ -11,12 +12,26 @@ import { EnvironmentId } from '../../src/ids.js';
 import { prepareCandidateWorkflowForExecution, makeCapabilityAuthorityNodeHandler } from '../../src/workflow/candidate-workflow-bridge.js';
 
 const OPERATION_FIXTURE = [
-  { type: 'operation', name: 'calculate_brokerage', inputs: { premium: { type: 'number' }, rate: { type: 'number' } }, outputs: { brokerage: { type: 'number' } } },
-  { type: 'operation', name: 'record_brokerage', requires: ['calculate_brokerage'], inputs: { brokerage: { type: 'number' } }, outputs: {} },
+  {
+    type: 'operation',
+    name: 'calculate_brokerage',
+    inputs: { premium: { type: 'number' }, rate: { type: 'number' } },
+    outputs: { brokerage: { type: 'number' } },
+  },
+  {
+    type: 'operation',
+    name: 'record_brokerage',
+    requires: ['calculate_brokerage'],
+    inputs: { brokerage: { type: 'number' } },
+    outputs: {},
+  },
 ];
 
-test('REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled structured-JSON operation actually crosses into another real capability\'s execution input', async () => {
-  const compileResult = await compileSources([{ kind: 'structured', format: 'json', text: JSON.stringify(OPERATION_FIXTURE), sourcePath: 'structured-operation-data-flow.json' }], {});
+test("REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled structured-JSON operation actually crosses into another real capability's execution input", async () => {
+  const compileResult = await compileSources(
+    [{ kind: 'structured', format: 'json', text: JSON.stringify(OPERATION_FIXTURE), sourcePath: 'structured-operation-data-flow.json' }],
+    {},
+  );
   assert.equal(compileResult.ok, true);
   if (!compileResult.ok) return;
   const { graph } = compileResult.value;
@@ -24,7 +39,9 @@ test('REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled struct
   const composed = composeWorkflows(graph, { now: () => new Date().toISOString() });
   assert.equal(composed.ok, true);
   if (!composed.ok) return;
-  const workflow = composed.value.find((w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'));
+  const workflow = composed.value.find(
+    (w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'),
+  );
   assert.ok(workflow);
 
   const producerNode = graph.allNodes().find((n) => n.kind === 'capability' && n.properties.name === 'calculate_brokerage');
@@ -68,7 +85,11 @@ test('REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled struct
   assert.equal(prepared.unboundStepCount, 0);
   assert.equal(prepared.wiredInjections.length, 1);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
 
   // Capture the exact argument RuntimeCapabilityExecutor.execute()
   // receives for the consumer — proves the value crossed the actual
@@ -80,15 +101,29 @@ test('REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled struct
     return originalExecute(request);
   }) as typeof executor.execute;
 
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
-  });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
 
   const producerGraphNode = prepared.graph.nodes.find((n) => n.name === 'calculate_brokerage');
   assert.ok(producerGraphNode);
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === producerGraphNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === producerGraphNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n,
+    ),
+  };
 
-  const environment = { environmentId: EnvironmentId('env_test_structured_operation'), hostProfile: { family: 'test', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z' };
+  const environment = {
+    environmentId: EnvironmentId('env_test_structured_operation'),
+    hostProfile: { family: 'test', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
   const result = await workflowExecutor.run(seededGraph, environment);
 
   assert.equal(result.instance.status, 'completed');
@@ -98,7 +133,9 @@ test('REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled struct
   assert.equal(capturedConsumerInputs[0]?.brokerage, 10000);
 
   const consumerGraphNode = prepared.graph.nodes.find((n) => n.name === 'record_brokerage');
-  const consumerOutput = result.instance.state.outputs[consumerGraphNode!.id as unknown as string] as { result?: { status?: string; brokerage?: number } };
+  const consumerOutput = result.instance.state.outputs[consumerGraphNode!.id as unknown as string] as {
+    result?: { status?: string; brokerage?: number };
+  };
   assert.equal(consumerOutput.result?.status, 'recorded');
   assert.equal(consumerOutput.result?.brokerage, 10000);
 });

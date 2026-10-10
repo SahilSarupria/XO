@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
@@ -77,7 +78,11 @@ function candidateWorkflow(capabilityId: string, capabilityName: string): Candid
 }
 
 function environment(): ExecutionEnvironment {
-  return { environmentId: EnvironmentId('env_test'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z' };
+  return {
+    environmentId: EnvironmentId('env_test'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
 }
 
 // --- Workflow construction / preparation --------------------------------
@@ -145,7 +150,12 @@ test('a step with a real structured comparison rule resolves to deterministic_ru
     : capNode;
   const edgeResult =
     capNode.ok && ruleNode.ok
-      ? graph.createAndAddEdge({ id: XoirEdgeId('edge_requires_rule'), kind: 'REQUIRES', fromId: XoirNodeId('cap_threshold_check'), toId: XoirNodeId('decision_threshold') })
+      ? graph.createAndAddEdge({
+          id: XoirEdgeId('edge_requires_rule'),
+          kind: 'REQUIRES',
+          fromId: XoirNodeId('cap_threshold_check'),
+          toId: XoirNodeId('decision_threshold'),
+        })
       : ruleNode;
   const graphResult = edgeResult.ok ? { ok: true as const, value: graph } : edgeResult;
   assert.equal(graphResult.ok, true);
@@ -158,17 +168,31 @@ test('a step with a real structured comparison rule resolves to deterministic_ru
   assert.equal(step?.status, 'bound');
   assert.equal(step?.implementationClass, 'deterministic_rule');
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
   // No declared inputs on this contract, so the resolver's fallback
   // field key applies: "the claim amount" -> "claim_amount" (stopwords
   // stripped). Seed it directly on the (only) step node's static
   // structuredInput — this step has no upstream producer.
   const stepNode = prepared.graph.nodes.find((n) => n.type === 'custom:capability-authority');
   assert.ok(stepNode);
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === stepNode!.id ? { ...n, config: { ...n.config, structuredInput: { claim_amount: 15000 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === stepNode!.id ? { ...n, config: { ...n.config, structuredInput: { claim_amount: 15000 } } } : n,
+    ),
+  };
 
   const result = await workflowExecutor.run(seededGraph, environment());
   assert.equal(result.instance.status, 'completed');
@@ -187,10 +211,19 @@ test('end-to-end: a real HITL workflow executes through WorkflowExecutor and pro
   const registry = new RuntimeCapabilityRegistry();
   const prepared = prepareCandidateWorkflowForExecution(workflow, graphResult.value, registry);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
 
   const result = await workflowExecutor.run(prepared.graph, environment());
 
@@ -301,7 +334,12 @@ function twoStepDataFlowGraph() {
     : capA;
   const edgeARule =
     capA.ok && ruleA.ok
-      ? graph.createAndAddEdge({ id: XoirEdgeId('edge_a_requires_rule'), kind: 'REQUIRES', fromId: XoirNodeId('cap_a_threshold'), toId: XoirNodeId('decision_a_threshold') })
+      ? graph.createAndAddEdge({
+          id: XoirEdgeId('edge_a_requires_rule'),
+          kind: 'REQUIRES',
+          fromId: XoirNodeId('cap_a_threshold'),
+          toId: XoirNodeId('decision_a_threshold'),
+        })
       : ruleA;
   if (!edgeARule.ok) return edgeARule;
 
@@ -328,14 +366,24 @@ function twoStepDataFlowGraph() {
     : capB;
   const edgeBAction =
     capB.ok && conceptB.ok
-      ? graph.createAndAddEdge({ id: XoirEdgeId('edge_b_requires_action'), kind: 'REQUIRES', fromId: XoirNodeId('cap_b_escalate'), toId: XoirNodeId('concept_escalate_action') })
+      ? graph.createAndAddEdge({
+          id: XoirEdgeId('edge_b_requires_action'),
+          kind: 'REQUIRES',
+          fromId: XoirNodeId('cap_b_escalate'),
+          toId: XoirNodeId('concept_escalate_action'),
+        })
       : conceptB;
   if (!edgeBAction.ok) return edgeBAction;
 
   // The genuine structural edge `auditWorkflowDataFlow` requires as
   // corroboration — B really does depend on A in this graph, not merely
   // by name coincidence.
-  const edgeBA = graph.createAndAddEdge({ id: XoirEdgeId('edge_b_requires_a'), kind: 'REQUIRES', fromId: XoirNodeId('cap_b_escalate'), toId: XoirNodeId('cap_a_threshold') });
+  const edgeBA = graph.createAndAddEdge({
+    id: XoirEdgeId('edge_b_requires_a'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('cap_b_escalate'),
+    toId: XoirNodeId('cap_a_threshold'),
+  });
   if (!edgeBA.ok) return edgeBA;
 
   return { ok: true as const, value: graph };
@@ -358,7 +406,10 @@ function twoStepWorkflow(): CandidateWorkflow {
     capabilityId: 'cap_b_escalate',
     capabilityName: 'Escalate the flagged claim',
     description: 'Escalate the flagged claim',
-    rationale: { orderedAfter: [{ capabilityId: 'cap_a_threshold', viaEdgeKind: 'REQUIRES', evidenceStrength: 'strong' }], tieBroken: false },
+    rationale: {
+      orderedAfter: [{ capabilityId: 'cap_a_threshold', viaEdgeKind: 'REQUIRES', evidenceStrength: 'strong' }],
+      tieBroken: false,
+    },
     confidence: 0.8,
     evidence: [{ documentPath: 'Aastha.pdf', pages: [1] }],
   };
@@ -409,12 +460,26 @@ test('end-to-end: a real value produced by Step A becomes the authoritative inpu
   assert.ok(stepANode);
   // Step A's own input (its threshold check) is seeded statically — it
   // has no upstream producer of its own.
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === stepANode!.id ? { ...n, config: { ...n.config, structuredInput: { claim_amount: 15000 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === stepANode!.id ? { ...n, config: { ...n.config, structuredInput: { claim_amount: 15000 } } } : n,
+    ),
+  };
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
 
   // Capture the exact input RuntimeCapabilityExecutor.execute() receives
   // for Step B by wrapping the real executor — proves the value crossed
@@ -437,7 +502,10 @@ test('end-to-end: a real value produced by Step A becomes the authoritative inpu
   assert.equal(capturedInputs[0]?.matched, true);
 
   const stepBNode = prepared.graph.nodes.find((n) => n.name === 'Escalate the flagged claim');
-  const stepBOutput = result.instance.state.outputs[stepBNode!.id as unknown as string] as { result?: { status?: string }; appliedInputBindings?: unknown[] };
+  const stepBOutput = result.instance.state.outputs[stepBNode!.id as unknown as string] as {
+    result?: { status?: string };
+    appliedInputBindings?: unknown[];
+  };
   assert.equal(stepBOutput.result?.status, 'escalation_required');
   assert.equal(stepBOutput.appliedInputBindings?.length, 1);
 });
@@ -465,7 +533,15 @@ test('rejection: name-only match with no structural corroboration is never wired
         subtype: 'action',
       })
     : capA;
-  const edgeA = capA.ok && conceptA.ok ? graph.createAndAddEdge({ id: XoirEdgeId('e_a'), kind: 'REQUIRES', fromId: XoirNodeId('cap_a'), toId: XoirNodeId('concept_a_action') }) : conceptA;
+  const edgeA =
+    capA.ok && conceptA.ok
+      ? graph.createAndAddEdge({
+          id: XoirEdgeId('e_a'),
+          kind: 'REQUIRES',
+          fromId: XoirNodeId('cap_a'),
+          toId: XoirNodeId('concept_a_action'),
+        })
+      : conceptA;
   const capB = edgeA.ok
     ? graph.createAndAddNode({
         id: XoirNodeId('cap_b'),
@@ -485,7 +561,15 @@ test('rejection: name-only match with no structural corroboration is never wired
         subtype: 'action',
       })
     : capB;
-  const edgeB = capB.ok && conceptB.ok ? graph.createAndAddEdge({ id: XoirEdgeId('e_b'), kind: 'REQUIRES', fromId: XoirNodeId('cap_b'), toId: XoirNodeId('concept_b_action') }) : conceptB;
+  const edgeB =
+    capB.ok && conceptB.ok
+      ? graph.createAndAddEdge({
+          id: XoirEdgeId('e_b'),
+          kind: 'REQUIRES',
+          fromId: XoirNodeId('cap_b'),
+          toId: XoirNodeId('concept_b_action'),
+        })
+      : conceptB;
   assert.equal(edgeB.ok, true);
   if (!edgeB.ok) return;
   // Deliberately NO edge at all between cap_a and cap_b.
@@ -495,8 +579,26 @@ test('rejection: name-only match with no structural corroboration is never wired
     name: 'x',
     description: 'x',
     steps: [
-      { id: CandidateWorkflowStepId('s0'), order: 0, capabilityId: 'cap_a', capabilityName: 'Producer', description: 'x', rationale: { orderedAfter: [], tieBroken: false }, confidence: 0.8, evidence: [] },
-      { id: CandidateWorkflowStepId('s1'), order: 1, capabilityId: 'cap_b', capabilityName: 'Consumer', description: 'x', rationale: { orderedAfter: [], tieBroken: false }, confidence: 0.8, evidence: [] },
+      {
+        id: CandidateWorkflowStepId('s0'),
+        order: 0,
+        capabilityId: 'cap_a',
+        capabilityName: 'Producer',
+        description: 'x',
+        rationale: { orderedAfter: [], tieBroken: false },
+        confidence: 0.8,
+        evidence: [],
+      },
+      {
+        id: CandidateWorkflowStepId('s1'),
+        order: 1,
+        capabilityId: 'cap_b',
+        capabilityName: 'Consumer',
+        description: 'x',
+        rationale: { orderedAfter: [], tieBroken: false },
+        confidence: 0.8,
+        evidence: [],
+      },
     ],
     sourceCapabilityIds: ['cap_a', 'cap_b'],
     gaps: [],
@@ -530,7 +632,16 @@ test('rejection: a HITL producer never has its escalation record injected as a c
     name: 'x',
     description: 'x',
     steps: [
-      { id: CandidateWorkflowStepId('s0'), order: 0, capabilityId: 'cap_b_escalate', capabilityName: 'Escalate the flagged claim', description: 'x', rationale: { orderedAfter: [], tieBroken: false }, confidence: 0.8, evidence: [] },
+      {
+        id: CandidateWorkflowStepId('s0'),
+        order: 0,
+        capabilityId: 'cap_b_escalate',
+        capabilityName: 'Escalate the flagged claim',
+        description: 'x',
+        rationale: { orderedAfter: [], tieBroken: false },
+        confidence: 0.8,
+        evidence: [],
+      },
     ],
     sourceCapabilityIds: ['cap_b_escalate'],
     gaps: [],

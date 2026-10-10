@@ -87,8 +87,8 @@ import { LocalFsBlobStore } from '@xo/storage';
 import { RegistryClient } from '@xo/registry';
 import {
   Runtime,
-  PackageLoader,
   ExecutionEngine,
+  allowAllPermissionGate,
   FileRuntimeStore,
   RequestId,
   EnvironmentId,
@@ -222,11 +222,16 @@ async function main(): Promise<void> {
     return finish(runTmpRoot);
   }
   const blockCount = countBlocks(parsed.root);
-  record('document_parsing', 'PASS', `parseDocument() produced a structural tree (${blockCount} block(s), body font ${parsed.root ? parsed.bodyFontSizePt : 'n/a'}pt).`, {
-    bodyFontSizePt: parsed.bodyFontSizePt,
-    topLevelSubsections: parsed.root.subsections.length,
-    totalBlocks: blockCount,
-  });
+  record(
+    'document_parsing',
+    'PASS',
+    `parseDocument() produced a structural tree (${blockCount} block(s), body font ${parsed.root ? parsed.bodyFontSizePt : 'n/a'}pt).`,
+    {
+      bodyFontSizePt: parsed.bodyFontSizePt,
+      topLevelSubsections: parsed.root.subsections.length,
+      totalBlocks: blockCount,
+    },
+  );
 
   // ---------------------------------------------------------------
   // 3. Semantic chunking (Stage 3)
@@ -260,10 +265,15 @@ async function main(): Promise<void> {
     hardError = { boundary: 'knowledge_extraction', error };
     return finish(runTmpRoot);
   }
-  record('knowledge_extraction', 'PASS', `extractKnowledgeGraph() (rule-based) produced ${knowledgeGraph.nodes.length} node(s), ${knowledgeGraph.edges.length} edge(s).`, {
-    nodeCount: knowledgeGraph.nodes.length,
-    edgeCount: knowledgeGraph.edges.length,
-  });
+  record(
+    'knowledge_extraction',
+    'PASS',
+    `extractKnowledgeGraph() (rule-based) produced ${knowledgeGraph.nodes.length} node(s), ${knowledgeGraph.edges.length} edge(s).`,
+    {
+      nodeCount: knowledgeGraph.nodes.length,
+      edgeCount: knowledgeGraph.edges.length,
+    },
+  );
 
   // ---------------------------------------------------------------
   // 5. Capability extraction (Stage 5)
@@ -317,7 +327,12 @@ async function main(): Promise<void> {
   //    XoirGraph is constructed by hand anywhere in this file.
   // ---------------------------------------------------------------
   section('7. XOIR compilation');
-  const pipelineInput: PipelineInput = { kind: 'combined', knowledge: knowledgeGraph, capability: capabilityGraph, reasoning: reasoningGraph };
+  const pipelineInput: PipelineInput = {
+    kind: 'combined',
+    knowledge: knowledgeGraph,
+    capability: capabilityGraph,
+    reasoning: reasoningGraph,
+  };
   let compiled;
   try {
     const compileResult = await compileXoir(pipelineInput, { graphId: 'xo_e2e_burglary_policy', now: () => '2026-08-17T00:00:00.000Z' });
@@ -332,9 +347,14 @@ async function main(): Promise<void> {
     hardError = { boundary: 'xoir_compilation', error };
     return finish(runTmpRoot);
   }
-  record('xoir_compilation', 'PASS', `compileXoir() ran the full convert -> validate -> normalize pipeline and returned a CompiledXoirResult.`, {
-    stats: compiled.stats,
-  });
+  record(
+    'xoir_compilation',
+    'PASS',
+    `compileXoir() ran the full convert -> validate -> normalize pipeline and returned a CompiledXoirResult.`,
+    {
+      stats: compiled.stats,
+    },
+  );
 
   // ---------------------------------------------------------------
   // 8. XOIR validation
@@ -342,19 +362,37 @@ async function main(): Promise<void> {
   section('8. XOIR validation');
   if (!compiled.valid) {
     const errorDiagnostics = compiled.diagnostics.filter((d) => d.severity === 'error');
-    record('xoir_validation', 'BLOCKED', `Compiled XOIR failed validation (${errorDiagnostics.length} error-severity diagnostic(s)); downstream stages cannot proceed on invalid XOIR.`, {
-      diagnostics: compiled.diagnostics,
-    });
+    record(
+      'xoir_validation',
+      'BLOCKED',
+      `Compiled XOIR failed validation (${errorDiagnostics.length} error-severity diagnostic(s)); downstream stages cannot proceed on invalid XOIR.`,
+      {
+        diagnostics: compiled.diagnostics,
+      },
+    );
     await writeOutput('compiled-xoir.json', xoirToJson(compiled.graph));
-    await writeOutput('diagnostics.json', { validation: compiled.validation, diagnostics: compiled.diagnostics, passRuns: compiled.passRuns });
+    await writeOutput('diagnostics.json', {
+      validation: compiled.validation,
+      diagnostics: compiled.diagnostics,
+      passRuns: compiled.passRuns,
+    });
     return finish(runTmpRoot);
   }
-  record('xoir_validation', 'PASS', `Compiled XOIR is valid and normalized (${compiled.stats.nodeCount} node(s), ${compiled.stats.edgeCount} edge(s)).`, {
-    stats: compiled.stats,
-  });
+  record(
+    'xoir_validation',
+    'PASS',
+    `Compiled XOIR is valid and normalized (${compiled.stats.nodeCount} node(s), ${compiled.stats.edgeCount} edge(s)).`,
+    {
+      stats: compiled.stats,
+    },
+  );
   const compiledXoirJson = xoirToJson(compiled.graph);
   await writeOutput('compiled-xoir.json', compiledXoirJson);
-  await writeOutput('diagnostics.json', { validation: compiled.validation, diagnostics: compiled.diagnostics, passRuns: compiled.passRuns });
+  await writeOutput('diagnostics.json', {
+    validation: compiled.validation,
+    diagnostics: compiled.diagnostics,
+    passRuns: compiled.passRuns,
+  });
 
   // ---------------------------------------------------------------
   // 9. Package creation (Package SDK)
@@ -398,9 +436,12 @@ async function main(): Promise<void> {
     };
     const metadata = {
       domain: 'e2e-harness.burglary-policy',
-      description: 'E2E harness output package for examples/vertical-test/burglary-policy.pdf — compiled via the real Stage 1-7 compiler pipeline. Diagnostic artifact, not a production XO.',
+      description:
+        'E2E harness output package for examples/vertical-test/burglary-policy.pdf — compiled via the real Stage 1-7 compiler pipeline. Diagnostic artifact, not a production XO.',
       scope: ['diagnostic measurement of the current compiler->package->registry->runtime vertical'],
-      limitations: ['manifest declares zero capabilities: extractCapabilityGraph() found none in this document, and no compiler-Capability -> manifest-CapabilityDeclaration converter exists in this repo'],
+      limitations: [
+        'manifest declares zero capabilities: extractCapabilityGraph() found none in this document, and no compiler-Capability -> manifest-CapabilityDeclaration converter exists in this repo',
+      ],
       tags: ['e2e-harness', 'diagnostic'],
     };
 
@@ -415,13 +456,34 @@ async function main(): Promise<void> {
       .setMetadata(metadata)
       .setCapabilities([]) // see boundary #2 above — honestly empty, not fabricated
       .setPermissions([])
-      .addComponent({ kind: 'knowledge_graph', path: 'knowledge/compiled-xoir.json', data: new TextEncoder().encode(JSON.stringify(compiledXoirJson)), required: false })
-      .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify({ rules: [] })), required: true })
-      .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode(JSON.stringify({ categories: [] })), required: true })
+      .addComponent({
+        kind: 'knowledge_graph',
+        path: 'knowledge/compiled-xoir.json',
+        data: new TextEncoder().encode(JSON.stringify(compiledXoirJson)),
+        required: false,
+      })
+      .addComponent({
+        kind: 'safety_rules',
+        path: 'safety/rules.json',
+        data: new TextEncoder().encode(JSON.stringify({ rules: [] })),
+        required: true,
+      })
+      .addComponent({
+        kind: 'benchmark_suite',
+        path: 'evaluation/benchmark_suite.json',
+        data: new TextEncoder().encode(JSON.stringify({ categories: [] })),
+        required: true,
+      })
       .build();
     if (!unsignedBuild.ok) throw new Error(`ManifestBuilder.build() failed: ${unsignedBuild.error.message}`);
 
-    const signatureEntry = new PackageSigner(signer).sign(unsignedBuild.value.manifest, signerDid, 'creator', devKeyPair.privateKey, devKeyPair.publicKey);
+    const signatureEntry = new PackageSigner(signer).sign(
+      unsignedBuild.value.manifest,
+      signerDid,
+      'creator',
+      devKeyPair.privateKey,
+      devKeyPair.publicKey,
+    );
 
     const signedBuild = ManifestBuilder.create()
       .setIdentity({ formatVersion: '1.0', name: 'xo_e2e_burglary_policy', version: '1.0.0', creatorDid: 'did:xo:e2e-pdf-harness' })
@@ -429,10 +491,30 @@ async function main(): Promise<void> {
       .setMetadata(metadata)
       .setCapabilities([])
       .setPermissions([])
-      .addComponent({ kind: 'knowledge_graph', path: 'knowledge/compiled-xoir.json', data: new TextEncoder().encode(JSON.stringify(compiledXoirJson)), required: false })
-      .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify({ rules: [] })), required: true })
-      .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode(JSON.stringify({ categories: [] })), required: true })
-      .addSignature({ signerDid: signatureEntry.signerDid, role: signatureEntry.role, signature: signatureEntry.signature, publicKeyPem: signatureEntry.publicKeyPem })
+      .addComponent({
+        kind: 'knowledge_graph',
+        path: 'knowledge/compiled-xoir.json',
+        data: new TextEncoder().encode(JSON.stringify(compiledXoirJson)),
+        required: false,
+      })
+      .addComponent({
+        kind: 'safety_rules',
+        path: 'safety/rules.json',
+        data: new TextEncoder().encode(JSON.stringify({ rules: [] })),
+        required: true,
+      })
+      .addComponent({
+        kind: 'benchmark_suite',
+        path: 'evaluation/benchmark_suite.json',
+        data: new TextEncoder().encode(JSON.stringify({ categories: [] })),
+        required: true,
+      })
+      .addSignature({
+        signerDid: signatureEntry.signerDid,
+        role: signatureEntry.role,
+        signature: signatureEntry.signature,
+        publicKeyPem: signatureEntry.publicKeyPem,
+      })
       .build();
     if (!signedBuild.ok) throw new Error(`Signed ManifestBuilder.build() failed: ${signedBuild.error.message}`);
     bundle = signedBuild.value;
@@ -440,14 +522,19 @@ async function main(): Promise<void> {
     const archiveBytes = await packBundle(bundle);
     await writeFile(archivePath, archiveBytes);
 
-    record('package_creation', 'PASS', `Built and signed a real .xo package (${archiveBytes.byteLength} bytes) via ManifestBuilder + Ed25519Signer + packBundle().`, {
-      name: bundle.manifest.name,
-      version: bundle.manifest.version,
-      merkleRoot: bundle.manifest.merkleRoot,
-      componentCount: bundle.components.length,
-      archiveBytes: archiveBytes.byteLength,
-      archivePath,
-    });
+    record(
+      'package_creation',
+      'PASS',
+      `Built and signed a real .xo package (${archiveBytes.byteLength} bytes) via ManifestBuilder + Ed25519Signer + packBundle().`,
+      {
+        name: bundle.manifest.name,
+        version: bundle.manifest.version,
+        merkleRoot: bundle.manifest.merkleRoot,
+        componentCount: bundle.components.length,
+        archiveBytes: archiveBytes.byteLength,
+        archivePath,
+      },
+    );
   } catch (error) {
     record('package_creation', 'ERROR', `Package creation threw unexpectedly: ${describeError(error)}`);
     hardError = { boundary: 'package_creation', error };
@@ -471,19 +558,38 @@ async function main(): Promise<void> {
 
     const verifier = new PackageVerifier();
     const signatureOk = readBundle.manifest.signatures?.[0]
-      ? verifier.verifyOne(readBundle.manifest, { signerDid, role: 'creator', signature: readBundle.manifest.signatures[0].signature, publicKeyPem: devPublicKeyPem })
+      ? verifier.verifyOne(readBundle.manifest, {
+          signerDid,
+          role: 'creator',
+          signature: readBundle.manifest.signatures[0].signature,
+          publicKeyPem: devPublicKeyPem,
+        })
       : false;
 
-    await writeOutput('package-inspect.json', { inspection: inspectBundle(readBundle), validationReport: report, signatureVerified: signatureOk });
-
-    if (!report.valid) {
-      record('package_verification', 'BLOCKED', `Read-back package failed PackageValidator.validateAll() (${report.issues.filter((i) => i.severity === 'error').length} error(s)).`, report);
-      return finish(runTmpRoot);
-    }
-    record('package_verification', 'PASS', `Round-tripped .xo archive validated (schema, hashes, Merkle root, signature) via PackageValidator + PackageVerifier.`, {
-      valid: report.valid,
+    await writeOutput('package-inspect.json', {
+      inspection: inspectBundle(readBundle),
+      validationReport: report,
       signatureVerified: signatureOk,
     });
+
+    if (!report.valid) {
+      record(
+        'package_verification',
+        'BLOCKED',
+        `Read-back package failed PackageValidator.validateAll() (${report.issues.filter((i) => i.severity === 'error').length} error(s)).`,
+        report,
+      );
+      return finish(runTmpRoot);
+    }
+    record(
+      'package_verification',
+      'PASS',
+      `Round-tripped .xo archive validated (schema, hashes, Merkle root, signature) via PackageValidator + PackageVerifier.`,
+      {
+        valid: report.valid,
+        signatureVerified: signatureOk,
+      },
+    );
   } catch (error) {
     record('package_verification', 'ERROR', `Package verification threw unexpectedly: ${describeError(error)}`);
     hardError = { boundary: 'package_verification', error };
@@ -517,11 +623,16 @@ async function main(): Promise<void> {
       return finish(runTmpRoot);
     }
     publishedId = published.value.id;
-    record('registry_publish', 'PASS', `Published to an isolated local FsPackageRepository, content-addressed by manifest.merkleRoot ("${publishedId}"), with a ledger entry.`, {
-      id: published.value.id,
-      publishedAt: published.value.publishedAt,
-      ledgerEntryHash: published.value.ledgerEntryHash,
-    });
+    record(
+      'registry_publish',
+      'PASS',
+      `Published to an isolated local FsPackageRepository, content-addressed by manifest.merkleRoot ("${publishedId}"), with a ledger entry.`,
+      {
+        id: published.value.id,
+        publishedAt: published.value.publishedAt,
+        ledgerEntryHash: published.value.ledgerEntryHash,
+      },
+    );
 
     const searchHits = await registryClient.search('burglary');
     const resolved = await registryClient.get(publishedId);
@@ -532,14 +643,19 @@ async function main(): Promise<void> {
         'registry_resolve',
         'PASS',
         `RegistryClient.get() resolved the published PackageRecord by content-addressed id. LIMITATION (boundary #1, see README): this record carries only { id, manifest, publishedAt } — no component bytes. It cannot, by itself, be turned back into an installable .xo bundle; step 12 below installs from the local archive at "${archivePath}" instead, exactly because the registry does not offer a byte-level resolve path.`,
-        { record: resolved.value, searchHitCount: searchHits.length, ledgerVerified: await registryClient.verifyLedgerEntry(published.value.ledgerEntryHash) },
+        {
+          record: resolved.value,
+          searchHitCount: searchHits.length,
+          ledgerVerified: await registryClient.verifyLedgerEntry(published.value.ledgerEntryHash),
+        },
       );
     }
     await writeOutput('registry-result.json', {
       publish: published.ok ? published.value : { error: published.error.message },
       search: searchHits.map((r) => ({ id: r.id, name: r.manifest.name })),
       resolve: resolved.ok ? resolved.value : { error: resolved.error.message },
-      limitation: 'RegistryClient/FsPackageRepository store and return PackageRecord (manifest + publishedAt) only — no component-byte storage or retrieval API exists anywhere in packages/registry or packages/registry-core.',
+      limitation:
+        'RegistryClient/FsPackageRepository store and return PackageRecord (manifest + publishedAt) only — no component-byte storage or retrieval API exists anywhere in packages/registry or packages/registry-core.',
     });
   } catch (error) {
     record('registry_publish', 'ERROR', `Registry stage threw unexpectedly: ${describeError(error)}`);
@@ -566,13 +682,23 @@ async function main(): Promise<void> {
     runtime = new Runtime(installer);
     const mounted = await runtime.mount(bundle.manifest.name, bundle.manifest.version);
     if (!mounted.ok) {
-      record('package_install_load', 'BLOCKED', `Installed successfully, but PackageLoader/Runtime.mount() rejected it: ${mounted.error.message}`, mounted.error);
+      record(
+        'package_install_load',
+        'BLOCKED',
+        `Installed successfully, but PackageLoader/Runtime.mount() rejected it: ${mounted.error.message}`,
+        mounted.error,
+      );
       return finish(runTmpRoot);
     }
-    record('package_install_load', 'PASS', `Installed via PackageInstaller (local LocalFsBlobStore) and mounted via Runtime.mount() — both from the local .xo archive, not the registry (see boundary #1).`, {
-      installedAt: installResult.value.installedAt,
-      mountedPackages: mounted.value.registry.all().map((p) => `${p.name}@${p.version}`),
-    });
+    record(
+      'package_install_load',
+      'PASS',
+      `Installed via PackageInstaller (local LocalFsBlobStore) and mounted via Runtime.mount() — both from the local .xo archive, not the registry (see boundary #1).`,
+      {
+        installedAt: installResult.value.installedAt,
+        mountedPackages: mounted.value.registry.all().map((p) => `${p.name}@${p.version}`),
+      },
+    );
   } catch (error) {
     record('package_install_load', 'ERROR', `Install/load stage threw unexpectedly: ${describeError(error)}`);
     hardError = { boundary: 'package_install_load', error };
@@ -616,7 +742,11 @@ async function main(): Promise<void> {
   // whichever future document actually produces a discoverable capability.)
   const chosen = discoveredCapabilities[0];
   if (chosen === undefined) {
-    record('runtime_execution', 'ERROR', 'discoveredCapabilities.length > 0 but index [0] was undefined — unreachable under normal operation.');
+    record(
+      'runtime_execution',
+      'ERROR',
+      'discoveredCapabilities.length > 0 but index [0] was undefined — unreachable under normal operation.',
+    );
     record('persistence', 'NOT_APPLICABLE', 'No execution occurred.');
     record('memory', 'NOT_APPLICABLE', 'No execution occurred.');
     return finish(runTmpRoot);
@@ -624,7 +754,10 @@ async function main(): Promise<void> {
   const provider = new ScriptableTestProvider('e2e-harness-scripted-provider', [
     { kind: 'success', response: jsonResponse({ summary: 'Scripted deterministic test response — no live model call.' }) },
   ]);
-  const engine = new ExecutionEngine(() => runtime.context(), installer, provider);
+  const engine = new ExecutionEngine(() => runtime.context(), installer, provider, {
+    permissionGate:
+      allowAllPermissionGate /* explicit opt-out: scripted-provider harness, no real authority at stake (P1.0 M2 default is deny) */,
+  });
   const request: ExecutionRequest = {
     requestId: RequestId('req_e2e_pdf_1'),
     capabilityId: chosen.declaration.id,
@@ -642,12 +775,19 @@ async function main(): Promise<void> {
   await writeOutput('execution-result.json', executionResult);
 
   if (executionResult.session.status !== 'completed') {
-    record('runtime_execution', 'BLOCKED', `ExecutionEngine.execute() did not complete: status="${executionResult.session.status}", error="${executionResult.error?.message}"`, executionResult);
+    record(
+      'runtime_execution',
+      'BLOCKED',
+      `ExecutionEngine.execute() did not complete: status="${executionResult.session.status}", error="${executionResult.error?.message}"`,
+      executionResult,
+    );
     record('persistence', 'NOT_APPLICABLE', 'Execution did not complete — nothing durable to persist.');
     record('memory', 'NOT_APPLICABLE', 'Execution did not complete — no memory was read or written.');
     return finish(runTmpRoot);
   }
-  record('runtime_execution', 'PASS', `ExecutionEngine.execute() completed against capability "${chosen.declaration.id}".`, { receipt: executionResult.receipt });
+  record('runtime_execution', 'PASS', `ExecutionEngine.execute() completed against capability "${chosen.declaration.id}".`, {
+    receipt: executionResult.receipt,
+  });
 
   // ---------------------------------------------------------------
   // 15/16. Persistence + memory — only because execution actually
@@ -660,12 +800,18 @@ async function main(): Promise<void> {
   if (!savedSession.ok || (savedReceipt && !savedReceipt.ok)) {
     record('persistence', 'ERROR', `FileRuntimeStore failed to persist a real completed session/receipt.`);
   } else {
-    record('persistence', 'PASS', `Persisted the real ExecutionSession and ExecutionReceipt via FileRuntimeStore.`, { sessionId: executionResult.session.sessionId });
+    record('persistence', 'PASS', `Persisted the real ExecutionSession and ExecutionReceipt via FileRuntimeStore.`, {
+      sessionId: executionResult.session.sessionId,
+    });
     await writeOutput('receipt.json', executionResult.receipt ?? null);
   }
 
   section('16. Memory');
-  record('memory', 'NOT_APPLICABLE', 'This execution path (single-capability, no workflowGraph) never touches RuntimeMemory — memory is only exercised by a workflow or a capability that explicitly reads/writes it, neither of which applies here. Not fabricating a memory entry just to mark this PASS.');
+  record(
+    'memory',
+    'NOT_APPLICABLE',
+    'This execution path (single-capability, no workflowGraph) never touches RuntimeMemory — memory is only exercised by a workflow or a capability that explicitly reads/writes it, neither of which applies here. Not fabricating a memory entry just to mark this PASS.',
+  );
 
   return finish(runTmpRoot);
 }
@@ -693,11 +839,7 @@ function countBlocks(section: BlockCountable): number {
 }
 
 async function finish(runTmpRoot: string): Promise<void> {
-  const overall: 'PASS' | 'BLOCKED' | 'ERROR' = hardError
-    ? 'ERROR'
-    : firstBlocker
-      ? 'BLOCKED'
-      : 'PASS';
+  const overall: 'PASS' | 'BLOCKED' | 'ERROR' = hardError ? 'ERROR' : firstBlocker ? 'BLOCKED' : 'PASS';
 
   const report = {
     harness: 'examples/e2e-pdf',
@@ -706,11 +848,19 @@ async function finish(runTmpRoot: string): Promise<void> {
     overallResult: overall,
     firstBlockingBoundary: firstBlocker ?? null,
     firstHardError: hardError ? { boundary: hardError.boundary, message: describeError(hardError.error) } : null,
-    boundaries: Object.fromEntries(BOUNDARY_KEYS.map((k) => [k, results.get(k) ?? { status: 'NOT_APPLICABLE', reason: 'Not reached — an earlier boundary stopped the run.' }])),
+    boundaries: Object.fromEntries(
+      BOUNDARY_KEYS.map((k) => [
+        k,
+        results.get(k) ?? { status: 'NOT_APPLICABLE', reason: 'Not reached — an earlier boundary stopped the run.' },
+      ]),
+    ),
     knownArchitecturalBoundaries: {
-      registry_artifact_storage: 'RegistryClient/FsPackageRepository store and return only { id, manifest, publishedAt } (a PackageRecord). No component-byte storage/retrieval API exists in packages/registry or packages/registry-core, so a package cannot be reconstituted from the registry alone; the local .xo archive remains the real install/load source.',
-      compiler_capability_vs_runtime_capability_declaration: "packages/compiler's Capability (capabilities/types.ts) and @xo/types' manifest CapabilityDeclaration (xo-capability.ts) are structurally unrelated types. No converter between them exists anywhere in this repo. This harness never fabricates one; a package's manifest.capabilities only ever reflects capabilities this harness can honestly attribute to real extraction output.",
-      xoir_has_no_manifest_component_kind: "@xo/types' ComponentKind union has no \"xoir\" entry. This harness embeds the compiled XOIR's canonical JSON (@xo/xoir#toJson) inside the existing knowledge_graph component slot as the closest legitimate fit, and separately preserves it unmodified as output/compiled-xoir.json.",
+      registry_artifact_storage:
+        'RegistryClient/FsPackageRepository store and return only { id, manifest, publishedAt } (a PackageRecord). No component-byte storage/retrieval API exists in packages/registry or packages/registry-core, so a package cannot be reconstituted from the registry alone; the local .xo archive remains the real install/load source.',
+      compiler_capability_vs_runtime_capability_declaration:
+        "packages/compiler's Capability (capabilities/types.ts) and @xo/types' manifest CapabilityDeclaration (xo-capability.ts) are structurally unrelated types. No converter between them exists anywhere in this repo. This harness never fabricates one; a package's manifest.capabilities only ever reflects capabilities this harness can honestly attribute to real extraction output.",
+      xoir_has_no_manifest_component_kind:
+        '@xo/types\' ComponentKind union has no "xoir" entry. This harness embeds the compiled XOIR\'s canonical JSON (@xo/xoir#toJson) inside the existing knowledge_graph component slot as the closest legitimate fit, and separately preserves it unmodified as output/compiled-xoir.json.',
     },
     isolatedRunDirectory: runTmpRoot,
     note: 'Temporary package/registry/install/runtime-store state lived under isolatedRunDirectory for this run only and is not committed to the repository.',

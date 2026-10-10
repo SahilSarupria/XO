@@ -25,6 +25,15 @@ export interface PolicyRuleMatch {
   readonly capabilityId?: string;
   /** Matched against `request.context?.environment`. */
   readonly environment?: string;
+  /**
+   * P1.0 M2 — matches only a request whose authenticated initiating
+   * principal has exactly this id. A request with no principal never
+   * matches a rule that sets this. A rule that omits it applies to any
+   * (authenticated) initiator — it is the policy author's explicit choice.
+   */
+  readonly principalId?: string;
+  /** P1.0 M2 — as `principalId`, for the principal's kind (`human` / `service`). */
+  readonly principalKind?: 'human' | 'service';
 }
 
 export interface PolicyRule {
@@ -43,7 +52,11 @@ export interface PolicyRule {
  * construction, not by convention.
  */
 export interface PermissionPolicy {
-  evaluate(request: PermissionRequest): { readonly effect: PolicyRuleEffect | 'NO_MATCH'; readonly reason: string; readonly ruleId?: string };
+  evaluate(request: PermissionRequest): {
+    readonly effect: PolicyRuleEffect | 'NO_MATCH';
+    readonly reason: string;
+    readonly ruleId?: string;
+  };
 }
 
 function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
@@ -53,6 +66,8 @@ function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
   if (m.packageId !== undefined && m.packageId !== request.requester.packageId) return false;
   if (m.capabilityId !== undefined && m.capabilityId !== request.requester.capabilityId) return false;
   if (m.environment !== undefined && m.environment !== request.context?.environment) return false;
+  if (m.principalId !== undefined && m.principalId !== request.principal?.id) return false;
+  if (m.principalKind !== undefined && m.principalKind !== request.principal?.kind) return false;
   if (m.scope !== undefined && !scopeContains(m.scope, request.scope)) return false;
   return true;
 }
@@ -61,11 +76,14 @@ function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
 function ruleSpecificity(rule: PolicyRule): number {
   const m = rule.match;
   let score = 0;
-  if (m.permission !== undefined) score += 20; // exact permission beats domain-only
+  if (m.permission !== undefined)
+    score += 20; // exact permission beats domain-only
   else if (m.domain !== undefined) score += 10;
   if (m.packageId !== undefined) score += 8;
   if (m.capabilityId !== undefined) score += 8;
   if (m.environment !== undefined) score += 4;
+  if (m.principalId !== undefined) score += 8;
+  else if (m.principalKind !== undefined) score += 4;
   if (m.scope !== undefined) score += scopeSpecificity(m.scope);
   return score;
 }
@@ -127,7 +145,11 @@ export class RuleBasedPolicy implements PermissionPolicy {
     return new RuleBasedPolicy([...this.rules, ...rules], this.defaultEffect);
   }
 
-  evaluate(request: PermissionRequest): { readonly effect: PolicyRuleEffect | 'NO_MATCH'; readonly reason: string; readonly ruleId?: string } {
+  evaluate(request: PermissionRequest): {
+    readonly effect: PolicyRuleEffect | 'NO_MATCH';
+    readonly reason: string;
+    readonly ruleId?: string;
+  } {
     const matching = this.rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => ruleMatches(rule, request));
 
     if (matching.length === 0) {
@@ -179,7 +201,8 @@ export function decisionFromPolicyVerdict(
 ): PermissionDecision {
   const decidedAt = now().toISOString();
   const effect = verdict.effect === 'NO_MATCH' ? defaultEffect : verdict.effect;
-  const reason = verdict.effect === 'NO_MATCH' ? `No policy rule matched; falling back to default effect (${defaultEffect})` : verdict.reason;
+  const reason =
+    verdict.effect === 'NO_MATCH' ? `No policy rule matched; falling back to default effect (${defaultEffect})` : verdict.reason;
   const policyId = verdict.ruleId ?? (verdict.effect === 'NO_MATCH' ? 'system.default-policy' : undefined);
 
   if (effect === 'ALLOW') {
