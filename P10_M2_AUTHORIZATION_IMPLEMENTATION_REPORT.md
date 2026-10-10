@@ -1,6 +1,6 @@
 # P1.0 Enterprise Trust — M2: Authorization — Implementation Report
 
-**Status: AWAITING REVIEW. Not complete, not merged.** Branch `feat/p10-m2-authorization`, based on merged `main` @ `81f2bce`. M4 and later milestones have not been started.
+**Status: AWAITING OWNER REVIEW. Not complete, not merged, not accepted.** Branch `feat/p10-m2-authorization`, based on merged `main` @ `81f2bce`. A post-review security remediation (§8) is on branch `fix/p10-m2-authorization-boundaries`. M3 and later milestones have not been started.
 
 ## 1. Pre-change call graph and gap inventory (inspected on merged main)
 
@@ -90,7 +90,7 @@ Workspace `npm run build`: exit 0 (before and after).
 3. Stored `PermissionGrant`s remain package-scoped (not principal-scoped); not used by any API/CLI path today.
 4. `TrustedExecutionContext`/`AuthenticatedPrincipal` unforgeability is in-process (same documented limit as M1); trust boundary = reviewable mint call sites (CLI `run.ts`, `workflow-pipeline.ts`, benchmark `observe.ts`, examples).
 5. `allowAllPermissionGate` remains exported as an explicit opt-out; nothing in `apps/*` uses it. `allowAllMemoryPermissionGate` (memory access default) is still allow-all — memory is not a capability-execution path; deferred.
-6. A denied API execution still persists a failed execution record (existing behavior; denial occurs after record creation, before the handler). Durable audit semantics belong to M4.
+6. ~~A denied API execution still persists a failed execution record.~~ **Resolved in §8 (Finding A).** Denied direct executions now create no record. Durable audit of denied attempts (if the product wants them recorded) is a separate M4 design decision needing owner approval and abuse/storage controls.
 7. No test mutates server policy mid-workflow to prove re-authorization on resume with a _permissioned_ step; per-step authorization is covered structurally (the same `authorizeStep` runs every step) and by the existing approval-revoked test.
 8. Tracked compiled `src/*.js` files exist next to `.ts` throughout the repo (pre-existing, stale); not touched.
 
@@ -104,7 +104,7 @@ Workspace `npm run build`: exit 0 (before and after).
 | Requirements from authoritative, validated declarations                     | Met (node property / registry / manifest-additive)                            |
 | Missing/ambiguous metadata cannot authorize                                 | Met (tested incl. allow-all policy)                                           |
 | Permitted succeed, unauthorized denied                                      | Met                                                                           |
-| Denials before side effects                                                 | Met (handler call counters = 0 in tests)                                      |
+| Denials before side effects                                                 | Met for handler calls; direct API route met only after §8 (Finding A)         |
 | Workflow, resume, HITL, deterministic, API, CLI, direct-engine bypass tests | Met (see §3); item 7 caveat                                                   |
 | M1 attribution/authentication/workspace isolation intact                    | Met (M1 suites green; isolation test added)                                   |
 | AI execution disabled and unreachable                                       | Met                                                                           |
@@ -113,3 +113,88 @@ Workspace `npm run build`: exit 0 (before and after).
 | Docs describe contract, limitations, migration                              | Met (this report)                                                             |
 
 **M2 is awaiting review. It is not complete and not merged. No M3+ work has begun.**
+
+## 8. Security remediation after review (branch `fix/p10-m2-authorization-boundaries`)
+
+Two findings from review of the M2 branch were independently verified against the code **before** any fix, using failing tests on PR head `23b9f0a`.
+
+### Finding A — authorization after an API side effect (CONFIRMED)
+
+**Root cause.** In `apps/api/src/routes/execution-routes.ts` the order was: ownership → compilation/capability → approval → graph load → **`executionStore.create`** → `executeApprovedCapability` (graph rebuild, input validation, authorization, handler). Authorization was decided only after a persistent record existed. **Verified before the fix:** an authenticated but unauthorized `POST /executions` returned **HTTP 200** with a persisted `failed` record; repeating it grew the store (tests A1, A2, A3, A5 failed; A4/A4b, the positive paths, passed).
+
+**Fix.**
+
+- `@xo/runtime` now exports `resolveEffectiveDeclaration` and `authorizeContractExecution`. `executeResolvedContract` uses the same function for its decision, so a preflight and the real execution share one implementation.
+- `apps/api/src/executions/execute-capability.ts` adds `preflightCapabilityAuthorization(graph, capabilityId, authorization)`: loads the persisted graph, builds the contract, derives the declaration from the persisted capability node, and runs the shared decision with no registration, execution or persistence.
+- The route calls it **before** `executionStore.create`; denied or undecidable returns the error (403 `XO_RUNTIME_PERMISSION_DENIED` for authorization) with no record.
+- `executeApprovedCapability` still fully re-authorizes at the execution boundary (defense in depth). A preflight "authorized" grants nothing to a later call.
+- **TOCTOU.** The route passes one in-memory graph to both steps. The boundary re-derives the declaration from the graph it runs. As an extra tie, `preflightGraphHash` makes execution refuse a different graph. **Verified limit:** `fromJson` trusts stored node hashes, so editing node properties without their `hash` does not change `contentHash()`; that case is covered by re-derivation, not by the hash (test A8).
+
+**API contract change (intentional, needs owner awareness).** Unauthorized direct executions now return 403 with no record. Previously 200 with a `failed` record. The authorized path and its record are unchanged.
+
+### Finding B — caller-supplied declaration trusted too much (CONFIRMED)
+
+**Root cause.** `executeResolvedContract` accepted any structurally shaped `PermissionDeclaration`. Its only check was `declarationCoversCopy(supplied, contract.requiredPermissions)`, and `contract-builder` defaults the copy to `[]`. **Verified before the fix:** a hand-written `{kind:'none'}`, a JSON round-trip of it, and the shared `PERMISSION_FREE` constant each **executed** a capability under a deny-all policy with no grant, and the handler ran (B1–B3 failed).
+
+**Fix (smallest design reusing `@xo/permissions`).**
+
+- `resolveAuthoritativeDeclaration(raw, {capabilityId, origin})` and `attestAuthoritativeDeclaration(resolved, …)` mint a **fresh frozen** declaration recorded in a module-private `WeakMap`, bound to one capability id and a trusted origin (`persisted-xoir-node`, `installed-package-manifest`, `trusted-host-registration`). `isAuthoritativeDeclarationFor(x, id)` verifies identity.
+- `executeResolvedContract` accepts only a declaration minted for `contract.id`. Literals, JSON copies, spreads, casts, the shared constant, and declarations minted for another capability are denied before registration. The cover-the-copy check remains (authoritative may be stricter, never weaker).
+- Callers updated: API node-declaration helper, CLI deterministic router, benchmark harness. Test helper `declaredFrom` now mints.
+- `[]` still means permission-free **only** when authoritatively declared; absent/malformed stays `unresolved` (denied).
+
+### Regression tests added
+
+| File                                                                           | Tests       | What it proves                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------ | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/test/execution-preflight.test.ts`                                    | A1–A10 (11) | denied before any record (store read directly), repeated denials don't grow store, invalid-input denial, authorized + permission-free still record, missing/malformed metadata fail closed under allow-all, handler `evaluate` counted 0 when denied / 1 when allowed, lower-level direct call can't bypass, TOCTOU, preflight vs execution agree across 4×4 graph/policy cases, workflow start with missing metadata denied |
+| `packages/runtime/test/capability-authority/authoritative-declaration.test.ts` | B1–B13 (13) | forged / JSON / replayed / cross-capability declarations denied, missing/malformed denied, explicit permission-free executes, still needs verified subject, contract copy can't weaken authoritative, copy demanding more is a conflict, minting not imitable, smuggled executor-request declaration ignored, unknown/unverified/undeclared registrations refused                                                            |
+
+Existing tests changed (transparently, narrowly): `contract-execution.test.ts` (5 tests now use a **minted** declaration so they still test what their names say instead of passing for the new provenance reason); `authz-helpers.ts#declaredFrom` mints; `workflow-fixtures.ts#storeFixtureCompilation` gained an optional graph override. No grants were added to fixtures.
+
+### Validation actually run (sandbox limits noted)
+
+The sandbox cannot reach the npm registry (`npm ci` fails: ENOTFOUND), so the repo's own toolchain could not be installed. Tests were run with a global `tsx` plus a scratch resolver (outside the repo) mapping `@xo/*` to `src/index.ts` and preferring `.ts` over the stale tracked `.js`, running each package's `test/**/*.test.ts` under `node --test`.
+
+| Suite                                                                                            | PR head (before)               | Remediation branch                                                                                                                  |
+| ------------------------------------------------------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| permissions                                                                                      | 140/140                        | 140/140                                                                                                                             |
+| runtime                                                                                          | 449/449                        | 462/462 (+13)                                                                                                                       |
+| api                                                                                              | 216/216                        | 227/227 (+11)                                                                                                                       |
+| benchmark                                                                                        | not run before                 | 228/228                                                                                                                             |
+| capability-contract                                                                              | not run before                 | 187/187                                                                                                                             |
+| cli                                                                                              | 258 pass / 11 fail / 3 skipped | 258 / 11 / 3 — **identical 11 failures, also on base `81f2bce`** (9 zip tests need uninstalled `adm-zip`; 2 vertical-test fixtures) |
+| compiler                                                                                         | not run before                 | 892 pass / 2 fail — **identical 2 failures on base `81f2bce`**                                                                      |
+| all other packages (ai-core, graph-ui, package-sdk, registry, workflow-composer, xoir, types, …) | —                              | all pass                                                                                                                            |
+
+- **Finding tests before the fix:** A: 4 of 6 initial tests failed (denial returned 200); B: 3/3 repro tests failed.
+- **Format:** `prettier --check` (3.8.1, repo config) clean on every changed file except `packages/benchmark/src/observe.ts`, whose 68 lines of formatting debt are identical at PR head (left untouched to avoid unrelated churn). `packages/permissions/src/authorization.ts` had 7 lines of pre-existing debt at PR head; the whole file was formatted.
+- **Typecheck (approximation):** global `tsc` 6.0.3 (repo pins 5.x) over changed files with strict repo options: no errors in changed source files; 3 errors remain in `contract-execution.test.ts` (lines 25, 212, 231) and are **present at PR head too** (pre-existing).
+- **No frozen P0.9C artifact changed** (no baseline/golden/fingerprint files touched; only `observe.ts` source minting, benchmark suite 228/228).
+
+### NOT verified (stated, not assumed)
+
+- **ESLint was not run** (not installed, registry unreachable). The CI "Lint" failure on PR #2 is therefore **not** attributed to either baseline or M2 here. A `tsc --noUnusedLocals` approximation found no unused symbols in changed files.
+- **Repo-pinned `tsc -b` typecheck, `npm run build`, and the GitHub Actions run** were not run/observed.
+- GitHub PR #2 live state (head SHA, new commits/comments, open/merged) could **not** be read: the session's GitHub access was not enabled. Only local git data was used (PR head `23b9f0a`, one commit over `81f2bce`).
+
+### Residual risks / limitations
+
+1. **Minting is an in-process guarantee**, same documented limit as M1 principals: any code that can call `resolveAuthoritativeDeclaration` can mint. It stops structural forgery, JSON, casts, replay across capabilities and omitted metadata, not a malicious in-process caller. Trust = the reviewable call sites (API node helper, CLI router, benchmark harness, test helper).
+2. **Benchmark harness self-attests** its declaration from the contract it evaluates (origin `trusted-host-registration`); this is the evaluation host acting as the host, deny-all policy, and is labeled in code.
+3. **Direct registry registration remains host-trusted.** `registerResolvedCapabilityBinding`/`RuntimeCapabilityRegistry.register` take requirements from the registrar (e.g. the workflow bridge derives them from the contract copy). The API workflow runner cross-checks the persisted node against the registry before every step, but the engine-level check inside the workflow bridge uses the registry copy. Not changed here (out of scope; no bypass demonstrated by an exported-API caller that does not already control registration).
+4. The preflight hash tie cannot detect property edits that leave node `hash` untouched (see Finding A TOCTOU).
+5. Invalid-input and unresolved-binding failures of an **authorized** caller still create a `failed` record (unchanged; not an authorization bypass).
+6. Denied attempts are not recorded. If the product requires that, it is a separate M4 decision with abuse/storage controls and owner approval.
+7. Tracked compiled `src/*.js` / `.d.ts` files beside `.ts` (pre-existing, stale) were not touched.
+
+### Checklist (awaiting owner review)
+
+| Item                                         | Status                                           |
+| -------------------------------------------- | ------------------------------------------------ |
+| Finding A verified, fixed, regression-tested | Complete (tests run)                             |
+| Finding B verified, fixed, regression-tested | Complete (tests run)                             |
+| Report updated with actual results           | Complete                                         |
+| ESLint / repo `tsc -b` / build / CI green    | **NOT VERIFIED** (environment)                   |
+| GitHub PR #2 state checked; branch pushed    | **See hand-off** (GitHub access)                 |
+| Owner review and acceptance of M2            | **PENDING** — M2 is not accepted; M3 not started |

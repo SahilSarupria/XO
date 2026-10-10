@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import { testSubject, declaredFrom } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ContentHash } from '@xo/types';
-import { PermissionManager, RuleBasedPolicy, Permissions, type PolicyRule } from '@xo/permissions';
+import { PermissionManager, RuleBasedPolicy, Permissions, resolveAuthoritativeDeclaration, type PolicyRule } from '@xo/permissions';
 import {
   StructuredComparisonBindingResolver,
   ActionEscalationBindingResolver,
@@ -235,7 +235,7 @@ test('Step 6 e2e (installed-package path): contract/binding agree; graphHash is 
 });
 
 // ── P1.0 M2: authorization denials happen before any registration/handler side effect ──
-import { establishAuthenticatedPrincipal, PERMISSION_FREE, resolveDeclaredPermissionIds } from '@xo/permissions';
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
 
 function countingBinding(c: ReturnType<typeof contract>) {
   const b = bound(c);
@@ -263,7 +263,12 @@ test('M2: unresolved (missing) permission declaration is denied and the handler 
   const cb = countingBinding(c);
   const outcome = await executeResolvedContract(c, cb.binding, {
     subject: alice(),
-    permissionDeclaration: resolveDeclaredPermissionIds(undefined, 'node'),
+    // authoritatively MISSING (minted unresolved for this contract): denied for the right reason, not for lack of provenance
+    permissionDeclaration: resolveAuthoritativeDeclaration(undefined, {
+      capabilityId: c.id,
+      origin: 'persisted-xoir-node',
+      source: 'node',
+    }),
     permissionManager: manager([]),
     input: { claimed_loss_amount: 15000 },
   });
@@ -278,7 +283,8 @@ test('M2: declaration that conflicts with the contract copy is denied (never the
   const cb = countingBinding(c);
   const outcome = await executeResolvedContract(c, cb.binding, {
     subject: alice(),
-    permissionDeclaration: PERMISSION_FREE,
+    // authoritatively permission-free (minted for THIS contract) but the contract copy demands runtime.execute
+    permissionDeclaration: resolveAuthoritativeDeclaration([], { capabilityId: c.id, origin: 'trusted-host-registration' }),
     permissionManager: manager([{ id: 'a', effect: 'ALLOW', match: {} }]),
     input: { claimed_loss_amount: 15000 },
   });
@@ -295,7 +301,7 @@ test('M2: missing / fabricated subject is denied before the handler runs', async
     const cb = countingBinding(c);
     const outcome = await executeResolvedContract(c, cb.binding, {
       subject: subject as never,
-      permissionDeclaration: PERMISSION_FREE,
+      permissionDeclaration: declaredFrom(c),
       permissionManager: manager([{ id: 'a', effect: 'ALLOW', match: {} }]),
       input: { claimed_loss_amount: 15000 },
     });
@@ -311,7 +317,7 @@ test('M2: missing permission manager is denied (no gate configured), handler nev
   const cb = countingBinding(c);
   const outcome = await executeResolvedContract(c, cb.binding, {
     subject: alice(),
-    permissionDeclaration: PERMISSION_FREE,
+    permissionDeclaration: declaredFrom(c),
     permissionManager: undefined as never,
     input: { claimed_loss_amount: 15000 },
   });
@@ -327,7 +333,7 @@ test('M2: authenticated principal + explicit permission-free declaration execute
     (
       await executeResolvedContract(free, bound(free), {
         subject: alice(),
-        permissionDeclaration: PERMISSION_FREE,
+        permissionDeclaration: declaredFrom(free),
         permissionManager: manager([]),
         input: { claimed_loss_amount: 15000 },
       })

@@ -8,16 +8,25 @@ import {
 } from '@xo/capability-contract';
 import type { ContentHash } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
+import { PackageId } from '@xo/types';
 import {
+  authorizeCapabilityExecution,
   declarationCoversCopy,
+  isAuthoritativeDeclarationFor,
   resolveDeclaredPermissionIds,
+  unresolvedDeclaration,
+  type AuthorizationOutcome,
   type AuthorizationSubject,
   type PermissionContext,
   type PermissionDeclaration,
   type PermissionManager,
 } from '@xo/permissions';
 import { RuntimeCapabilityRegistry } from './runtime-capability-registry.js';
-import { RuntimeCapabilityExecutor, type RuntimeCapabilityExecutionResult } from './runtime-capability-executor.js';
+import {
+  NATIVE_CAPABILITY_REQUESTER,
+  RuntimeCapabilityExecutor,
+  type RuntimeCapabilityExecutionResult,
+} from './runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from './capability-binding-registration.js';
 
 /**
@@ -86,13 +95,18 @@ export interface ExecuteResolvedContractRequest {
    */
   readonly subject: AuthorizationSubject;
   /**
-   * P1.0 M2 — REQUIRED. The capability's authoritative permission
-   * declaration, resolved by the host from the capability node's own
-   * `requiredPermissions` property (`resolveDeclaredPermissionIds`). It is
-   * cross-checked against `contract.requiredPermissions`; a disagreement or
-   * an `unresolved` declaration denies execution before anything is
-   * registered or run. Not a caller-supplied list: hosts read it from the
-   * persisted graph / installed package, never from a request.
+   * P1.0 M2 — REQUIRED. The capability's AUTHORITATIVE permission declaration.
+   * Must have been minted by `resolveAuthoritativeDeclaration` (`@xo/permissions`)
+   * for exactly `contract.id`, from the capability node's persisted
+   * `requiredPermissions`, the installed package manifest, or the host's own
+   * registration. The boundary VERIFIES that provenance at runtime: a
+   * structurally identical object literal, a JSON copy, a cast, the shared
+   * `PERMISSION_FREE` constant, or a declaration minted for another capability
+   * is denied before anything is registered or run. It is also cross-checked
+   * against `contract.requiredPermissions` (a copy it may be stricter than but
+   * never weaker than); a disagreement or an `unresolved` declaration denies.
+   * `[]` means permission-free only when authoritatively declared — never
+   * because a caller (or the contract copy) said so.
    */
   readonly permissionDeclaration: PermissionDeclaration;
   readonly input: unknown;
@@ -113,6 +127,55 @@ export type ExecuteResolvedContractOutcome =
   | { readonly ok: false; readonly stage: 'registration' | 'authorization' | 'execution'; readonly error: RuntimeError };
 
 /**
+ * The ONE place the effective permission declaration for a contract is decided
+ * — used by `executeResolvedContract` and by any host preflight
+ * (`authorizeContractExecution`), so a preflight and the real execution cannot
+ * drift into two different authorization implementations.
+ *
+ * Provenance first: a caller-supplied declaration that was not minted by the
+ * authoritative resolver FOR THIS capability is never trusted (it cannot lower
+ * or replace the authoritative requirement), whatever it says. Then the
+ * authoritative declaration must COVER the contract's copied requirements (it
+ * may be stricter, never weaker). `unresolved` is the denial value.
+ */
+export function resolveEffectiveDeclaration(contract: SemanticCapabilityContract, supplied: unknown): PermissionDeclaration {
+  if (!isAuthoritativeDeclarationFor(supplied, contract.id)) {
+    return unresolvedDeclaration(
+      `capability "${contract.id}": the permission declaration was not resolved from an authoritative source for this capability (untrusted, forged or mismatched declarations are never accepted)`,
+    );
+  }
+  return declarationCoversCopy(
+    supplied,
+    resolveDeclaredPermissionIds(contract.requiredPermissions, `contract "${contract.id}" requiredPermissions`),
+    `capability "${contract.id}"`,
+  );
+}
+
+/**
+ * Host PREFLIGHT: the same authorization decision `executeResolvedContract`
+ * makes (same effective declaration, same `authorizeCapabilityExecution`, same
+ * requester attribution), evaluated WITHOUT registering, executing or
+ * persisting anything — so a host can refuse before it creates any record.
+ * It is not a substitute for the execution boundary, which always re-decides
+ * (defense in depth): an allow here grants nothing to a later call.
+ */
+export async function authorizeContractExecution(
+  contract: SemanticCapabilityContract,
+  request: Pick<
+    ExecuteResolvedContractRequest,
+    'permissionManager' | 'subject' | 'permissionDeclaration' | 'requesterPackageId' | 'context'
+  >,
+): Promise<AuthorizationOutcome> {
+  return authorizeCapabilityExecution({
+    manager: request.permissionManager,
+    subject: request.subject,
+    requester: { packageId: PackageId(request.requesterPackageId ?? NATIVE_CAPABILITY_REQUESTER), capabilityId: contract.id },
+    declaration: resolveEffectiveDeclaration(contract, request.permissionDeclaration),
+    ...(request.context !== undefined ? { context: request.context } : {}),
+  });
+}
+
+/**
  * Registers `binding` for `contract` in a fresh `RuntimeCapabilityRegistry`
  * (via `registerResolvedCapabilityBinding` — the registry primitive itself
  * is untouched), builds a `RuntimeCapabilityExecutor` over it with the
@@ -126,12 +189,8 @@ export async function executeResolvedContract(
   request: ExecuteResolvedContractRequest,
 ): Promise<ExecuteResolvedContractOutcome> {
   // P1.0 M2 — resolve the permission declaration BEFORE registering anything
-  // or building an executor. Unresolved/conflicting ⇒ denied, no side effect.
-  const declaration = declarationCoversCopy(
-    request.permissionDeclaration ?? resolveDeclaredPermissionIds(undefined, `capability "${contract.id}"`),
-    resolveDeclaredPermissionIds(contract.requiredPermissions, `contract "${contract.id}" requiredPermissions`),
-    `capability "${contract.id}"`,
-  );
+  // or building an executor. Unresolved/conflicting/unverifiable ⇒ denied, no side effect.
+  const declaration = resolveEffectiveDeclaration(contract, request.permissionDeclaration);
   if (declaration.kind === 'unresolved') {
     return {
       ok: false,

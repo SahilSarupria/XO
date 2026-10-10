@@ -1,5 +1,5 @@
 import {
-  resolveDeclaredPermissionIds,
+  resolveAuthoritativeDeclaration,
   type AuthenticatedPrincipal,
   type PermissionDeclaration,
   type PermissionManager,
@@ -31,7 +31,17 @@ export interface ExecutionAuthorization {
  */
 export function declaredPermissionsForNode(graph: XoirGraph, capabilityId: string): PermissionDeclaration {
   const node = graph.getNode(XoirNodeId(capabilityId));
-  if (!node.ok) return resolveDeclaredPermissionIds(undefined, `capability node "${capabilityId}" (${node.error.message})`);
+  // Minted for exactly this capability from the persisted node (`@xo/permissions`): the shared execution boundary
+  // verifies this provenance, so a hand-built or replayed declaration can never stand in for it.
+  const provenance = { capabilityId, origin: 'persisted-xoir-node' } as const;
+  if (!node.ok)
+    return resolveAuthoritativeDeclaration(undefined, {
+      ...provenance,
+      source: `capability node "${capabilityId}" (${node.error.message})`,
+    });
   const properties = node.value.properties as Readonly<Record<string, unknown>> | undefined;
-  return resolveDeclaredPermissionIds(properties?.['requiredPermissions'], `capability node "${capabilityId}" requiredPermissions`);
+  return resolveAuthoritativeDeclaration(properties?.['requiredPermissions'], {
+    ...provenance,
+    source: `capability node "${capabilityId}" requiredPermissions`,
+  });
 }

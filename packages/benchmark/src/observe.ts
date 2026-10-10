@@ -31,7 +31,7 @@ import {
   type PrepareCandidateWorkflowResult,
   type RuntimeCapabilityExecutionRequest,
 } from '@xo/runtime';
-import { establishTrustedExecutionContext, PermissionManager, resolveDeclaredPermissionIds, RuleBasedPolicy } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, resolveAuthoritativeDeclaration, RuleBasedPolicy } from '@xo/permissions';
 
 /** Offline evaluation harness subject (P1.0 M2). Not an identity; matches no principal-scoped rule; the policy remains deny-by-default. */
 const HARNESS_SUBJECT = establishTrustedExecutionContext('evaluation-harness');
@@ -365,7 +365,11 @@ async function observePaths(
           const result = await executeResolvedContract(contract, outcome.binding, {
             permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
             subject: HARNESS_SUBJECT,
-            permissionDeclaration: resolveDeclaredPermissionIds(contract.requiredPermissions, `contract ${contract.id}`),
+            permissionDeclaration: resolveAuthoritativeDeclaration(contract.requiredPermissions, {
+              capabilityId: contract.id,
+              origin: 'trusted-host-registration', // evaluation harness acting as the host; self-attested from the contract it evaluates
+              source: `contract ${contract.id}`,
+            }),
             input,
           }); // no graphHash: there is no live graph on this path
           if (!result.ok) {
@@ -771,7 +775,11 @@ async function runCapabilityRequest(
   const result = await executeResolvedContract(contract.value, bindingOutcome.binding, {
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
     subject: HARNESS_SUBJECT,
-    permissionDeclaration: resolveDeclaredPermissionIds(contract.value.requiredPermissions, `contract ${contract.value.id}`),
+    permissionDeclaration: resolveAuthoritativeDeclaration(contract.value.requiredPermissions, {
+      capabilityId: contract.value.id,
+      origin: 'trusted-host-registration', // evaluation harness acting as the host; self-attested from the contract it evaluates
+      source: `contract ${contract.value.id}`,
+    }),
     input,
     graphHash: ContentHash(graph.contentHash()),
   });

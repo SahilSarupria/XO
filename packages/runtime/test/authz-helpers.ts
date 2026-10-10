@@ -11,10 +11,18 @@ export function testSubject(): TrustedExecutionContext {
   return establishTrustedExecutionContext('local-operator');
 }
 
-import { resolveDeclaredPermissionIds, type PermissionDeclaration } from '@xo/permissions';
-/** Test-only: the authoritative declaration for a contract-backed capability, taken from its own `requiredPermissions` array (what a host resolves from the node property). */
+import { resolveAuthoritativeDeclaration, type PermissionDeclaration } from '@xo/permissions';
+/**
+ * Test-only: the authoritative declaration for a contract-backed capability, minted for THAT contract id as the
+ * trusted host would from the node property (modelled here by the contract's own `requiredPermissions` array).
+ * Tests of the provenance check itself build forged/mismatched declarations explicitly.
+ */
 export function declaredFrom(contract: { readonly id: string; readonly requiredPermissions: readonly string[] }): PermissionDeclaration {
-  return resolveDeclaredPermissionIds(contract.requiredPermissions, `contract ${contract.id}`);
+  return resolveAuthoritativeDeclaration(contract.requiredPermissions, {
+    capabilityId: contract.id,
+    origin: 'trusted-host-registration',
+    source: `contract ${contract.id}`,
+  });
 }
 
 import { CapabilityPermissionRegistry } from '@xo/permissions';

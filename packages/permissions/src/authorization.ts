@@ -75,6 +75,108 @@ export function resolveDeclaredPermissionIds(raw: unknown, source: string): Perm
   return Object.freeze({ kind: 'required', requirements: Object.freeze(requirements) });
 }
 
+// ── Authoritative provenance ────────────────────────────────────────────
+
+/**
+ * Where an authoritative declaration was read from. Each is a TRUSTED, host-side
+ * source — never a request body, header, CLI flag or deserialized JSON:
+ *
+ *  - `persisted-xoir-node`          the `requiredPermissions` property of a capability
+ *                                   node in the PERSISTED compiled graph.
+ *  - `installed-package-manifest`   the installed `.xo` package's own manifest declaration.
+ *  - `trusted-host-registration`    a host that registers its own native capability (and
+ *                                   trusted test/evaluation harnesses acting as that host).
+ */
+export type AuthoritativeDeclarationOrigin = 'persisted-xoir-node' | 'installed-package-manifest' | 'trusted-host-registration';
+
+const AUTHORITATIVE_ORIGINS: ReadonlySet<string> = new Set<AuthoritativeDeclarationOrigin>([
+  'persisted-xoir-node',
+  'installed-package-manifest',
+  'trusted-host-registration',
+]);
+
+interface DeclarationProvenance {
+  readonly capabilityId: string;
+  readonly origin: AuthoritativeDeclarationOrigin;
+}
+
+/**
+ * Module-private mint registry. A declaration is "authoritative" iff THIS
+ * object identity was returned by {@link resolveAuthoritativeDeclaration}.
+ * A structurally identical object literal, a `JSON.parse` copy, a spread, a
+ * cast (`as PermissionDeclaration`) or the shared {@link PERMISSION_FREE}
+ * constant is NOT in the map and does not verify — TypeScript types alone
+ * never establish this. Same in-process guarantee (and same documented limit)
+ * as `establishAuthenticatedPrincipal`: the trust boundary is which code calls
+ * the factory, and each host has one reviewable call site.
+ */
+const authoritativeDeclarations = new WeakMap<object, DeclarationProvenance>();
+
+/**
+ * Resolves a capability's permission declaration FROM AN AUTHORITATIVE SOURCE
+ * and mints it for exactly that capability. The result is a normal
+ * {@link PermissionDeclaration} (`required` / `none` / `unresolved`), additionally
+ * recorded as authoritative-for-`capabilityId` so an execution boundary can
+ * verify provenance with {@link isAuthoritativeDeclarationFor}.
+ *
+ * `raw` follows {@link resolveDeclaredPermissionIds}: absent/malformed is
+ * `unresolved` (still minted — it is authoritatively unresolved — and denied
+ * downstream); only an explicit `[]` is permission-free. A fresh object is
+ * minted per call so one capability's permission-free declaration can never be
+ * replayed for another.
+ */
+export function resolveAuthoritativeDeclaration(
+  raw: unknown,
+  provenance: { readonly capabilityId: string; readonly origin: AuthoritativeDeclarationOrigin; readonly source?: string },
+): PermissionDeclaration {
+  const source = provenance.source ?? `capability "${String(provenance.capabilityId)}" requiredPermissions`;
+  return attestAuthoritativeDeclaration(resolveDeclaredPermissionIds(raw, source), provenance);
+}
+
+/**
+ * Mints an already-resolved declaration as authoritative for `capabilityId`.
+ * For a trusted host that COMPOSES one declaration from several of its own
+ * authoritative sources (the CLI: package property bag + manifest + execution
+ * block, including scoped requirements) and so cannot hand
+ * {@link resolveAuthoritativeDeclaration} a single raw id list. The input must
+ * already have been derived from those sources by the host — never from a
+ * request or a caller-supplied value. Always returns a FRESH frozen object
+ * (the input, including the shared {@link PERMISSION_FREE}, is never minted
+ * itself), so a minted declaration cannot be replayed for another capability.
+ */
+export function attestAuthoritativeDeclaration(
+  resolved: PermissionDeclaration,
+  provenance: { readonly capabilityId: string; readonly origin: AuthoritativeDeclarationOrigin; readonly source?: string },
+): PermissionDeclaration {
+  if (
+    typeof provenance.capabilityId !== 'string' ||
+    provenance.capabilityId.length === 0 ||
+    !AUTHORITATIVE_ORIGINS.has(provenance.origin)
+  ) {
+    // Not mintable: returned un-minted, so it can never verify as authoritative.
+    return unresolvedDeclaration('an authoritative declaration needs a capability id and a trusted origin');
+  }
+  const minted: PermissionDeclaration =
+    resolved !== null && typeof resolved === 'object' && resolved.kind === 'required' && Array.isArray(resolved.requirements)
+      ? Object.freeze({ kind: 'required', requirements: Object.freeze([...resolved.requirements]) })
+      : resolved !== null && typeof resolved === 'object' && resolved.kind === 'none'
+        ? Object.freeze({ kind: 'none' })
+        : Object.freeze({
+            kind: 'unresolved',
+            reason:
+              resolved !== null && typeof resolved === 'object' && resolved.kind === 'unresolved' ? resolved.reason : 'invalid declaration',
+          });
+  authoritativeDeclarations.set(minted, { capabilityId: provenance.capabilityId, origin: provenance.origin });
+  return minted;
+}
+
+/** True iff `declaration` was minted by {@link resolveAuthoritativeDeclaration} for exactly `capabilityId`. */
+export function isAuthoritativeDeclarationFor(declaration: unknown, capabilityId: string): declaration is PermissionDeclaration {
+  if (typeof declaration !== 'object' || declaration === null) return false;
+  const provenance = authoritativeDeclarations.get(declaration);
+  return provenance !== undefined && provenance.capabilityId === capabilityId;
+}
+
 function declaredPermissionSet(declaration: PermissionDeclaration): ReadonlySet<string> | undefined {
   if (declaration.kind === 'none') return new Set();
   if (declaration.kind === 'required') return new Set(declaration.requirements.map((r) => r.permission as string));
@@ -183,7 +285,12 @@ export function subjectPrincipal(subject: AuthorizationSubject): Principal | und
 // ── The decision ────────────────────────────────────────────────────────
 
 export type AuthorizationDenialCode =
-  'no-policy' | 'no-subject' | 'no-requester' | 'unresolved-declaration' | 'permission-denied' | 'evaluation-error';
+  | 'no-policy'
+  | 'no-subject'
+  | 'no-requester'
+  | 'unresolved-declaration'
+  | 'permission-denied'
+  | 'evaluation-error';
 
 export type AuthorizationOutcome =
   | { readonly allowed: true; readonly checked: readonly PermissionRequirement[] }

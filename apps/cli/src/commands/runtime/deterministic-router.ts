@@ -19,6 +19,7 @@ import {
   Permissions,
   PERMISSION_FREE,
   PermissionManager,
+  attestAuthoritativeDeclaration,
   resolveDeclaredPermissionIds,
   resolveManifestCapabilityPermissions,
   RuleBasedPolicy,
@@ -429,7 +430,11 @@ export async function tryDeterministicRun(
   if (!managerResult.ok) return { kind: 'error', message: managerResult.error };
   const manager = managerResult.value;
 
-  const declaration = buildPermissionDeclaration(source, capabilityId);
+  // Minted for exactly this contract from the installed package's own metadata (never from --grant/--input/flags).
+  const declaration = attestAuthoritativeDeclaration(buildPermissionDeclaration(source, capabilityId), {
+    capabilityId: source.contract.id,
+    origin: 'installed-package-manifest',
+  });
   const authorization = await authorizeCapabilityExecution({
     manager,
     subject,

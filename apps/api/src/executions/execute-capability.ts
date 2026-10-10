@@ -7,7 +7,7 @@ import {
   type CapabilityBinding,
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
-import { executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
+import { authorizeContractExecution, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
 import { authorizeCapabilityExecution } from '@xo/permissions';
 import type { ExecutionAuthorization } from './authorization.js';
 import { declaredPermissionsForNode } from './authorization.js';
@@ -112,6 +112,88 @@ function findInputSchema(graph: XoirGraph, contractId: string) {
 }
 
 /**
+ * P1.0 M2 remediation — AUTHORIZATION PREFLIGHT for the direct execution route.
+ *
+ * Decides, against the PERSISTED compiled graph's authoritative capability
+ * declaration and the server-side `PermissionManager`, whether this principal may
+ * execute this capability — WITHOUT creating, registering, executing or
+ * persisting anything. The route calls it BEFORE `ExecutionStore.create`, so a
+ * denied attempt leaves no record (the M2 "rejected before side effects"
+ * criterion), and an authenticated-but-unauthorized caller cannot grow storage.
+ *
+ * It uses the SAME decision `executeResolvedContract` makes
+ * (`authorizeContractExecution`: same provenance check, same contract-copy
+ * cross-check, same `authorizeCapabilityExecution`), never a second
+ * implementation. It is NOT the security boundary: `executeApprovedCapability`
+ * always re-authorizes at the execution boundary, and a `kind: 'authorized'`
+ * here grants nothing to a later call.
+ *
+ * TOCTOU: the route hands this function and `executeApprovedCapability` the SAME
+ * in-memory graph read once from the store (no second read between check and use),
+ * and the execution boundary RE-DERIVES the declaration from the graph it actually
+ * runs rather than reusing this decision — so a stricter declaration on the graph
+ * that is executed is always enforced. As an extra tie the result carries
+ * `graph.contentHash()`; passing it as `preflightGraphHash` makes execution refuse
+ * a DIFFERENT graph (different node/edge hashes). LIMIT (verified by test): `fromJson`
+ * trusts each node's stored `hash`, so `contentHash()` does not detect an edit to a
+ * node's properties that left its stored hash untouched — that case is covered by the
+ * re-derivation above, not by the hash.
+ *
+ * Only authorization failures are `denied`; a graph or contract that cannot be
+ * built at all is `error` — also refused before any record exists, since an
+ * authorization decision could not be established (fail closed).
+ */
+export type AuthorizationPreflightOutcome =
+  | { readonly kind: 'authorized'; readonly graphHash: ContentHash; readonly contractId: string }
+  | { readonly kind: 'denied'; readonly errorCode: string; readonly errorMessage: string }
+  | { readonly kind: 'error'; readonly errorCode: string; readonly errorMessage: string };
+
+export async function preflightCapabilityAuthorization(
+  compiledGraphJson: unknown,
+  capabilityId: string,
+  authorization: ExecutionAuthorization,
+): Promise<AuthorizationPreflightOutcome> {
+  try {
+    const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+    if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
+    const graph = graphResult.value;
+    const graphHash = ContentHash(graph.contentHash());
+
+    const contractResult = buildSemanticCapabilityContract(graph, XoirNodeId(capabilityId));
+    if (!contractResult.ok) return { kind: 'error', errorCode: contractResult.error.code, errorMessage: contractResult.error.message };
+    const contract = contractResult.value;
+
+    const decision = await authorizeContractExecution(contract, {
+      permissionManager: authorization.permissionManager,
+      subject: authorization.subject,
+      permissionDeclaration: declaredPermissionsForNode(graph, contract.id),
+    });
+    if (!decision.allowed) {
+      return {
+        kind: 'denied',
+        errorCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+        errorMessage: `capability "${capabilityId}" was not authorized: ${decision.reason}`,
+      };
+    }
+    return { kind: 'authorized', graphHash, contractId: contract.id };
+  } catch (cause) {
+    // Never an "allow" on a throw.
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return {
+      kind: 'denied',
+      errorCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+      errorMessage: `authorization could not be evaluated: ${message}`,
+    };
+  }
+}
+
+/** Optional hardening for `executeApprovedCapability` — see `preflightCapabilityAuthorization`. */
+export interface ExecuteApprovedCapabilityOptions {
+  /** The graph content hash a preflight authorized. If the graph loaded here has a different content hash, execution is refused (see `preflightCapabilityAuthorization` for what the hash does and does not detect). */
+  readonly preflightGraphHash?: ContentHash;
+}
+
+/**
  * Executes exactly one capability from an already-compiled, already-
  * approved graph, through the real, unmodified `@xo/runtime`
  * capability-authority path — no `@xo/workflow-composer` dependency at
@@ -158,12 +240,22 @@ export async function executeApprovedCapability(
   capabilityId: string,
   input: unknown,
   authorization: ExecutionAuthorization,
+  options: ExecuteApprovedCapabilityOptions = {},
 ): Promise<CapabilityExecutionOutcome> {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const graph = graphResult.value;
   // Identity of the graph as loaded — captured before `findInputSchema`'s `lowerCapabilitiesToManifest` can embed contracts into it (idempotent for a graph `compile-source.ts` already lowered, but not for one persisted otherwise).
   const loadedGraphHash = ContentHash(graph.contentHash());
+  // TOCTOU: a decision made by `preflightCapabilityAuthorization` is tied to one graph identity. Authorization is ALSO re-derived from the graph this
+  // call actually runs (inside `executeResolvedContract`); if the graph's content hash is not the one a preflight authorized, refuse rather than run it.
+  if (options.preflightGraphHash !== undefined && options.preflightGraphHash !== loadedGraphHash) {
+    return {
+      kind: 'error',
+      errorCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+      errorMessage: 'the compiled graph changed between the authorization preflight and execution — refused',
+    };
+  }
 
   const rebuilt = rebuildContractAndBinding(compiledGraphJson, capabilityId);
   if (!rebuilt.ok) return rebuilt.outcome as CapabilityExecutionOutcome;
