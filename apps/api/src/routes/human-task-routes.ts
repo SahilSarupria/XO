@@ -3,10 +3,17 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requirePrincipal, requireOwnedWorkspace, workspaceExecutionsStore, workspaceCompilationsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requirePrincipal,
+  requireOwnedWorkspace,
+  workspaceExecutionsStore,
+  workspaceCompilationsStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
+import type { PermissionManager } from '@xo/permissions';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
 import type { ExecutionRecord, HumanTaskDecision } from '../executions/execution.js';
 
@@ -71,7 +78,12 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-export function registerHumanTaskRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerHumanTaskRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  permissionManager: PermissionManager,
+): void {
   async function listHumanTasks(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
@@ -128,7 +140,7 @@ export function registerHumanTaskRoutes(router: Router, workspaceStore: Workspac
     // The lock + pre-check + `attemptResume` + store-write sequence lives
     // in `executions/resolve-human-task.ts` (extracted in P0.8 so the
     // workflow resume route reuses it verbatim) — see that file's doc comment.
-    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver);
+    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver, permissionManager);
 
     switch (outcome.kind) {
       case 'not_found':

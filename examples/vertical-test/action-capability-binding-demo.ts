@@ -3,16 +3,19 @@ import { compileSources } from '@xo/compiler';
 import { buildSemanticCapabilityContract } from '@xo/capability-contract';
 import { ActionEscalationBindingResolver, StructuredComparisonBindingResolver, resolveCapabilityBinding } from '@xo/capability-contract';
 import { RuntimeCapabilityRegistry, RuntimeCapabilityExecutor, registerResolvedCapabilityBinding } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 
 async function main() {
   const bytes = new Uint8Array(await readFile(new URL('./Aastha.pdf', import.meta.url)));
   const input = { kind: 'pdf', bytes, sourcePath: 'Aastha.pdf' };
   const result = await compileSources([input], {});
-  if (!result.ok) { console.error(result.error); return; }
+  if (!result.ok) {
+    console.error(result.error);
+    return;
+  }
   const { graph } = result.value;
 
-  const capNodes = graph.allNodes().filter(n => n.kind === 'capability');
+  const capNodes = graph.allNodes().filter((n) => n.kind === 'capability');
   console.log(`Discovered capability nodes: ${capNodes.length}`);
 
   const contracts = [];
@@ -23,7 +26,10 @@ async function main() {
   console.log(`Contracted: ${contracts.length}`);
 
   const resolvers = [new StructuredComparisonBindingResolver(), new ActionEscalationBindingResolver()];
-  let hitlCount = 0, detCount = 0, unresolvedCount = 0;
+  let hitlCount = 0,
+    detCount = 0,
+    unresolvedCount = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let firstHitl: any = null;
   for (const c of contracts) {
     const outcome = resolveCapabilityBinding(c, resolvers);
@@ -40,7 +46,10 @@ async function main() {
   console.log(`Bound (deterministic_rule): ${detCount}`);
   console.log(`Unresolved: ${unresolvedCount}`);
 
-  if (!firstHitl) { console.log('No HITL binding found — nothing to demo end-to-end'); return; }
+  if (!firstHitl) {
+    console.log('No HITL binding found — nothing to demo end-to-end');
+    return;
+  }
 
   console.log('\n--- Real capability demonstration ---');
   console.log('Capability:', firstHitl.contract.name);
@@ -54,9 +63,21 @@ async function main() {
   const regResult = registerResolvedCapabilityBinding(registry, firstHitl.contract, firstHitl.binding);
   console.log('Registered:', regResult.ok);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const execResult = await executor.execute({ capabilityId: firstHitl.contract.id, input: { demo: true }, confidenceScore: firstHitl.contract.confidence, minConfidence: 0.4 });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: establishTrustedExecutionContext('local-operator'),
+  });
+  const execResult = await executor.execute({
+    capabilityId: firstHitl.contract.id,
+    input: { demo: true },
+    confidenceScore: firstHitl.contract.confidence,
+    minConfidence: 0.4,
+  });
   console.log('Execution result ok:', execResult.ok);
   if (execResult.ok) console.log('Execution output:', JSON.stringify(execResult.value.output, null, 2));
 }
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

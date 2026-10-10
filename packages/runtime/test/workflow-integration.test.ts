@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ExecutionEngine } from '../src/engine/execution-engine.js';
 import { NodeId, type WorkflowGraph } from '../src/workflow/workflow-graph.js';
@@ -13,9 +14,16 @@ test('a "capability" workflow node genuinely executes through Stage 2\'s Executi
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'Contract reviewed: low risk.', usage: { inputTokens: 50, outputTokens: 20 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'Contract reviewed: low risk.',
+      usage: { inputTokens: 50, outputTokens: 20 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'contract_review_wf',
@@ -27,7 +35,11 @@ test('a "capability" workflow node genuinely executes through Stage 2\'s Executi
 
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_1'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };
@@ -55,7 +67,9 @@ test('multiple capability nodes in one workflow each get their own real Stage 2 
     registry = await mountBundle(installer, fraud, registry);
 
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'two_capability_wf',
@@ -70,7 +84,11 @@ test('multiple capability nodes in one workflow each get their own real Stage 2 
 
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_2'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use', 'long_context'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use', 'long_context'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };
@@ -89,12 +107,18 @@ test('a request without workflowGraph is completely unaffected by Stage 3 (ordin
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const request: ExecutionRequest = {
       requestId: RequestId('plain_req'),
       capabilityId: 'contract_analysis',
       input: 'Review this',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     };
 
@@ -113,7 +137,9 @@ test('a workflow whose capability node references an unplanned/unmounted capabil
       return PackageRegistry.empty();
     })();
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'missing_capability_wf',
@@ -124,7 +150,11 @@ test('a workflow whose capability node references an unplanned/unmounted capabil
     };
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_missing'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };

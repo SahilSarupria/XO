@@ -54,15 +54,28 @@ export interface RegisterResolvedBindingOptions {
 }
 
 /** `implementationClass`es this bridge can directly register, because `@xo/capability-contract`'s own resolvers for both attach a pure, synchronous `evaluate` callable (see `CapabilityBinding.evaluate`'s doc comment). `'human_in_the_loop'` bindings register and gate identically to `'deterministic_rule'` ones — same wrapping, same confidence/permission enforcement at execution time (`RuntimeCapabilityExecutor`) — the only difference is what `evaluate` itself returns: a `'human_in_the_loop'` binding's `evaluate` never performs the underlying action, only produces an escalation record (see `ActionEscalationBindingResolver`). Every other `implementationClass` remains rejected below, unchanged. */
-const REGISTERABLE_IMPLEMENTATION_CLASSES: ReadonlySet<CapabilityBinding['implementationClass']> = new Set(['deterministic_rule', 'human_in_the_loop']);
+const REGISTERABLE_IMPLEMENTATION_CLASSES: ReadonlySet<CapabilityBinding['implementationClass']> = new Set([
+  'deterministic_rule',
+  'human_in_the_loop',
+]);
 
 function wrapEvaluatorAsHandler(binding: CapabilityBinding): RuntimeCapabilityHandler {
   return async (input) => {
     if (!binding.evaluate) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE, `Binding "${binding.id}" (implementationClass "${binding.implementationClass}") has no callable evaluator — only bindings from this codebase's own resolvers ('deterministic_rule', 'human_in_the_loop') are directly executable this way`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE,
+          `Binding "${binding.id}" (implementationClass "${binding.implementationClass}") has no callable evaluator — only bindings from this codebase's own resolvers ('deterministic_rule', 'human_in_the_loop') are directly executable this way`,
+        ),
+      );
     }
     if (typeof input !== 'object' || input === null) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Binding "${binding.id}" requires a plain object input, got ${typeof input}`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Binding "${binding.id}" requires a plain object input, got ${typeof input}`,
+        ),
+      );
     }
     const result = binding.evaluate(input as Readonly<Record<string, unknown>>);
     if (!result.ok) {
@@ -85,11 +98,24 @@ function wrapEvaluatorAsHandler(binding: CapabilityBinding): RuntimeCapabilityHa
  * warns against, just inverted (weakening gating instead of granting it).
  */
 function parseRequiredPermissions(raw: readonly string[]): Result<readonly PermissionRequirement[], RuntimeError> {
+  if (!Array.isArray(raw)) {
+    return err(
+      new RuntimeError(
+        ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+        'Contract requiredPermissions must be an array (use [] to declare a permission-free capability)',
+      ),
+    );
+  }
   const requirements: PermissionRequirement[] = [];
   for (const value of raw) {
     const parsed = parsePermissionId(value);
     if (!parsed.ok) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Contract-declared required permission "${value}" is not a valid PermissionId: ${parsed.error}`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Contract-declared required permission "${value}" is not a valid PermissionId: ${parsed.error}`,
+        ),
+      );
     }
     requirements.push({ permission: parsed.value.id });
   }
@@ -126,9 +152,19 @@ function parseRequiredPermissions(raw: readonly string[]): Result<readonly Permi
  * boundary this preserves (a successful execution is an escalation
  * record, never a claim the underlying action was performed).
  */
-export function registerResolvedCapabilityBinding(registry: RuntimeCapabilityRegistry, contract: SemanticCapabilityContract, binding: CapabilityBinding, options: RegisterResolvedBindingOptions = {}): Result<void, RuntimeError> {
+export function registerResolvedCapabilityBinding(
+  registry: RuntimeCapabilityRegistry,
+  contract: SemanticCapabilityContract,
+  binding: CapabilityBinding,
+  options: RegisterResolvedBindingOptions = {},
+): Result<void, RuntimeError> {
   if (!REGISTERABLE_IMPLEMENTATION_CLASSES.has(binding.implementationClass)) {
-    return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Binding "${binding.id}" has implementationClass "${binding.implementationClass}" — only ${[...REGISTERABLE_IMPLEMENTATION_CLASSES].map((c) => `'${c}'`).join(', ')} bindings can be registered by this function`));
+    return err(
+      new RuntimeError(
+        ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+        `Binding "${binding.id}" has implementationClass "${binding.implementationClass}" — only ${[...REGISTERABLE_IMPLEMENTATION_CLASSES].map((c) => `'${c}'`).join(', ')} bindings can be registered by this function`,
+      ),
+    );
   }
 
   const contractPermissions = parseRequiredPermissions(contract.requiredPermissions);
@@ -139,8 +175,12 @@ export function registerResolvedCapabilityBinding(registry: RuntimeCapabilityReg
   return registry.register({
     declaration: {
       capabilityId: options.capabilityId ?? contract.id,
-      inputContract: { description: `Auto-derived from SemanticCapabilityContract "${contract.id}" (${contract.name}): ${contract.description}` },
-      outputContract: { description: `{matched: boolean, ruleSourceNodeId?: string, outcome?: string} — see binding "${binding.id}"'s derivation for the underlying rule set.` },
+      inputContract: {
+        description: `Auto-derived from SemanticCapabilityContract "${contract.id}" (${contract.name}): ${contract.description}`,
+      },
+      outputContract: {
+        description: `{matched: boolean, ruleSourceNodeId?: string, outcome?: string} — see binding "${binding.id}"'s derivation for the underlying rule set.`,
+      },
       handler: wrapEvaluatorAsHandler(binding),
       contractId: contract.id,
       bindingId: binding.id,
@@ -150,6 +190,6 @@ export function registerResolvedCapabilityBinding(registry: RuntimeCapabilityReg
       // information-boundary paths have one), never read from `contract.contentHash`.
       contractContentHash: computeContractContentHash(contract),
     },
-    ...(requiredPermissions.length > 0 ? { requiredPermissions } : {}),
+    requiredPermissions, // always explicit (P1.0 M2): `[]` = declared permission-free
   });
 }

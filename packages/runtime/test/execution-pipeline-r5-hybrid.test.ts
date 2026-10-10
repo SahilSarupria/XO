@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { err, ok } from '@xo/types';
 import type { CapabilityDeclaration, CapabilityInputSchema, HybridExecutionStep } from '@xo/types';
@@ -35,7 +36,10 @@ function amountSchema(): CapabilityInputSchema {
   return { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] };
 }
 
-function hybridCapability(hybridSteps: readonly HybridExecutionStep[], overrides: Partial<CapabilityDeclaration> = {}): CapabilityDeclaration {
+function hybridCapability(
+  hybridSteps: readonly HybridExecutionStep[],
+  overrides: Partial<CapabilityDeclaration> = {},
+): CapabilityDeclaration {
   return {
     id: 'hybrid_review',
     name: 'Hybrid Review',
@@ -69,7 +73,12 @@ function hybridRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequ
 }
 
 /** A `RuntimeCapabilityExecutor` with one registered deterministic capability, `capability:hybrid-det`, whose handler asserts `input.amount` and always allows (`RuleBasedPolicy([])` + `allow-all` for `runtime.execute`). `onHandlerCalled` lets a test observe whether the handler actually ran. */
-function buildDeterministicAuthority(options: { readonly handler?: (input: unknown) => Promise<ReturnType<typeof ok> | ReturnType<typeof err>>; readonly denyPermission?: boolean } = {}) {
+function buildDeterministicAuthority(
+  options: {
+    readonly handler?: (input: unknown) => Promise<ReturnType<typeof ok> | ReturnType<typeof err>>;
+    readonly denyPermission?: boolean;
+  } = {},
+) {
   const registry = new RuntimeCapabilityRegistry();
   const registered = registry.register({
     declaration: {
@@ -83,9 +92,11 @@ function buildDeterministicAuthority(options: { readonly handler?: (input: unkno
   assert.equal(registered.ok, true);
 
   const manager = new PermissionManager({
-    policy: new RuleBasedPolicy(options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
+    policy: new RuleBasedPolicy(
+      options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }],
+    ),
   });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 // --- C: deterministic_rule -> model ----------------------------------------
@@ -93,16 +104,30 @@ function buildDeterministicAuthority(options: { readonly handler?: (input: unkno
 test('R5-C: deterministic_rule -> model: the deterministic step runs first, its output is threaded into the model step, and the final result is the model response', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'Approved based on the deterministic check.', usage: { inputTokens: 12, outputTokens: 6 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'Approved based on the deterministic check.',
+      usage: { inputTokens: 12, outputTokens: 6 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: buildDeterministicAuthority() });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: buildDeterministicAuthority(),
+    });
     const result = await engine.execute(hybridRequest());
 
     assert.equal(result.session.status, 'completed');
@@ -125,17 +150,29 @@ test('R5-D: model -> deterministic_rule: the model step runs first, its output i
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
       { stepId: 'model', strategy: 'model', input: { kind: 'request' } },
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'model' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'step', stepId: 'model' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     // The model "extracts" a structured amount as JSON text -- exactly the shape the deterministic step's inputSchema expects.
-    provider.setResponse({ text: JSON.stringify({ amount: 250 }), usage: { inputTokens: 8, outputTokens: 4 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: JSON.stringify({ amount: 250 }),
+      usage: { inputTokens: 8, outputTokens: 4 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
     let receivedInput: unknown;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           receivedInput = input;
@@ -146,7 +183,11 @@ test('R5-D: model -> deterministic_rule: the model step runs first, its output i
     const result = await engine.execute(hybridRequest());
 
     assert.equal(result.session.status, 'completed');
-    assert.deepEqual(receivedInput, { amount: 250 }, 'the deterministic step must receive the model step\'s output, not the original structuredInput');
+    assert.deepEqual(
+      receivedInput,
+      { amount: 250 },
+      "the deterministic step must receive the model step's output, not the original structuredInput",
+    );
     assert.equal(result.response?.content, JSON.stringify({ matched: true }));
     assert.equal(provider.requests.length, 1);
   });
@@ -157,7 +198,13 @@ test('R5-D: model -> deterministic_rule: the model step runs first, its output i
 test('R5-E: first-step failure: the deterministic step fails, the model step is never executed, and the overall invocation fails', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
@@ -166,7 +213,10 @@ test('R5-E: first-step failure: the deterministic step fails, the model step is 
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      capabilityAuthorityExecutor: buildDeterministicAuthority({ handler: async () => err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE, 'deliberate step-1 failure')) }),
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: buildDeterministicAuthority({
+        handler: async () => err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE, 'deliberate step-1 failure')),
+      }),
     });
     const result = await engine.execute(hybridRequest());
 
@@ -182,7 +232,13 @@ test('R5-E: first-step failure: the deterministic step fails, the model step is 
 test('R5-F: later-step failure: the deterministic step succeeds, the model step fails, and the overall invocation fails', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
@@ -191,7 +247,10 @@ test('R5-F: later-step failure: the deterministic step succeeds, the model step 
     const provider = new ScriptedModelProvider();
     provider.failNextWith = new Error('provider unavailable');
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: buildDeterministicAuthority() });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: buildDeterministicAuthority(),
+    });
     const result = await engine.execute(hybridRequest());
 
     assert.equal(result.session.status, 'failed');
@@ -203,10 +262,16 @@ test('R5-F: later-step failure: the deterministic step succeeds, the model step 
 
 // --- G: authorization failure ------------------------------------------------
 
-test('R5-G: authorization failure: the deterministic step\'s permission check is denied, the model step is never executed, and the overall invocation is denied', async () => {
+test("R5-G: authorization failure: the deterministic step's permission check is denied, the model step is never executed, and the overall invocation is denied", async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
@@ -216,6 +281,7 @@ test('R5-G: authorization failure: the deterministic step\'s permission check is
 
     let handlerCalled = false;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           handlerCalled = true;
@@ -238,7 +304,13 @@ test('R5-G: authorization failure: the deterministic step\'s permission check is
 test('R5-H: R2 validation: the deterministic step receives invalid structured input, validation fails before any execution, and the model step never runs', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
@@ -248,6 +320,7 @@ test('R5-H: R2 validation: the deterministic step receives invalid structured in
 
     let handlerCalled = false;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           handlerCalled = true;
@@ -270,7 +343,13 @@ test('R5-H: R2 validation: the deterministic step receives invalid structured in
 test('R5-L: cancelling an in-flight hybrid invocation during its model step stops the invocation, matching the existing whole-request cancellation contract', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
@@ -279,7 +358,10 @@ test('R5-L: cancelling an in-flight hybrid invocation during its model step stop
     const provider = new ScriptedModelProvider();
     provider.delayMs = 200; // gives the test time to cancel while the model step is still in flight
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: buildDeterministicAuthority() });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: buildDeterministicAuthority(),
+    });
     const request = hybridRequest();
     const resultPromise = engine.execute(request);
     await new Promise((resolve) => setTimeout(resolve, 20)); // let the deterministic step finish and the model call start
@@ -311,15 +393,29 @@ test('R5-J: an existing WorkflowExecutor "capability" node can invoke a hybrid c
     // execution without needing any workflow-layer change.
     const steps: readonly HybridExecutionStep[] = [
       { stepId: 'model', strategy: 'model', input: { kind: 'request' } },
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'model' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'step', stepId: 'model' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: JSON.stringify({ amount: 150 }), usage: { inputTokens: 5, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: JSON.stringify({ amount: 150 }),
+      usage: { inputTokens: 5, outputTokens: 5 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: buildDeterministicAuthority() });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: buildDeterministicAuthority(),
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'hybrid_capability_wf',
@@ -331,7 +427,13 @@ test('R5-J: an existing WorkflowExecutor "capability" node can invoke a hybrid c
 
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_hybrid_1'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };
@@ -359,7 +461,12 @@ test('R5-K: a hybrid step declaring strategy "hybrid" itself fails closed rather
   });
 
   const recursiveStep = { stepId: 'nested', strategy: 'hybrid', input: { kind: 'request' } } as unknown as HybridExecutionStep;
-  const noRaceCancellation = async <T>(promise: Promise<T>): Promise<{ readonly cancelled: false; readonly value: T } | { readonly cancelled: true }> => ({ cancelled: false, value: await promise });
+  const noRaceCancellation = async <T>(
+    promise: Promise<T>,
+  ): Promise<{ readonly cancelled: false; readonly value: T } | { readonly cancelled: true }> => ({
+    cancelled: false,
+    value: await promise,
+  });
   const result = await spyingExecutor.execute(
     [recursiveStep],
     { requestInput: 'x', structuredInput: {}, capabilityId: 'hybrid_review' },

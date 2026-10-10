@@ -1,13 +1,34 @@
 import type { PackageInstaller } from '@xo/package-sdk';
-import { CapabilityRegistry, executeResolvedContract, resolveContractBinding, type MountedPackage, type PackageRegistry } from '@xo/runtime';
+import {
+  CapabilityRegistry,
+  executeResolvedContract,
+  resolveContractBinding,
+  type MountedPackage,
+  type PackageRegistry,
+} from '@xo/runtime';
 import {
   extractContractFromPropertyBag,
   StructuredComparisonBindingResolver,
   validateCapabilityInput,
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
-import { PermissionManager, RuleBasedPolicy, Permissions, parsePermissionId, resolveManifestCapabilityPermissions, type PermissionRequirement } from '@xo/permissions';
-import type { CapabilityExecutionDeclaration } from '@xo/types';
+import {
+  authorizeCapabilityExecution,
+  isAuthorizationSubject,
+  parsePermissionId,
+  Permissions,
+  PERMISSION_FREE,
+  PermissionManager,
+  resolveDeclaredPermissionIds,
+  resolveManifestCapabilityPermissions,
+  RuleBasedPolicy,
+  unresolvedDeclaration,
+  type AuthorizationSubject,
+  type PermissionDeclaration,
+  type PermissionRequirement,
+  type PolicyRule,
+} from '@xo/permissions';
+import type { CapabilityExecutionDeclaration, PackageId } from '@xo/types';
 
 /**
  * `xo run <capabilityId>` must NOT resolve an AI provider merely because
@@ -41,7 +62,15 @@ import type { CapabilityExecutionDeclaration } from '@xo/types';
  */
 
 export type DeterministicRunOutcome =
-  | { readonly kind: 'executed'; readonly output: unknown; readonly bindingId: string; readonly contractId: string; readonly sourceXoirNodeIds: readonly string[]; readonly source: ExecutionSourceKind; readonly confidence: number }
+  | {
+      readonly kind: 'executed';
+      readonly output: unknown;
+      readonly bindingId: string;
+      readonly contractId: string;
+      readonly sourceXoirNodeIds: readonly string[];
+      readonly source: ExecutionSourceKind;
+      readonly confidence: number;
+    }
   | { readonly kind: 'not_deterministic'; readonly reason: string }
   | { readonly kind: 'invalid_input'; readonly issues: readonly { readonly property: string; readonly message: string }[] }
   | { readonly kind: 'confidence_ineligible'; readonly score: number; readonly threshold: number }
@@ -66,6 +95,8 @@ interface ExecutionSource {
   readonly declaredExecution: CapabilityExecutionDeclaration | undefined;
   readonly confidence: number;
   readonly mountedPackage: MountedPackage;
+  /** P1.0 M2 — the capability node's own persisted `requiredPermissions` property, exactly as stored in the package's knowledge_graph (`undefined` if the property is absent). The authoritative permission declaration; never a CLI flag. */
+  readonly declaredRequiredPermissions: unknown;
 }
 
 /**
@@ -81,16 +112,35 @@ interface ExecutionSource {
  * decision was already made from `execution` before this function is
  * even called.
  */
-async function fetchContract(contractId: string, installer: PackageInstaller, mountedPackages: readonly MountedPackage[]): Promise<Result<{ readonly contract: SemanticCapabilityContract; readonly mountedPackage: MountedPackage } | undefined, string>> {
+async function fetchContract(
+  contractId: string,
+  installer: PackageInstaller,
+  mountedPackages: readonly MountedPackage[],
+): Promise<
+  Result<
+    | {
+        readonly contract: SemanticCapabilityContract;
+        readonly mountedPackage: MountedPackage;
+        readonly declaredRequiredPermissions: unknown;
+      }
+    | undefined,
+    string
+  >
+> {
   for (const mounted of mountedPackages) {
     const component = await installer.getComponent(mounted.name, mounted.version, 'knowledge_graph');
     if (!component.ok) continue; // no knowledge_graph component for this package — not an error, just nothing to find here
 
-    let parsed: { readonly nodes?: readonly { readonly id: string; readonly kind: string; readonly properties?: Record<string, unknown> }[] };
+    let parsed: {
+      readonly nodes?: readonly { readonly id: string; readonly kind: string; readonly properties?: Record<string, unknown> }[];
+    };
     try {
       parsed = JSON.parse(new TextDecoder().decode(component.value)) as typeof parsed;
     } catch (cause) {
-      return { ok: false, error: `"${mounted.name}@${mounted.version}"'s knowledge_graph component is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}` };
+      return {
+        ok: false,
+        error: `"${mounted.name}@${mounted.version}"'s knowledge_graph component is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      };
     }
 
     const node = (parsed.nodes ?? []).find((n) => n.kind === 'capability' && n.id === contractId);
@@ -99,7 +149,10 @@ async function fetchContract(contractId: string, installer: PackageInstaller, mo
     const extracted = extractContractFromPropertyBag(node.properties);
     if (!extracted.ok) continue; // present but no embedded contract on this node — not this capability's source
 
-    return { ok: true, value: { contract: extracted.value, mountedPackage: mounted } };
+    return {
+      ok: true,
+      value: { contract: extracted.value, mountedPackage: mounted, declaredRequiredPermissions: node.properties['requiredPermissions'] },
+    };
   }
   return { ok: true, value: undefined };
 }
@@ -137,7 +190,11 @@ async function fetchContract(contractId: string, installer: PackageInstaller, mo
  *   impossible) shouldn't lose deterministic execution just because R1
  *   post-dates it.
  */
-async function resolveExecutionSource(capabilityId: string, installer: PackageInstaller, packageRegistry: PackageRegistry): Promise<Result<ExecutionSource | undefined, string>> {
+async function resolveExecutionSource(
+  capabilityId: string,
+  installer: PackageInstaller,
+  packageRegistry: PackageRegistry,
+): Promise<Result<ExecutionSource | undefined, string>> {
   const capabilities = CapabilityRegistry.fromPackages(packageRegistry.all()).find(capabilityId);
   const descriptor = capabilities[0]; // capability ids are expected unique across a store, matching every other lookup in this CLI; see helpers/README for the multi-package caveat
 
@@ -149,11 +206,21 @@ async function resolveExecutionSource(capabilityId: string, installer: PackageIn
     const fetched = await fetchContract(contractId, installer, packageRegistry.all());
     if (!fetched.ok) return fetched;
     if (fetched.value === undefined) {
-      return { ok: false, error: `Capability "${capabilityId}" declares an authoritative deterministic execution with contractId "${contractId}", but no mounted package's knowledge_graph actually contains a contract under that id — the package is internally inconsistent` };
+      return {
+        ok: false,
+        error: `Capability "${capabilityId}" declares an authoritative deterministic execution with contractId "${contractId}", but no mounted package's knowledge_graph actually contains a contract under that id — the package is internally inconsistent`,
+      };
     }
     return {
       ok: true,
-      value: { kind: 'authoritative_declaration', contract: fetched.value.contract, declaredExecution: execution, confidence: descriptor.declaration.confidence.score, mountedPackage: fetched.value.mountedPackage },
+      value: {
+        kind: 'authoritative_declaration',
+        contract: fetched.value.contract,
+        declaredExecution: execution,
+        confidence: descriptor.declaration.confidence.score,
+        mountedPackage: fetched.value.mountedPackage,
+        declaredRequiredPermissions: fetched.value.declaredRequiredPermissions,
+      },
     };
   }
 
@@ -164,7 +231,14 @@ async function resolveExecutionSource(capabilityId: string, installer: PackageIn
   // No manifest-level CapabilityDeclaration was found for this id, so there is no authoritative `confidence` to read either — the contract's OWN `confidence` (set by the compiler at extraction time, `@xo/capability-contract`'s `SemanticCapabilityContract.confidence`) is the best available signal, and R3 still applies to it.
   return {
     ok: true,
-    value: { kind: 'knowledge_graph_fallback', contract: fetched.value.contract, declaredExecution: undefined, confidence: descriptor?.declaration.confidence.score ?? fetched.value.contract.confidence, mountedPackage: fetched.value.mountedPackage },
+    value: {
+      kind: 'knowledge_graph_fallback',
+      contract: fetched.value.contract,
+      declaredExecution: undefined,
+      confidence: descriptor?.declaration.confidence.score ?? fetched.value.contract.confidence,
+      mountedPackage: fetched.value.mountedPackage,
+      declaredRequiredPermissions: fetched.value.declaredRequiredPermissions,
+    },
   };
 }
 
@@ -210,43 +284,62 @@ function parseStructuredInput(raw: string): Record<string, unknown> | undefined 
  * closed — never "permission exists so it's fine," matching R3's
  * requirement 6.
  */
+/**
+ * P1.0 M2 — the authoritative permission declaration for one installed
+ * capability. Sources, none of them a CLI flag:
+ *
+ *  1. the capability node's own persisted `requiredPermissions` property in
+ *     the package's knowledge_graph — REQUIRED to be present (`[]` is the
+ *     explicit permission-free declaration; absent/malformed => `unresolved`);
+ *  2. the manifest's `permissions[]` entries naming this capability, and
+ *  3. its `execution.requiredPermissionIds`, if declared — both ADDITIVE
+ *     (they can only make the capability stricter), and both denied if
+ *     malformed.
+ */
+function buildPermissionDeclaration(source: ExecutionSource, capabilityId: string): PermissionDeclaration {
+  const label = `"${source.mountedPackage.name}@${source.mountedPackage.version}" capability "${capabilityId}"`;
+  const base = resolveDeclaredPermissionIds(source.declaredRequiredPermissions, `${label} requiredPermissions`);
+  if (base.kind === 'unresolved') return base;
+
+  const manifestResolution = resolveManifestCapabilityPermissions(source.mountedPackage.manifest);
+  if (!manifestResolution.ok)
+    return unresolvedDeclaration(`${label}: malformed permission declaration(s) in the manifest: ${manifestResolution.error.join('; ')}`);
+
+  const requirements: PermissionRequirement[] = [
+    ...(base.kind === 'required' ? base.requirements : []),
+    ...(manifestResolution.value.get(capabilityId) ?? []),
+  ];
+
+  if (source.declaredExecution?.requiredPermissionIds !== undefined) {
+    const exec = resolveDeclaredPermissionIds(source.declaredExecution.requiredPermissionIds, `${label} execution.requiredPermissionIds`);
+    if (exec.kind === 'unresolved') return exec;
+    if (exec.kind === 'required') requirements.push(...exec.requirements);
+  }
+
+  const seen = new Set<string>();
+  const unique = requirements.filter((r) => {
+    const key = `${r.permission}|${JSON.stringify(r.scope ?? null)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.length === 0 ? PERMISSION_FREE : { kind: 'required', requirements: unique };
+}
+
+/**
+ * `--grant` flags are local OPERATOR POLICY (an `ALLOW` rule per permission
+ * for this one invocation) — they are not identity and not proof of any
+ * principal. Subject = a `TrustedExecutionContext` minted by the CLI command
+ * entry; a request/manifest/flag cannot create one.
+ */
 function buildPermissionManager(grantedPermissionIds: readonly string[]): Result<PermissionManager, string> {
-  const grantRules: import('@xo/permissions').PolicyRule[] = [];
+  const grantRules: PolicyRule[] = [];
   for (const [i, raw] of grantedPermissionIds.entries()) {
     const parsed = parsePermissionId(raw);
     if (!parsed.ok) return { ok: false, error: `--grant "${raw}" is not a valid permission id: ${parsed.error}` };
     grantRules.push({ id: `cli-grant-${i}`, effect: 'ALLOW', match: { permission: parsed.value.id } });
   }
   return { ok: true, value: new PermissionManager({ policy: new RuleBasedPolicy(grantRules) }) };
-}
-
-async function checkAuthorization(source: ExecutionSource, capabilityId: string, manager: PermissionManager): Promise<{ readonly allowed: true } | { readonly allowed: false; readonly reason: string }> {
-  const manifestResolution = resolveManifestCapabilityPermissions(source.mountedPackage.manifest);
-  if (!manifestResolution.ok) {
-    return { allowed: false, reason: `"${source.mountedPackage.name}@${source.mountedPackage.version}" has malformed permission declaration(s) in its manifest, so capability "${capabilityId}" cannot be authorized: ${manifestResolution.error.join('; ')}` };
-  }
-  const manifestRequirements = manifestResolution.value.get(capabilityId) ?? [];
-
-  const executionRequirements: PermissionRequirement[] = [];
-  for (const raw of source.declaredExecution?.requiredPermissionIds ?? []) {
-    const parsed = parsePermissionId(raw);
-    if (!parsed.ok) return { allowed: false, reason: `Capability "${capabilityId}"'s authoritative execution declaration names a malformed required permission "${raw}": ${parsed.error}` };
-    executionRequirements.push({ permission: parsed.value.id });
-  }
-  const requirements = [...manifestRequirements, ...executionRequirements];
-
-  if (requirements.length === 0) return { allowed: true }; // no declared requirement anywhere — permissionless, per this manifest's own default-deny-unless-declared model (see ManifestBuilder.setPermissions' doc comment), not an oversight this router papers over.
-
-  const packageId = `${source.mountedPackage.name}@${source.mountedPackage.version}` as import('@xo/types').PackageId;
-
-  for (const requirement of requirements) {
-    const decision = await manager.check({ permission: requirement.permission, ...(requirement.scope !== undefined ? { scope: requirement.scope } : {}), requester: { packageId, capabilityId } });
-    if (decision.effect !== 'allow') {
-      if (requirement.optional) continue;
-      return { allowed: false, reason: `Permission "${requirement.permission}" required by capability "${capabilityId}" was not granted (${decision.reason}) — pass --grant ${requirement.permission} to authorize this run` };
-    }
-  }
-  return { allowed: true };
 }
 
 /**
@@ -256,10 +349,24 @@ async function checkAuthorization(source: ExecutionSource, capabilityId: string,
  * validation), R3 (confidence eligibility, then authorization),
  * execution.
  */
-export async function tryDeterministicRun(capabilityId: string, rawInput: string, installer: PackageInstaller, packageRegistry: PackageRegistry, grantedPermissionIds: readonly string[] = []): Promise<DeterministicRunOutcome> {
+export async function tryDeterministicRun(
+  capabilityId: string,
+  rawInput: string,
+  installer: PackageInstaller,
+  packageRegistry: PackageRegistry,
+  grantedPermissionIds: readonly string[],
+  subject: AuthorizationSubject,
+): Promise<DeterministicRunOutcome> {
+  // P1.0 M2: fail closed BEFORE anything is looked up or evaluated if the caller has no verified subject.
+  if (!isAuthorizationSubject(subject))
+    return { kind: 'not_authorized', reason: 'no verified trusted execution context — deterministic execution is denied' };
   const found = await resolveExecutionSource(capabilityId, installer, packageRegistry);
   if (!found.ok) return { kind: 'error', message: found.error };
-  if (found.value === undefined) return { kind: 'not_deterministic', reason: `Capability "${capabilityId}" has no deterministic execution source — no authoritative execution declaration names it as "deterministic_rule", and no mounted package's knowledge_graph declares a matching embedded SemanticCapabilityContract either` };
+  if (found.value === undefined)
+    return {
+      kind: 'not_deterministic',
+      reason: `Capability "${capabilityId}" has no deterministic execution source — no authoritative execution declaration names it as "deterministic_rule", and no mounted package's knowledge_graph declares a matching embedded SemanticCapabilityContract either`,
+    };
 
   const source = found.value;
   // Deliberately the narrower, single-resolver list (not
@@ -268,7 +375,13 @@ export async function tryDeterministicRun(capabilityId: string, rawInput: string
   // P0.9B — `resolveContractBinding` only supplies the call, never a wider set.
   const binding = resolveContractBinding(source.contract, [new StructuredComparisonBindingResolver()]);
   if (binding.status !== 'resolved' || binding.binding.implementationClass !== 'deterministic_rule') {
-    return { kind: 'not_deterministic', reason: binding.status === 'resolved' ? `Contract "${source.contract.id}" resolved to implementationClass "${binding.binding.implementationClass}", which this CLI's deterministic router does not execute directly` : `Contract "${source.contract.id}" did not resolve to a deterministic binding (${binding.status}: ${binding.reason})` };
+    return {
+      kind: 'not_deterministic',
+      reason:
+        binding.status === 'resolved'
+          ? `Contract "${source.contract.id}" resolved to implementationClass "${binding.binding.implementationClass}", which this CLI's deterministic router does not execute directly`
+          : `Contract "${source.contract.id}" did not resolve to a deterministic binding (${binding.status}: ${binding.reason})`,
+    };
   }
 
   // R2 — parse, then validate against the authoritative inputSchema if one was declared.
@@ -290,12 +403,18 @@ export async function tryDeterministicRun(capabilityId: string, rawInput: string
 
   if (inputSchema !== undefined) {
     if (structuredInput === undefined) {
-      return { kind: 'invalid_input', issues: [{ property: '$', message: `--input is not valid JSON matching capability "${capabilityId}"'s declared input schema` }] };
+      return {
+        kind: 'invalid_input',
+        issues: [{ property: '$', message: `--input is not valid JSON matching capability "${capabilityId}"'s declared input schema` }],
+      };
     }
     const validation = validateCapabilityInput(inputSchema, structuredInput);
     if (!validation.valid) return { kind: 'invalid_input', issues: validation.issues };
   } else if (structuredInput === undefined) {
-    return { kind: 'not_deterministic', reason: `Capability "${capabilityId}" has a deterministic binding, but --input is not structured JSON (a plain object) — a deterministic rule cannot be evaluated against free-text input without a model-assisted extraction step (see the brief's HYBRID EXECUTION section, not implemented by this router). Pass --input as JSON, e.g. '{"claim_amount": 15000}'.` };
+    return {
+      kind: 'not_deterministic',
+      reason: `Capability "${capabilityId}" has a deterministic binding, but --input is not structured JSON (a plain object) — a deterministic rule cannot be evaluated against free-text input without a model-assisted extraction step (see the brief's HYBRID EXECUTION section, not implemented by this router). Pass --input as JSON, e.g. '{"claim_amount": 15000}'.`,
+    };
   }
   // structuredInput is defined at this point on every path that reaches here.
   const validatedInput = structuredInput as Record<string, unknown>;
@@ -310,22 +429,28 @@ export async function tryDeterministicRun(capabilityId: string, rawInput: string
   if (!managerResult.ok) return { kind: 'error', message: managerResult.error };
   const manager = managerResult.value;
 
-  const authorization = await checkAuthorization(source, capabilityId, manager);
-  if (!authorization.allowed) return { kind: 'not_authorized', reason: authorization.reason };
+  const declaration = buildPermissionDeclaration(source, capabilityId);
+  const authorization = await authorizeCapabilityExecution({
+    manager,
+    subject,
+    requester: { packageId: `${source.mountedPackage.name}@${source.mountedPackage.version}` as PackageId, capabilityId },
+    declaration,
+  });
+  if (!authorization.allowed) {
+    const hint =
+      authorization.code === 'permission-denied' && authorization.permission !== undefined
+        ? ` — pass --grant ${authorization.permission} to authorize this run`
+        : '';
+    return { kind: 'not_authorized', reason: `${authorization.reason}${hint}` };
+  }
 
-  // Reuses the SAME manager just used for the R3 pre-check above — see
-  // `buildPermissionManager`'s doc comment for why this is not an
-  // always-ALLOW stub: any contract-level `requiredPermissions`
-  // (`SemanticCapabilityContract`, auto-derived by
-  // `registerResolvedCapabilityBinding` inside `executeResolvedContract`)
-  // that this file's own R3 pre-check didn't separately enumerate is
-  // still genuinely checked there, not bypassed.
-  //
-  // INSTALLED PACKAGE information-boundary path: `source.contract` came
-  // from the mounted package's embedded contract
-  // (`extractContractFromPropertyBag`, the intentional package-boundary
-  // adapter), so there is no live `XoirGraph` and no `graphHash` is passed.
-  const executed = await executeResolvedContract(source.contract, binding.binding, { permissionManager: manager, input: validatedInput });
+  // The SAME declaration, subject and manager are re-applied inside `executeResolvedContract` (defense in depth).
+  const executed = await executeResolvedContract(source.contract, binding.binding, {
+    permissionManager: manager,
+    subject,
+    permissionDeclaration: declaration,
+    input: validatedInput,
+  });
   if (!executed.ok) {
     return executed.stage === 'registration'
       ? { kind: 'error', message: `Failed to register resolved binding: ${executed.error.message}` }

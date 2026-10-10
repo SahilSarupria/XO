@@ -1,5 +1,12 @@
 import { compileSources, type CompileSourcesOptions, type CompileSourcesResult } from '@xo/compiler';
-import { composeWorkflows, auditWorkflowExecutability, auditWorkflowDataFlow, type CandidateWorkflow, type WorkflowExecutabilityReport, type WorkflowDataFlowReport } from '@xo/workflow-composer';
+import {
+  composeWorkflows,
+  auditWorkflowExecutability,
+  auditWorkflowDataFlow,
+  type CandidateWorkflow,
+  type WorkflowExecutabilityReport,
+  type WorkflowDataFlowReport,
+} from '@xo/workflow-composer';
 import {
   RuntimeCapabilityRegistry,
   RuntimeCapabilityExecutor,
@@ -11,7 +18,14 @@ import {
   type PrepareCandidateWorkflowResult,
   type CandidateWorkflowRunStatus,
 } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import {
+  establishTrustedExecutionContext,
+  PermissionManager,
+  reconcilePermissionDeclarations,
+  resolveDeclaredPermissionIds,
+  RuleBasedPolicy,
+} from '@xo/permissions';
+import { XoirNodeId } from '@xo/xoir';
 import { collectSources } from '../compiler/source-collection.js';
 
 /**
@@ -97,13 +111,43 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
           ...prepared.graph,
           nodes: prepared.graph.nodes.map((n) =>
             n.type === 'custom:capability-authority'
-              ? { ...n, config: { ...n.config, structuredInput: { ...(n.config?.structuredInput as Record<string, unknown> | undefined), ...options.input } } }
+              ? {
+                  ...n,
+                  config: {
+                    ...n.config,
+                    structuredInput: { ...(n.config?.structuredInput as Record<string, unknown> | undefined), ...options.input },
+                  },
+                }
               : n,
           ),
         }
       : prepared.graph;
 
-    const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+    // P1.0 M2: the local operator is the (non-principal) trusted subject; the policy stays deny-by-default
+    // and there is no --grant on this command, so any capability that declares a permission is denied.
+    // Every step's authoritative declaration (the node's persisted `requiredPermissions`) must resolve
+    // and agree with the registered contract copy BEFORE anything runs; otherwise nothing is executed.
+    for (const step of prepared.steps) {
+      // Only steps actually bound into the registry can execute; unbound steps never run (and have no registry entry).
+      if (step.contractId === undefined || !registry.has(step.contractId)) continue;
+      const node = graph.getNode(XoirNodeId(step.contractId));
+      const declared = resolveDeclaredPermissionIds(
+        node.ok ? (node.value.properties as Readonly<Record<string, unknown>> | undefined)?.['requiredPermissions'] : undefined,
+        `capability node "${step.contractId}" requiredPermissions`,
+      );
+      const reconciled = reconcilePermissionDeclarations(
+        declared,
+        registry.permissionDeclaration(step.contractId),
+        `capability "${step.contractId}"`,
+      );
+      if (reconciled.kind === 'unresolved')
+        return { ok: false, message: `workflow not executed — authorization denied: ${reconciled.reason}` };
+    }
+    const executor = new RuntimeCapabilityExecutor({
+      registry,
+      permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+      subject: establishTrustedExecutionContext('local-operator'),
+    });
     const workflowExecutor = new WorkflowExecutor(
       async () => {
         throw new Error('unreachable: this bridge graph contains no built-in "capability" nodes');
@@ -111,7 +155,11 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
       { customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]) },
     );
 
-    const environment = { environmentId: EnvironmentId(`env_cli_${workflow.id}`), hostProfile: { family: 'generic' as const, capabilities: [] }, createdAt: new Date().toISOString() };
+    const environment = {
+      environmentId: EnvironmentId(`env_cli_${workflow.id}`),
+      hostProfile: { family: 'generic' as const, capabilities: [] },
+      createdAt: new Date().toISOString(),
+    };
     const runResult = await workflowExecutor.run(graphToRun, environment);
 
     const runStatus = deriveWorkflowRunStatus({
@@ -126,7 +174,12 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
       .map((n) => {
         const raw = runResult.instance.state.outputs[n.id as unknown as string] as { result?: { status?: string } } | undefined;
         const historyEntry = runResult.instance.state.history.find((h) => h.nodeId === (n.id as unknown as string));
-        return { nodeId: n.id, capabilityName: n.name ?? String(n.id), engineStepStatus: historyEntry?.status ?? '(not reached)', output: raw?.result };
+        return {
+          nodeId: n.id,
+          capabilityName: n.name ?? String(n.id),
+          engineStepStatus: historyEntry?.status ?? '(not reached)',
+          output: raw?.result,
+        };
       });
 
     return {
@@ -147,18 +200,33 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
   }
 }
 
-export function selectWorkflow(workflows: readonly CandidateWorkflow[], options: WorkflowPipelineOptions): { workflow: CandidateWorkflow | undefined; rationale: string } {
+export function selectWorkflow(
+  workflows: readonly CandidateWorkflow[],
+  options: WorkflowPipelineOptions,
+): { workflow: CandidateWorkflow | undefined; rationale: string } {
   if (options.workflowId !== undefined) {
     const found = workflows.find((w) => w.id === options.workflowId);
-    return found ? { workflow: found, rationale: `explicit --workflow-id "${options.workflowId}"` } : { workflow: undefined, rationale: `no discovered workflow has id "${options.workflowId}" (found: ${workflows.map((w) => w.id).join(', ')})` };
+    return found
+      ? { workflow: found, rationale: `explicit --workflow-id "${options.workflowId}"` }
+      : {
+          workflow: undefined,
+          rationale: `no discovered workflow has id "${options.workflowId}" (found: ${workflows.map((w) => w.id).join(', ')})`,
+        };
   }
   if (options.workflowIndex !== undefined) {
     const found = workflows[options.workflowIndex];
-    return found ? { workflow: found, rationale: `explicit --workflow-index ${options.workflowIndex}` } : { workflow: undefined, rationale: `no discovered workflow at index ${options.workflowIndex} (${workflows.length} discovered)` };
+    return found
+      ? { workflow: found, rationale: `explicit --workflow-index ${options.workflowIndex}` }
+      : { workflow: undefined, rationale: `no discovered workflow at index ${options.workflowIndex} (${workflows.length} discovered)` };
   }
-  const ranked = [...workflows].sort((a, b) => (b.steps.length !== a.steps.length ? b.steps.length - a.steps.length : b.confidence - a.confidence));
+  const ranked = [...workflows].sort((a, b) =>
+    b.steps.length !== a.steps.length ? b.steps.length - a.steps.length : b.confidence - a.confidence,
+  );
   const best = ranked[0]!;
-  return { workflow: best, rationale: `highest-confidence workflow with the most steps (${best.steps.length} steps, confidence ${best.confidence.toFixed(2)}) among ${workflows.length} discovered` };
+  return {
+    workflow: best,
+    rationale: `highest-confidence workflow with the most steps (${best.steps.length} steps, confidence ${best.confidence.toFixed(2)}) among ${workflows.length} discovered`,
+  };
 }
 
 export function describeStepOutput(output: { readonly status?: string } | undefined): string {

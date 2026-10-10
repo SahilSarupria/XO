@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { compileSources } from '@xo/compiler';
@@ -11,7 +12,7 @@ import { WorkflowExecutor } from '../../src/workflow/workflow-executor.js';
 import { EnvironmentId } from '../../src/ids.js';
 import { prepareCandidateWorkflowForExecution, makeCapabilityAuthorityNodeHandler } from '../../src/workflow/candidate-workflow-bridge.js';
 
-test('REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compiled OpenAPI operation crosses into another real capability\'s execution input', async () => {
+test("REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compiled OpenAPI operation crosses into another real capability's execution input", async () => {
   const text = await readFile(new URL('../../../../examples/vertical-test/openapi-operation-data-flow.json', import.meta.url), 'utf8');
   const compileResult = await compileSources([{ kind: 'openapi', text, sourcePath: 'openapi-operation-data-flow.json' }], {});
   assert.equal(compileResult.ok, true);
@@ -21,7 +22,9 @@ test('REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compi
   const composed = composeWorkflows(graph, { now: () => new Date().toISOString() });
   assert.equal(composed.ok, true);
   if (!composed.ok) return;
-  const workflow = composed.value.find((w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'));
+  const workflow = composed.value.find(
+    (w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'),
+  );
   assert.ok(workflow);
 
   const producerNode = graph.allNodes().find((n) => n.kind === 'capability' && n.properties.name === 'calculate_brokerage');
@@ -60,7 +63,11 @@ test('REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compi
   assert.equal(prepared.unboundStepCount, 0);
   assert.equal(prepared.wiredInjections.length, 1);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
   const capturedConsumerInputs: Record<string, unknown>[] = [];
   const originalExecute = executor.execute.bind(executor);
   executor.execute = (async (request: { capabilityId: string; input: Record<string, unknown> }) => {
@@ -68,15 +75,29 @@ test('REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compi
     return originalExecute(request);
   }) as typeof executor.execute;
 
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
-  });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
 
   const producerGraphNode = prepared.graph.nodes.find((n) => n.name === 'calculate_brokerage');
   assert.ok(producerGraphNode);
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === producerGraphNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === producerGraphNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n,
+    ),
+  };
 
-  const environment = { environmentId: EnvironmentId('env_test_openapi'), hostProfile: { family: 'test', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z' };
+  const environment = {
+    environmentId: EnvironmentId('env_test_openapi'),
+    hostProfile: { family: 'test', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
   const result = await workflowExecutor.run(seededGraph, environment);
 
   assert.equal(result.instance.status, 'completed');

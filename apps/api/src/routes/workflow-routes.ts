@@ -4,7 +4,16 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requirePrincipal, requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, workspaceWorkflowExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import type { PermissionManager } from '@xo/permissions';
+import {
+  requirePrincipal,
+  requireOwnedWorkspace,
+  workspaceCompilationsStore,
+  workspaceApprovalsStore,
+  workspaceExecutionsStore,
+  workspaceWorkflowExecutionsStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -13,7 +22,15 @@ import { isApproved } from '../approvals/approval.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
 import { composeCompilationWorkflows, resolveWorkflow, buildWorkflowView, type WorkflowView } from '../workflows/workflow-catalog.js';
-import { getWorkflowExecution, listWorkflowExecutions, resumeWorkflowExecution, startWorkflowExecution, toWorkflowExecutionView, type ResumeWorkflowRequest, type WorkflowRunnerContext } from '../workflows/workflow-runner.js';
+import {
+  getWorkflowExecution,
+  listWorkflowExecutions,
+  resumeWorkflowExecution,
+  startWorkflowExecution,
+  toWorkflowExecutionView,
+  type ResumeWorkflowRequest,
+  type WorkflowRunnerContext,
+} from '../workflows/workflow-runner.js';
 import type { HumanTaskDecision } from '../executions/execution.js';
 
 /**
@@ -58,21 +75,30 @@ async function readJsonObject(req: ApiRequest, { allowEmpty }: { readonly allowE
   if (allowEmpty && (await req.rawBody()).length === 0) return {};
   const parsed = await req.json<unknown>();
   if (!parsed.ok) throw parsed.error;
-  if (typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value)) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be a JSON object');
+  if (typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value))
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be a JSON object');
   return parsed.value as Record<string, unknown>;
 }
 
 function boundedPlainObject(value: unknown, field: string, maxBytes: number): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}", if present, must be a plain JSON object`);
-  if (JSON.stringify(value).length > maxBytes) throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}" must be at most ${maxBytes} bytes serialized`);
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}", if present, must be a plain JSON object`);
+  if (JSON.stringify(value).length > maxBytes)
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${field}" must be at most ${maxBytes} bytes serialized`);
   return value as Record<string, unknown>;
 }
 
-export function registerWorkflowRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerWorkflowRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  permissionManager: PermissionManager,
+): void {
   function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal): WorkflowRunnerContext {
     return {
       workspace,
       principal,
+      permissionManager,
       compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
       approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
       executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),
@@ -95,7 +121,9 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const unavailable: { compilationId: string; errorCode: string; errorMessage: string }[] = [];
     for (const compilation of compilations) {
       const graphJson = await ctx.compilationStore.getCompiledGraph(compilation.compilationId);
-      const composed = graphJson.ok ? composeCompilationWorkflows(graphJson.value, compilation.completedAt ?? compilation.createdAt) : undefined;
+      const composed = graphJson.ok
+        ? composeCompilationWorkflows(graphJson.value, compilation.completedAt ?? compilation.createdAt)
+        : undefined;
       if (!graphJson.ok || composed === undefined || !composed.ok) {
         const error = !graphJson.ok ? graphJson.error : (composed as { error: XoError }).error;
         unavailable.push({ compilationId: compilation.compilationId, errorCode: error.code, errorMessage: error.message });
@@ -122,8 +150,10 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
 
     const body = await readJsonObject(req, { allowEmpty: false });
     rejectUnknownFields(body, ['compilationId', 'workflowId', 'input'], 'POST .../workflows/:workflowId/executions');
-    if (typeof body['compilationId'] !== 'string' || body['compilationId'].length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"compilationId" (string) is required');
-    if (body['workflowId'] !== undefined && body['workflowId'] !== workflowId) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"workflowId" in the body, if present, must equal the workflowId in the path');
+    if (typeof body['compilationId'] !== 'string' || body['compilationId'].length === 0)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"compilationId" (string) is required');
+    if (body['workflowId'] !== undefined && body['workflowId'] !== workflowId)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"workflowId" in the body, if present, must equal the workflowId in the path');
     const input = body['input'] === undefined ? {} : boundedPlainObject(body['input'], 'input', MAX_WORKFLOW_INPUT_BYTES);
 
     const ctx = runnerContext(workspace, requirePrincipal(req));
@@ -155,11 +185,16 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow execution id');
 
     const body = await readJsonObject(req, { allowEmpty: true });
-    rejectUnknownFields(body, ['decision', 'data', 'expectedStepExecutionId', 'expectedRevision'], 'POST .../workflow-executions/:workflowExecutionId/resume');
+    rejectUnknownFields(
+      body,
+      ['decision', 'data', 'expectedStepExecutionId', 'expectedRevision'],
+      'POST .../workflow-executions/:workflowExecutionId/resume',
+    );
 
     let decision: HumanTaskDecision | undefined;
     if (body['decision'] !== undefined) {
-      if (body['decision'] !== 'approve' && body['decision'] !== 'reject') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"decision" must be one of: approve, reject');
+      if (body['decision'] !== 'approve' && body['decision'] !== 'reject')
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"decision" must be one of: approve, reject');
       decision = body['decision'];
     }
     let data: Record<string, unknown> | undefined;
@@ -167,8 +202,16 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
       if (decision === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"data" may only be supplied together with "decision"');
       data = boundedPlainObject(body['data'], 'data', MAX_DECISION_DATA_BYTES);
     }
-    if (body['expectedStepExecutionId'] !== undefined && (typeof body['expectedStepExecutionId'] !== 'string' || body['expectedStepExecutionId'].length === 0)) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedStepExecutionId" must be a non-empty string');
-    if (body['expectedRevision'] !== undefined && (typeof body['expectedRevision'] !== 'number' || !Number.isInteger(body['expectedRevision']) || body['expectedRevision'] < 0)) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a non-negative integer');
+    if (
+      body['expectedStepExecutionId'] !== undefined &&
+      (typeof body['expectedStepExecutionId'] !== 'string' || body['expectedStepExecutionId'].length === 0)
+    )
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedStepExecutionId" must be a non-empty string');
+    if (
+      body['expectedRevision'] !== undefined &&
+      (typeof body['expectedRevision'] !== 'number' || !Number.isInteger(body['expectedRevision']) || body['expectedRevision'] < 0)
+    )
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a non-negative integer');
 
     const request: ResumeWorkflowRequest = {
       ...(decision !== undefined ? { decision } : {}),

@@ -1,7 +1,21 @@
-import { resolveCapabilityBinding, STANDARD_BINDING_RESOLVERS, type BindingOutcome, type BindingResolver, type CapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
+import {
+  resolveCapabilityBinding,
+  STANDARD_BINDING_RESOLVERS,
+  type BindingOutcome,
+  type BindingResolver,
+  type CapabilityBinding,
+  type SemanticCapabilityContract,
+} from '@xo/capability-contract';
 import type { ContentHash } from '@xo/types';
-import type { RuntimeError } from '@xo/errors';
-import type { PermissionContext, PermissionManager } from '@xo/permissions';
+import { ErrorCode, RuntimeError } from '@xo/errors';
+import {
+  declarationCoversCopy,
+  resolveDeclaredPermissionIds,
+  type AuthorizationSubject,
+  type PermissionContext,
+  type PermissionDeclaration,
+  type PermissionManager,
+} from '@xo/permissions';
 import { RuntimeCapabilityRegistry } from './runtime-capability-registry.js';
 import { RuntimeCapabilityExecutor, type RuntimeCapabilityExecutionResult } from './runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from './capability-binding-registration.js';
@@ -56,13 +70,31 @@ import { registerResolvedCapabilityBinding } from './capability-binding-registra
  * (`xo run` resolves only `StructuredComparisonBindingResolver`) passes
  * its own — this function never widens what a caller asked for.
  */
-export function resolveContractBinding(contract: SemanticCapabilityContract, resolvers: readonly BindingResolver[] = STANDARD_BINDING_RESOLVERS): BindingOutcome {
+export function resolveContractBinding(
+  contract: SemanticCapabilityContract,
+  resolvers: readonly BindingResolver[] = STANDARD_BINDING_RESOLVERS,
+): BindingOutcome {
   return resolveCapabilityBinding(contract, resolvers);
 }
 
 export interface ExecuteResolvedContractRequest {
   /** The host's own permission policy — never defaulted here. */
   readonly permissionManager: PermissionManager;
+  /**
+   * P1.0 M2 — REQUIRED. Who this execution is performed for (verified at
+   * the executor). Never inferred from the contract, package or input.
+   */
+  readonly subject: AuthorizationSubject;
+  /**
+   * P1.0 M2 — REQUIRED. The capability's authoritative permission
+   * declaration, resolved by the host from the capability node's own
+   * `requiredPermissions` property (`resolveDeclaredPermissionIds`). It is
+   * cross-checked against `contract.requiredPermissions`; a disagreement or
+   * an `unresolved` declaration denies execution before anything is
+   * registered or run. Not a caller-supplied list: hosts read it from the
+   * persisted graph / installed package, never from a request.
+   */
+  readonly permissionDeclaration: PermissionDeclaration;
   readonly input: unknown;
   /** Live-graph path only — see this module's doc comment. Omit on the installed-package path. */
   readonly graphHash?: ContentHash;
@@ -78,7 +110,7 @@ export interface ExecuteResolvedContractRequest {
  */
 export type ExecuteResolvedContractOutcome =
   | { readonly ok: true; readonly value: RuntimeCapabilityExecutionResult }
-  | { readonly ok: false; readonly stage: 'registration' | 'execution'; readonly error: RuntimeError };
+  | { readonly ok: false; readonly stage: 'registration' | 'authorization' | 'execution'; readonly error: RuntimeError };
 
 /**
  * Registers `binding` for `contract` in a fresh `RuntimeCapabilityRegistry`
@@ -88,12 +120,54 @@ export type ExecuteResolvedContractOutcome =
  * executor is deliberately NOT caught here — callers that want a
  * defensive catch (`apps/api`) keep theirs, exactly as before.
  */
-export async function executeResolvedContract(contract: SemanticCapabilityContract, binding: CapabilityBinding, request: ExecuteResolvedContractRequest): Promise<ExecuteResolvedContractOutcome> {
+export async function executeResolvedContract(
+  contract: SemanticCapabilityContract,
+  binding: CapabilityBinding,
+  request: ExecuteResolvedContractRequest,
+): Promise<ExecuteResolvedContractOutcome> {
+  // P1.0 M2 — resolve the permission declaration BEFORE registering anything
+  // or building an executor. Unresolved/conflicting ⇒ denied, no side effect.
+  const declaration = declarationCoversCopy(
+    request.permissionDeclaration ?? resolveDeclaredPermissionIds(undefined, `capability "${contract.id}"`),
+    resolveDeclaredPermissionIds(contract.requiredPermissions, `contract "${contract.id}" requiredPermissions`),
+    `capability "${contract.id}"`,
+  );
+  if (declaration.kind === 'unresolved') {
+    return {
+      ok: false,
+      stage: 'authorization',
+      error: new RuntimeError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        `Capability "${contract.id}" cannot be authorized: ${declaration.reason}`,
+      ),
+    };
+  }
+
   const registry = new RuntimeCapabilityRegistry();
-  const registered = registerResolvedCapabilityBinding(registry, contract, binding, request.graphHash !== undefined ? { graphHash: request.graphHash } : {});
+  const registered = registerResolvedCapabilityBinding(registry, contract, binding, {
+    ...(request.graphHash !== undefined ? { graphHash: request.graphHash } : {}),
+    // The authoritative declaration may be STRICTER than the contract copy (e.g. manifest-declared extras); enforce all of it.
+    ...(declaration.kind === 'required' ? { additionalRequiredPermissions: declaration.requirements } : {}),
+  });
   if (!registered.ok) return { ok: false, stage: 'registration', error: registered.error };
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: request.permissionManager });
+  let executor: RuntimeCapabilityExecutor;
+  try {
+    executor = new RuntimeCapabilityExecutor({ registry, permissionManager: request.permissionManager, subject: request.subject });
+  } catch (cause) {
+    // Missing/unverifiable subject or policy ⇒ denial, never a fail-open fallback.
+    return {
+      ok: false,
+      stage: 'authorization',
+      error:
+        cause instanceof RuntimeError
+          ? cause
+          : new RuntimeError(
+              ErrorCode.RUNTIME_PERMISSION_DENIED,
+              `authorization could not be established: ${cause instanceof Error ? cause.message : String(cause)}`,
+            ),
+    };
+  }
   const result = await executor.execute({
     capabilityId: contract.id,
     input: request.input,

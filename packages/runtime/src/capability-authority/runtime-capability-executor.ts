@@ -1,7 +1,13 @@
 import { err, ok, type Result } from '@xo/types';
 import { PackageId, type ContentHash } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
-import type { PermissionContext, PermissionManager } from '@xo/permissions';
+import {
+  authorizeCapabilityExecution,
+  isAuthorizationSubject,
+  type AuthorizationSubject,
+  type PermissionContext,
+  type PermissionManager,
+} from '@xo/permissions';
 import type { RuntimeCapabilityRegistry } from './runtime-capability-registry.js';
 
 /**
@@ -20,6 +26,15 @@ export const NATIVE_CAPABILITY_REQUESTER = PackageId('runtime:native-capability'
 export interface RuntimeCapabilityExecutorOptions {
   readonly registry: RuntimeCapabilityRegistry;
   readonly permissionManager: PermissionManager;
+  /**
+   * P1.0 M2 — REQUIRED. WHO this executor acts for: an
+   * `AuthenticatedPrincipal` (API) or a `TrustedExecutionContext` (local
+   * CLI operator). Verified at construction AND on every `execute`; the
+   * executor refuses to be built without one, so there is no
+   * "no principal ⇒ unrestricted" mode. Distinct from the requesting
+   * package/capability identity (`requesterPackageId` / `capabilityId`).
+   */
+  readonly subject: AuthorizationSubject;
 }
 
 export interface RuntimeCapabilityExecutionRequest {
@@ -115,10 +130,30 @@ export interface RuntimeCapabilityExecutionResult {
 export class RuntimeCapabilityExecutor {
   private readonly registry: RuntimeCapabilityRegistry;
   private readonly permissionManager: PermissionManager;
+  private readonly subject: AuthorizationSubject;
 
   constructor(options: RuntimeCapabilityExecutorOptions) {
+    // Fail closed at construction: an executor with no verifiable subject or
+    // no policy must not exist (JS callers can omit what TypeScript requires).
+    if (!isAuthorizationSubject(options.subject)) {
+      throw new RuntimeError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        'RuntimeCapabilityExecutor requires a verified AuthenticatedPrincipal or TrustedExecutionContext as its subject',
+      );
+    }
+    if (
+      options.permissionManager === undefined ||
+      options.permissionManager === null ||
+      typeof options.permissionManager.check !== 'function'
+    ) {
+      throw new RuntimeError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        'RuntimeCapabilityExecutor requires a PermissionManager (no gate configured ⇒ denied)',
+      );
+    }
     this.registry = options.registry;
     this.permissionManager = options.permissionManager;
+    this.subject = options.subject;
   }
 
   async execute(request: RuntimeCapabilityExecutionRequest): Promise<Result<RuntimeCapabilityExecutionResult, RuntimeError>> {
@@ -144,27 +179,28 @@ export class RuntimeCapabilityExecutor {
       );
     }
 
-    // 3. Permission gate — every requirement registered for this
-    // capability id must independently resolve to `allow`.
-    const requirements = this.registry.permissions.resolve(request.capabilityId);
+    // 3. Authorization — ONE decision (`@xo/permissions`'
+    // `authorizeCapabilityExecution`) over: the verified subject, the
+    // requesting package/capability, and the capability's explicit
+    // permission declaration. A missing/unresolved declaration, an
+    // unverifiable subject, or any non-`allow` requirement is a denial
+    // BEFORE the handler runs. A permission-free capability (`[]`) still
+    // needs the verified subject.
     const requesterPackageId = PackageId(request.requesterPackageId ?? NATIVE_CAPABILITY_REQUESTER);
-
-    for (const requirement of requirements) {
-      const decision = await this.permissionManager.check({
-        permission: requirement.permission,
-        ...(requirement.scope !== undefined ? { scope: requirement.scope } : {}),
-        requester: { packageId: requesterPackageId, capabilityId: request.capabilityId },
-        ...(request.context !== undefined ? { context: request.context } : {}),
-      });
-      if (decision.effect !== 'allow') {
-        if (requirement.optional) continue;
-        return err(
-          new RuntimeError(
-            ErrorCode.RUNTIME_PERMISSION_DENIED,
-            `Permission "${requirement.permission}" required by Runtime capability "${request.capabilityId}" was not granted: ${decision.reason}`,
-          ),
-        );
-      }
+    const authorization = await authorizeCapabilityExecution({
+      manager: this.permissionManager,
+      subject: this.subject,
+      requester: { packageId: requesterPackageId, capabilityId: request.capabilityId },
+      declaration: this.registry.permissionDeclaration(request.capabilityId),
+      ...(request.context !== undefined ? { context: request.context } : {}),
+    });
+    if (!authorization.allowed) {
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_PERMISSION_DENIED,
+          `Runtime capability "${request.capabilityId}" was not authorized: ${authorization.reason}`,
+        ),
+      );
     }
 
     // 4. Execution — only ever reached after 1, 2, and 3 all succeed.

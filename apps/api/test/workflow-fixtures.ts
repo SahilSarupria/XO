@@ -67,26 +67,74 @@ function must<T>(r: { ok: true; value: T } | { ok: false; error: { message: stri
 export function buildFixtureGraph(): XoirGraph {
   const graph = XoirGraph.create(XoirGraphId('p08_fixture_graph'));
   const cap = (id: string, name: string, extra: Record<string, unknown> = {}): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(id), kind: 'capability', properties: { name, description: `${name} (P0.8 test fixture)`, ...extra }, confidence: 0.8, sourceRefs: REF }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(id),
+        kind: 'capability',
+        properties: { name, description: `${name} (P0.8 test fixture)`, requiredPermissions: [], ...extra },
+        confidence: 0.8,
+        sourceRefs: REF,
+      }),
+    );
   };
   /** A `decision_node` with an outcome is what `StructuredComparisonBindingResolver` needs to bind a deterministic capability. */
   const rule = (capId: string, ruleId: string, question: string, outcome: string): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(ruleId), kind: 'decision_node', properties: { question, outcome }, confidence: 0.8, sourceRefs: REF }));
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${capId}_requires_${ruleId}`), kind: 'REQUIRES', fromId: XoirNodeId(capId), toId: XoirNodeId(ruleId) }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(ruleId),
+        kind: 'decision_node',
+        properties: { question, outcome },
+        confidence: 0.8,
+        sourceRefs: REF,
+      }),
+    );
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${capId}_requires_${ruleId}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(capId),
+        toId: XoirNodeId(ruleId),
+      }),
+    );
   };
   /** An operational-action concept linked by REQUIRES is what `ActionEscalationBindingResolver` needs to bind a human_in_the_loop capability. */
   const action = (capId: string, conceptId: string, text: string): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(conceptId), kind: 'concept', properties: { name: text, text }, confidence: 0.7, sourceRefs: REF, subtype: 'action' }));
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${capId}_requires_${conceptId}`), kind: 'REQUIRES', fromId: XoirNodeId(capId), toId: XoirNodeId(conceptId) }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(conceptId),
+        kind: 'concept',
+        properties: { name: text, text },
+        confidence: 0.7,
+        sourceRefs: REF,
+        subtype: 'action',
+      }),
+    );
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${capId}_requires_${conceptId}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(capId),
+        toId: XoirNodeId(conceptId),
+      }),
+    );
   };
   const requires = (consumer: string, producer: string): void => {
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${consumer}_requires_${producer}`), kind: 'REQUIRES', fromId: XoirNodeId(consumer), toId: XoirNodeId(producer) }));
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${consumer}_requires_${producer}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(consumer),
+        toId: XoirNodeId(producer),
+      }),
+    );
   };
 
   // Workflow 1 — proven data flow: A (deterministic, declares output `matched`) -> B (deterministic, declares input `matched`).
   cap(FIXTURE_CAPABILITY_IDS.flowA, 'Check claim threshold', { outputs: ['matched: Whether the threshold rule matched'] });
   rule(FIXTURE_CAPABILITY_IDS.flowA, 'decision_p08_flow_a', 'the claim amount exceeds 10000', 'flag for payout');
-  cap(FIXTURE_CAPABILITY_IDS.flowB, 'Authorize payout', { inputs: ['matched: Whether the threshold rule matched', 'payout amount: The payout amount to authorize'] });
+  cap(FIXTURE_CAPABILITY_IDS.flowB, 'Authorize payout', {
+    inputs: ['matched: Whether the threshold rule matched', 'payout amount: The payout amount to authorize'],
+  });
   rule(FIXTURE_CAPABILITY_IDS.flowB, 'decision_p08_flow_b', 'the payout amount exceeds 500', 'release payout');
   requires(FIXTURE_CAPABILITY_IDS.flowB, FIXTURE_CAPABILITY_IDS.flowA);
 
@@ -128,7 +176,9 @@ export function buildFixtureGraph(): XoirGraph {
   rule(FIXTURE_CAPABILITY_IDS.xsegA, 'decision_p08_xseg_a', 'the intake score exceeds 50', 'intake accepted');
   cap(FIXTURE_CAPABILITY_IDS.xsegH, 'Manual intake review');
   action(FIXTURE_CAPABILITY_IDS.xsegH, 'concept_p08_xseg_h', 'Reviewer performs the manual intake review');
-  cap(FIXTURE_CAPABILITY_IDS.xsegC, 'Settle the intake', { inputs: ['matched: Whether the intake rule matched', 'review amount: The reviewed amount'] });
+  cap(FIXTURE_CAPABILITY_IDS.xsegC, 'Settle the intake', {
+    inputs: ['matched: Whether the intake rule matched', 'review amount: The reviewed amount'],
+  });
   rule(FIXTURE_CAPABILITY_IDS.xsegC, 'decision_p08_xseg_c', 'the review amount exceeds 500', 'intake settled');
   requires(FIXTURE_CAPABILITY_IDS.xsegH, FIXTURE_CAPABILITY_IDS.xsegA);
   requires(FIXTURE_CAPABILITY_IDS.xsegC, FIXTURE_CAPABILITY_IDS.xsegH);
@@ -138,9 +188,15 @@ export function buildFixtureGraph(): XoirGraph {
 }
 
 /** Stores the fixture as a SUCCEEDED compilation in `workspace`'s real compilation store (same `FsCompilationStore` `POST .../compile` writes to). */
-export async function storeFixtureCompilation(workspace: WorkspaceRecord, dataRootDir: string): Promise<{ readonly compilationId: string }> {
+export async function storeFixtureCompilation(
+  workspace: WorkspaceRecord,
+  dataRootDir: string,
+): Promise<{ readonly compilationId: string }> {
   const store = new FsCompilationStore(workspaceCompilationsStore(workspace, { dataRootDir }));
-  const created = await store.create(workspace.workspaceId, workspace.identityId, { sourceId: 'src_p08_fixture', sourceDigestSha256: 'p08-fixture-digest' });
+  const created = await store.create(workspace.workspaceId, workspace.identityId, {
+    sourceId: 'src_p08_fixture',
+    sourceDigestSha256: 'p08-fixture-digest',
+  });
   if (!created.ok) throw created.error;
   const graph = buildFixtureGraph();
   const capabilities: CapabilityProjection[] = Object.values(FIXTURE_CAPABILITY_IDS).map((id) => ({
@@ -152,7 +208,12 @@ export async function storeFixtureCompilation(workspace: WorkspaceRecord, dataRo
     confidence: 0.8,
     provenance: [{ documentPath: 'p08-fixture.pdf', pages: [1] }],
   }));
-  const done = await store.markSucceeded(created.value.compilationId, { capabilities, discoveredCount: capabilities.length, resolvedCount: capabilities.length, graph: toJson(graph) });
+  const done = await store.markSucceeded(created.value.compilationId, {
+    capabilities,
+    discoveredCount: capabilities.length,
+    resolvedCount: capabilities.length,
+    graph: toJson(graph),
+  });
   if (!done.ok) throw done.error;
   return { compilationId: created.value.compilationId };
 }

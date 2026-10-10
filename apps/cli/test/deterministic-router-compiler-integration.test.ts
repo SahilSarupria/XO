@@ -49,7 +49,12 @@ function buildResolvableClaimGraph(): { readonly graph: XoirGraph; readonly capa
   graph.createAndAddNode({
     id: XoirNodeId(capabilityId),
     kind: 'capability',
-    properties: { name: 'Evaluate Claim', description: 'Evaluates a submitted claim against policy rules.', determinism: 'deterministic' },
+    properties: {
+      name: 'Evaluate Claim',
+      description: 'Evaluates a submitted claim against policy rules.',
+      determinism: 'deterministic',
+      requiredPermissions: [],
+    },
     confidence: 0.7,
     now,
   });
@@ -60,7 +65,13 @@ function buildResolvableClaimGraph(): { readonly graph: XoirGraph; readonly capa
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId('req-cli-integration'), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('req-cli-integration'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId };
 }
 
@@ -79,7 +90,10 @@ test('a package built by the real, unmocked packageXoirGraph produces an executi
   const declaration = packaged.value.manifest.capabilities?.[0];
   assert.ok(declaration, 'expected packageXoirGraph to have lowered exactly one CapabilityDeclaration');
   assert.equal(declaration!.id, capabilityId);
-  assert.ok(declaration!.execution, 'expected the real compiler output to populate CapabilityDeclaration.execution (this is the fix under test)');
+  assert.ok(
+    declaration!.execution,
+    'expected the real compiler output to populate CapabilityDeclaration.execution (this is the fix under test)',
+  );
   assert.equal(declaration!.execution!.mode, 'deterministic_rule');
 
   await withTempDir('xo-cli-test-compiler-integration-', async (storeDir) => {

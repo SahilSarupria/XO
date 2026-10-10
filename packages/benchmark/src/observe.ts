@@ -31,7 +31,10 @@ import {
   type PrepareCandidateWorkflowResult,
   type RuntimeCapabilityExecutionRequest,
 } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, resolveDeclaredPermissionIds, RuleBasedPolicy } from '@xo/permissions';
+
+/** Offline evaluation harness subject (P1.0 M2). Not an identity; matches no principal-scoped rule; the policy remains deny-by-default. */
+const HARNESS_SUBJECT = establishTrustedExecutionContext('evaluation-harness');
 import type { BenchmarkCaseDefinition, CapabilityExecutionCase, SourceSpec, WorkflowExecutionCase } from './definition.js';
 import { compareStrings, fingerprintOf, isPlainObject } from './json.js';
 import { matchesName, perfectAssignment } from './match.js';
@@ -126,14 +129,29 @@ function baseStages(): Record<StageName, StageStatus> {
  */
 type DocumentPathMap = ReadonlyMap<string, string>;
 
-function toObservedRefs(refs: readonly { readonly documentPath: string; readonly locator?: string | undefined; readonly pages?: readonly number[] | undefined }[], docPaths: DocumentPathMap): ObservedSourceRef[] {
-  return refs.map((r) => ({ documentPath: docPaths.get(r.documentPath) ?? r.documentPath, ...(r.locator !== undefined ? { locator: r.locator } : {}), ...(r.pages !== undefined ? { pages: [...r.pages] } : {}) }));
+function toObservedRefs(
+  refs: readonly { readonly documentPath: string; readonly locator?: string | undefined; readonly pages?: readonly number[] | undefined }[],
+  docPaths: DocumentPathMap,
+): ObservedSourceRef[] {
+  return refs.map((r) => ({
+    documentPath: docPaths.get(r.documentPath) ?? r.documentPath,
+    ...(r.locator !== undefined ? { locator: r.locator } : {}),
+    ...(r.pages !== undefined ? { pages: [...r.pages] } : {}),
+  }));
 }
 
 function toObservedNodes(graph: XoirGraph, docPaths: DocumentPathMap): ObservedNode[] {
   return graph
     .allNodes()
-    .map((n) => ({ id: n.id as unknown as string, kind: n.kind as string, properties: n.properties as Readonly<Record<string, unknown>>, confidence: n.metadata.confidence, sourceRefs: toObservedRefs(n.metadata.sourceRefs, docPaths), ...(n.metadata.producedBy !== undefined ? { producedBy: n.metadata.producedBy } : {}), ...(n.metadata.subtype !== undefined ? { subtype: n.metadata.subtype } : {}) }))
+    .map((n) => ({
+      id: n.id as unknown as string,
+      kind: n.kind as string,
+      properties: n.properties as Readonly<Record<string, unknown>>,
+      confidence: n.metadata.confidence,
+      sourceRefs: toObservedRefs(n.metadata.sourceRefs, docPaths),
+      ...(n.metadata.producedBy !== undefined ? { producedBy: n.metadata.producedBy } : {}),
+      ...(n.metadata.subtype !== undefined ? { subtype: n.metadata.subtype } : {}),
+    }))
     .sort((a, b) => compareStrings(a.id, b.id));
 }
 
@@ -141,7 +159,14 @@ function toObservedNodes(graph: XoirGraph, docPaths: DocumentPathMap): ObservedN
 // Provenance (P0.9C Step 5): consume the P0.9B projection unchanged; never fabricate
 // ---------------------------------------------------------------------------
 
-function toObservedCapabilityProvenance(graph: XoirGraph, docPaths: DocumentPathMap): { readonly observed: ObservedCapabilityProvenance[]; readonly byCapabilityId: Map<string, CapabilityProvenance>; readonly byContractId: Map<string, CapabilityProvenance> } {
+function toObservedCapabilityProvenance(
+  graph: XoirGraph,
+  docPaths: DocumentPathMap,
+): {
+  readonly observed: ObservedCapabilityProvenance[];
+  readonly byCapabilityId: Map<string, CapabilityProvenance>;
+  readonly byContractId: Map<string, CapabilityProvenance>;
+} {
   const first = projectAllCapabilityProvenance(graph);
   const second = new Map(projectAllCapabilityProvenance(graph).map((p) => [p.capabilityId, p.contractContentHash] as const));
   const observed = first.map((p): ObservedCapabilityProvenance => ({
@@ -151,29 +176,65 @@ function toObservedCapabilityProvenance(graph: XoirGraph, docPaths: DocumentPath
     contractContentHash: p.contractContentHash,
     contractContentHashRecomputed: second.get(p.capabilityId) ?? '',
     graphHash: p.graphHash,
-    binding: { status: p.binding.status, ...(p.binding.bindingId !== undefined ? { bindingId: p.binding.bindingId } : {}), ...(p.binding.implementationClass !== undefined ? { implementationClass: p.binding.implementationClass } : {}) },
+    binding: {
+      status: p.binding.status,
+      ...(p.binding.bindingId !== undefined ? { bindingId: p.binding.bindingId } : {}),
+      ...(p.binding.implementationClass !== undefined ? { implementationClass: p.binding.implementationClass } : {}),
+    },
     sourceXoirNodeIds: [...p.sourceXoirNodeIds],
     sourceRefs: toObservedRefs(p.sourceRefs, docPaths),
   }));
-  return { observed, byCapabilityId: new Map(first.map((p) => [p.capabilityId, p] as const)), byContractId: new Map(first.map((p) => [p.contractId, p] as const)) };
+  return {
+    observed,
+    byCapabilityId: new Map(first.map((p) => [p.capabilityId, p] as const)),
+    byContractId: new Map(first.map((p) => [p.contractId, p] as const)),
+  };
 }
 
 /** P0.9C Step 5: execution provenance is descriptive observation data; it is never part of the stage fingerprint (exactly like `producedBy` and `subtype`). */
 function withoutProvenance(e: ObservedExecution): ObservedExecution {
   if (e.kind === 'capability') {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { provenance: _drop, ...rest } = e;
     return rest;
   }
-  return { ...e, steps: e.steps.map((st) => { const { provenance: _drop, ...rest } = st; return rest; }) };
+  return {
+    ...e,
+    steps: e.steps.map((st) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { provenance: _drop, ...rest } = st;
+      return rest;
+    }),
+  };
 }
 
 /** What an execution recorded (verbatim) joined with P0.9B's agreement against the live-graph view. */
-function toObservedExecutionProvenance(recorded: ObservedExecutionProvenance['recorded'], capabilityId: string, view: CapabilityProvenance | undefined): ObservedExecutionProvenance {
-  const projected = projectExecutionProvenance({ capabilityId, ...(recorded.contractId !== undefined ? { contractId: recorded.contractId } : {}), ...(recorded.bindingId !== undefined ? { bindingId: recorded.bindingId } : {}), ...(recorded.sourceXoirNodeIds !== undefined ? { sourceXoirNodeIds: recorded.sourceXoirNodeIds } : {}), ...(recorded.graphHash !== undefined ? { graphHash: recorded.graphHash } : {}), ...(recorded.contractContentHash !== undefined ? { contractContentHash: recorded.contractContentHash } : {}) }, view);
+function toObservedExecutionProvenance(
+  recorded: ObservedExecutionProvenance['recorded'],
+  capabilityId: string,
+  view: CapabilityProvenance | undefined,
+): ObservedExecutionProvenance {
+  const projected = projectExecutionProvenance(
+    {
+      capabilityId,
+      ...(recorded.contractId !== undefined ? { contractId: recorded.contractId } : {}),
+      ...(recorded.bindingId !== undefined ? { bindingId: recorded.bindingId } : {}),
+      ...(recorded.sourceXoirNodeIds !== undefined ? { sourceXoirNodeIds: recorded.sourceXoirNodeIds } : {}),
+      ...(recorded.graphHash !== undefined ? { graphHash: recorded.graphHash } : {}),
+      ...(recorded.contractContentHash !== undefined ? { contractContentHash: recorded.contractContentHash } : {}),
+    },
+    view,
+  );
   return { recorded, graphViewAvailable: view !== undefined, agreement: { ...projected.agreement } };
 }
 
-function recordedFacts(value: { readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }): ObservedExecutionProvenance['recorded'] {
+function recordedFacts(value: {
+  readonly contractId?: string;
+  readonly bindingId?: string;
+  readonly sourceXoirNodeIds?: readonly string[];
+  readonly graphHash?: string;
+  readonly contractContentHash?: string;
+}): ObservedExecutionProvenance['recorded'] {
   return {
     ...(value.contractId !== undefined ? { contractId: value.contractId } : {}),
     ...(value.bindingId !== undefined ? { bindingId: value.bindingId } : {}),
@@ -201,21 +262,56 @@ function matchedOf(output: unknown): boolean | undefined {
  * packager does: capability lowering embeds contracts, the graph is serialized, and the installed router reads each contract back with
  * `extractContractFromPropertyBag` and resolves ONLY the structured-comparison binding). The archive / signing / install steps are not run.
  */
-async function observePaths(graph: XoirGraph, observed: readonly ObservedCapabilityProvenance[], executions: readonly ObservedExecution[], requests: readonly (CapabilityExecutionCase | WorkflowExecutionCase)[], inputSchemaOf: (id: string) => CapabilityInputSchema | undefined, lower: typeof lowerCapabilitiesToManifest): Promise<readonly PathView[]> {
+async function observePaths(
+  graph: XoirGraph,
+  observed: readonly ObservedCapabilityProvenance[],
+  executions: readonly ObservedExecution[],
+  requests: readonly (CapabilityExecutionCase | WorkflowExecutionCase)[],
+  inputSchemaOf: (id: string) => CapabilityInputSchema | undefined,
+  lower: typeof lowerCapabilitiesToManifest,
+): Promise<readonly PathView[]> {
   const live: PathView = {
     path: 'live_graph',
     graphIdentity: 'unlowered',
     graphHash: graph.contentHash(),
-    capabilities: observed.map((p): PathCapabilityView => ({ capabilityId: p.capabilityId, name: p.name, contractContentHash: p.contractContentHash, binding: p.binding })),
-    executions: executions.flatMap((e): PathExecutionView[] => (e.kind === 'capability' && e.capabilityId !== undefined ? [{ requestId: e.requestId, capabilityId: e.capabilityId, outcome: e.outcome, ...(matchedOf(e.output) !== undefined ? { matched: matchedOf(e.output)! } : {}), ...(e.provenance !== undefined ? { recorded: e.provenance.recorded } : {}) }] : [])),
+    capabilities: observed.map((p): PathCapabilityView => ({
+      capabilityId: p.capabilityId,
+      name: p.name,
+      contractContentHash: p.contractContentHash,
+      binding: p.binding,
+    })),
+    executions: executions.flatMap((e): PathExecutionView[] =>
+      e.kind === 'capability' && e.capabilityId !== undefined
+        ? [
+            {
+              requestId: e.requestId,
+              capabilityId: e.capabilityId,
+              outcome: e.outcome,
+              ...(matchedOf(e.output) !== undefined ? { matched: matchedOf(e.output)! } : {}),
+              ...(e.provenance !== undefined ? { recorded: e.provenance.recorded } : {}),
+            },
+          ]
+        : [],
+    ),
   };
   const views: PathView[] = [live];
 
   const serialized = cloneGraph(graph);
   if (serialized !== undefined) {
     views.push({
-      path: 'serialized_graph', graphIdentity: 'unlowered', graphHash: serialized.contentHash(),
-      capabilities: projectAllCapabilityProvenance(serialized).map((p): PathCapabilityView => ({ capabilityId: p.capabilityId, name: p.name, contractContentHash: p.contractContentHash, binding: { status: p.binding.status, ...(p.binding.bindingId !== undefined ? { bindingId: p.binding.bindingId } : {}), ...(p.binding.implementationClass !== undefined ? { implementationClass: p.binding.implementationClass } : {}) } })),
+      path: 'serialized_graph',
+      graphIdentity: 'unlowered',
+      graphHash: serialized.contentHash(),
+      capabilities: projectAllCapabilityProvenance(serialized).map((p): PathCapabilityView => ({
+        capabilityId: p.capabilityId,
+        name: p.name,
+        contractContentHash: p.contractContentHash,
+        binding: {
+          status: p.binding.status,
+          ...(p.binding.bindingId !== undefined ? { bindingId: p.binding.bindingId } : {}),
+          ...(p.binding.implementationClass !== undefined ? { implementationClass: p.binding.implementationClass } : {}),
+        },
+      })),
       executions: [],
     });
   }
@@ -229,18 +325,35 @@ async function observePaths(graph: XoirGraph, observed: readonly ObservedCapabil
       const caps: PathCapabilityView[] = [];
       for (const node of packaged.allNodes().filter((n) => n.kind === 'capability')) {
         const extracted = extractContractFromPropertyBag(node.properties as Readonly<Record<string, unknown>>);
-        if (!extracted.ok) { caps.push({ capabilityId: node.id, name: String((node.properties as Record<string, unknown>)['name'] ?? ''), contractEmbedded: false }); continue; }
+        if (!extracted.ok) {
+          caps.push({
+            capabilityId: node.id,
+            name: String((node.properties as Record<string, unknown>)['name'] ?? ''),
+            contractEmbedded: false,
+          });
+          continue;
+        }
         contracts.set(node.id, extracted as never);
         const outcome = resolveContractBinding(extracted.value, [new StructuredComparisonBindingResolver()]);
         caps.push({
-          capabilityId: node.id, name: extracted.value.name, contractEmbedded: true, contractContentHash: computeContractContentHash(extracted.value),
-          binding: { status: outcome.status, ...(outcome.status === 'resolved' ? { bindingId: outcome.binding.id, implementationClass: outcome.binding.implementationClass } : {}) },
+          capabilityId: node.id,
+          name: extracted.value.name,
+          contractEmbedded: true,
+          contractContentHash: computeContractContentHash(extracted.value),
+          binding: {
+            status: outcome.status,
+            ...(outcome.status === 'resolved'
+              ? { bindingId: outcome.binding.id, implementationClass: outcome.binding.implementationClass }
+              : {}),
+          },
         });
       }
       const runs: PathExecutionView[] = [];
       for (const e of executions) {
-        if (e.kind !== 'capability' || e.capabilityId === undefined || (e.outcome !== 'succeeded' && e.outcome !== 'waiting_for_human')) continue;
-        const entry = contracts.get(e.capabilityId); const request = requests.find((r) => r.id === e.requestId && r.kind === 'capability') as CapabilityExecutionCase | undefined;
+        if (e.kind !== 'capability' || e.capabilityId === undefined || (e.outcome !== 'succeeded' && e.outcome !== 'waiting_for_human'))
+          continue;
+        const entry = contracts.get(e.capabilityId);
+        const request = requests.find((r) => r.id === e.requestId && r.kind === 'capability') as CapabilityExecutionCase | undefined;
         if (entry === undefined || request === undefined) continue;
         const contract = (entry as unknown as { value: SemanticCapabilityContract }).value;
         const outcome = resolveContractBinding(contract, [new StructuredComparisonBindingResolver()]); // mirrors `xo run`: never a wider set
@@ -249,21 +362,47 @@ async function observePaths(graph: XoirGraph, observed: readonly ObservedCapabil
         const schema = inputSchemaOf(e.capabilityId);
         if (schema !== undefined && !validateCapabilityInput(schema, input).valid) continue;
         try {
-          const result = await executeResolvedContract(contract, outcome.binding, { permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }), input }); // no graphHash: there is no live graph on this path
-          if (!result.ok) { runs.push({ requestId: e.requestId, capabilityId: e.capabilityId, outcome: 'error' }); continue; }
+          const result = await executeResolvedContract(contract, outcome.binding, {
+            permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+            subject: HARNESS_SUBJECT,
+            permissionDeclaration: resolveDeclaredPermissionIds(contract.requiredPermissions, `contract ${contract.id}`),
+            input,
+          }); // no graphHash: there is no live graph on this path
+          if (!result.ok) {
+            runs.push({ requestId: e.requestId, capabilityId: e.capabilityId, outcome: 'error' });
+            continue;
+          }
           const output = result.value.output;
           const escalated = isPlainObject(output) && output['status'] === 'escalation_required';
-          runs.push({ requestId: e.requestId, capabilityId: e.capabilityId, outcome: escalated ? 'waiting_for_human' : 'succeeded', ...(matchedOf(output) !== undefined ? { matched: matchedOf(output)! } : {}), recorded: recordedFacts(result.value) });
-        } catch { runs.push({ requestId: e.requestId, capabilityId: e.capabilityId, outcome: 'error' }); }
+          runs.push({
+            requestId: e.requestId,
+            capabilityId: e.capabilityId,
+            outcome: escalated ? 'waiting_for_human' : 'succeeded',
+            ...(matchedOf(output) !== undefined ? { matched: matchedOf(output)! } : {}),
+            recorded: recordedFacts(result.value),
+          });
+        } catch {
+          runs.push({ requestId: e.requestId, capabilityId: e.capabilityId, outcome: 'error' });
+        }
       }
-      views.push({ path: 'package_boundary', graphIdentity: 'lowered', capabilities: caps.sort((a, b) => compareStrings(a.capabilityId, b.capabilityId)), executions: runs.sort((a, b) => compareStrings(a.requestId, b.requestId)) });
+      views.push({
+        path: 'package_boundary',
+        graphIdentity: 'lowered',
+        capabilities: caps.sort((a, b) => compareStrings(a.capabilityId, b.capabilityId)),
+        executions: runs.sort((a, b) => compareStrings(a.requestId, b.requestId)),
+      });
     }
   }
   return views;
 }
 
 function toObservedParam(p: SemanticCapabilityParameter): ObservedParam {
-  return { name: p.name, runtimeKey: normalizeToFallbackKey(p.name), semanticType: p.semanticType ?? 'unknown', ...(p.derivedFrom !== undefined ? { derivedFrom: p.derivedFrom } : {}) };
+  return {
+    name: p.name,
+    runtimeKey: normalizeToFallbackKey(p.name),
+    semanticType: p.semanticType ?? 'unknown',
+    ...(p.derivedFrom !== undefined ? { derivedFrom: p.derivedFrom } : {}),
+  };
 }
 
 async function loadSources(specs: readonly SourceSpec[], sourceRoot: string): Promise<unknown[]> {
@@ -291,7 +430,17 @@ interface WorkflowHandle {
 export async function observeCase(definition: BenchmarkCaseDefinition, options: ObserveOptions): Promise<PipelineObservation> {
   const stages = baseStages();
   const entry: PipelineObservation['entry'] = definition.xoir !== undefined ? 'xoir' : 'sources';
-  const harnessFailure = (message: string): PipelineObservation => ({ entry, stages, harnessError: message, nodes: [], edgeCount: 0, capabilities: [], workflows: [], executions: [], fingerprints: emptyFingerprints() });
+  const harnessFailure = (message: string): PipelineObservation => ({
+    entry,
+    stages,
+    harnessError: message,
+    nodes: [],
+    edgeCount: 0,
+    capabilities: [],
+    workflows: [],
+    executions: [],
+    fingerprints: emptyFingerprints(),
+  });
 
   // ---- compile (or load a serialized XOIR graph) --------------------------------
   let graph: XoirGraph;
@@ -305,9 +454,14 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
       return harnessFailure(`could not read XOIR fixture "${definition.xoir}": ${cause instanceof Error ? cause.message : String(cause)}`);
     }
     const loaded = fromJson(parsed as XoirGraphJson);
-    if (!loaded.ok) return harnessFailure(`XOIR fixture "${definition.xoir}" is not a valid graph: [${loaded.error.code}] ${loaded.error.message}`);
+    if (!loaded.ok)
+      return harnessFailure(`XOIR fixture "${definition.xoir}" is not a valid graph: [${loaded.error.code}] ${loaded.error.message}`);
     graph = loaded.value;
-    stages.compile = { stage: 'compile', status: 'skipped', note: 'entry is a serialized XOIR graph: source ingestion/extraction is not exercised; the real pipeline is entered at the packaging/contract stage' };
+    stages.compile = {
+      stage: 'compile',
+      status: 'skipped',
+      note: 'entry is a serialized XOIR graph: source ingestion/extraction is not exercised; the real pipeline is entered at the packaging/contract stage',
+    };
   } else {
     let inputs: unknown[];
     try {
@@ -315,21 +469,59 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
     } catch (cause) {
       return harnessFailure(`could not read source fixture: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
-    let compiled: Result<{ readonly graph: XoirGraph; readonly sources: readonly { readonly sourceId: string; readonly sourcePath: string; readonly sourceType: string; readonly qualityState?: string; readonly semanticExtractionAvailable: boolean }[] }, { readonly code: string; readonly message: string }>;
+    let compiled: Result<
+      {
+        readonly graph: XoirGraph;
+        readonly sources: readonly {
+          readonly sourceId: string;
+          readonly sourcePath: string;
+          readonly sourceType: string;
+          readonly qualityState?: string;
+          readonly semanticExtractionAvailable: boolean;
+        }[];
+      },
+      { readonly code: string; readonly message: string }
+    >;
     try {
-      compiled = (await compileSources(inputs, definition.domainHint !== undefined ? { domainHint: definition.domainHint } : {})) as typeof compiled;
+      compiled = (await compileSources(
+        inputs,
+        definition.domainHint !== undefined ? { domainHint: definition.domainHint } : {},
+      )) as typeof compiled;
     } catch (cause) {
       const message = `compiler threw unexpectedly: ${cause instanceof Error ? cause.message : String(cause)}`;
       stages.compile = { stage: 'compile', status: 'failed', errorCode: ErrorCode.UNKNOWN, errorMessage: message };
-      return { entry, stages: withDownstreamSkipped(stages, 'compile'), nodes: [], edgeCount: 0, capabilities: [], workflows: [], executions: [], fingerprints: emptyFingerprints() };
+      return {
+        entry,
+        stages: withDownstreamSkipped(stages, 'compile'),
+        nodes: [],
+        edgeCount: 0,
+        capabilities: [],
+        workflows: [],
+        executions: [],
+        fingerprints: emptyFingerprints(),
+      };
     }
     if (!compiled.ok) {
       stages.compile = { stage: 'compile', status: 'failed', errorCode: compiled.error.code, errorMessage: compiled.error.message };
-      return { entry, stages: withDownstreamSkipped(stages, 'compile'), nodes: [], edgeCount: 0, capabilities: [], workflows: [], executions: [], fingerprints: emptyFingerprints() };
+      return {
+        entry,
+        stages: withDownstreamSkipped(stages, 'compile'),
+        nodes: [],
+        edgeCount: 0,
+        capabilities: [],
+        workflows: [],
+        executions: [],
+        fingerprints: emptyFingerprints(),
+      };
     }
     graph = compiled.value.graph;
     docPaths = new Map(compiled.value.sources.map((src) => [src.sourceId, src.sourcePath]));
-    sourceReports = compiled.value.sources.map((src) => ({ sourceType: src.sourceType, path: src.sourcePath, ...(src.qualityState !== undefined ? { qualityState: src.qualityState } : {}), semanticExtractionAvailable: src.semanticExtractionAvailable }));
+    sourceReports = compiled.value.sources.map((src) => ({
+      sourceType: src.sourceType,
+      path: src.sourcePath,
+      ...(src.qualityState !== undefined ? { qualityState: src.qualityState } : {}),
+      semanticExtractionAvailable: src.semanticExtractionAvailable,
+    }));
     stages.compile = { stage: 'compile', status: 'ok' };
   }
 
@@ -348,13 +540,23 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
   try {
     const resolved = discoverAndResolveCapabilities(graph, { previewLabel: 'benchmark observation preview' });
     if (!resolved.ok) {
-      stages.capabilities = { stage: 'capabilities', status: 'failed', errorCode: resolved.error.code, errorMessage: resolved.error.message };
+      stages.capabilities = {
+        stage: 'capabilities',
+        status: 'failed',
+        errorCode: resolved.error.code,
+        errorMessage: resolved.error.message,
+      };
     } else {
       lowered = resolved.value;
       stages.capabilities = { stage: 'capabilities', status: 'ok' };
     }
   } catch (cause) {
-    stages.capabilities = { stage: 'capabilities', status: 'failed', errorCode: ErrorCode.UNKNOWN, errorMessage: `capability lowering threw unexpectedly: ${cause instanceof Error ? cause.message : String(cause)}` };
+    stages.capabilities = {
+      stage: 'capabilities',
+      status: 'failed',
+      errorCode: ErrorCode.UNKNOWN,
+      errorMessage: `capability lowering threw unexpectedly: ${cause instanceof Error ? cause.message : String(cause)}`,
+    };
   }
 
   const nodeById = new Map(graph.allNodes().map((n) => [n.id as unknown as string, n]));
@@ -364,7 +566,8 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
       const node = nodeById.get(outcome.contractId);
       const contract = node !== undefined ? buildSemanticCapabilityContract(graph, XoirNodeId(outcome.contractId)) : undefined;
       const mode = outcome.declaration?.execution?.mode;
-      const executionClass = mode === 'deterministic_rule' || mode === 'human_in_the_loop' || mode === 'model' || mode === 'hybrid' ? mode : 'not_executable';
+      const executionClass =
+        mode === 'deterministic_rule' || mode === 'human_in_the_loop' || mode === 'model' || mode === 'hybrid' ? mode : 'not_executable';
       capabilities.push({
         capabilityId: outcome.contractId,
         name: outcome.declaration?.name ?? outcome.name,
@@ -380,7 +583,8 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
     capabilities.sort((a, b) => compareStrings(a.capabilityId, b.capabilityId));
   }
   const nameOfCapability = new Map(capabilities.map((c) => [c.capabilityId, c.name]));
-  const inputSchemaOf = (capabilityId: string) => lowered?.outcomes.find((o) => o.contractId === capabilityId)?.declaration?.execution?.inputSchema;
+  const inputSchemaOf = (capabilityId: string) =>
+    lowered?.outcomes.find((o) => o.contractId === capabilityId)?.declaration?.execution?.inputSchema;
 
   // ---- workflows ----------------------------------------------------------------
   const workflowHandles: WorkflowHandle[] = [];
@@ -394,20 +598,40 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
       stages.workflows = { stage: 'workflows', status: 'ok' };
     }
   } catch (cause) {
-    stages.workflows = { stage: 'workflows', status: 'failed', errorCode: ErrorCode.UNKNOWN, errorMessage: `workflow composition threw unexpectedly: ${cause instanceof Error ? cause.message : String(cause)}` };
+    stages.workflows = {
+      stage: 'workflows',
+      status: 'failed',
+      errorCode: ErrorCode.UNKNOWN,
+      errorMessage: `workflow composition threw unexpectedly: ${cause instanceof Error ? cause.message : String(cause)}`,
+    };
   }
   for (const workflow of composed) {
     const audit = auditWorkflowExecutability(workflow, graph);
     const dataFlow = auditWorkflowDataFlow(workflow, graph);
     const prepared = prepareCandidateWorkflowForExecution(workflow, graph, new RuntimeCapabilityRegistry());
-    const wired = new Set(prepared.wiredInjections.map((b) => `${b.producerCapabilityId}|${b.outputParameterName}|${b.consumerCapabilityId}|${b.inputParameterName}`));
-    const nameOf = (id: string): string => nameOfCapability.get(id) ?? workflow.steps.find((s) => s.capabilityId === id)?.capabilityName ?? id;
+    const wired = new Set(
+      prepared.wiredInjections.map(
+        (b) => `${b.producerCapabilityId}|${b.outputParameterName}|${b.consumerCapabilityId}|${b.inputParameterName}`,
+      ),
+    );
+    const nameOf = (id: string): string =>
+      nameOfCapability.get(id) ?? workflow.steps.find((s) => s.capabilityId === id)?.capabilityName ?? id;
     const observed: ObservedWorkflow = {
       workflowId: workflow.id,
       steps: workflow.steps.map((step, i) => {
         const bridge = prepared.steps[i];
-        const cls = bridge?.status === 'bound' && (bridge.implementationClass === 'deterministic_rule' || bridge.implementationClass === 'human_in_the_loop') ? bridge.implementationClass : 'not_executable';
-        return { order: step.order, capabilityId: step.capabilityId, name: step.capabilityName, bound: bridge?.status === 'bound', executionClass: cls };
+        const cls =
+          bridge?.status === 'bound' &&
+          (bridge.implementationClass === 'deterministic_rule' || bridge.implementationClass === 'human_in_the_loop')
+            ? bridge.implementationClass
+            : 'not_executable';
+        return {
+          order: step.order,
+          capabilityId: step.capabilityId,
+          name: step.capabilityName,
+          bound: bridge?.status === 'bound',
+          executionClass: cls,
+        };
       }),
       executability: audit.status,
       blockerKinds: [...new Set(audit.blockers.map((b) => b.kind as string))].sort(compareStrings),
@@ -422,7 +646,12 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
           status: b.status as string,
           wired: wired.has(`${b.producerCapabilityId}|${b.outputParameterName}|${b.consumerCapabilityId}|${b.inputParameterName}`),
         }))
-        .sort((a, b) => compareStrings(`${a.producerCapabilityId}|${a.output}|${a.consumerCapabilityId}|${a.input}`, `${b.producerCapabilityId}|${b.output}|${b.consumerCapabilityId}|${b.input}`)),
+        .sort((a, b) =>
+          compareStrings(
+            `${a.producerCapabilityId}|${a.output}|${a.consumerCapabilityId}|${a.input}`,
+            `${b.producerCapabilityId}|${b.output}|${b.consumerCapabilityId}|${b.input}`,
+          ),
+        ),
     };
     workflowHandles.push({ workflow, observed });
   }
@@ -436,7 +665,8 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
     stages.execution = { stage: 'execution', status: 'ok' };
     for (const request of requests) {
       try {
-        if (request.kind === 'capability') executions.push(await runCapabilityRequest(graph, capabilities, inputSchemaOf, request, provenance.byCapabilityId));
+        if (request.kind === 'capability')
+          executions.push(await runCapabilityRequest(graph, capabilities, inputSchemaOf, request, provenance.byCapabilityId));
         else executions.push(await runWorkflowRequest(graph, workflowHandles, request, nameOfCapability, provenance.byContractId));
       } catch (cause) {
         // A runtime-internal throw is an honest execution failure of THIS request, never a crashed benchmark.
@@ -444,7 +674,15 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
         executions.push(
           request.kind === 'capability'
             ? { requestId: request.id, kind: 'capability', outcome: 'error', errorCode: ErrorCode.UNKNOWN, message }
-            : { requestId: request.id, kind: 'workflow', outcome: 'ran', runStatus: 'failed', steps: [], errorCode: ErrorCode.UNKNOWN, message },
+            : {
+                requestId: request.id,
+                kind: 'workflow',
+                outcome: 'ran',
+                runStatus: 'failed',
+                steps: [],
+                errorCode: ErrorCode.UNKNOWN,
+                message,
+              },
         );
       }
     }
@@ -461,7 +699,18 @@ export async function observeCase(definition: BenchmarkCaseDefinition, options: 
     workflows,
     executions,
     provenance: { capabilities: provenance.observed },
-    ...(entry === 'sources' ? { paths: await observePaths(graph, provenance.observed, executions, requests, inputSchemaOf, options.lowerCapabilities ?? lowerCapabilitiesToManifest) } : {}),
+    ...(entry === 'sources'
+      ? {
+          paths: await observePaths(
+            graph,
+            provenance.observed,
+            executions,
+            requests,
+            inputSchemaOf,
+            options.lowerCapabilities ?? lowerCapabilitiesToManifest,
+          ),
+        }
+      : {}),
     fingerprints: {
       compile: compileFingerprint,
       capabilities: fingerprintOf(capabilities),
@@ -485,27 +734,44 @@ function withDownstreamSkipped(stages: Record<StageName, StageStatus>, failed: S
 // Capability execution — the P0.5 single-capability path
 // ---------------------------------------------------------------------------
 
-async function runCapabilityRequest(graph: XoirGraph, capabilities: readonly ObservedCapability[], inputSchemaOf: (id: string) => CapabilityInputSchema | undefined, request: CapabilityExecutionCase, viewOf: ReadonlyMap<string, CapabilityProvenance>): Promise<ObservedCapabilityExecution> {
+async function runCapabilityRequest(
+  graph: XoirGraph,
+  capabilities: readonly ObservedCapability[],
+  inputSchemaOf: (id: string) => CapabilityInputSchema | undefined,
+  request: CapabilityExecutionCase,
+  viewOf: ReadonlyMap<string, CapabilityProvenance>,
+): Promise<ObservedCapabilityExecution> {
   const candidates = capabilities.filter((c) => matchesName(c.name, request.target));
   if (candidates.length === 0) return { requestId: request.id, kind: 'capability', outcome: 'target_not_found', candidateCount: 0 };
-  if (candidates.length > 1) return { requestId: request.id, kind: 'capability', outcome: 'target_ambiguous', candidateCount: candidates.length };
+  if (candidates.length > 1)
+    return { requestId: request.id, kind: 'capability', outcome: 'target_ambiguous', candidateCount: candidates.length };
   const cap = candidates[0]!;
-  const base = { requestId: request.id, kind: 'capability' as const, capabilityId: cap.capabilityId, capabilityName: cap.name, resolution: cap.resolution };
+  const base = {
+    requestId: request.id,
+    kind: 'capability' as const,
+    capabilityId: cap.capabilityId,
+    capabilityName: cap.name,
+    resolution: cap.resolution,
+  };
 
   const contract = buildSemanticCapabilityContract(graph, XoirNodeId(cap.capabilityId));
   if (!contract.ok) return { ...base, outcome: 'error', errorCode: contract.error.code, message: contract.error.message };
   const bindingOutcome = resolveContractBinding(contract.value);
-  if (bindingOutcome.status !== 'resolved') return { ...base, outcome: 'not_executable', message: `${bindingOutcome.status}: ${bindingOutcome.reason}` };
+  if (bindingOutcome.status !== 'resolved')
+    return { ...base, outcome: 'not_executable', message: `${bindingOutcome.status}: ${bindingOutcome.reason}` };
 
   const input = request.input ?? {};
   const schema = inputSchemaOf(cap.capabilityId);
   if (schema !== undefined) {
     const validation = validateCapabilityInput(schema, input);
-    if (!validation.valid) return { ...base, outcome: 'invalid_input', message: validation.issues.map((i) => `${i.property}: ${i.message}`).join('; ') };
+    if (!validation.valid)
+      return { ...base, outcome: 'invalid_input', message: validation.issues.map((i) => `${i.property}: ${i.message}`).join('; ') };
   }
 
   const result = await executeResolvedContract(contract.value, bindingOutcome.binding, {
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: HARNESS_SUBJECT,
+    permissionDeclaration: resolveDeclaredPermissionIds(contract.value.requiredPermissions, `contract ${contract.value.id}`),
     input,
     graphHash: ContentHash(graph.contentHash()),
   });
@@ -534,16 +800,17 @@ class InputRecordingExecutor {
   }
 }
 
-async function runWorkflowRequest(graph: XoirGraph, handles: readonly WorkflowHandle[], request: WorkflowExecutionCase, nameOfCapability: ReadonlyMap<string, string>, viewOfContract: ReadonlyMap<string, CapabilityProvenance>): Promise<ObservedWorkflowExecution> {
-  const matching = handles.filter((h) =>
-    perfectAssignment(
-      request.steps,
-      h.observed.steps,
-      (s) => s.name,
-    ),
-  );
+async function runWorkflowRequest(
+  graph: XoirGraph,
+  handles: readonly WorkflowHandle[],
+  request: WorkflowExecutionCase,
+  nameOfCapability: ReadonlyMap<string, string>,
+  viewOfContract: ReadonlyMap<string, CapabilityProvenance>,
+): Promise<ObservedWorkflowExecution> {
+  const matching = handles.filter((h) => perfectAssignment(request.steps, h.observed.steps, (s) => s.name));
   if (matching.length === 0) return { requestId: request.id, kind: 'workflow', outcome: 'target_not_found', steps: [], candidateCount: 0 };
-  if (matching.length > 1) return { requestId: request.id, kind: 'workflow', outcome: 'target_ambiguous', steps: [], candidateCount: matching.length };
+  if (matching.length > 1)
+    return { requestId: request.id, kind: 'workflow', outcome: 'target_ambiguous', steps: [], candidateCount: matching.length };
   const handle = matching[0]!;
 
   // The product gate: only an `executable_candidate` workflow whose every step binds may run (apps/api P0.8 returns 422 WORKFLOW_NOT_EXECUTABLE; `xo workflow` prints the audit verdict). The raw runtime bridge itself does not consult the audit, so the gate is applied here rather than letting a not-executable workflow "complete".
@@ -566,10 +833,27 @@ async function runWorkflowRequest(graph: XoirGraph, handles: readonly WorkflowHa
   // The CLI's documented "trigger payload" semantics: merged, unmodified, into every capability-authority node's structured input.
   const graphToRun =
     payload !== undefined
-      ? { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.type === 'custom:capability-authority' ? { ...n, config: { ...n.config, structuredInput: { ...(n.config?.structuredInput as Record<string, unknown> | undefined), ...payload } } } : n)) }
+      ? {
+          ...prepared.graph,
+          nodes: prepared.graph.nodes.map((n) =>
+            n.type === 'custom:capability-authority'
+              ? {
+                  ...n,
+                  config: {
+                    ...n.config,
+                    structuredInput: { ...(n.config?.structuredInput as Record<string, unknown> | undefined), ...payload },
+                  },
+                }
+              : n,
+          ),
+        }
       : prepared.graph;
 
-  const real = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const real = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: HARNESS_SUBJECT,
+  });
   const recorder = new InputRecordingExecutor(real);
   // `makeCapabilityAuthorityNodeHandler` types its parameter as the concrete class (private members make a structurally identical object non-assignable); it only ever calls `.execute`. One cast — composition rather than a subclass.
   const handler = makeCapabilityAuthorityNodeHandler(recorder as unknown as RuntimeCapabilityExecutor);
@@ -579,7 +863,11 @@ async function runWorkflowRequest(graph: XoirGraph, handles: readonly WorkflowHa
     },
     { customNodeHandlers: new Map([['custom:capability-authority', handler]]) },
   );
-  const run = await engine.run(graphToRun, { environmentId: EnvironmentId(`env_benchmark_${handle.workflow.id}`), hostProfile: { family: 'generic' as const, capabilities: [] }, createdAt: '1970-01-01T00:00:00.000Z' });
+  const run = await engine.run(graphToRun, {
+    environmentId: EnvironmentId(`env_benchmark_${handle.workflow.id}`),
+    hostProfile: { family: 'generic' as const, capabilities: [] },
+    createdAt: '1970-01-01T00:00:00.000Z',
+  });
 
   const runStatus = deriveWorkflowRunStatus({
     engineStatus: run.instance.status,
@@ -596,7 +884,8 @@ async function runWorkflowRequest(graph: XoirGraph, handles: readonly WorkflowHa
     const contractId = typeof node.config?.capabilityId === 'string' ? node.config.capabilityId : undefined;
     const actualInput = contractId !== undefined ? recorder.inputsByContractId.get(contractId) : undefined;
     const facts = contractId !== undefined ? recorder.factsByContractId.get(contractId) : undefined;
-    const outputStatus = isPlainObject(out?.result) && typeof out.result['status'] === 'string' ? (out.result['status'] as string) : undefined;
+    const outputStatus =
+      isPlainObject(out?.result) && typeof out.result['status'] === 'string' ? (out.result['status'] as string) : undefined;
     steps.push({
       capabilityId: contractId ?? nodeId,
       name: contractId !== undefined ? (nameOfCapability.get(contractId) ?? node.name ?? contractId) : (node.name ?? nodeId),
@@ -604,7 +893,9 @@ async function runWorkflowRequest(graph: XoirGraph, handles: readonly WorkflowHa
       ...(outputStatus !== undefined ? { outputStatus } : {}),
       ...(out?.result !== undefined ? { output: out.result } : {}),
       ...(actualInput !== undefined ? { actualInput } : {}),
-      ...(facts !== undefined && contractId !== undefined ? { provenance: toObservedExecutionProvenance(facts, contractId, viewOfContract.get(contractId)) } : {}),
+      ...(facts !== undefined && contractId !== undefined
+        ? { provenance: toObservedExecutionProvenance(facts, contractId, viewOfContract.get(contractId)) }
+        : {}),
     });
   }
 

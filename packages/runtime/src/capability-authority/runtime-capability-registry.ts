@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
-import { CapabilityPermissionRegistry } from '@xo/permissions';
+import { CapabilityPermissionRegistry, PERMISSION_FREE, unresolvedDeclaration, type PermissionDeclaration } from '@xo/permissions';
 import type { RuntimeCapabilityDeclaration, RuntimeCapabilityRegistration } from './runtime-capability-declaration.js';
 
 /**
@@ -27,6 +27,8 @@ import type { RuntimeCapabilityDeclaration, RuntimeCapabilityRegistration } from
  */
 export class RuntimeCapabilityRegistry {
   private readonly declarations = new Map<string, RuntimeCapabilityDeclaration>();
+  /** Capabilities registered with an explicit `requiredPermissions: []`. */
+  private readonly permissionFree = new Set<string>();
 
   /** Deliberately reused, not duplicated: the same `@xo/permissions` class `PermissionManagerGate` already knows how to read for a manifest-backed capability's supplementary requirements — see `permission-manager-gate.ts`'s `options.registry`. A native capability's requirements land in the exact same object, just via this registry's own `register()` instead of manual manifest authoring, so one `PermissionManager`-backed check (`RuntimeCapabilityExecutor`) works identically whether the requirement came from a manifest or from here. */
   readonly permissions = new CapabilityPermissionRegistry();
@@ -48,22 +50,56 @@ export class RuntimeCapabilityRegistry {
   register(registration: RuntimeCapabilityRegistration): Result<void, RuntimeError> {
     const { declaration, requiredPermissions } = registration;
 
+    // P1.0 M2: the permission declaration must be explicit. `[]` = permission-free;
+    // absent/non-array is a malformed registration, not "no requirements".
+    if (!Array.isArray(requiredPermissions)) {
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration?.capabilityId ?? ''}": requiredPermissions must be declared explicitly (use [] for a permission-free capability)`,
+        ),
+      );
+    }
+
     if (declaration.capabilityId.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, 'RuntimeCapabilityDeclaration.capabilityId must not be empty'));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, 'RuntimeCapabilityDeclaration.capabilityId must not be empty'),
+      );
     }
     if (typeof declaration.handler !== 'function') {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": handler must be a function`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": handler must be a function`,
+        ),
+      );
     }
     if (declaration.inputContract.description.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": inputContract.description must not be empty`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": inputContract.description must not be empty`,
+        ),
+      );
     }
     if (declaration.outputContract.description.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": outputContract.description must not be empty`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": outputContract.description must not be empty`,
+        ),
+      );
     }
 
     this.declarations.set(declaration.capabilityId, declaration);
+    this.permissionFree.delete(declaration.capabilityId);
 
-    if (requiredPermissions && requiredPermissions.length > 0) {
+    if (requiredPermissions.length === 0) {
+      // Re-registering an id replaces its prior permission declaration too
+      // (the permission registry itself merges additively; an explicit
+      // permission-free declaration must not inherit stale requirements, nor vice versa).
+      this.permissionFree.add(declaration.capabilityId);
+    } else {
       const registered = this.permissions.register(declaration.capabilityId, requiredPermissions);
       if (!registered.ok) {
         // Roll back the declaration too — a capability whose permission
@@ -71,7 +107,12 @@ export class RuntimeCapabilityRegistry {
         // (that would be a capability the executor could reach without
         // its intended gating ever being registered at all).
         this.declarations.delete(declaration.capabilityId);
-        return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": ${registered.error.message}`));
+        return err(
+          new RuntimeError(
+            ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+            `Capability "${declaration.capabilityId}": ${registered.error.message}`,
+          ),
+        );
       }
     }
 
@@ -82,9 +123,28 @@ export class RuntimeCapabilityRegistry {
   resolve(capabilityId: string): Result<RuntimeCapabilityDeclaration, RuntimeError> {
     const declaration = this.declarations.get(capabilityId);
     if (!declaration) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_NOT_FOUND, `No Runtime capability declaration registered for id "${capabilityId}"`));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_NOT_FOUND, `No Runtime capability declaration registered for id "${capabilityId}"`),
+      );
     }
     return ok(declaration);
+  }
+
+  /**
+   * P1.0 M2 — the capability's authoritative permission declaration.
+   * `unresolved` for an unregistered capability or one whose registration
+   * never carried an explicit declaration; never `none` by default.
+   */
+  permissionDeclaration(capabilityId: string): PermissionDeclaration {
+    if (!this.declarations.has(capabilityId))
+      return unresolvedDeclaration(`no Runtime capability declaration registered for id "${capabilityId}"`);
+    // Requirements win over a later permission-free re-registration: the
+    // permission registry merges additively, and re-registering must never
+    // LOOSEN an earlier requirement (fail closed to the stricter declaration).
+    const requirements = this.permissions.resolve(capabilityId);
+    if (requirements.length > 0) return { kind: 'required', requirements };
+    if (this.permissionFree.has(capabilityId)) return PERMISSION_FREE;
+    return unresolvedDeclaration(`capability "${capabilityId}" has no explicit permission declaration`);
   }
 
   has(capabilityId: string): boolean {

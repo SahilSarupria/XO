@@ -1,7 +1,8 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration } from '@xo/types';
-import { PermissionManager, RuleBasedPolicy, Permissions } from '@xo/permissions';
+import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 import { StructuredComparisonBindingResolver, resolveCapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
 import { ExecutionEngine } from '../src/engine/execution-engine.js';
 import { buildRuntimeContext } from '../src/runtime-context.js';
@@ -10,7 +11,13 @@ import type { ExecutionRequest } from '../src/execution/execution-request.js';
 import { RuntimeCapabilityRegistry } from '../src/capability-authority/runtime-capability-registry.js';
 import { RuntimeCapabilityExecutor } from '../src/capability-authority/runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from '../src/capability-authority/capability-binding-registration.js';
-import { buildContractLawyerBundle, contractAnalysisCapability, withTempInstaller, mountBundle, ScriptedModelProvider } from './fixtures.js';
+import {
+  buildContractLawyerBundle,
+  contractAnalysisCapability,
+  withTempInstaller,
+  mountBundle,
+  ScriptedModelProvider,
+} from './fixtures.js';
 
 /**
  * Proves the three R1/R2/R3 gaps identified by the freeze audit are
@@ -49,7 +56,16 @@ function claimEvaluationContract(): SemanticCapabilityContract {
     outputs: [],
     requiredPermissions: [],
     determinism: 'deterministic',
-    rules: [{ sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 }],
+    rules: [
+      {
+        sourceNodeId: 'decision:deny-large-claim',
+        kind: 'decision_node',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'deny the claim',
+        exceptionConditions: [],
+        confidence: 0.9,
+      },
+    ],
     confidence: 0.9,
     sourceRefs: [],
     sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:deny-large-claim'],
@@ -66,7 +82,11 @@ function buildCapabilityAuthorityExecutor(): RuntimeCapabilityExecutor {
   const registerResult = registerResolvedCapabilityBinding(registry, contract, outcome.binding);
   assert.equal(registerResult.ok, true);
 
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  return new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
 }
 
 function claimRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequest {
@@ -97,6 +117,7 @@ test('R1: a deterministic_rule capability executes via the capability authority,
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -104,7 +125,11 @@ test('R1: a deterministic_rule capability executes via the capability authority,
 
     assert.equal(result.session.status, 'completed');
     assert.equal(result.error, undefined);
-    assert.deepEqual(JSON.parse(result.response?.content ?? 'null'), { matched: true, ruleSourceNodeId: 'decision:deny-large-claim', outcome: 'deny the claim' });
+    assert.deepEqual(JSON.parse(result.response?.content ?? 'null'), {
+      matched: true,
+      ruleSourceNodeId: 'decision:deny-large-claim',
+      outcome: 'deny the claim',
+    });
     assert.deepEqual(result.receipt?.capabilitiesInvoked, ['claim_evaluation']);
     assert.equal(provider.requests.length, 0, 'the AI Capability Layer must never be called for a deterministic_rule capability');
   });
@@ -117,13 +142,19 @@ test('R1: a deterministic_rule capability is denied, not silently run as model m
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute(claimRequest());
 
     assert.equal(result.error?.code, 'XO_RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED');
     assert.equal(result.session.status, 'failed');
-    assert.equal(provider.requests.length, 0, 'a misconfigured deterministic_rule capability must never fall back to the AI Capability Layer');
+    assert.equal(
+      provider.requests.length,
+      0,
+      'a misconfigured deterministic_rule capability must never fall back to the AI Capability Layer',
+    );
   });
 });
 
@@ -136,6 +167,7 @@ test('R1: a model-mode (execution absent) capability is completely unaffected â€
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -143,7 +175,13 @@ test('R1: a model-mode (execution absent) capability is completely unaffected â€
       requestId: RequestId('req_model_1'),
       capabilityId: contractAnalysisCapability.id,
       input: 'Please review this NDA.',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
 
@@ -162,6 +200,7 @@ test('R2: invalid structuredInput is rejected before the deterministic binding e
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -182,6 +221,7 @@ test('R2: a wrong-typed structuredInput property is rejected before execution', 
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -200,6 +240,7 @@ test('R2: valid structuredInput matching the schema executes successfully', asyn
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -219,13 +260,22 @@ test('R3: a capability below the configured minConfidence is denied before autho
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { minConfidence: 0.9 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      minConfidence: 0.9,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_1'),
       capabilityId: contractAnalysisCapability.id,
       input: 'Please review this NDA.',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
 
@@ -243,13 +293,22 @@ test('R3: a capability at or above the configured minConfidence executes normall
     const provider = new ScriptedModelProvider();
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { minConfidence: 0.8 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      minConfidence: 0.8,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_2'),
       capabilityId: contractAnalysisCapability.id,
       input: 'Please review this NDA.',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
 
@@ -258,7 +317,7 @@ test('R3: a capability at or above the configured minConfidence executes normall
   });
 });
 
-test('R3: with no minConfidence configured, a low-confidence capability still executes (documented default, matches allowAllPermissionGate\'s port pattern)', async () => {
+test("R3: with no minConfidence configured, a low-confidence capability still executes (documented default, matches allowAllPermissionGate's port pattern)", async () => {
   await withTempInstaller(async (installer) => {
     const bundle = buildContractLawyerBundle();
     await installer.install(bundle);
@@ -266,13 +325,21 @@ test('R3: with no minConfidence configured, a low-confidence capability still ex
     const provider = new ScriptedModelProvider();
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_3'),
       capabilityId: contractAnalysisCapability.id, // confidence.score = 0.8, well below what a strict deployment might require
       input: 'Please review this NDA.',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
 

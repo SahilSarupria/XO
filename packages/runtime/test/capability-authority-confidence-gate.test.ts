@@ -1,6 +1,7 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
-import { err, ok } from '@xo/types';
+import { ok } from '@xo/types';
 import type { CapabilityDeclaration, CapabilityInputSchema, HybridExecutionStep } from '@xo/types';
 import { PermissionManager, RuleBasedPolicy, Permissions } from '@xo/permissions';
 import { StructuredComparisonBindingResolver, resolveCapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
@@ -66,7 +67,16 @@ function claimEvaluationContract(): SemanticCapabilityContract {
     outputs: [],
     requiredPermissions: [],
     determinism: 'deterministic',
-    rules: [{ sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 }],
+    rules: [
+      {
+        sourceNodeId: 'decision:deny-large-claim',
+        kind: 'decision_node',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'deny the claim',
+        exceptionConditions: [],
+        confidence: 0.9,
+      },
+    ],
     confidence: 0.9,
     sourceRefs: [],
     sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:deny-large-claim'],
@@ -93,13 +103,21 @@ function buildCapabilityAuthorityExecutor(): { readonly executor: RuntimeCapabil
   // assert "the handler was never invoked" directly, without inferring
   // it from the response shape.
   registry.register({
-    declaration: { ...original.value, handler: async (input: unknown) => {
-      state.handlerCalled = true;
-      return originalHandler(input);
-    } },
+    declaration: {
+      ...original.value,
+      handler: async (input: unknown) => {
+        state.handlerCalled = true;
+        return originalHandler(input);
+      },
+    },
+    requiredPermissions: [],
   });
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
   return {
     executor,
     get handlerCalled(): boolean {
@@ -130,13 +148,19 @@ function claimRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionReque
 
 test('M1.4: a deterministic_rule capability below the configured minConfidence is denied before the handler runs', async () => {
   await withTempInstaller(async (installer) => {
-    const bundle = buildContractLawyerBundle({ capabilities: [claimEvaluationCapability({ confidence: { score: 0.5, basis: 'self_reported' } })] });
+    const bundle = buildContractLawyerBundle({
+      capabilities: [claimEvaluationCapability({ confidence: { score: 0.5, basis: 'self_reported' } })],
+    });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority.executor, minConfidence: 0.8 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: authority.executor,
+      minConfidence: 0.8,
+    });
     const result = await engine.execute(claimRequest());
 
     assert.equal(result.error?.code, 'XO_RUNTIME_CONFIDENCE_BELOW_THRESHOLD');
@@ -147,13 +171,19 @@ test('M1.4: a deterministic_rule capability below the configured minConfidence i
 
 test('M1.4: a deterministic_rule capability at the configured minConfidence executes', async () => {
   await withTempInstaller(async (installer) => {
-    const bundle = buildContractLawyerBundle({ capabilities: [claimEvaluationCapability({ confidence: { score: 0.8, basis: 'self_reported' } })] });
+    const bundle = buildContractLawyerBundle({
+      capabilities: [claimEvaluationCapability({ confidence: { score: 0.8, basis: 'self_reported' } })],
+    });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority.executor, minConfidence: 0.8 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: authority.executor,
+      minConfidence: 0.8,
+    });
     const result = await engine.execute(claimRequest());
 
     assert.equal(result.session.status, 'completed');
@@ -164,13 +194,19 @@ test('M1.4: a deterministic_rule capability at the configured minConfidence exec
 
 test('M1.4: a deterministic_rule capability above the configured minConfidence executes', async () => {
   await withTempInstaller(async (installer) => {
-    const bundle = buildContractLawyerBundle({ capabilities: [claimEvaluationCapability({ confidence: { score: 0.95, basis: 'expert_review' } })] });
+    const bundle = buildContractLawyerBundle({
+      capabilities: [claimEvaluationCapability({ confidence: { score: 0.95, basis: 'expert_review' } })],
+    });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority.executor, minConfidence: 0.8 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor: authority.executor,
+      minConfidence: 0.8,
+    });
     const result = await engine.execute(claimRequest());
 
     assert.equal(result.session.status, 'completed');
@@ -181,7 +217,10 @@ test('M1.4: a deterministic_rule capability above the configured minConfidence e
 
 // --- Hybrid capability, top-level pipeline gate ------------------------------
 
-function hybridCapability(hybridSteps: readonly HybridExecutionStep[], overrides: Partial<CapabilityDeclaration> = {}): CapabilityDeclaration {
+function hybridCapability(
+  hybridSteps: readonly HybridExecutionStep[],
+  overrides: Partial<CapabilityDeclaration> = {},
+): CapabilityDeclaration {
   return {
     id: 'hybrid_review',
     name: 'Hybrid Review',
@@ -230,23 +269,34 @@ function buildDeterministicAuthority(onHandlerCalled: () => void): RuntimeCapabi
   });
   assert.equal(registered.ok, true);
 
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]) });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
+  });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 test('M1.4: a hybrid capability below the configured minConfidence is denied before any step executes', async () => {
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
-      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: amountSchema() },
+      {
+        stepId: 'det',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: amountSchema(),
+      },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
     ];
-    const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps, { confidence: { score: 0.4, basis: 'self_reported' } })] });
+    const bundle = buildContractLawyerBundle({
+      capabilities: [hybridCapability(steps, { confidence: { score: 0.4, basis: 'self_reported' } })],
+    });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     let detHandlerCalled = false;
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(() => {
         detHandlerCalled = true;
       }),
@@ -280,16 +330,27 @@ function buildDirectAuthority(options: { readonly denyPermission?: boolean; read
   assert.equal(registered.ok, true);
 
   const manager = new PermissionManager({
-    policy: new RuleBasedPolicy(options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
+    policy: new RuleBasedPolicy(
+      options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }],
+    ),
   });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 test('M1.4: a direct RuntimeCapabilityExecutor call below the configured minConfidence is denied without any ExecutionPipeline involved', async () => {
   let handlerCalled = false;
-  const executor = buildDirectAuthority({ onHandlerCalled: () => { handlerCalled = true; } });
+  const executor = buildDirectAuthority({
+    onHandlerCalled: () => {
+      handlerCalled = true;
+    },
+  });
 
-  const result = await executor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.5, minConfidence: 0.8 });
+  const result = await executor.execute({
+    capabilityId: 'capability:direct',
+    input: { amount: 150 },
+    confidenceScore: 0.5,
+    minConfidence: 0.8,
+  });
 
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_RUNTIME_CONFIDENCE_BELOW_THRESHOLD');
@@ -298,9 +359,18 @@ test('M1.4: a direct RuntimeCapabilityExecutor call below the configured minConf
 
 test('M1.4: a direct RuntimeCapabilityExecutor call at the configured minConfidence executes', async () => {
   let handlerCalled = false;
-  const executor = buildDirectAuthority({ onHandlerCalled: () => { handlerCalled = true; } });
+  const executor = buildDirectAuthority({
+    onHandlerCalled: () => {
+      handlerCalled = true;
+    },
+  });
 
-  const result = await executor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.8, minConfidence: 0.8 });
+  const result = await executor.execute({
+    capabilityId: 'capability:direct',
+    input: { amount: 150 },
+    confidenceScore: 0.8,
+    minConfidence: 0.8,
+  });
 
   assert.equal(result.ok, true);
   assert.equal(handlerCalled, true);
@@ -308,9 +378,18 @@ test('M1.4: a direct RuntimeCapabilityExecutor call at the configured minConfide
 
 test('M1.4: a direct RuntimeCapabilityExecutor call above the configured minConfidence executes', async () => {
   let handlerCalled = false;
-  const executor = buildDirectAuthority({ onHandlerCalled: () => { handlerCalled = true; } });
+  const executor = buildDirectAuthority({
+    onHandlerCalled: () => {
+      handlerCalled = true;
+    },
+  });
 
-  const result = await executor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.95, minConfidence: 0.8 });
+  const result = await executor.execute({
+    capabilityId: 'capability:direct',
+    input: { amount: 150 },
+    confidenceScore: 0.95,
+    minConfidence: 0.8,
+  });
 
   assert.equal(result.ok, true);
   assert.equal(handlerCalled, true);
@@ -318,7 +397,11 @@ test('M1.4: a direct RuntimeCapabilityExecutor call above the configured minConf
 
 test('M1.4: a direct RuntimeCapabilityExecutor call with no minConfidence supplied executes regardless of confidenceScore (opt-in, unchanged default)', async () => {
   let handlerCalled = false;
-  const executor = buildDirectAuthority({ onHandlerCalled: () => { handlerCalled = true; } });
+  const executor = buildDirectAuthority({
+    onHandlerCalled: () => {
+      handlerCalled = true;
+    },
+  });
 
   const result = await executor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.1 });
 
@@ -332,15 +415,30 @@ test('M1.4: confidence denial and permission denial remain independently disting
   // Case 1: confidence fails, permission would also fail — confidence
   // must win (checked first) and the handler must never run.
   let handlerCalled = false;
-  const denyingExecutor = buildDirectAuthority({ denyPermission: true, onHandlerCalled: () => { handlerCalled = true; } });
-  const confidenceDenied = await denyingExecutor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.2, minConfidence: 0.8 });
+  const denyingExecutor = buildDirectAuthority({
+    denyPermission: true,
+    onHandlerCalled: () => {
+      handlerCalled = true;
+    },
+  });
+  const confidenceDenied = await denyingExecutor.execute({
+    capabilityId: 'capability:direct',
+    input: { amount: 150 },
+    confidenceScore: 0.2,
+    minConfidence: 0.8,
+  });
   assert.equal(confidenceDenied.ok, false);
   if (!confidenceDenied.ok) assert.equal(confidenceDenied.error.code, 'XO_RUNTIME_CONFIDENCE_BELOW_THRESHOLD');
   assert.equal(handlerCalled, false);
 
   // Case 2: confidence passes, permission fails — must be reported as a
   // permission denial, not a confidence denial.
-  const permissionDenied = await denyingExecutor.execute({ capabilityId: 'capability:direct', input: { amount: 150 }, confidenceScore: 0.95, minConfidence: 0.8 });
+  const permissionDenied = await denyingExecutor.execute({
+    capabilityId: 'capability:direct',
+    input: { amount: 150 },
+    confidenceScore: 0.95,
+    minConfidence: 0.8,
+  });
   assert.equal(permissionDenied.ok, false);
   if (!permissionDenied.ok) assert.equal(permissionDenied.error.code, 'XO_RUNTIME_PERMISSION_DENIED');
   assert.equal(handlerCalled, false, 'handler must not run when permission is denied either');

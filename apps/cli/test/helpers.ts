@@ -1,7 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CapabilityDeclaration, CapabilityExecutionDeclaration, CapabilityInputSchema, CompatibilityDeclaration, DependencyDeclaration, ManifestPermissionDeclaration } from '@xo/types';
+import type {
+  CapabilityDeclaration,
+  CapabilityExecutionDeclaration,
+  CapabilityInputSchema,
+  CompatibilityDeclaration,
+  DependencyDeclaration,
+  ManifestPermissionDeclaration,
+} from '@xo/types';
 import { ManifestBuilder, PackageInstaller, type PackageBundle } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 
@@ -14,7 +21,9 @@ import { LocalFsBlobStore } from '@xo/storage';
  * not part of `@xo/runtime`'s published `dist/`.
  */
 export const testCompatibility: CompatibilityDeclaration = {
-  modelFamilies: [{ family: 'claude', minCapability: ['chat', 'tool_use'], consumes: ['knowledge_graph', 'safety_rules', 'benchmark_suite'] }],
+  modelFamilies: [
+    { family: 'claude', minCapability: ['chat', 'tool_use'], consumes: ['knowledge_graph', 'safety_rules', 'benchmark_suite'] },
+  ],
   fallbackPolicy: 'degrade_gracefully',
 };
 
@@ -38,14 +47,29 @@ export interface TestBundleOptions {
 
 export function buildTestBundle(options: TestBundleOptions = {}): PackageBundle {
   const result = ManifestBuilder.create()
-    .setIdentity({ formatVersion: '1.0', name: options.name ?? 'xo_cli_test_pkg', version: options.version ?? '1.0.0', creatorDid: 'did:xo:cli-test' })
+    .setIdentity({
+      formatVersion: '1.0',
+      name: options.name ?? 'xo_cli_test_pkg',
+      version: options.version ?? '1.0.0',
+      creatorDid: 'did:xo:cli-test',
+    })
     .setCompatibility(testCompatibility)
     .setMetadata({ domain: 'testing', description: 'CLI test fixture package', scope: ['testing'], limitations: [] })
     .setCapabilities(options.capabilities ?? [echoCapability])
     .setDependencies(options.dependencies ?? [])
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode('{"nodes":[],"edges":[]}'), required: false })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode('{"nodes":[],"edges":[]}'),
+      required: false,
+    })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Test fixture bundle failed to build: ${result.error.message}`);
   return result.value;
@@ -74,6 +98,7 @@ export function buildDeterministicClaimBundle(): PackageBundle {
         id: 'claim_approval',
         kind: 'capability',
         properties: {
+          requiredPermissions: [], // P1.0 M2: explicit permission-free declaration (absent => denied)
           semanticCapabilityContract: {
             id: 'claim_approval',
             name: 'Claim Approval',
@@ -116,12 +141,27 @@ export function buildDeterministicClaimBundle(): PackageBundle {
   const result = ManifestBuilder.create()
     .setIdentity({ formatVersion: '1.0', name: 'xo_cli_test_claim_pkg', version: '1.0.0', creatorDid: 'did:xo:cli-test' })
     .setCompatibility(testCompatibility)
-    .setMetadata({ domain: 'testing', description: 'CLI deterministic-execution test fixture package', scope: ['testing'], limitations: [] })
+    .setMetadata({
+      domain: 'testing',
+      description: 'CLI deterministic-execution test fixture package',
+      scope: ['testing'],
+      limitations: [],
+    })
     .setCapabilities([claimApprovalCapability])
     .setDependencies([])
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode(JSON.stringify(knowledgeGraph)), required: false })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode(JSON.stringify(knowledgeGraph)),
+      required: false,
+    })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Deterministic test fixture bundle failed to build: ${result.error.message}`);
   return result.value;
@@ -143,6 +183,8 @@ export interface AuthoritativeClaimBundleOptions {
   readonly permissions?: readonly ManifestPermissionDeclaration[];
   /** `execution.requiredPermissionIds` — defaults to none. */
   readonly executionRequiredPermissionIds?: readonly string[];
+  /** P1.0 M2 — the capability node's own `requiredPermissions` property. Default `[]` (explicit permission-free); `'omit'` leaves it absent; anything else is stored verbatim (for malformed-declaration tests). */
+  readonly nodeRequiredPermissions?: unknown;
 }
 
 /**
@@ -165,6 +207,9 @@ export function buildAuthoritativeClaimBundle(options: AuthoritativeClaimBundleO
         id: 'claim_approval',
         kind: 'capability',
         properties: {
+          ...(options.nodeRequiredPermissions === 'omit'
+            ? {}
+            : { requiredPermissions: options.nodeRequiredPermissions === undefined ? [] : options.nodeRequiredPermissions }), // P1.0 M2: explicit declaration (absent => denied)
           semanticCapabilityContract: {
             id: 'claim_approval',
             name: 'Claim Approval',
@@ -215,12 +260,27 @@ export function buildAuthoritativeClaimBundle(options: AuthoritativeClaimBundleO
   let builder = ManifestBuilder.create()
     .setIdentity({ formatVersion: '1.0', name: 'xo_cli_test_authoritative_claim_pkg', version: '1.0.0', creatorDid: 'did:xo:cli-test' })
     .setCompatibility(testCompatibility)
-    .setMetadata({ domain: 'testing', description: 'R1/R2/R3 authoritative-declaration test fixture package', scope: ['testing'], limitations: [] })
+    .setMetadata({
+      domain: 'testing',
+      description: 'R1/R2/R3 authoritative-declaration test fixture package',
+      scope: ['testing'],
+      limitations: [],
+    })
     .setCapabilities([claimApprovalCapability])
     .setDependencies([])
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode(JSON.stringify(knowledgeGraph)), required: false })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode(JSON.stringify(knowledgeGraph)),
+      required: false,
+    })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true });
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    });
 
   if (options.permissions !== undefined) builder = builder.setPermissions(options.permissions);
 
@@ -240,7 +300,10 @@ export async function withTempDir<T>(prefix: string, fn: (dir: string) => Promis
 }
 
 /** Installs `bundle` into a fresh temp `LocalFsBlobStore`-backed store and hands both back — for tests that need an already-installed package (e.g. `xo run`) without going through the CLI's own `install` command. */
-export async function withInstalledBundle<T>(bundle: PackageBundle, fn: (storeDir: string, installer: PackageInstaller) => Promise<T>): Promise<T> {
+export async function withInstalledBundle<T>(
+  bundle: PackageBundle,
+  fn: (storeDir: string, installer: PackageInstaller) => Promise<T>,
+): Promise<T> {
   return withTempDir('xo-cli-test-store-', async (storeDir) => {
     const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
     const installResult = await installer.install(bundle);
