@@ -174,9 +174,9 @@ The sandbox cannot reach the npm registry (`npm ci` fails: ENOTFOUND), so the re
 
 ### NOT verified (stated, not assumed)
 
-- **ESLint was not run** (not installed, registry unreachable). The CI "Lint" failure on PR #2 is therefore **not** attributed to either baseline or M2 here. A `tsc --noUnusedLocals` approximation found no unused symbols in changed files.
+- **ESLint was not run locally** (not installed, registry unreachable), so lint cleanliness of the changed files is **not verified**; a `tsc --noUnusedLocals` approximation found no unused symbols in them. CI evidence for PR head `23b9f0a` (GitHub check annotations, read after the branch was pushed): the `verify (22.x)` job failed and `verify (20.x)` was cancelled. The annotated lint errors (`packages/ai-core/src/prompt/default-prompts.d.ts`, `apps/cli/src/commands/package/dependency-lookup.ts`, `apps/api/src/executions/fs-execution-store.ts`, `apps/api/src/approvals/fs-approval-store.ts`) are in files **unchanged by M2 and by this remediation** (`git diff 81f2bce 23b9f0a` is empty for them), i.e. pre-existing. **Limit:** GitHub caps annotations (about 10 errors) and the full job log could not be downloaded from this sandbox, so the complete lint error list and the "same failures on base" comparison are **not established**. No CI has run on the remediation branch (the workflow triggers on `pull_request` and pushes to `main` only).
 - **Repo-pinned `tsc -b` typecheck, `npm run build`, and the GitHub Actions run** were not run/observed.
-- GitHub PR #2 live state (head SHA, new commits/comments, open/merged) could **not** be read: the session's GitHub access was not enabled. Only local git data was used (PR head `23b9f0a`, one commit over `81f2bce`).
+- **Build and repo-pinned `tsc -b`** were not run. **PR #2 state (read after push):** open, unmerged, base `main`, head `feat/p10-m2-authorization` @ `23b9f0a`, 1 commit, 59 files, 1 review comment (the review that raised both findings), no review threads. `main` has since advanced `81f2bce` → `b2192bd` (`fix(package-sdk): prevent package component path traversal`, `package-sdk` only, no overlap with M2 or this remediation); the M2 branch needs syncing with `main` before any merge, an owner decision.
 
 ### Residual risks / limitations
 
@@ -190,11 +190,11 @@ The sandbox cannot reach the npm registry (`npm ci` fails: ENOTFOUND), so the re
 
 ### Checklist (awaiting owner review)
 
-| Item                                         | Status                                           |
-| -------------------------------------------- | ------------------------------------------------ |
-| Finding A verified, fixed, regression-tested | Complete (tests run)                             |
-| Finding B verified, fixed, regression-tested | Complete (tests run)                             |
-| Report updated with actual results           | Complete                                         |
-| ESLint / repo `tsc -b` / build / CI green    | **NOT VERIFIED** (environment)                   |
-| GitHub PR #2 state checked; branch pushed    | **See hand-off** (GitHub access)                 |
-| Owner review and acceptance of M2            | **PENDING** — M2 is not accepted; M3 not started |
+| Item                                                  | Status                                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------------- |
+| Finding A verified, fixed, regression-tested          | Complete (tests run)                                                    |
+| Finding B verified, fixed, regression-tested          | Complete (tests run)                                                    |
+| Report updated with actual results                    | Complete                                                                |
+| ESLint / repo `tsc -b` / build / CI green             | **NOT VERIFIED** (environment; partial CI evidence in the bullet above) |
+| GitHub PR #2 state checked; remediation branch pushed | Complete (pushed, not merged; no PR opened)                             |
+| Owner review and acceptance of M2                     | **PENDING** — M2 is not accepted; M3 not started                        |
