@@ -81,8 +81,8 @@ export async function resolveInside(realRoot: string, resourceKey: string): Prom
 
   // Reject symlinks in EVERY path component, not just the final component.
   // This blocks in-root aliases (for example, "alias -> .ssh") as well as
-  // escapes. Acquisition also verifies the opened descriptor to close the
-  // check/open race; this preflight keeps ordinary symlink requests explicit.
+  // escapes. This is a preflight check, not a race-free defense against a
+  // concurrent process mutating the approved tree; that limitation is documented.
   let current = realRoot;
   for (const segment of segments) {
     current = join(current, segment);
