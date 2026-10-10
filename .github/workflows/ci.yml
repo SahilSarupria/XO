@@ -44,9 +44,6 @@ jobs:
       - name: Lint Environment Intelligence
         run: npx eslint packages/environment-intelligence --max-warnings=0
 
-      - name: Formatter diff diagnostic (temporary)
-        run: npx prettier packages/environment-intelligence/src/filesystem/scope-guard.ts | diff -u packages/environment-intelligence/src/filesystem/scope-guard.ts - || true
-
       - name: Format check Environment Intelligence
         run: npx prettier --check packages/environment-intelligence docs/environment-intelligence/ARCHITECTURE.md
 
