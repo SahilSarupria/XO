@@ -95,7 +95,9 @@ export async function resolveInside(realRoot: string, resourceKey: string): Prom
           discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }),
         );
       }
-      return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }));
+      return err(
+        discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }),
+      );
     }
   }
 
