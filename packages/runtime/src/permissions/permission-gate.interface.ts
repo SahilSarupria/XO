@@ -31,7 +31,11 @@ export interface PermissionGate {
    * @param capabilityId The capability id selected by planning (`ExecutionPlan.selected.capability.declaration.id`) — or, for an auxiliary capability, `request.auxiliaryCapabilityIds[n]`'s corresponding declaration id. Both primary and auxiliary capabilities pass through this same gate; see `execution-pipeline.ts`'s doc comment on the auxiliary retrieval loop for why.
    * @param request The full `ExecutionRequest` being executed, for a gate that wants to inspect `environment`/`auxiliaryCapabilityIds`/etc.
    */
-  check(mountedPackage: { readonly name: string; readonly version: string; readonly manifest: XoManifest }, capabilityId: string, request: ExecutionRequest): Promise<PermissionGateVerdict>;
+  check(
+    mountedPackage: { readonly name: string; readonly version: string; readonly manifest: XoManifest },
+    capabilityId: string,
+    request: ExecutionRequest,
+  ): Promise<PermissionGateVerdict>;
 }
 
 export const allowAllPermissionGate: PermissionGate = {

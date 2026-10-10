@@ -98,7 +98,9 @@ test('M1.2: subject-prefixed "must" obligation — "The Insured must report susp
 });
 
 test('M1.2: subject-prefixed "must" obligation — "The Insured must preserve damaged property..." (real policy §6.2)', () => {
-  const result = parseSentence('The Insured must preserve damaged property for inspection unless doing so would increase the risk of further damage.');
+  const result = parseSentence(
+    'The Insured must preserve damaged property for inspection unless doing so would increase the risk of further damage.',
+  );
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]!.matchedPattern, 'policy:subject-must-obligation');
 });
@@ -194,7 +196,9 @@ test('justification: "D, because E." (trailing form)', () => {
 // — real policy §8.1/§8.2, previously zero extraction (no leading
 // "if"/"when"/"must"/etc. cue at all).
 test('M1.3: "X satisfies the requirement." (real policy §8.1)', () => {
-  const result = parseSentence('A claim notification received within 7 calendar days of the reported loss date satisfies the notification requirement.');
+  const result = parseSentence(
+    'A claim notification received within 7 calendar days of the reported loss date satisfies the notification requirement.',
+  );
   assert.equal(result.candidates.length, 1);
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'rule');
@@ -204,7 +208,9 @@ test('M1.3: "X satisfies the requirement." (real policy §8.1)', () => {
 });
 
 test('M1.3: "X does not satisfy the requirement." (real policy §8.2)', () => {
-  const result = parseSentence('A claim notification received more than 7 calendar days after the reported loss date does not satisfy the standard notification requirement.');
+  const result = parseSentence(
+    'A claim notification received more than 7 calendar days after the reported loss date does not satisfy the standard notification requirement.',
+  );
   assert.equal(result.candidates.length, 1);
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'rule');
@@ -243,7 +249,9 @@ test('subject-to prerequisite: "Subject to A, B." (real fixture form)', () => {
 });
 
 test('subject-to negative: mid-sentence "is subject to" (real burglary-policy.pdf form) is NOT a leading conditional and is left unmatched', () => {
-  const result = parseSentence('This policy is subject to the standard policy wordings, warranties, exclusions and conditions as per Digit Burglary Insurance Policy.');
+  const result = parseSentence(
+    'This policy is subject to the standard policy wordings, warranties, exclusions and conditions as per Digit Burglary Insurance Policy.',
+  );
   assert.equal(result.candidates.length, 0);
 });
 
@@ -281,7 +289,9 @@ test('passive exclusion: "X are not covered." (synthetic fixture form)', () => {
 });
 
 test('passive exclusion: trailing-qualified form (real burglary-policy.pdf form) still matches mid-sentence', () => {
-  const result = parseSentence('Jewellery shops, Goldsmiths, Silversmiths, Money Lenders, Pawn brokers and alike are excluded from scope of cover under the policy.');
+  const result = parseSentence(
+    'Jewellery shops, Goldsmiths, Silversmiths, Money Lenders, Pawn brokers and alike are excluded from scope of cover under the policy.',
+  );
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]!.nodeType, 'prohibition');
 });
@@ -300,7 +310,9 @@ test('warranty: "Warranted that X." (synthetic fixture form)', () => {
 });
 
 test('warranty: "Warranted X." without "that" (real burglary-policy.pdf form)', () => {
-  const result = parseSentence('Warranted existing protection, detection and alarm system to be maintained in well working condition throughout policy period.');
+  const result = parseSentence(
+    'Warranted existing protection, detection and alarm system to be maintained in well working condition throughout policy period.',
+  );
   assert.equal(result.candidates.length, 1);
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'policy');
@@ -313,12 +325,12 @@ test('warranty negative: "warranty" as an ordinary noun elsewhere in the sentenc
 });
 
 test('priority: a sentence starting with "Warranted that ... are excluded ..." is classified once, as a warranty (not double-counted as an exclusion too)', () => {
-  const result = parseSentence('Warranted that stocks/goods stored in open, money, monetary instruments and valuables of every kind and description are excluded from scope of cover under the policy.');
+  const result = parseSentence(
+    'Warranted that stocks/goods stored in open, money, monetary instruments and valuables of every kind and description are excluded from scope of cover under the policy.',
+  );
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]!.nodeType, 'policy');
 });
-
-
 
 test('an ambiguous sentence with no supported pattern produces no candidates', () => {
   const result = parseSentence('The weather was pleasant that afternoon.');
@@ -352,8 +364,12 @@ test('only the first matching pattern applies (priority order is deterministic, 
 // ---------------------------------------------------------------------------
 
 test('clause number: "7.1 If A, B." is recognized exactly like "If A, B." once the leading "7.1 " is stripped', () => {
-  const numbered = parseSentence('7.1 If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.');
-  const bare = parseSentence('If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.');
+  const numbered = parseSentence(
+    '7.1 If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.',
+  );
+  const bare = parseSentence(
+    'If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.',
+  );
   assert.equal(numbered.candidates.length, 1);
   assert.deepEqual(numbered.candidates, bare.candidates);
   const c = numbered.candidates[0]!;
@@ -376,10 +392,16 @@ test('clause number: a single-level top-of-section marker ("1. ") is stripped to
 });
 
 test('clause number: stripping applies uniformly to every leading-cue pattern, not only "if"/"when"', () => {
-  assert.equal(parseSentence('5.7 Warranted that all fire extinguishing equipment is maintained in working order.').candidates[0]!.nodeType, 'policy');
+  assert.equal(
+    parseSentence('5.7 Warranted that all fire extinguishing equipment is maintained in working order.').candidates[0]!.nodeType,
+    'policy',
+  );
   assert.equal(parseSentence('7.4 Only claims with an active Policy may be considered for settlement.').candidates[0]!.nodeType, 'policy');
   assert.equal(parseSentence('4.1 The Insured must notify the Insurer of a loss within 7 days.').candidates[0]!.nodeType, 'policy');
-  assert.equal(parseSentence('6.6 Before payment is released, all required approvals must be recorded in the claim file.').candidates[0]!.nodeType, 'prerequisite');
+  assert.equal(
+    parseSentence('6.6 Before payment is released, all required approvals must be recorded in the claim file.').candidates[0]!.nodeType,
+    'prerequisite',
+  );
 });
 
 test('clause number: a bare leading number with NO dot ("30 days after...") is left untouched, not treated as a marker', () => {

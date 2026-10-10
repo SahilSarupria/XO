@@ -10,7 +10,13 @@ function makeUnit(overrides: Partial<ExperienceUnit> & { content: string }): Exp
     title: overrides.title ?? 'Unit',
     semanticType: overrides.semanticType ?? 'clause',
     content: overrides.content,
-    provenance: overrides.provenance ?? { documentPath: 'doc.pdf', pages: [1], sectionPath: ['Article 1'], blockProvenance: [], blockIndexRange: [0, 0] },
+    provenance: overrides.provenance ?? {
+      documentPath: 'doc.pdf',
+      pages: [1],
+      sectionPath: ['Article 1'],
+      blockProvenance: [],
+      blockIndexRange: [0, 0],
+    },
     hierarchy: overrides.hierarchy ?? { depth: 1, parentUnitId: undefined, siblingUnitIds: [] },
     confidence: overrides.confidence ?? 0.9,
     relationships: overrides.relationships ?? [],
@@ -40,12 +46,17 @@ test('extractReasoningGraph produces a rule node with provenance from a simple I
 });
 
 test('a condition containing "vs." is not split into unrelated fragments (Layer 1B, see benchmark/CHANGELOG.md)', async () => {
-  const doc = makeDocument([makeUnit({ content: 'If actual brokerage vs. expected brokerage differs by more than 5%, escalate the case.' })]);
+  const doc = makeDocument([
+    makeUnit({ content: 'If actual brokerage vs. expected brokerage differs by more than 5%, escalate the case.' }),
+  ]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes.length, 1, 'the "vs." clause must not fragment this into extra, unrelated nodes');
   const node = graph.nodes[0]!;
   assert.equal(node.nodeType, 'rule');
-  assert.ok(node.condition?.includes('vs. expected brokerage'), 'the condition must retain the full "vs." clause, not be truncated at "vs."');
+  assert.ok(
+    node.condition?.includes('vs. expected brokerage'),
+    'the condition must retain the full "vs." clause, not be truncated at "vs."',
+  );
 });
 
 test('condition -> rule, exception -> rule relationships are captured as real edges', async () => {
@@ -91,7 +102,18 @@ test('determinism: running extraction twice on the same document produces identi
 // --- Phase 1: new rule-recall patterns reach full ReasoningNode representation ---
 
 test('a passive exclusion sentence produces a prohibition node with real provenance', async () => {
-  const doc = makeDocument([makeUnit({ content: 'Terrorism cover is excluded.', provenance: { documentPath: 'burglary-policy.pdf', pages: [3], sectionPath: ['Exclusions'], blockProvenance: [], blockIndexRange: [0, 0] } })]);
+  const doc = makeDocument([
+    makeUnit({
+      content: 'Terrorism cover is excluded.',
+      provenance: {
+        documentPath: 'burglary-policy.pdf',
+        pages: [3],
+        sectionPath: ['Exclusions'],
+        blockProvenance: [],
+        blockIndexRange: [0, 0],
+      },
+    }),
+  ]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes.length, 1);
   const node = graph.nodes[0]!;
@@ -110,7 +132,9 @@ test('a "Warranted that ..." sentence produces a policy node', async () => {
 });
 
 test('a leading "Subject to A, B." sentence produces a prerequisite node with condition and action', async () => {
-  const doc = makeDocument([makeUnit({ content: 'Subject to satisfactory proof of loss, the insurer will process the claim within 14 days.' })]);
+  const doc = makeDocument([
+    makeUnit({ content: 'Subject to satisfactory proof of loss, the insurer will process the claim within 14 days.' }),
+  ]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes.length, 1);
   const node = graph.nodes[0]!;
@@ -154,7 +178,8 @@ test('without paragraph-aware splitting these same clauses would fuse into a sin
   // Same three clauses, but joined with a single space (as if the blank-line
   // boundary were never there) — this must NOT match any pattern, confirming
   // the fix above is really about the blank-line boundary, not something else.
-  const content = 'Warranted that stocks/goods stored in open are excluded from scope of cover under the policy Terrorism cover is excluded Warranted that there is 24 hours security in the premises.';
+  const content =
+    'Warranted that stocks/goods stored in open are excluded from scope of cover under the policy Terrorism cover is excluded Warranted that there is 24 hours security in the premises.';
   const doc = makeDocument([makeUnit({ content })]);
   const graph = await extractReasoningGraph(doc);
   // The merged blob still starts with "warranted that ", so it is matched as
@@ -164,16 +189,12 @@ test('without paragraph-aware splitting these same clauses would fuse into a sin
   assert.equal(graph.nodes[0]!.nodeType, 'policy');
 });
 
-
 test('determinism: node/edge ids do not depend on unit ordering within the document', async () => {
   const unitA = makeUnit({ id: 'a', content: 'Before signing, KYC verification must be completed.' });
   const unitB = makeUnit({ id: 'b', content: 'Cannot approve a request without identity verification.' });
   const g1 = await extractReasoningGraph(makeDocument([unitA, unitB]));
   const g2 = await extractReasoningGraph(makeDocument([unitB, unitA]));
-  assert.deepEqual(
-    [...g1.nodes.map((n) => n.id)].sort(),
-    [...g2.nodes.map((n) => n.id)].sort(),
-  );
+  assert.deepEqual([...g1.nodes.map((n) => n.id)].sort(), [...g2.nodes.map((n) => n.id)].sort());
 });
 
 test('negative case: a unit with no supported pattern contributes no nodes', async () => {
@@ -184,14 +205,16 @@ test('negative case: a unit with no supported pattern contributes no nodes', asy
 });
 
 test('a unit with multiple sentences produces multiple independent candidates', async () => {
-  const doc = makeDocument([makeUnit({ content: 'If the payment is late, apply a penalty fee. Cannot waive the fee without manager approval.' })]);
+  const doc = makeDocument([
+    makeUnit({ content: 'If the payment is late, apply a penalty fee. Cannot waive the fee without manager approval.' }),
+  ]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes.length, 2);
   assert.ok(graph.nodes.some((n) => n.nodeType === 'rule'));
   assert.ok(graph.nodes.some((n) => n.nodeType === 'prohibition'));
 });
 
-test('confidence is bounded by the unit\'s own confidence — never inflated beyond the source unit\'s stated confidence', async () => {
+test("confidence is bounded by the unit's own confidence — never inflated beyond the source unit's stated confidence", async () => {
   const doc = makeDocument([makeUnit({ content: 'If the payment is late, apply a penalty fee.', confidence: 0.4 })]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes[0]!.confidence, 0.4);
@@ -210,7 +233,18 @@ test('Phase 2: a numeric-comparison decision sentence structures both condition 
 });
 
 test('Phase 2 real source: the real burglary-policy.pdf "Terrorism cover is excluded" sentence structures as a categorical prohibition', async () => {
-  const doc = makeDocument([makeUnit({ content: 'Terrorism cover is excluded.', provenance: { documentPath: 'burglary-policy.pdf', pages: [3], sectionPath: ['Exclusions'], blockProvenance: [], blockIndexRange: [0, 0] } })]);
+  const doc = makeDocument([
+    makeUnit({
+      content: 'Terrorism cover is excluded.',
+      provenance: {
+        documentPath: 'burglary-policy.pdf',
+        pages: [3],
+        sectionPath: ['Exclusions'],
+        blockProvenance: [],
+        blockIndexRange: [0, 0],
+      },
+    }),
+  ]);
   const graph = await extractReasoningGraph(doc);
   assert.equal(graph.nodes.length, 1);
   const node = graph.nodes[0]!;

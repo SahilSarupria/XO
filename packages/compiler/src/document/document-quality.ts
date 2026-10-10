@@ -99,7 +99,8 @@ export function assessDocumentQuality(parsed: ParsedDocument, sourceId: string):
   }
 
   const suspiciousTokenRatio = totalTokens === 0 ? 0 : suspiciousTokens / totalTokens;
-  const state: SourceQualityState = suspiciousTokenRatio > BLOCKED_RATIO_THRESHOLD ? 'blocked' : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD ? 'degraded' : 'trusted';
+  const state: SourceQualityState =
+    suspiciousTokenRatio > BLOCKED_RATIO_THRESHOLD ? 'blocked' : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD ? 'degraded' : 'trusted';
 
   if (state !== 'trusted') {
     diagnostics.push({

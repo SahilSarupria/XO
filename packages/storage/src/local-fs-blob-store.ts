@@ -28,7 +28,11 @@ export class LocalFsBlobStore implements BlobStore {
       await mkdir(dirname(path), { recursive: true });
       const buffer = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
       await writeFile(path, buffer);
-      return ok(options?.contentType !== undefined ? { key, size: buffer.byteLength, contentType: options.contentType } : { key, size: buffer.byteLength });
+      return ok(
+        options?.contentType !== undefined
+          ? { key, size: buffer.byteLength, contentType: options.contentType }
+          : { key, size: buffer.byteLength },
+      );
     } catch (cause) {
       return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, `Failed to write blob "${key}"`, { cause }));
     }

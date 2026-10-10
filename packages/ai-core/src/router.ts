@@ -38,7 +38,12 @@ export interface AiCapabilityLayerOptions {
   readonly rateLimiterOptionsByProvider?: Partial<Record<ProviderId, Partial<TokenBucketOptions>>>;
 }
 
-const DEFAULT_RETRY_OPTIONS: Omit<RetryPolicyOptions, 'isRetryable'> = { maxAttempts: 3, initialDelayMs: 200, maxDelayMs: 2000, backoffMultiplier: 2 };
+const DEFAULT_RETRY_OPTIONS: Omit<RetryPolicyOptions, 'isRetryable'> = {
+  maxAttempts: 3,
+  initialDelayMs: 200,
+  maxDelayMs: 2000,
+  backoffMultiplier: 2,
+};
 const DEFAULT_CIRCUIT_OPTIONS: CircuitBreakerOptions = { failureThreshold: 5, cooldownMs: 30_000 };
 const DEFAULT_RATE_LIMIT_OPTIONS: TokenBucketOptions = { capacity: 60, refillPerSecond: 1 };
 
@@ -93,19 +98,29 @@ export class AiCapabilityLayer {
   extractEntities(request: CapabilityRequest<EntityExtractionInput>): Promise<Result<CapabilityResponse<EntityExtractionOutput>, AiError>> {
     return this.callCapability('extractEntities', request);
   }
-  extractKnowledge(request: CapabilityRequest<KnowledgeExtractionInput>): Promise<Result<CapabilityResponse<KnowledgeExtractionOutput>, AiError>> {
+  extractKnowledge(
+    request: CapabilityRequest<KnowledgeExtractionInput>,
+  ): Promise<Result<CapabilityResponse<KnowledgeExtractionOutput>, AiError>> {
     return this.callCapability('extractKnowledge', request);
   }
-  extractReasoning(request: CapabilityRequest<ReasoningExtractionInput>): Promise<Result<CapabilityResponse<ReasoningExtractionOutput>, AiError>> {
+  extractReasoning(
+    request: CapabilityRequest<ReasoningExtractionInput>,
+  ): Promise<Result<CapabilityResponse<ReasoningExtractionOutput>, AiError>> {
     return this.callCapability('extractReasoning', request);
   }
-  extractCapabilities(request: CapabilityRequest<CapabilityExtractionInput>): Promise<Result<CapabilityResponse<CapabilityExtractionOutput>, AiError>> {
+  extractCapabilities(
+    request: CapabilityRequest<CapabilityExtractionInput>,
+  ): Promise<Result<CapabilityResponse<CapabilityExtractionOutput>, AiError>> {
     return this.callCapability('extractCapabilities', request);
   }
-  extractDecisionGraph(request: CapabilityRequest<DecisionGraphExtractionInput>): Promise<Result<CapabilityResponse<DecisionGraphExtractionOutput>, AiError>> {
+  extractDecisionGraph(
+    request: CapabilityRequest<DecisionGraphExtractionInput>,
+  ): Promise<Result<CapabilityResponse<DecisionGraphExtractionOutput>, AiError>> {
     return this.callCapability('extractDecisionGraph', request);
   }
-  extractConstraints(request: CapabilityRequest<ConstraintExtractionInput>): Promise<Result<CapabilityResponse<ConstraintExtractionOutput>, AiError>> {
+  extractConstraints(
+    request: CapabilityRequest<ConstraintExtractionInput>,
+  ): Promise<Result<CapabilityResponse<ConstraintExtractionOutput>, AiError>> {
     return this.callCapability('extractConstraints', request);
   }
 
@@ -128,7 +143,10 @@ export class AiCapabilityLayer {
     return limiter;
   }
 
-  private async callCapability<TInput, TOutput>(capability: CapabilityId, request: CapabilityRequest<TInput>): Promise<Result<CapabilityResponse<TOutput>, AiError>> {
+  private async callCapability<TInput, TOutput>(
+    capability: CapabilityId,
+    request: CapabilityRequest<TInput>,
+  ): Promise<Result<CapabilityResponse<TOutput>, AiError>> {
     return this.tracer.withSpan(`ai_core.${capability}`, async (span) => {
       const startedAt = performance.now();
       span.setAttribute('capability', capability);
@@ -141,7 +159,12 @@ export class AiCapabilityLayer {
         return err(error as AiError);
       }
 
-      const cacheKey = computeCacheKey({ capability, promptVersion: template.version, input: request.input, excerptText: request.excerpt.text });
+      const cacheKey = computeCacheKey({
+        capability,
+        promptVersion: template.version,
+        input: request.input,
+        excerptText: request.excerpt.text,
+      });
       const cached = this.cache.get<CapabilityResponse<TOutput>>(cacheKey);
       if (cached) {
         this.logger.debug('ai_core cache hit', { capability, traceId: request.traceId });
@@ -177,26 +200,39 @@ export class AiCapabilityLayer {
         });
 
         try {
-          // eslint-disable-next-line no-await-in-loop
           const outcome = await retryPolicy.execute(async (attempt) => {
             totalAttempts = attempt;
             return circuitBreaker.execute(async () => {
-              const response = await provider.complete({ model: candidate.model, messages, maxOutputTokens: 4096, responseSchema: schema as unknown as Record<string, unknown> });
+              const response = await provider.complete({
+                model: candidate.model,
+                messages,
+                maxOutputTokens: 4096,
+                responseSchema: schema as unknown as Record<string, unknown>,
+              });
               let parsed: unknown;
               try {
                 parsed = JSON.parse(response.text);
               } catch (cause) {
-                throw new AiError(ErrorCode.AI_SCHEMA_VALIDATION_FAILED, `Provider "${candidate.providerId}" did not return valid JSON`, { cause });
+                throw new AiError(ErrorCode.AI_SCHEMA_VALIDATION_FAILED, `Provider "${candidate.providerId}" did not return valid JSON`, {
+                  cause,
+                });
               }
               const issues = validateJsonSchema(schema, parsed);
               if (issues.length > 0) {
-                throw new AiError(ErrorCode.AI_SCHEMA_VALIDATION_FAILED, `Provider "${candidate.providerId}" response failed schema validation: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`);
+                throw new AiError(
+                  ErrorCode.AI_SCHEMA_VALIDATION_FAILED,
+                  `Provider "${candidate.providerId}" response failed schema validation: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`,
+                );
               }
               return { response, output: parsed as TOutput };
             });
           });
 
-          const costRecord = this.costAccountant.record(candidate.providerId, outcome.value.response.modelUsed, outcome.value.response.usage);
+          const costRecord = this.costAccountant.record(
+            candidate.providerId,
+            outcome.value.response.modelUsed,
+            outcome.value.response.usage,
+          );
           const result: CapabilityResponse<TOutput> = {
             output: outcome.value.output,
             meta: {
@@ -216,14 +252,24 @@ export class AiCapabilityLayer {
           span.setStatus('ok');
           return ok(result);
         } catch (error) {
-          this.logger.warn('ai_core provider attempt failed, trying next candidate', { provider: candidate.providerId, capability, error: error instanceof Error ? error.message : String(error) });
+          this.logger.warn('ai_core provider attempt failed, trying next candidate', {
+            provider: candidate.providerId,
+            capability,
+            error: error instanceof Error ? error.message : String(error),
+          });
           this.meter.createCounter('ai_core_requests_total').add(1, { capability, provider: candidate.providerId, status: 'failure' });
           failures.push(error);
         }
       }
 
       span.setStatus('error', 'all providers failed');
-      return err(new AiError(ErrorCode.AI_ALL_PROVIDERS_FAILED, `All ${candidates.length} candidate provider(s) failed for capability "${capability}" after ${totalAttempts} attempt(s) on the last one`, { context: { failureCount: failures.length } }));
+      return err(
+        new AiError(
+          ErrorCode.AI_ALL_PROVIDERS_FAILED,
+          `All ${candidates.length} candidate provider(s) failed for capability "${capability}" after ${totalAttempts} attempt(s) on the last one`,
+          { context: { failureCount: failures.length } },
+        ),
+      );
     });
   }
 }

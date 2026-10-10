@@ -134,7 +134,10 @@ export class PassManager {
     return ok(ordered);
   }
 
-  async run(graph: XoirGraph, options: { logger?: Logger; cancellationToken?: CancellationToken } = {}): Promise<Result<PassManagerReport, XoirError>> {
+  async run(
+    graph: XoirGraph,
+    options: { logger?: Logger; cancellationToken?: CancellationToken } = {},
+  ): Promise<Result<PassManagerReport, XoirError>> {
     const orderResult = this.order();
     if (!orderResult.ok) return err(orderResult.error);
 

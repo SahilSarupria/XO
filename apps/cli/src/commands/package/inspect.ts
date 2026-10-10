@@ -81,7 +81,7 @@ export async function inspectInstalledCommand(options: InspectInstalledOptions):
     `Name:              ${manifest.name}`,
     `Version:           ${manifest.version}`,
     `Dependencies:      ${dependencies.length}`,
-   ...dependencies.map((d) => `  - ${d.name} ${d.versionRange} (${d.kind})`),
+    ...dependencies.map((d) => `  - ${d.name} ${d.versionRange} (${d.kind})`),
   ];
 
   if (dependencies.length === 0) {
@@ -92,7 +92,9 @@ export async function inspectInstalledCommand(options: InspectInstalledOptions):
   const lockKey = lockfileKey(name, version);
   const lockRaw = await store.get(lockKey);
   if (!lockRaw.ok) {
-    lines.push(`Lockfile:          none found at ${options.storeDir}/${lockKey} — run "xo lock ${name}@${version} --store ${options.storeDir}"`);
+    lines.push(
+      `Lockfile:          none found at ${options.storeDir}/${lockKey} — run "xo lock ${name}@${version} --store ${options.storeDir}"`,
+    );
     return ok(lines);
   }
 
@@ -108,7 +110,7 @@ export async function inspectInstalledCommand(options: InspectInstalledOptions):
     return { exitCode: 1, lines };
   }
 
- lines.push(
+  lines.push(
     staleResult.value
       ? `Lockfile:          STALE — declared dependencies have changed since xo.lock was written; run "xo lock ${name}@${version} --store ${options.storeDir}" to refresh`
       : 'Lockfile:          fresh',

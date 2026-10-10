@@ -2,7 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration } from '@xo/types';
 import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
-import { ActionEscalationBindingResolver, StructuredComparisonBindingResolver, resolveCapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
+import {
+  ActionEscalationBindingResolver,
+  StructuredComparisonBindingResolver,
+  resolveCapabilityBinding,
+  type SemanticCapabilityContract,
+} from '@xo/capability-contract';
 import { ExecutionEngine } from '../src/engine/execution-engine.js';
 import { buildRuntimeContext } from '../src/runtime-context.js';
 import { RequestId, EnvironmentId } from '../src/ids.js';
@@ -117,7 +122,11 @@ test('HITL pipeline (1): a human_in_the_loop capability executes via the capabil
     assert.equal(result.session.status, 'completed');
     assert.equal(result.error, undefined);
     const response = JSON.parse(result.response?.content ?? 'null');
-    assert.equal(response.status, 'escalation_required', 'a human_in_the_loop capability must report escalation_required, never a fabricated successful business-action result');
+    assert.equal(
+      response.status,
+      'escalation_required',
+      'a human_in_the_loop capability must report escalation_required, never a fabricated successful business-action result',
+    );
     assert.equal(response.capabilityId, 'capability:reconcile-invoice-balance');
     assert.deepEqual(result.receipt?.capabilitiesInvoked, ['reconcile_invoice']);
     assert.equal(provider.requests.length, 0, 'the AI Capability Layer must never be called for a human_in_the_loop capability');
@@ -137,7 +146,11 @@ test('HITL pipeline (2): a human_in_the_loop capability is denied, not silently 
 
     assert.equal(result.error?.code, 'XO_RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED');
     assert.equal(result.session.status, 'failed');
-    assert.equal(provider.requests.length, 0, 'a misconfigured human_in_the_loop capability must never fall back to the AI Capability Layer');
+    assert.equal(
+      provider.requests.length,
+      0,
+      'a misconfigured human_in_the_loop capability must never fall back to the AI Capability Layer',
+    );
   });
 });
 
@@ -185,25 +198,43 @@ test('HITL pipeline (4): a deterministic_rule capability in the SAME package is 
       outputs: [],
       requiredPermissions: [],
       determinism: 'deterministic',
-      rules: [{ sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 }],
+      rules: [
+        {
+          sourceNodeId: 'decision:deny-large-claim',
+          kind: 'decision_node',
+          condition: 'the claimed loss amount exceeds 10000',
+          outcome: 'deny the claim',
+          exceptionConditions: [],
+          confidence: 0.9,
+        },
+      ],
       confidence: 0.9,
       sourceRefs: [],
       sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:deny-large-claim'],
     };
-    const detOutcome = resolveCapabilityBinding(claimContract, [new StructuredComparisonBindingResolver(), new ActionEscalationBindingResolver()]);
+    const detOutcome = resolveCapabilityBinding(claimContract, [
+      new StructuredComparisonBindingResolver(),
+      new ActionEscalationBindingResolver(),
+    ]);
     assert.equal(detOutcome.status, 'resolved');
     if (detOutcome.status !== 'resolved') throw new Error('unreachable');
     assert.equal(detOutcome.binding.implementationClass, 'deterministic_rule');
 
     const hitlContract = reconcileInvoiceContract();
-    const hitlOutcome = resolveCapabilityBinding(hitlContract, [new StructuredComparisonBindingResolver(), new ActionEscalationBindingResolver()]);
+    const hitlOutcome = resolveCapabilityBinding(hitlContract, [
+      new StructuredComparisonBindingResolver(),
+      new ActionEscalationBindingResolver(),
+    ]);
     assert.equal(hitlOutcome.status, 'resolved');
     if (hitlOutcome.status !== 'resolved') throw new Error('unreachable');
 
     const authorityRegistry = new RuntimeCapabilityRegistry();
     assert.equal(registerResolvedCapabilityBinding(authorityRegistry, claimContract, detOutcome.binding).ok, true);
     assert.equal(registerResolvedCapabilityBinding(authorityRegistry, hitlContract, hitlOutcome.binding).ok, true);
-    const capabilityAuthorityExecutor = new RuntimeCapabilityExecutor({ registry: authorityRegistry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+    const capabilityAuthorityExecutor = new RuntimeCapabilityExecutor({
+      registry: authorityRegistry,
+      permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    });
 
     const bundle = buildContractLawyerBundle({ capabilities: [claimEvaluation, reconcileInvoiceCapability] });
     await installer.install(bundle);
@@ -216,11 +247,21 @@ test('HITL pipeline (4): a deterministic_rule capability in the SAME package is 
       capabilityId: 'claim_evaluation',
       input: 'evaluate this claim',
       structuredInput: { claimed_loss_amount: 15000 },
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, provider: 'anthropic', tokenBudget: 8000, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        provider: 'anthropic',
+        tokenBudget: 8000,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
     assert.equal(detResult.session.status, 'completed');
-    assert.deepEqual(JSON.parse(detResult.response?.content ?? 'null'), { matched: true, ruleSourceNodeId: 'decision:deny-large-claim', outcome: 'deny the claim' });
+    assert.deepEqual(JSON.parse(detResult.response?.content ?? 'null'), {
+      matched: true,
+      ruleSourceNodeId: 'decision:deny-large-claim',
+      outcome: 'deny the claim',
+    });
 
     const hitlResult = await engine.execute(reconcileRequest());
     assert.equal(hitlResult.session.status, 'completed');

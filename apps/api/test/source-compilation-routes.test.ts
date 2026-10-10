@@ -45,7 +45,13 @@ async function createWorkspace(server: TestServer, extraHeaders?: Readonly<Recor
   return (await server.request('POST', '/workspaces', {}, extraHeaders)).json<WorkspaceRecord>();
 }
 
-async function uploadSource(server: TestServer, workspaceId: string, filename: string, bytes: Buffer, extraHeaders?: Readonly<Record<string, string>>): Promise<SourceWire> {
+async function uploadSource(
+  server: TestServer,
+  workspaceId: string,
+  filename: string,
+  bytes: Buffer,
+  extraHeaders?: Readonly<Record<string, string>>,
+): Promise<SourceWire> {
   return (await server.request('POST', `/workspaces/${workspaceId}/sources?filename=${filename}`, bytes, extraHeaders)).json<SourceWire>();
 }
 
@@ -79,7 +85,9 @@ test('compilation record is persisted and independently retrievable via GET .../
     try {
       const workspace = await createWorkspace(server);
       const source = await uploadSource(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-      const compiled = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+      const compiled = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
 
       const fetched = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compiled.compilationId}`);
       assert.equal(fetched.status, 200);
@@ -101,7 +109,9 @@ test('GET .../compilations/:compilationId/capabilities returns capabilities deri
     try {
       const workspace = await createWorkspace(server);
       const source = await uploadSource(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-      const compiled = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+      const compiled = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
 
       const res = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compiled.compilationId}/capabilities`);
       assert.equal(res.status, 200);
@@ -129,7 +139,9 @@ test('source digest is recorded correctly at compilation time', async () => {
       const source = await uploadSource(server, workspace.workspaceId, 'agreement.md', payload);
       assert.equal(source.digestSha256, createHash('sha256').update(payload).digest('hex'));
 
-      const compiled = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+      const compiled = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
       assert.equal(compiled.sourceDigestSha256, source.digestSha256);
     } finally {
       await server.stop();
@@ -141,10 +153,16 @@ test('an unknown workspace returns 404 on every compilation route', async () => 
   const server = await TestServer.start();
   try {
     const unknownId = 'ws_ffffffffffffffffffffffffffffffff';
-    assert.equal((await server.request('POST', `/workspaces/${unknownId}/sources/src_ffffffffffffffffffffffffffffffff/compile`)).status, 404);
+    assert.equal(
+      (await server.request('POST', `/workspaces/${unknownId}/sources/src_ffffffffffffffffffffffffffffffff/compile`)).status,
+      404,
+    );
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/compilations`)).status, 404);
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/compilations/cmp_ffffffffffffffffffffffffffffffff`)).status, 404);
-    assert.equal((await server.request('GET', `/workspaces/${unknownId}/compilations/cmp_ffffffffffffffffffffffffffffffff/capabilities`)).status, 404);
+    assert.equal(
+      (await server.request('GET', `/workspaces/${unknownId}/compilations/cmp_ffffffffffffffffffffffffffffffff/capabilities`)).status,
+      404,
+    );
   } finally {
     await server.stop();
   }
@@ -156,15 +174,33 @@ test('cross-identity workspace access returns 404 on compile/list/get/capabiliti
     try {
       const owner = await createWorkspace(server);
       const source = await uploadSource(server, owner.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-      const compiled = (await server.request('POST', `/workspaces/${owner.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+      const compiled = (
+        await server.request('POST', `/workspaces/${owner.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
 
       const other = await server.issueAdditionalIdentity('identity-b');
       const asOther = TestServer.authHeader(other.apiKey);
 
-      assert.equal((await server.request('POST', `/workspaces/${owner.workspaceId}/sources/${source.sourceId}/compile`, undefined, asOther)).status, 404);
+      assert.equal(
+        (await server.request('POST', `/workspaces/${owner.workspaceId}/sources/${source.sourceId}/compile`, undefined, asOther)).status,
+        404,
+      );
       assert.equal((await server.request('GET', `/workspaces/${owner.workspaceId}/compilations`, undefined, asOther)).status, 404);
-      assert.equal((await server.request('GET', `/workspaces/${owner.workspaceId}/compilations/${compiled.compilationId}`, undefined, asOther)).status, 404);
-      assert.equal((await server.request('GET', `/workspaces/${owner.workspaceId}/compilations/${compiled.compilationId}/capabilities`, undefined, asOther)).status, 404);
+      assert.equal(
+        (await server.request('GET', `/workspaces/${owner.workspaceId}/compilations/${compiled.compilationId}`, undefined, asOther)).status,
+        404,
+      );
+      assert.equal(
+        (
+          await server.request(
+            'GET',
+            `/workspaces/${owner.workspaceId}/compilations/${compiled.compilationId}/capabilities`,
+            undefined,
+            asOther,
+          )
+        ).status,
+        404,
+      );
     } finally {
       await server.stop();
     }
@@ -182,7 +218,7 @@ test('an unknown source id returns 404 from the compile route', async () => {
   }
 });
 
-test('a source uploaded to a different (owned) workspace cannot be compiled through this workspace\'s route (404, cross-workspace source)', async () => {
+test("a source uploaded to a different (owned) workspace cannot be compiled through this workspace's route (404, cross-workspace source)", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
@@ -228,7 +264,10 @@ test('a client cannot override identity/workspace ownership: the compilation rec
       // "identityId"/"resultStorageKey" field to even attempt to
       // smuggle in. Confirm that structurally by sending an
       // (ignored) body anyway.
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`, { identityId: 'someone-else', resultStorageKey: '../../etc/passwd' });
+      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`, {
+        identityId: 'someone-else',
+        resultStorageKey: '../../etc/passwd',
+      });
       assert.equal(res.status, 201);
       const body = res.json<CompilationWire>();
       assert.equal(body.identityId, server.identityId);
@@ -250,7 +289,9 @@ test('compiling malformed content of a supported extension is represented as an 
       // SUPPORTED_EXTENSIONS accepts the extension (P0.3's upload gate
       // only checks extension, not content), so this reaches the
       // compiler, which must genuinely fail to parse it.
-      const source = await uploadSource(server, workspace.workspaceId, 'fake.pdf', Buffer.from('this is not a real pdf file'), { 'content-type': 'application/pdf' });
+      const source = await uploadSource(server, workspace.workspaceId, 'fake.pdf', Buffer.from('this is not a real pdf file'), {
+        'content-type': 'application/pdf',
+      });
 
       const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`);
       assert.equal(res.status, 200); // failed compilations are still a normal, successful HTTP response about that failure
@@ -280,8 +321,12 @@ test('every compile request creates a new compilation record (no digest-based re
       const workspace = await createWorkspace(server);
       const source = await uploadSource(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
 
-      const first = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
-      const second = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+      const first = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
+      const second = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${source.sourceId}/compile`)
+      ).json<CompilationWire>();
 
       assert.notEqual(first.compilationId, second.compilationId);
       assert.equal(first.sourceDigestSha256, second.sourceDigestSha256);
@@ -307,7 +352,9 @@ test('compilation results persist after a fresh server instance starts against t
         const workspace = await createWorkspace(server1);
         workspaceId = workspace.workspaceId;
         const source = await uploadSource(server1, workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-        const compiled = (await server1.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`)).json<CompilationWire>();
+        const compiled = (
+          await server1.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`)
+        ).json<CompilationWire>();
         compilationId = compiled.compilationId;
       } finally {
         await server1.stop();
@@ -329,7 +376,7 @@ test('compilation results persist after a fresh server instance starts against t
   });
 });
 
-test('Workspace A cannot retrieve Workspace B\'s compilations or capabilities even when both are owned by the same identity', async () => {
+test("Workspace A cannot retrieve Workspace B's compilations or capabilities even when both are owned by the same identity", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
@@ -337,14 +384,19 @@ test('Workspace A cannot retrieve Workspace B\'s compilations or capabilities ev
       const workspaceB = await createWorkspace(server);
 
       const sourceB = await uploadSource(server, workspaceB.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-      const compiledB = (await server.request('POST', `/workspaces/${workspaceB.workspaceId}/sources/${sourceB.sourceId}/compile`)).json<CompilationWire>();
+      const compiledB = (
+        await server.request('POST', `/workspaces/${workspaceB.workspaceId}/sources/${sourceB.sourceId}/compile`)
+      ).json<CompilationWire>();
 
       // B's compilation is not reachable via A's own (empty) compilations list or by id under A's workspace.
       const listUnderA = await server.request('GET', `/workspaces/${workspaceA.workspaceId}/compilations`);
       assert.deepEqual(listUnderA.json<{ compilations: readonly CompilationWire[] }>().compilations, []);
       const getUnderA = await server.request('GET', `/workspaces/${workspaceA.workspaceId}/compilations/${compiledB.compilationId}`);
       assert.equal(getUnderA.status, 404);
-      const capsUnderA = await server.request('GET', `/workspaces/${workspaceA.workspaceId}/compilations/${compiledB.compilationId}/capabilities`);
+      const capsUnderA = await server.request(
+        'GET',
+        `/workspaces/${workspaceA.workspaceId}/compilations/${compiledB.compilationId}/capabilities`,
+      );
       assert.equal(capsUnderA.status, 404);
     } finally {
       await server.stop();

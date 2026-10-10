@@ -43,7 +43,11 @@ export interface ObservedCapabilityProvenance {
   readonly contractContentHash: string;
   readonly contractContentHashRecomputed: string;
   readonly graphHash: string;
-  readonly binding: { readonly status: 'resolved' | 'unresolved' | 'ambiguous' | 'denied'; readonly bindingId?: string; readonly implementationClass?: string };
+  readonly binding: {
+    readonly status: 'resolved' | 'unresolved' | 'ambiguous' | 'denied';
+    readonly bindingId?: string;
+    readonly implementationClass?: string;
+  };
   readonly sourceXoirNodeIds: readonly string[];
   readonly sourceRefs: readonly ObservedSourceRef[];
 }
@@ -55,10 +59,21 @@ export type ObservedAgreement = 'match' | 'mismatch' | 'unknown';
  * live-graph view. `unknown` = one side absent — never a failure. Present only for executions that actually ran.
  */
 export interface ObservedExecutionProvenance {
-  readonly recorded: { readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string };
+  readonly recorded: {
+    readonly contractId?: string;
+    readonly bindingId?: string;
+    readonly sourceXoirNodeIds?: readonly string[];
+    readonly graphHash?: string;
+    readonly contractContentHash?: string;
+  };
   /** `false` when no live-graph projection existed for the executed capability (agreement is then all `unknown`). */
   readonly graphViewAvailable: boolean;
-  readonly agreement: { readonly graphHash: ObservedAgreement; readonly contractContentHash: ObservedAgreement; readonly bindingId: ObservedAgreement; readonly contractId: ObservedAgreement };
+  readonly agreement: {
+    readonly graphHash: ObservedAgreement;
+    readonly contractContentHash: ObservedAgreement;
+    readonly bindingId: ObservedAgreement;
+    readonly contractId: ObservedAgreement;
+  };
 }
 
 export interface ObservedNode {
@@ -126,7 +141,8 @@ export interface ObservedWorkflow {
   readonly bindings: readonly ObservedBinding[];
 }
 
-export type ObservedCapabilityExecutionOutcome = 'succeeded' | 'waiting_for_human' | 'not_executable' | 'invalid_input' | 'error' | 'target_not_found' | 'target_ambiguous';
+export type ObservedCapabilityExecutionOutcome =
+  'succeeded' | 'waiting_for_human' | 'not_executable' | 'invalid_input' | 'error' | 'target_not_found' | 'target_ambiguous';
 
 export interface ObservedCapabilityExecution {
   readonly requestId: string;

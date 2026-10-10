@@ -51,7 +51,9 @@ test('a rule with an AND structuredCondition (comparison + categorical) matches 
       { type: 'categorical', field: 'the claim status', operator: '==', value: 'approved' },
     ],
   };
-  const contract = makeContract({ rules: [makeRule({ condition: 'ignored — structuredCondition takes precedence', structuredCondition })] });
+  const contract = makeContract({
+    rules: [makeRule({ condition: 'ignored — structuredCondition takes precedence', structuredCondition })],
+  });
 
   const bothTrue = resolveAndEvaluate(contract, { deductible: 300, claim_status: 'approved' });
   assert.equal(bothTrue.ok, true);
@@ -76,7 +78,8 @@ test('a rule with an OR structuredCondition matches when either sub-check holds'
 
   const onlyCategoricalTrue = resolveAndEvaluate(contract, { deductible: 10, claim_status: 'approved' });
   assert.equal(onlyCategoricalTrue.ok, true);
-  if (onlyCategoricalTrue.ok) assert.deepEqual(onlyCategoricalTrue.value, { matched: true, ruleSourceNodeId: 'decision:1', outcome: 'deny the claim' });
+  if (onlyCategoricalTrue.ok)
+    assert.deepEqual(onlyCategoricalTrue.value, { matched: true, ruleSourceNodeId: 'decision:1', outcome: 'deny the claim' });
 
   const neitherTrue = resolveAndEvaluate(contract, { deductible: 10, claim_status: 'pending' });
   assert.equal(neitherTrue.ok, true);
@@ -152,8 +155,22 @@ test('a temporal structuredCondition falls back to the legacy comparison grammar
 // deterministic binding: a plain numeric comparison against a
 // runtime-supplied day-count. Real policy §8.1/§8.2 shape.
 test('M1.3: a "within N days" temporal condition with a field lowers to `<= N` and evaluates against a runtime-supplied day count', () => {
-  const structuredCondition: StructuredCondition = { type: 'temporal', relation: 'within', amount: 7, unit: 'days', field: 'reported loss date' };
-  const contract = makeContract({ rules: [makeRule({ condition: 'a claim notification received within 7 days of the reported loss date', outcome: 'the notification requirement is satisfied', structuredCondition })] });
+  const structuredCondition: StructuredCondition = {
+    type: 'temporal',
+    relation: 'within',
+    amount: 7,
+    unit: 'days',
+    field: 'reported loss date',
+  };
+  const contract = makeContract({
+    rules: [
+      makeRule({
+        condition: 'a claim notification received within 7 days of the reported loss date',
+        outcome: 'the notification requirement is satisfied',
+        structuredCondition,
+      }),
+    ],
+  });
   const within = resolveAndEvaluate(contract, { reported_loss_date: 5 });
   assert.equal(within.ok, true);
   if (within.ok) assert.equal((within.value as { matched: boolean }).matched, true);
@@ -163,8 +180,22 @@ test('M1.3: a "within N days" temporal condition with a field lowers to `<= N` a
 });
 
 test('M1.3: an "after N days" temporal condition with a field lowers to `> N`', () => {
-  const structuredCondition: StructuredCondition = { type: 'temporal', relation: 'after', amount: 7, unit: 'days', field: 'reported loss date' };
-  const contract = makeContract({ rules: [makeRule({ condition: 'a claim notification received more than 7 days after the reported loss date', outcome: 'the notification requirement is not satisfied', structuredCondition })] });
+  const structuredCondition: StructuredCondition = {
+    type: 'temporal',
+    relation: 'after',
+    amount: 7,
+    unit: 'days',
+    field: 'reported loss date',
+  };
+  const contract = makeContract({
+    rules: [
+      makeRule({
+        condition: 'a claim notification received more than 7 days after the reported loss date',
+        outcome: 'the notification requirement is not satisfied',
+        structuredCondition,
+      }),
+    ],
+  });
   const late = resolveAndEvaluate(contract, { reported_loss_date: 12 });
   assert.equal(late.ok, true);
   if (late.ok) assert.equal((late.value as { matched: boolean }).matched, true);
@@ -181,9 +212,17 @@ test('M1.3 negative: a duration temporal condition with amount+unit but no `fiel
   assert.equal(outcome?.status, 'unresolved');
 });
 
-test('M1.3 negative: anchor-based temporal (no amount/unit at all) still never lowers, even with M1.3\'s duration support present', () => {
+test("M1.3 negative: anchor-based temporal (no amount/unit at all) still never lowers, even with M1.3's duration support present", () => {
   const structuredCondition: StructuredCondition = { type: 'temporal', relation: 'before', anchor: 'the date of loss' };
-  const contract = makeContract({ rules: [makeRule({ condition: 'the policy has expired before the date of loss', outcome: 'refer the claim for coverage review', structuredCondition })] });
+  const contract = makeContract({
+    rules: [
+      makeRule({
+        condition: 'the policy has expired before the date of loss',
+        outcome: 'refer the claim for coverage review',
+        structuredCondition,
+      }),
+    ],
+  });
   const resolver = new StructuredComparisonBindingResolver();
   const outcome = resolver.resolve(contract);
   assert.equal(outcome?.status, 'unresolved');
@@ -202,7 +241,10 @@ test('a rule with no structuredCondition resolves exactly as before, via the leg
 
 test('a structuredCondition field phrase not matching any declared input is unresolved, same discipline as the legacy grammar', () => {
   const structuredCondition: StructuredCondition = { type: 'comparison', field: 'the deductible', operator: '>=', value: 250 };
-  const contract = makeContract({ inputs: [{ name: 'policy number', description: 'the policy id' }], rules: [makeRule({ structuredCondition })] });
+  const contract = makeContract({
+    inputs: [{ name: 'policy number', description: 'the policy id' }],
+    rules: [makeRule({ structuredCondition })],
+  });
   const resolver = new StructuredComparisonBindingResolver();
   const outcome = resolver.resolve(contract);
   assert.equal(outcome?.status, 'unresolved');
@@ -221,7 +263,12 @@ test('a non-empty exceptionConditions still makes the contract unresolved even w
 // --- Real rule shape: bounded adverb hop in parseCategoricalAtom feeding through to resolution ---
 
 test('a heuristic whose condition contains a single "-ly" adverb before an already-recognized state (real vertical-test shape) compiles through the resolver', () => {
-  const structuredCondition: StructuredCondition = { type: 'categorical', field: 'any information provided in the claim', operator: '==', value: 'incorrect' };
+  const structuredCondition: StructuredCondition = {
+    type: 'categorical',
+    field: 'any information provided in the claim',
+    operator: '==',
+    value: 'incorrect',
+  };
   const contract = makeContract({
     rules: [
       { sourceNodeId: 'kn_constraint_1', kind: 'constraint', condition: '6. Claims Procedure', exceptionConditions: [], confidence: 0.9 },
@@ -240,5 +287,10 @@ test('a heuristic whose condition contains a single "-ly" adverb before an alrea
   if (outcome?.status !== 'resolved' || !outcome.binding.evaluate) throw new Error('expected resolved binding with evaluate');
   const result = outcome.binding.evaluate({ any_information_provided_in_claim: 'incorrect' });
   assert.equal(result.ok, true);
-  if (result.ok) assert.deepEqual(result.value, { matched: true, ruleSourceNodeId: 'rn_4170a296bae8a16cbea1e1a180c1f8d7', outcome: 'the claim may be rejected' });
+  if (result.ok)
+    assert.deepEqual(result.value, {
+      matched: true,
+      ruleSourceNodeId: 'rn_4170a296bae8a16cbea1e1a180c1f8d7',
+      outcome: 'the claim may be rejected',
+    });
 });

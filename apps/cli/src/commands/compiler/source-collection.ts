@@ -110,7 +110,10 @@ async function walkDirectory(root: string): Promise<{ sources: DiscoveredSource[
     if (!entry.isFile()) continue;
 
     const entryDir = entry.parentPath;
-    const relativeToRoot = join(entryDir, entry.name).slice(normalizedRoot.length + 1).split(sep).join('/');
+    const relativeToRoot = join(entryDir, entry.name)
+      .slice(normalizedRoot.length + 1)
+      .split(sep)
+      .join('/');
 
     if (relativeToRoot.split('/').some((segment) => segment.startsWith('.'))) continue;
 

@@ -85,7 +85,10 @@ export class RuntimeInstrumentation {
     this.aiCallLatencyMs.record(durationMs, attributes);
   }
 
-  recordTokenUsage(usage: { readonly promptTokens: number; readonly completionTokens: number }, attributes: Readonly<Record<string, string | number | boolean>>): void {
+  recordTokenUsage(
+    usage: { readonly promptTokens: number; readonly completionTokens: number },
+    attributes: Readonly<Record<string, string | number | boolean>>,
+  ): void {
     this.promptTokensTotal.add(usage.promptTokens, attributes);
     this.completionTokensTotal.add(usage.completionTokens, attributes);
   }
@@ -117,7 +120,11 @@ export class RuntimeInstrumentation {
    * consulted by retry/idempotency/replay decision logic, only tagged
    * with the ids those layers already own.
    */
-  withExecutionSpan<T>(name: string, ids: { readonly executionId: string; readonly attemptId?: string }, fn: (span: Span) => Promise<T> | T): Promise<T> {
+  withExecutionSpan<T>(
+    name: string,
+    ids: { readonly executionId: string; readonly attemptId?: string },
+    fn: (span: Span) => Promise<T> | T,
+  ): Promise<T> {
     return this.withSpan(name, (span) => {
       span.setAttribute('executionId', ids.executionId);
       if (ids.attemptId !== undefined) span.setAttribute('attemptId', ids.attemptId);

@@ -33,7 +33,9 @@ function round3(value: number): number {
  * fresh from the same authoritative list this function already computes
  * is what keeps the two arrays provably in lockstep.
  */
-function buildStructuredExceptionsForMergedList(exceptionConditions: readonly string[]): readonly StructuredExceptionCondition[] | undefined {
+function buildStructuredExceptionsForMergedList(
+  exceptionConditions: readonly string[],
+): readonly StructuredExceptionCondition[] | undefined {
   if (exceptionConditions.length === 0) return undefined;
   return exceptionConditions.map((raw) => {
     const condition = parseStructuredCondition(raw);
@@ -41,7 +43,10 @@ function buildStructuredExceptionsForMergedList(exceptionConditions: readonly st
   });
 }
 
-function pickField<K extends keyof CandidateReasoningNode>(candidates: readonly CandidateReasoningNode[], field: K): CandidateReasoningNode[K] | undefined {
+function pickField<K extends keyof CandidateReasoningNode>(
+  candidates: readonly CandidateReasoningNode[],
+  field: K,
+): CandidateReasoningNode[K] | undefined {
   for (const c of candidates) {
     if (c[field] !== undefined) return c[field];
   }

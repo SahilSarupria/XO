@@ -99,7 +99,14 @@ test('aliases are preserved on the converted concept node', () => {
 });
 
 test('provenance converts losslessly (documentPath, pages, sectionPath, charOffsetRange, experienceUnitId, sourceConfidence)', () => {
-  const p = provenance({ documentPath: 'contracts/msa.pdf', pages: [4, 5], sectionPath: ['Term', 'Renewal'], charOffsetRange: [100, 140], confidence: 0.77, experienceUnitId: 'unit-42' });
+  const p = provenance({
+    documentPath: 'contracts/msa.pdf',
+    pages: [4, 5],
+    sectionPath: ['Term', 'Renewal'],
+    charOffsetRange: [100, 140],
+    confidence: 0.77,
+    experienceUnitId: 'unit-42',
+  });
   const n = node({ semanticType: 'concept', canonicalLabel: 'Auto-renewal clause', provenance: [p] });
   const graph: KnowledgeGraph = { nodes: [n], edges: [] };
   const result = knowledgeGraphToXoir(graph);
@@ -118,7 +125,12 @@ test('provenance converts losslessly (documentPath, pages, sectionPath, charOffs
 });
 
 test('confidence converts to both metadata.confidence (unchanged) and a derived confidenceDetail with real corroboration count', () => {
-  const n = node({ semanticType: 'concept', canonicalLabel: 'X', confidence: 0.65, provenance: [provenance(), provenance({ documentPath: 'other.pdf' }), provenance({ documentPath: 'third.pdf' })] });
+  const n = node({
+    semanticType: 'concept',
+    canonicalLabel: 'X',
+    confidence: 0.65,
+    provenance: [provenance(), provenance({ documentPath: 'other.pdf' }), provenance({ documentPath: 'third.pdf' })],
+  });
   const graph: KnowledgeGraph = { nodes: [n], edges: [] };
   const result = knowledgeGraphToXoir(graph);
   assert.ok(result.ok);
@@ -176,7 +188,14 @@ test('every core-semantic Stage 4 edge type (requires/supports/contradicts/deriv
     ['supersedes', 'SUPERSEDES'],
   ];
   for (const [type, expectedKind] of pairs) {
-    const e: KnowledgeEdge = { id: computeKnowledgeEdgeId(type, a.id, b.id), type, fromNodeId: a.id, toNodeId: b.id, confidence: 0.5, provenance: [] };
+    const e: KnowledgeEdge = {
+      id: computeKnowledgeEdgeId(type, a.id, b.id),
+      type,
+      fromNodeId: a.id,
+      toNodeId: b.id,
+      confidence: 0.5,
+      provenance: [],
+    };
     const graph: KnowledgeGraph = { nodes: [a, b], edges: [e] };
     const result = knowledgeGraphToXoir(graph);
     assert.ok(result.ok);
@@ -190,7 +209,14 @@ test('every core-semantic Stage 4 edge type (requires/supports/contradicts/deriv
 
 test('an edge whose endpoint is missing from the KnowledgeGraph is skipped rather than failing the whole conversion', () => {
   const a = node({ semanticType: 'concept', canonicalLabel: 'A' });
-  const e: KnowledgeEdge = { id: 'e1', type: 'references', fromNodeId: a.id, toNodeId: 'does-not-exist' as KnowledgeEdge['toNodeId'], confidence: 0.5, provenance: [] };
+  const e: KnowledgeEdge = {
+    id: 'e1',
+    type: 'references',
+    fromNodeId: a.id,
+    toNodeId: 'does-not-exist' as KnowledgeEdge['toNodeId'],
+    confidence: 0.5,
+    provenance: [],
+  };
   const graph: KnowledgeGraph = { nodes: [a], edges: [e] };
   const result = knowledgeGraphToXoir(graph);
   assert.ok(result.ok);
@@ -202,7 +228,14 @@ test('an edge whose endpoint is missing from the KnowledgeGraph is skipped rathe
 test('the resulting XOIR graph passes structural validation', () => {
   const a = node({ semanticType: 'organization', canonicalLabel: 'Acme Corp' });
   const b = node({ semanticType: 'jurisdiction', canonicalLabel: 'New York' });
-  const e: KnowledgeEdge = { id: computeKnowledgeEdgeId('located_in', a.id, b.id), type: 'located_in', fromNodeId: a.id, toNodeId: b.id, confidence: 0.72, provenance: [provenance()] };
+  const e: KnowledgeEdge = {
+    id: computeKnowledgeEdgeId('located_in', a.id, b.id),
+    type: 'located_in',
+    fromNodeId: a.id,
+    toNodeId: b.id,
+    confidence: 0.72,
+    provenance: [provenance()],
+  };
   const graph: KnowledgeGraph = { nodes: [a, b], edges: [e] };
   const result = knowledgeGraphToXoir(graph);
   assert.ok(result.ok);
@@ -241,7 +274,7 @@ test('collectKnowledgeRuleSources: a constraint/obligation/exception node become
   assert.deepEqual(sourceIds, [constraintNode.id, exceptionNode.id, obligationNode.id].sort());
 });
 
-test('collectKnowledgeRuleSources: searchableText is the node\'s own canonicalLabel verbatim, never fabricated', () => {
+test("collectKnowledgeRuleSources: searchableText is the node's own canonicalLabel verbatim, never fabricated", () => {
   const n = node({ semanticType: 'constraint', canonicalLabel: 'Claims must be filed within 30 days of loss' });
   const graph: KnowledgeGraph = { nodes: [n], edges: [] };
   const sources = collectKnowledgeRuleSources(graph);
@@ -249,8 +282,12 @@ test('collectKnowledgeRuleSources: searchableText is the node\'s own canonicalLa
   assert.equal(sources[0]!.searchableText, 'Claims must be filed within 30 days of loss');
 });
 
-test('collectKnowledgeRuleSources: unitId is the node\'s first provenance experienceUnitId', () => {
-  const n = node({ semanticType: 'obligation', canonicalLabel: 'Must notify within 24 hours', provenance: [provenance({ experienceUnitId: 'unit-42' }), provenance({ experienceUnitId: 'unit-99' })] });
+test("collectKnowledgeRuleSources: unitId is the node's first provenance experienceUnitId", () => {
+  const n = node({
+    semanticType: 'obligation',
+    canonicalLabel: 'Must notify within 24 hours',
+    provenance: [provenance({ experienceUnitId: 'unit-42' }), provenance({ experienceUnitId: 'unit-99' })],
+  });
   const graph: KnowledgeGraph = { nodes: [n], edges: [] };
   const sources = collectKnowledgeRuleSources(graph);
   assert.equal(sources.length, 1);
@@ -271,7 +308,7 @@ test('collectKnowledgeRuleSources: an empty KnowledgeGraph yields no rule source
 
 // --- P0.9A area A: producer attribution ---
 
-test('a KnowledgeNode.producedBy survives conversion into the XOIR node\'s metadata.producedBy verbatim', () => {
+test("a KnowledgeNode.producedBy survives conversion into the XOIR node's metadata.producedBy verbatim", () => {
   const n = node({ semanticType: 'organization', canonicalLabel: 'Acme Corp', producedBy: 'rule-based' });
   const graph: KnowledgeGraph = { nodes: [n], edges: [] };
   const result = knowledgeGraphToXoir(graph);

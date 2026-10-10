@@ -251,7 +251,13 @@ for (const fixture of fixtures) {
       const scope = executionScope('exec-provenance');
       const entry = fixtureEntry({
         scope,
-        provenance: { sourceType: 'capability_output', executionId: 'exec-provenance', capabilityId: 'contract_analysis', recordedAt: now().toISOString(), confidence: 0.42 },
+        provenance: {
+          sourceType: 'capability_output',
+          executionId: 'exec-provenance',
+          capabilityId: 'contract_analysis',
+          recordedAt: now().toISOString(),
+          confidence: 0.42,
+        },
       });
       await store.put(entry);
       const got = await store.get(scope, entry.id);
@@ -267,7 +273,11 @@ for (const fixture of fixtures) {
     const { store, cleanup } = await fixture.create();
     try {
       const scope = sessionScope('sess-concurrent');
-      await Promise.all(Array.from({ length: 20 }, (_, i) => store.put(fixtureEntry({ scope, key: `k${i}`, id: deriveMemoryEntryId(scope, `k${i}`), value: i }))));
+      await Promise.all(
+        Array.from({ length: 20 }, (_, i) =>
+          store.put(fixtureEntry({ scope, key: `k${i}`, id: deriveMemoryEntryId(scope, `k${i}`), value: i })),
+        ),
+      );
       const listed = await store.query(scope);
       assert.equal(listed.ok && listed.value.length, 20);
     } finally {

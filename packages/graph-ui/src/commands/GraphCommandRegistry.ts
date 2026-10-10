@@ -40,6 +40,7 @@ function currentCollapsedGroups(controller: GraphController): Set<GroupId> {
  * past the controller into model/viewport/selection internals directly.
  */
 export class GraphCommandRegistry {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous registry: each command has its own args type
   private readonly handlers = new Map<string, GraphCommandHandler<any>>();
 
   constructor() {

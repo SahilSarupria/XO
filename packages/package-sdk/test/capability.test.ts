@@ -24,7 +24,9 @@ test('setCapabilities() attaches declared capabilities to the built manifest', (
 
 test('capabilities participate in the manifest fingerprint (changing a capability changes the signable bytes)', () => {
   const withOneScore = buildSampleBundle();
-  const withDifferentScore = buildSampleBundle({ capabilities: [{ ...sampleCapability, confidence: { ...sampleCapability.confidence, score: 0.99 } }] });
+  const withDifferentScore = buildSampleBundle({
+    capabilities: [{ ...sampleCapability, confidence: { ...sampleCapability.confidence, score: 0.99 } }],
+  });
   assert.notEqual(withOneScore.manifest.merkleRoot, undefined); // sanity: build succeeded
   assert.notDeepEqual(withOneScore.manifest.capabilities, withDifferentScore.manifest.capabilities);
 });

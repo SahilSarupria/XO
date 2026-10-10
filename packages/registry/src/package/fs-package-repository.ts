@@ -45,10 +45,20 @@ export class FsPackageRepository implements PackageRepository {
 
   async publish(record: PackageRecord): Promise<Result<void, XoError>> {
     if (!isXoManifest(record.manifest)) {
-      return err(new RegistryError(ErrorCode.REGISTRY_PACKAGE_UNVERIFIED, `Package "${record.id}" was not published: its manifest does not match the XoManifest schema`));
+      return err(
+        new RegistryError(
+          ErrorCode.REGISTRY_PACKAGE_UNVERIFIED,
+          `Package "${record.id}" was not published: its manifest does not match the XoManifest schema`,
+        ),
+      );
     }
     if (!record.manifest.merkleRoot) {
-      return err(new RegistryError(ErrorCode.REGISTRY_PACKAGE_UNVERIFIED, `Package "${record.id}" was not published: its manifest has no merkleRoot to content-address it by`));
+      return err(
+        new RegistryError(
+          ErrorCode.REGISTRY_PACKAGE_UNVERIFIED,
+          `Package "${record.id}" was not published: its manifest has no merkleRoot to content-address it by`,
+        ),
+      );
     }
     if (record.manifest.merkleRoot !== record.id) {
       return err(
@@ -60,7 +70,12 @@ export class FsPackageRepository implements PackageRepository {
     }
 
     if (await this.store.has(recordKey(record.id))) {
-      return err(new RegistryError(ErrorCode.REGISTRY_PACKAGE_ALREADY_PUBLISHED, `Package "${record.id}" is already published (publish is content-addressed and idempotent-by-rejection, not by overwrite)`));
+      return err(
+        new RegistryError(
+          ErrorCode.REGISTRY_PACKAGE_ALREADY_PUBLISHED,
+          `Package "${record.id}" is already published (publish is content-addressed and idempotent-by-rejection, not by overwrite)`,
+        ),
+      );
     }
 
     const payload = JSON.stringify(record);

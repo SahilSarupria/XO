@@ -58,7 +58,12 @@ export class TestServer {
     const apiKeyStore = new FsApiKeyStore(new LocalFsBlobStore(keysDir));
 
     const apiKey = generateApiKey();
-    const created = await apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, principalKind: 'service', createdAt: new Date().toISOString() });
+    const created = await apiKeyStore.create({
+      keyHash: hashApiKey(apiKey),
+      identityId,
+      principalKind: 'service',
+      createdAt: new Date().toISOString(),
+    });
     if (!created.ok) throw created.error;
 
     const server = createHttpServer({ apiKeyStore, ...deps });
@@ -84,7 +89,12 @@ export class TestServer {
    */
   async issueAdditionalIdentity(identityId: string): Promise<{ readonly apiKey: string; readonly identityId: string }> {
     const apiKey = generateApiKey();
-    const created = await this.apiKeyStore.create({ keyHash: hashApiKey(apiKey), identityId, principalKind: 'service', createdAt: new Date().toISOString() });
+    const created = await this.apiKeyStore.create({
+      keyHash: hashApiKey(apiKey),
+      identityId,
+      principalKind: 'service',
+      createdAt: new Date().toISOString(),
+    });
     if (!created.ok) throw created.error;
     return { apiKey, identityId };
   }
@@ -102,11 +112,20 @@ export class TestServer {
    * that doesn't pass either keeps authenticating as this server's
    * default test identity, exactly as before this middleware existed.
    */
-  request(method: string, path: string, body?: Buffer | unknown, extraHeaders: Readonly<Record<string, string>> = {}, opts: { readonly skipAuth?: boolean } = {}): Promise<TestResponse> {
+  request(
+    method: string,
+    path: string,
+    body?: Buffer | unknown,
+    extraHeaders: Readonly<Record<string, string>> = {},
+    opts: { readonly skipAuth?: boolean } = {},
+  ): Promise<TestResponse> {
     return new Promise((resolve, reject) => {
       const isBuffer = Buffer.isBuffer(body);
       const data = body === undefined ? undefined : isBuffer ? body : Buffer.from(JSON.stringify(body));
-      const headers: Record<string, string> = { ...(opts.skipAuth === true ? {} : { authorization: `Bearer ${this.apiKey}` }), ...extraHeaders };
+      const headers: Record<string, string> = {
+        ...(opts.skipAuth === true ? {} : { authorization: `Bearer ${this.apiKey}` }),
+        ...extraHeaders,
+      };
       if (data !== undefined) {
         headers['content-length'] = String(data.length);
         if (!isBuffer && headers['content-type'] === undefined) headers['content-type'] = 'application/json';

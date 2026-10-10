@@ -38,7 +38,9 @@ test('does not misinterpret two bare numbers followed by something other than R 
 
 test('parses a stream object using an explicit /Length', () => {
   const streamData = 'hello world';
-  const buf = new Uint8Array(Buffer.from(`1 0 obj\n<< /Length ${streamData.length} >>\nstream\n${streamData}\nendstream\nendobj`, 'latin1'));
+  const buf = new Uint8Array(
+    Buffer.from(`1 0 obj\n<< /Length ${streamData.length} >>\nstream\n${streamData}\nendstream\nendobj`, 'latin1'),
+  );
   const parser = new ObjectParser(buf, 0);
   const indirect = parser.parseIndirectObject();
   assert.equal(indirect.value !== null && typeof indirect.value === 'object' && 'kind' in indirect.value && indirect.value.kind, 'stream');

@@ -1,5 +1,6 @@
 import type { XoManifest } from '@xo/types';
-import { PackageInstaller, type ManifestLookup } from '@xo/package-sdk';
+import type { PackageInstaller } from '@xo/package-sdk';
+import { type ManifestLookup } from '@xo/package-sdk';
 
 /**
  * Adapts `PackageInstaller`'s existing `listAllInstalledRecords()` +

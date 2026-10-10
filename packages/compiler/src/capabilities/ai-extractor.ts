@@ -65,7 +65,9 @@ export class AiCapabilityExtractor implements CapabilityExtractor {
         charOffsetRange: firstOffsets ? [firstOffsets[0], firstOffsets[1]] : undefined,
         confidence: item.confidence,
       };
-      const mentionedNodes = knowledgeGraph.nodes.filter((n) => n.canonicalLabel.length >= 3 && (item.description.includes(n.canonicalLabel) || item.name.includes(n.canonicalLabel)));
+      const mentionedNodes = knowledgeGraph.nodes.filter(
+        (n) => n.canonicalLabel.length >= 3 && (item.description.includes(n.canonicalLabel) || item.name.includes(n.canonicalLabel)),
+      );
       return {
         localId: `ai-${index}`,
         category: guessCategory(item.name, item.description),

@@ -34,7 +34,11 @@ function decodeRecord(bytes: Uint8Array): ExecutionRecord | undefined {
 export class FsExecutionStore implements ExecutionStore {
   constructor(private readonly store: BlobStore) {}
 
-  async create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateExecutionInput): Promise<Result<ExecutionRecord, XoError>> {
+  async create(
+    workspaceId: string,
+    principal: AuthenticatedPrincipal,
+    input: CreateExecutionInput,
+  ): Promise<Result<ExecutionRecord, XoError>> {
     assertAuthenticatedPrincipal(principal); // fail closed: only an authenticated principal may initiate
     let executionId = mintExecutionId();
     let attempts = 0;
@@ -66,7 +70,14 @@ export class FsExecutionStore implements ExecutionStore {
     const found = await this.get(executionId);
     if (!found.ok) return err(found.error);
 
-    const { errorCode: _errorCode, errorMessage: _errorMessage, output: _output, contractId: _contractId, bindingId: _bindingId, ...baseWithoutOutcomeFields } = found.value;
+    const {
+      errorCode: _errorCode,
+      errorMessage: _errorMessage,
+      output: _output,
+      contractId: _contractId,
+      bindingId: _bindingId,
+      ...baseWithoutOutcomeFields
+    } = found.value;
     const completedAt = new Date().toISOString();
 
     const record: ExecutionRecord =
@@ -121,7 +132,10 @@ export class FsExecutionStore implements ExecutionStore {
     return ok(records);
   }
 
-  async resolveHumanTask(executionId: string, input: ResolveHumanTaskInput): Promise<Result<ExecutionRecord | ResolveHumanTaskFailure, NotFoundError>> {
+  async resolveHumanTask(
+    executionId: string,
+    input: ResolveHumanTaskInput,
+  ): Promise<Result<ExecutionRecord | ResolveHumanTaskFailure, NotFoundError>> {
     const found = await this.get(executionId);
     if (!found.ok) return err(found.error);
     const record = found.value;

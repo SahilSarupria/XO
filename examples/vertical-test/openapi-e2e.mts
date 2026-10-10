@@ -39,7 +39,9 @@ async function main() {
     console.error('Workflow composition failed:', composed.error);
     process.exit(1);
   }
-  const workflow = composed.value.find((w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'));
+  const workflow = composed.value.find(
+    (w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'),
+  );
   if (!workflow) {
     console.error('Expected workflow not found.');
     process.exit(1);
@@ -49,7 +51,9 @@ async function main() {
   const dataFlow = auditWorkflowDataFlow(workflow, graph);
   console.log(`\nData-flow bindings:`);
   for (const b of dataFlow.bindings) {
-    console.log(`  ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.status} / ${b.evidenceKind}]`);
+    console.log(
+      `  ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.status} / ${b.evidenceKind}]`,
+    );
   }
 
   const producerNode = capNodes.find((n) => n.properties.name === 'calculate_brokerage')!;
@@ -87,20 +91,39 @@ async function main() {
 
   console.log(`\nWired injections: ${prepared.wiredInjections.length}`);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
-  const workflowExecutor = new WorkflowExecutor(async () => { throw new Error('unreachable'); }, {
-    customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
   });
+  const workflowExecutor = new WorkflowExecutor(
+    async () => {
+      throw new Error('unreachable');
+    },
+    {
+      customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]),
+    },
+  );
 
   const producerGraphNode = prepared.graph.nodes.find((n) => n.name === 'calculate_brokerage')!;
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === producerGraphNode.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === producerGraphNode.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n,
+    ),
+  };
 
-  const environment = { environmentId: EnvironmentId('env_openapi_demo'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: new Date().toISOString() };
+  const environment = {
+    environmentId: EnvironmentId('env_openapi_demo'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: new Date().toISOString(),
+  };
   const result = await workflowExecutor.run(seededGraph, environment);
 
   const producerOutput = result.instance.state.outputs[producerGraphNode.id as unknown as string] as { result?: { brokerage?: number } };
   const consumerGraphNode = prepared.graph.nodes.find((n) => n.name === 'record_brokerage')!;
-  const consumerOutput = result.instance.state.outputs[consumerGraphNode.id as unknown as string] as { result?: { status?: string; brokerage?: number } };
+  const consumerOutput = result.instance.state.outputs[consumerGraphNode.id as unknown as string] as {
+    result?: { status?: string; brokerage?: number };
+  };
 
   console.log('\n' + line('-'));
   console.log(`calculate_brokerage(premium=100000, rate=0.10) -> brokerage=${producerOutput.result?.brokerage}`);

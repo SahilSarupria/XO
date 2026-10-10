@@ -27,7 +27,11 @@ const FOOTNOTE_ZONE_FRACTION = 0.1;
  * (list-marker.ts). No semantic understanding of the line's content is
  * used or needed; that's Stage 4+'s job, via `@xo/ai-core`.
  */
-export function classifyLines(pages: readonly PageForClassification[], bodySize: number, headingSizeLevels: readonly number[]): readonly ClassifiedLine[] {
+export function classifyLines(
+  pages: readonly PageForClassification[],
+  bodySize: number,
+  headingSizeLevels: readonly number[],
+): readonly ClassifiedLine[] {
   const classified: ClassifiedLine[] = [];
 
   for (const page of pages) {
@@ -50,7 +54,13 @@ export function classifyLines(pages: readonly PageForClassification[], bodySize:
 
       const listMarker = detectListMarker(line.text);
       if (listMarker) {
-        classified.push({ ...line, blockKind: 'list_item', listMarker: listMarker.marker, listText: listMarker.remainder, listKind: listMarker.listKind });
+        classified.push({
+          ...line,
+          blockKind: 'list_item',
+          listMarker: listMarker.marker,
+          listText: listMarker.remainder,
+          listKind: listMarker.listKind,
+        });
         continue;
       }
 

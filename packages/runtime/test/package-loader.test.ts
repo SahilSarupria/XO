@@ -19,10 +19,7 @@ test('mount() succeeds for a valid, verified, installed package and exposes its 
     const mounted = result.value.get(bundle.manifest.name, bundle.manifest.version);
     assert.ok(mounted);
     assert.equal(mounted?.capabilities.length, 2);
-    assert.deepEqual(
-      mounted?.capabilities.map((c) => c.declaration.id).sort(),
-      ['clause_lookup', 'contract_analysis'],
-    );
+    assert.deepEqual(mounted?.capabilities.map((c) => c.declaration.id).sort(), ['clause_lookup', 'contract_analysis']);
     assert.equal(mounted?.mountedAt, '2026-01-01T00:00:00.000Z');
   });
 });
@@ -44,7 +41,9 @@ test('mount() rejects a package whose on-disk component was corrupted after inst
 
 test('mount() rejects an invalid signature (signature failure)', async () => {
   await withTempInstaller(async (installer, store) => {
-    const validator = new PackageValidator({ resolvePublicKey: (signerDid) => (signerDid === 'did:xo:test-creator' ? rightKeyPair.publicKey : undefined) });
+    const validator = new PackageValidator({
+      resolvePublicKey: (signerDid) => (signerDid === 'did:xo:test-creator' ? rightKeyPair.publicKey : undefined),
+    });
     const signingInstaller = new PackageInstaller(store, { validator });
 
     const bundle = buildContractLawyerBundle();
@@ -53,7 +52,10 @@ test('mount() rejects an invalid signature (signature failure)', async () => {
     // will hand back during verification — simulating a tampered/forged
     // signature, not just a missing one.
     const entry = signer.sign(bundle.manifest, 'did:xo:test-creator', 'creator', wrongKeyPair.privateKey, wrongKeyPair.publicKey);
-    const signedManifest = { ...bundle.manifest, signatures: [{ signerDid: entry.signerDid, role: entry.role, signature: entry.signature }] };
+    const signedManifest = {
+      ...bundle.manifest,
+      signatures: [{ signerDid: entry.signerDid, role: entry.role, signature: entry.signature }],
+    };
     const signedBundle = { ...bundle, manifest: signedManifest };
 
     // Install without the (about to fail) validation pass, then mount via
@@ -71,11 +73,17 @@ test('mount() rejects an invalid signature (signature failure)', async () => {
 
 const rightKeyPair = (() => {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  return { publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(), privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
 })();
 const wrongKeyPair = (() => {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-  return { publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(), privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
 })();
 
 test('mount() rejects mounting the same name@version twice (RUNTIME_ALREADY_MOUNTED)', async () => {

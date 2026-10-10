@@ -1,7 +1,8 @@
 import { err, ok, type PackageId, type Result } from '@xo/types';
-import { ErrorCode, PermissionError } from '@xo/errors';
-import { Clock, SystemClock } from './clock.js';
-import { PermissionConsentProvider } from './consent.js';
+import type { PermissionError } from '@xo/errors';
+import type { Clock } from './clock.js';
+import { SystemClock } from './clock.js';
+import type { PermissionConsentProvider } from './consent.js';
 import { noopAuditSink, type PermissionAuditEvent, type PermissionAuditSink } from './audit.js';
 import { allowDecision, denyDecision, type PermissionDecision, type PermissionLifetime } from './decision.js';
 import { computeGrantId, type PermissionGrant, type PermissionGrantFilter } from './grant.js';
@@ -131,7 +132,8 @@ export class PermissionManager {
     if (consent.scope !== undefined && (!isPermissionScope(consent.scope) || !scopeWithinRequest(request.scope, consent.scope))) {
       const rejected = denyDecision({
         request,
-        reason: 'Consent scope was rejected: it must be the same as, or narrower than, the requested scope (malformed scope or an attempted widening)',
+        reason:
+          'Consent scope was rejected: it must be the same as, or narrower than, the requested scope (malformed scope or an attempted widening)',
         policyId: 'system.fail-closed',
         consentInvolved: true,
         decidedAt,
@@ -380,7 +382,8 @@ export class PermissionManager {
   }
 
   private auditForEffect(decision: PermissionDecision, request: PermissionRequest, details?: Record<string, unknown>): void {
-    const type: PermissionAuditEvent['type'] = decision.effect === 'allow' ? 'permission.allowed' : decision.effect === 'deny' ? 'permission.denied' : 'permission.prompted';
+    const type: PermissionAuditEvent['type'] =
+      decision.effect === 'allow' ? 'permission.allowed' : decision.effect === 'deny' ? 'permission.denied' : 'permission.prompted';
     this.audit(type, request, details);
   }
 }
@@ -396,6 +399,10 @@ function matchesRevocationTarget(grant: PermissionGrant, target: RevocationTarge
     case 'capability':
       return grant.packageId === target.packageId && grant.requesterCapabilityId === target.capabilityId;
     case 'scoped':
-      return grant.packageId === target.packageId && grant.permission === target.permission && JSON.stringify(grant.scope) === JSON.stringify(target.scope);
+      return (
+        grant.packageId === target.packageId &&
+        grant.permission === target.permission &&
+        JSON.stringify(grant.scope) === JSON.stringify(target.scope)
+      );
   }
 }

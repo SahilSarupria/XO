@@ -4,7 +4,11 @@ import type { Budgeter, Merger, RetrievedSlice, SafetyChecker } from '../src/run
 
 /** Contract tests: confirm the runtime interfaces are shaped in a way real implementations can satisfy. No runtime implementation is provided. */
 
-const slice = (kind: string, tokens: number): RetrievedSlice => ({ componentKind: kind, content: 'x'.repeat(tokens), estimatedTokens: tokens });
+const slice = (kind: string, tokens: number): RetrievedSlice => ({
+  componentKind: kind,
+  content: 'x'.repeat(tokens),
+  estimatedTokens: tokens,
+});
 
 class FakeBudgeter implements Budgeter {
   fit(slices: readonly RetrievedSlice[], tokenBudget: number): readonly RetrievedSlice[] {

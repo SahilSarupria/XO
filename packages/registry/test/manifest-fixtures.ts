@@ -24,7 +24,9 @@ const sampleMetadata: XoMetadata = {
  * literal, so tests exercise the same content-addressing/hashing path
  * production code does.
  */
-export function buildFixtureBundle(overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {}): PackageBundle {
+export function buildFixtureBundle(
+  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {},
+): PackageBundle {
   const result = ManifestBuilder.create()
     .setIdentity({
       formatVersion: '1.0',
@@ -42,15 +44,24 @@ export function buildFixtureBundle(overrides: { readonly name?: string; readonly
     .addComponent({
       kind: 'safety_rules',
       path: 'safety/rules.json',
-      data: new TextEncoder().encode(JSON.stringify({ rules: [], for: `${overrides.name ?? 'xo_registry_test_fixture'}@${overrides.version ?? '1.0.0'}` })),
+      data: new TextEncoder().encode(
+        JSON.stringify({ rules: [], for: `${overrides.name ?? 'xo_registry_test_fixture'}@${overrides.version ?? '1.0.0'}` }),
+      ),
       required: true,
     })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
 }
 
-export function buildFixtureManifest(overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {}): XoManifest {
+export function buildFixtureManifest(
+  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {},
+): XoManifest {
   return buildFixtureBundle(overrides).manifest;
 }

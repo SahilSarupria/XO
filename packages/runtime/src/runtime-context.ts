@@ -1,5 +1,5 @@
 import { CapabilityRegistry } from './capability/capability-registry.js';
-import { PackageRegistry } from './registry/mounted-package.js';
+import type { PackageRegistry } from './registry/mounted-package.js';
 
 /**
  * The runtime's whole current state, as a single immutable snapshot:

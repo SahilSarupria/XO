@@ -31,7 +31,9 @@ function decodeEntities(text: string): string {
 }
 
 function stripInnerTags(html: string): string {
-  return decodeEntities(html.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 const BLOCK_TAG_RE = /<(h[1-6]|p|li)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi;
@@ -89,15 +91,23 @@ export class HtmlSourceFrontend implements SourceFrontend<HtmlSourceInput> {
 
   ingest(input: HtmlSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
     if (input.html.trim().length === 0) {
-      return err(new SourceError(ErrorCode.PRECONDITION_FAILED, `HTML source "${input.sourcePath}" has no content`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(ErrorCode.PRECONDITION_FAILED, `HTML source "${input.sourcePath}" has no content`, {
+          context: { sourcePath: input.sourcePath },
+        }),
+      );
     }
 
     const rawBlocks = classifyHtml(input.html);
     if (rawBlocks.length === 0) {
       return err(
-        new SourceError(ErrorCode.SERIALIZATION_PARSE_FAILED, `HTML source "${input.sourcePath}" contained no recognizable heading/paragraph/list content`, {
-          context: { sourcePath: input.sourcePath },
-        }),
+        new SourceError(
+          ErrorCode.SERIALIZATION_PARSE_FAILED,
+          `HTML source "${input.sourcePath}" contained no recognizable heading/paragraph/list content`,
+          {
+            context: { sourcePath: input.sourcePath },
+          },
+        ),
       );
     }
 

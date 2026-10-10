@@ -28,7 +28,10 @@ test('an arbitrary ?registry= query parameter on the new workspace-scoped route 
       const server = await TestServer.start({ workspaceDataDir: dataDir });
       try {
         const workspace = await createWorkspace(server);
-        const res = await server.request('GET', `/workspaces/${workspace.workspaceId}/registry/packages/sha256%3Adoesnotexist?registry=${encodeURIComponent(attackerDir)}`);
+        const res = await server.request(
+          'GET',
+          `/workspaces/${workspace.workspaceId}/registry/packages/sha256%3Adoesnotexist?registry=${encodeURIComponent(attackerDir)}`,
+        );
         // 404 from the workspace's own (empty) registry, never a result that could only have come from `attackerDir`.
         assert.equal(res.status, 404);
       } finally {
@@ -91,7 +94,9 @@ test('publish rejects a tampered bundle with 422, matching PackageValidator/Regi
     try {
       const workspace = await createWorkspace(server);
       const bundle = buildFixtureBundle({ name: 'xo_tampered_pkg' });
-      const tamperedComponents = bundle.components.map((component) => (component.kind === 'safety_rules' ? { ...component, data: new TextEncoder().encode('{"rules":["tampered"]}') } : component));
+      const tamperedComponents = bundle.components.map((component) =>
+        component.kind === 'safety_rules' ? { ...component, data: new TextEncoder().encode('{"rules":["tampered"]}') } : component,
+      );
       const archiveBytes = Buffer.from(await packBundle({ ...bundle, components: tamperedComponents }));
 
       const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/registry/packages`, archiveBytes);
@@ -124,7 +129,10 @@ test('recordBenchmark -> listBenchmarksForPackage -> getBenchmark round-trip (wo
       const bundle = buildFixtureBundle({ name: 'xo_benchmark_pkg' });
       const published = (await server.request('POST', `${base}/packages`, Buffer.from(await packBundle(bundle)))).json<{ id: string }>();
 
-      const recordRes = await server.request('POST', `${base}/packages/${encodeURIComponent(published.id)}/benchmarks`, { category: 'knowledge', score: 91.2 });
+      const recordRes = await server.request('POST', `${base}/packages/${encodeURIComponent(published.id)}/benchmarks`, {
+        category: 'knowledge',
+        score: 91.2,
+      });
       assert.equal(recordRes.status, 201);
       const run = recordRes.json<{ id: string; category: string; score: number }>();
       assert.equal(run.category, 'knowledge');
@@ -152,7 +160,9 @@ test('recordBenchmark rejects a missing "score" with 400', async () => {
       const bundle = buildFixtureBundle({ name: 'xo_badbenchmark_pkg' });
       const published = (await server.request('POST', `${base}/packages`, Buffer.from(await packBundle(bundle)))).json<{ id: string }>();
 
-      const res = await server.request('POST', `${base}/packages/${encodeURIComponent(published.id)}/benchmarks`, { category: 'knowledge' });
+      const res = await server.request('POST', `${base}/packages/${encodeURIComponent(published.id)}/benchmarks`, {
+        category: 'knowledge',
+      });
       assert.equal(res.status, 400);
     } finally {
       await server.stop();
@@ -169,14 +179,22 @@ test('createLicense -> getLicense round-trip; rejects a royaltySplit entry missi
       const bundle = buildFixtureBundle({ name: 'xo_license_pkg' });
       const published = (await server.request('POST', `${base}/packages`, Buffer.from(await packBundle(bundle)))).json<{ id: string }>();
 
-      const createRes = await server.request('POST', `${base}/licenses`, { packageId: published.id, tier: 'commercial', royaltySplit: [{ role: 'creator', basisPoints: 10000 }] });
+      const createRes = await server.request('POST', `${base}/licenses`, {
+        packageId: published.id,
+        tier: 'commercial',
+        royaltySplit: [{ role: 'creator', basisPoints: 10000 }],
+      });
       assert.equal(createRes.status, 201);
       const license = createRes.json<{ id: string }>();
 
       const getRes = await server.request('GET', `${base}/licenses/${encodeURIComponent(license.id)}`);
       assert.equal(getRes.status, 200);
 
-      const badRes = await server.request('POST', `${base}/licenses`, { packageId: published.id, tier: 'commercial', royaltySplit: [{ role: 'creator' }] });
+      const badRes = await server.request('POST', `${base}/licenses`, {
+        packageId: published.id,
+        tier: 'commercial',
+        royaltySplit: [{ role: 'creator' }],
+      });
       assert.equal(badRes.status, 400);
     } finally {
       await server.stop();
@@ -199,16 +217,23 @@ test('GET /workspaces/:workspaceId/registry/ledger/:entryHash/verify returns a b
   });
 });
 
-test('a different identity gets 404 (not another workspace\'s registry data) when reaching through a workspace it does not own', async () => {
+test("a different identity gets 404 (not another workspace's registry data) when reaching through a workspace it does not own", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const owner = await createWorkspace(server);
       const bundle = buildFixtureBundle({ name: 'xo_owned_pkg' });
-      const published = (await server.request('POST', `/workspaces/${owner.workspaceId}/registry/packages`, Buffer.from(await packBundle(bundle)))).json<{ id: string }>();
+      const published = (
+        await server.request('POST', `/workspaces/${owner.workspaceId}/registry/packages`, Buffer.from(await packBundle(bundle)))
+      ).json<{ id: string }>();
 
       const other = await server.issueAdditionalIdentity('identity-b');
-      const res = await server.request('GET', `/workspaces/${owner.workspaceId}/registry/packages/${encodeURIComponent(published.id)}`, undefined, TestServer.authHeader(other.apiKey));
+      const res = await server.request(
+        'GET',
+        `/workspaces/${owner.workspaceId}/registry/packages/${encodeURIComponent(published.id)}`,
+        undefined,
+        TestServer.authHeader(other.apiKey),
+      );
       assert.equal(res.status, 404);
     } finally {
       await server.stop();

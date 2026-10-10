@@ -103,7 +103,10 @@ export class PdfDocument {
     if (!objects) {
       const streamValue = this.getObject(streamObjectNumber);
       if (!isStream(streamValue)) {
-        throw new PdfError(ErrorCode.PDF_MALFORMED, `Object ${streamObjectNumber} referenced as a compressed-object container is not a stream`);
+        throw new PdfError(
+          ErrorCode.PDF_MALFORMED,
+          `Object ${streamObjectNumber} referenced as a compressed-object container is not a stream`,
+        );
       }
       const nValue = streamValue.dictionary.entries.get('N');
       const firstValue = streamValue.dictionary.entries.get('First');
@@ -130,7 +133,10 @@ export class PdfDocument {
 
     const value = objects.get(expectedObjectNumber);
     if (value === undefined) {
-      throw new PdfError(ErrorCode.PDF_MALFORMED, `Object ${expectedObjectNumber} not found at index ${indexInStream} of compressed-object stream ${streamObjectNumber}`);
+      throw new PdfError(
+        ErrorCode.PDF_MALFORMED,
+        `Object ${expectedObjectNumber} not found at index ${indexInStream} of compressed-object stream ${streamObjectNumber}`,
+      );
     }
     return value;
   }
@@ -153,7 +159,10 @@ export class PdfDocument {
 
   get info(): PdfMetadata {
     const infoValue = this.dictGet(this.xref.trailer, 'Info');
-    const info = infoValue !== undefined && isDictionary(infoValue) ? infoValue : { kind: 'dictionary' as const, entries: new Map<string, PdfValue>() };
+    const info =
+      infoValue !== undefined && isDictionary(infoValue)
+        ? infoValue
+        : { kind: 'dictionary' as const, entries: new Map<string, PdfValue>() };
     const str = (key: string): string | undefined => {
       const v = this.dictGet(info, key);
       return v !== undefined && isPdfString(v) ? decodePdfTextString(v.bytes) : undefined;
@@ -183,12 +192,20 @@ export class PdfDocument {
     let pageNumber = 0;
     const visitedObjectIds = new Set<PdfDictionary>();
 
-    const walk = (node: PdfDictionary, inheritedMediaBox: readonly [number, number, number, number], inheritedRotate: number, inheritedResources: PdfDictionary | undefined): void => {
+    const walk = (
+      node: PdfDictionary,
+      inheritedMediaBox: readonly [number, number, number, number],
+      inheritedRotate: number,
+      inheritedResources: PdfDictionary | undefined,
+    ): void => {
       if (visitedObjectIds.has(node)) return; // guards against a malformed cyclic page tree
       visitedObjectIds.add(node);
 
       const mediaBoxValue = this.dictGet(node, 'MediaBox');
-      const mediaBox = mediaBoxValue !== undefined && isArray(mediaBoxValue) && mediaBoxValue.items.length === 4 ? (mediaBoxValue.items.map((n) => (typeof n === 'number' ? n : 0)) as [number, number, number, number]) : inheritedMediaBox;
+      const mediaBox =
+        mediaBoxValue !== undefined && isArray(mediaBoxValue) && mediaBoxValue.items.length === 4
+          ? (mediaBoxValue.items.map((n) => (typeof n === 'number' ? n : 0)) as [number, number, number, number])
+          : inheritedMediaBox;
 
       const rotateValue = this.dictGet(node, 'Rotate');
       const rotate = typeof rotateValue === 'number' ? rotateValue : inheritedRotate;
@@ -275,7 +292,11 @@ function concatWithNewlines(parts: readonly Uint8Array[]): Uint8Array {
   return out;
 }
 
-function hasSuspiciouslyFullPageImage(doc: PdfDocument, resources: PdfDictionary | undefined, mediaBox: readonly [number, number, number, number]): boolean {
+function hasSuspiciouslyFullPageImage(
+  doc: PdfDocument,
+  resources: PdfDictionary | undefined,
+  mediaBox: readonly [number, number, number, number],
+): boolean {
   if (!resources) return false;
   const xObjectsValue = resources.entries.get('XObject');
   if (xObjectsValue === undefined) return false;

@@ -262,7 +262,11 @@ export interface BenchmarkSuiteComponent {
 export function buildBenchmarkSuiteComponent(graph: XoirGraph): BenchmarkSuiteComponent {
   const items = nodesOfKind(graph, 'evaluation_artifact');
   if (items.length === 0) {
-    return { categories: [], totalItems: 0, note: 'No evaluation_artifact nodes present — this pipeline has no Benchmark Synthesizer (EXPERIENCE_COMPILER.md §7) yet, so no benchmark items were generated. This is an honestly-empty suite, not a placeholder score.' };
+    return {
+      categories: [],
+      totalItems: 0,
+      note: 'No evaluation_artifact nodes present — this pipeline has no Benchmark Synthesizer (EXPERIENCE_COMPILER.md §7) yet, so no benchmark items were generated. This is an honestly-empty suite, not a placeholder score.',
+    };
   }
   const sorted = [...items].sort(byId).map(serializeNode);
   return { categories: [{ name: 'generated', items: sorted }], totalItems: sorted.length };

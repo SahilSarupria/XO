@@ -91,7 +91,9 @@ export async function verifyCommand(options: VerifyOptions): Promise<CommandResu
   const lines = [
     ...checklistLines(report.issues),
     '',
-    ...report.issues.map((issue) => `[${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}${issue.path ? ` (${issue.path})` : ''}`),
+    ...report.issues.map(
+      (issue) => `[${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}${issue.path ? ` (${issue.path})` : ''}`,
+    ),
     report.valid ? 'VALID' : 'INVALID',
   ];
 

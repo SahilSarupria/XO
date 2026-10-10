@@ -18,15 +18,15 @@ instead, deliberately:
   `packages/compiler/src/sources/types.ts`'s `DocumentSourceContent` doc
   comment) — so a `.txt` file and a text-equivalent `.pdf` exercise
   identical downstream compiler behavior. The only thing `.pdf` would add
-  here is PDF *parsing*, which is already covered by
+  here is PDF _parsing_, which is already covered by
   `packages/compiler`'s own PDF frontend tests and by
   `examples/e2e-pdf/run.ts` against a real PDF.
 - A real, valid, multi-page `.pdf` isn't something to hand-author byte by
   byte, and copying the same real PDF fixture (`examples/vertical-test/
-  burglary-policy.pdf`, ~360KB) three times under different names would
+burglary-policy.pdf`, ~360KB) three times under different names would
   triple that binary's footprint in the repository for a fixture whose
-  actual job is exercising *directory/ZIP collection and multi-source
-  merge*, not PDF parsing.
+  actual job is exercising _directory/ZIP collection and multi-source
+  merge_, not PDF parsing.
 - The task brief explicitly allows this: "The fixture can be
   synthetic/non-sensitive."
 

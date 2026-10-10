@@ -35,7 +35,14 @@ test('a registered capability with no permission requirements executes successfu
 test('unknown capability id fails closed with RUNTIME_CAPABILITY_NOT_FOUND and never reaches the handler', async () => {
   const registry = new RuntimeCapabilityRegistry();
   let handlerCalled = false;
-  registry.register({ declaration: declaration({ handler: async (i) => { handlerCalled = true; return ok(i); } }) });
+  registry.register({
+    declaration: declaration({
+      handler: async (i) => {
+        handlerCalled = true;
+        return ok(i);
+      },
+    }),
+  });
   const manager = managerWithRules([]);
   const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
 
@@ -62,7 +69,13 @@ test('permission denial prevents execution — the handler is never invoked', as
   const registry = new RuntimeCapabilityRegistry();
   let handlerCalled = false;
   registry.register({
-    declaration: declaration({ capabilityId: 'delete_file', handler: async (i) => { handlerCalled = true; return ok(i); } }),
+    declaration: declaration({
+      capabilityId: 'delete_file',
+      handler: async (i) => {
+        handlerCalled = true;
+        return ok(i);
+      },
+    }),
     requiredPermissions: [{ permission: Permissions.filesystem.delete }],
   });
   const manager = managerWithRules([]); // no ALLOW rule -> default-deny
@@ -118,7 +131,14 @@ test('multiple required permissions must ALL be granted — one denial blocks th
 
 test('a handler that throws is caught and reported as RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE, not an uncaught exception', async () => {
   const registry = new RuntimeCapabilityRegistry();
-  registry.register({ declaration: declaration({ capabilityId: 'broken', handler: async () => { throw new Error('boom'); } }) });
+  registry.register({
+    declaration: declaration({
+      capabilityId: 'broken',
+      handler: async () => {
+        throw new Error('boom');
+      },
+    }),
+  });
   const manager = managerWithRules([]);
   const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
 

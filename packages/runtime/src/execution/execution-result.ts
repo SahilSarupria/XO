@@ -14,7 +14,7 @@ import type { WorkflowResult } from '../workflow/workflow-receipt.js';
  * `session.status` because callers overwhelmingly want either "give me
  * the response" or "give me the session" without a type-narrowing dance
  * — `session` alone remains the authoritative record of what happened.
- * 
+ *
  * Stage 3: when `request.workflowGraph` was set, `workflowResult`
  * carries the full `WorkflowResult` (every node's outcome, the workflow
  * receipt, etc.) and `response`/`receipt` instead describe only the

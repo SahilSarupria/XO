@@ -136,14 +136,7 @@ export interface LayoutPosition {
   readonly position: Point;
 }
 
-export type LayoutKind =
-  | 'hierarchical'
-  | 'dag'
-  | 'tree'
-  | 'force-directed'
-  | 'circular'
-  | 'grid'
-  | 'manual';
+export type LayoutKind = 'hierarchical' | 'dag' | 'tree' | 'force-directed' | 'circular' | 'grid' | 'manual';
 
 export interface GraphLayoutResult {
   readonly kind: LayoutKind;

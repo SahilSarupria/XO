@@ -62,7 +62,9 @@ export function buildTestPdf(spec: TestPdfSpec): Uint8Array {
 
   const kidsRefs = Array.from({ length: pageCount }, (_, i) => `${firstPageObjNum + i * 2} 0 R`).join(' ');
   beginObject(pagesObjNum);
-  push(`<< /Type /Pages /Kids [${kidsRefs}] /Count ${pageCount} /Resources << /Font << /F1 ${firstPageObjNum + pageCount * 2} 0 R >> >> /MediaBox [0 0 612 792] >>\n`);
+  push(
+    `<< /Type /Pages /Kids [${kidsRefs}] /Count ${pageCount} /Resources << /Font << /F1 ${firstPageObjNum + pageCount * 2} 0 R >> >> /MediaBox [0 0 612 792] >>\n`,
+  );
   endObject();
 
   beginObject(infoObjNum);

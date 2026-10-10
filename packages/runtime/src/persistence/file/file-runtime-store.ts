@@ -132,7 +132,9 @@ class FileCheckpointRecordStore implements CheckpointRecordStore {
     );
   }
 
-  async latestForExecution(executionId: WorkflowInstanceId): Promise<Result<VersionedEnvelope<CheckpointRecord> | undefined, RuntimeError>> {
+  async latestForExecution(
+    executionId: WorkflowInstanceId,
+  ): Promise<Result<VersionedEnvelope<CheckpointRecord> | undefined, RuntimeError>> {
     const listed = await this.listForExecution(executionId);
     if (!listed.ok) return listed;
     return ok(listed.value[listed.value.length - 1]);
@@ -165,14 +167,22 @@ class FileReceiptStore implements ReceiptStore {
     this.now = now;
   }
 
-  private async indexByExecution(executionId: string, receiptStoreKind: 'execution' | 'workflow', receiptId: string, record: PersistedReceipt): Promise<Result<void, RuntimeError>> {
+  private async indexByExecution(
+    executionId: string,
+    receiptStoreKind: 'execution' | 'workflow',
+    receiptId: string,
+    record: PersistedReceipt,
+  ): Promise<Result<void, RuntimeError>> {
     const marker = new FileRecordStore<PersistedReceipt>(join(this.byExecutionDir, encodeURIComponent(executionId)), this.now);
     const result = await marker.save(`${receiptStoreKind}__${receiptId}`, record);
     if (!result.ok) return result;
     return ok(undefined);
   }
 
-  async saveExecutionReceipt(executionId: WorkflowInstanceId | undefined, receipt: ExecutionReceipt): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>> {
+  async saveExecutionReceipt(
+    executionId: WorkflowInstanceId | undefined,
+    receipt: ExecutionReceipt,
+  ): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>> {
     const record: PersistedReceipt = { kind: 'execution', receipt };
     const saved = await this.executionReceipts.save(receipt.receiptId, record);
     if (!saved.ok) return saved;

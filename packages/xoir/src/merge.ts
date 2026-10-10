@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
-import { XoirError, ErrorCode, InvalidArgumentError, XoError } from '@xo/errors';
+import type { XoError } from '@xo/errors';
+import { XoirError, ErrorCode, InvalidArgumentError } from '@xo/errors';
 import { XoirGraph } from './graph.js';
 import type { XoirGraphId, XoirNodeId } from './ids.js';
 import type { XoirNode } from './node-kinds.js';
@@ -48,7 +49,11 @@ export function resolveConflict(candidates: readonly XoirNode[], strategy: Merge
  * future module might split this out if edge-specific strategies are
  * needed).
  */
-export function mergeGraphs(graphs: readonly XoirGraph[], newGraphId: XoirGraphId, strategy: MergeStrategy = 'prefer_higher_confidence'): Result<MergeResult, XoError> {
+export function mergeGraphs(
+  graphs: readonly XoirGraph[],
+  newGraphId: XoirGraphId,
+  strategy: MergeStrategy = 'prefer_higher_confidence',
+): Result<MergeResult, XoError> {
   if (graphs.length === 0) {
     return err(new InvalidArgumentError('mergeGraphs requires at least one graph'));
   }
@@ -73,7 +78,8 @@ export function mergeGraphs(graphs: readonly XoirGraph[], newGraphId: XoirGraphI
       continue;
     }
 
-    const reason: MergeConflict['reason'] = new Set(candidates.map((c) => c.version)).size > 1 ? 'version_conflict' : 'duplicate_id_different_content';
+    const reason: MergeConflict['reason'] =
+      new Set(candidates.map((c) => c.version)).size > 1 ? 'version_conflict' : 'duplicate_id_different_content';
     const resolution = resolveConflict(candidates, strategy);
     conflicts.push({ nodeId: id, reason, candidates, resolution });
 

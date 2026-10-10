@@ -14,7 +14,10 @@ test('A CONTRADICTS B and B CONTRADICTS A is a legitimate, structurally valid XO
   assert.equal(graph.hasCycle(), true);
   const report = validateGraph(graph);
   assert.equal(report.valid, true, JSON.stringify(report.issues));
-  assert.equal(report.issues.some((i) => i.kind === 'cycle_detected'), false);
+  assert.equal(
+    report.issues.some((i) => i.kind === 'cycle_detected'),
+    false,
+  );
 });
 
 test('topologicalOrder() over the whole graph fails cleanly (XOIR_CYCLE_DETECTED) when the graph is cyclic — it does not silently return a partial order', () => {

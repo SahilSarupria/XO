@@ -13,7 +13,12 @@ test('a "capability" workflow node genuinely executes through Stage 2\'s Executi
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'Contract reviewed: low risk.', usage: { inputTokens: 50, outputTokens: 20 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'Contract reviewed: low risk.',
+      usage: { inputTokens: 50, outputTokens: 20 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
 
@@ -27,7 +32,11 @@ test('a "capability" workflow node genuinely executes through Stage 2\'s Executi
 
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_1'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };
@@ -70,7 +79,11 @@ test('multiple capability nodes in one workflow each get their own real Stage 2 
 
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_2'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use', 'long_context'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use', 'long_context'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };
@@ -94,7 +107,11 @@ test('a request without workflowGraph is completely unaffected by Stage 3 (ordin
       requestId: RequestId('plain_req'),
       capabilityId: 'contract_analysis',
       input: 'Review this',
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
     };
 
@@ -124,7 +141,11 @@ test('a workflow whose capability node references an unplanned/unmounted capabil
     };
     const request: ExecutionRequest = {
       requestId: RequestId('wf_req_missing'),
-      environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] }, createdAt: '2026-01-01T00:00:00.000Z' },
+      environment: {
+        environmentId: EnvironmentId('env_1'),
+        hostProfile: { family: 'claude', capabilities: ['chat', 'tool_use'] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       requestedAt: '2026-01-01T00:00:00.000Z',
       workflowGraph: graph,
     };

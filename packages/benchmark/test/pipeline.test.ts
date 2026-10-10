@@ -4,7 +4,15 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { observeCase, runSuite, validateSuiteDefinition, type BenchmarkReport, type BenchmarkSuiteDefinition, type CaseEvaluation, type MetricResult } from '../src/index.js';
+import {
+  observeCase,
+  runSuite,
+  validateSuiteDefinition,
+  type BenchmarkReport,
+  type BenchmarkSuiteDefinition,
+  type CaseEvaluation,
+  type MetricResult,
+} from '../src/index.js';
 
 /**
  * These tests drive the REAL pipeline (`compileSources` -> XOIR ->
@@ -35,18 +43,66 @@ test('REAL pipeline, exact expectations: the synthetic claim-rules document is e
         sources: [{ kind: 'document', path: SYNTHETIC }],
         expect: {
           compile: { outcome: 'succeeds' },
-          semantics: { closedWorldKinds: ['decision_node'], facts: [{ id: 'rule', kind: 'decision_node', identify: [{ path: 'question', contains: 'claim assessment amount exceeds 10000' }], assert: [{ path: 'outcome', contains: 'deny the claim' }, { path: 'structuredCondition.operator', equals: '>' }, { path: 'structuredCondition.value', equals: 10000 }], evidence: { documentPath: 'synthetic-claim-rules.txt', pages: [1] } }] },
-          capabilities: { closedWorld: true, items: [{ id: 'assess', name: { equals: 'Claim Assessment' }, resolution: 'resolved', executionClass: 'deterministic_rule', inputs: ['claim_assessment_amount'] }, { id: 'deny', name: { equals: 'Deny The Claim' }, resolution: 'resolved', executionClass: 'deterministic_rule' }] },
-          workflows: { closedWorld: true, items: [{ id: 'wf', steps: [{ equals: 'Claim Assessment' }, { equals: 'Deny The Claim' }], executability: 'not_executable_yet' }] },
+          semantics: {
+            closedWorldKinds: ['decision_node'],
+            facts: [
+              {
+                id: 'rule',
+                kind: 'decision_node',
+                identify: [{ path: 'question', contains: 'claim assessment amount exceeds 10000' }],
+                assert: [
+                  { path: 'outcome', contains: 'deny the claim' },
+                  { path: 'structuredCondition.operator', equals: '>' },
+                  { path: 'structuredCondition.value', equals: 10000 },
+                ],
+                evidence: { documentPath: 'synthetic-claim-rules.txt', pages: [1] },
+              },
+            ],
+          },
+          capabilities: {
+            closedWorld: true,
+            items: [
+              {
+                id: 'assess',
+                name: { equals: 'Claim Assessment' },
+                resolution: 'resolved',
+                executionClass: 'deterministic_rule',
+                inputs: ['claim_assessment_amount'],
+              },
+              { id: 'deny', name: { equals: 'Deny The Claim' }, resolution: 'resolved', executionClass: 'deterministic_rule' },
+            ],
+          },
+          workflows: {
+            closedWorld: true,
+            items: [
+              { id: 'wf', steps: [{ equals: 'Claim Assessment' }, { equals: 'Deny The Claim' }], executability: 'not_executable_yet' },
+            ],
+          },
         },
-        execution: [{ id: 'over', kind: 'capability', target: { equals: 'Claim Assessment' }, input: { claim_assessment_amount: 15000 }, expect: { outcome: 'succeeded', output: { matched: true, outcome: 'deny the claim' } } }],
+        execution: [
+          {
+            id: 'over',
+            kind: 'capability',
+            target: { equals: 'Claim Assessment' },
+            input: { claim_assessment_amount: 15000 },
+            expect: { outcome: 'succeeded', output: { matched: true, outcome: 'deny the claim' } },
+          },
+        ],
       },
     ]),
     { sourceRoot: REPO_ROOT },
   );
   const c = only(report);
-  assert.deepEqual(Object.values(c.stages).map((s) => s.status), ['ok', 'ok', 'ok', 'ok']);
-  for (const m of c.metrics) assert.equal(m.ratio, 1, `${m.id}: ${m.numerator}/${m.denominator} ${JSON.stringify([...m.missing, ...m.unexpected, ...m.mismatched])}`);
+  assert.deepEqual(
+    Object.values(c.stages).map((s) => s.status),
+    ['ok', 'ok', 'ok', 'ok'],
+  );
+  for (const m of c.metrics)
+    assert.equal(
+      m.ratio,
+      1,
+      `${m.id}: ${m.numerator}/${m.denominator} ${JSON.stringify([...m.missing, ...m.unexpected, ...m.mismatched])}`,
+    );
   assert.equal(report.measured, true);
   assert.equal(c.observed.capabilities.byExecutionClass['deterministic_rule'], 2);
 });
@@ -62,22 +118,58 @@ test('REAL pipeline, wrong expectations: each kind of failure is reported as ITS
             closedWorldKinds: ['concept'],
             facts: [
               { id: 'located-and-right', kind: 'concept', identify: [{ path: 'definition', equals: 'XO' }] },
-              { id: 'located-but-wrong', kind: 'decision_node', identify: [{ path: 'question', contains: 'exceeds 10000' }], assert: [{ path: 'structuredCondition.operator', equals: '<' }] },
+              {
+                id: 'located-but-wrong',
+                kind: 'decision_node',
+                identify: [{ path: 'question', contains: 'exceeds 10000' }],
+                assert: [{ path: 'structuredCondition.operator', equals: '<' }],
+              },
               { id: 'absent', kind: 'decision_node', identify: [{ path: 'question', contains: 'flood' }] },
-              { id: 'wrong-page', kind: 'concept', identify: [{ path: 'definition', equals: 'Claim Assessment' }], evidence: { pages: [9] } },
+              {
+                id: 'wrong-page',
+                kind: 'concept',
+                identify: [{ path: 'definition', equals: 'Claim Assessment' }],
+                evidence: { pages: [9] },
+              },
             ],
             forbidden: [{ id: 'no-pronoun-concept', kind: 'concept', identify: [{ path: 'definition', equals: 'It' }] }],
           },
-          capabilities: { items: [{ id: 'wrong-class', name: { equals: 'Claim Assessment' }, executionClass: 'human_in_the_loop' }, { id: 'wrong-resolution', name: { equals: 'Deny The Claim' }, resolution: 'unresolved' }] },
-          workflows: { items: [{ id: 'wf-wrong-status', steps: [{ equals: 'Claim Assessment' }, { equals: 'Deny The Claim' }], executability: 'executable_candidate' }, { id: 'wf-absent', steps: [{ equals: 'Claim Assessment' }, { equals: 'A step that does not exist' }] }] },
+          capabilities: {
+            items: [
+              { id: 'wrong-class', name: { equals: 'Claim Assessment' }, executionClass: 'human_in_the_loop' },
+              { id: 'wrong-resolution', name: { equals: 'Deny The Claim' }, resolution: 'unresolved' },
+            ],
+          },
+          workflows: {
+            items: [
+              {
+                id: 'wf-wrong-status',
+                steps: [{ equals: 'Claim Assessment' }, { equals: 'Deny The Claim' }],
+                executability: 'executable_candidate',
+              },
+              { id: 'wf-absent', steps: [{ equals: 'Claim Assessment' }, { equals: 'A step that does not exist' }] },
+            ],
+          },
         },
-        execution: [{ id: 'wrong-outcome', kind: 'capability', target: { equals: 'Claim Assessment' }, input: { claim_assessment_amount: 15000 }, expect: { outcome: 'waiting_for_human' } }],
+        execution: [
+          {
+            id: 'wrong-outcome',
+            kind: 'capability',
+            target: { equals: 'Claim Assessment' },
+            input: { claim_assessment_amount: 15000 },
+            expect: { outcome: 'waiting_for_human' },
+          },
+        ],
       },
     ]),
     { sourceRoot: REPO_ROOT },
   );
   const c = only(report);
-  const outcomes = Object.fromEntries(c.items.filter((i) => ['fact', 'capability', 'workflow', 'execution'].includes(i.dimension) && i.outcome !== 'unexpected').map((i) => [i.id, i.outcome]));
+  const outcomes = Object.fromEntries(
+    c.items
+      .filter((i) => ['fact', 'capability', 'workflow', 'execution'].includes(i.dimension) && i.outcome !== 'unexpected')
+      .map((i) => [i.id, i.outcome]),
+  );
   // `no-pronoun-concept` (forbidden: a bare "It" concept) is intentionally
   // absent from `outcomes` below, not `'spurious'`: as of Layer 3 (P0.9
   // Beta, see packages/benchmark/CHANGELOG.md and
@@ -109,7 +201,12 @@ test('REAL pipeline, wrong expectations: each kind of failure is reported as ITS
   // concept nodes ("It", "This", "If") that used to be spuriously
   // extracted from this fixture's own prose no longer exist post-Layer-3.
   assert.equal(ratio('semanticPrecision'), '2/2');
-  assert.deepEqual(metric(c, 'semanticPrecision')!.unexpected.map((u) => u.reason.match(/"(.+?)"/)![1]).sort(), []);
+  assert.deepEqual(
+    metric(c, 'semanticPrecision')!
+      .unexpected.map((u) => u.reason.match(/"(.+?)"/)![1])
+      .sort(),
+    [],
+  );
   assert.equal(ratio('provenanceCompleteness'), '0/1');
   // The forbidden "It" concept is now genuinely absent (see comment
   // above), so spuriousFactAvoidance is 1/1, not 0/1.
@@ -125,7 +222,16 @@ test('REAL pipeline, wrong expectations: each kind of failure is reported as ITS
 });
 
 test('REAL pipeline: the execution stage is `not_requested` when a case asks for no execution, and no execution metric is emitted', async () => {
-  const report = await runSuite(suiteOf([{ caseId: 'no-exec', sources: [{ kind: 'document', path: SYNTHETIC }], expect: { capabilities: { items: [{ id: 'c', name: { equals: 'Claim Assessment' } }] } } }]), { sourceRoot: REPO_ROOT });
+  const report = await runSuite(
+    suiteOf([
+      {
+        caseId: 'no-exec',
+        sources: [{ kind: 'document', path: SYNTHETIC }],
+        expect: { capabilities: { items: [{ id: 'c', name: { equals: 'Claim Assessment' } }] } },
+      },
+    ]),
+    { sourceRoot: REPO_ROOT },
+  );
   const c = only(report);
   assert.equal(c.stages.execution.status, 'not_requested');
   assert.equal(metric(c, 'executionCorrectness'), undefined);
@@ -139,10 +245,34 @@ test('REAL pipeline, execution-input handling: an invalid input is reported by t
         xoir: MECHANICS_XOIR,
         expect: {},
         execution: [
-          { id: 'invalid', kind: 'capability', target: { equals: 'Check claim threshold' }, input: { claim_amount: 'a lot' }, expect: { outcome: 'invalid_input' } },
-          { id: 'missing', kind: 'capability', target: { equals: 'Check claim threshold' }, input: {}, expect: { outcome: 'invalid_input' } },
-          { id: 'unresolved', kind: 'capability', target: { equals: 'Assess the overall situation' }, input: {}, expect: { outcome: 'not_executable' } },
-          { id: 'should-have-run', kind: 'capability', target: { equals: 'Assess the overall situation' }, input: {}, expect: { outcome: 'succeeded' } },
+          {
+            id: 'invalid',
+            kind: 'capability',
+            target: { equals: 'Check claim threshold' },
+            input: { claim_amount: 'a lot' },
+            expect: { outcome: 'invalid_input' },
+          },
+          {
+            id: 'missing',
+            kind: 'capability',
+            target: { equals: 'Check claim threshold' },
+            input: {},
+            expect: { outcome: 'invalid_input' },
+          },
+          {
+            id: 'unresolved',
+            kind: 'capability',
+            target: { equals: 'Assess the overall situation' },
+            input: {},
+            expect: { outcome: 'not_executable' },
+          },
+          {
+            id: 'should-have-run',
+            kind: 'capability',
+            target: { equals: 'Assess the overall situation' },
+            input: {},
+            expect: { outcome: 'succeeded' },
+          },
           { id: 'no-such-target', kind: 'capability', target: { equals: 'Nope' }, expect: { outcome: 'succeeded' } },
         ],
       },
@@ -167,9 +297,57 @@ test('REAL pipeline, hand-built XOIR entry: source ingestion is reported as skip
         xoir: MECHANICS_XOIR,
         expect: { compile: { outcome: 'succeeds' } },
         execution: [
-          { id: 'inject-true', kind: 'workflow', steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }], input: { claim_amount: 15000, payout_amount: 800 }, expect: { status: 'completed', injections: [{ producer: { equals: 'Check claim threshold' }, output: 'matched', consumer: { equals: 'Authorize payout' }, input: 'matched' }] } },
-          { id: 'inject-false', kind: 'workflow', steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }], input: { claim_amount: 1, payout_amount: 800 }, expect: { status: 'completed', injections: [{ producer: { equals: 'Check claim threshold' }, output: 'matched', consumer: { equals: 'Authorize payout' }, input: 'matched' }] } },
-          { id: 'never-injects', kind: 'workflow', steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }], input: { claim_amount: 15000, payout_amount: 800 }, expect: { status: 'completed', injections: [{ producer: { equals: 'Authorize payout' }, output: 'matched', consumer: { equals: 'Check claim threshold' }, input: 'claim_amount' }] } },
+          {
+            id: 'inject-true',
+            kind: 'workflow',
+            steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }],
+            input: { claim_amount: 15000, payout_amount: 800 },
+            expect: {
+              status: 'completed',
+              injections: [
+                {
+                  producer: { equals: 'Check claim threshold' },
+                  output: 'matched',
+                  consumer: { equals: 'Authorize payout' },
+                  input: 'matched',
+                },
+              ],
+            },
+          },
+          {
+            id: 'inject-false',
+            kind: 'workflow',
+            steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }],
+            input: { claim_amount: 1, payout_amount: 800 },
+            expect: {
+              status: 'completed',
+              injections: [
+                {
+                  producer: { equals: 'Check claim threshold' },
+                  output: 'matched',
+                  consumer: { equals: 'Authorize payout' },
+                  input: 'matched',
+                },
+              ],
+            },
+          },
+          {
+            id: 'never-injects',
+            kind: 'workflow',
+            steps: [{ equals: 'Check claim threshold' }, { equals: 'Authorize payout' }],
+            input: { claim_amount: 15000, payout_amount: 800 },
+            expect: {
+              status: 'completed',
+              injections: [
+                {
+                  producer: { equals: 'Authorize payout' },
+                  output: 'matched',
+                  consumer: { equals: 'Check claim threshold' },
+                  input: 'claim_amount',
+                },
+              ],
+            },
+          },
         ],
       },
     ]),
@@ -182,7 +360,11 @@ test('REAL pipeline, hand-built XOIR entry: source ingestion is reported as skip
   assert.deepEqual([c.stages.capabilities.status, c.stages.workflows.status, c.stages.execution.status], ['ok', 'ok', 'ok']);
   assert.equal(metric(c, 'compileOutcomeAccuracy')!.ratio, 1);
   const transfer = metric(c, 'runtimeDataFlowTransfer')!;
-  assert.equal(`${transfer.numerator}/${transfer.denominator}`, '2/3', 'the value transfer is verified against what the consumer was ACTUALLY executed with; an injection that never happened is caught');
+  assert.equal(
+    `${transfer.numerator}/${transfer.denominator}`,
+    '2/3',
+    'the value transfer is verified against what the consumer was ACTUALLY executed with; an injection that never happened is caught',
+  );
   assert.equal(transfer.missing[0]!.id, 'never-injects');
 });
 
@@ -192,7 +374,11 @@ test('REAL pipeline, compile failure: a source the compiler rejects is a `compil
     await writeFile(join(dir, 'empty.txt'), '   \n\n');
     const report = await runSuite(
       suiteOf([
-        { caseId: 'unexpected-failure', sources: [{ kind: 'document', path: 'empty.txt' }], expect: { compile: { outcome: 'succeeds' }, capabilities: { items: [{ id: 'cap', name: { contains: 'anything' } }] } } },
+        {
+          caseId: 'unexpected-failure',
+          sources: [{ kind: 'document', path: 'empty.txt' }],
+          expect: { compile: { outcome: 'succeeds' }, capabilities: { items: [{ id: 'cap', name: { contains: 'anything' } }] } },
+        },
         { caseId: 'expected-failure', sources: [{ kind: 'document', path: 'empty.txt' }], expect: { compile: { outcome: 'fails' } } },
       ]),
       { sourceRoot: dir },
@@ -213,8 +399,16 @@ test('REAL pipeline, compile failure: a source the compiler rejects is a `compil
 test('REAL pipeline, harness error: an unreadable fixture is a HARNESS error — reported loudly, excluded from every metric, and it does not disturb the other cases', async () => {
   const report = await runSuite(
     suiteOf([
-      { caseId: 'a-missing-file', sources: [{ kind: 'document', path: 'examples/vertical-test/does-not-exist.txt' }], expect: { semantics: { facts: [{ id: 'f', kind: 'concept', identify: [{ path: 'definition', exists: true }] }] } } },
-      { caseId: 'b-fine', sources: [{ kind: 'document', path: SYNTHETIC }], expect: { capabilities: { items: [{ id: 'c', name: { equals: 'Claim Assessment' } }] } } },
+      {
+        caseId: 'a-missing-file',
+        sources: [{ kind: 'document', path: 'examples/vertical-test/does-not-exist.txt' }],
+        expect: { semantics: { facts: [{ id: 'f', kind: 'concept', identify: [{ path: 'definition', exists: true }] }] } },
+      },
+      {
+        caseId: 'b-fine',
+        sources: [{ kind: 'document', path: SYNTHETIC }],
+        expect: { capabilities: { items: [{ id: 'c', name: { equals: 'Claim Assessment' } }] } },
+      },
       { caseId: 'c-bad-xoir', xoir: 'examples/vertical-test/synthetic-claim-rules.txt', expect: {} },
     ]),
     { sourceRoot: REPO_ROOT },
@@ -228,14 +422,22 @@ test('REAL pipeline, harness error: an unreadable fixture is a HARNESS error —
   assert.match(report.cases.find((c) => c.caseId === 'c-bad-xoir')!.harnessError!, /could not read XOIR fixture .*not valid JSON/);
   const capRecall = report.aggregate.metrics.find((m) => m.id === 'capabilityRecall')!;
   assert.equal(`${capRecall.numerator}/${capRecall.denominator}`, '1/1', 'aggregates come only from evaluated cases');
-  assert.equal(report.aggregate.metrics.find((m) => m.id === 'semanticRecall'), undefined, 'the harness-error case contributes no semantic denominator');
+  assert.equal(
+    report.aggregate.metrics.find((m) => m.id === 'semanticRecall'),
+    undefined,
+    'the harness-error case contributes no semantic denominator',
+  );
 });
 
 test('the observer never bypasses XOIR: every observed capability id is an XOIR capability node of the observed graph, and every observed workflow step is an observed capability', async () => {
-  const observation = await observeCase({ caseId: 'x', sources: [{ kind: 'document', path: SYNTHETIC }], expect: {} }, { sourceRoot: REPO_ROOT });
+  const observation = await observeCase(
+    { caseId: 'x', sources: [{ kind: 'document', path: SYNTHETIC }], expect: {} },
+    { sourceRoot: REPO_ROOT },
+  );
   const capabilityNodeIds = new Set(observation.nodes.filter((n) => n.kind === 'capability').map((n) => n.id));
   assert.ok(capabilityNodeIds.size > 0);
-  for (const c of observation.capabilities) assert.ok(capabilityNodeIds.has(c.capabilityId), `${c.capabilityId} is an XOIR capability node`);
+  for (const c of observation.capabilities)
+    assert.ok(capabilityNodeIds.has(c.capabilityId), `${c.capabilityId} is an XOIR capability node`);
   const observedIds = new Set(observation.capabilities.map((c) => c.capabilityId));
   for (const w of observation.workflows) for (const s of w.steps) assert.ok(observedIds.has(s.capabilityId));
 });

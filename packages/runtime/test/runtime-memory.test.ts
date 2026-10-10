@@ -135,7 +135,13 @@ test('RuntimeMemory: permission grant scoped to one resource (memory:execution:X
   const grantedScope = executionScope('exec-granted');
   const otherScope = executionScope('exec-not-granted');
   const policy = new RuleBasedPolicy(
-    [{ id: 'allow-granted-scope', effect: 'ALLOW', match: { permission: 'runtime.memory-write', scope: { kind: 'resource', resource: `memory:execution:${grantedScope.scopeId}` } } }],
+    [
+      {
+        id: 'allow-granted-scope',
+        effect: 'ALLOW',
+        match: { permission: 'runtime.memory-write', scope: { kind: 'resource', resource: `memory:execution:${grantedScope.scopeId}` } },
+      },
+    ],
     'DENY',
   );
   const manager = new PermissionManager({ policy });
@@ -153,7 +159,13 @@ test('RuntimeMemory.queryAcrossScopes: a scope denied "share" is silently omitte
   const readableScope = sessionScope('sess-shareable');
   const blockedScope = executionScope('exec-blocked-share');
   const policy = new RuleBasedPolicy(
-    [{ id: 'deny-share', effect: 'DENY', match: { permission: 'runtime.memory-share', scope: { kind: 'resource', resource: `memory:execution:${blockedScope.scopeId}` } } }],
+    [
+      {
+        id: 'deny-share',
+        effect: 'DENY',
+        match: { permission: 'runtime.memory-share', scope: { kind: 'resource', resource: `memory:execution:${blockedScope.scopeId}` } },
+      },
+    ],
     'ALLOW',
   );
   const manager = new PermissionManager({ policy });

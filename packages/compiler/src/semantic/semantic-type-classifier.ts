@@ -1,5 +1,13 @@
 import type { DocumentBlock } from '../document/types.js';
-import { containsAnyPhrase, DEFINITION_CUES, detectDefinedTerm, EXAMPLE_CUES, EXCEPTION_CUES, OBLIGATION_CUES, RIGHT_CUES } from './lexical-cues.js';
+import {
+  containsAnyPhrase,
+  DEFINITION_CUES,
+  detectDefinedTerm,
+  EXAMPLE_CUES,
+  EXCEPTION_CUES,
+  OBLIGATION_CUES,
+  RIGHT_CUES,
+} from './lexical-cues.js';
 import type { SemanticType } from './types.js';
 
 export interface ClassificationResult {

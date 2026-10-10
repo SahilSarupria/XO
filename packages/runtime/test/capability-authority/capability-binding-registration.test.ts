@@ -22,7 +22,14 @@ function claimEvaluationContract(overrides: Partial<SemanticCapabilityContract> 
     requiredPermissions: [],
     determinism: 'deterministic',
     rules: [
-      { sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 },
+      {
+        sourceNodeId: 'decision:deny-large-claim',
+        kind: 'decision_node',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'deny the claim',
+        exceptionConditions: [],
+        confidence: 0.9,
+      },
     ],
     confidence: 0.9,
     sourceRefs: [],
@@ -89,7 +96,9 @@ test('contract-declared required permissions are enforced: succeeds once the per
 
   const executor = new RuntimeCapabilityExecutor({
     registry,
-    permissionManager: managerWithRules([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
+    permissionManager: managerWithRules([
+      { id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } },
+    ]),
   });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
@@ -126,7 +135,9 @@ test('host-level additionalRequiredPermissions are enforced in addition to contr
   const contract = claimEvaluationContract();
   const binding = resolvedBinding(contract);
   const registry = new RuntimeCapabilityRegistry();
-  registerResolvedCapabilityBinding(registry, contract, binding, { additionalRequiredPermissions: [{ permission: Permissions.runtime.execute }] });
+  registerResolvedCapabilityBinding(registry, contract, binding, {
+    additionalRequiredPermissions: [{ permission: Permissions.runtime.execute }],
+  });
 
   const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
@@ -142,7 +153,9 @@ test('P0.9B: graphHash, when supplied at registration, is echoed all the way thr
   const binding = resolvedBinding(contract);
 
   const registry = new RuntimeCapabilityRegistry();
-  const registerResult = registerResolvedCapabilityBinding(registry, contract, binding, { graphHash: ContentHash(`sha256:${'a'.repeat(64)}`) });
+  const registerResult = registerResolvedCapabilityBinding(registry, contract, binding, {
+    graphHash: ContentHash(`sha256:${'a'.repeat(64)}`),
+  });
   assert.equal(registerResult.ok, true);
 
   const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });

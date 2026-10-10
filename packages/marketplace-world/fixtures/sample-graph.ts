@@ -1,4 +1,4 @@
-import type { SourceGraph } from '../src/source-graph.js'
+import type { SourceGraph } from '../src/source-graph.js';
 
 /**
  * This fixture is a direct, faithful mapping of the hardcoded
@@ -69,4 +69,4 @@ export const SAMPLE_GRAPH: SourceGraph = {
     { fromId: 'morrow', toId: 'forge', kind: 'dependsOn' },
     { fromId: 'relay', toId: 'atlas', kind: 'dependsOn' },
   ],
-}
+};

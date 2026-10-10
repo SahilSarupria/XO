@@ -1,4 +1,13 @@
-import type { ObservedCapability, ObservedCapabilityExecution, ObservedNode, ObservedWorkflow, ObservedWorkflowExecution, PipelineObservation, StageName, StageStatus } from '../src/observation.js';
+import type {
+  ObservedCapability,
+  ObservedCapabilityExecution,
+  ObservedNode,
+  ObservedWorkflow,
+  ObservedWorkflowExecution,
+  PipelineObservation,
+  StageName,
+  StageStatus,
+} from '../src/observation.js';
 import { fingerprintOf } from '../src/json.js';
 import type { BenchmarkCaseDefinition, CaseExpectations, ExecutionCase } from '../src/definition.js';
 import type { MetricResult } from '../src/metrics.js';
@@ -13,23 +22,57 @@ import type { MetricResult } from '../src/metrics.js';
 
 export const DOC = 'docs/policy.pdf';
 
-export function node(id: string, kind: string, properties: Record<string, unknown>, opts: { pages?: number[]; refs?: number; doc?: string } = {}): ObservedNode {
+export function node(
+  id: string,
+  kind: string,
+  properties: Record<string, unknown>,
+  opts: { pages?: number[]; refs?: number; doc?: string } = {},
+): ObservedNode {
   const refs = opts.refs ?? 1;
-  return { id, kind, properties, confidence: 0.8, sourceRefs: Array.from({ length: refs }, () => ({ documentPath: opts.doc ?? DOC, ...(opts.pages !== undefined ? { pages: opts.pages } : {}) })) };
+  return {
+    id,
+    kind,
+    properties,
+    confidence: 0.8,
+    sourceRefs: Array.from({ length: refs }, () => ({
+      documentPath: opts.doc ?? DOC,
+      ...(opts.pages !== undefined ? { pages: opts.pages } : {}),
+    })),
+  };
 }
 
 export function cap(id: string, name: string, over: Partial<ObservedCapability> = {}): ObservedCapability {
-  return { capabilityId: id, name, resolution: 'resolved', executionClass: 'deterministic_rule', inputs: [], outputs: [], confidence: 0.8, sourceRefs: [{ documentPath: DOC, pages: [1] }], ...over };
+  return {
+    capabilityId: id,
+    name,
+    resolution: 'resolved',
+    executionClass: 'deterministic_rule',
+    inputs: [],
+    outputs: [],
+    confidence: 0.8,
+    sourceRefs: [{ documentPath: DOC, pages: [1] }],
+    ...over,
+  };
 }
 
 export function param(name: string): { name: string; runtimeKey: string; semanticType: string } {
   return { name, runtimeKey: name.toLowerCase().replace(/[^a-z0-9]+/g, '_'), semanticType: 'number' };
 }
 
-export function wf(id: string, steps: [string, string, ObservedWorkflow['steps'][number]['executionClass']?][], over: Partial<ObservedWorkflow> = {}): ObservedWorkflow {
+export function wf(
+  id: string,
+  steps: [string, string, ObservedWorkflow['steps'][number]['executionClass']?][],
+  over: Partial<ObservedWorkflow> = {},
+): ObservedWorkflow {
   return {
     workflowId: id,
-    steps: steps.map(([capabilityId, name, cls], i) => ({ order: i, capabilityId, name, bound: cls !== 'not_executable', executionClass: cls ?? 'deterministic_rule' })),
+    steps: steps.map(([capabilityId, name, cls], i) => ({
+      order: i,
+      capabilityId,
+      name,
+      bound: cls !== 'not_executable',
+      executionClass: cls ?? 'deterministic_rule',
+    })),
     executability: 'executable_candidate',
     blockerKinds: [],
     bindings: [],
@@ -47,7 +90,14 @@ export function okStages(over: Partial<Record<StageName, StageStatus>> = {}): Re
   };
 }
 
-export function observation(parts: { nodes?: ObservedNode[]; capabilities?: ObservedCapability[]; workflows?: ObservedWorkflow[]; executions?: (ObservedCapabilityExecution | ObservedWorkflowExecution)[]; stages?: Record<StageName, StageStatus>; harnessError?: string }): PipelineObservation {
+export function observation(parts: {
+  nodes?: ObservedNode[];
+  capabilities?: ObservedCapability[];
+  workflows?: ObservedWorkflow[];
+  executions?: (ObservedCapabilityExecution | ObservedWorkflowExecution)[];
+  stages?: Record<StageName, StageStatus>;
+  harnessError?: string;
+}): PipelineObservation {
   const nodes = parts.nodes ?? [];
   const capabilities = parts.capabilities ?? [];
   const workflows = parts.workflows ?? [];
@@ -61,7 +111,12 @@ export function observation(parts: { nodes?: ObservedNode[]; capabilities?: Obse
     capabilities,
     workflows,
     executions,
-    fingerprints: { compile: fingerprintOf(nodes), capabilities: fingerprintOf(capabilities), workflows: fingerprintOf(workflows), execution: fingerprintOf(executions) },
+    fingerprints: {
+      compile: fingerprintOf(nodes),
+      capabilities: fingerprintOf(capabilities),
+      workflows: fingerprintOf(workflows),
+      execution: fingerprintOf(executions),
+    },
   };
 }
 

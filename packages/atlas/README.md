@@ -37,7 +37,7 @@ performant, and testable — not just a nice sentence in a manifesto.
 - **Depth is the only verb.** Movement is always "closer" or
   "further," never "elsewhere."
 - **Understanding has layers, not pages.** Zooming into something
-  doesn't make it bigger — it makes more of it *true*. That's
+  doesn't make it bigger — it makes more of it _true_. That's
   [semantic zoom](#semantic-zoom): meaning changes with depth, and
   nothing pops into existence — everything emerges.
   visible.
@@ -77,7 +77,7 @@ in atlas. It has a position on the plane and an altitude (how deep it
 is), and it moves through both continuously.
 
 ```ts
-import { Camera, AltitudeModel } from '@xo/atlas'
+import { Camera, AltitudeModel } from '@xo/atlas';
 
 const altitudes = new AltitudeModel([
   { id: 'ecosystem', order: 0, label: 'Ecosystem' },
@@ -88,13 +88,13 @@ const altitudes = new AltitudeModel([
   { id: 'reasoning', order: 5, label: 'Reasoning' },
   { id: 'memory', order: 6, label: 'Memory' },
   { id: 'execution', order: 7, label: 'Execution' },
-])
+]);
 
-const camera = new Camera({ altitudeModel: altitudes })
+const camera = new Camera({ altitudeModel: altitudes });
 
 // Somewhere in your render loop / frame callback:
 function frame(dtSeconds: number) {
-  camera.tick(dtSeconds)
+  camera.tick(dtSeconds);
   // read camera.position, camera.altitude, camera.focused and draw
 }
 ```
@@ -107,19 +107,19 @@ trajectory from an identical tick sequence.
 
 ### The movement vocabulary
 
-| Method | What it means |
-|---|---|
-| `flyTo(position, opts?)` | Move toward a point in the plane. |
-| `zoomTo(altitude \| levelId, opts?)` | Move to a depth, by number or by a configured level id. |
-| `focus(id, position, opts?)` | Give attention to an entity without necessarily changing depth. |
-| `unfocus(opts?)` | Drop attention; optionally rise a level. |
-| `enter(id, position)` | Focus and move one configured level deeper — the closest thing to "opening" something. |
-| `leave()` | Drop focus and rise one configured level. |
-| `orbit(center, opts)` | Circle continuously around a point — ambient motion, for watching rather than travelling. |
-| `follow(id, getPosition)` | Softly track a moving target each tick. |
-| `remember(label?)` | Deliberately bookmark the current place. |
-| `restore(idOrLabel)` | Fly back to a remembered place. |
-| `back()` / `forward()` | Move through automatic navigation history. |
+| Method                               | What it means                                                                             |
+| ------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `flyTo(position, opts?)`             | Move toward a point in the plane.                                                         |
+| `zoomTo(altitude \| levelId, opts?)` | Move to a depth, by number or by a configured level id.                                   |
+| `focus(id, position, opts?)`         | Give attention to an entity without necessarily changing depth.                           |
+| `unfocus(opts?)`                     | Drop attention; optionally rise a level.                                                  |
+| `enter(id, position)`                | Focus and move one configured level deeper — the closest thing to "opening" something.    |
+| `leave()`                            | Drop focus and rise one configured level.                                                 |
+| `orbit(center, opts)`                | Circle continuously around a point — ambient motion, for watching rather than travelling. |
+| `follow(id, getPosition)`            | Softly track a moving target each tick.                                                   |
+| `remember(label?)`                   | Deliberately bookmark the current place.                                                  |
+| `restore(idOrLabel)`                 | Fly back to a remembered place.                                                           |
+| `back()` / `forward()`               | Move through automatic navigation history.                                                |
 
 Every committing method pushes onto [`NavigationHistory`](#navigation-history)
 automatically. None of them ever produces a hard cut — even
@@ -130,9 +130,9 @@ camera's very first position) skips motion entirely.
 ### Altitude is configurable, not hardcoded
 
 `AltitudeModel` takes whatever levels the consumer defines. A
-marketplace might use eight levels from *Ecosystem* down to
-*Execution*. A debugger might use three: *Process*, *Stack Frame*,
-*Variable*. Atlas has no opinion — it only needs levels to be ordered
+marketplace might use eight levels from _Ecosystem_ down to
+_Execution_. A debugger might use three: _Process_, _Stack Frame_,
+_Variable_. Atlas has no opinion — it only needs levels to be ordered
 and non-overlapping.
 
 ---
@@ -144,16 +144,16 @@ true** — new meaning is revealed at depth, never just a magnified
 version of what was already on screen.
 
 ```ts
-import { SemanticZoomRegistry } from '@xo/atlas'
+import { SemanticZoomRegistry } from '@xo/atlas';
 
-const zoom = new SemanticZoomRegistry<{ label: string }>()
+const zoom = new SemanticZoomRegistry<{ label: string }>();
 
-zoom.register({ id: 'headline', appearsAt: 0, fullyVisibleAt: 0.5, data: { label: 'name & status' } })
-zoom.register({ id: 'capabilities', appearsAt: 1, fullyVisibleAt: 2 })
-zoom.register({ id: 'memory-graph', appearsAt: 5, fullyVisibleAt: 6 })
+zoom.register({ id: 'headline', appearsAt: 0, fullyVisibleAt: 0.5, data: { label: 'name & status' } });
+zoom.register({ id: 'capabilities', appearsAt: 1, fullyVisibleAt: 2 });
+zoom.register({ id: 'memory-graph', appearsAt: 5, fullyVisibleAt: 6 });
 
-zoom.visible(camera.altitude) // → everything currently emerged, with a
-                              //   continuous 0–1 visibility to fade by
+zoom.visible(camera.altitude); // → everything currently emerged, with a
+//   continuous 0–1 visibility to fade by
 ```
 
 `visibility` interpolates smoothly between `appearsAt` and
@@ -170,18 +170,18 @@ system remembering that they've been somewhere, independent of
 whether they explicitly saved it.
 
 ```ts
-import { SpatialMemory } from '@xo/atlas'
+import { SpatialMemory } from '@xo/atlas';
 
-const memory = new SpatialMemory()
-const placeId = memory.remember(camera.snapshot(), 'forge, mid-build')
-memory.markVisited('forge')
+const memory = new SpatialMemory();
+const placeId = memory.remember(camera.snapshot(), 'forge, mid-build');
+memory.markVisited('forge');
 
-memory.hasVisited('forge')       // true
-memory.recall('forge, mid-build') // → { snapshot, label, createdAt }
+memory.hasVisited('forge'); // true
+memory.recall('forge, mid-build'); // → { snapshot, label, createdAt }
 
 // Persist across sessions however the consumer likes:
-localStorage.setItem('xo:memory', JSON.stringify(memory.export()))
-memory.import(JSON.parse(localStorage.getItem('xo:memory')!))
+localStorage.setItem('xo:memory', JSON.stringify(memory.export()));
+memory.import(JSON.parse(localStorage.getItem('xo:memory')!));
 ```
 
 This is what lets a return visit feel like the ecosystem kept
@@ -197,9 +197,9 @@ Involuntary, automatic — the trail the camera has actually walked,
 independent of anything a visitor chose to remember.
 
 ```ts
-import { NavigationHistory } from '@xo/atlas'
+import { NavigationHistory } from '@xo/atlas';
 
-const history = new NavigationHistory({ limit: 200 })
+const history = new NavigationHistory({ limit: 200 });
 // A Camera creates and manages its own NavigationHistory by default;
 // pass one in only if you need to share history across multiple
 // cameras or inspect it independently.
@@ -214,23 +214,23 @@ to an earlier snapshot of the same world.
 ## Neighborhoods
 
 Pure spatial infrastructure for things organizing themselves — no
-opinion about what a cluster, district, or landmark *means*.
+opinion about what a cluster, district, or landmark _means_.
 
 ```ts
-import { NeighborhoodEngine } from '@xo/atlas'
+import { NeighborhoodEngine } from '@xo/atlas';
 
-const world = new NeighborhoodEngine()
-world.place('signal', { x: 22, y: 28 })
-world.place('relay', { x: 49, y: 20 })
-world.place('forge', { x: 65, y: 66 })
+const world = new NeighborhoodEngine();
+world.place('signal', { x: 22, y: 28 });
+world.place('relay', { x: 49, y: 20 });
+world.place('forge', { x: 65, y: 66 });
 
-world.neighborsOf('signal', 3)        // k nearest, closest first
-world.within('signal', 40)            // everything inside a radius
-world.clusterByProximity(25)          // emergent clusters + centroids
-world.markLandmark('relay')
-world.nearestLandmark({ x: 40, y: 25 })
-world.defineRoute('onboarding-tour', ['signal', 'relay', 'forge'])
-world.routeLength('onboarding-tour')
+world.neighborsOf('signal', 3); // k nearest, closest first
+world.within('signal', 40); // everything inside a radius
+world.clusterByProximity(25); // emergent clusters + centroids
+world.markLandmark('relay');
+world.nearestLandmark({ x: 40, y: 25 });
+world.defineRoute('onboarding-tour', ['signal', 'relay', 'forge']);
+world.routeLength('onboarding-tour');
 ```
 
 `clusterByProximity` is deterministic single-linkage clustering —
@@ -248,19 +248,19 @@ embeddings, whatever) is the consumer's job. What atlas provides is
 the infrastructure of attention itself.
 
 ```ts
-import { IntentFocus } from '@xo/atlas'
+import { IntentFocus } from '@xo/atlas';
 
-const intent = new IntentFocus({ decayPerSecond: 0.1, blend: 'weighted-centroid' })
+const intent = new IntentFocus({ decayPerSecond: 0.1, blend: 'weighted-centroid' });
 
 // After the consumer resolves "I need to understand a market before I pitch it"
 // into candidate entities with relevance scores:
 intent.update([
   { id: 'signal', position: { x: 22, y: 28 }, score: 0.9 },
   { id: 'atlas', position: { x: 31, y: 64 }, score: 0.4 },
-])
+]);
 
-const target = intent.target() // where to steer the camera
-if (target) camera.flyTo(target)
+const target = intent.target(); // where to steer the camera
+if (target) camera.flyTo(target);
 ```
 
 Unreinforced attention decays on its own if `decayPerSecond` is set —
@@ -271,14 +271,14 @@ elsewhere fades if nothing keeps their attention.
 
 ## How each surface is expected to use it
 
-**Marketplace.** One `AltitudeModel` running from *Ecosystem* down to
-*Execution*. A `NeighborhoodEngine` positions Experiences by what
+**Marketplace.** One `AltitudeModel` running from _Ecosystem_ down to
+_Execution_. A `NeighborhoodEngine` positions Experiences by what
 they're currently exchanging work with, not by category. Discovery
 copy becomes `IntentFocus` candidates; the "install" moment is
 `camera.enter()` plus `remember()`.
 
 **Studio.** A different, shallower `AltitudeModel` — perhaps just
-*Canvas* → *Component* → *Logic* — reusing the same `Camera` and
+_Canvas_ → _Component_ → _Logic_ — reusing the same `Camera` and
 `SemanticZoomRegistry` machinery so a builder feels like the same
 world as the marketplace, only zoomed to a different purpose.
 
@@ -287,7 +287,7 @@ position can move as it executes, and a camera watching it in
 production tooling tracks it live rather than polling and re-centering.
 
 **Compiler / Debugger.** A three- or four-level `AltitudeModel`
-(*Process* → *Stack Frame* → *Variable*, say) with `SemanticZoom`
+(_Process_ → _Stack Frame_ → _Variable_, say) with `SemanticZoom`
 rules revealing more of a value's structure the deeper you go — the
 same emergence model as a marketplace revealing an Experience's
 memory graph, applied to a completely different domain. This is the

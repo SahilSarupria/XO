@@ -1,6 +1,7 @@
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
-import { ErrorCode, XoError } from '@xo/errors';
+import type { XoError } from '@xo/errors';
+import { ErrorCode } from '@xo/errors';
 import type { BlobStore } from '@xo/storage';
 import type { ApprovalRecord, ApprovalStore } from './approval.js';
 
@@ -32,7 +33,12 @@ function decodeRecord(bytes: Uint8Array): ApprovalRecord | undefined {
 export class FsApprovalStore implements ApprovalStore {
   constructor(private readonly store: BlobStore) {}
 
-  async approve(compilationId: string, capabilityId: string, workspaceId: string, identityId: string): Promise<Result<ApprovalRecord, XoError>> {
+  async approve(
+    compilationId: string,
+    capabilityId: string,
+    workspaceId: string,
+    identityId: string,
+  ): Promise<Result<ApprovalRecord, XoError>> {
     const record: ApprovalRecord = {
       compilationId,
       capabilityId,

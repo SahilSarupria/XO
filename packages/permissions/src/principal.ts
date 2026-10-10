@@ -66,9 +66,12 @@ export function parsePrincipal(input: unknown): Result<Principal, XoError> {
     if (!ALLOWED_KEYS.has(key)) return invalid(`unknown field "${key}"`);
   }
   const { kind, id, orgId } = record;
-  if (typeof kind !== 'string' || !(PRINCIPAL_KINDS as readonly string[]).includes(kind)) return invalid(`"kind" must be one of ${PRINCIPAL_KINDS.join(', ')}`);
-  if (typeof id !== 'string' || !PRINCIPAL_ID_PATTERN.test(id)) return invalid('"id" must be a non-empty identifier of letters, digits and . _ : @ - (max 128 characters)');
-  if (orgId !== undefined && (typeof orgId !== 'string' || !PRINCIPAL_ID_PATTERN.test(orgId))) return invalid('"orgId", when present, must be a non-empty identifier of letters, digits and . _ : @ - (max 128 characters)');
+  if (typeof kind !== 'string' || !(PRINCIPAL_KINDS as readonly string[]).includes(kind))
+    return invalid(`"kind" must be one of ${PRINCIPAL_KINDS.join(', ')}`);
+  if (typeof id !== 'string' || !PRINCIPAL_ID_PATTERN.test(id))
+    return invalid('"id" must be a non-empty identifier of letters, digits and . _ : @ - (max 128 characters)');
+  if (orgId !== undefined && (typeof orgId !== 'string' || !PRINCIPAL_ID_PATTERN.test(orgId)))
+    return invalid('"orgId", when present, must be a non-empty identifier of letters, digits and . _ : @ - (max 128 characters)');
   return ok(Object.freeze({ kind: kind as PrincipalKind, id, ...(orgId !== undefined ? { orgId } : {}) }));
 }
 

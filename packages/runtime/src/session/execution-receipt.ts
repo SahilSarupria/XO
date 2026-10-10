@@ -205,14 +205,18 @@ export interface BuildReceiptParams {
  */
 export function buildReceipt(params: BuildReceiptParams): ExecutionReceipt {
   const { plan, registry, validationResults, executionDurationMs, environment, errors = [], now = () => new Date() } = params;
-  const selectedMount = plan.selected ? registry.get(plan.selected.capability.packageName, plan.selected.capability.packageVersion) : undefined;
+  const selectedMount = plan.selected
+    ? registry.get(plan.selected.capability.packageName, plan.selected.capability.packageVersion)
+    : undefined;
 
   return Object.freeze({
     receiptId: ReceiptId(`receipt_${plan.planId}_${now().getTime()}`),
     requestId: plan.requestId,
     planId: plan.planId,
     packagesUsed: selectedMount ? [{ name: selectedMount.name, version: selectedMount.version }] : [],
-    componentHashes: selectedMount ? Object.entries(selectedMount.manifest.components).map(([kind, entry]) => ({ kind: kind as ComponentKind, hash: entry.hash })) : [],
+    componentHashes: selectedMount
+      ? Object.entries(selectedMount.manifest.components).map(([kind, entry]) => ({ kind: kind as ComponentKind, hash: entry.hash }))
+      : [],
     capabilitiesInvoked: plan.selected ? [plan.selected.capability.declaration.id] : [],
     ...(environment?.provider !== undefined ? { provider: environment.provider } : {}),
     executionDurationMs,
@@ -255,15 +259,33 @@ export interface BuildExecutionReceiptParams {
  * whatever `ExecutionPipeline` observed (budget trimming, `L0` fallback).
  */
 export function buildExecutionReceipt(params: BuildExecutionReceiptParams): ExecutionReceipt {
-  const { plan, registry, response, validationResults, executionDurationMs, environment, errors = [], now = () => new Date(), executionId, attempts, simulated, recordedInputs, recordedOutput } = params;
-  const selectedMount = plan.selected ? registry.get(plan.selected.capability.packageName, plan.selected.capability.packageVersion) : undefined;
+  const {
+    plan,
+    registry,
+    response,
+    validationResults,
+    executionDurationMs,
+    environment,
+    errors = [],
+    now = () => new Date(),
+    executionId,
+    attempts,
+    simulated,
+    recordedInputs,
+    recordedOutput,
+  } = params;
+  const selectedMount = plan.selected
+    ? registry.get(plan.selected.capability.packageName, plan.selected.capability.packageVersion)
+    : undefined;
 
   return Object.freeze({
     receiptId: ReceiptId(`receipt_${plan.planId}_${now().getTime()}`),
     requestId: plan.requestId,
     planId: plan.planId,
     packagesUsed: selectedMount ? [{ name: selectedMount.name, version: selectedMount.version }] : [],
-    componentHashes: selectedMount ? Object.entries(selectedMount.manifest.components).map(([kind, entry]) => ({ kind: kind as ComponentKind, hash: entry.hash })) : [],
+    componentHashes: selectedMount
+      ? Object.entries(selectedMount.manifest.components).map(([kind, entry]) => ({ kind: kind as ComponentKind, hash: entry.hash }))
+      : [],
     capabilitiesInvoked: [response.capabilityId],
     ...(environment?.provider !== undefined ? { provider: environment.provider } : {}),
     executionDurationMs,
@@ -328,7 +350,24 @@ export interface BuildCapabilityAuthorityReceiptParams {
  * in for one that didn't actually run.
  */
 export function buildCapabilityAuthorityReceipt(params: BuildCapabilityAuthorityReceiptParams): ExecutionReceipt {
-  const { requestId, planId, capabilityId, contractId, bindingId, sourceXoirNodeIds, executionDurationMs, errors = [], now = () => new Date(), executionId, attempts, simulated, recordedInputs, recordedOutput, graphHash, contractContentHash } = params;
+  const {
+    requestId,
+    planId,
+    capabilityId,
+    contractId,
+    bindingId,
+    sourceXoirNodeIds,
+    executionDurationMs,
+    errors = [],
+    now = () => new Date(),
+    executionId,
+    attempts,
+    simulated,
+    recordedInputs,
+    recordedOutput,
+    graphHash,
+    contractContentHash,
+  } = params;
 
   return Object.freeze({
     receiptId: ReceiptId(`receipt_${planId}_${now().getTime()}`),

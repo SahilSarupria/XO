@@ -18,7 +18,14 @@ const rule = (over: Partial<SemanticCapabilityRule> = {}): SemanticCapabilityRul
   confidence: 0.9,
   ...over,
 });
-const param = (name: string, over: Partial<SemanticCapabilityParameter> = {}): SemanticCapabilityParameter => ({ name, description: `${name} description`, semanticType: 'number', required: true, derivedFrom: 'declared', ...over });
+const param = (name: string, over: Partial<SemanticCapabilityParameter> = {}): SemanticCapabilityParameter => ({
+  name,
+  description: `${name} description`,
+  semanticType: 'number',
+  required: true,
+  derivedFrom: 'declared',
+  ...over,
+});
 
 const contract = (over: Partial<SemanticCapabilityContract> = {}): SemanticCapabilityContract => ({
   id: 'capability:claim-evaluation',
@@ -29,8 +36,14 @@ const contract = (over: Partial<SemanticCapabilityContract> = {}): SemanticCapab
   outputs: [param('decision', { semanticType: 'string' })],
   requiredPermissions: ['runtime.execute', 'claims.read'],
   determinism: 'deterministic',
-  rules: [rule({ sourceNodeId: 'decision:1' }), rule({ sourceNodeId: 'decision:2', condition: 'the policy is lapsed', outcome: 'deny the claim' })],
-  actionKnowledgeRefs: [{ sourceNodeId: 'concept:a', subtype: 'action' }, { sourceNodeId: 'concept:b', subtype: 'process' }],
+  rules: [
+    rule({ sourceNodeId: 'decision:1' }),
+    rule({ sourceNodeId: 'decision:2', condition: 'the policy is lapsed', outcome: 'deny the claim' }),
+  ],
+  actionKnowledgeRefs: [
+    { sourceNodeId: 'concept:a', subtype: 'action' },
+    { sourceNodeId: 'concept:b', subtype: 'process' },
+  ],
   confidence: 0.8,
   sourceRefs: [{ documentPath: 'policy.pdf' }],
   sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:1', 'decision:2'],
@@ -99,11 +112,17 @@ test('irrelevant ordering does not change the hash: rules', () => {
 test('irrelevant ordering does not change the hash: inputs and outputs', () => {
   const c = contract({ outputs: [param('decision'), param('reason')] });
   const shuffled = contract({ inputs: [...c.inputs].reverse(), outputs: [...c.outputs].reverse() });
-  assert.equal(computeContractContentHash(shuffled), computeContractContentHash(contract({ outputs: [param('decision'), param('reason')] })));
+  assert.equal(
+    computeContractContentHash(shuffled),
+    computeContractContentHash(contract({ outputs: [param('decision'), param('reason')] })),
+  );
 });
 test('irrelevant ordering does not change the hash: actionKnowledgeRefs and requiredPermissions', () => {
   const c = contract();
-  const shuffled = contract({ actionKnowledgeRefs: [...c.actionKnowledgeRefs].reverse(), requiredPermissions: [...c.requiredPermissions].reverse() });
+  const shuffled = contract({
+    actionKnowledgeRefs: [...c.actionKnowledgeRefs].reverse(),
+    requiredPermissions: [...c.requiredPermissions].reverse(),
+  });
   assert.equal(computeContractContentHash(shuffled), computeContractContentHash(c));
 });
 test('irrelevant ordering does not change the hash: nested object key order', () => {
@@ -119,13 +138,17 @@ test('an explicitly-undefined optional field hashes the same as an absent one', 
 test('a missing actionKnowledgeRefs (pre-Action-Binding embedded contract) hashes the same as an empty one', () => {
   const legacy = { ...contract({ actionKnowledgeRefs: [] }) } as Partial<SemanticCapabilityContract>;
   delete legacy.actionKnowledgeRefs;
-  assert.equal(computeContractContentHash(legacy as SemanticCapabilityContract), computeContractContentHash(contract({ actionKnowledgeRefs: [] })));
+  assert.equal(
+    computeContractContentHash(legacy as SemanticCapabilityContract),
+    computeContractContentHash(contract({ actionKnowledgeRefs: [] })),
+  );
 });
 
 // 6 — meaningful changes must still register
 test('a meaningful rule change changes the hash (condition, outcome, kind, exception conditions)', () => {
   const base = computeContractContentHash(contract());
-  const changed = (r: Partial<SemanticCapabilityRule>) => computeContractContentHash(contract({ rules: [rule({ sourceNodeId: 'decision:1', ...r }), contract().rules[1]!] }));
+  const changed = (r: Partial<SemanticCapabilityRule>) =>
+    computeContractContentHash(contract({ rules: [rule({ sourceNodeId: 'decision:1', ...r }), contract().rules[1]!] }));
   assert.notEqual(changed({ condition: 'the claimed loss amount exceeds 20000' }), base);
   assert.notEqual(changed({ outcome: 'approve the claim' }), base);
   assert.notEqual(changed({ kind: 'heuristic' }), base);
@@ -134,12 +157,21 @@ test('a meaningful rule change changes the hash (condition, outcome, kind, excep
 test('removing or adding a rule changes the hash', () => {
   const base = computeContractContentHash(contract());
   assert.notEqual(computeContractContentHash(contract({ rules: [contract().rules[0]!] })), base);
-  assert.notEqual(computeContractContentHash(contract({ rules: [...contract().rules, rule({ sourceNodeId: 'decision:3', condition: 'a third rule' })] })), base);
+  assert.notEqual(
+    computeContractContentHash(contract({ rules: [...contract().rules, rule({ sourceNodeId: 'decision:3', condition: 'a third rule' })] })),
+    base,
+  );
 });
 test('a meaningful input/output change (name, type, requiredness) changes the hash', () => {
   const base = computeContractContentHash(contract());
-  assert.notEqual(computeContractContentHash(contract({ inputs: [param('claimed_loss_amount', { required: false }), param('policy_limit')] })), base);
-  assert.notEqual(computeContractContentHash(contract({ inputs: [param('claimed_loss_amount', { semanticType: 'string' }), param('policy_limit')] })), base);
+  assert.notEqual(
+    computeContractContentHash(contract({ inputs: [param('claimed_loss_amount', { required: false }), param('policy_limit')] })),
+    base,
+  );
+  assert.notEqual(
+    computeContractContentHash(contract({ inputs: [param('claimed_loss_amount', { semanticType: 'string' }), param('policy_limit')] })),
+    base,
+  );
   assert.notEqual(computeContractContentHash(contract({ inputs: [param('renamed'), param('policy_limit')] })), base);
 });
 test('order that IS data is preserved: exceptionConditions order within a rule changes the hash', () => {

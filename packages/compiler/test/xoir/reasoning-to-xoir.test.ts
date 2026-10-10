@@ -80,7 +80,9 @@ test('a prohibition node converts to a XOIR constraint node with blocking severi
 });
 
 test('an exception + rule pair converts with a SUPERSEDES edge (overrides -> SUPERSEDES)', async () => {
-  const graph = await extractReasoningGraph(makeDoc([makeUnit('If the order is late, cancel it unless the customer has a premium subscription.')]));
+  const graph = await extractReasoningGraph(
+    makeDoc([makeUnit('If the order is late, cancel it unless the customer has a premium subscription.')]),
+  );
   const result = reasoningGraphToXoir(graph, { now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -89,7 +91,9 @@ test('an exception + rule pair converts with a SUPERSEDES edge (overrides -> SUP
 });
 
 test('an alternative pair converts with an ALTERNATIVE_TO edge', async () => {
-  const graph = await extractReasoningGraph(makeDoc([makeUnit('If the customer is eligible, approve the loan otherwise refer to underwriting.')]));
+  const graph = await extractReasoningGraph(
+    makeDoc([makeUnit('If the customer is eligible, approve the loan otherwise refer to underwriting.')]),
+  );
   const result = reasoningGraphToXoir(graph, { now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -116,7 +120,12 @@ test('the resulting XOIR graph passes structural validation', async () => {
 });
 
 test('provenance and confidence survive conversion', async () => {
-  const graph = await extractReasoningGraph(makeDoc([makeUnit('If the payment is late, apply a penalty fee.', 'u1'), makeUnit('If the payment is late, apply a penalty fee.', 'u2')]));
+  const graph = await extractReasoningGraph(
+    makeDoc([
+      makeUnit('If the payment is late, apply a penalty fee.', 'u1'),
+      makeUnit('If the payment is late, apply a penalty fee.', 'u2'),
+    ]),
+  );
   const result = reasoningGraphToXoir(graph, { now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -229,7 +238,9 @@ function makeCapability(name: string, unitId: string, overrides: Partial<Capabil
     description: `Handles ${name.toLowerCase()}`,
     category: 'analysis',
     confidence: 0.65,
-    provenance: [{ experienceUnitId: unitId, documentPath: 'doc.pdf', pages: [1], sectionPath: [name], charOffsetRange: [0, 10], confidence: 0.65 }],
+    provenance: [
+      { experienceUnitId: unitId, documentPath: 'doc.pdf', pages: [1], sectionPath: [name], charOffsetRange: [0, 10], confidence: 0.65 },
+    ],
     inputs: [],
     outputs: [],
     dependencies: [],
@@ -250,7 +261,9 @@ test('scenario A (exact match): "Claim Assessment" capability links to a same-wo
   assert.ok(combined.ok);
   if (!combined.ok) return;
 
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('If the claim assessment amount exceeds 5000, then reject the claim.', 'unit-rule')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('If the claim assessment amount exceeds 5000, then reject the claim.', 'unit-rule')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -267,7 +280,9 @@ test('scenario B (normalized/same-unit match): links when co-located with the ca
   assert.ok(combined.ok);
   if (!combined.ok) return;
 
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('If the amount claimed exceeds 5000, then reject the claim.', 'unit-shared')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('If the amount claimed exceeds 5000, then reject the claim.', 'unit-shared')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -285,7 +300,9 @@ test('scenario C (synonym-like but unsafe): a differently-worded, differently-lo
   assert.ok(combined.ok);
   if (!combined.ok) return;
 
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('Warranted that claims above 5000 may be rejected at the insurer\u2019s discretion.', 'unit-elsewhere')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('Warranted that claims above 5000 may be rejected at the insurer\u2019s discretion.', 'unit-elsewhere')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -300,7 +317,9 @@ test('scenario D (same-document false positive): an unrelated capability and rul
   assert.ok(combined.ok);
   if (!combined.ok) return;
 
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('Warranted that claims above 5000 may be rejected at the insurer\u2019s discretion.', 'unit-claims')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('Warranted that claims above 5000 may be rejected at the insurer\u2019s discretion.', 'unit-claims')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -318,18 +337,34 @@ test('scenario E (similar labels not collapsed): "Policy", "Policy Copy", "Polic
   assert.ok(combined.ok);
   if (!combined.ok) return;
 
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('Warranted that a valid Policy Copy must be retained by the insured.', 'unit-b')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('Warranted that a valid Policy Copy must be retained by the insured.', 'unit-b')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const linkedTargets = new Set(result.value.allEdges().filter((e) => e.kind === 'REQUIRES').map((e) => e.toId));
+  const linkedTargets = new Set(
+    result.value
+      .allEdges()
+      .filter((e) => e.kind === 'REQUIRES')
+      .map((e) => e.toId),
+  );
   assert.ok(linkedTargets.has(XoirNodeId(policyCopy.id as unknown as string)), 'the exact-worded "Policy Copy" capability should link');
   // "Policy" (the bare, generic word) legitimately exact-substring-matches too — that's correct, unchanged behavior, not a false collapse of distinct entities.
-  assert.ok(linkedTargets.has(XoirNodeId(policy.id as unknown as string)), '"Policy" exact-substring-matches "...a valid Policy Copy..." — expected, unrelated to entity collapsing');
+  assert.ok(
+    linkedTargets.has(XoirNodeId(policy.id as unknown as string)),
+    '"Policy" exact-substring-matches "...a valid Policy Copy..." — expected, unrelated to entity collapsing',
+  );
   // The real point of this scenario: "Policy Schedule" and "Policy Number" are NOT collapsed with "Policy Copy" just because they share the word "Policy" — no exact phrase match, different unit, so no link at all.
-  assert.ok(!linkedTargets.has(XoirNodeId(policySchedule.id as unknown as string)), '"Policy Schedule" (different unit, different wording) must not link');
-  assert.ok(!linkedTargets.has(XoirNodeId(policyNumber.id as unknown as string)), '"Policy Number" (different unit, different wording) must not link');
+  assert.ok(
+    !linkedTargets.has(XoirNodeId(policySchedule.id as unknown as string)),
+    '"Policy Schedule" (different unit, different wording) must not link',
+  );
+  assert.ok(
+    !linkedTargets.has(XoirNodeId(policyNumber.id as unknown as string)),
+    '"Policy Number" (different unit, different wording) must not link',
+  );
 });
 
 test('scenario F (different sections, identical terms): shared vocabulary across unrelated sections does not automatically link', async () => {
@@ -339,7 +374,9 @@ test('scenario F (different sections, identical terms): shared vocabulary across
   if (!combined.ok) return;
 
   // Shares "warranted"/"compliance"-adjacent vocabulary with the capability's own label/description, but was extracted from a completely different section/unit.
-  const rGraph = await extractReasoningGraph(makeDoc([makeUnit('Warranted that the building complies with local fire safety regulations.', 'unit-fire-safety')]));
+  const rGraph = await extractReasoningGraph(
+    makeDoc([makeUnit('Warranted that the building complies with local fire safety regulations.', 'unit-fire-safety')]),
+  );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -356,7 +393,12 @@ test('execution authority boundary: a same-unit-linked but non-deterministic rul
   if (!combined.ok) return;
 
   const rGraph = await extractReasoningGraph(
-    makeDoc([makeUnit('If the claim assessment amount exceeds 5000, then reject the claim.\n\nSubject to satisfactory proof of loss, the insurer will process the claim within 14 days.', 'unit-mixed')]),
+    makeDoc([
+      makeUnit(
+        'If the claim assessment amount exceeds 5000, then reject the claim.\n\nSubject to satisfactory proof of loss, the insurer will process the claim within 14 days.',
+        'unit-mixed',
+      ),
+    ]),
   );
   const result = reasoningGraphToXoir(rGraph, { into: combined.value, now });
   assert.ok(result.ok);
@@ -382,7 +424,9 @@ test('conversion is deterministic given a fixed now', async () => {
 });
 
 test('an edge whose endpoint is missing is skipped rather than failing the whole conversion', async () => {
-  const graph = await extractReasoningGraph(makeDoc([makeUnit('If the order is late, cancel it unless the customer has a premium subscription.')]));
+  const graph = await extractReasoningGraph(
+    makeDoc([makeUnit('If the order is late, cancel it unless the customer has a premium subscription.')]),
+  );
   const filtered = { nodes: graph.nodes.filter((n) => n.nodeType !== 'exception'), edges: graph.edges };
   const result = reasoningGraphToXoir(filtered, { now });
   assert.ok(result.ok);

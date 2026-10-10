@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
 import { composeWorkflows } from '../src/compose.js';
 import {
   buildReconciliationSectionFixtureGraph,
@@ -87,7 +86,10 @@ test('process realization -> workflow composition bridge', async (t) => {
     assert.equal(result.ok, true);
     if (!result.ok) return;
     const sectionPaths = result.value.map((wf) => wf.processGrouping?.sectionPath);
-    assert.deepEqual(sectionPaths, [['Manual', '3. Brokerage Reconciliation'], ['Manual', '4. Financial Accounting']]);
+    assert.deepEqual(sectionPaths, [
+      ['Manual', '3. Brokerage Reconciliation'],
+      ['Manual', '4. Financial Accounting'],
+    ]);
   });
 
   await t.test('a process concept node with no associated capabilities produces no workflow at all', () => {

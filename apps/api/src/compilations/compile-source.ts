@@ -38,7 +38,12 @@ import { buildCompilerSourceInput } from './source-input-adapter.js';
  * where P0 through P0.3 left them (CLI-only), per this milestone's
  * explicit scope limits.
  */
-export async function compileSourceRecord(store: CompilationStore, compilationId: string, source: SourceRecord, bytes: Uint8Array): Promise<void> {
+export async function compileSourceRecord(
+  store: CompilationStore,
+  compilationId: string,
+  source: SourceRecord,
+  bytes: Uint8Array,
+): Promise<void> {
   try {
     const input = buildCompilerSourceInput(source.extension, bytes, source.originalFilename);
     const compiled = await compileSources([input], {});
@@ -71,8 +76,14 @@ export async function compileSourceRecord(store: CompilationStore, compilationId
         ...(declaration?.execution?.mode !== undefined ? { executionClass: declaration.execution.mode } : {}),
         ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
         confidence: node?.metadata.confidence ?? 0,
-        ...(declaration?.confidence !== undefined ? { declaredConfidence: { score: declaration.confidence.score, basis: declaration.confidence.basis } } : {}),
-        provenance: (node?.metadata.sourceRefs ?? []).map((ref) => ({ documentPath: ref.documentPath, ...(ref.locator !== undefined ? { locator: ref.locator } : {}), ...(ref.pages !== undefined ? { pages: ref.pages } : {}) })),
+        ...(declaration?.confidence !== undefined
+          ? { declaredConfidence: { score: declaration.confidence.score, basis: declaration.confidence.basis } }
+          : {}),
+        provenance: (node?.metadata.sourceRefs ?? []).map((ref) => ({
+          documentPath: ref.documentPath,
+          ...(ref.locator !== undefined ? { locator: ref.locator } : {}),
+          ...(ref.pages !== undefined ? { pages: ref.pages } : {}),
+        })),
       };
     });
 
@@ -88,7 +99,10 @@ export async function compileSourceRecord(store: CompilationStore, compilationId
     // unexplained partial record or an uncaught 500 — per the
     // milestone's "malformed compiler result" requirement.
     const message = cause instanceof Error ? cause.message : String(cause);
-    await store.markFailed(compilationId, { errorCode: ErrorCode.UNKNOWN, errorMessage: `compiler pipeline threw unexpectedly: ${message}` });
+    await store.markFailed(compilationId, {
+      errorCode: ErrorCode.UNKNOWN,
+      errorMessage: `compiler pipeline threw unexpectedly: ${message}`,
+    });
   }
 }
 

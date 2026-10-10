@@ -1,8 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyBump, compareSemVer, isValidSemVer, isValidSemVerRange, parseSemVer, parseSemVerRange, satisfiesRange } from '../src/manifest/semver.js';
-
-
+import {
+  classifyBump,
+  compareSemVer,
+  isValidSemVer,
+  isValidSemVerRange,
+  parseSemVer,
+  parseSemVerRange,
+  satisfiesRange,
+} from '../src/manifest/semver.js';
 
 test('isValidSemVer accepts well-formed versions', () => {
   assert.equal(isValidSemVer('1.0.0'), true);
@@ -69,7 +75,6 @@ test('satisfiesRange returns an err Result for an unparseable version or range',
   assert.equal(satisfiesRange('not-a-version', '^1.0.0').ok, false);
   assert.equal(satisfiesRange('1.0.0', 'not-a-range').ok, false);
 });
-
 
 test('isValidSemVer rejects malformed versions', () => {
   assert.equal(isValidSemVer('1.0'), false);

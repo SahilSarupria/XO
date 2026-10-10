@@ -6,12 +6,12 @@
 
 ## 1. What was inspected
 
-| Item | Value |
-|---|---|
-| Branch | `main` |
-| Original base inspected | `86334307216eac9ccf08d601194eed12b95d2fa7` (clean tree) |
-| Current base | `81f2bce` `feat(security): establish authenticated principal foundation` |
-| Working directory | A fresh `git clone` at `/home/claude/XO`, isolated from any other session's working tree |
+| Item                    | Value                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| Branch                  | `main`                                                                                   |
+| Original base inspected | `86334307216eac9ccf08d601194eed12b95d2fa7` (clean tree)                                  |
+| Current base            | `81f2bce` `feat(security): establish authenticated principal foundation`                 |
+| Working directory       | A fresh `git clone` at `/home/claude/XO`, isolated from any other session's working tree |
 
 Before committing I ran `git fetch` and found `origin/main` one commit ahead: `81f2bce`, the other session's P1.0 M1 work (29 files in `apps/api`, `apps/cli`, `packages/permissions`, plus its own report). **No file overlaps** with this fix, and upstream did not touch `package-sdk` or `storage`. I fast-forwarded my own clone (`git merge --ff-only`, no merge commit); staged changes were unaffected. Nothing in the other session's files was modified, and everything below was re-verified on `81f2bce` + this fix.
 
@@ -27,11 +27,11 @@ Housekeeping: `npm install` flipped the mode of `apps/cli/bin/xo.js` (reverted, 
 4. **Self-corruption.** A component path of `manifest.json` replaced the package's own installed manifest, with install reporting success.
 5. **Partial installs.** Traversal paths that escape the store root were refused by the store, but `install()` writes everything with `Promise.all` and no rollback, so `manifest.json`, `metadata.json`, `safety/rules.json`, etc. were already on disk when the install returned an error. A file-vs-directory component collision (`weights/lora/` + `weights/lora/adapter.bin`) failed the same way and left five files behind.
 6. **Alias reads/deletes.** `getManifest`, `getComponent`, `verifyInstallation`, `rollback` and `uninstall` took `name`/`version` straight into store keys, so `x/../victim` aliased the victim's directory. `name`/`version` reach these methods from HTTP request parameters in `apps/api`.
-7. **Legacy poisoned records.** A package installed *before* this fix could store traversal paths in its install record, and `uninstall()` deleted every recorded path without checking it, so uninstalling that package would delete another package's files.
+7. **Legacy poisoned records.** A package installed _before_ this fix could store traversal paths in its install record, and `uninstall()` deleted every recorded path without checking it, so uninstalling that package would delete another package's files.
 
-**Demonstrated but not reachable from package content alone:** `LocalFsBlobStore` follows a *pre-planted* symlink out of the store root (a write landed outside). A package cannot create symlinks (archive extraction is in-memory, the installer only calls `writeFile`). See §10.
+**Demonstrated but not reachable from package content alone:** `LocalFsBlobStore` follows a _pre-planted_ symlink out of the store root (a write landed outside). A package cannot create symlinks (archive extraction is in-memory, the installer only calls `writeFile`). See §10.
 
-**Not demonstrated as escapes (not claimed as such):** absolute paths, backslash paths and drive prefixes landed as odd filenames *inside* the package directory on Linux. Windows was not tested. They are rejected regardless.
+**Not demonstrated as escapes (not claimed as such):** absolute paths, backslash paths and drive prefixes landed as odd filenames _inside_ the package directory on Linux. Windows was not tested. They are rejected regardless.
 
 **Impact bounded by tenancy:** in `apps/api` each workspace has its own `LocalFsBlobStore` rooted at `<dataRoot>/<workspaceId>/packages`, so these defects are confined to one workspace's store and cannot cross workspaces. I found no write outside the store root.
 
@@ -55,7 +55,7 @@ Housekeeping: `npm install` flipped the mode of `apps/cli/bin/xo.js` (reverted, 
 
 - `SPECIFICATION.md` §1.1 draws `weights/lora/` and `weights/finetune/` as directories, **and** §1.2's example manifest declares them as component entries with directory-style paths: `"lora": {"path": "weights/lora/", ...}`, `"finetune": {"path": "weights/finetune/", ...}`. So it is both layout illustration and a real manifest path shape.
 - The implementation models a component as exactly one path ↔ one byte blob (`ComponentEntry {path, hash, required}`, `ComponentInput.data: Uint8Array`, `hashComponent` hashes bytes, tar entries are regular files). There is no representation of a multi-file directory component.
-- **Experiment on the original code** (pack → unpack → install → `getComponent`): `weights/lora/`, `weights/lora`, `weights/lora/adapter.bin` and `weights/finetune/` all work, stored as a single blob (the store drops the trailing slash). So the trailing-slash form is *supported by the existing implementation*.
+- **Experiment on the original code** (pack → unpack → install → `getComponent`): `weights/lora/`, `weights/lora`, `weights/lora/adapter.bin` and `weights/finetune/` all work, stored as a single blob (the store drops the trailing slash). So the trailing-slash form is _supported by the existing implementation_.
 - Nothing in the repo produces `lora`/`finetune` components (compiler packager: "no fine-tuning/weights pipeline exists") and no pre-existing test uses such a path.
 
 **My first draft rejected trailing slashes. That was a compatibility regression**, found by running the experiment above (the same experiment run first via dynamic `import()` was invalid because it loaded stale tracked `.js` files; I discarded it and redid it with static imports, which load the `.ts` sources). **Fix:** a single trailing `/` is accepted as a directory-style entry meaning the same file as the path without it (`componentPathKey`). That normalized key is what the reserved-name and collision checks compare, which also closed a bypass in my own draft (`manifest.json/` would have escaped the raw-string reserved check). Doubled slashes (`knowledge//`), `../`, `./`, and a bare `/` are still rejected.
@@ -64,7 +64,7 @@ Path confinement is not weakened: traversal, absolute, Windows-style, `:`, contr
 
 New rule worth knowing: two components may not address the same file or nest file-under-directory (`weights/lora/` + `weights/lora/adapter.bin`, or `weights/lora` + `weights/lora/`; case-insensitive). On the original code these combinations **never worked** (write error + partial install, §2.5), so no legitimate structure is lost.
 
-**Not resolved, and not resolvable from the existing implementation:** whether a `lora`/`finetune` directory component is meant to hold *multiple files* under one hash. The spec does not define directory hashing and the format has no multi-file representation. That is a separate format decision, outside this fix.
+**Not resolved, and not resolvable from the existing implementation:** whether a `lora`/`finetune` directory component is meant to hold _multiple files_ under one hash. The spec does not define directory hashing and the format has no multi-file representation. That is a separate format decision, outside this fix.
 
 ### 4.2 Do the package-name restrictions reject legitimate names?
 
@@ -72,7 +72,7 @@ New rule worth knowing: two components may not address the same file or nest fil
 
 - Every package name in code, tests and examples is an identifier (`xo_demo_contract_clause_lookup`, `xo_e2e_burglary_policy`, `x`, `preview`, …); the only slashed name anywhere was the malicious one in my own tests.
 - The spec's display-style name (`Corporate Contract & Commercial Lawyer`) and `xo_id`-style names pass; there is a test for these plus dotted, hyphenated and non-ASCII names.
-- `namespace` and `publisher` are *not* manifest fields or part of the install path: the protocol's `xo:<namespace>/<publisher>/<name>@<version>` identifier keeps them separate from `name`, and the implementation addresses installs as `<name>/<version>`. The CLI addresses packages as `<name>@<version>` (splitting on the last `@`).
+- `namespace` and `publisher` are _not_ manifest fields or part of the install path: the protocol's `xo:<namespace>/<publisher>/<name>@<version>` identifier keeps them separate from `name`, and the implementation addresses installs as `<name>/<version>`. The CLI addresses packages as `<name>@<version>` (splitting on the last `@`).
 - Rule: `name` and `version` must each be exactly one safe path segment (no `/`, `\`, `:`, `.`/`..`, empty, or control characters). A scoped name such as `scope/pkg` would now be rejected; no such name is supported by anything in the repo, and allowing `/` would let a package place itself inside another package's directory.
 
 ## 5. Fix design
@@ -88,14 +88,14 @@ No new error codes. Nothing outside `package-sdk` changed.
 
 ## 6. Files changed
 
-| File | Change |
-|---|---|
-| `packages/package-sdk/src/validation/safe-path.ts` | **new**: path-safety rules |
-| `packages/package-sdk/src/install/package-installer.ts` | install gate; identity guard on 5 methods; fail-closed `uninstall` |
-| `packages/package-sdk/src/validation/package-validator.ts` | `validatePathSafety`, wired into `validateAll` |
-| `packages/package-sdk/src/validation/schema.ts` | `isXoManifest` rejects unsafe name / component paths |
-| `packages/package-sdk/test/package-path-confinement.test.ts` | **new**: 50 regression tests |
-| `XO_PACKAGE_PATH_TRAVERSAL_SECURITY_REPORT.md` | **new**: this report |
+| File                                                         | Change                                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `packages/package-sdk/src/validation/safe-path.ts`           | **new**: path-safety rules                                         |
+| `packages/package-sdk/src/install/package-installer.ts`      | install gate; identity guard on 5 methods; fail-closed `uninstall` |
+| `packages/package-sdk/src/validation/package-validator.ts`   | `validatePathSafety`, wired into `validateAll`                     |
+| `packages/package-sdk/src/validation/schema.ts`              | `isXoManifest` rejects unsafe name / component paths               |
+| `packages/package-sdk/test/package-path-confinement.test.ts` | **new**: 50 regression tests                                       |
+| `XO_PACKAGE_PATH_TRAVERSAL_SECURITY_REPORT.md`               | **new**: this report                                               |
 
 The diff against `HEAD` was reviewed in full: additions only, plus one replaced line in `schema.ts`; no generated files, secrets or unrelated formatting.
 
@@ -107,19 +107,19 @@ Legitimate install; existing path shapes (including `weights/lora/`, `knowledge/
 
 Final run on `81f2bce` + this fix, from `/home/claude/XO` (`dist/` is gitignored, so `npx tsc -b <workspace>/tsconfig.json` is needed first).
 
-| Command | Result |
-|---|---|
-| `npx tsc -b` on `package-sdk`, `permissions`, `compiler`, `registry`, `runtime`, `apps/api`, `apps/cli` (real exit codes) | all `exit=0`, no output |
-| `node --import tsx --test test/package-path-confinement.test.ts` vs **original** code | 50 tests: **10 pass, 40 fail** (28 parameterized path/name rejections + 12 named tests incl. the legacy-record and alias tests) |
-| same, with the fix | **50 pass / 0 fail** |
-| `npm test` in `packages/package-sdk` | **196 pass / 0 fail** (146 original + 50 new) |
-| `npm test` in `packages/storage` | 6 pass / 0 fail |
-| `npm test` in `packages/permissions` | 116 pass / 0 fail (includes the other session's M1 tests) |
-| `npm test` in `packages/registry` | 40 pass / 0 fail |
-| `npm test` in `packages/runtime` | 433 pass / 0 fail |
-| `npm test` in `apps/api` | 199 pass / 0 fail |
-| `npm test` in `packages/compiler` | 894 pass / **1 fail** (#114 "M1.1 shape 6…") |
-| `npm test` in `apps/cli` | 260 pass / **2 fail** (#8, #49 "vertical-test benchmark fixture") |
+| Command                                                                                                                   | Result                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `npx tsc -b` on `package-sdk`, `permissions`, `compiler`, `registry`, `runtime`, `apps/api`, `apps/cli` (real exit codes) | all `exit=0`, no output                                                                                                         |
+| `node --import tsx --test test/package-path-confinement.test.ts` vs **original** code                                     | 50 tests: **10 pass, 40 fail** (28 parameterized path/name rejections + 12 named tests incl. the legacy-record and alias tests) |
+| same, with the fix                                                                                                        | **50 pass / 0 fail**                                                                                                            |
+| `npm test` in `packages/package-sdk`                                                                                      | **196 pass / 0 fail** (146 original + 50 new)                                                                                   |
+| `npm test` in `packages/storage`                                                                                          | 6 pass / 0 fail                                                                                                                 |
+| `npm test` in `packages/permissions`                                                                                      | 116 pass / 0 fail (includes the other session's M1 tests)                                                                       |
+| `npm test` in `packages/registry`                                                                                         | 40 pass / 0 fail                                                                                                                |
+| `npm test` in `packages/runtime`                                                                                          | 433 pass / 0 fail                                                                                                               |
+| `npm test` in `apps/api`                                                                                                  | 199 pass / 0 fail                                                                                                               |
+| `npm test` in `packages/compiler`                                                                                         | 894 pass / **1 fail** (#114 "M1.1 shape 6…")                                                                                    |
+| `npm test` in `apps/cli`                                                                                                  | 260 pass / **2 fail** (#8, #49 "vertical-test benchmark fixture")                                                               |
 
 **Pre-existing failures, not regressions:** compiler #114 and cli #8/#49 fail identically on a pristine `git clone` of `81f2bce` **with no fix** (894/895 and 260/262, same test names). They are count mismatches in compiler capability discovery (e.g. expected 23, got 33), unrelated to installation. I did not investigate or fix them. **Zero regressions.**
 

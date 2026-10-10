@@ -2,12 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { XoirGraph } from '../src/graph.js';
 import { XoirGraphId, XoirNodeId, XoirEdgeId } from '../src/ids.js';
-import {
-  LEGACY_NODE_KIND_MIGRATION,
-  isLegacyNodeKind,
-  migrateLegacyNodeKind,
-  type CanonicalXoirNodeKind,
-} from '../src/node-kinds.js';
+import { LEGACY_NODE_KIND_MIGRATION, isLegacyNodeKind, migrateLegacyNodeKind, type CanonicalXoirNodeKind } from '../src/node-kinds.js';
 import { isCoreXoirEdgeKind, type CoreXoirEdgeKind, type ExtendedXoirEdgeKind } from '../src/edge-kinds.js';
 import { validateGraph } from '../src/validation.js';
 
@@ -175,7 +170,11 @@ test('every canonical core edge kind can connect two generic nodes and validates
     graph.createAndAddNode({ id: XoirNodeId('b'), kind: 'capability', properties: { name: 'B', description: 'b' } });
     const edgeResult = graph.createAndAddEdge({ id: XoirEdgeId(`e-${kind}`), kind, fromId: XoirNodeId('a'), toId: XoirNodeId('b') });
     assert.ok(edgeResult.ok, `expected ${kind} edge to be constructible`);
-    assert.equal(validateGraph(graph).valid, true, `expected ${kind} edge between two capabilities to validate: ${JSON.stringify(validateGraph(graph).issues)}`);
+    assert.equal(
+      validateGraph(graph).valid,
+      true,
+      `expected ${kind} edge between two capabilities to validate: ${JSON.stringify(validateGraph(graph).issues)}`,
+    );
   }
 });
 
@@ -210,7 +209,11 @@ test('ESCALATES_TO must terminate at an escalation_rule or capability node', () 
 
   const graph2 = XoirGraph.create(XoirGraphId('g-escalates-to-2'));
   graph2.createAndAddNode({ id: XoirNodeId('rule'), kind: 'risk_policy', properties: { domain: 'd', toleranceLevel: 'low' } });
-  graph2.createAndAddNode({ id: XoirNodeId('target'), kind: 'escalation_rule', properties: { triggerCondition: 't', escalationTarget: 'human' } });
+  graph2.createAndAddNode({
+    id: XoirNodeId('target'),
+    kind: 'escalation_rule',
+    properties: { triggerCondition: 't', escalationTarget: 'human' },
+  });
   graph2.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'ESCALATES_TO', fromId: XoirNodeId('rule'), toId: XoirNodeId('target') });
   assert.equal(validateGraph(graph2).valid, true);
 });
@@ -219,7 +222,25 @@ test('extended/domain edge kinds carried over from Stage 4/5 (e.g. DEFINES, PROD
   const graph = XoirGraph.create(XoirGraphId('g-extended-edges'));
   graph.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' } });
   graph.createAndAddNode({ id: XoirNodeId('b'), kind: 'concept', properties: { definition: 'b' } });
-  for (const kind of ['DEFINES', 'PART_OF', 'PRODUCES', 'CONSUMES', 'EXTENDS', 'COMPLEMENTS', 'INVOKES', 'ENABLES', 'CONFLICTS_WITH', 'GOVERNS', 'CAUSES', 'MITIGATES', 'MEASURES', 'OWNED_BY', 'LOCATED_IN', 'BELONGS_TO', 'VERSION_OF'] as const) {
+  for (const kind of [
+    'DEFINES',
+    'PART_OF',
+    'PRODUCES',
+    'CONSUMES',
+    'EXTENDS',
+    'COMPLEMENTS',
+    'INVOKES',
+    'ENABLES',
+    'CONFLICTS_WITH',
+    'GOVERNS',
+    'CAUSES',
+    'MITIGATES',
+    'MEASURES',
+    'OWNED_BY',
+    'LOCATED_IN',
+    'BELONGS_TO',
+    'VERSION_OF',
+  ] as const) {
     const result = graph.createAndAddEdge({ id: XoirEdgeId(`e-${kind}`), kind, fromId: XoirNodeId('a'), toId: XoirNodeId('b') });
     assert.ok(result.ok, `expected ${kind} to be constructible`);
   }
@@ -230,7 +251,12 @@ test('ALTERNATIVE_TO (Stage 7 addition) is a valid, unconstrained extended edge 
   const graph = XoirGraph.create(XoirGraphId('g-alternative-to'));
   graph.createAndAddNode({ id: XoirNodeId('optionA'), kind: 'decision_node', properties: { question: 'q', outcome: 'A', rationale: 'r' } });
   graph.createAndAddNode({ id: XoirNodeId('optionB'), kind: 'decision_node', properties: { question: 'q', outcome: 'B', rationale: 'r' } });
-  const result = graph.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'ALTERNATIVE_TO', fromId: XoirNodeId('optionA'), toId: XoirNodeId('optionB') });
+  const result = graph.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'ALTERNATIVE_TO',
+    fromId: XoirNodeId('optionA'),
+    toId: XoirNodeId('optionB'),
+  });
   assert.ok(result.ok);
   assert.equal(validateGraph(graph).valid, true);
 });

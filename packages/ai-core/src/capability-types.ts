@@ -8,7 +8,8 @@ import type { ProviderId, TokenUsage } from './provider-types.js';
  * shared "give me some JSON back" — that typing is what "expose semantic
  * capabilities, not provider-specific APIs" means in practice.
  */
-export type CapabilityId = 'extractEntities' | 'extractKnowledge' | 'extractReasoning' | 'extractCapabilities' | 'extractDecisionGraph' | 'extractConstraints';
+export type CapabilityId =
+  'extractEntities' | 'extractKnowledge' | 'extractReasoning' | 'extractCapabilities' | 'extractDecisionGraph' | 'extractConstraints';
 
 export interface SourceExcerpt {
   readonly text: string;

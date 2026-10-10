@@ -69,7 +69,10 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
 
     const extension = extname(filename).toLowerCase();
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`);
+      throw new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`,
+      );
     }
 
     const bytes = await req.rawBody();

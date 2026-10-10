@@ -1,4 +1,4 @@
-import { GraphAnimationEngine } from './GraphAnimationEngine.js';
+import type { GraphAnimationEngine } from './GraphAnimationEngine.js';
 import { lerpNumber, lerpPoint, lerpViewportState } from './lerp.js';
 import type { Easing } from './easing.js';
 import type { EdgeId, GraphViewportState, NodeId, Point } from '../model/types.js';
@@ -66,7 +66,12 @@ export function stopHighlight(engine: GraphAnimationEngine, targetId: string): G
 // ---- Selection animations -------------------------------------------------
 
 /** Starts a one-shot fade-in (0 -> 1) used for a selection outline/glow appearing. */
-export function animateSelectionEnter(engine: GraphAnimationEngine, targetId: string, durationMs: number, nowMs: number): GraphAnimationEngine {
+export function animateSelectionEnter(
+  engine: GraphAnimationEngine,
+  targetId: string,
+  durationMs: number,
+  nowMs: number,
+): GraphAnimationEngine {
   return engine.start(selectionKey(targetId), 0, 1, durationMs, nowMs, 'easeOut');
 }
 
@@ -82,7 +87,12 @@ export function stopSelectionAnimation(engine: GraphAnimationEngine, targetId: s
 // ---- Execution animations -------------------------------------------------
 
 /** Starts a looping pulse for a node currently `active` in an execution visualization. */
-export function animateExecutionActive(engine: GraphAnimationEngine, nodeId: NodeId, periodMs: number, nowMs: number): GraphAnimationEngine {
+export function animateExecutionActive(
+  engine: GraphAnimationEngine,
+  nodeId: NodeId,
+  periodMs: number,
+  nowMs: number,
+): GraphAnimationEngine {
   return engine.start(executionKey(nodeId), 0, 1, periodMs, nowMs, 'easeInOut', true);
 }
 

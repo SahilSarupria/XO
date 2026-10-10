@@ -31,7 +31,12 @@ function lookupPricing(table: PricingTable, providerId: ProviderId, model: strin
   return table[providerId]?.[model] ?? { inputPerThousand: 0, outputPerThousand: 0 };
 }
 
-export function computeCostUsd(providerId: ProviderId, model: string, usage: TokenUsage, table: PricingTable = DEFAULT_PRICING_TABLE): number {
+export function computeCostUsd(
+  providerId: ProviderId,
+  model: string,
+  usage: TokenUsage,
+  table: PricingTable = DEFAULT_PRICING_TABLE,
+): number {
   const pricing = lookupPricing(table, providerId, model);
   return (usage.inputTokens / 1000) * pricing.inputPerThousand + (usage.outputTokens / 1000) * pricing.outputPerThousand;
 }

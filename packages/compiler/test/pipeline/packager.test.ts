@@ -45,8 +45,15 @@ test('packageXoirGraph produces a manifest that PackageValidator accepts (struct
   if (!result.ok) return;
 
   const validator = new PackageValidator();
-  const report = validator.validateAll({ manifest: result.value.manifest, components: result.value.bundle.components, ancillary: result.value.bundle.ancillary });
-  assert.deepEqual(report.issues.filter((i) => i.severity === 'error'), []);
+  const report = validator.validateAll({
+    manifest: result.value.manifest,
+    components: result.value.bundle.components,
+    ancillary: result.value.bundle.ancillary,
+  });
+  assert.deepEqual(
+    report.issues.filter((i) => i.severity === 'error'),
+    [],
+  );
 });
 
 test('safety_rules and benchmark_suite are always present (required components), even when a graph has neither constraints nor evaluation artifacts', () => {
@@ -120,7 +127,13 @@ function addResolvableCapability(graph: XoirGraph, suffix: string): { readonly c
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { capabilityId, decisionId };
 }
 
@@ -144,7 +157,11 @@ function addDeniedCapability(graph: XoirGraph, suffix: string): { readonly capab
   graph.createAndAddNode({
     id: XoirNodeId(capabilityId),
     kind: 'capability',
-    properties: { name: 'Draft Freeform Reply', description: 'Drafts a freeform reply — inherently non-deterministic.', determinism: 'non_deterministic' },
+    properties: {
+      name: 'Draft Freeform Reply',
+      description: 'Drafts a freeform reply — inherently non-deterministic.',
+      determinism: 'non_deterministic',
+    },
     confidence: 0.7,
     now,
   });
@@ -155,7 +172,13 @@ function addDeniedCapability(graph: XoirGraph, suffix: string): { readonly capab
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-nd-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-nd-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { capabilityId, decisionId };
 }
 
@@ -237,7 +260,14 @@ test('an ambiguous binding (multiple resolvers agreeing) is not promoted to mani
     name: 'always-agrees',
     resolve: (contract: { readonly id: string }) => ({
       status: 'resolved' as const,
-      binding: { id: `binding_${contract.id}_second`, contractId: contract.id, implementationClass: 'deterministic_rule' as const, resolverName: 'always-agrees', description: 'test double', derivation: {} },
+      binding: {
+        id: `binding_${contract.id}_second`,
+        contractId: contract.id,
+        implementationClass: 'deterministic_rule' as const,
+        resolverName: 'always-agrees',
+        description: 'test double',
+        derivation: {},
+      },
     }),
   };
   const result = packageXoirGraph(graph, {
@@ -333,10 +363,20 @@ test('R1 closure (1+2): a resolved deterministic capability gets its contract em
 
   const kgComponent = result.value.bundle.components.find((c) => c.kind === 'knowledge_graph');
   assert.ok(kgComponent);
-  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as { readonly nodes: readonly { readonly id: string; readonly kind: string; readonly properties?: { readonly semanticCapabilityContract?: { readonly id: string } } }[] };
+  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as {
+    readonly nodes: readonly {
+      readonly id: string;
+      readonly kind: string;
+      readonly properties?: { readonly semanticCapabilityContract?: { readonly id: string } };
+    }[];
+  };
   const capabilityNode = parsed.nodes.find((n) => n.id === capabilityId && n.kind === 'capability');
   assert.ok(capabilityNode, 'the capability node must still exist in the packaged knowledge graph');
-  assert.equal(capabilityNode!.properties?.semanticCapabilityContract?.id, declaration.execution!.contractId, 'the SAME resolved contract must be represented consistently between the manifest declaration and the packaged knowledge graph');
+  assert.equal(
+    capabilityNode!.properties?.semanticCapabilityContract?.id,
+    declaration.execution!.contractId,
+    'the SAME resolved contract must be represented consistently between the manifest declaration and the packaged knowledge graph',
+  );
 });
 
 test('R1 closure (3): an existing REQUIRES edge touching the capability node survives packaging', () => {
@@ -350,7 +390,9 @@ test('R1 closure (3): an existing REQUIRES edge touching the capability node sur
   if (!result.ok) return;
 
   const kgComponent = result.value.bundle.components.find((c) => c.kind === 'knowledge_graph');
-  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as { readonly edges: readonly { readonly kind: string; readonly from: string; readonly to: string }[] };
+  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as {
+    readonly edges: readonly { readonly kind: string; readonly from: string; readonly to: string }[];
+  };
   const edge = parsed.edges.find((e) => e.from === decisionId && e.to === capabilityId);
   assert.ok(edge, 'the REQUIRES edge from the decision node to the capability node must survive embedding + packaging');
   assert.equal(edge!.kind, 'REQUIRES');
@@ -367,7 +409,9 @@ test('R1 closure (4): unrelated node metadata (confidence, tags) survives packag
   if (!result.ok) return;
 
   const kgComponent = result.value.bundle.components.find((c) => c.kind === 'knowledge_graph');
-  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as { readonly nodes: readonly { readonly id: string; readonly confidence?: number }[] };
+  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as {
+    readonly nodes: readonly { readonly id: string; readonly confidence?: number }[];
+  };
   // "concept:a" (from buildGraph(), confidence 0.8) is untouched by embedding — a different node entirely — so its metadata must be exactly what buildGraph() set, proving embedding doesn't disturb unrelated nodes.
   const unrelatedNode = parsed.nodes.find((n) => n.id === 'concept:a');
   assert.ok(unrelatedNode);
@@ -384,13 +428,23 @@ test('R1 closure (5): an unresolved capability does not receive a false executab
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  assert.equal(result.value.manifest.capabilities, undefined, 'an unresolved capability must not produce any manifest.capabilities entry at all');
+  assert.equal(
+    result.value.manifest.capabilities,
+    undefined,
+    'an unresolved capability must not produce any manifest.capabilities entry at all',
+  );
 
   const kgComponent = result.value.bundle.components.find((c) => c.kind === 'knowledge_graph');
-  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as { readonly nodes: readonly { readonly id: string; readonly properties?: { readonly semanticCapabilityContract?: unknown } }[] };
+  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as {
+    readonly nodes: readonly { readonly id: string; readonly properties?: { readonly semanticCapabilityContract?: unknown } }[];
+  };
   const node = parsed.nodes.find((n) => n.id === capabilityId);
   assert.ok(node, 'the bare capability node must still be discoverable in the packaged knowledge graph');
-  assert.equal(node!.properties?.semanticCapabilityContract, undefined, 'an unresolved capability must NOT have a contract embedded — it was never promoted to executable');
+  assert.equal(
+    node!.properties?.semanticCapabilityContract,
+    undefined,
+    'an unresolved capability must NOT have a contract embedded — it was never promoted to executable',
+  );
 });
 
 test('R1 closure (5b): a denied (non_deterministic) capability also does not receive a false executable contract', () => {
@@ -404,10 +458,16 @@ test('R1 closure (5b): a denied (non_deterministic) capability also does not rec
   if (!result.ok) return;
 
   const kgComponent = result.value.bundle.components.find((c) => c.kind === 'knowledge_graph');
-  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as { readonly nodes: readonly { readonly id: string; readonly properties?: { readonly semanticCapabilityContract?: unknown } }[] };
+  const parsed = JSON.parse(new TextDecoder().decode(kgComponent!.data)) as {
+    readonly nodes: readonly { readonly id: string; readonly properties?: { readonly semanticCapabilityContract?: unknown } }[];
+  };
   const node = parsed.nodes.find((n) => n.id === capabilityId);
   assert.ok(node);
-  assert.equal(node!.properties?.semanticCapabilityContract, undefined, 'a denied capability (explicitly non_deterministic) must never receive an embedded contract, even though it was discovered');
+  assert.equal(
+    node!.properties?.semanticCapabilityContract,
+    undefined,
+    'a denied capability (explicitly non_deterministic) must never receive an embedded contract, even though it was discovered',
+  );
 });
 
 test('R1 closure (6): package validation still passes with an embedded contract present', () => {
@@ -421,8 +481,15 @@ test('R1 closure (6): package validation still passes with an embedded contract 
   if (!result.ok) return;
 
   const validator = new PackageValidator();
-  const report = validator.validateAll({ manifest: result.value.manifest, components: result.value.bundle.components, ancillary: result.value.bundle.ancillary });
-  assert.deepEqual(report.issues.filter((i) => i.severity === 'error'), []);
+  const report = validator.validateAll({
+    manifest: result.value.manifest,
+    components: result.value.bundle.components,
+    ancillary: result.value.bundle.ancillary,
+  });
+  assert.deepEqual(
+    report.issues.filter((i) => i.severity === 'error'),
+    [],
+  );
 });
 
 test('package round trip: a built .xo package validates and its manifest.capabilities.length > 0', () => {
@@ -436,8 +503,15 @@ test('package round trip: a built .xo package validates and its manifest.capabil
   if (!result.ok) return;
 
   const validator = new PackageValidator();
-  const report = validator.validateAll({ manifest: result.value.manifest, components: result.value.bundle.components, ancillary: result.value.bundle.ancillary });
-  assert.deepEqual(report.issues.filter((i) => i.severity === 'error'), []);
+  const report = validator.validateAll({
+    manifest: result.value.manifest,
+    components: result.value.bundle.components,
+    ancillary: result.value.bundle.ancillary,
+  });
+  assert.deepEqual(
+    report.issues.filter((i) => i.severity === 'error'),
+    [],
+  );
   assert.ok(result.value.manifest.capabilities!.length > 0);
 });
 
@@ -463,13 +537,19 @@ test('packaging the same graph twice produces byte-identical component data and 
   if (!first.ok || !second.ok) return;
   assert.equal(first.value.manifest.merkleRoot, second.value.manifest.merkleRoot);
   for (const kind of Object.keys(first.value.manifest.components)) {
-    assert.equal(first.value.manifest.components[kind as keyof typeof first.value.manifest.components].hash, second.value.manifest.components[kind as keyof typeof second.value.manifest.components].hash);
+    assert.equal(
+      first.value.manifest.components[kind as keyof typeof first.value.manifest.components].hash,
+      second.value.manifest.components[kind as keyof typeof second.value.manifest.components].hash,
+    );
   }
 });
 
 test('a compatibilityOverride is honored verbatim instead of the data-driven default', () => {
   const graph = buildGraph();
-  const override = { modelFamilies: [{ family: 'gemini' as const, minCapability: ['chat' as const], consumes: ['knowledge_graph' as const] }], fallbackPolicy: 'reject' as const };
+  const override = {
+    modelFamilies: [{ family: 'gemini' as const, minCapability: ['chat' as const], consumes: ['knowledge_graph' as const] }],
+    fallbackPolicy: 'reject' as const,
+  };
   const result = packageXoirGraph(graph, {
     identity: { name: 'xo_test_pkg', version: '0.1.0', creatorDid: 'did:xo:test' },
     metadata: metadata(),

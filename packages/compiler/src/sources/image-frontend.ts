@@ -30,7 +30,15 @@ function sniffMimeType(bytes: Uint8Array): string | undefined {
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'image/jpeg';
   if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return 'image/gif';
-  if (bytes.length >= 12 && startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp';
+  if (
+    bytes.length >= 12 &&
+    startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return 'image/webp';
   return undefined;
 }
 
@@ -43,7 +51,10 @@ function readUint16LE(bytes: Uint8Array, offset: number): number {
 }
 
 /** Deterministic, dependency-free dimension extraction for the two formats whose headers are trivial to read without a full decoder. Any other format (or a malformed header) simply yields no `dimensions` — never a guess. */
-function extractDimensions(bytes: Uint8Array, mimeType: string | undefined): { readonly width: number; readonly height: number } | undefined {
+function extractDimensions(
+  bytes: Uint8Array,
+  mimeType: string | undefined,
+): { readonly width: number; readonly height: number } | undefined {
   if (mimeType === 'image/png' && bytes.length >= 24) {
     return { width: readUint32BE(bytes, 16), height: readUint32BE(bytes, 20) };
   }
@@ -74,15 +85,23 @@ export class ImageSourceFrontend implements SourceFrontend<ImageSourceInput> {
 
   ingest(input: ImageSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
     if (input.bytes.length === 0) {
-      return err(new SourceError(ErrorCode.PRECONDITION_FAILED, `Image source "${input.sourcePath}" has no bytes`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(ErrorCode.PRECONDITION_FAILED, `Image source "${input.sourcePath}" has no bytes`, {
+          context: { sourcePath: input.sourcePath },
+        }),
+      );
     }
 
     const mimeType = input.mimeType ?? sniffMimeType(input.bytes);
     if (mimeType === undefined) {
       return err(
-        new SourceError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Image source "${input.sourcePath}" is not a recognized image format (no MIME type supplied and none could be sniffed from its bytes)`, {
-          context: { sourcePath: input.sourcePath },
-        }),
+        new SourceError(
+          ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+          `Image source "${input.sourcePath}" is not a recognized image format (no MIME type supplied and none could be sniffed from its bytes)`,
+          {
+            context: { sourcePath: input.sourcePath },
+          },
+        ),
       );
     }
 

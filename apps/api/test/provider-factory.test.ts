@@ -29,7 +29,9 @@ test('rejects an unsupported provider id', () => {
 });
 
 test('an explicit x-xo-api-key header wins over the environment variable', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'anthropic', 'x-xo-api-key': 'from-header' }), { ANTHROPIC_API_KEY: 'from-env' });
+  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'anthropic', 'x-xo-api-key': 'from-header' }), {
+    ANTHROPIC_API_KEY: 'from-env',
+  });
   assert.equal(result.ok, true);
 });
 
@@ -50,7 +52,10 @@ test('azure-openai requires both an API key and an endpoint', () => {
   assert.equal(missingEndpoint.ok, false);
   if (!missingEndpoint.ok) assert.match(missingEndpoint.error, /endpoint/);
 
-  const both = resolveProvider(fakeRequest({ 'x-xo-provider': 'azure-openai', 'x-xo-api-key': 'key', 'x-xo-endpoint': 'https://example.openai.azure.com' }), {});
+  const both = resolveProvider(
+    fakeRequest({ 'x-xo-provider': 'azure-openai', 'x-xo-api-key': 'key', 'x-xo-endpoint': 'https://example.openai.azure.com' }),
+    {},
+  );
   assert.equal(both.ok, true);
 });
 

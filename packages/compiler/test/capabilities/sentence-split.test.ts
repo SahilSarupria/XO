@@ -12,7 +12,10 @@ test('splits multiple sentences on terminal punctuation', () => {
 
 test('handles a single sentence with no trailing punctuation', () => {
   const sentences = splitSentences('Send the notice');
-  assert.deepEqual(sentences.map((s) => s.text), ['Send the notice']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['Send the notice'],
+  );
 });
 
 test('reports correct offsets', () => {
@@ -41,17 +44,26 @@ test('does not split on a period not followed by whitespace (e.g. inside an abbr
 
 test('"vs." followed by whitespace does not create a sentence boundary (the real Aastha case)', () => {
   const sentences = splitSentences('Reconcile invoice amounts vs. receipt amounts against Statement figures.');
-  assert.deepEqual(sentences.map((s) => s.text), ['Reconcile invoice amounts vs. receipt amounts against Statement figures.']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['Reconcile invoice amounts vs. receipt amounts against Statement figures.'],
+  );
 });
 
 test('a short "A vs. B" style clause stays one sentence', () => {
   const sentences = splitSentences('Compare Plan A vs. Plan B for suitability.');
-  assert.deepEqual(sentences.map((s) => s.text), ['Compare Plan A vs. Plan B for suitability.']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['Compare Plan A vs. Plan B for suitability.'],
+  );
 });
 
 test('"vs." mid-sentence does not swallow a genuine following sentence boundary', () => {
   const sentences = splitSentences('Compare A vs. B carefully. Then report the result.');
-  assert.deepEqual(sentences.map((s) => s.text), ['Compare A vs. B carefully.', 'Then report the result.']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['Compare A vs. B carefully.', 'Then report the result.'],
+  );
 });
 
 test('the abbreviation check is case-insensitive ("Vs.", "VS.")', () => {
@@ -61,10 +73,16 @@ test('the abbreviation check is case-insensitive ("Vs.", "VS.")', () => {
 
 test('a genuine sentence that happens to end in the word "vs" without a period is unaffected', () => {
   const sentences = splitSentences('It was Team A vs Team B. The crowd cheered.');
-  assert.deepEqual(sentences.map((s) => s.text), ['It was Team A vs Team B.', 'The crowd cheered.']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['It was Team A vs Team B.', 'The crowd cheered.'],
+  );
 });
 
 test('ordinary sentence boundaries are unaffected by the abbreviation check', () => {
   const sentences = splitSentences('The invoice was reconciled. The receipt was verified.');
-  assert.deepEqual(sentences.map((s) => s.text), ['The invoice was reconciled.', 'The receipt was verified.']);
+  assert.deepEqual(
+    sentences.map((s) => s.text),
+    ['The invoice was reconciled.', 'The receipt was verified.'],
+  );
 });

@@ -12,15 +12,28 @@ export async function loadSuiteFile(path: string): Promise<LoadSuiteResult> {
   try {
     text = await readFile(path, 'utf8');
   } catch (cause) {
-    return { ok: false, message: `cannot read suite file "${path}": ${cause instanceof Error ? cause.message : String(cause)}`, issues: [] };
+    return {
+      ok: false,
+      message: `cannot read suite file "${path}": ${cause instanceof Error ? cause.message : String(cause)}`,
+      issues: [],
+    };
   }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (cause) {
-    return { ok: false, message: `suite file "${path}" is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`, issues: [] };
+    return {
+      ok: false,
+      message: `suite file "${path}" is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      issues: [],
+    };
   }
   const validated = validateSuiteDefinition(raw);
-  if (!validated.ok) return { ok: false, message: `suite file "${path}" is not a valid benchmark definition (${validated.issues.length} issue(s))`, issues: validated.issues };
+  if (!validated.ok)
+    return {
+      ok: false,
+      message: `suite file "${path}" is not a valid benchmark definition (${validated.issues.length} issue(s))`,
+      issues: validated.issues,
+    };
   return { ok: true, suite: validated.value, sourceRoot: resolve(dirname(path), validated.value.sourceRoot ?? '.') };
 }

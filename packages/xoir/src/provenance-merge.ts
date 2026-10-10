@@ -121,7 +121,7 @@ function reconcileNodeGroup(group: readonly XoirNode[], now: () => string): Xoir
   return { ...withoutHash, hash: hashNode(withoutHash) };
 }
 
-function reconcileEdgeGroup(group: readonly XoirEdge[], now: () => string): XoirEdge {
+function reconcileEdgeGroup(group: readonly XoirEdge[], _now: () => string): XoirEdge {
   const base = group[0]!;
   const sourceRefs = unionSourceRefs(group.map((e) => e.metadata.sourceRefs));
   const tags = unionTags(group.map((e) => e.metadata.tags));

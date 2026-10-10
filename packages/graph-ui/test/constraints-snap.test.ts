@@ -97,7 +97,10 @@ test('SnapEngine.resolve falls back to grid snap when nothing else is within ran
 });
 
 test('SnapEngine.resolve honors custom guides', () => {
-  const engine = new SnapEngine({ magneticRadius: 10, customGuides: [{ orientation: 'vertical', position: 77, source: 'custom', relatedNodeIds: [] }] });
+  const engine = new SnapEngine({
+    magneticRadius: 10,
+    customGuides: [{ orientation: 'vertical', position: 77, source: 'custom', relatedNodeIds: [] }],
+  });
   const model = sample();
   const result = engine.resolve(model, 'b', { x: 80, y: 500 }, { width: 100, height: 40 });
   assert.equal(result.position.x, 77);

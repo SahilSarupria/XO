@@ -23,14 +23,26 @@ import type { SemanticCapabilityContract } from './types.js';
  * `CONTRACT_MALFORMED` only when the field is present but doesn't look
  * like a contract.
  */
-export function extractContractFromPropertyBag(properties: Readonly<Record<string, unknown>>): Result<SemanticCapabilityContract, CapabilityContractError> {
+export function extractContractFromPropertyBag(
+  properties: Readonly<Record<string, unknown>>,
+): Result<SemanticCapabilityContract, CapabilityContractError> {
   const raw = properties['semanticCapabilityContract'];
   if (raw === undefined || raw === null || typeof raw !== 'object') {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND, `No "semanticCapabilityContract" field present in the given properties bag`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND,
+        `No "semanticCapabilityContract" field present in the given properties bag`,
+      ),
+    );
   }
   const candidate = raw as Record<string, unknown>;
   if (typeof candidate['id'] !== 'string' || typeof candidate['name'] !== 'string' || !Array.isArray(candidate['rules'])) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_MALFORMED, `"semanticCapabilityContract" is present but missing required fields (id/name/rules)`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_MALFORMED,
+        `"semanticCapabilityContract" is present but missing required fields (id/name/rules)`,
+      ),
+    );
   }
   return ok(candidate as unknown as SemanticCapabilityContract);
 }

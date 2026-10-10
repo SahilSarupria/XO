@@ -20,13 +20,25 @@ test('assemble() maps ProviderResponse fields (renaming input/outputTokens to pr
   assert.equal(response.degraded, false);
 });
 
-test('assemble() maps every ProviderResponse finishReason to the runtime\'s own StopReason vocabulary', () => {
+test("assemble() maps every ProviderResponse finishReason to the runtime's own StopReason vocabulary", () => {
   const assembler = new ResponseAssembler();
   const base = { text: '', usage: { inputTokens: 0, outputTokens: 0 }, modelUsed: 'test-model' } as const;
-  assert.equal(assembler.assemble({ providerResponse: { ...base, finishReason: 'stop' }, capability, degraded: false }).stopReason, 'end_turn');
-  assert.equal(assembler.assemble({ providerResponse: { ...base, finishReason: 'length' }, capability, degraded: false }).stopReason, 'max_tokens');
-  assert.equal(assembler.assemble({ providerResponse: { ...base, finishReason: 'content_filter' }, capability, degraded: false }).stopReason, 'content_filtered');
-  assert.equal(assembler.assemble({ providerResponse: { ...base, finishReason: 'error' }, capability, degraded: false }).stopReason, 'error');
+  assert.equal(
+    assembler.assemble({ providerResponse: { ...base, finishReason: 'stop' }, capability, degraded: false }).stopReason,
+    'end_turn',
+  );
+  assert.equal(
+    assembler.assemble({ providerResponse: { ...base, finishReason: 'length' }, capability, degraded: false }).stopReason,
+    'max_tokens',
+  );
+  assert.equal(
+    assembler.assemble({ providerResponse: { ...base, finishReason: 'content_filter' }, capability, degraded: false }).stopReason,
+    'content_filtered',
+  );
+  assert.equal(
+    assembler.assemble({ providerResponse: { ...base, finishReason: 'error' }, capability, degraded: false }).stopReason,
+    'error',
+  );
 });
 
 test('assemble() carries the degraded flag through', () => {

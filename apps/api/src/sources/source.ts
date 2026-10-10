@@ -58,7 +58,20 @@ export interface CreateSourceInput {
  * upload time, not silently accepted and left to fail later at
  * compile time (which doesn't exist yet in this API).
  */
-export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set(['.pdf', '.html', '.htm', '.json', '.csv', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
+export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.pdf',
+  '.html',
+  '.htm',
+  '.json',
+  '.csv',
+  '.txt',
+  '.md',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+]);
 
 const DEFAULT_MEDIA_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',

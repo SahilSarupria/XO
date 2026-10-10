@@ -20,7 +20,9 @@ test('an explicit "type": "operation" record produces operation:name/input/outpu
   const result = frontend.ingest({ kind: 'structured', format: 'json', text, sourcePath: 'op.json' });
   assert.equal(result.ok, true);
   const blocks = paragraphBlocks(result);
-  const byField = new Map(blocks.map((b) => (b.kind === 'paragraph' ? [b.structuredField?.fieldName, b.structuredField?.rawValue] : [undefined, undefined])));
+  const byField = new Map(
+    blocks.map((b) => (b.kind === 'paragraph' ? [b.structuredField?.fieldName, b.structuredField?.rawValue] : [undefined, undefined])),
+  );
 
   assert.equal(byField.get('operation:name'), 'calculate_brokerage');
   assert.equal(byField.get('operation:input:premium'), 'number');
@@ -32,7 +34,12 @@ test('an explicit "type": "operation" record produces operation:name/input/outpu
 });
 
 test('an explicit "requires" list becomes its own namespaced structured field, independent of input/output names', () => {
-  const text = JSON.stringify({ type: 'operation', name: 'record_brokerage', requires: ['calculate_brokerage'], inputs: { brokerage: { type: 'number' } } });
+  const text = JSON.stringify({
+    type: 'operation',
+    name: 'record_brokerage',
+    requires: ['calculate_brokerage'],
+    inputs: { brokerage: { type: 'number' } },
+  });
   const result = frontend.ingest({ kind: 'structured', format: 'json', text, sourcePath: 'op.json' });
   const blocks = paragraphBlocks(result);
   const requiresBlock = blocks.find((b) => b.kind === 'paragraph' && b.structuredField?.fieldName.startsWith('operation:requires:'));
@@ -43,7 +50,11 @@ test('an explicit "requires" list becomes its own namespaced structured field, i
 // --- Refusal: only the exact, explicit "type": "operation" discriminant qualifies ---
 
 test('rejection: a record with an "inputs"/"outputs"-shaped payload but no "type": "operation" is treated as an ordinary flat record', () => {
-  const text = JSON.stringify({ name: 'calculate_brokerage', inputs: { premium: { type: 'number' } }, outputs: { brokerage: { type: 'number' } } });
+  const text = JSON.stringify({
+    name: 'calculate_brokerage',
+    inputs: { premium: { type: 'number' } },
+    outputs: { brokerage: { type: 'number' } },
+  });
   const result = frontend.ingest({ kind: 'structured', format: 'json', text, sourcePath: 'op.json' });
   const blocks = paragraphBlocks(result);
   const fieldNames = blocks.map((b) => (b.kind === 'paragraph' ? b.structuredField?.fieldName : undefined));

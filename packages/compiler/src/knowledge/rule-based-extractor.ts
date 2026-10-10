@@ -30,7 +30,11 @@ function mapSemanticTypeToNodeType(semanticType: ExperienceUnit['semanticType'])
   }
 }
 
-function baseProvenance(unit: ExperienceUnit, confidence: number, charOffsetRange: readonly [number, number] | undefined): KnowledgeProvenance {
+function baseProvenance(
+  unit: ExperienceUnit,
+  confidence: number,
+  charOffsetRange: readonly [number, number] | undefined,
+): KnowledgeProvenance {
   return {
     experienceUnitId: unit.id,
     documentPath: unit.provenance.documentPath,

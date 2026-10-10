@@ -35,7 +35,11 @@ export interface XoLockfile {
  */
 export function createLockfile(resolution: DependencyResolution, hasher: Hasher = new Sha256Hasher()): XoLockfile {
   const dependencies = resolution.resolved
-    .map((dependency) => ({ name: dependency.name, version: dependency.version, contentHash: fingerprintManifest(dependency.manifest, hasher) }))
+    .map((dependency) => ({
+      name: dependency.name,
+      version: dependency.version,
+      contentHash: fingerprintManifest(dependency.manifest, hasher),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return {
     lockfileVersion: LOCKFILE_VERSION,

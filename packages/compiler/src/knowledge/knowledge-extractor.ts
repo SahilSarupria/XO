@@ -37,7 +37,10 @@ export interface KnowledgeExtractionOptions {
  * deterministic-replay provider is what makes an end-to-end deterministic
  * test of the AI-assisted path possible — see this package's tests.)
  */
-export async function extractKnowledgeGraph(experienceDocument: ExperienceDocument, options: KnowledgeExtractionOptions = {}): Promise<KnowledgeGraph> {
+export async function extractKnowledgeGraph(
+  experienceDocument: ExperienceDocument,
+  options: KnowledgeExtractionOptions = {},
+): Promise<KnowledgeGraph> {
   const extractor =
     options.extractor ??
     new HybridKnowledgeExtractor(options.aiCore ? new AiKnowledgeExtractor(options.aiCore, options.domainHint) : undefined, options.logger);
@@ -47,7 +50,10 @@ export async function extractKnowledgeGraph(experienceDocument: ExperienceDocume
     const result = await extractor.extract(unit);
     const extraction = result.ok ? result.value : { nodes: [], edges: [] };
     if (!result.ok) {
-      options.logger?.warn('Knowledge extraction failed for a unit; it contributes no nodes', { unitId: unit.id, error: result.error.message });
+      options.logger?.warn('Knowledge extraction failed for a unit; it contributes no nodes', {
+        unitId: unit.id,
+        error: result.error.message,
+      });
     }
     perUnit.push({ unit, extraction });
   }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CapabilityExecutor } from '../src/ai/capability-executor.js';
 import { ScriptedModelProvider } from './fixtures.js';
 import type { ProviderRequest, ProviderStreamEvent } from '@xo/ai-core';
+import type { ModelProvider } from '@xo/ai-core';
 
 function request(overrides: Partial<ProviderRequest> = {}): ProviderRequest {
   return { model: 'test-model', messages: [{ role: 'user', content: 'hi' }], maxOutputTokens: 100, ...overrides };
@@ -52,10 +53,22 @@ test('stream() forwards directly to a provider that implements completeStream', 
 });
 
 test('stream() falls back to a single complete() call, emitted as one text_delta + done, for a provider without completeStream', async () => {
-  const provider: import('@xo/ai-core').ModelProvider = {
+  const provider: ModelProvider = {
     id: 'test-non-streaming',
-    describeCapabilities: () => ({ providerId: 'test-non-streaming', models: ['test-model'], supportsStreaming: false, supportsStructuredOutput: false, supportsVision: false, maxContextTokens: 1000 }),
-    complete: async () => ({ text: 'fallback text', usage: { inputTokens: 2, outputTokens: 2 }, modelUsed: 'test-model', finishReason: 'stop' }),
+    describeCapabilities: () => ({
+      providerId: 'test-non-streaming',
+      models: ['test-model'],
+      supportsStreaming: false,
+      supportsStructuredOutput: false,
+      supportsVision: false,
+      maxContextTokens: 1000,
+    }),
+    complete: async () => ({
+      text: 'fallback text',
+      usage: { inputTokens: 2, outputTokens: 2 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    }),
     // completeStream intentionally omitted — it's optional on ModelProvider
   };
   const executor = new CapabilityExecutor(provider);

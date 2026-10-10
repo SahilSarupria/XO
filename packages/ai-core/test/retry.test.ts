@@ -42,7 +42,14 @@ test('throws the final error once maxAttempts is exhausted', async () => {
 });
 
 test('isRetryable can stop retrying early even with attempts remaining', async () => {
-  const policy = new RetryPolicy({ maxAttempts: 5, initialDelayMs: 1, maxDelayMs: 10, backoffMultiplier: 2, sleep: noopSleep, isRetryable: () => false });
+  const policy = new RetryPolicy({
+    maxAttempts: 5,
+    initialDelayMs: 1,
+    maxDelayMs: 10,
+    backoffMultiplier: 2,
+    sleep: noopSleep,
+    isRetryable: () => false,
+  });
   let calls = 0;
   await assert.rejects(
     () =>

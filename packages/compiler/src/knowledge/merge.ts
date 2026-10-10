@@ -87,7 +87,16 @@ export function mergeKnowledgeNodes(perUnit: readonly PerUnitExtraction[]): Merg
     // so `producedBy` is correctly left absent rather than guessed.
     const extractorNames = new Set(candidates.map((c) => c.extractorName).filter((n): n is string => n !== undefined));
     const producedBy = extractorNames.size === 1 ? [...extractorNames][0] : undefined;
-    nodes.push({ id, semanticType, canonicalLabel, aliases, confidence, provenance, metadata, ...(producedBy !== undefined ? { producedBy } : {}) });
+    nodes.push({
+      id,
+      semanticType,
+      canonicalLabel,
+      aliases,
+      confidence,
+      provenance,
+      metadata,
+      ...(producedBy !== undefined ? { producedBy } : {}),
+    });
 
     for (const c of candidates) {
       localIdMap.set(localIdKey(c.sourceUnitId, c.localId), id);

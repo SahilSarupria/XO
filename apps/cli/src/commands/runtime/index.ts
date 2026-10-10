@@ -104,7 +104,7 @@ export function registerCommands(registry: CommandRegistry): void {
       '                                         the real runtime (composeWorkflows -> prepareCandidateWorkflowForExecution ->\n' +
       '                                         WorkflowExecutor) — never a mock, never a second execution engine.\n' +
       '                                         --input supplies a real trigger payload (e.g. \'{"claim_amount":15000}\')\n' +
-      '                                         merged into every bound step\'s structured input; nothing is inferred.\n' +
+      "                                         merged into every bound step's structured input; nothing is inferred.\n" +
       '                                         Each step lists its declared inputs/outputs (name, runtime key, type,\n' +
       '                                         derivedFrom) and whether each input is injected from a prior step,\n' +
       '                                         supplied via --input, or missing.',

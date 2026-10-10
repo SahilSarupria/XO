@@ -16,3 +16,20 @@ coverage/
 
 # Generated XO package archives (built by `xo pack` / `xo build`; not source)
 *.xo
+
+# Compiled output emitted in place or by test builds (never source)
+dist-test/
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts.map
+packages/*/test/**/*.js
+packages/*/test/**/*.js.map
+packages/*/tests/**/*.js
+packages/*/tests/**/*.js.map
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
+apps/*/test/**/*.js
+apps/*/test/**/*.js.map
+
+# Runtime data written by tests and local servers
+**/.xo-data/

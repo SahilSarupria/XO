@@ -65,7 +65,12 @@ export function deserializeKnowledgeGraph(json: string): Result<KnowledgeGraph, 
     return err(new SerializationError(ErrorCode.SERIALIZATION_PARSE_FAILED, 'Failed to parse KnowledgeGraph JSON', { cause }));
   }
   if (!isKnowledgeGraphShape(parsed)) {
-    return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, 'Parsed JSON does not have the shape of a KnowledgeGraph ({ nodes: [], edges: [] })'));
+    return err(
+      new SerializationError(
+        ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+        'Parsed JSON does not have the shape of a KnowledgeGraph ({ nodes: [], edges: [] })',
+      ),
+    );
   }
   return ok(parsed);
 }

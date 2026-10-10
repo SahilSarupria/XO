@@ -87,7 +87,15 @@ test('P0.9B: graphHash is absent (not fabricated) when the caller does not suppl
 
 test('P0.9B: contractContentHash is carried onto the receipt when supplied, absent otherwise', () => {
   const contractContentHash = ContentHash(`sha256:${'d'.repeat(64)}`);
-  const base = { requestId: RequestId('req_1'), planId: PlanId('plan_1'), capabilityId: 'c', contractId: 'c', bindingId: 'b', sourceXoirNodeIds: [], executionDurationMs: 1 };
+  const base = {
+    requestId: RequestId('req_1'),
+    planId: PlanId('plan_1'),
+    capabilityId: 'c',
+    contractId: 'c',
+    bindingId: 'b',
+    sourceXoirNodeIds: [],
+    executionDurationMs: 1,
+  };
   assert.equal(buildCapabilityAuthorityReceipt({ ...base, contractContentHash }).contractContentHash, contractContentHash);
   assert.equal(buildCapabilityAuthorityReceipt(base).contractContentHash, undefined);
 });

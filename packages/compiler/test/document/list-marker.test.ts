@@ -58,5 +58,9 @@ test('returns undefined for empty text', () => {
 // block instead of forming a separate list_item per step.
 test('detects the U+25CB WHITE CIRCLE bullet used by the real Aastha fixture', () => {
   const result = detectListMarker('○   Verify "Expected Brokerage" (from CRM) vs. "Actual Brokerage".');
-  assert.deepEqual(result, { marker: '○', remainder: 'Verify "Expected Brokerage" (from CRM) vs. "Actual Brokerage".', listKind: 'unordered' });
+  assert.deepEqual(result, {
+    marker: '○',
+    remainder: 'Verify "Expected Brokerage" (from CRM) vs. "Actual Brokerage".',
+    listKind: 'unordered',
+  });
 });

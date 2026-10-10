@@ -83,7 +83,11 @@ function pipeTo(cmd: readonly string[], text: string): Promise<boolean> {
 }
 
 /** Copies via a native clipboard tool; falls back to an OSC 52 escape (works over SSH in terminals that allow it). */
-export async function copyToClipboard(text: string, writeRaw: (s: string) => void, platform: NodeJS.Platform = process.platform): Promise<CopyResult> {
+export async function copyToClipboard(
+  text: string,
+  writeRaw: (s: string) => void,
+  platform: NodeJS.Platform = process.platform,
+): Promise<CopyResult> {
   for (const cmd of clipboardCommands(platform)) {
     if (await pipeTo(cmd, text)) return { ok: true, method: cmd[0]! };
   }

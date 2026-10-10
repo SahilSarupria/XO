@@ -1,5 +1,5 @@
 import type { GraphModel } from '../model/GraphModel.js';
-import { SpatialIndex } from '../spatial/SpatialIndex.js';
+import type { SpatialIndex } from '../spatial/SpatialIndex.js';
 import type { NodeId, Point, Rect } from '../model/types.js';
 
 export type LodLevel = 'full' | 'simplified' | 'dot';

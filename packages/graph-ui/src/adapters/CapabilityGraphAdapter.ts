@@ -45,9 +45,6 @@ export const CapabilityGraphAdapter: GraphAdapter<CapabilityGraphSource> = {
       source: a.capabilityId,
       target: a.id,
     }));
-    return GraphModel.empty()
-      .upsertNodes(capabilityNodes)
-      .upsertNodes(actionNodes)
-      .upsertEdges(edges);
+    return GraphModel.empty().upsertNodes(capabilityNodes).upsertNodes(actionNodes).upsertEdges(edges);
   },
 };

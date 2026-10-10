@@ -32,7 +32,9 @@ function makeLayer(output: KnowledgeExtractionOutput): AiCapabilityLayer {
 
 test('converts ai-core extractKnowledge items into candidate nodes', async () => {
   const output: KnowledgeExtractionOutput = {
-    items: [{ id: 'i1', type: 'definition', statement: 'Confidential Information means any non-public data.', domain: 'legal', confidence: 0.9 }],
+    items: [
+      { id: 'i1', type: 'definition', statement: 'Confidential Information means any non-public data.', domain: 'legal', confidence: 0.9 },
+    ],
     relationships: [],
   };
   const extractor = new AiKnowledgeExtractor(makeLayer(output));
@@ -46,7 +48,10 @@ test('converts ai-core extractKnowledge items into candidate nodes', async () =>
 });
 
 test('maps a "rule" item to a constraint node', async () => {
-  const output: KnowledgeExtractionOutput = { items: [{ id: 'i1', type: 'rule', statement: 'Notice must be given in writing.', domain: 'legal', confidence: 0.8 }], relationships: [] };
+  const output: KnowledgeExtractionOutput = {
+    items: [{ id: 'i1', type: 'rule', statement: 'Notice must be given in writing.', domain: 'legal', confidence: 0.8 }],
+    relationships: [],
+  };
   const extractor = new AiKnowledgeExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -73,7 +78,10 @@ test('converts ai-core relationships into candidate edge refs keyed by item id',
 });
 
 test('AI-extracted nodes have no character offset range', async () => {
-  const output: KnowledgeExtractionOutput = { items: [{ id: 'i1', type: 'fact', statement: 'x', domain: 'legal', confidence: 0.5 }], relationships: [] };
+  const output: KnowledgeExtractionOutput = {
+    items: [{ id: 'i1', type: 'fact', statement: 'x', domain: 'legal', confidence: 0.5 }],
+    relationships: [],
+  };
   const extractor = new AiKnowledgeExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);

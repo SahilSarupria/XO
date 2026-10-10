@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AiCapabilityLayer } from '@xo/ai-core';
-import { AMBIGUITY_CONFIDENCE_THRESHOLD, createDefaultBoundaryResolver, RuleBasedOnlyResolver } from '../../src/semantic/boundary-resolver.js';
+import {
+  AMBIGUITY_CONFIDENCE_THRESHOLD,
+  createDefaultBoundaryResolver,
+  RuleBasedOnlyResolver,
+} from '../../src/semantic/boundary-resolver.js';
 
 test('RuleBasedOnlyResolver returns the rule-based classification unchanged', async () => {
   const resolver = new RuleBasedOnlyResolver();

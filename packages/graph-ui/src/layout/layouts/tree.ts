@@ -23,9 +23,7 @@ export const treeLayout: LayoutEngine = {
       children.get(edge.source)!.push(edge.target);
       hasParent.add(edge.target);
     }
-    const roots = options?.seed
-      ? [options.seed]
-      : model.nodes.map((n) => n.id).filter((id) => !hasParent.has(id));
+    const roots = options?.seed ? [options.seed] : model.nodes.map((n) => n.id).filter((id) => !hasParent.has(id));
     if (roots.length === 0 && model.nodeCount > 0) roots.push(model.nodes[0]!.id);
 
     // Pass 1: BFS from the roots (iterative — safe at any depth) to assign

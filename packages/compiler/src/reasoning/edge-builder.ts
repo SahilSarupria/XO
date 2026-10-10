@@ -15,7 +15,10 @@ import type { KnowledgeProvenance } from '../knowledge/types.js';
  * against Knowledge/Capability nodes happens at the XOIR layer instead —
  * see `../xoir/reasoning-to-xoir.ts`'s doc comment for why).
  */
-export function buildReasoningEdges(perUnit: readonly PerUnitReasoningExtraction[], mergeResult: ReasoningMergeResult): readonly ReasoningEdge[] {
+export function buildReasoningEdges(
+  perUnit: readonly PerUnitReasoningExtraction[],
+  mergeResult: ReasoningMergeResult,
+): readonly ReasoningEdge[] {
   interface EdgeAccumulator {
     readonly type: ReasoningEdgeType;
     readonly fromNodeId: ReasoningNodeId;
@@ -38,7 +41,14 @@ export function buildReasoningEdges(perUnit: readonly PerUnitReasoningExtraction
         existing.count += 1;
         existing.provenance.push(ref.provenance);
       } else {
-        accumulators.set(dedupeKey, { type: ref.type, fromNodeId, toNodeId, confidenceSum: ref.confidence, count: 1, provenance: [ref.provenance] });
+        accumulators.set(dedupeKey, {
+          type: ref.type,
+          fromNodeId,
+          toNodeId,
+          confidenceSum: ref.confidence,
+          count: 1,
+          provenance: [ref.provenance],
+        });
       }
     }
   }

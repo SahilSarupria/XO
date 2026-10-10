@@ -1,5 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
-import { XoirError, ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import type { XoError } from '@xo/errors';
+import { XoirError, ErrorCode, NotFoundError } from '@xo/errors';
 import type { XoirEdge, XoirEdgeKind } from './edge-kinds.js';
 import { hashEdge, hashGraphContents, hashNode } from './hashing.js';
 import type { XoirGraphId, XoirNodeId } from './ids.js';
@@ -288,7 +289,12 @@ export class XoirGraph {
     }
 
     if (order.length !== this.nodes.size) {
-      return err(new XoirError(ErrorCode.XOIR_CYCLE_DETECTED, `Graph "${this.id}" contains a cycle${kindSet ? ` among edge kinds [${[...kindSet].join(', ')}]` : ''}; no total topological order exists`));
+      return err(
+        new XoirError(
+          ErrorCode.XOIR_CYCLE_DETECTED,
+          `Graph "${this.id}" contains a cycle${kindSet ? ` among edge kinds [${[...kindSet].join(', ')}]` : ''}; no total topological order exists`,
+        ),
+      );
     }
     return ok(order);
   }

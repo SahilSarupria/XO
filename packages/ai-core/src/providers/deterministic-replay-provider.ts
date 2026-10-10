@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { AiError, ErrorCode } from '@xo/errors';
-import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse, ProviderStreamEvent } from '../provider-types.js';
+import type {
+  ModelProvider,
+  ProviderCapabilityDescriptor,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderStreamEvent,
+} from '../provider-types.js';
 
 function hashRequest(request: ProviderRequest): string {
   const canonical = JSON.stringify({ model: request.model, messages: request.messages, responseSchema: request.responseSchema ?? null });
@@ -54,7 +60,10 @@ export class DeterministicReplayProvider implements ModelProvider {
     const key = hashRequest(request);
     const fixture = this.fixtures.get(key);
     if (!fixture) {
-      throw new AiError(ErrorCode.AI_REPLAY_FIXTURE_MISSING, `No replay fixture recorded for this exact request (model="${request.model}", ${request.messages.length} message(s))`);
+      throw new AiError(
+        ErrorCode.AI_REPLAY_FIXTURE_MISSING,
+        `No replay fixture recorded for this exact request (model="${request.model}", ${request.messages.length} message(s))`,
+      );
     }
     return fixture.response;
   }

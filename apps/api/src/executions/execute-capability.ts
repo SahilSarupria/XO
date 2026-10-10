@@ -23,15 +23,39 @@ import { ErrorCode } from '@xo/errors';
  */
 
 export type CapabilityExecutionOutcome =
-  | { readonly kind: 'succeeded'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }
-  | { readonly kind: 'waiting_for_human'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }
+  | {
+      readonly kind: 'succeeded';
+      readonly output: unknown;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly graphHash?: string;
+      readonly contractContentHash?: string;
+    }
+  | {
+      readonly kind: 'waiting_for_human';
+      readonly output: unknown;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly graphHash?: string;
+      readonly contractContentHash?: string;
+    }
   | { readonly kind: 'unresolved'; readonly status: 'unresolved' | 'ambiguous' | 'denied'; readonly reason: string }
   | { readonly kind: 'invalid_input'; readonly issues: readonly { readonly path: string; readonly message: string }[] }
   | { readonly kind: 'error'; readonly errorCode: string; readonly errorMessage: string };
 
 /** Same shape as `CapabilityExecutionOutcome`'s failure variants, plus the two real resume terminals — see `resume-human-task.ts`'s doc comment for what `'succeeded'`/`'rejected'` mean here. */
 export type CapabilityResumeOutcome =
-  | { readonly kind: 'succeeded'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }
+  | {
+      readonly kind: 'succeeded';
+      readonly output: unknown;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly graphHash?: string;
+      readonly contractContentHash?: string;
+    }
   | { readonly kind: 'rejected'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string }
   | { readonly kind: 'unresolved'; readonly status: 'unresolved' | 'ambiguous' | 'denied'; readonly reason: string }
   | { readonly kind: 'invalid_input'; readonly issues: readonly { readonly path: string; readonly message: string }[] }
@@ -42,7 +66,9 @@ interface RebuiltContract {
   readonly binding: CapabilityBinding;
 }
 
-type RebuildResult = { readonly ok: true; readonly value: RebuiltContract } | { readonly ok: false; readonly outcome: CapabilityExecutionOutcome | CapabilityResumeOutcome };
+type RebuildResult =
+  | { readonly ok: true; readonly value: RebuiltContract }
+  | { readonly ok: false; readonly outcome: CapabilityExecutionOutcome | CapabilityResumeOutcome };
 
 /**
  * Shared by both `executeApprovedCapability` and `resumeCapabilityExecution`
@@ -55,11 +81,13 @@ type RebuildResult = { readonly ok: true; readonly value: RebuiltContract } | { 
  */
 function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: string): RebuildResult {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
-  if (!graphResult.ok) return { ok: false, outcome: { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message } };
+  if (!graphResult.ok)
+    return { ok: false, outcome: { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message } };
   const graph = graphResult.value;
 
   const contractResult = buildSemanticCapabilityContract(graph, XoirNodeId(capabilityId));
-  if (!contractResult.ok) return { ok: false, outcome: { kind: 'error', errorCode: contractResult.error.code, errorMessage: contractResult.error.message } };
+  if (!contractResult.ok)
+    return { ok: false, outcome: { kind: 'error', errorCode: contractResult.error.code, errorMessage: contractResult.error.message } };
   const contract = contractResult.value;
 
   // Re-resolving the binding at RESUME time (not just at original
@@ -120,7 +148,11 @@ function findInputSchema(graph: XoirGraph, contractId: string) {
  *      section for why this is NOT the `/runtime/execute` route's known
  *      `allowAllPermissionGate` fail-open behavior).
  */
-export async function executeApprovedCapability(compiledGraphJson: unknown, capabilityId: string, input: unknown): Promise<CapabilityExecutionOutcome> {
+export async function executeApprovedCapability(
+  compiledGraphJson: unknown,
+  capabilityId: string,
+  input: unknown,
+): Promise<CapabilityExecutionOutcome> {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const graph = graphResult.value;
@@ -148,7 +180,8 @@ export async function executeApprovedCapability(compiledGraphJson: unknown, capa
     if (!execResult.ok) return { kind: 'error', errorCode: execResult.error.code, errorMessage: execResult.error.message };
 
     const output = execResult.value.output;
-    const isEscalation = typeof output === 'object' && output !== null && (output as Record<string, unknown>)['status'] === 'escalation_required';
+    const isEscalation =
+      typeof output === 'object' && output !== null && (output as Record<string, unknown>)['status'] === 'escalation_required';
     const shared = {
       output,
       ...(execResult.value.contractId !== undefined ? { contractId: execResult.value.contractId } : {}),
@@ -181,7 +214,13 @@ export async function executeApprovedCapability(compiledGraphJson: unknown, capa
  * resolver, so a client resolving a task cannot smuggle a different
  * business input in through the decision request.
  */
-export async function resumeCapabilityExecution(compiledGraphJson: unknown, capabilityId: string, originalInput: unknown, decision: 'approve' | 'reject', decisionData: Readonly<Record<string, unknown>> | undefined): Promise<CapabilityResumeOutcome> {
+export async function resumeCapabilityExecution(
+  compiledGraphJson: unknown,
+  capabilityId: string,
+  originalInput: unknown,
+  decision: 'approve' | 'reject',
+  decisionData: Readonly<Record<string, unknown>> | undefined,
+): Promise<CapabilityResumeOutcome> {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const graph = graphResult.value;
@@ -198,7 +237,13 @@ export async function resumeCapabilityExecution(compiledGraphJson: unknown, capa
     // pure, structured, business-level rejection record.
     return {
       kind: 'rejected',
-      output: { status: 'rejected_by_human', capabilityId: contract.id, capabilityName: contract.name, decision: 'reject', ...(decisionData !== undefined ? { decisionData } : {}) },
+      output: {
+        status: 'rejected_by_human',
+        capabilityId: contract.id,
+        capabilityName: contract.name,
+        decision: 'reject',
+        ...(decisionData !== undefined ? { decisionData } : {}),
+      },
       contractId: contract.id,
       bindingId: binding.id,
     };
@@ -233,7 +278,10 @@ export async function resumeCapabilityExecution(compiledGraphJson: unknown, capa
   // it — see `resume-human-task.ts`); for a binding that DOES branch on
   // `input.humanDecision` (this milestone's test-only fixture), this is
   // what makes a materially different result possible.
-  const mergedInput = { ...(typeof originalInput === 'object' && originalInput !== null ? originalInput : {}), humanDecision: { decision: 'approve', data: decisionData ?? {} } };
+  const mergedInput = {
+    ...(typeof originalInput === 'object' && originalInput !== null ? originalInput : {}),
+    humanDecision: { decision: 'approve', data: decisionData ?? {} },
+  };
 
   try {
     const execResult = await executeResolvedContract(contract, binding, {
@@ -244,7 +292,8 @@ export async function resumeCapabilityExecution(compiledGraphJson: unknown, capa
     if (!execResult.ok) return { kind: 'error', errorCode: execResult.error.code, errorMessage: execResult.error.message };
 
     const rawOutput = execResult.value.output;
-    const isStillEscalating = typeof rawOutput === 'object' && rawOutput !== null && (rawOutput as Record<string, unknown>)['status'] === 'escalation_required';
+    const isStillEscalating =
+      typeof rawOutput === 'object' && rawOutput !== null && (rawOutput as Record<string, unknown>)['status'] === 'escalation_required';
     // For a binding whose `evaluate` still (deterministically) reports
     // an escalation even with the human's decision merged into input —
     // exactly what `ActionEscalationBindingResolver` always does — the
@@ -255,7 +304,16 @@ export async function resumeCapabilityExecution(compiledGraphJson: unknown, capa
     // `'succeeded'` means here — the original escalation is preserved
     // verbatim (`originalEscalation`) so nothing is hidden or implied
     // that didn't happen.
-    const output = isStillEscalating ? { status: 'human_confirmed', capabilityId: contract.id, capabilityName: contract.name, decision: 'approve', originalEscalation: rawOutput, ...(decisionData !== undefined ? { decisionData } : {}) } : rawOutput;
+    const output = isStillEscalating
+      ? {
+          status: 'human_confirmed',
+          capabilityId: contract.id,
+          capabilityName: contract.name,
+          decision: 'approve',
+          originalEscalation: rawOutput,
+          ...(decisionData !== undefined ? { decisionData } : {}),
+        }
+      : rawOutput;
 
     return {
       kind: 'succeeded',

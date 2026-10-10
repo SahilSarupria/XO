@@ -32,7 +32,10 @@ export interface DiscoverCapabilitiesOptions {
   readonly previewLabel: string;
 }
 
-export function discoverAndResolveCapabilities(graph: XoirGraph, options: DiscoverCapabilitiesOptions): Result<LowerCapabilitiesResult, PackageError> {
+export function discoverAndResolveCapabilities(
+  graph: XoirGraph,
+  options: DiscoverCapabilitiesOptions,
+): Result<LowerCapabilitiesResult, PackageError> {
   const preview = packageXoirGraph(graph, {
     identity: { name: 'preview', version: '0.0.0', creatorDid: 'did:xo:preview' },
     metadata: { domain: 'preview', description: `${options.previewLabel} — not a real package`, scope: [], limitations: [] },

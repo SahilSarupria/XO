@@ -37,7 +37,10 @@ test('does not conflate two different numbers via stemming', () => {
 // --- scoreLink: exact_label tier --------------------------------------------
 
 test('exact label match scores high confidence regardless of unit', () => {
-  const score = scoreLink('If the claim assessment amount exceeds 5000, then reject the claim.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-b' });
+  const score = scoreLink('If the claim assessment amount exceeds 5000, then reject the claim.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-b',
+  });
   assert.ok(score);
   assert.equal(score!.evidence.kind, 'exact_label');
   assert.equal(score!.confidence.basis, 'observed');
@@ -53,16 +56,22 @@ test('exact label match is case- and whitespace-insensitive', () => {
 // --- scoreLink: same_unit_term_overlap tier ---------------------------------
 
 test('same unit + shared term links at moderate/inferred confidence when no exact match exists', () => {
-  const score = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a' });
+  const score = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+  });
   assert.ok(score);
   assert.equal(score!.evidence.kind, 'same_unit_term_overlap');
   assert.equal(score!.confidence.basis, 'inferred');
-  assert.ok(score!.confidence.score < 0.85, 'must stay well below the exact-match tier\'s score');
+  assert.ok(score!.confidence.score < 0.85, "must stay well below the exact-match tier's score");
   assert.deepEqual(score!.evidence.sharedTerms, ['claim']);
 });
 
 test('same unit alone, with zero shared vocabulary, is NOT sufficient evidence', () => {
-  const score = scoreLink('The building has three floors and a basement.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a' });
+  const score = scoreLink('The building has three floors and a basement.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+  });
   assert.equal(score, undefined);
 });
 
@@ -72,13 +81,19 @@ test('shared vocabulary alone, in a DIFFERENT unit, is NOT sufficient evidence (
 });
 
 test('unrelated capability and rule in the same document must not link merely by co-occurring', () => {
-  const score = scoreLink('Claims above 5000 may be rejected.', 'unit-elsewhere', { label: 'Contact 24-Hour Call Centre', experienceUnitId: 'unit-callcentre' });
+  const score = scoreLink('Claims above 5000 may be rejected.', 'unit-elsewhere', {
+    label: 'Contact 24-Hour Call Centre',
+    experienceUnitId: 'unit-callcentre',
+  });
   assert.equal(score, undefined);
 });
 
 test('similar-looking labels ("Policy" / "Policy Copy" / "Policy Schedule" / "Policy Number") are not conflated with each other by generic overlap alone', () => {
   // "Policy Copy" legitimately exact-matches text that literally contains it — that's correct, unchanged exact-match behavior.
-  const exact = scoreLink('Please retain your Policy Copy for your records.', 'unit-x', { label: 'Policy Copy', experienceUnitId: 'unit-y' });
+  const exact = scoreLink('Please retain your Policy Copy for your records.', 'unit-x', {
+    label: 'Policy Copy',
+    experienceUnitId: 'unit-y',
+  });
   assert.ok(exact);
   assert.equal(exact!.evidence.kind, 'exact_label');
 
@@ -103,7 +118,10 @@ test('an empty or whitespace-only label never produces a link', () => {
 
 test('sameUnitText, when provided, is used for same-unit overlap scoring instead of the bare label', () => {
   // "Review Action" alone shares nothing with the rule text below.
-  const withoutSameUnitText = scoreLink('manager approval is required before the claim is settled', 'unit-a', { label: 'Review Action', experienceUnitId: 'unit-a' });
+  const withoutSameUnitText = scoreLink('manager approval is required before the claim is settled', 'unit-a', {
+    label: 'Review Action',
+    experienceUnitId: 'unit-a',
+  });
   assert.equal(withoutSameUnitText, undefined);
 
   // But its description (the full originating sentence) does share "claim".
@@ -132,13 +150,24 @@ test('sameUnitText never affects exact_label matching — that tier still checks
 });
 
 test('an empty sameUnitText falls back to producing no same-unit evidence when label is also otherwise non-overlapping', () => {
-  const score = scoreLink('the building has three floors', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a', sameUnitText: '   ' });
+  const score = scoreLink('the building has three floors', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+    sameUnitText: '   ',
+  });
   assert.equal(score, undefined);
 });
 
 test('omitting sameUnitText entirely preserves prior behavior exactly (falls back to label)', () => {
-  const withField = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a' });
-  const withUndefinedField = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a', sameUnitText: undefined });
+  const withField = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+  });
+  const withUndefinedField = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+    sameUnitText: undefined,
+  });
   assert.deepEqual(withField, withUndefinedField);
 });
 
@@ -168,21 +197,29 @@ test('a single isolated numeric token shared between two same-unit texts does NO
 });
 
 test('multiple isolated numeric tokens shared between two same-unit texts still do NOT create a link', () => {
-  const score = scoreLink('1. Definitions. 1.1 Insured Property means buildings and machinery. 1.2 Claim means a written demand.', 'unit-a', {
-    label: 'Schedule Action',
-    experienceUnitId: 'unit-a',
-    sameUnitText: '1.4 Excess figure appears in the attached Annexure document.',
-  });
+  const score = scoreLink(
+    '1. Definitions. 1.1 Insured Property means buildings and machinery. 1.2 Claim means a written demand.',
+    'unit-a',
+    {
+      label: 'Schedule Action',
+      experienceUnitId: 'unit-a',
+      sameUnitText: '1.4 Excess figure appears in the attached Annexure document.',
+    },
+  );
   // Shares "1" (from "1.1"/"1.2" vs "1.4") — still purely numeric, still insufficient, even though more than one number-shaped fragment is present. No real word is shared on purpose, to isolate the numeric-only case.
   assert.equal(score, undefined);
 });
 
 test('a numeric token PLUS a real shared word still links — numeric evidence corroborates, it is only insufficient alone', () => {
-  const score = scoreLink('3. Deductibles and Limits. 3.1 A deductible of INR 25,000 applies to each occurrence unless the Annexure states a higher figure.', 'unit-a', {
-    label: 'Higher Deductible Handling',
-    experienceUnitId: 'unit-a',
-    sameUnitText: '3.1 A deductible of INR 25,000 applies to each covered occurrence unless the Annexure states a higher figure.',
-  });
+  const score = scoreLink(
+    '3. Deductibles and Limits. 3.1 A deductible of INR 25,000 applies to each occurrence unless the Annexure states a higher figure.',
+    'unit-a',
+    {
+      label: 'Higher Deductible Handling',
+      experienceUnitId: 'unit-a',
+      sameUnitText: '3.1 A deductible of INR 25,000 applies to each covered occurrence unless the Annexure states a higher figure.',
+    },
+  );
   assert.ok(score, 'shared "deductible" alongside the shared digit "3" is sufficient evidence');
   assert.equal(score!.evidence.kind, 'same_unit_term_overlap');
   assert.ok(score!.evidence.sharedTerms!.includes('deductible'));
@@ -203,7 +240,10 @@ test('a genuinely specific, meaningful shared number (not clause numbering) stil
 });
 
 test('meaningful textual overlap with no numeric tokens at all is entirely unaffected by the numeric-sufficiency rule', () => {
-  const score = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', { label: 'Claim Assessment', experienceUnitId: 'unit-a' });
+  const score = scoreLink('If the amount claimed exceeds 5000, then reject the claim.', 'unit-a', {
+    label: 'Claim Assessment',
+    experienceUnitId: 'unit-a',
+  });
   assert.ok(score);
   assert.equal(score!.evidence.kind, 'same_unit_term_overlap');
   assert.deepEqual(score!.evidence.sharedTerms, ['claim']);
@@ -213,20 +253,33 @@ test('meaningful textual overlap with no numeric tokens at all is entirely unaff
 
 test('a single shared textual term is rejected as evidence when the term appears in 2+ candidate nodes (ambiguous)', () => {
   const frequency = new Map([['claim', 6]]); // shared by 6 different candidates in the pool
-  const score = scoreLink('any information provided in the claim is materially incorrect', 'unit-a', { label: '6. Claims Procedure', experienceUnitId: 'unit-a' }, frequency);
+  const score = scoreLink(
+    'any information provided in the claim is materially incorrect',
+    'unit-a',
+    { label: '6. Claims Procedure', experienceUnitId: 'unit-a' },
+    frequency,
+  );
   assert.equal(score, undefined, 'a term shared by several candidates cannot, alone, tell you which one is meant');
 });
 
 test('a single shared textual term is accepted as evidence when the term appears in exactly 1 candidate node (candidate-unique)', () => {
   const frequency = new Map([['claim', 1]]); // this is the only candidate mentioning "claim"
-  const score = scoreLink('any information provided in the claim is materially incorrect', 'unit-a', { label: '6. Claims Procedure', experienceUnitId: 'unit-a' }, frequency);
+  const score = scoreLink(
+    'any information provided in the claim is materially incorrect',
+    'unit-a',
+    { label: '6. Claims Procedure', experienceUnitId: 'unit-a' },
+    frequency,
+  );
   assert.ok(score, 'a candidate-unique term is exactly as trustworthy as before — nothing else could have matched it');
   assert.equal(score!.evidence.kind, 'same_unit_term_overlap');
   assert.deepEqual(score!.evidence.sharedTerms, ['claim']);
 });
 
 test('a single shared textual term with NO frequency data supplied at all (default empty map) is treated as unique — preserves prior behavior for callers that do not opt in', () => {
-  const score = scoreLink('any information provided in the claim is materially incorrect', 'unit-a', { label: '6. Claims Procedure', experienceUnitId: 'unit-a' });
+  const score = scoreLink('any information provided in the claim is materially incorrect', 'unit-a', {
+    label: '6. Claims Procedure',
+    experienceUnitId: 'unit-a',
+  });
   assert.ok(score, 'omitting candidateTermFrequency entirely must behave exactly as it did before this feature existed');
   assert.deepEqual(score!.evidence.sharedTerms, ['claim']);
 });
@@ -240,19 +293,29 @@ test('two or more shared textual terms remain sufficient evidence even when EVER
     ['insurer', 7],
     ['loss', 6],
   ]);
-  const score = scoreLink('please advise the insurer as soon as any loss occurs', 'unit-a', { label: 'Insurer Loss Advisory Procedure', experienceUnitId: 'unit-a' }, frequency);
-  assert.ok(score, 'multi-term overlap remains sufficient regardless of each term\'s own frequency');
+  const score = scoreLink(
+    'please advise the insurer as soon as any loss occurs',
+    'unit-a',
+    { label: 'Insurer Loss Advisory Procedure', experienceUnitId: 'unit-a' },
+    frequency,
+  );
+  assert.ok(score, "multi-term overlap remains sufficient regardless of each term's own frequency");
   assert.equal(score!.evidence.kind, 'same_unit_term_overlap');
   assert.deepEqual([...score!.evidence.sharedTerms!].sort(), ['insurer', 'loss']);
 });
 
 test('a numeric token plus one ambiguous textual token still links — the pair counts as 2+ shared terms, exempt from the single-term ambiguity check', () => {
   const frequency = new Map([['deductible', 5]]); // shared by 5 different candidates — would fail the single-term check alone
-  const score = scoreLink('3.1 A deductible of INR 25,000 applies to each occurrence', 'unit-a', {
-    label: 'Deductible Clause',
-    experienceUnitId: 'unit-a',
-    sameUnitText: '3.2 A deductible of INR 50,000 applies to each occurrence',
-  }, frequency);
+  const score = scoreLink(
+    '3.1 A deductible of INR 25,000 applies to each occurrence',
+    'unit-a',
+    {
+      label: 'Deductible Clause',
+      experienceUnitId: 'unit-a',
+      sameUnitText: '3.2 A deductible of INR 50,000 applies to each occurrence',
+    },
+    frequency,
+  );
   assert.ok(score, 'shared "3" plus shared "deductible" is a 2-term match, not subject to the single-term ambiguity gate');
   assert.ok(score!.evidence.sharedTerms!.includes('3'));
   assert.ok(score!.evidence.sharedTerms!.includes('deductible'));
@@ -263,17 +326,26 @@ test('an ambiguous single textual term stays rejected even when it is ALSO numer
   // a lone numeric token is rejected by the (unchanged) numeric rule
   // regardless of any frequency data.
   const frequency = new Map([['7', 40]]);
-  const score = scoreLink('7. Decision Rules', 'unit-a', { label: 'Schedule Action', experienceUnitId: 'unit-a', sameUnitText: '7.6 Some unrelated sub-clause' }, frequency);
+  const score = scoreLink(
+    '7. Decision Rules',
+    'unit-a',
+    { label: 'Schedule Action', experienceUnitId: 'unit-a', sameUnitText: '7.6 Some unrelated sub-clause' },
+    frequency,
+  );
   assert.equal(score, undefined);
 });
 
 // --- scoreStructuralLink: structural containment + lexical corroboration (Problem C) -
 
-test('structural acceptance: a reasoning node nested inside a capability\'s section links, with meaningful lexical overlap', () => {
-  const score = scoreStructuralLink('If the amount is below the minimum threshold, reject the charge.', ['Root', 'Create a Charge', 'Response'], {
-    sectionPath: ['Root', 'Create a Charge'],
-    lexicalText: 'Create a Charge Creates a new charge for the requested amount.',
-  });
+test("structural acceptance: a reasoning node nested inside a capability's section links, with meaningful lexical overlap", () => {
+  const score = scoreStructuralLink(
+    'If the amount is below the minimum threshold, reject the charge.',
+    ['Root', 'Create a Charge', 'Response'],
+    {
+      sectionPath: ['Root', 'Create a Charge'],
+      lexicalText: 'Create a Charge Creates a new charge for the requested amount.',
+    },
+  );
   assert.ok(score, 'structurally nested AND sharing "charge"/"amount" must link');
   assert.equal(score!.evidence.kind, 'structural_containment');
   assert.ok(score!.evidence.sharedTerms!.some((t) => t === 'charge' || t === 'amount'));
@@ -300,10 +372,14 @@ test('same-unit behavior is unaffected: identical sectionPath (same section, not
 });
 
 test('root exclusion: a capability whose sectionPath is document-root-level (length 1) never structurally governs anything, even with strong lexical overlap', () => {
-  const score = scoreStructuralLink('the charge amount must be validated before capture', ['Payments API Reference', 'Create a Charge', 'Response'], {
-    sectionPath: ['Payments API Reference'],
-    lexicalText: 'Payments API Reference charge amount capture validated',
-  });
+  const score = scoreStructuralLink(
+    'the charge amount must be validated before capture',
+    ['Payments API Reference', 'Create a Charge', 'Response'],
+    {
+      sectionPath: ['Payments API Reference'],
+      lexicalText: 'Payments API Reference charge amount capture validated',
+    },
+  );
   assert.equal(score, undefined, 'a document-title-level capability must never be a valid structural governing ancestor');
 });
 
@@ -317,14 +393,22 @@ test('numeric-only rejection: a structural candidate whose only lexical overlap 
     sectionPath: ['Root', 'Decision Rules'],
     lexicalText: '7. Decision Rules',
   });
-  assert.equal(score, undefined, 'a bare shared digit ("7") must not establish structural corroboration, mirroring Problem B\'s numeric-only rule');
+  assert.equal(
+    score,
+    undefined,
+    'a bare shared digit ("7") must not establish structural corroboration, mirroring Problem B\'s numeric-only rule',
+  );
 });
 
 test('no lexical corroboration: a structurally descendant reasoning node with zero shared vocabulary does not link', () => {
-  const score = scoreStructuralLink('the disinfectant must be applied for at least sixty seconds', ['Root', 'Create a Charge', 'Response'], {
-    sectionPath: ['Root', 'Create a Charge'],
-    lexicalText: 'Create a Charge for the requested amount',
-  });
+  const score = scoreStructuralLink(
+    'the disinfectant must be applied for at least sixty seconds',
+    ['Root', 'Create a Charge', 'Response'],
+    {
+      sectionPath: ['Root', 'Create a Charge'],
+      lexicalText: 'Create a Charge for the requested amount',
+    },
+  );
   assert.equal(score, undefined);
 });
 
@@ -352,9 +436,16 @@ test('nearest-ancestor primitive: isStrictSectionPathPrefix correctly distinguis
   assert.ok(child.length > parent.length);
 });
 
-test('confidence: structural_containment confidence is fixed and strictly below same_unit_term_overlap\'s floor', () => {
-  const structural = scoreStructuralLink('the charge amount', ['Root', 'Create a Charge', 'Response'], { sectionPath: ['Root', 'Create a Charge'], lexicalText: 'Create a Charge for the requested amount' });
-  const sameUnit = scoreLink('the charge amount', 'unit-a', { label: 'Create a Charge', experienceUnitId: 'unit-a', sameUnitText: 'Create a Charge for the requested amount' });
+test("confidence: structural_containment confidence is fixed and strictly below same_unit_term_overlap's floor", () => {
+  const structural = scoreStructuralLink('the charge amount', ['Root', 'Create a Charge', 'Response'], {
+    sectionPath: ['Root', 'Create a Charge'],
+    lexicalText: 'Create a Charge for the requested amount',
+  });
+  const sameUnit = scoreLink('the charge amount', 'unit-a', {
+    label: 'Create a Charge',
+    experienceUnitId: 'unit-a',
+    sameUnitText: 'Create a Charge for the requested amount',
+  });
   assert.ok(structural && sameUnit);
   assert.ok(structural!.confidence.score < sameUnit!.confidence.score);
   assert.equal(structural!.confidence.score, 0.4);
@@ -366,7 +457,12 @@ test('B.1 interaction: structural_containment never consults candidate-pool term
   // (frequency >= 2) is still accepted here, confirming the two tiers
   // are genuinely independent, not that one silently defers to the other.
   const ambiguousFrequency = new Map([['claim', 6]]);
-  const sameUnitResult = scoreLink('the claim was processed', 'unit-a', { label: 'Claims Procedure', experienceUnitId: 'unit-a' }, ambiguousFrequency);
+  const sameUnitResult = scoreLink(
+    'the claim was processed',
+    'unit-a',
+    { label: 'Claims Procedure', experienceUnitId: 'unit-a' },
+    ambiguousFrequency,
+  );
   assert.equal(sameUnitResult, undefined, 'sanity: this term is indeed B.1-ambiguous in the same-unit tier');
 
   const structuralResult = scoreStructuralLink('the claim was processed incorrectly', ['Root', 'Claims Procedure', 'Errors'], {

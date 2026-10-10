@@ -1,4 +1,10 @@
-import type { CapabilityDeclaration, CapabilityExecutionDeclaration, CapabilityInputPropertyType, CapabilityInputSchema, ModelFamily } from '@xo/types';
+import type {
+  CapabilityDeclaration,
+  CapabilityExecutionDeclaration,
+  CapabilityInputPropertyType,
+  CapabilityInputSchema,
+  ModelFamily,
+} from '@xo/types';
 import type { XoirGraph } from '@xo/xoir';
 import { XoirNodeId, createManifest } from '@xo/xoir';
 import { ContentHash } from '@xo/types';
@@ -63,7 +69,10 @@ import {
  * `toCapabilityDeclaration`, which dispatches on `implementationClass`
  * and leaves the deterministic-rule branch untouched.
  */
-const LOWERABLE_IMPLEMENTATION_CLASSES: ReadonlySet<CapabilityBinding['implementationClass']> = new Set(['deterministic_rule', 'human_in_the_loop']);
+const LOWERABLE_IMPLEMENTATION_CLASSES: ReadonlySet<CapabilityBinding['implementationClass']> = new Set([
+  'deterministic_rule',
+  'human_in_the_loop',
+]);
 
 /**
  * A `deterministic_rule` binding is a pure, synchronous, in-process
@@ -295,7 +304,11 @@ function deriveInputSchemaFromDerivation(binding: CapabilityBinding): Capability
  * here). No new resolution logic; every value here already existed on
  * `contract`/`binding` before this function ran.
  */
-function toCapabilityDeclaration(contract: SemanticCapabilityContract, binding: CapabilityBinding, providerCompatibility: readonly ModelFamily[]): CapabilityDeclaration {
+function toCapabilityDeclaration(
+  contract: SemanticCapabilityContract,
+  binding: CapabilityBinding,
+  providerCompatibility: readonly ModelFamily[],
+): CapabilityDeclaration {
   const inputSchema = deriveInputSchemaFromDerivation(binding);
   const execution: CapabilityExecutionDeclaration = {
     mode: executionModeFor(binding),
@@ -338,7 +351,9 @@ function executionModeFor(binding: CapabilityBinding): CapabilityExecutionDeclar
     case 'human_in_the_loop':
       return 'human_in_the_loop';
     default:
-      throw new Error(`toCapabilityDeclaration: no CapabilityExecutionMode mapping for implementationClass "${binding.implementationClass}" — add one to executionModeFor before adding it to LOWERABLE_IMPLEMENTATION_CLASSES`);
+      throw new Error(
+        `toCapabilityDeclaration: no CapabilityExecutionMode mapping for implementationClass "${binding.implementationClass}" — add one to executionModeFor before adding it to LOWERABLE_IMPLEMENTATION_CLASSES`,
+      );
   }
 }
 
@@ -350,7 +365,9 @@ function estimatesFor(binding: CapabilityBinding): { readonly cost: typeof DETER
     case 'human_in_the_loop':
       return { cost: HUMAN_IN_THE_LOOP_ESTIMATED_COST, latencyMs: HUMAN_IN_THE_LOOP_ESTIMATED_LATENCY_MS };
     default:
-      throw new Error(`toCapabilityDeclaration: no cost/latency estimate for implementationClass "${binding.implementationClass}" — add one before adding it to LOWERABLE_IMPLEMENTATION_CLASSES`);
+      throw new Error(
+        `toCapabilityDeclaration: no cost/latency estimate for implementationClass "${binding.implementationClass}" — add one before adding it to LOWERABLE_IMPLEMENTATION_CLASSES`,
+      );
   }
 }
 
@@ -455,12 +472,22 @@ export function lowerCapabilitiesToManifest(graph: XoirGraph, options: LowerCapa
     if (outcome.status === 'resolved' && LOWERABLE_IMPLEMENTATION_CLASSES.has(outcome.binding.implementationClass)) {
       const invalidPermission = findInvalidRequiredPermission(contract.requiredPermissions);
       if (invalidPermission !== undefined) {
-        outcomes.push({ contractId: contract.id, name: contract.name, status: 'resolved', reason: `Binding resolved to a lowerable implementationClass, but contract "${contract.id}" declares an invalid required permission ("${invalidPermission}") that does not parse as a well-formed PermissionId — refusing to promote this capability to an executable manifest declaration with unverified authorization metadata` });
+        outcomes.push({
+          contractId: contract.id,
+          name: contract.name,
+          status: 'resolved',
+          reason: `Binding resolved to a lowerable implementationClass, but contract "${contract.id}" declares an invalid required permission ("${invalidPermission}") that does not parse as a well-formed PermissionId — refusing to promote this capability to an executable manifest declaration with unverified authorization metadata`,
+        });
         continue;
       }
       const embedResult = embedResolvedContractInCapabilityNode(graph, XoirNodeId(contract.id), contract);
       if (!embedResult.ok) {
-        outcomes.push({ contractId: contract.id, name: contract.name, status: 'resolved', reason: `Binding resolved to a lowerable implementationClass, but embedding its contract into the packaged knowledge graph failed, so this capability is not promoted to an executable manifest declaration: [${embedResult.error.code}] ${embedResult.error.message}` });
+        outcomes.push({
+          contractId: contract.id,
+          name: contract.name,
+          status: 'resolved',
+          reason: `Binding resolved to a lowerable implementationClass, but embedding its contract into the packaged knowledge graph failed, so this capability is not promoted to an executable manifest declaration: [${embedResult.error.code}] ${embedResult.error.message}`,
+        });
         continue;
       }
       const declaration = toCapabilityDeclaration(contract, outcome.binding, providerCompatibility);
@@ -473,7 +500,12 @@ export function lowerCapabilitiesToManifest(graph: XoirGraph, options: LowerCapa
       // non-lowerable outcome. Not a `denied`/`unresolved` outcome in its
       // own right, so it's recorded with its real status and a reason
       // explaining why it still wasn't lowered.
-      outcomes.push({ contractId: contract.id, name: contract.name, status: 'resolved', reason: `Binding resolved to implementationClass "${outcome.binding.implementationClass}", which this compiler's lowering module does not yet promote into a manifest CapabilityDeclaration` });
+      outcomes.push({
+        contractId: contract.id,
+        name: contract.name,
+        status: 'resolved',
+        reason: `Binding resolved to implementationClass "${outcome.binding.implementationClass}", which this compiler's lowering module does not yet promote into a manifest CapabilityDeclaration`,
+      });
     } else {
       outcomes.push({ contractId: contract.id, name: contract.name, status: outcome.status, reason: outcome.reason });
     }

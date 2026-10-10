@@ -39,7 +39,10 @@ test('assemble() omits mergedKnowledgeGraph entirely when none is supplied', () 
 });
 
 test('assemble() no longer extracts tool schemas (the real @xo/ai-core ModelProvider layer has no tool-calling concept)', () => {
-  const withToolLikeContent = new ContextAssembler().assemble({ capability, slices: [slice('prompt_strategies', JSON.stringify({ toolSchemas: [{ name: 'x', description: 'y', inputSchema: {} }] }))] });
+  const withToolLikeContent = new ContextAssembler().assemble({
+    capability,
+    slices: [slice('prompt_strategies', JSON.stringify({ toolSchemas: [{ name: 'x', description: 'y', inputSchema: {} }] }))],
+  });
   assert.equal('toolSchemas' in withToolLikeContent, false);
 });
 

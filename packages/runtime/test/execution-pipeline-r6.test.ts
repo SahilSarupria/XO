@@ -46,7 +46,12 @@ function claimEvaluationCapability(overrides: Partial<CapabilityDeclaration['exe
     estimatedCost: { currency: 'USD', amount: 0 },
     estimatedLatencyMs: 5,
     confidence: { score: 0.9, basis: 'expert_review' },
-    execution: { mode: 'deterministic_rule', contractId: 'capability:claim-evaluation', inputSchema: { type: 'object', properties: { claimed_loss_amount: { type: 'number' } }, required: ['claimed_loss_amount'] }, ...overrides },
+    execution: {
+      mode: 'deterministic_rule',
+      contractId: 'capability:claim-evaluation',
+      inputSchema: { type: 'object', properties: { claimed_loss_amount: { type: 'number' } }, required: ['claimed_loss_amount'] },
+      ...overrides,
+    },
   };
 }
 
@@ -59,7 +64,16 @@ function claimEvaluationContract(): SemanticCapabilityContract {
     outputs: [],
     requiredPermissions: [],
     determinism: 'deterministic',
-    rules: [{ sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 }],
+    rules: [
+      {
+        sourceNodeId: 'decision:deny-large-claim',
+        kind: 'decision_node',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'deny the claim',
+        exceptionConditions: [],
+        confidence: 0.9,
+      },
+    ],
     confidence: 0.9,
     sourceRefs: [],
     sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:deny-large-claim'],
@@ -168,7 +182,9 @@ test('R6-retry: a model-strategy failure classified retryable succeeds on a late
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
     provider.failNextCallsWith = { error: new Error('transient provider error'), count: 2 };
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 } });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 },
+    });
     const result = await engine.execute(modelRequest());
 
     assert.equal(result.session.status, 'completed');
@@ -187,7 +203,9 @@ test('R6-retry: maxAttempts is respected — retry stops and reports RUNTIME_RET
     const provider = new ScriptedModelProvider();
     provider.failNextCallsWith = { error: new Error('permanently down'), count: 100 };
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 } });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 },
+    });
     const result = await engine.execute(modelRequest());
 
     assert.equal(provider.requests.length, 3, 'never more than maxAttempts calls');
@@ -208,7 +226,11 @@ test('R6-retry: default behavior (no retry option configured) is unchanged — e
     const result = await engine.execute(modelRequest());
 
     assert.equal(provider.requests.length, 1, 'no retry option configured — behavior identical to every pre-R6 caller');
-    assert.equal(result.error?.code, ErrorCode.RUNTIME_EXECUTION_FAILED, 'a single, non-retried failure is NOT reported as RUNTIME_RETRY_EXHAUSTED');
+    assert.equal(
+      result.error?.code,
+      ErrorCode.RUNTIME_EXECUTION_FAILED,
+      'a single, non-retried failure is NOT reported as RUNTIME_RETRY_EXHAUSTED',
+    );
   });
 });
 
@@ -236,7 +258,10 @@ test('R6-retry: a deterministic_rule failure is NEVER retried, regardless of con
       requiredPermissions: [],
     });
     assert.equal(registered.ok, true);
-    const authority = new RuntimeCapabilityExecutor({ registry: authorityRegistry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+    const authority = new RuntimeCapabilityExecutor({
+      registry: authorityRegistry,
+      permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
       capabilityAuthorityExecutor: authority,
@@ -245,8 +270,16 @@ test('R6-retry: a deterministic_rule failure is NEVER retried, regardless of con
     const result = await engine.execute(claimRequest());
 
     assert.equal(result.session.status, 'failed');
-    assert.equal(handlerCalls, 1, 'deterministic_rule handler must run exactly once even when a retry policy with maxAttempts=5 is configured');
-    assert.notEqual(result.error?.code, ErrorCode.RUNTIME_RETRY_EXHAUSTED, 'a deterministic_rule failure is never wrapped as retry-exhausted, since it was never retried');
+    assert.equal(
+      handlerCalls,
+      1,
+      'deterministic_rule handler must run exactly once even when a retry policy with maxAttempts=5 is configured',
+    );
+    assert.notEqual(
+      result.error?.code,
+      ErrorCode.RUNTIME_RETRY_EXHAUSTED,
+      'a deterministic_rule failure is never wrapped as retry-exhausted, since it was never retried',
+    );
   });
 });
 
@@ -261,10 +294,16 @@ test('R6-retry: hybrid execution is never retried in this pass, even for an all-
     const provider = new ScriptedModelProvider();
     provider.failNextCallsWith = { error: new Error('transient'), count: 1 };
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { retry: { maxAttempts: 5, initialDelayMs: 1, maxDelayMs: 1 } });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      retry: { maxAttempts: 5, initialDelayMs: 1, maxDelayMs: 1 },
+    });
     const result = await engine.execute(hybridRequest());
 
-    assert.equal(provider.requests.length, 1, 'hybrid execution runs exactly once regardless of configured retry — deferred per the R6 delivery report');
+    assert.equal(
+      provider.requests.length,
+      1,
+      'hybrid execution runs exactly once regardless of configured retry — deferred per the R6 delivery report',
+    );
     assert.equal(result.session.status, 'failed');
   });
 });
@@ -298,7 +337,9 @@ test('R6-cancellation: an explicit cancel during retry backoff terminates as can
     const provider = new ScriptedModelProvider();
     provider.failNextCallsWith = { error: new Error('transient'), count: 100 };
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { retry: { maxAttempts: 50, initialDelayMs: 200, maxDelayMs: 200 } });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      retry: { maxAttempts: 50, initialDelayMs: 200, maxDelayMs: 200 },
+    });
     const executionId = deriveExecutionId(modelRequest().requestId);
     const resultPromise = engine.execute(modelRequest());
     setTimeout(() => engine.cancel(executionId), 15);
@@ -338,7 +379,9 @@ test('R6-simulation: a deterministic_rule capability under simulate:true refuses
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      capabilityAuthorityExecutor: authority,
+    });
     const result = await engine.execute(claimRequest({ simulate: true }));
 
     assert.equal(result.error?.code, ErrorCode.RUNTIME_SIMULATION_UNSUPPORTED_FOR_STRATEGY);
@@ -372,7 +415,12 @@ test('R6-simulation: a hybrid capability with ANY deterministic_rule step refuse
   await withTempInstaller(async (installer) => {
     const steps: readonly HybridExecutionStep[] = [
       { stepId: 'summarize', strategy: 'model', input: { kind: 'request' } },
-      { stepId: 'check', strategy: 'deterministic_rule', contractId: 'capability:hybrid-det', input: { kind: 'step', stepId: 'summarize' } },
+      {
+        stepId: 'check',
+        strategy: 'deterministic_rule',
+        contractId: 'capability:hybrid-det',
+        input: { kind: 'step', stepId: 'summarize' },
+      },
     ];
     const bundle = buildContractLawyerBundle({ capabilities: [hybridCapability(steps)] });
     await installer.install(bundle);
@@ -393,9 +441,16 @@ test('R6-simulation: a hybrid capability with ANY deterministic_rule step refuse
       requiredPermissions: [],
     });
     assert.equal(registered.ok, true);
-    const authority = new RuntimeCapabilityExecutor({ registry: authorityRegistry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'allow-all', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]) }) });
+    const authority = new RuntimeCapabilityExecutor({
+      registry: authorityRegistry,
+      permissionManager: new PermissionManager({
+        policy: new RuleBasedPolicy([{ id: 'allow-all', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
+      }),
+    });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      capabilityAuthorityExecutor: authority,
+    });
     const result = await engine.execute(hybridRequest({ simulate: true }));
 
     assert.equal(provider.requests.length, 0, 'the earlier model step must never run once the whole invocation is refused');
@@ -413,7 +468,6 @@ test('R6-simulation: simulation is refused for streaming execution rather than s
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
     const streaming = engine.executeStreaming(modelRequest({ simulate: true }));
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     for await (const _event of streaming.events) {
       /* drain — expected to yield nothing */
     }
@@ -442,7 +496,11 @@ test('R6-idempotency: a second concurrent execute() call with the same requestId
 
     assert.equal(secondResult.error?.code, 'XO_RUNTIME_EXECUTION_ALREADY_IN_FLIGHT');
     const firstResult = await firstPromise;
-    assert.equal(firstResult.session.status, 'completed', 'the original in-flight execution completes normally, unaffected by the refused duplicate');
+    assert.equal(
+      firstResult.session.status,
+      'completed',
+      'the original in-flight execution completes normally, unaffected by the refused duplicate',
+    );
     assert.equal(provider.requests.length, 1, 'the duplicate call must never reach the provider');
   });
 });
@@ -475,7 +533,9 @@ test('R6-replay: replaying a deterministic_rule execution returns the recorded o
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      capabilityAuthorityExecutor: authority,
+    });
     const original = await engine.execute(claimRequest());
     assert.equal(original.session.status, 'completed');
     assert.notEqual(original.receipt, undefined);
@@ -485,7 +545,11 @@ test('R6-replay: replaying a deterministic_rule execution returns the recorded o
     assert.equal(replayed.session.status, 'completed');
     assert.equal(replayed.receipt?.replayOf, original.receipt!.executionId);
     assert.equal(replayed.receipt?.replayMode, 'recorded-output-only');
-    assert.deepEqual(replayed.response?.content, original.response?.content, 'replay reconstructs the exact recorded output, never re-deriving it');
+    assert.deepEqual(
+      replayed.response?.content,
+      original.response?.content,
+      'replay reconstructs the exact recorded output, never re-deriving it',
+    );
     assert.notEqual(replayed.executionId, original.executionId, 'replay is always a new logical execution');
   });
 });
@@ -497,7 +561,9 @@ test('R6-replay: replaying a deterministic_rule execution whose receipt has no r
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor: authority });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      capabilityAuthorityExecutor: authority,
+    });
     const original = await engine.execute(claimRequest());
     assert.notEqual(original.receipt, undefined);
 
@@ -514,19 +580,33 @@ test('R6-replay: replaying a model-strategy execution re-invokes a real provider
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'first answer', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'first answer',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
     const original = await engine.execute(modelRequest());
     assert.equal(provider.requests.length, 1);
 
-    provider.setResponse({ text: 'second answer (live replay call)', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'second answer (live replay call)',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
     const replayed = await replayExecution(engine, original.receipt!, { environment: modelRequest().environment });
 
     assert.equal(provider.requests.length, 2, 'replay of a model-strategy execution makes a real, second provider call');
     assert.equal(replayed.receipt?.replayOf, original.receipt!.executionId);
     assert.equal(replayed.receipt?.replayMode, 'reconstruct-and-rerun-model');
-    assert.equal(replayed.response?.content, 'second answer (live replay call)', 'replay reflects the live re-invocation, never a fabricated or recorded-only value for a model original');
+    assert.equal(
+      replayed.response?.content,
+      'second answer (live replay call)',
+      'replay reflects the live re-invocation, never a fabricated or recorded-only value for a model original',
+    );
   });
 });
 

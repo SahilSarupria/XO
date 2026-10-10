@@ -3,7 +3,14 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requirePrincipal, requireOwnedWorkspace, workspaceCompilationsStore, workspaceApprovalsStore, workspaceExecutionsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requirePrincipal,
+  requireOwnedWorkspace,
+  workspaceCompilationsStore,
+  workspaceApprovalsStore,
+  workspaceExecutionsStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
@@ -71,7 +78,10 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     const compilationFound = await compilationStore.get(compilationId);
     if (!compilationFound.ok) throw compilationFound.error;
     if (compilationFound.value.status !== 'succeeded') {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, `compilation "${compilationId}" has status "${compilationFound.value.status}" — only a succeeded compilation can be executed against`);
+      throw new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        `compilation "${compilationId}" has status "${compilationFound.value.status}" — only a succeeded compilation can be executed against`,
+      );
     }
 
     const capsFound = await compilationStore.getCapabilities(compilationId);
@@ -84,7 +94,10 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     const approval = await approvalStore.get(compilationId, capabilityId);
     if (!approval.ok) throw approval.error;
     if (!isApproved(approval.value)) {
-      throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, `capability "${capabilityId}" is not approved for execution in workspace "${workspace.workspaceId}"`);
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        `capability "${capabilityId}" is not approved for execution in workspace "${workspace.workspaceId}"`,
+      );
     }
 
     // 6. Resolve the authoritative runtime declaration from the STORED
@@ -120,15 +133,31 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
         });
         break;
       case 'invalid_input':
-        completed = await executionStore.complete(created.value.executionId, { status: 'failed', errorCode: ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID, errorMessage: `input validation failed: ${outcome.issues.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}` });
+        completed = await executionStore.complete(created.value.executionId, {
+          status: 'failed',
+          errorCode: ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID,
+          errorMessage: `input validation failed: ${outcome.issues.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
+        });
         break;
       case 'unresolved': {
-        const codeByStatus: Record<'unresolved' | 'ambiguous' | 'denied', string> = { unresolved: ErrorCode.BINDING_UNRESOLVED, ambiguous: ErrorCode.BINDING_AMBIGUOUS, denied: ErrorCode.BINDING_DENIED };
-        completed = await executionStore.complete(created.value.executionId, { status: 'failed', errorCode: codeByStatus[outcome.status], errorMessage: outcome.reason });
+        const codeByStatus: Record<'unresolved' | 'ambiguous' | 'denied', string> = {
+          unresolved: ErrorCode.BINDING_UNRESOLVED,
+          ambiguous: ErrorCode.BINDING_AMBIGUOUS,
+          denied: ErrorCode.BINDING_DENIED,
+        };
+        completed = await executionStore.complete(created.value.executionId, {
+          status: 'failed',
+          errorCode: codeByStatus[outcome.status],
+          errorMessage: outcome.reason,
+        });
         break;
       }
       case 'error':
-        completed = await executionStore.complete(created.value.executionId, { status: 'failed', errorCode: outcome.errorCode, errorMessage: outcome.errorMessage });
+        completed = await executionStore.complete(created.value.executionId, {
+          status: 'failed',
+          errorCode: outcome.errorCode,
+          errorMessage: outcome.errorMessage,
+        });
         break;
     }
     if (!completed.ok) throw completed.error;

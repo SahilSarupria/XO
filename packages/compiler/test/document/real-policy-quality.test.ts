@@ -23,7 +23,9 @@ import type { ParsedDocument, ParagraphBlock, DocumentSection } from '../../src/
  * fixture and (b) would actually notice if it stopped passing.
  */
 
-const FIXTURE_PATH = fileURLToPath(new URL('../../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const FIXTURE_PATH = fileURLToPath(
+  new URL('../../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 
 async function loadRealFixtureBytes(): Promise<Uint8Array> {
   return new Uint8Array(await readFile(FIXTURE_PATH));
@@ -40,7 +42,11 @@ function collectBlocks(section: DocumentSection, acc: ParagraphBlock[]): void {
 
 test('real policy fixture: assessDocumentQuality reports trusted with zero suspicious tokens', async () => {
   const registry = createDefaultSourceFrontendRegistry();
-  const ingested = registry.ingest({ kind: 'pdf', bytes: await loadRealFixtureBytes(), sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf' });
+  const ingested = registry.ingest({
+    kind: 'pdf',
+    bytes: await loadRealFixtureBytes(),
+    sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf',
+  });
   assert.ok(ingested.ok, ingested.ok ? undefined : JSON.stringify(ingested.error));
   if (!ingested.ok) return;
   assert.equal(ingested.value.content.kind, 'document');
@@ -58,7 +64,10 @@ test('real policy fixture: assessDocumentQuality reports trusted with zero suspi
 // ---------------------------------------------------------------------------
 
 test('real policy fixture: compileSources reports qualityState "trusted" and zero source-quality diagnostics', async () => {
-  const result = await compileSources([{ kind: 'pdf', bytes: await loadRealFixtureBytes(), sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf' }], {});
+  const result = await compileSources(
+    [{ kind: 'pdf', bytes: await loadRealFixtureBytes(), sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf' }],
+    {},
+  );
   assert.ok(result.ok, result.ok ? undefined : JSON.stringify(result.error));
   if (!result.ok) return;
 
@@ -72,9 +81,13 @@ test('real policy fixture: compileSources reports qualityState "trusted" and zer
 //    text and the real, historically-observed defect shapes.
 // ---------------------------------------------------------------------------
 
-test('real-fixture regression proof: a single reintroduced known-defect token, injected into the real fixture\'s own real text, is individually detected even though the document as a whole (1300+ real tokens) correctly keeps its trust', async () => {
+test("real-fixture regression proof: a single reintroduced known-defect token, injected into the real fixture's own real text, is individually detected even though the document as a whole (1300+ real tokens) correctly keeps its trust", async () => {
   const registry = createDefaultSourceFrontendRegistry();
-  const ingested = registry.ingest({ kind: 'pdf', bytes: await loadRealFixtureBytes(), sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf' });
+  const ingested = registry.ingest({
+    kind: 'pdf',
+    bytes: await loadRealFixtureBytes(),
+    sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf',
+  });
   assert.ok(ingested.ok);
   if (!ingested.ok || ingested.value.content.kind !== 'document') return;
   const parsed = ingested.value.content.parsed;
@@ -103,7 +116,10 @@ test('real-fixture regression proof: a single reintroduced known-defect token, i
 
   const report = assessDocumentQuality(corrupted, 'XO_Commercial_Property_Test_Policy_Compatible.pdf+reintroduced-defect');
   assert.ok(report.suspiciousTokens >= 1, 'the reintroduced defect token must be individually detected');
-  assert.ok(report.diagnostics.some((d) => d.code === 'source-quality/digit_letter_mash'), 'the specific defect kind must be identified, not just a generic warning');
+  assert.ok(
+    report.diagnostics.some((d) => d.code === 'source-quality/digit_letter_mash'),
+    'the specific defect kind must be identified, not just a generic warning',
+  );
   // Proportionally small against the real fixture's ~1300 genuine
   // tokens — correctly does NOT tank the whole document's trust (see
   // `document-quality.ts`'s own DEGRADED_RATIO_THRESHOLD rationale: a
@@ -115,7 +131,11 @@ test('real-fixture regression proof: a single reintroduced known-defect token, i
 
 test('real-fixture regression proof: the same reintroduced defect, concentrated in a small excerpt of the real fixture\'s own text, does flip the document-level state — proving detection scales from "one finding" to "untrustworthy document" as corruption density increases', async () => {
   const registry = createDefaultSourceFrontendRegistry();
-  const ingested = registry.ingest({ kind: 'pdf', bytes: await loadRealFixtureBytes(), sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf' });
+  const ingested = registry.ingest({
+    kind: 'pdf',
+    bytes: await loadRealFixtureBytes(),
+    sourcePath: 'XO_Commercial_Property_Test_Policy_Compatible.pdf',
+  });
   assert.ok(ingested.ok);
   if (!ingested.ok || ingested.value.content.kind !== 'document') return;
 
@@ -130,7 +150,11 @@ test('real-fixture regression proof: the same reintroduced defect, concentrated 
   const REINTRODUCED_DEFECT = 'Contact and8827461093 AASTHA';
   const smallDoc: ParsedDocument = {
     bodyFontSizePt: ingested.value.content.parsed.bodyFontSizePt,
-    root: { heading: undefined, blocks: [...excerpt, { kind: 'paragraph', text: REINTRODUCED_DEFECT, provenance: { page: 1, yRange: [0, 10] } }], subsections: [] },
+    root: {
+      heading: undefined,
+      blocks: [...excerpt, { kind: 'paragraph', text: REINTRODUCED_DEFECT, provenance: { page: 1, yRange: [0, 10] } }],
+      subsections: [],
+    },
   };
 
   const report = assessDocumentQuality(smallDoc, 'real-excerpt+reintroduced-defect');

@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { fromJson } from '@xo/xoir';
-import { buildReport, compareReports, formatReport, formatRegression, parseReport, runSuite, validateSuiteDefinition, canonicalJson, fingerprintOf } from '../src/index.js';
+import {
+  buildReport,
+  compareReports,
+  formatReport,
+  formatRegression,
+  parseReport,
+  runSuite,
+  validateSuiteDefinition,
+  canonicalJson,
+  fingerprintOf,
+} from '../src/index.js';
 import { renderRuntimeMechanicsJson } from '../fixtures/build-xoir-fixtures.js';
 
 const PKG = fileURLToPath(new URL('../', import.meta.url));
@@ -27,12 +37,20 @@ test('EMPTY benchmark: zero cases => a valid report that says it measured nothin
 });
 
 test('a case with NO expectations still observes the pipeline (distributions are reported) but measures nothing: `measured` stays false because provenance coverage is descriptive only', async () => {
-  const validated = validateSuiteDefinition({ schemaVersion: 1, suiteId: 'no-expect', sourceRoot: '../../..', cases: [{ caseId: 'c', sources: [{ kind: 'document', path: 'examples/vertical-test/synthetic-claim-rules.txt' }], expect: {} }] });
+  const validated = validateSuiteDefinition({
+    schemaVersion: 1,
+    suiteId: 'no-expect',
+    sourceRoot: '../../..',
+    cases: [{ caseId: 'c', sources: [{ kind: 'document', path: 'examples/vertical-test/synthetic-claim-rules.txt' }], expect: {} }],
+  });
   assert.ok(validated.ok);
   const report = await runSuite(validated.value, { sourceRoot: fileURLToPath(new URL('../../../', import.meta.url)) });
   assert.equal(report.measured, false);
   // (P0.9C Steps 4-6) producer coverage, provenance chain coverage and cross-path consistency are descriptive too (no golden expectation), so `measured` stays false.
-  assert.deepEqual(report.aggregate.metrics.map((m) => m.id), ['crossPathConsistency', 'observedSourceRefCoverage', 'producerAttributionCoverage', 'provenanceChainCoverage']);
+  assert.deepEqual(
+    report.aggregate.metrics.map((m) => m.id),
+    ['crossPathConsistency', 'observedSourceRefCoverage', 'producerAttributionCoverage', 'provenanceChainCoverage'],
+  );
   assert.equal(report.aggregate.observed.capabilities.total, 2);
   assert.equal(report.cases[0]!.observed.capabilities.byExecutionClass['deterministic_rule'], 2);
 });
@@ -42,7 +60,15 @@ test('a case with NO expectations still observes the pipeline (distributions are
 // ---------------------------------------------------------------------------
 
 test('parseReport rejects things that are not reports; accepts what runSuite wrote', async () => {
-  for (const bad of [null, [], {}, { schemaVersion: 2, suiteId: 's', cases: [], aggregate: { metrics: [] } }, { schemaVersion: 1, suiteId: 5, cases: [], aggregate: { metrics: [] } }, { schemaVersion: 1, suiteId: 's', cases: {}, aggregate: { metrics: [] } }, { schemaVersion: 1, suiteId: 's', cases: [] }]) {
+  for (const bad of [
+    null,
+    [],
+    {},
+    { schemaVersion: 2, suiteId: 's', cases: [], aggregate: { metrics: [] } },
+    { schemaVersion: 1, suiteId: 5, cases: [], aggregate: { metrics: [] } },
+    { schemaVersion: 1, suiteId: 's', cases: {}, aggregate: { metrics: [] } },
+    { schemaVersion: 1, suiteId: 's', cases: [] },
+  ]) {
     assert.equal(parseReport(bad).ok, false, JSON.stringify(bad));
   }
   assert.ok(parseReport(buildReport('s', [])).ok);
@@ -78,8 +104,15 @@ test('the committed hand-built XOIR fixture is exactly what its generator produc
 // ---------------------------------------------------------------------------
 
 test('canonicalJson/fingerprintOf: key order is irrelevant, undefined is dropped, and different content gives a different fingerprint', () => {
-  assert.equal(canonicalJson({ b: 1, a: { d: [1, { z: 1, y: undefined }], c: 2 } }), canonicalJson({ a: { c: 2, d: [1, { z: 1 }] }, b: 1 }));
+  assert.equal(
+    canonicalJson({ b: 1, a: { d: [1, { z: 1, y: undefined }], c: 2 } }),
+    canonicalJson({ a: { c: 2, d: [1, { z: 1 }] }, b: 1 }),
+  );
   assert.equal(fingerprintOf({ a: 1, b: 2 }), fingerprintOf({ b: 2, a: 1 }));
   assert.notEqual(fingerprintOf({ a: 1 }), fingerprintOf({ a: 2 }));
-  assert.equal(fingerprintOf([1, 2]) === fingerprintOf([2, 1]), false, 'array order IS significant in a fingerprint (only used for stage outputs that are sorted first)');
+  assert.equal(
+    fingerprintOf([1, 2]) === fingerprintOf([2, 1]),
+    false,
+    'array order IS significant in a fingerprint (only used for stage outputs that are sorted first)',
+  );
 });

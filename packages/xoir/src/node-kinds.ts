@@ -509,9 +509,7 @@ export interface CreateNodeInput<K extends XoirNodeKind, P extends XoirPropertyB
  * chains `createNode` -> `hashNode` -> stores the result, so a node never
  * exists inside a graph without a hash.
  */
-export function createNode<K extends XoirNodeKind, P extends XoirPropertyBag>(
-  input: CreateNodeInput<K, P>,
-): Omit<XoirNode<K, P>, 'hash'> {
+export function createNode<K extends XoirNodeKind, P extends XoirPropertyBag>(input: CreateNodeInput<K, P>): Omit<XoirNode<K, P>, 'hash'> {
   const now = input.now ?? (() => new Date().toISOString());
   const timestamp = now();
   const confidence = input.confidence ?? input.confidenceDetail?.score ?? 1;

@@ -88,7 +88,6 @@ export function evidenceStrengthFromCorroboration(corroboration: number): Eviden
   return 'weak';
 }
 
-
 export function isValidConfidence(confidence: XoirConfidence): boolean {
   return confidence.score >= 0 && confidence.score <= 1 && confidence.corroboration >= 0 && Number.isFinite(confidence.corroboration);
 }

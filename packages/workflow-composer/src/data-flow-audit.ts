@@ -1,16 +1,7 @@
 import type { XoirGraph, XoirNode } from '@xo/xoir';
 import { XoirNodeId } from '@xo/xoir';
-import {
-  buildSemanticCapabilityContract,
-  extractContractFromPropertyBag,
-  type SemanticCapabilityContract,
-} from '@xo/capability-contract';
-import type {
-  CandidateWorkflow,
-  StepDataBinding,
-  StepDataBindingStatus,
-  WorkflowDataFlowReport,
-} from './types.js';
+import { buildSemanticCapabilityContract, extractContractFromPropertyBag, type SemanticCapabilityContract } from '@xo/capability-contract';
+import type { CandidateWorkflow, StepDataBinding, WorkflowDataFlowReport } from './types.js';
 
 const STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'to']);
 
@@ -36,10 +27,7 @@ interface StepContractEntry {
   readonly contract?: SemanticCapabilityContract | undefined;
 }
 
-export function auditWorkflowDataFlow(
-  workflow: CandidateWorkflow,
-  graph: XoirGraph,
-): WorkflowDataFlowReport {
+export function auditWorkflowDataFlow(workflow: CandidateWorkflow, graph: XoirGraph): WorkflowDataFlowReport {
   // 1. Retrieve contracts for each step in order
   const stepEntries: StepContractEntry[] = workflow.steps.map((step, index) => {
     const nodeRes = graph.getNode(XoirNodeId(step.capabilityId));
@@ -119,11 +107,7 @@ export function auditWorkflowDataFlow(
       const inputSemType = inputParam.semanticType;
       const derivedFromRaw = inputParam.derivedFrom;
       const derivedFrom: 'declared' | 'rule_derived' | 'unknown' =
-        derivedFromRaw === 'declared'
-          ? 'declared'
-          : derivedFromRaw === 'rule_derived'
-            ? 'rule_derived'
-            : 'unknown';
+        derivedFromRaw === 'declared' ? 'declared' : derivedFromRaw === 'rule_derived' ? 'rule_derived' : 'unknown';
 
       if (!inputNormKey) continue;
 

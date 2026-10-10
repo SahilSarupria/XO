@@ -52,7 +52,12 @@ export async function buildCommand(options: BuildOptions): Promise<CommandResult
     } catch (cause) {
       return failWith(`could not read component file "${component.path}" (${component.kind}): ${(cause as Error).message}`);
     }
-    builder = builder.addComponent({ kind: component.kind, path: component.path, data: new Uint8Array(data), required: component.required });
+    builder = builder.addComponent({
+      kind: component.kind,
+      path: component.path,
+      data: new Uint8Array(data),
+      required: component.required,
+    });
     lines.push(`  + ${component.kind.padEnd(20)} <- ${component.path}  (${data.byteLength} bytes)`);
   }
 

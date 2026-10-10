@@ -49,16 +49,33 @@ export class RuntimeCapabilityRegistry {
     const { declaration, requiredPermissions } = registration;
 
     if (declaration.capabilityId.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, 'RuntimeCapabilityDeclaration.capabilityId must not be empty'));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, 'RuntimeCapabilityDeclaration.capabilityId must not be empty'),
+      );
     }
     if (typeof declaration.handler !== 'function') {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": handler must be a function`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": handler must be a function`,
+        ),
+      );
     }
     if (declaration.inputContract.description.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": inputContract.description must not be empty`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": inputContract.description must not be empty`,
+        ),
+      );
     }
     if (declaration.outputContract.description.trim().length === 0) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": outputContract.description must not be empty`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+          `Capability "${declaration.capabilityId}": outputContract.description must not be empty`,
+        ),
+      );
     }
 
     this.declarations.set(declaration.capabilityId, declaration);
@@ -71,7 +88,12 @@ export class RuntimeCapabilityRegistry {
         // (that would be a capability the executor could reach without
         // its intended gating ever being registered at all).
         this.declarations.delete(declaration.capabilityId);
-        return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID, `Capability "${declaration.capabilityId}": ${registered.error.message}`));
+        return err(
+          new RuntimeError(
+            ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+            `Capability "${declaration.capabilityId}": ${registered.error.message}`,
+          ),
+        );
       }
     }
 
@@ -82,7 +104,9 @@ export class RuntimeCapabilityRegistry {
   resolve(capabilityId: string): Result<RuntimeCapabilityDeclaration, RuntimeError> {
     const declaration = this.declarations.get(capabilityId);
     if (!declaration) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_NOT_FOUND, `No Runtime capability declaration registered for id "${capabilityId}"`));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_NOT_FOUND, `No Runtime capability declaration registered for id "${capabilityId}"`),
+      );
     }
     return ok(declaration);
   }

@@ -79,7 +79,13 @@ export interface CandidateWorkflowStepParameter {
 }
 
 function toStepParameter(param: SemanticCapabilityParameter): CandidateWorkflowStepParameter {
-  return { name: param.name, runtimeKey: normalizeToFallbackKey(param.name), semanticType: param.semanticType, required: param.required, derivedFrom: param.derivedFrom };
+  return {
+    name: param.name,
+    runtimeKey: normalizeToFallbackKey(param.name),
+    semanticType: param.semanticType,
+    required: param.required,
+    derivedFrom: param.derivedFrom,
+  };
 }
 
 export interface CandidateWorkflowStepBridgeResult {
@@ -192,7 +198,8 @@ export function prepareCandidateWorkflowForExecution(
         capabilityId: step.capabilityId,
         capabilityName: step.capabilityName,
         status: 'unbound',
-        reason: 'No semantic capability contract could be built for this capability node — no XOIR node found, or extraction/build both failed.',
+        reason:
+          'No semantic capability contract could be built for this capability node — no XOIR node found, or extraction/build both failed.',
       });
       continue;
     }
@@ -268,7 +275,10 @@ export function prepareCandidateWorkflowForExecution(
   const provenDataFlowBindings = dataFlow.bindings.filter((b) => b.status === 'proven');
 
   const wiredInjections: StepDataBinding[] = [];
-  const inputBindingsByConsumerNodeId = new Map<NodeId, { inputParameterName: string; producerNodeId: NodeId; outputParameterName: string }[]>();
+  const inputBindingsByConsumerNodeId = new Map<
+    NodeId,
+    { inputParameterName: string; producerNodeId: NodeId; outputParameterName: string }[]
+  >();
   for (const binding of provenDataFlowBindings) {
     const producer = boundNodesByCapabilityId.get(binding.producerCapabilityId);
     const consumer = boundNodesByCapabilityId.get(binding.consumerCapabilityId);
@@ -284,7 +294,11 @@ export function prepareCandidateWorkflowForExecution(
     if (producer.implementationClass !== 'deterministic_rule') continue;
 
     const list = inputBindingsByConsumerNodeId.get(consumer.nodeId) ?? [];
-    list.push({ inputParameterName: binding.inputParameterName, producerNodeId: producer.nodeId, outputParameterName: binding.outputParameterName });
+    list.push({
+      inputParameterName: binding.inputParameterName,
+      producerNodeId: producer.nodeId,
+      outputParameterName: binding.outputParameterName,
+    });
     inputBindingsByConsumerNodeId.set(consumer.nodeId, list);
     wiredInjections.push(binding);
   }
@@ -323,7 +337,12 @@ export function makeCapabilityAuthorityNodeHandler(executor: RuntimeCapabilityEx
     const config = node.config ?? {};
     const capabilityId = typeof config.capabilityId === 'string' ? config.capabilityId : undefined;
     if (!capabilityId) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, `Workflow node "${node.id}" (type "custom:capability-authority") is missing a string "capabilityId" in its config`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_INVALID_REQUEST,
+          `Workflow node "${node.id}" (type "custom:capability-authority") is missing a string "capabilityId" in its config`,
+        ),
+      );
     }
     const structuredInput: Record<string, unknown> = { ...((config.structuredInput as Record<string, unknown> | undefined) ?? {}) };
 
@@ -336,7 +355,9 @@ export function makeCapabilityAuthorityNodeHandler(executor: RuntimeCapabilityEx
     // producer's captured output, is skipped rather than guessed —
     // matching Phase 7's "unbound inputs must remain explicit" rule; it
     // never falls back to a default or a fabricated value.
-    const inputBindings = Array.isArray(config.inputBindings) ? (config.inputBindings as { inputParameterName: string; producerNodeId: string; outputParameterName: string }[]) : [];
+    const inputBindings = Array.isArray(config.inputBindings)
+      ? (config.inputBindings as { inputParameterName: string; producerNodeId: string; outputParameterName: string }[])
+      : [];
     for (const binding of inputBindings) {
       const producerOutput = context.state.outputs[binding.producerNodeId];
       if (!producerOutput || typeof producerOutput !== 'object') continue;

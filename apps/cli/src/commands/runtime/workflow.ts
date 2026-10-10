@@ -50,7 +50,10 @@ export async function workflowCommand(options: WorkflowOptions): Promise<Command
         },
         steps: prepared.steps.map((s) => ({
           ...s,
-          inputs: s.inputs?.map((p) => ({ ...p, ...parameterStatus(s.capabilityId, p.name, p.runtimeKey, prepared.wiredInjections, options.input) })),
+          inputs: s.inputs?.map((p) => ({
+            ...p,
+            ...parameterStatus(s.capabilityId, p.name, p.runtimeKey, prepared.wiredInjections, options.input),
+          })),
         })),
         executability: { status: execReport.status, blockers: execReport.blockers, steps: execReport.steps },
         dataFlow: { bindings: dataFlow.bindings, unboundInputs: dataFlow.unboundInputs },
@@ -95,7 +98,10 @@ export async function workflowCommand(options: WorkflowOptions): Promise<Command
   const proven = dataFlow.bindings.filter((b) => b.status === 'proven');
   const suggestive = dataFlow.bindings.filter((b) => b.status === 'suggestive');
   lines.push(`  proven bindings:     ${proven.length}`);
-  for (const b of proven) lines.push(`    ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.evidenceKind}]`);
+  for (const b of proven)
+    lines.push(
+      `    ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.evidenceKind}]`,
+    );
   lines.push(`  suggestive bindings: ${suggestive.length} (never auto-injected)`);
   lines.push(`  unbound inputs:      ${dataFlow.unboundInputs.length}`);
 
@@ -116,7 +122,12 @@ function parameterStatus(
   stepCapabilityId: string,
   paramName: string,
   runtimeKey: string,
-  wiredInjections: readonly { consumerCapabilityId: string; inputParameterName: string; producerCapabilityId: string; outputParameterName: string }[],
+  wiredInjections: readonly {
+    consumerCapabilityId: string;
+    inputParameterName: string;
+    producerCapabilityId: string;
+    outputParameterName: string;
+  }[],
   suppliedInput: Readonly<Record<string, unknown>> | undefined,
 ): { status: 'injected' | 'supplied' | 'missing'; from?: string } {
   const injection = wiredInjections.find((w) => w.consumerCapabilityId === stepCapabilityId && w.inputParameterName === paramName);

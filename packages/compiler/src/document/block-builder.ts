@@ -155,7 +155,12 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
 
   const flushHeading = (): void => {
     if (headingBuffer.length === 0) return;
-    blocks.push({ kind: 'heading', level: headingBuffer[0]!.headingLevel!, text: headingBuffer.map((l) => l.text).join(' '), provenance: provenanceOf(headingBuffer) });
+    blocks.push({
+      kind: 'heading',
+      level: headingBuffer[0]!.headingLevel!,
+      text: headingBuffer.map((l) => l.text).join(' '),
+      provenance: provenanceOf(headingBuffer),
+    });
     headingBuffer = [];
   };
 
@@ -172,7 +177,8 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
     if (line.blockKind === 'paragraph') {
       flushHeading();
       const prev = paragraphBuffer[paragraphBuffer.length - 1];
-      const gapTooLarge = prev !== undefined && (prev.pageNumber !== line.pageNumber || prev.y - line.y > bodySize * PARAGRAPH_BREAK_GAP_MULTIPLIER);
+      const gapTooLarge =
+        prev !== undefined && (prev.pageNumber !== line.pageNumber || prev.y - line.y > bodySize * PARAGRAPH_BREAK_GAP_MULTIPLIER);
       const gapTooSmall = prev !== undefined && prev.pageNumber === line.pageNumber && prev.y - line.y < MIN_LINE_GAP_PT;
       if (gapTooLarge || gapTooSmall) flushParagraph();
       paragraphBuffer.push(line);
@@ -183,7 +189,11 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
 
     if (line.blockKind === 'heading') {
       const prev = headingBuffer[headingBuffer.length - 1];
-      const gapTooLarge = prev !== undefined && (prev.pageNumber !== line.pageNumber || prev.y - line.y > bodySize * PARAGRAPH_BREAK_GAP_MULTIPLIER || prev.headingLevel !== line.headingLevel);
+      const gapTooLarge =
+        prev !== undefined &&
+        (prev.pageNumber !== line.pageNumber ||
+          prev.y - line.y > bodySize * PARAGRAPH_BREAK_GAP_MULTIPLIER ||
+          prev.headingLevel !== line.headingLevel);
       const gapTooSmall = prev !== undefined && prev.pageNumber === line.pageNumber && prev.y - line.y < MIN_LINE_GAP_PT;
       if (gapTooLarge || gapTooSmall) flushHeading();
       headingBuffer.push(line);
@@ -193,7 +203,13 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
     flushHeading();
 
     if (line.blockKind === 'list_item') {
-      blocks.push({ kind: 'list_item', marker: line.listMarker!, listKind: line.listKind!, text: line.listText ?? line.text, provenance: provenanceOf([line]) });
+      blocks.push({
+        kind: 'list_item',
+        marker: line.listMarker!,
+        listKind: line.listKind!,
+        text: line.listText ?? line.text,
+        provenance: provenanceOf([line]),
+      });
     } else if (line.blockKind === 'footnote') {
       blocks.push({ kind: 'footnote', text: line.text, provenance: provenanceOf([line]) });
     }

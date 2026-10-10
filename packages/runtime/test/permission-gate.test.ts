@@ -48,7 +48,12 @@ test('permission gate: a denying gate blocks execution with RUNTIME_PERMISSION_D
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'should never be reached', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'should never be reached',
+      usage: { inputTokens: 10, outputTokens: 5 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
     const denyingGate: PermissionGate = {
       async check() {
@@ -93,7 +98,10 @@ test('permission gate: createPermissionManagerGate integrates a real @xo/permiss
     assert.equal(provider.requests.length, 0);
 
     // Grant it administratively, then the same capability executes normally.
-    await manager.grant({ packageId: PackageId(`${bundle.manifest.name}@${bundle.manifest.version}`), permission: Permissions.filesystem.read });
+    await manager.grant({
+      packageId: PackageId(`${bundle.manifest.name}@${bundle.manifest.version}`),
+      permission: Permissions.filesystem.read,
+    });
     const allowed = await engine.execute(baseRequest({ requestId: RequestId('req_allowed') }));
     assert.equal(allowed.session.status, 'completed');
     assert.equal(provider.requests.length, 1);

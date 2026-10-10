@@ -63,6 +63,7 @@ export class Container {
   /** Creates a child container that falls back to this container for anything it doesn't have its own registration for. Useful for per-request scopes. */
   createChild(): Container {
     const child = new Container();
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- captured for use inside non-arrow closures below
     const parent = this;
     const originalResolve = child.resolve.bind(child);
     child.resolve = function <T>(token: Token<T>): T {

@@ -43,7 +43,11 @@ export interface PolicyRule {
  * construction, not by convention.
  */
 export interface PermissionPolicy {
-  evaluate(request: PermissionRequest): { readonly effect: PolicyRuleEffect | 'NO_MATCH'; readonly reason: string; readonly ruleId?: string };
+  evaluate(request: PermissionRequest): {
+    readonly effect: PolicyRuleEffect | 'NO_MATCH';
+    readonly reason: string;
+    readonly ruleId?: string;
+  };
 }
 
 function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
@@ -61,7 +65,8 @@ function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
 function ruleSpecificity(rule: PolicyRule): number {
   const m = rule.match;
   let score = 0;
-  if (m.permission !== undefined) score += 20; // exact permission beats domain-only
+  if (m.permission !== undefined)
+    score += 20; // exact permission beats domain-only
   else if (m.domain !== undefined) score += 10;
   if (m.packageId !== undefined) score += 8;
   if (m.capabilityId !== undefined) score += 8;
@@ -127,7 +132,11 @@ export class RuleBasedPolicy implements PermissionPolicy {
     return new RuleBasedPolicy([...this.rules, ...rules], this.defaultEffect);
   }
 
-  evaluate(request: PermissionRequest): { readonly effect: PolicyRuleEffect | 'NO_MATCH'; readonly reason: string; readonly ruleId?: string } {
+  evaluate(request: PermissionRequest): {
+    readonly effect: PolicyRuleEffect | 'NO_MATCH';
+    readonly reason: string;
+    readonly ruleId?: string;
+  } {
     const matching = this.rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => ruleMatches(rule, request));
 
     if (matching.length === 0) {
@@ -179,7 +188,8 @@ export function decisionFromPolicyVerdict(
 ): PermissionDecision {
   const decidedAt = now().toISOString();
   const effect = verdict.effect === 'NO_MATCH' ? defaultEffect : verdict.effect;
-  const reason = verdict.effect === 'NO_MATCH' ? `No policy rule matched; falling back to default effect (${defaultEffect})` : verdict.reason;
+  const reason =
+    verdict.effect === 'NO_MATCH' ? `No policy rule matched; falling back to default effect (${defaultEffect})` : verdict.reason;
   const policyId = verdict.ruleId ?? (verdict.effect === 'NO_MATCH' ? 'system.default-policy' : undefined);
 
   if (effect === 'ALLOW') {

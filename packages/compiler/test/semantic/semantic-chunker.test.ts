@@ -18,7 +18,9 @@ async function chunkPdf(spec: TestPdfSpec, documentPath = 'test.pdf') {
 
 test('a heading followed by a paragraph produces one unit anchored to that heading', async () => {
   const doc = await chunkPdf({
-    pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Confidentiality) Tj /F1 12 Tf 0 -40 Td (The parties agree to keep information private.) Tj' }],
+    pages: [
+      { contentOps: '/F1 20 Tf 72 750 Td (Confidentiality) Tj /F1 12 Tf 0 -40 Td (The parties agree to keep information private.) Tj' },
+    ],
   });
   assert.equal(doc.units.length, 1);
   assert.equal(doc.units[0]!.title, 'Confidentiality');
@@ -57,7 +59,7 @@ test('an example paragraph produces a supports relationship to the preceding cla
   assert.ok(supportsEdge);
 });
 
-test('a section that mentions another section\'s heading produces a references relationship', async () => {
+test("a section that mentions another section's heading produces a references relationship", async () => {
   const doc = await chunkPdf({
     pages: [
       {
@@ -75,7 +77,7 @@ test('a section that mentions another section\'s heading produces a references r
   assert.ok(referencesEdge);
 });
 
-test('a subsection\'s anchor unit extends its parent section\'s anchor unit', async () => {
+test("a subsection's anchor unit extends its parent section's anchor unit", async () => {
   const doc = await chunkPdf({
     pages: [
       {
@@ -90,7 +92,9 @@ test('a subsection\'s anchor unit extends its parent section\'s anchor unit', as
   const childUnit = doc.units.find((u) => u.title === '1.1 Scope');
   assert.ok(parentUnit && childUnit);
   assert.equal(childUnit!.hierarchy.parentUnitId, parentUnit!.id);
-  const extendsEdge = doc.relationshipGraph.relationships.find((r) => r.type === 'extends' && r.fromUnitId === childUnit!.id && r.toUnitId === parentUnit!.id);
+  const extendsEdge = doc.relationshipGraph.relationships.find(
+    (r) => r.type === 'extends' && r.fromUnitId === childUnit!.id && r.toUnitId === parentUnit!.id,
+  );
   assert.ok(extendsEdge);
 });
 
@@ -146,7 +150,9 @@ test('P0.9A area E: a bulleted list item\'s unit carries listKind "unordered" en
 
 test('P0.9A area E: an ordinary (non-list) unit has no listKind at all', async () => {
   const doc = await chunkPdf({
-    pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Confidentiality) Tj /F1 12 Tf 0 -40 Td (The parties agree to keep information private.) Tj' }],
+    pages: [
+      { contentOps: '/F1 20 Tf 72 750 Td (Confidentiality) Tj /F1 12 Tf 0 -40 Td (The parties agree to keep information private.) Tj' },
+    ],
   });
   assert.equal(doc.units[0]!.listKind, undefined);
 });
@@ -161,7 +167,10 @@ test('a footnote becomes its own explanatory_note unit', async () => {
 });
 
 test('every unit carries provenance: document path, pages, and section path', async () => {
-  const doc = await chunkPdf({ pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Intro) Tj /F1 12 Tf 0 -40 Td (Body text.) Tj' }] }, 'my-contract.pdf');
+  const doc = await chunkPdf(
+    { pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Intro) Tj /F1 12 Tf 0 -40 Td (Body text.) Tj' }] },
+    'my-contract.pdf',
+  );
   const unit = doc.units[0]!;
   assert.equal(unit.provenance.documentPath, 'my-contract.pdf');
   assert.deepEqual(unit.provenance.pages, [1]);

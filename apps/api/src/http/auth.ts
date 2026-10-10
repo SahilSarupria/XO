@@ -89,7 +89,10 @@ export function createApiKeyAuth(store: ApiKeyStore): Middleware {
       throw new AuthError(ErrorCode.AUTH_KEY_INVALID, 'API key is not bound to a valid principal (re-issue the key with a principal kind)');
     }
     req.principal = principal.value;
-    req.identity = found.value.creatorDid !== undefined ? { identityId: found.value.identityId, creatorDid: found.value.creatorDid } : { identityId: found.value.identityId };
+    req.identity =
+      found.value.creatorDid !== undefined
+        ? { identityId: found.value.identityId, creatorDid: found.value.creatorDid }
+        : { identityId: found.value.identityId };
     return next();
   };
 }

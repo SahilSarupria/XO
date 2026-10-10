@@ -25,7 +25,7 @@ test('lock writes an xo.lock for an already-installed package with no dependenci
   });
 });
 
-test('lock re-resolves against the store\'s CURRENT contents, not what was resolved at install time', async () => {
+test("lock re-resolves against the store's CURRENT contents, not what was resolved at install time", async () => {
   await withTempDir('xo-lock-test-', async (dir) => {
     const storeDir = join(dir, 'store');
     const store = new LocalFsBlobStore(storeDir);
@@ -71,7 +71,11 @@ test('lock fails cleanly with the real DependencyError code when the package sti
     const storeDir = join(dir, 'store');
     const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
     const root = await installer.install(
-      buildTestBundle({ name: 'xo_root', version: '1.0.0', dependencies: [{ name: 'xo_missing', versionRange: '^1.0.0', kind: 'required' }] }),
+      buildTestBundle({
+        name: 'xo_root',
+        version: '1.0.0',
+        dependencies: [{ name: 'xo_missing', versionRange: '^1.0.0', kind: 'required' }],
+      }),
       { skipValidation: false },
     );
     assert.ok(root.ok);

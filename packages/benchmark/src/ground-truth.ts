@@ -32,7 +32,14 @@ export const GROUND_TRUTH_SCHEMA_VERSION = 1 as const;
 // ---------------------------------------------------------------------------
 
 export type ExpectationCategory = 'fact' | 'forbidden_fact' | 'capability' | 'forbidden_capability' | 'workflow' | 'execution';
-export const EXPECTATION_CATEGORIES: readonly ExpectationCategory[] = ['fact', 'forbidden_fact', 'capability', 'forbidden_capability', 'workflow', 'execution'];
+export const EXPECTATION_CATEGORIES: readonly ExpectationCategory[] = [
+  'fact',
+  'forbidden_fact',
+  'capability',
+  'forbidden_capability',
+  'workflow',
+  'execution',
+];
 
 /**
  * How firmly the FIXTURE (or existing documented benchmark evidence) supports an expectation. Descriptive, never numeric.
@@ -112,7 +119,8 @@ export interface GroundTruthIssue {
   readonly path: string;
   readonly message: string;
 }
-export type GroundTruthParseResult = { readonly ok: true; readonly value: GroundTruthRegister } | { readonly ok: false; readonly issues: readonly GroundTruthIssue[] };
+export type GroundTruthParseResult =
+  { readonly ok: true; readonly value: GroundTruthRegister } | { readonly ok: false; readonly issues: readonly GroundTruthIssue[] };
 
 // ---------------------------------------------------------------------------
 // Strict parser (rejects unknown fields, wrong types, bad enums, duplicates)
@@ -139,7 +147,8 @@ class Checker {
   }
   enm<T extends string>(v: unknown, path: string, allowed: readonly T[], optional = false): T | undefined {
     if (v === undefined && optional) return undefined;
-    if (typeof v !== 'string' || !(allowed as readonly string[]).includes(v)) return void this.fail(path, `must be one of ${allowed.join(' | ')}`);
+    if (typeof v !== 'string' || !(allowed as readonly string[]).includes(v))
+      return void this.fail(path, `must be one of ${allowed.join(' | ')}`);
     return v as T;
   }
   arr(v: unknown, path: string): unknown[] | undefined {
@@ -157,7 +166,12 @@ export function parseGroundTruth(raw: unknown): GroundTruthParseResult {
   const caseIds = new Set<string>();
   c.arr(root['cases'], '$.cases')?.forEach((rc, i) => {
     const p = `$.cases[${i}]`;
-    const o = c.obj(rc, p, ['caseId', 'authoring', 'expectationsFingerprint', 'world', 'entries', 'unestablished'], ['caseId', 'authoring', 'expectationsFingerprint', 'world', 'entries', 'unestablished']);
+    const o = c.obj(
+      rc,
+      p,
+      ['caseId', 'authoring', 'expectationsFingerprint', 'world', 'entries', 'unestablished'],
+      ['caseId', 'authoring', 'expectationsFingerprint', 'world', 'entries', 'unestablished'],
+    );
     if (o === undefined) return;
     const caseId = c.str(o['caseId'], `${p}.caseId`);
     if (caseId !== undefined) {
@@ -171,7 +185,12 @@ export function parseGroundTruth(raw: unknown): GroundTruthParseResult {
     const scopes = new Set<string>();
     c.arr(o['world'], `${p}.world`)?.forEach((rw, j) => {
       const wp = `${p}.world[${j}]`;
-      const w = c.obj(rw, wp, ['scope', 'declared', 'kinds', 'support', 'justification'], ['scope', 'declared', 'support', 'justification']);
+      const w = c.obj(
+        rw,
+        wp,
+        ['scope', 'declared', 'kinds', 'support', 'justification'],
+        ['scope', 'declared', 'support', 'justification'],
+      );
       if (w === undefined) return;
       const scope = c.enm<GroundTruthWorldScope>(w['scope'], `${wp}.scope`, ['facts', 'capabilities', 'workflows']);
       if (scope !== undefined) {
@@ -186,7 +205,8 @@ export function parseGroundTruth(raw: unknown): GroundTruthParseResult {
         ks?.forEach((k, n) => c.str(k, `${wp}.kinds[${n}]`));
         if (scope !== 'facts') c.fail(`${wp}.kinds`, 'only valid for scope "facts"');
       }
-      if (declared === 'open' && support === 'supported_by_construction') c.fail(`${wp}.support`, 'an open scope cannot be "supported_by_construction"');
+      if (declared === 'open' && support === 'supported_by_construction')
+        c.fail(`${wp}.support`, 'an open scope cannot be "supported_by_construction"');
     });
 
     const seen = new Set<string>();
@@ -200,7 +220,11 @@ export function parseGroundTruth(raw: unknown): GroundTruthParseResult {
       c.enm<EvidenceBasis>(e['assertions'], `${ep}.assertions`, EVIDENCE_BASES, true);
       c.str(e['source'], `${ep}.source`);
       c.str(e['note'], `${ep}.note`, true);
-      if (identity === 'not_established') c.fail(`${ep}.identity`, '"not_established" cannot be the basis of an expectation that is in the suite — list it under "unestablished" instead');
+      if (identity === 'not_established')
+        c.fail(
+          `${ep}.identity`,
+          '"not_established" cannot be the basis of an expectation that is in the suite — list it under "unestablished" instead',
+        );
       if (category !== undefined && id !== undefined) {
         const key = `${category}:${id}`;
         if (seen.has(key)) c.fail(ep, `duplicate entry for ${key}`);
@@ -243,7 +267,11 @@ export function listExpectations(def: BenchmarkCaseDefinition): readonly Expecta
 }
 
 /** What the SUITE actually declares for each world scope (never inferred from the register). */
-export function declaredWorld(def: BenchmarkCaseDefinition): { readonly facts: { readonly declared: WorldDeclaration; readonly kinds: readonly string[] }; readonly capabilities: WorldDeclaration; readonly workflows: WorldDeclaration } {
+export function declaredWorld(def: BenchmarkCaseDefinition): {
+  readonly facts: { readonly declared: WorldDeclaration; readonly kinds: readonly string[] };
+  readonly capabilities: WorldDeclaration;
+  readonly workflows: WorldDeclaration;
+} {
   const kinds = [...(def.expect.semantics?.closedWorldKinds ?? [])].sort(compareStrings);
   return {
     facts: { declared: kinds.length > 0 ? 'closed' : 'open', kinds },
@@ -285,12 +313,15 @@ export interface GroundTruthFinding {
 
 export function auditGroundTruth(suite: BenchmarkSuiteDefinition, register: GroundTruthRegister): readonly GroundTruthFinding[] {
   const out: GroundTruthFinding[] = [];
-  const add = (code: GroundTruthFindingCode, message: string, caseId?: string): void => void out.push(caseId === undefined ? { code, message } : { code, caseId, message });
+  const add = (code: GroundTruthFindingCode, message: string, caseId?: string): void =>
+    void out.push(caseId === undefined ? { code, message } : { code, caseId, message });
   if (register.suiteId !== suite.suiteId) add('suite_id_mismatch', `register is for "${register.suiteId}", suite is "${suite.suiteId}"`);
   const registered = new Map(register.cases.map((c) => [c.caseId, c]));
-  for (const def of suite.cases) if (!registered.has(def.caseId)) add('case_missing_in_register', `case "${def.caseId}" has no ground-truth register`, def.caseId);
+  for (const def of suite.cases)
+    if (!registered.has(def.caseId)) add('case_missing_in_register', `case "${def.caseId}" has no ground-truth register`, def.caseId);
   const suiteCases = new Map(suite.cases.map((c) => [c.caseId, c]));
-  for (const rc of register.cases) if (!suiteCases.has(rc.caseId)) add('case_orphan_in_register', `register case "${rc.caseId}" is not in the suite`, rc.caseId);
+  for (const rc of register.cases)
+    if (!suiteCases.has(rc.caseId)) add('case_orphan_in_register', `register case "${rc.caseId}" is not in the suite`, rc.caseId);
 
   for (const def of suite.cases) {
     const rc = registered.get(def.caseId);
@@ -298,11 +329,20 @@ export function auditGroundTruth(suite: BenchmarkSuiteDefinition, register: Grou
     const actual = listExpectations(def);
     const entries = new Map(rc.entries.map((e) => [`${e.category}|${e.id}`, e]));
     const actualKeys = new Set(actual.map((a) => `${a.category}|${a.id}`));
-    for (const a of actual) if (!entries.has(`${a.category}|${a.id}`)) add('expectation_missing_in_register', `${a.category} "${a.id}" has no ground-truth entry`, def.caseId);
-    for (const e of rc.entries) if (!actualKeys.has(`${e.category}|${e.id}`)) add('entry_orphan', `entry ${e.category} "${e.id}" matches no expectation in the suite`, def.caseId);
+    for (const a of actual)
+      if (!entries.has(`${a.category}|${a.id}`))
+        add('expectation_missing_in_register', `${a.category} "${a.id}" has no ground-truth entry`, def.caseId);
+    for (const e of rc.entries)
+      if (!actualKeys.has(`${e.category}|${e.id}`))
+        add('entry_orphan', `entry ${e.category} "${e.id}" matches no expectation in the suite`, def.caseId);
 
     const fp = expectationsFingerprint(def);
-    if (fp !== rc.expectationsFingerprint) add('fingerprint_mismatch', `golden expectations changed (register ${rc.expectationsFingerprint}, suite ${fp}); re-audit the case, update the register and record the change in CHANGELOG.md`, def.caseId);
+    if (fp !== rc.expectationsFingerprint)
+      add(
+        'fingerprint_mismatch',
+        `golden expectations changed (register ${rc.expectationsFingerprint}, suite ${fp}); re-audit the case, update the register and record the change in CHANGELOG.md`,
+        def.caseId,
+      );
 
     // World model: the register must describe exactly what the suite declares, for every scope.
     const dw = declaredWorld(def);
@@ -314,16 +354,36 @@ export function auditGroundTruth(suite: BenchmarkSuiteDefinition, register: Grou
         continue;
       }
       const wantDeclared = scope === 'facts' ? dw.facts.declared : dw[scope];
-      if (w.declared !== wantDeclared) add('world_mismatch', `${scope}: register says ${w.declared}, suite declares ${wantDeclared}`, def.caseId);
-      if (scope === 'facts' && JSON.stringify([...(w.kinds ?? [])].sort(compareStrings)) !== JSON.stringify(dw.facts.kinds)) add('world_mismatch', `facts: register kinds ${JSON.stringify(w.kinds ?? [])}, suite closedWorldKinds ${JSON.stringify(dw.facts.kinds)}`, def.caseId);
-      if (w.support === 'questionable' && w.justification.trim().length < 40) add('questionable_world_without_note', `${scope}: a questionable world declaration needs a substantive justification`, def.caseId);
+      if (w.declared !== wantDeclared)
+        add('world_mismatch', `${scope}: register says ${w.declared}, suite declares ${wantDeclared}`, def.caseId);
+      if (scope === 'facts' && JSON.stringify([...(w.kinds ?? [])].sort(compareStrings)) !== JSON.stringify(dw.facts.kinds))
+        add(
+          'world_mismatch',
+          `facts: register kinds ${JSON.stringify(w.kinds ?? [])}, suite closedWorldKinds ${JSON.stringify(dw.facts.kinds)}`,
+          def.caseId,
+        );
+      if (w.support === 'questionable' && w.justification.trim().length < 40)
+        add('questionable_world_without_note', `${scope}: a questionable world declaration needs a substantive justification`, def.caseId);
     }
 
     // A forbidden expectation must be evidence-based: a stated reason in the suite and firm support in the register.
-    for (const f of def.expect.semantics?.forbidden ?? []) if (f.reason === undefined || f.reason.trim() === '') add('forbidden_without_reason', `forbidden fact "${f.id}" states no reason`, def.caseId);
-    for (const f of def.expect.capabilities?.forbidden ?? []) if (f.reason === undefined || f.reason.trim() === '') add('forbidden_without_reason', `forbidden capability "${f.id}" states no reason`, def.caseId);
+    for (const f of def.expect.semantics?.forbidden ?? [])
+      if (f.reason === undefined || f.reason.trim() === '')
+        add('forbidden_without_reason', `forbidden fact "${f.id}" states no reason`, def.caseId);
+    for (const f of def.expect.capabilities?.forbidden ?? [])
+      if (f.reason === undefined || f.reason.trim() === '')
+        add('forbidden_without_reason', `forbidden capability "${f.id}" states no reason`, def.caseId);
     for (const e of rc.entries) {
-      if ((e.category === 'forbidden_fact' || e.category === 'forbidden_capability') && e.identity !== 'explicit' && e.identity !== 'strongly_evidenced') add('forbidden_without_evidence', `${e.category} "${e.id}" has identity basis "${e.identity}"; a forbidden expectation must be explicit or strongly evidenced`, def.caseId);
+      if (
+        (e.category === 'forbidden_fact' || e.category === 'forbidden_capability') &&
+        e.identity !== 'explicit' &&
+        e.identity !== 'strongly_evidenced'
+      )
+        add(
+          'forbidden_without_evidence',
+          `${e.category} "${e.id}" has identity basis "${e.identity}"; a forbidden expectation must be explicit or strongly evidenced`,
+          def.caseId,
+        );
     }
   }
   return out;
@@ -333,7 +393,8 @@ export function auditGroundTruth(suite: BenchmarkSuiteDefinition, register: Grou
 // Static integrity lint of the suite itself
 // ---------------------------------------------------------------------------
 
-export type IntegrityCode = 'duplicate_matcher' | 'forbidden_contradicts_expected' | 'name_matcher_punctuation' | 'unknown_expected_producer';
+export type IntegrityCode =
+  'duplicate_matcher' | 'forbidden_contradicts_expected' | 'name_matcher_punctuation' | 'unknown_expected_producer';
 
 export interface IntegrityFinding {
   readonly code: IntegrityCode;
@@ -362,32 +423,76 @@ export function auditExpectationIntegrity(suite: BenchmarkSuiteDefinition): read
     const dup = <T>(items: readonly T[], key: (t: T) => string, idOf: (t: T) => string, label: string): void => {
       const by = new Map<string, string[]>();
       for (const it of items) by.set(key(it), [...(by.get(key(it)) ?? []), idOf(it)]);
-      for (const [k, ids] of by) if (ids.length > 1) add('duplicate_matcher', `${label} ${ids.map((i) => `"${i}"`).join(', ')} share the identical matcher ${k}`);
+      for (const [k, ids] of by)
+        if (ids.length > 1) add('duplicate_matcher', `${label} ${ids.map((i) => `"${i}"`).join(', ')} share the identical matcher ${k}`);
     };
-    dup(e.capabilities?.items ?? [], (k) => JSON.stringify(normalizeMatcher(k.name)), (k) => k.id, 'capabilities');
-    dup(e.capabilities?.forbidden ?? [], (k) => JSON.stringify(normalizeMatcher(k.name)), (k) => k.id, 'forbidden capabilities');
-    dup(e.semantics?.facts ?? [], (f) => JSON.stringify([f.kind, f.identify.map((p) => [p.path, normalizeDeepText(p)]).sort()]), (f) => f.id, 'facts');
-    dup(e.semantics?.forbidden ?? [], (f) => JSON.stringify([f.kind, f.identify.map((p) => [p.path, normalizeDeepText(p)]).sort()]), (f) => f.id, 'forbidden facts');
-    dup(e.workflows?.items ?? [], (w) => JSON.stringify(w.steps.map(normalizeMatcher).map((m) => JSON.stringify(m)).sort()), (w) => w.id, 'workflows');
+    dup(
+      e.capabilities?.items ?? [],
+      (k) => JSON.stringify(normalizeMatcher(k.name)),
+      (k) => k.id,
+      'capabilities',
+    );
+    dup(
+      e.capabilities?.forbidden ?? [],
+      (k) => JSON.stringify(normalizeMatcher(k.name)),
+      (k) => k.id,
+      'forbidden capabilities',
+    );
+    dup(
+      e.semantics?.facts ?? [],
+      (f) => JSON.stringify([f.kind, f.identify.map((p) => [p.path, normalizeDeepText(p)]).sort()]),
+      (f) => f.id,
+      'facts',
+    );
+    dup(
+      e.semantics?.forbidden ?? [],
+      (f) => JSON.stringify([f.kind, f.identify.map((p) => [p.path, normalizeDeepText(p)]).sort()]),
+      (f) => f.id,
+      'forbidden facts',
+    );
+    dup(
+      e.workflows?.items ?? [],
+      (w) =>
+        JSON.stringify(
+          w.steps
+            .map(normalizeMatcher)
+            .map((m) => JSON.stringify(m))
+            .sort(),
+        ),
+      (w) => w.id,
+      'workflows',
+    );
 
     // A forbidden trap that an expected item's matcher would also accept makes the two contradict each other.
     for (const trap of e.capabilities?.forbidden ?? []) {
       for (const exp of e.capabilities?.items ?? []) {
-        if (matchesName(matcherText(trap.name), exp.name)) add('forbidden_contradicts_expected', `forbidden capability "${trap.id}" (${JSON.stringify(matcherText(trap.name))}) would satisfy expected capability "${exp.id}"`);
+        if (matchesName(matcherText(trap.name), exp.name))
+          add(
+            'forbidden_contradicts_expected',
+            `forbidden capability "${trap.id}" (${JSON.stringify(matcherText(trap.name))}) would satisfy expected capability "${exp.id}"`,
+          );
       }
     }
 
     // P0.9C Step 4: an expected producer must be a value the pipeline can actually stamp (`producer.ts` taxonomy). `ai` is stampable but
     // AI is never exercised, so an `ai` expectation could only ever be outside the assertion; it is still a real producer value.
     for (const k of e.capabilities?.items ?? []) {
-      if (k.producedBy !== undefined && !KNOWN_PRODUCER_VALUES.includes(k.producedBy)) add('unknown_expected_producer', `capability "${k.id}" expects producedBy ${JSON.stringify(k.producedBy)}, which is not a producer value the pipeline stamps (${KNOWN_PRODUCER_VALUES.join(', ')})`);
+      if (k.producedBy !== undefined && !KNOWN_PRODUCER_VALUES.includes(k.producedBy))
+        add(
+          'unknown_expected_producer',
+          `capability "${k.id}" expects producedBy ${JSON.stringify(k.producedBy)}, which is not a producer value the pipeline stamps (${KNOWN_PRODUCER_VALUES.join(', ')})`,
+        );
     }
 
     // Unsatisfiable name matchers (text sources only).
     if ((def.sources ?? []).length > 0 && (def.sources ?? []).every((s) => TEXT_SOURCE_KINDS.has(s.kind))) {
       const check = (where: string, m: NameMatcher): void => {
         const text = matcherText(m);
-        if (NAME_STRIPPED_CHARS.test(text)) add('name_matcher_punctuation', `${where} matcher ${JSON.stringify(text)} contains punctuation that capability names derived from document text never contain`);
+        if (NAME_STRIPPED_CHARS.test(text))
+          add(
+            'name_matcher_punctuation',
+            `${where} matcher ${JSON.stringify(text)} contains punctuation that capability names derived from document text never contain`,
+          );
       };
       for (const k of e.capabilities?.items ?? []) check(`capability "${k.id}"`, k.name);
       for (const k of e.capabilities?.forbidden ?? []) check(`forbidden capability "${k.id}"`, k.name);

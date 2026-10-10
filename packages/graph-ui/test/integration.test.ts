@@ -58,7 +58,10 @@ test('adapter -> controller -> commands -> inspector -> export -> animation, end
 
 test('undo/redo composes with layout + commands through the public API', () => {
   const model = WorkflowGraphAdapter.toGraphModel({
-    steps: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    steps: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
     transitions: [{ id: 't1', from: 'a', to: 'b' }],
   });
   const controller = new GraphController({ model });

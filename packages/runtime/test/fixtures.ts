@@ -87,15 +87,40 @@ export const sampleSafetyRules = {
 
 export function buildContractLawyerBundle(options: BuildBundleOptions = {}): PackageBundle {
   const result = ManifestBuilder.create()
-    .setIdentity({ formatVersion: '1.0', name: options.name ?? 'xo_contract_lawyer', version: options.version ?? '1.0.0', creatorDid: 'did:xo:test-creator' })
+    .setIdentity({
+      formatVersion: '1.0',
+      name: options.name ?? 'xo_contract_lawyer',
+      version: options.version ?? '1.0.0',
+      creatorDid: 'did:xo:test-creator',
+    })
     .setCompatibility(options.compatibility ?? contractCompatibility)
     .setMetadata(sampleMetadata)
     .setCapabilities(options.capabilities ?? [contractAnalysisCapability, clauseLookupCapability])
     .setPermissions(options.permissions ?? [])
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode(JSON.stringify(options.knowledgeGraph ?? { nodes: [], edges: [] })), required: false })
-    .addComponent({ kind: 'decision_trees', path: 'reasoning/decision_trees.json', data: new TextEncoder().encode('{"trees":[]}'), required: false })
-    .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify(options.safetyRules ?? { rules: [] })), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode(JSON.stringify(options.knowledgeGraph ?? { nodes: [], edges: [] })),
+      required: false,
+    })
+    .addComponent({
+      kind: 'decision_trees',
+      path: 'reasoning/decision_trees.json',
+      data: new TextEncoder().encode('{"trees":[]}'),
+      required: false,
+    })
+    .addComponent({
+      kind: 'safety_rules',
+      path: 'safety/rules.json',
+      data: new TextEncoder().encode(JSON.stringify(options.safetyRules ?? { rules: [] })),
+      required: true,
+    })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
@@ -103,20 +128,43 @@ export function buildContractLawyerBundle(options: BuildBundleOptions = {}): Pac
 
 export function buildFraudDetectorBundle(options: BuildBundleOptions = {}): PackageBundle {
   const result = ManifestBuilder.create()
-    .setIdentity({ formatVersion: '1.0', name: options.name ?? 'xo_fraud_detector', version: options.version ?? '1.0.0', creatorDid: 'did:xo:test-creator' })
+    .setIdentity({
+      formatVersion: '1.0',
+      name: options.name ?? 'xo_fraud_detector',
+      version: options.version ?? '1.0.0',
+      creatorDid: 'did:xo:test-creator',
+    })
     .setCompatibility(options.compatibility ?? strictCompatibility)
     .setMetadata({ domain: 'finance', description: 'Fraud detection', scope: ['fraud_detection'], limitations: [] })
     .setCapabilities(options.capabilities ?? [fraudDetectionCapability])
     .setPermissions(options.permissions ?? [])
-    .addComponent({ kind: 'decision_trees', path: 'reasoning/decision_trees.json', data: new TextEncoder().encode('{"trees":[]}'), required: false })
-    .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify(options.safetyRules ?? { rules: [] })), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'decision_trees',
+      path: 'reasoning/decision_trees.json',
+      data: new TextEncoder().encode('{"trees":[]}'),
+      required: false,
+    })
+    .addComponent({
+      kind: 'safety_rules',
+      path: 'safety/rules.json',
+      data: new TextEncoder().encode(JSON.stringify(options.safetyRules ?? { rules: [] })),
+      required: true,
+    })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
 }
 
-export async function withTempInstaller<T>(fn: (installer: PackageInstaller, store: LocalFsBlobStore) => Promise<T>, clock?: Clock): Promise<T> {
+export async function withTempInstaller<T>(
+  fn: (installer: PackageInstaller, store: LocalFsBlobStore) => Promise<T>,
+  clock?: Clock,
+): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), 'xo-runtime-'));
   try {
     const store = new LocalFsBlobStore(dir);
@@ -132,10 +180,21 @@ export async function withTempInstaller<T>(fn: (installer: PackageInstaller, sto
 import { PackageRegistry, type MountedPackage } from '../src/registry/mounted-package.js';
 import { PackageLoader } from '../src/loader/package-loader.js';
 import { MountId } from '../src/ids.js';
-import type { ModelProvider, ProviderCapabilityDescriptor, ProviderId, ProviderRequest, ProviderResponse, ProviderStreamEvent } from '@xo/ai-core';
+import type {
+  ModelProvider,
+  ProviderCapabilityDescriptor,
+  ProviderId,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderStreamEvent,
+} from '@xo/ai-core';
 
 /** Mounts `bundle` (already installed on `installer`) into a fresh `PackageRegistry`, for tests that don't need the full `PackageLoader` verification path exercised. */
-export async function mountBundle(installer: PackageInstaller, bundle: PackageBundle, registry: PackageRegistry = PackageRegistry.empty()): Promise<PackageRegistry> {
+export async function mountBundle(
+  installer: PackageInstaller,
+  bundle: PackageBundle,
+  registry: PackageRegistry = PackageRegistry.empty(),
+): Promise<PackageRegistry> {
   const loader = new PackageLoader(installer);
   const result = await loader.mount(bundle.manifest.name, bundle.manifest.version, registry);
   if (!result.ok) throw new Error(`Fixture mount failed: ${result.error.message}`);
@@ -148,7 +207,11 @@ export function fakeMountedPackage(bundle: PackageBundle): MountedPackage {
     name: bundle.manifest.name,
     version: bundle.manifest.version,
     manifest: bundle.manifest,
-    capabilities: (bundle.manifest.capabilities ?? []).map((declaration) => ({ declaration, packageName: bundle.manifest.name, packageVersion: bundle.manifest.version })),
+    capabilities: (bundle.manifest.capabilities ?? []).map((declaration) => ({
+      declaration,
+      packageName: bundle.manifest.name,
+      packageVersion: bundle.manifest.version,
+    })),
     mountedAt: '2026-01-01T00:00:00.000Z',
     manifestHash: 'sha256:fake',
   }) as unknown as MountedPackage;
@@ -174,7 +237,12 @@ export class ScriptedModelProvider implements ModelProvider {
 
   constructor(
     public readonly id: ProviderId = 'anthropic',
-    private response: ProviderResponse = { text: 'default response', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' },
+    private response: ProviderResponse = {
+      text: 'default response',
+      usage: { inputTokens: 10, outputTokens: 5 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    },
     private readonly descriptor: ProviderCapabilityDescriptor = {
       providerId: id,
       models: ['test-model'],

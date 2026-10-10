@@ -39,7 +39,9 @@ test('errorToResponse() includes non-empty context in the body', () => {
   const error = new InvalidArgumentError('bad input', { context: { field: 'nameAtVersion' } });
   const response = errorToResponse(error);
   assert.equal(response.status, 400);
-  assert.deepEqual(response.body, { error: { code: ErrorCode.INVALID_ARGUMENT, message: 'bad input', context: { field: 'nameAtVersion' } } });
+  assert.deepEqual(response.body, {
+    error: { code: ErrorCode.INVALID_ARGUMENT, message: 'bad input', context: { field: 'nameAtVersion' } },
+  });
 });
 
 test('errorToResponse() omits an empty context object from the body rather than emitting context: {}', () => {
@@ -82,7 +84,11 @@ test('spot-check: a representative sample of domain-specific codes map to the re
 test('P0.8: WORKFLOW_NOT_EXECUTABLE maps to 422 and carries its structured context to the wire', () => {
   assert.equal(knownStatusCodes()[ErrorCode.WORKFLOW_NOT_EXECUTABLE], 422);
   assert.equal(ErrorCode.WORKFLOW_NOT_EXECUTABLE, 'XO_WORKFLOW_NOT_EXECUTABLE');
-  const res = errorToResponse(new XoError(ErrorCode.WORKFLOW_NOT_EXECUTABLE, 'not executable', { context: { executabilityStatus: 'not_executable_yet' } }));
+  const res = errorToResponse(
+    new XoError(ErrorCode.WORKFLOW_NOT_EXECUTABLE, 'not executable', { context: { executabilityStatus: 'not_executable_yet' } }),
+  );
   assert.equal(res.status, 422);
-  assert.deepEqual(res.body, { error: { code: 'XO_WORKFLOW_NOT_EXECUTABLE', message: 'not executable', context: { executabilityStatus: 'not_executable_yet' } } });
+  assert.deepEqual(res.body, {
+    error: { code: 'XO_WORKFLOW_NOT_EXECUTABLE', message: 'not executable', context: { executabilityStatus: 'not_executable_yet' } },
+  });
 });

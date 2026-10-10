@@ -7,6 +7,7 @@ import type { ModelProvider } from '@xo/ai-core';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { tryDeterministicRun } from './deterministic-router.js';
+import type { Result } from '@xo/types';
 
 export interface RunOptions {
   readonly capabilityId?: string;
@@ -29,7 +30,8 @@ export interface RunOptions {
 
 /** P1.0 M1 kill switch for model-assisted execution. Typed `boolean` (not a literal) so the guarded code stays type-checked. */
 const AI_EXECUTION_ENABLED: boolean = false;
-export const AI_EXECUTION_DISABLED_MESSAGE = 'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
+export const AI_EXECUTION_DISABLED_MESSAGE =
+  'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
 
 /**
  * This command does no planning, execution, prompt assembly, retrieval,
@@ -52,13 +54,15 @@ export const AI_EXECUTION_DISABLED_MESSAGE = 'AI-assisted execution is disabled:
  * (e.g. one that always returns a scripted provider, or one that always
  * errors, to prove the deterministic path never calls it).
  */
-export async function runCommand(options: RunOptions, resolveProvider: () => import('@xo/types').Result<ModelProvider, string>): Promise<CommandResult> {
+export async function runCommand(options: RunOptions, resolveProvider: () => Result<ModelProvider, string>): Promise<CommandResult> {
   const now = options.now ?? (() => new Date());
 
   const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir));
   const runtime = new Runtime(installer, options.now !== undefined ? { now: options.now } : {});
   const bootstrap = await runtime.bootstrap();
-  const bootstrapWarnings = bootstrap.failures.map((f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`);
+  const bootstrapWarnings = bootstrap.failures.map(
+    (f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`,
+  );
 
   // Set only when the deterministic router looked at this capability and
   // explicitly declined it (`not_deterministic`) — never for a bare
@@ -111,7 +115,13 @@ export async function runCommand(options: RunOptions, resolveProvider: () => imp
   // the AI-provider path below, unchanged from before this router
   // existed.
   if (options.capabilityId !== undefined) {
-    const deterministic = await tryDeterministicRun(options.capabilityId, options.input, installer, runtime.context().registry, options.grantedPermissionIds ?? []);
+    const deterministic = await tryDeterministicRun(
+      options.capabilityId,
+      options.input,
+      installer,
+      runtime.context().registry,
+      options.grantedPermissionIds ?? [],
+    );
     if (deterministic.kind === 'executed') {
       if (options.json) {
         return ok([
@@ -143,10 +153,14 @@ export async function runCommand(options: RunOptions, resolveProvider: () => imp
       ]);
     }
     if (deterministic.kind === 'invalid_input') {
-      return failWith(`invalid_input: capability "${options.capabilityId}" rejected --input: ${deterministic.issues.map((i) => `${i.property}: ${i.message}`).join('; ')}`);
+      return failWith(
+        `invalid_input: capability "${options.capabilityId}" rejected --input: ${deterministic.issues.map((i) => `${i.property}: ${i.message}`).join('; ')}`,
+      );
     }
     if (deterministic.kind === 'confidence_ineligible') {
-      return failWith(`confidence_ineligible: capability "${options.capabilityId}" has confidence ${deterministic.score}, below the ${deterministic.threshold} execution-eligibility threshold — refusing to execute deterministically rather than running on an under-confident capability`);
+      return failWith(
+        `confidence_ineligible: capability "${options.capabilityId}" has confidence ${deterministic.score}, below the ${deterministic.threshold} execution-eligibility threshold — refusing to execute deterministically rather than running on an under-confident capability`,
+      );
     }
     if (deterministic.kind === 'not_authorized') {
       return failWith(`not_authorized: ${deterministic.reason}`);
@@ -227,7 +241,10 @@ export async function runCommand(options: RunOptions, resolveProvider: () => imp
   if (result.error || !result.response) {
     return withDeterministicSkipNote({
       exitCode: 1,
-      lines: [...bootstrapWarnings, `error: execution ${result.session.status}${result.error ? ` [${result.error.code}] ${result.error.message}` : ''}`],
+      lines: [
+        ...bootstrapWarnings,
+        `error: execution ${result.session.status}${result.error ? ` [${result.error.code}] ${result.error.message}` : ''}`,
+      ],
     });
   }
 
@@ -238,7 +255,9 @@ export async function runCommand(options: RunOptions, resolveProvider: () => imp
       `  executionId:          ${result.executionId}`,
       `  capabilitiesInvoked:  ${result.receipt.capabilitiesInvoked.join(', ') || '(none)'}`,
       `  tokens:               ${result.receipt.tokenUsage.promptTokens} prompt + ${result.receipt.tokenUsage.completionTokens} completion`,
-      ...(result.receipt.estimatedCost ? [`  estimatedCost:        ${result.receipt.estimatedCost.amount} ${result.receipt.estimatedCost.currency}`] : []),
+      ...(result.receipt.estimatedCost
+        ? [`  estimatedCost:        ${result.receipt.estimatedCost.amount} ${result.receipt.estimatedCost.currency}`]
+        : []),
       `  durationMs:           ${result.receipt.executionDurationMs}`,
       `  degraded:             ${result.receipt.degraded ?? false}`,
     );

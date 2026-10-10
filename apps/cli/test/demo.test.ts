@@ -7,7 +7,9 @@ import { demoCommand, isKnownScenario, knownScenarioNames } from '../src/command
 import { withTempDir } from './helpers.js';
 
 const AASTHA_PDF = fileURLToPath(new URL('../../../examples/vertical-test/Aastha.pdf', import.meta.url));
-const COMMERCIAL_PROPERTY_PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const COMMERCIAL_PROPERTY_PDF = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 
 test('no mock/stub execution path: the demo command module never imports a mock helper and reuses the real pipeline', async () => {
   const { readFile } = await import('node:fs/promises');
@@ -81,7 +83,9 @@ test('demo aastha step ordering matches the underlying composed workflow order (
   // (`step_<n>_<capabilityId>`) — the execution order must be a
   // subsequence of the classification order, i.e. this module never
   // re-derives or reshuffles step order itself.
-  const executionCapabilityIds = parsed.execution.steps.map((s: { nodeId: unknown }) => capabilityOrder.find((id: string) => String(s.nodeId).endsWith(id)));
+  const executionCapabilityIds = parsed.execution.steps.map((s: { nodeId: unknown }) =>
+    capabilityOrder.find((id: string) => String(s.nodeId).endsWith(id)),
+  );
   const filteredClassificationOrder = capabilityOrder.filter((id: string) => executionCapabilityIds.includes(id));
   assert.deepEqual(executionCapabilityIds, filteredClassificationOrder);
 });
@@ -130,7 +134,7 @@ test('demo commercial-property: an explicit empty --input suppresses the default
   assert.equal(parsed.execution.usedDefaultDemoInput, false);
   // With no inputs at all, no deterministic rule can have every required field, so nothing should show as "supplied".
   const anySupplied = parsed.capabilities.some((c: { inputs: readonly unknown[] }) =>
-    c.inputs.some((i) => (i as { runtimeKey: string }).runtimeKey !== undefined) ,
+    c.inputs.some((i) => (i as { runtimeKey: string }).runtimeKey !== undefined),
   );
   assert.ok(anySupplied || parsed.capabilities.length === 0);
 });

@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 import type { ComponentKind, XoManifest } from '@xo/types';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, PackageError } from '@xo/errors';
@@ -44,7 +44,12 @@ function entriesToBundle(entries: readonly TarEntry[]): Result<PackageBundle, Pa
     const data = byPath.get(entry.path);
     if (!data) {
       if (entry.required) {
-        return err(new PackageError(ErrorCode.PACKAGE_COMPONENT_MISSING, `Required component "${kind}" declared at "${entry.path}" is missing from the archive`));
+        return err(
+          new PackageError(
+            ErrorCode.PACKAGE_COMPONENT_MISSING,
+            `Required component "${kind}" declared at "${entry.path}" is missing from the archive`,
+          ),
+        );
       }
       continue;
     }

@@ -2,7 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ContentHash } from '@xo/types';
 import { PermissionManager, RuleBasedPolicy, Permissions, type PolicyRule } from '@xo/permissions';
-import { StructuredComparisonBindingResolver, ActionEscalationBindingResolver, computeContractContentHash, resolveCapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
+import {
+  StructuredComparisonBindingResolver,
+  ActionEscalationBindingResolver,
+  computeContractContentHash,
+  resolveCapabilityBinding,
+  type SemanticCapabilityContract,
+} from '@xo/capability-contract';
 import { executeResolvedContract, resolveContractBinding } from '../../src/capability-authority/contract-execution.js';
 
 /**
@@ -23,7 +29,16 @@ function contract(overrides: Partial<SemanticCapabilityContract> = {}): Semantic
     outputs: [],
     requiredPermissions: [],
     determinism: 'deterministic',
-    rules: [{ sourceNodeId: 'decision:deny-large-claim', kind: 'decision_node', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', exceptionConditions: [], confidence: 0.9 }],
+    rules: [
+      {
+        sourceNodeId: 'decision:deny-large-claim',
+        kind: 'decision_node',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'deny the claim',
+        exceptionConditions: [],
+        confidence: 0.9,
+      },
+    ],
     confidence: 0.9,
     sourceRefs: [],
     sourceXoirNodeIds: ['capability:claim-evaluation', 'decision:deny-large-claim'],
@@ -58,7 +73,11 @@ test('resolveContractBinding never widens a caller-supplied resolver list (the i
 test('executeResolvedContract: LIVE GRAPH path — executes and reports graphHash, contractContentHash, and the existing provenance fields', async () => {
   const c = contract();
   const graphHash = ContentHash(`sha256:${'e'.repeat(64)}`);
-  const outcome = await executeResolvedContract(c, bound(c), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 }, graphHash });
+  const outcome = await executeResolvedContract(c, bound(c), {
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+    graphHash,
+  });
   assert.equal(outcome.ok, true);
   if (!outcome.ok) return;
   assert.deepEqual(outcome.value.output, { matched: true, ruleSourceNodeId: 'decision:deny-large-claim', outcome: 'deny the claim' });
@@ -107,7 +126,10 @@ test('executeResolvedContract: each call uses a fresh registry — nothing regis
   assert.equal(first.ok, true);
   // A different contract id executes independently; the first registration does not leak into it.
   const other = contract({ id: 'capability:other', sourceXoirNodeIds: ['capability:other'] });
-  const second = await executeResolvedContract(other, bound(other), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 } });
+  const second = await executeResolvedContract(other, bound(other), {
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
   assert.equal(second.ok, true);
   if (!second.ok) return;
   assert.equal(second.value.contractId, 'capability:other');
@@ -121,9 +143,27 @@ import { buildSemanticCapabilityContract, projectCapabilityProvenance, projectEx
 function liveGraph(): XoirGraph {
   const now = () => '2026-01-01T00:00:00.000Z';
   const g = XoirGraph.create(XoirGraphId('g-e2e'));
-  g.createAndAddNode({ id: XoirNodeId('capability:claim-evaluation'), kind: 'capability', properties: { name: 'Evaluate Claim', description: 'd', determinism: 'deterministic' }, confidence: 0.9, now });
-  g.createAndAddNode({ id: XoirNodeId('decision:deny-large-claim'), kind: 'decision_node', properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' }, confidence: 0.9, now });
-  g.createAndAddEdge({ id: XoirEdgeId('r'), kind: 'REQUIRES', fromId: XoirNodeId('decision:deny-large-claim'), toId: XoirNodeId('capability:claim-evaluation'), now });
+  g.createAndAddNode({
+    id: XoirNodeId('capability:claim-evaluation'),
+    kind: 'capability',
+    properties: { name: 'Evaluate Claim', description: 'd', determinism: 'deterministic' },
+    confidence: 0.9,
+    now,
+  });
+  g.createAndAddNode({
+    id: XoirNodeId('decision:deny-large-claim'),
+    kind: 'decision_node',
+    properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' },
+    confidence: 0.9,
+    now,
+  });
+  g.createAndAddEdge({
+    id: XoirEdgeId('r'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('decision:deny-large-claim'),
+    toId: XoirNodeId('capability:claim-evaluation'),
+    now,
+  });
   return g;
 }
 
@@ -132,7 +172,11 @@ test('Step 6 e2e (live graph path): the executed result agrees with the graph pr
   const built = buildSemanticCapabilityContract(g, XoirNodeId('capability:claim-evaluation'));
   assert.ok(built.ok);
   const binding = bound(built.value);
-  const outcome = await executeResolvedContract(built.value, binding, { permissionManager: manager([]), input: { claimed_loss_amount: 15000 }, graphHash: ContentHash(g.contentHash()) });
+  const outcome = await executeResolvedContract(built.value, binding, {
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+    graphHash: ContentHash(g.contentHash()),
+  });
   assert.ok(outcome.ok);
   const cap = projectCapabilityProvenance(g, 'capability:claim-evaluation');
   assert.ok(cap.ok);
@@ -146,7 +190,10 @@ test('Step 6 e2e (installed-package path): contract/binding agree; graphHash is 
   assert.ok(built.ok);
   // The installed path only ever sees the embedded contract as JSON.
   const embedded = JSON.parse(JSON.stringify(built.value)) as typeof built.value;
-  const outcome = await executeResolvedContract(embedded, bound(embedded), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 } });
+  const outcome = await executeResolvedContract(embedded, bound(embedded), {
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
   assert.ok(outcome.ok);
   const cap = projectCapabilityProvenance(g, 'capability:claim-evaluation');
   assert.ok(cap.ok);

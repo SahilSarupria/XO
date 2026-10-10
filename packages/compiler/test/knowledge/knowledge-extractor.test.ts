@@ -37,7 +37,10 @@ test('integration: a full PDF -> ExperienceDocument -> KnowledgeGraph pipeline p
 });
 
 test('integration: every node traces back to a page and document path', async () => {
-  const experienceDoc = await experienceDocFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Acme Corp is mentioned here.) Tj' }] }, 'contract.pdf');
+  const experienceDoc = await experienceDocFromPdf(
+    { pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Acme Corp is mentioned here.) Tj' }] },
+    'contract.pdf',
+  );
   const graph = await extractKnowledgeGraph(experienceDoc);
   for (const node of graph.nodes) {
     for (const prov of node.provenance) {
@@ -72,9 +75,17 @@ test('integration: rule-based-only extraction (no aiCore) still produces a corre
 });
 
 test('integration: with an AI extractor available, AI-derived nodes appear alongside rule-based ones', async () => {
-  const experienceDoc = await experienceDocFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Acme Corp shall comply with all terms.) Tj' }] });
-  const output: KnowledgeExtractionOutput = { items: [{ id: 'i1', type: 'concept', statement: 'Compliance obligation exists', domain: 'legal', confidence: 0.9 }], relationships: [] };
-  const provider = new ScriptableTestProvider('anthropic', experienceDoc.units.map(() => ({ kind: 'success' as const, response: jsonResponse(output) })));
+  const experienceDoc = await experienceDocFromPdf({
+    pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Acme Corp shall comply with all terms.) Tj' }],
+  });
+  const output: KnowledgeExtractionOutput = {
+    items: [{ id: 'i1', type: 'concept', statement: 'Compliance obligation exists', domain: 'legal', confidence: 0.9 }],
+    relationships: [],
+  };
+  const provider = new ScriptableTestProvider(
+    'anthropic',
+    experienceDoc.units.map(() => ({ kind: 'success' as const, response: jsonResponse(output) })),
+  );
   const aiCore = new AiCapabilityLayer({
     providers: [provider],
     policy: { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'test-model' } }] },
@@ -97,9 +108,7 @@ test('determinism: compiling the same document twice produces a byte-for-byte id
   const spec: TestPdfSpec = {
     pages: [
       {
-        contentOps:
-          '/F1 20 Tf 72 750 Td (Definitions) Tj ' +
-          '/F1 12 Tf 0 -40 Td ("Party" means a signatory. Acme Corp is a Party.) Tj',
+        contentOps: '/F1 20 Tf 72 750 Td (Definitions) Tj ' + '/F1 12 Tf 0 -40 Td ("Party" means a signatory. Acme Corp is a Party.) Tj',
       },
     ],
   };

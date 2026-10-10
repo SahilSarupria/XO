@@ -1,9 +1,11 @@
 # ADR 0004: Vendor-neutral Logger/Tracer/Meter interfaces, console implementations for now
 
 ## Status
+
 Accepted
 
 ## Context
+
 Every future module (compiler, runtime, registry) needs structured logs,
 traces, and metrics. Committing to a specific backend (pino for logs,
 an OpenTelemetry SDK + a specific exporter for traces/metrics) before any
@@ -12,6 +14,7 @@ rates, exporter endpoints, resource attributes — with no real workload to
 validate the guess against.
 
 ## Decision
+
 Define `Logger` (`@xo/logger`), `Tracer`/`Meter` (`@xo/observability`) as
 interfaces modeled closely on the ecosystem-standard shapes (`Tracer`/
 `Span` mirrors OpenTelemetry's API on purpose). Ship dependency-free
@@ -20,6 +23,7 @@ satisfy those interfaces today, sufficient for local dev, tests, and this
 module's CLI.
 
 ## Alternatives considered
+
 - **Adopt pino + the OpenTelemetry SDK now**: rejected for this module —
   no service exists yet to generate a load profile that would justify a
   specific exporter/sampling configuration, and this module was
@@ -32,6 +36,7 @@ module's CLI.
   composition point.
 
 ## Consequences
+
 - Swapping in pino/OpenTelemetry later means writing one new class per
   interface (`PinoLogger implements Logger`, an OTel-backed `Tracer`) and
   changing the DI registration — zero call-site changes, by construction.

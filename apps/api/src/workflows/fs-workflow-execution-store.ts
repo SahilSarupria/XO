@@ -4,7 +4,13 @@ import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { BlobStore } from '@xo/storage';
-import { isValidWorkflowExecutionId, StaleWorkflowRevisionError, type CreateWorkflowExecutionInput, type WorkflowExecutionRecord, type WorkflowExecutionStore } from './workflow-execution.js';
+import {
+  isValidWorkflowExecutionId,
+  StaleWorkflowRevisionError,
+  type CreateWorkflowExecutionInput,
+  type WorkflowExecutionRecord,
+  type WorkflowExecutionStore,
+} from './workflow-execution.js';
 
 function metadataKey(workflowExecutionId: string): string {
   return `${workflowExecutionId}/metadata.json`;
@@ -27,10 +33,16 @@ function decodeRecord(bytes: Uint8Array): WorkflowExecutionRecord | undefined {
 export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
   constructor(private readonly store: BlobStore) {}
 
-  async create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>> {
+  async create(
+    workspaceId: string,
+    principal: AuthenticatedPrincipal,
+    input: CreateWorkflowExecutionInput,
+  ): Promise<Result<WorkflowExecutionRecord, XoError>> {
     assertAuthenticatedPrincipal(principal); // fail closed
-    if (!isValidWorkflowExecutionId(input.workflowExecutionId)) return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid workflow execution id'));
-    if (await this.store.has(metadataKey(input.workflowExecutionId))) return err(new XoError(ErrorCode.ALREADY_EXISTS, `workflow execution "${input.workflowExecutionId}" already exists`));
+    if (!isValidWorkflowExecutionId(input.workflowExecutionId))
+      return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid workflow execution id'));
+    if (await this.store.has(metadataKey(input.workflowExecutionId)))
+      return err(new XoError(ErrorCode.ALREADY_EXISTS, `workflow execution "${input.workflowExecutionId}" already exists`));
 
     const now = new Date().toISOString();
     const record: WorkflowExecutionRecord = {
@@ -44,7 +56,13 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
       revision: 0,
       status: 'created',
       input: input.input,
-      steps: input.steps.map((s) => ({ stepId: s.stepId, order: s.order, capabilityId: s.capabilityId, capabilityName: s.capabilityName, status: 'pending' as const })),
+      steps: input.steps.map((s) => ({
+        stepId: s.stepId,
+        order: s.order,
+        capabilityId: s.capabilityId,
+        capabilityName: s.capabilityName,
+        status: 'pending' as const,
+      })),
       currentStepIndex: input.steps.length > 0 ? 0 : null,
       completedStepExecutionIds: [],
       createdAt: now,
@@ -101,10 +119,17 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
    * interleave; that is out of scope (no distributed locks in P0.8).
    */
   async save(next: WorkflowExecutionRecord, expectedRevision: number): Promise<Result<WorkflowExecutionRecord, XoError>> {
-    if (next.revision !== expectedRevision + 1) return err(new XoError(ErrorCode.INVALID_ARGUMENT, `next.revision (${next.revision}) must equal expectedRevision + 1 (${expectedRevision + 1})`));
+    if (next.revision !== expectedRevision + 1)
+      return err(
+        new XoError(
+          ErrorCode.INVALID_ARGUMENT,
+          `next.revision (${next.revision}) must equal expectedRevision + 1 (${expectedRevision + 1})`,
+        ),
+      );
     const current = await this.get(next.workflowExecutionId);
     if (!current.ok) return err(current.error);
-    if (current.value.revision !== expectedRevision) return err(new StaleWorkflowRevisionError(next.workflowExecutionId, expectedRevision, current.value.revision));
+    if (current.value.revision !== expectedRevision)
+      return err(new StaleWorkflowRevisionError(next.workflowExecutionId, expectedRevision, current.value.revision));
     const put = await this.store.put(metadataKey(next.workflowExecutionId), JSON.stringify(next), { contentType: 'application/json' });
     if (!put.ok) return err(put.error);
     return ok(next);

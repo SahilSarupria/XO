@@ -11,9 +11,7 @@ function ops(s: string): Uint8Array {
 }
 
 test('absolute Td positioning (no cm) is unchanged — identity CTM regression', () => {
-  const runs = extractTextRuns(
-    ops('BT /F1 12 Tf 72 700 Td (First line) Tj 0 -14 Td (Second line) Tj ET'),
-  );
+  const runs = extractTextRuns(ops('BT /F1 12 Tf 72 700 Td (First line) Tj 0 -14 Td (Second line) Tj ET'));
   assert.equal(runs.length, 2);
   assert.equal(textOf(runs[0]!), 'First line');
   assert.equal(runs[0]!.x, 72);
@@ -155,7 +153,7 @@ test('TJ arrays inside a cm-transformed block still merge kerned fragments and l
   assert.equal(runs[1]!.y, 200);
 });
 
-test("' and \" operators still apply the leading-based newline before recording a run, inside a transformed block", () => {
+test('\' and " operators still apply the leading-based newline before recording a run, inside a transformed block', () => {
   const runs = extractTextRuns(ops("q 1 0 0 1 0 0 cm BT /F1 12 Tf 12 TL 0 100 Td (One) Tj (Two) ' ET Q"));
   assert.equal(runs.length, 2);
   assert.equal(textOf(runs[0]!), 'One');

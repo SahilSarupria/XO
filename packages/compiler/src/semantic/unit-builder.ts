@@ -83,7 +83,9 @@ interface BlockGroup {
  */
 async function groupBlocks(blocks: readonly DocumentBlock[], resolver: BoundaryAmbiguityResolver): Promise<readonly BlockGroup[]> {
   const groups: BlockGroup[] = [];
-  let current: { blocks: DocumentBlock[]; startIndex: number; semanticType: SemanticType; confidenceSum: number; definedTerm: string | undefined } | undefined;
+  let current:
+    | { blocks: DocumentBlock[]; startIndex: number; semanticType: SemanticType; confidenceSum: number; definedTerm: string | undefined }
+    | undefined;
 
   const flush = (endIndex: number): void => {
     if (!current) return;
@@ -110,12 +112,25 @@ async function groupBlocks(blocks: readonly DocumentBlock[], resolver: BoundaryA
 
     if (isAlwaysOwnGroup) {
       flush(i - 1);
-      groups.push({ blocks: [block], startIndex: i, endIndex: i, semanticType: classification.semanticType, confidence: classification.confidence, definedTerm: initial.definedTerm });
+      groups.push({
+        blocks: [block],
+        startIndex: i,
+        endIndex: i,
+        semanticType: classification.semanticType,
+        confidence: classification.confidence,
+        definedTerm: initial.definedTerm,
+      });
       continue;
     }
 
     const previousBlock = current?.blocks[current.blocks.length - 1];
-    const canExtend = current !== undefined && previousBlock !== undefined && previousBlock.kind !== 'list_item' && previousBlock.kind !== 'footnote' && previousBlock.kind !== 'table_row' && current.semanticType === classification.semanticType;
+    const canExtend =
+      current !== undefined &&
+      previousBlock !== undefined &&
+      previousBlock.kind !== 'list_item' &&
+      previousBlock.kind !== 'footnote' &&
+      previousBlock.kind !== 'table_row' &&
+      current.semanticType === classification.semanticType;
 
     if (canExtend && current) {
       current.blocks.push(block);
@@ -123,7 +138,13 @@ async function groupBlocks(blocks: readonly DocumentBlock[], resolver: BoundaryA
       if (current.definedTerm === undefined) current.definedTerm = initial.definedTerm;
     } else {
       flush(i - 1);
-      current = { blocks: [block], startIndex: i, semanticType: classification.semanticType, confidenceSum: classification.confidence, definedTerm: initial.definedTerm };
+      current = {
+        blocks: [block],
+        startIndex: i,
+        semanticType: classification.semanticType,
+        confidenceSum: classification.confidence,
+        definedTerm: initial.definedTerm,
+      };
     }
   }
   flush(blocks.length - 1);
@@ -170,7 +191,12 @@ export async function buildExperienceUnitsForSection(
   const ownUnits: DraftExperienceUnit[] = groups.map((group, groupIndex) => {
     const content = group.blocks.map(textOf).join('\n\n');
     const title = groupIndex === 0 && section.heading ? section.heading.text : synthesizeTitle(content);
-    const structuredFieldsForGroup = group.blocks.filter((b): b is DocumentBlock & { kind: 'paragraph'; structuredField: StructuredFieldValue } => b.kind === 'paragraph' && b.structuredField !== undefined).map((b) => b.structuredField);
+    const structuredFieldsForGroup = group.blocks
+      .filter(
+        (b): b is DocumentBlock & { kind: 'paragraph'; structuredField: StructuredFieldValue } =>
+          b.kind === 'paragraph' && b.structuredField !== undefined,
+      )
+      .map((b) => b.structuredField);
     const structuredFields = structuredFieldsForGroup.length > 0 ? structuredFieldsForGroup : undefined;
     const pages = [...new Set(group.blocks.map((b) => b.provenance.page))];
     const soleBlock = group.blocks.length === 1 ? group.blocks[0] : undefined;

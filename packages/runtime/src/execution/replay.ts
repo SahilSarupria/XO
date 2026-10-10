@@ -5,7 +5,7 @@ import type { ExecutionResult } from './execution-result.js';
 import type { ExecutionRequest, ExecutionEnvironment } from './execution-request.js';
 import type { ExecutionReceipt } from '../session/execution-receipt.js';
 import { createSession, withFailed, withReceipt } from '../session/execution-session.js';
-import { ReceiptId, RequestId, EnvironmentId, type ExecutionId } from '../ids.js';
+import { ReceiptId, RequestId, EnvironmentId } from '../ids.js';
 
 /**
  * R6 replay — see the R6 design's §6 for the full semantic contract.
@@ -53,7 +53,11 @@ let replayCounter = 0;
  * actually matched against anything.
  */
 function placeholderReplayEnvironment(now: () => Date): ExecutionEnvironment {
-  return { environmentId: EnvironmentId('replay-reconstruction'), hostProfile: { family: 'generic', capabilities: [] }, createdAt: now().toISOString() };
+  return {
+    environmentId: EnvironmentId('replay-reconstruction'),
+    hostProfile: { family: 'generic', capabilities: [] },
+    createdAt: now().toISOString(),
+  };
 }
 
 /**
@@ -64,35 +68,63 @@ function placeholderReplayEnvironment(now: () => Date): ExecutionEnvironment {
  * original only via the returned receipt's `replayOf` field, per the R6
  * design's §7 identity model.
  */
-export async function replayExecution(engine: ExecutionEngine, originalReceipt: ExecutionReceipt, options: ReplayOptions = {}): Promise<ExecutionResult> {
+export async function replayExecution(
+  engine: ExecutionEngine,
+  originalReceipt: ExecutionReceipt,
+  options: ReplayOptions = {},
+): Promise<ExecutionResult> {
   const now = options.now ?? (() => new Date());
 
   if (originalReceipt.hybridSteps !== undefined) {
-    return failReplay(originalReceipt, now, 'Replay of a hybrid execution is deferred in this R6 pass — the original receipt does not record enough per-step information to reconstruct a hybrid invocation safely without risking re-running an already-completed step.');
+    return failReplay(
+      originalReceipt,
+      now,
+      'Replay of a hybrid execution is deferred in this R6 pass — the original receipt does not record enough per-step information to reconstruct a hybrid invocation safely without risking re-running an already-completed step.',
+    );
   }
 
   const isDeterministicOriginal = originalReceipt.contractId !== undefined;
 
   if (isDeterministicOriginal) {
     if (options.mode === 'reconstruct-and-rerun-model') {
-      return failReplay(originalReceipt, now, `Replay mode "reconstruct-and-rerun-model" was requested for execution "${originalReceipt.executionId}", whose original execution was "deterministic_rule" — a deterministic handler is never re-invoked by replay (see execution/replay.ts's contract); only "recorded-output-only" is valid for this receipt.`);
+      return failReplay(
+        originalReceipt,
+        now,
+        `Replay mode "reconstruct-and-rerun-model" was requested for execution "${originalReceipt.executionId}", whose original execution was "deterministic_rule" — a deterministic handler is never re-invoked by replay (see execution/replay.ts's contract); only "recorded-output-only" is valid for this receipt.`,
+      );
     }
     if (originalReceipt.recordedOutput === undefined) {
-      return failReplay(originalReceipt, now, `Cannot replay execution "${originalReceipt.executionId}": its receipt does not carry a recordedOutput, so its deterministic_rule handler's original result cannot be reconstructed without re-invoking the handler, which replay never does.`);
+      return failReplay(
+        originalReceipt,
+        now,
+        `Cannot replay execution "${originalReceipt.executionId}": its receipt does not carry a recordedOutput, so its deterministic_rule handler's original result cannot be reconstructed without re-invoking the handler, which replay never does.`,
+      );
     }
     return buildDeterministicReplayResult(originalReceipt, now);
   }
 
   // 'model'-strategy original.
   if (originalReceipt.recordedInputs === undefined) {
-    return failReplay(originalReceipt, now, `Cannot replay execution "${originalReceipt.executionId}": its receipt does not carry recordedInputs, so the original request cannot be reconstructed.`);
+    return failReplay(
+      originalReceipt,
+      now,
+      `Cannot replay execution "${originalReceipt.executionId}": its receipt does not carry recordedInputs, so the original request cannot be reconstructed.`,
+    );
   }
   if (options.environment === undefined) {
-    return failReplay(originalReceipt, now, `Cannot replay execution "${originalReceipt.executionId}": a "model"-strategy replay re-invokes a real provider call and requires an explicit ExecutionEnvironment to be supplied — replay never assumes the original mounted environment is still valid.`);
+    return failReplay(
+      originalReceipt,
+      now,
+      `Cannot replay execution "${originalReceipt.executionId}": a "model"-strategy replay re-invokes a real provider call and requires an explicit ExecutionEnvironment to be supplied — replay never assumes the original mounted environment is still valid.`,
+    );
   }
   const input = originalReceipt.recordedInputs['input'];
   if (typeof input !== 'string') {
-    return failReplay(originalReceipt, now, `Cannot replay execution "${originalReceipt.executionId}": recordedInputs.input is not a string.`);
+    return failReplay(
+      originalReceipt,
+      now,
+      `Cannot replay execution "${originalReceipt.executionId}": recordedInputs.input is not a string.`,
+    );
   }
 
   replayCounter += 1;

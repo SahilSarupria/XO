@@ -39,10 +39,7 @@ test('two same-id nodes with identical core content but different sourceRefs are
   const node = result.value.graph.getNode(XoirNodeId('n1'));
   assert.ok(node.ok);
   if (!node.ok) return;
-  assert.deepEqual(
-    node.value.metadata.sourceRefs.map((r) => r.documentPath).sort(),
-    ['doc-a.pdf', 'doc-b.pdf'],
-  );
+  assert.deepEqual(node.value.metadata.sourceRefs.map((r) => r.documentPath).sort(), ['doc-a.pdf', 'doc-b.pdf']);
 });
 
 test('reconciled confidence reflects real corroboration count and the strongest individual score, never a fabricated value', () => {
@@ -79,9 +76,21 @@ test('reconciled confidence reflects real corroboration count and the strongest 
 
 test('duplicate sourceRefs pointing at the identical piece of evidence are deduplicated, not doubled', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' }, sourceRefs: [{ documentPath: 'doc-a.pdf' }], now });
+  g1.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'concept',
+    properties: { definition: 'x' },
+    sourceRefs: [{ documentPath: 'doc-a.pdf' }],
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' }, sourceRefs: [{ documentPath: 'doc-a.pdf' }], now });
+  g2.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'concept',
+    properties: { definition: 'x' },
+    sourceRefs: [{ documentPath: 'doc-a.pdf' }],
+    now,
+  });
 
   const result = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   assert.ok(result.ok);
@@ -93,9 +102,21 @@ test('duplicate sourceRefs pointing at the identical piece of evidence are dedup
 
 test('two same-id nodes with genuinely different core content are reported as a real conflict, not silently reconciled', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 'X is compliant', domain: 'tax' }, confidence: 0.9, now });
+  g1.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'fact',
+    properties: { statement: 'X is compliant', domain: 'tax' },
+    confidence: 0.9,
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 'X is NOT compliant', domain: 'tax' }, confidence: 0.6, now });
+  g2.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'fact',
+    properties: { statement: 'X is NOT compliant', domain: 'tax' },
+    confidence: 0.6,
+    now,
+  });
 
   const result = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   assert.ok(result.ok);
@@ -111,9 +132,23 @@ test('two same-id nodes with genuinely different core content are reported as a 
 
 test('a 3-way conflict where 2 candidates agree and 1 disagrees reconciles the agreeing pair before resolving the conflict, so their combined corroboration is what competes', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 'A', domain: 'd' }, sourceRefs: [{ documentPath: 'x.pdf' }], confidence: 0.5, now });
+  g1.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'fact',
+    properties: { statement: 'A', domain: 'd' },
+    sourceRefs: [{ documentPath: 'x.pdf' }],
+    confidence: 0.5,
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 'A', domain: 'd' }, sourceRefs: [{ documentPath: 'y.pdf' }], confidence: 0.5, now });
+  g2.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'fact',
+    properties: { statement: 'A', domain: 'd' },
+    sourceRefs: [{ documentPath: 'y.pdf' }],
+    confidence: 0.5,
+    now,
+  });
   const g3 = XoirGraph.create(XoirGraphId('g3'));
   g3.createAndAddNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 'B', domain: 'd' }, confidence: 0.6, now });
 
@@ -132,12 +167,26 @@ test('edges: same-id edges with identical core content are reconciled with prove
   const g1 = XoirGraph.create(XoirGraphId('g1'));
   g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, now });
   g1.createAndAddNode({ id: XoirNodeId('b'), kind: 'concept', properties: { definition: 'b' }, now });
-  g1.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'REQUIRES', fromId: XoirNodeId('a'), toId: XoirNodeId('b'), sourceRefs: [{ documentPath: 'doc-a.pdf' }], now });
+  g1.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('a'),
+    toId: XoirNodeId('b'),
+    sourceRefs: [{ documentPath: 'doc-a.pdf' }],
+    now,
+  });
 
   const g2 = XoirGraph.create(XoirGraphId('g2'));
   g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, now });
   g2.createAndAddNode({ id: XoirNodeId('b'), kind: 'concept', properties: { definition: 'b' }, now });
-  g2.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'REQUIRES', fromId: XoirNodeId('a'), toId: XoirNodeId('b'), sourceRefs: [{ documentPath: 'doc-b.pdf' }], now });
+  g2.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('a'),
+    toId: XoirNodeId('b'),
+    sourceRefs: [{ documentPath: 'doc-b.pdf' }],
+    now,
+  });
 
   const result = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   assert.ok(result.ok);
@@ -169,9 +218,23 @@ test('edges: same-id edges with different core content are a genuine edge confli
 
 test('metadata/subtype are preserved through reconciliation', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', subtype: 'organization', properties: { definition: 'Acme' }, sourceRefs: [{ documentPath: 'a.pdf' }], now });
+  g1.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'concept',
+    subtype: 'organization',
+    properties: { definition: 'Acme' },
+    sourceRefs: [{ documentPath: 'a.pdf' }],
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', subtype: 'organization', properties: { definition: 'Acme' }, sourceRefs: [{ documentPath: 'b.pdf' }], now });
+  g2.createAndAddNode({
+    id: XoirNodeId('n1'),
+    kind: 'concept',
+    subtype: 'organization',
+    properties: { definition: 'Acme' },
+    sourceRefs: [{ documentPath: 'b.pdf' }],
+    now,
+  });
 
   const result = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   assert.ok(result.ok);
@@ -207,7 +270,11 @@ test('manifests from multiple input graphs are unioned deterministically, and a 
   assert.deepEqual(result.value.graph.manifest?.professionTags, ['corporate-law', 'tax-law']);
   assert.deepEqual(result.value.graph.manifest?.sourceManifestRefs, ['src-1', 'src-2']);
 
-  const noManifestResult = mergeGraphsPreservingProvenance([XoirGraph.create(XoirGraphId('a')), XoirGraph.create(XoirGraphId('b'))], XoirGraphId('merged2'), { now });
+  const noManifestResult = mergeGraphsPreservingProvenance(
+    [XoirGraph.create(XoirGraphId('a')), XoirGraph.create(XoirGraphId('b'))],
+    XoirGraphId('merged2'),
+    { now },
+  );
   assert.ok(noManifestResult.ok);
   if (noManifestResult.ok) assert.equal(noManifestResult.value.graph.manifest, undefined);
 });
@@ -215,12 +282,28 @@ test('manifests from multiple input graphs are unioned deterministically, and a 
 test('pass history from multiple manifests is concatenated and deterministically sorted', () => {
   const m1 = createManifest({
     schemaVersion: 1,
-    passHistory: [{ passId: 'extract', passVersion: '1.0.0', inputHash: ContentHash(`sha256:${'a'.repeat(64)}`), outputHash: ContentHash(`sha256:${'b'.repeat(64)}`), timestamp: '2026-01-01T00:00:01.000Z' }],
+    passHistory: [
+      {
+        passId: 'extract',
+        passVersion: '1.0.0',
+        inputHash: ContentHash(`sha256:${'a'.repeat(64)}`),
+        outputHash: ContentHash(`sha256:${'b'.repeat(64)}`),
+        timestamp: '2026-01-01T00:00:01.000Z',
+      },
+    ],
     now,
   });
   const m2 = createManifest({
     schemaVersion: 1,
-    passHistory: [{ passId: 'convert', passVersion: '1.0.0', inputHash: ContentHash(`sha256:${'c'.repeat(64)}`), outputHash: ContentHash(`sha256:${'d'.repeat(64)}`), timestamp: '2026-01-01T00:00:00.000Z' }],
+    passHistory: [
+      {
+        passId: 'convert',
+        passVersion: '1.0.0',
+        inputHash: ContentHash(`sha256:${'c'.repeat(64)}`),
+        outputHash: ContentHash(`sha256:${'d'.repeat(64)}`),
+        timestamp: '2026-01-01T00:00:00.000Z',
+      },
+    ],
     now,
   });
   const g1 = XoirGraph.create(XoirGraphId('g1'), 1, m1);
@@ -237,9 +320,21 @@ test('pass history from multiple manifests is concatenated and deterministically
 
 test('the merged graph passes structural validation', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'a.pdf' }], now });
+  g1.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'a.pdf' }],
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'b.pdf' }], now });
+  g2.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'b.pdf' }],
+    now,
+  });
 
   const result = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   assert.ok(result.ok);
@@ -250,9 +345,21 @@ test('the merged graph passes structural validation', () => {
 
 test('merging is deterministic: running the same merge twice produces the same graph content hash', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'a.pdf' }], now });
+  g1.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'a.pdf' }],
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'b.pdf' }], now });
+  g2.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'b.pdf' }],
+    now,
+  });
 
   const r1 = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   const r2 = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
@@ -263,9 +370,21 @@ test('merging is deterministic: running the same merge twice produces the same g
 
 test('merging is order-independent for node/edge content: [g1, g2] and [g2, g1] produce the same content hash', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'a.pdf' }], now });
+  g1.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'a.pdf' }],
+    now,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'concept', properties: { definition: 'a' }, sourceRefs: [{ documentPath: 'b.pdf' }], now });
+  g2.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'concept',
+    properties: { definition: 'a' },
+    sourceRefs: [{ documentPath: 'b.pdf' }],
+    now,
+  });
 
   const r1 = mergeGraphsPreservingProvenance([g1, g2], XoirGraphId('merged'), { now });
   const r2 = mergeGraphsPreservingProvenance([g2, g1], XoirGraphId('merged'), { now });

@@ -20,7 +20,10 @@ test('mapResult only transforms the success channel', () => {
   assert.deepEqual(success, ok(20));
 
   const failure = err<string>('nope');
-  assert.deepEqual(mapResult(failure, (n: number) => n * 10), failure);
+  assert.deepEqual(
+    mapResult(failure, (n: number) => n * 10),
+    failure,
+  );
 });
 
 test('fromPromise wraps a rejecting promise into an err Result', async () => {

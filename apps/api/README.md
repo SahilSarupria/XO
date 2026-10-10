@@ -45,28 +45,28 @@ own `--registry <dir>`/`--store <dir>` flags exactly — see "Why no global
 `--registry`/`--store` config" below for why that's a deliberate match, not
 an oversight.
 
-| Method | Path | Mirrors |
-|---|---|---|
-| GET | `/health` | — |
-| GET | `/openapi.json` | this document, machine-readable |
-| POST | `/registry/packages` | `RegistryClient.publish` / `xo publish` |
-| GET | `/registry/packages?creator=` | `RegistryClient.listByCreator` |
-| GET | `/registry/packages/:id` | `RegistryClient.get` |
-| GET | `/registry/packages/:id/inspect` | `xo registry inspect` |
-| GET | `/registry/search?q=` | `RegistryClient.search` / `xo search` |
-| POST | `/registry/packages/:id/benchmarks` | `RegistryClient.recordBenchmark` |
-| GET | `/registry/packages/:id/benchmarks` | `RegistryClient.listBenchmarksForPackage` |
-| GET | `/registry/benchmarks/:benchmarkId` | `RegistryClient.getBenchmark` |
-| POST | `/registry/licenses` | `RegistryClient.createLicense` |
-| GET | `/registry/licenses/:id` | `RegistryClient.getLicense` |
-| GET | `/registry/ledger/:entryHash/verify` | `RegistryClient.verifyLedgerEntry` |
-| POST | `/packages/validate` | `PackageValidator` / `xo verify` (read-only) |
-| POST | `/packages/resolve` | `resolveDependencies` dry-run (nothing written) |
-| POST | `/packages/lock` | `xo lock` exactly (writes `xo.lock`) |
-| GET | `/packages/:name/:version/manifest` | `PackageInstaller.getManifest` |
-| GET | `/runtime/context` | `Runtime.bootstrap()` + `.context()` |
-| POST | `/runtime/execute` | `xo run` — **disabled (501), see "Runtime execution"** |
-| POST | `/compiler/compile` | `compileXoir` (isolated — see below) |
+| Method | Path                                 | Mirrors                                                |
+| ------ | ------------------------------------ | ------------------------------------------------------ |
+| GET    | `/health`                            | —                                                      |
+| GET    | `/openapi.json`                      | this document, machine-readable                        |
+| POST   | `/registry/packages`                 | `RegistryClient.publish` / `xo publish`                |
+| GET    | `/registry/packages?creator=`        | `RegistryClient.listByCreator`                         |
+| GET    | `/registry/packages/:id`             | `RegistryClient.get`                                   |
+| GET    | `/registry/packages/:id/inspect`     | `xo registry inspect`                                  |
+| GET    | `/registry/search?q=`                | `RegistryClient.search` / `xo search`                  |
+| POST   | `/registry/packages/:id/benchmarks`  | `RegistryClient.recordBenchmark`                       |
+| GET    | `/registry/packages/:id/benchmarks`  | `RegistryClient.listBenchmarksForPackage`              |
+| GET    | `/registry/benchmarks/:benchmarkId`  | `RegistryClient.getBenchmark`                          |
+| POST   | `/registry/licenses`                 | `RegistryClient.createLicense`                         |
+| GET    | `/registry/licenses/:id`             | `RegistryClient.getLicense`                            |
+| GET    | `/registry/ledger/:entryHash/verify` | `RegistryClient.verifyLedgerEntry`                     |
+| POST   | `/packages/validate`                 | `PackageValidator` / `xo verify` (read-only)           |
+| POST   | `/packages/resolve`                  | `resolveDependencies` dry-run (nothing written)        |
+| POST   | `/packages/lock`                     | `xo lock` exactly (writes `xo.lock`)                   |
+| GET    | `/packages/:name/:version/manifest`  | `PackageInstaller.getManifest`                         |
+| GET    | `/runtime/context`                   | `Runtime.bootstrap()` + `.context()`                   |
+| POST   | `/runtime/execute`                   | `xo run` — **disabled (501), see "Runtime execution"** |
+| POST   | `/compiler/compile`                  | `compileXoir` (isolated — see below)                   |
 
 `build`/`pack` stay CLI-only, per the brief — they take local source
 directories as input, which has no natural HTTP request shape without
@@ -154,11 +154,11 @@ Same principle as password hashing: hash what's stored, compare hashes.
 Investigated before assuming either way (per the brief): **these are
 kept as genuinely separate concerns**, not unified. `@xo/registry-core`'s
 `creatorDid` (`PackageRepository.listByCreator`, `LicenseRecord`'s
-implicit tie to a package's publishing identity) identifies *who
-authored/owns a published XO package* — a DID-shaped identity meant to
+implicit tie to a package's publishing identity) identifies _who
+authored/owns a published XO package_ — a DID-shaped identity meant to
 anchor signature verification and royalty attribution
 (`SPECIFICATION.md` §1.2's `creator.id`, `did:xo:...`). An API key
-identifies *what's calling this HTTP service right now* — a CI script
+identifies _what's calling this HTTP service right now_ — a CI script
 hitting `/runtime/execute`, a monitoring job polling `/registry/search`,
 neither of which has or needs a publishing identity at all.
 
@@ -168,7 +168,7 @@ will — a publisher's own automation calling `/registry/packages` on
 their behalf), `ApiKeyIdentity` (`src/auth/identity.ts`) carries
 `creatorDid` as an **optional** field, set only when a key is explicitly
 issued to/associated with a publishing identity (`--creator-did` on the
-issuance script — see below). Nothing in this pass *uses* that field
+issuance script — see below). Nothing in this pass _uses_ that field
 yet (no route currently checks `req.identity.creatorDid` against
 anything) — it's plumbed through so a future pass (e.g. auto-scoping
 `/registry/packages` writes to the calling key's own `creatorDid`) has
@@ -192,7 +192,7 @@ bootstrap the very first key, and before any key exists there's nothing
 to authenticate that request with. The two ways out — exempting
 `/admin/keys` from auth (which means anyone who can reach the server at
 all can mint themselves a valid key, making the "protected" surface
-pointless), or gating it behind some *other* secret (a bootstrap token,
+pointless), or gating it behind some _other_ secret (a bootstrap token,
 mTLS...) — are both worse than just not putting key issuance on the
 network at all. Operating directly on the `ApiKeyStore` from a script
 run by whoever already has filesystem/deploy access to `API_KEYS_DIR`
@@ -214,7 +214,7 @@ never persisting or returning the raw key again after creation.
 (env var `API_KEYS_DIR`, default `.xo-data/api-keys`). This is a
 deliberate, narrow exception to "Why no global `--registry`/`--store`
 config" below: every other directory this service touches (`?registry=`,
-`?store=`) is *data the request is about*, and can legitimately differ
+`?store=`) is _data the request is about_, and can legitimately differ
 per call. The API key store is the server's own identity/credential
 infrastructure — who's allowed to talk to this process at all — which
 is inherently one directory per running server process, the same
@@ -230,9 +230,9 @@ allowlist in `auth.ts` (`EXEMPT_PATHS`) — anything not listed requires a
 valid key, so a newly added route defaults to auth-protected rather than
 accidentally public:
 
-| Route | Why exempt |
-|---|---|
-| `GET /health` | Uptime monitors/orchestrators routinely poll liveness checks and shouldn't need a credential just to do that. |
+| Route               | Why exempt                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`       | Uptime monitors/orchestrators routinely poll liveness checks and shouldn't need a credential just to do that.                |
 | `GET /openapi.json` | The machine-readable doc describing how to authenticate has to be readable before you have credentials to authenticate with. |
 
 Every other route in the table above requires `Authorization: Bearer
@@ -254,9 +254,9 @@ a human task is recorded separately as `humanTask.resolver` (it never
 replaces `initiator`).
 
 - **Existing keys without a principal binding now get `401`.** A key
-  issued before M1 has no `principalKind`; it is *not* given a default
+  issued before M1 has no `principalKind`; it is _not_ given a default
   principal and gains nothing — it fails closed with `401` (`API key is
-  not bound to a valid principal`). Keys whose record holds an invalid
+not bound to a valid principal`). Keys whose record holds an invalid
   kind/id/orgId also get `401`.
 - **Required operator migration:** for each affected identity, issue a
   new key with an explicit kind and the same stable identity, hand it to
@@ -265,7 +265,7 @@ replaces `initiator`).
   node --import tsx scripts/manage-keys.ts revoke <identityId>   # revokes ALL existing keys for that identity (unbound ones already 401; this is hygiene)
   node --import tsx scripts/manage-keys.ts issue <identityId> --kind human|service [--org <orgId>]
   ```
-  `revoke` is per identity, so it must run *before* issuing the
+  `revoke` is per identity, so it must run _before_ issuing the
   replacement (run after, it would revoke the new key too). Reusing the
   same `<identityId>` preserves workspace ownership (workspaces are owned
   by `identityId`).
@@ -311,8 +311,8 @@ this HTTP layer and were never designed with a status in mind. General
 shape: generic codes map the obvious way (`NOT_FOUND`→404,
 `ALREADY_EXISTS`→409, `INVALID_ARGUMENT`→400); domain-validation failures
 (`PACKAGE_VALIDATION_FAILED`, `XOIR_VALIDATION_FAILED`, ...) use 422, not
-400, since the request itself was well-formed and the *domain object it
-describes* is what failed a check; genuinely internal problems (DI
+400, since the request itself was well-formed and the _domain object it
+describes_ is what failed a check; genuinely internal problems (DI
 failures, a tampered ledger, storage write failures) map to 500/502
 regardless of what triggered them, since they're never the caller's fault.
 The full reasoning per code group is inline in `error-mapping.ts` itself.
@@ -320,7 +320,7 @@ The full reasoning per code group is inline in `error-mapping.ts` itself.
 ## Runtime execution — provider configuration
 
 > **AI execution is disabled (P1.0 M1).** `POST
-> /workspaces/:workspaceId/runtime/execute` always responds `501` (after
+/workspaces/:workspaceId/runtime/execute` always responds `501` (after
 > the workspace-ownership check, so a foreign/unknown workspace is still
 > the uniform `404`), before any provider is resolved or any `x-xo-*`
 > header is read. It would otherwise build the engine with no
@@ -379,18 +379,19 @@ to every call by default. That meant real auth could replace
 `.request(...)` call sites across `registry-routes.test.ts`/
 `package-routes.test.ts`/`runtime-routes.test.ts`/
 `compiler-routes.test.ts` — none of them were testing auth itself, so
-they shouldn't have needed to know it now exists. Tests that *do* need
+they shouldn't have needed to know it now exists. Tests that _do_ need
 to exercise auth failure paths (`auth.test.ts`) opt out per-call via
 `request(..., { skipAuth: true })` (omit the header) or
 `request(..., { authorization: '...' })` in `extraHeaders` (override it
 with something malformed/unknown/revoked).
 
 Fixture packages are built via `@xo/package-sdk`'s real `ManifestBuilder`
-+ `packBundle` (`test/fixtures.ts`), the same construction
-`packages/registry/test/manifest-fixtures.ts` uses — kept as a local copy
-rather than a cross-package import, matching that file's own stated reason
-for not being imported elsewhere (test directories aren't a package's
-public surface).
+
+- `packBundle` (`test/fixtures.ts`), the same construction
+  `packages/registry/test/manifest-fixtures.ts` uses — kept as a local copy
+  rather than a cross-package import, matching that file's own stated reason
+  for not being imported elsewhere (test directories aren't a package's
+  public surface).
 
 `node --import tsx --test test/**/*.test.ts` is the package's own `test`
 script. In this sandbox specifically (no `node_modules` at all, since
@@ -406,13 +407,13 @@ to it to be picked up.
 Persistent, step-aware, restart-recoverable execution of the existing sequential
 `CandidateWorkflow`s. Routes (all workspace-bound; see `/openapi.json` for the full contract):
 
-| Method | Path |
-|---|---|
-| GET | `/workspaces/:workspaceId/workflows` |
-| POST | `/workspaces/:workspaceId/workflows/:workflowId/executions` |
-| GET | `/workspaces/:workspaceId/workflow-executions` |
-| GET | `/workspaces/:workspaceId/workflow-executions/:workflowExecutionId` |
-| POST | `/workspaces/:workspaceId/workflow-executions/:workflowExecutionId/resume` |
+| Method | Path                                                                       |
+| ------ | -------------------------------------------------------------------------- |
+| GET    | `/workspaces/:workspaceId/workflows`                                       |
+| POST   | `/workspaces/:workspaceId/workflows/:workflowId/executions`                |
+| GET    | `/workspaces/:workspaceId/workflow-executions`                             |
+| GET    | `/workspaces/:workspaceId/workflow-executions/:workflowExecutionId`        |
+| POST   | `/workspaces/:workspaceId/workflow-executions/:workflowExecutionId/resume` |
 
 How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
 
@@ -425,7 +426,7 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
 - **Runtime reuse.** Each step is one real P0.5 `ExecutionRecord` executed by the unmodified
   `RuntimeCapabilityExecutor`, wrapped (not subclassed) by `RecordingStepExecutor`, which re-checks
   approval + permissions, validates input, creates/completes the execution record, and persists step
-  state. The unmodified `WorkflowExecutor` runs each *segment* and the bridge's unmodified proven
+  state. The unmodified `WorkflowExecutor` runs each _segment_ and the bridge's unmodified proven
   data-flow injection transfers producer values into consumer inputs.
 - **HITL pause.** `WorkflowExecutor` has no pause primitive (a HITL node is just a completed node).
   The API layer therefore runs the engine in segments that end at the first pending
@@ -440,7 +441,7 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
   outcome is adopted); only an explicit `resume` re-executes it, under a new execution id
   (at-least-once for that one step). **Exactly-once is not provided.** No automatic retries, no
   timeouts/cancellation, no distributed locking (in-process serialization only). `LocalFsBlobStore.put`
-  is a plain `writeFile`, so a crash *during* a write can leave a truncated record.
+  is a plain `writeFile`, so a crash _during_ a write can leave a truncated record.
 - **Tests.** `test/workflow-executions.test.ts` (real HTTP + real filesystem stores). The multi-step
   cases use a hand-built XOIR fixture (`test/workflow-fixtures.ts`) stored through the real
   `FsCompilationStore`, because no real fixture currently compiles to a multi-step
@@ -462,7 +463,7 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
   (P1.0 M1)". Authorization is not yet enforced on all execution paths.
 - **No scoping/RBAC on top of auth yet.** `req.identity` is resolved and
   attached, but nothing currently reads it to decide what a given key is
-  *allowed* to do — every valid key can call every non-exempt route.
+  _allowed_ to do — every valid key can call every non-exempt route.
   Wiring `req.identity` into `@xo/permissions` (or a registry-specific
   policy, e.g. "this key's `creatorDid` may only publish packages under
   its own namespace") is real design work intentionally left to a future
@@ -476,7 +477,7 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
   behind the `ApiKeyStore` interface, not a new interface.
 - **`/runtime/execute`'s happy path against a live model provider isn't
   tested here.** Everything this layer is actually responsible for —
-  bootstrap, request validation, provider *resolution* (missing keys,
+  bootstrap, request validation, provider _resolution_ (missing keys,
   unknown provider ids, missing endpoints, the "no model configured and
   the provider advertises none of its own" check) — is tested with real
   logic and no network calls. A response actually coming back from

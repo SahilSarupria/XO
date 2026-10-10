@@ -8,7 +8,11 @@ function line(text: string, fontSize: number, y = 700): Line {
 }
 
 test('identifies the size with the most total characters as body size', () => {
-  const lines = [line('Heading', 24), line('This is a long body paragraph with many characters in it.', 12), line('More body text continuing the paragraph further.', 12)];
+  const lines = [
+    line('Heading', 24),
+    line('This is a long body paragraph with many characters in it.', 12),
+    line('More body text continuing the paragraph further.', 12),
+  ];
   assert.equal(computeBodyFontSize(lines), 12);
 });
 

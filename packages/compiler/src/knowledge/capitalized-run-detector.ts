@@ -67,17 +67,94 @@ const CONNECTOR_WORDS = new Set(['of', 'the', 'for', '&']);
  * style (see `lexical-cues.ts`'s cue-phrase lists). */
 const SENTENCE_INITIAL_FUNCTION_WORDS = new Set([
   // determiners / articles
-  'the', 'a', 'an', 'this', 'that', 'these', 'those', 'each', 'every', 'any', 'all', 'some', 'no', 'both', 'either', 'neither',
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+  'these',
+  'those',
+  'each',
+  'every',
+  'any',
+  'all',
+  'some',
+  'no',
+  'both',
+  'either',
+  'neither',
   // pronouns
-  'it', 'he', 'she', 'they', 'we', 'i', 'you', 'him', 'her', 'them', 'us', 'there', 'here', 'who', 'what', 'which', 'whom', 'whose',
+  'it',
+  'he',
+  'she',
+  'they',
+  'we',
+  'i',
+  'you',
+  'him',
+  'her',
+  'them',
+  'us',
+  'there',
+  'here',
+  'who',
+  'what',
+  'which',
+  'whom',
+  'whose',
   // copula / auxiliary / modal verbs
-  'is', 'are', 'was', 'were', 'be', 'being', 'been', 'am', 'has', 'have', 'had',
-  'will', 'shall', 'must', 'may', 'should', 'can', 'could', 'would', 'might', 'do', 'does', 'did',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'being',
+  'been',
+  'am',
+  'has',
+  'have',
+  'had',
+  'will',
+  'shall',
+  'must',
+  'may',
+  'should',
+  'can',
+  'could',
+  'would',
+  'might',
+  'do',
+  'does',
+  'did',
   // coordinating / subordinating conjunctions and conditional subordinators
-  'and', 'or', 'but', 'nor', 'yet', 'so',
-  'if', 'when', 'where', 'unless', 'while', 'although', 'though', 'because', 'since', 'as', 'once', 'until', 'whenever', 'wherever', 'whereas',
+  'and',
+  'or',
+  'but',
+  'nor',
+  'yet',
+  'so',
+  'if',
+  'when',
+  'where',
+  'unless',
+  'while',
+  'although',
+  'though',
+  'because',
+  'since',
+  'as',
+  'once',
+  'until',
+  'whenever',
+  'wherever',
+  'whereas',
   // prepositions commonly opening a subordinate/introductory clause
-  'upon', 'within', 'after', 'before', 'during', 'without',
+  'upon',
+  'within',
+  'after',
+  'before',
+  'during',
+  'without',
 ]);
 
 /**
@@ -108,7 +185,11 @@ export function detectCapitalizedRuns(text: string): readonly CapitalizedRun[] {
       if (isCapitalizedWord(nextWord)) {
         lastCapitalizedIndex = j;
         j += 1;
-      } else if (CONNECTOR_WORDS.has(tokens[j]!.text.toLowerCase()) && j + 1 < tokens.length && isCapitalizedWord(stripTrailingPunctuation(tokens[j + 1]!.text))) {
+      } else if (
+        CONNECTOR_WORDS.has(tokens[j]!.text.toLowerCase()) &&
+        j + 1 < tokens.length &&
+        isCapitalizedWord(stripTrailingPunctuation(tokens[j + 1]!.text))
+      ) {
         j += 1; // absorb the connector, continue the run into the following capitalized word
       } else {
         break;

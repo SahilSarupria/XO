@@ -42,7 +42,12 @@ test('execute() runs the full flow and produces a completed session with a recei
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    provider.setResponse({ text: 'This NDA looks standard.', usage: { inputTokens: 120, outputTokens: 40 }, modelUsed: 'test-model', finishReason: 'stop' });
+    provider.setResponse({
+      text: 'This NDA looks standard.',
+      usage: { inputTokens: 120, outputTokens: 40 },
+      modelUsed: 'test-model',
+      finishReason: 'stop',
+    });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
     const result = await engine.execute(baseRequest());
@@ -135,7 +140,11 @@ test('execute() merges knowledge graphs from an auxiliary capability alongside t
     let capturedSystemPrompt = '';
     const provider = new ScriptedModelProvider();
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      hooks: { onBeforeAiCall: (_ctx, providerRequest) => { capturedSystemPrompt = providerRequest.messages.find((m) => m.role === 'system')?.content ?? ''; } },
+      hooks: {
+        onBeforeAiCall: (_ctx, providerRequest) => {
+          capturedSystemPrompt = providerRequest.messages.find((m) => m.role === 'system')?.content ?? '';
+        },
+      },
     });
 
     await engine.execute(baseRequest({ auxiliaryCapabilityIds: ['fraud_detection'] }));
@@ -215,7 +224,7 @@ test('a request that exceeds defaultTimeoutMs is terminated with RUNTIME_EXECUTI
   });
 });
 
-test('executeStreaming() yields incremental events and resolves a final ExecutionResult matching execute()\'s shape', async () => {
+test("executeStreaming() yields incremental events and resolves a final ExecutionResult matching execute()'s shape", async () => {
   await withTempInstaller(async (installer) => {
     const bundle = buildContractLawyerBundle();
     await installer.install(bundle);
@@ -247,7 +256,7 @@ test('executeStreaming() surfaces a stream failure through result without throwi
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    // eslint-disable-next-line require-yield
+
     provider.completeStream = async function* () {
       throw new Error('stream exploded');
     };
@@ -273,13 +282,27 @@ test('execution hooks fire in the documented order', async () => {
     const registry = await mountBundle(installer, bundle);
     const order: string[] = [];
     const hooks: ExecutionHooks = {
-      onStart: () => { order.push('onStart'); },
-      onPlanned: () => { order.push('onPlanned'); },
-      onRetrieved: () => { order.push('onRetrieved'); },
-      onContextAssembled: () => { order.push('onContextAssembled'); },
-      onBeforeAiCall: () => { order.push('onBeforeAiCall'); },
-      onAfterAiCall: () => { order.push('onAfterAiCall'); },
-      onReceipt: () => { order.push('onReceipt'); },
+      onStart: () => {
+        order.push('onStart');
+      },
+      onPlanned: () => {
+        order.push('onPlanned');
+      },
+      onRetrieved: () => {
+        order.push('onRetrieved');
+      },
+      onContextAssembled: () => {
+        order.push('onContextAssembled');
+      },
+      onBeforeAiCall: () => {
+        order.push('onBeforeAiCall');
+      },
+      onAfterAiCall: () => {
+        order.push('onAfterAiCall');
+      },
+      onReceipt: () => {
+        order.push('onReceipt');
+      },
     };
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, new ScriptedModelProvider(), { hooks });
     await engine.execute(baseRequest());
@@ -293,7 +316,9 @@ test('a throwing hook does not fail the execution', async () => {
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const hooks: ExecutionHooks = {
-      onStart: () => { throw new Error('hook boom'); },
+      onStart: () => {
+        throw new Error('hook boom');
+      },
     };
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, new ScriptedModelProvider(), { hooks });
     const result = await engine.execute(baseRequest());
@@ -313,7 +338,9 @@ test('execution middleware wraps execute() and can observe/modify the flow', asy
       calls.push('after');
       return result;
     };
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, new ScriptedModelProvider(), { middleware: [middleware] });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, new ScriptedModelProvider(), {
+      middleware: [middleware],
+    });
     await engine.execute(baseRequest());
     assert.deepEqual(calls, ['before', 'after']);
   });

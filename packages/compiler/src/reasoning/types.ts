@@ -45,7 +45,17 @@ export type ReasoningNodeId = Brand<string, 'ReasoningNodeId'>;
  *   `overrideConditions`) that fits `@xo/ai-core`'s `RiskThreshold` shape
  *   precisely. Also AI-only for the same reason.
  */
-export type KnownReasoningNodeType = 'rule' | 'prerequisite' | 'prohibition' | 'policy' | 'decision' | 'alternative' | 'justification' | 'exception' | 'escalation' | 'risk_threshold';
+export type KnownReasoningNodeType =
+  | 'rule'
+  | 'prerequisite'
+  | 'prohibition'
+  | 'policy'
+  | 'decision'
+  | 'alternative'
+  | 'justification'
+  | 'exception'
+  | 'escalation'
+  | 'risk_threshold';
 export type ReasoningNodeType = KnownReasoningNodeType | `custom:${string}`;
 
 /**
@@ -58,7 +68,8 @@ export type ReasoningNodeType = KnownReasoningNodeType | `custom:${string}`;
  * before/after analysis of why the other nine candidates in the task's
  * suggested relationship list did NOT need a new XOIR edge kind.
  */
-export type KnownReasoningEdgeType = 'condition_of' | 'requires' | 'constrains' | 'excludes' | 'overrides' | 'alternative_to' | 'leads_to' | 'supports' | 'depends_on';
+export type KnownReasoningEdgeType =
+  'condition_of' | 'requires' | 'constrains' | 'excludes' | 'overrides' | 'alternative_to' | 'leads_to' | 'supports' | 'depends_on';
 export type ReasoningEdgeType = KnownReasoningEdgeType | `custom:${string}`;
 
 /**

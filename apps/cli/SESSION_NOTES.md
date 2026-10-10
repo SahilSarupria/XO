@@ -7,7 +7,7 @@ archive into `monorepo/apps/cli`, plus three new commands wired into the
 previously-empty `commands/compiler` subsystem.
 
 Drop this directly into `monorepo/apps/cli` (it replaces that directory
-wholesale — it *is* that directory, source-only, with `dist/`,
+wholesale — it _is_ that directory, source-only, with `dist/`,
 `tsconfig.tsbuildinfo`, and `node_modules/` stripped).
 
 ## What changed vs. the original standalone CLI archive
@@ -66,7 +66,7 @@ dir, then walked the same way). All three route through the same
 ### Changed files
 
 - `source-input.ts` — `loadSourceInput` now takes `(readPath, declaredPath
-  = readPath)` instead of just `(sourcePath)`, so a collection can read
+= readPath)` instead of just `(sourcePath)`, so a collection can read
   bytes from a temp-extracted absolute path while declaring a clean,
   collection-relative `sourcePath` (this is what keeps provenance and
   `computeSourceId` hashes free of temp-directory names — see the file's

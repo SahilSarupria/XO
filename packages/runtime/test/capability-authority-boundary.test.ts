@@ -136,7 +136,10 @@ test('end-to-end: explicit Runtime declaration + granted permission -> real exec
   });
   const executor = new RuntimeCapabilityExecutor({ registry: runtimeCapabilities, permissionManager: manager });
 
-  const result = await executor.execute({ capabilityId: 'send_email', input: { to: 'claimant@example.com', subject: 'Update', body: 'Your claim was received.' } });
+  const result = await executor.execute({
+    capabilityId: 'send_email',
+    input: { to: 'claimant@example.com', subject: 'Update', body: 'Your claim was received.' },
+  });
   assert.ok(result.ok);
   if (result.ok) assert.deepEqual(result.value.output, { deliveryId: 'mail_claimant@example.com' });
 });

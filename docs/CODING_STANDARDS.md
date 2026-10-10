@@ -62,7 +62,7 @@
 
 ## Documentation requirements
 
-- Every exported interface gets a doc comment explaining *why* it exists
+- Every exported interface gets a doc comment explaining _why_ it exists
   and, where relevant, which section of the frozen design docs it
   implements (grep for "SPECIFICATION.md" / "RUNTIME_ARCHITECTURE.md" /
   "EXPERIENCE_COMPILER.md" / "PACKAGE_README.md" references throughout

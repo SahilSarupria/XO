@@ -43,7 +43,14 @@ export async function resolveHumanTaskExecution(
     // "Invoke the existing runtime resume mechanism" — re-derives the
     // contract/binding from the PERSISTED compiled graph (never the
     // client, never a fresh recompile) and genuinely re-checks authorization.
-    const resumeOutcome = await attemptResume(compilationStore, preCheck.value.compilationId, preCheck.value.capabilityId, preCheck.value.input, decision, data);
+    const resumeOutcome = await attemptResume(
+      compilationStore,
+      preCheck.value.compilationId,
+      preCheck.value.capabilityId,
+      preCheck.value.input,
+      decision,
+      data,
+    );
 
     const resolved = await executionStore.resolveHumanTask(executionId, {
       decision,
@@ -57,7 +64,9 @@ export async function resolveHumanTaskExecution(
       // Someone else resolved it inside this same lock window between
       // our preCheck and the store call — vanishingly unlikely given
       // the lock, but handled honestly rather than assumed impossible.
-      return resolved.value.kind === 'already_resolved' ? { kind: 'already_resolved', record: resolved.value.record } : { kind: 'not_a_human_task' };
+      return resolved.value.kind === 'already_resolved'
+        ? { kind: 'already_resolved', record: resolved.value.record }
+        : { kind: 'not_a_human_task' };
     }
     return { kind: 'resolved', record: resolved.value };
   });

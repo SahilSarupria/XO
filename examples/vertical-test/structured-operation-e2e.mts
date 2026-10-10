@@ -20,11 +20,16 @@ async function main() {
   console.log(line());
   console.log('XO STRUCTURED OPERATION DATA-FLOW PROOF');
   console.log(line());
-  console.log('\nSource:\n  structured-operation-data-flow.json  (SEMANTIC CONTRACT / STRUCTURED OPERATION PROOF — not a real customer document)\n');
+  console.log(
+    '\nSource:\n  structured-operation-data-flow.json  (SEMANTIC CONTRACT / STRUCTURED OPERATION PROOF — not a real customer document)\n',
+  );
 
   // 1. Real compile of a real structured JSON source.
   const text = await readFile(new URL('./structured-operation-data-flow.json', import.meta.url), 'utf8');
-  const compileResult = await compileSources([{ kind: 'structured', format: 'json', text, sourcePath: 'structured-operation-data-flow.json' }], {});
+  const compileResult = await compileSources(
+    [{ kind: 'structured', format: 'json', text, sourcePath: 'structured-operation-data-flow.json' }],
+    {},
+  );
   if (!compileResult.ok) {
     console.error('Compilation failed:', compileResult.error);
     process.exit(1);
@@ -53,7 +58,9 @@ async function main() {
   const dataFlow = auditWorkflowDataFlow(workflow, graph);
   console.log(`\nData-flow bindings found: ${dataFlow.bindings.length}`);
   for (const b of dataFlow.bindings) {
-    console.log(`  ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.status} / ${b.evidenceKind}]`);
+    console.log(
+      `  ${b.producerCapabilityId}.${b.outputParameterName} -> ${b.consumerCapabilityId}.${b.inputParameterName}  [${b.status} / ${b.evidenceKind}]`,
+    );
   }
 
   // 4. THE DEMO-SUPPLIED IMPLEMENTATION for calculate_brokerage — kept
@@ -73,7 +80,8 @@ async function main() {
     contractId: calculateBrokerageCapability.id as unknown as string,
     implementationClass: 'deterministic_rule',
     resolverName: 'demo-supplied-arithmetic',
-    description: 'Demo-supplied implementation: brokerage = premium * rate. Not derived from the source, not a formula engine — a single hand-written function for this one proof, supplied by the caller running the workflow.',
+    description:
+      'Demo-supplied implementation: brokerage = premium * rate. Not derived from the source, not a formula engine — a single hand-written function for this one proof, supplied by the caller running the workflow.',
     evaluate: (input) => {
       const premium = input.premium;
       const rate = input.rate;
@@ -123,7 +131,10 @@ async function main() {
   }
 
   // 6. THE EXECUTOR — real, unmodified.
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+  });
   const workflowExecutor = new WorkflowExecutor(
     async () => {
       throw new Error('unreachable: this bridge graph contains no built-in "capability" nodes');
@@ -134,9 +145,18 @@ async function main() {
   // Seed calculate_brokerage's own inputs (premium, rate) statically —
   // it is the first step, with no upstream producer of its own.
   const producerNode = prepared.graph.nodes.find((n) => n.name === 'calculate_brokerage');
-  const seededGraph = { ...prepared.graph, nodes: prepared.graph.nodes.map((n) => (n.id === producerNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n)) };
+  const seededGraph = {
+    ...prepared.graph,
+    nodes: prepared.graph.nodes.map((n) =>
+      n.id === producerNode!.id ? { ...n, config: { ...n.config, structuredInput: { premium: 100000, rate: 0.1 } } } : n,
+    ),
+  };
 
-  const environment = { environmentId: EnvironmentId('env_structured_operation_demo'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: new Date().toISOString() };
+  const environment = {
+    environmentId: EnvironmentId('env_structured_operation_demo'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: new Date().toISOString(),
+  };
   const result = await workflowExecutor.run(seededGraph, environment);
 
   console.log('\n' + line('-'));
@@ -148,7 +168,10 @@ async function main() {
   console.log(`  output: brokerage=${producerOutput.result?.brokerage}`);
 
   const consumerNode = prepared.graph.nodes.find((n) => n.name === 'record_brokerage');
-  const consumerOutput = result.instance.state.outputs[consumerNode!.id as unknown as string] as { result?: { status?: string }; appliedInputBindings?: unknown[] };
+  const consumerOutput = result.instance.state.outputs[consumerNode!.id as unknown as string] as {
+    result?: { status?: string };
+    appliedInputBindings?: unknown[];
+  };
   console.log(`\nrecord_brokerage`);
   console.log(`  appliedInputBindings: ${JSON.stringify(consumerOutput.appliedInputBindings)}`);
   console.log(`  status: ${consumerOutput.result?.status}`);

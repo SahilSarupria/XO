@@ -46,7 +46,11 @@ export class DocumentSourceFrontend implements SourceFrontend<DocumentSourceInpu
   ingest(input: DocumentSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
     const trimmed = input.text.trim();
     if (trimmed.length === 0) {
-      return err(new SourceError(ErrorCode.PRECONDITION_FAILED, `Document source "${input.sourcePath}" has no content`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(ErrorCode.PRECONDITION_FAILED, `Document source "${input.sourcePath}" has no content`, {
+          context: { sourcePath: input.sourcePath },
+        }),
+      );
     }
 
     const rawBlocks = classifyLines(input.text);

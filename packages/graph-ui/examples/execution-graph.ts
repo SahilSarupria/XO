@@ -6,13 +6,7 @@
  *
  * Run with: node --import tsx examples/execution-graph.ts
  */
-import {
-  GraphModel,
-  GraphController,
-  GraphRenderer,
-  SvgStringAdapter,
-  ExecutionGraphPreset,
-} from '../src/index.js';
+import { GraphModel, GraphController, GraphRenderer, SvgStringAdapter, ExecutionGraphPreset } from '../src/index.js';
 
 const model = GraphModel.empty()
   .upsertNode({ id: 'fetch', type: 'task', label: 'Fetch Data', position: { x: 0, y: 0 } })

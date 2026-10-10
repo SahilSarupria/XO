@@ -194,7 +194,13 @@ export function extractTextRuns(contentBytes: Uint8Array): readonly TextRun[] {
       }
       case 'TJ': {
         const arrOperand = operandStack[operandStack.length - 1];
-        if (arrOperand !== undefined && arrOperand !== null && typeof arrOperand === 'object' && 'kind' in arrOperand && arrOperand.kind === 'array') {
+        if (
+          arrOperand !== undefined &&
+          arrOperand !== null &&
+          typeof arrOperand === 'object' &&
+          'kind' in arrOperand &&
+          arrOperand.kind === 'array'
+        ) {
           for (const item of arrOperand.items) {
             if (isPdfString(item)) {
               pushRun(item.bytes);

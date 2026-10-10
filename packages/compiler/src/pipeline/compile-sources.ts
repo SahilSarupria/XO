@@ -117,13 +117,19 @@ function mergeExperienceDocuments(docs: readonly ExperienceDocument[], mergedPat
  * explicitly instead of returning a technically-"valid," in-practice-
  * empty `XoirGraph`.
  */
-export async function compileSources(inputs: readonly unknown[], options: CompileSourcesOptions = {}): Promise<Result<CompileSourcesResult, XoError>> {
+export async function compileSources(
+  inputs: readonly unknown[],
+  options: CompileSourcesOptions = {},
+): Promise<Result<CompileSourcesResult, XoError>> {
   if (inputs.length === 0) {
     return err(new SourceError(ErrorCode.INVALID_ARGUMENT, 'compileSources requires at least one input'));
   }
 
   const registry = options.registry ?? createDefaultSourceFrontendRegistry();
-  const ingestContext = options.now !== undefined || options.logger !== undefined ? { ...(options.now !== undefined ? { now: options.now } : {}), ...(options.logger !== undefined ? { logger: options.logger } : {}) } : undefined;
+  const ingestContext =
+    options.now !== undefined || options.logger !== undefined
+      ? { ...(options.now !== undefined ? { now: options.now } : {}), ...(options.logger !== undefined ? { logger: options.logger } : {}) }
+      : undefined;
 
   const canonicalSources: CanonicalSource[] = [];
   for (const input of inputs) {
@@ -148,8 +154,17 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
 
   for (const source of canonicalSources) {
     if (source.content.kind !== 'document') {
-      sourceReports.push({ sourceId: source.sourceId, sourceType: source.sourceType, sourcePath: source.sourcePath, semanticExtractionAvailable: false, unitCount: 0 });
-      options.logger?.info('Source has no semantic extraction available; it will not contribute XOIR content', { sourceId: source.sourceId, sourceType: source.sourceType });
+      sourceReports.push({
+        sourceId: source.sourceId,
+        sourceType: source.sourceType,
+        sourcePath: source.sourcePath,
+        semanticExtractionAvailable: false,
+        unitCount: 0,
+      });
+      options.logger?.info('Source has no semantic extraction available; it will not contribute XOIR content', {
+        sourceId: source.sourceId,
+        sourceType: source.sourceType,
+      });
       continue;
     }
 
@@ -166,11 +181,14 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
         unitCount: 0,
         qualityState: quality.state,
       });
-      options.logger?.warn('Source quality check blocked semantic extraction — extracted text was not trustworthy enough to feed into semantic extraction', {
-        sourceId: source.sourceId,
-        sourceType: source.sourceType,
-        suspiciousTokenRatio: quality.suspiciousTokenRatio,
-      });
+      options.logger?.warn(
+        'Source quality check blocked semantic extraction — extracted text was not trustworthy enough to feed into semantic extraction',
+        {
+          sourceId: source.sourceId,
+          sourceType: source.sourceType,
+          suspiciousTokenRatio: quality.suspiciousTokenRatio,
+        },
+      );
       continue;
     }
 
@@ -188,13 +206,18 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
 
   if (experienceDocuments.length === 0) {
     return err(
-      new SourceError(ErrorCode.PRECONDITION_FAILED, 'None of the supplied sources have extractable document content — nothing to compile', {
-        context: { sources: sourceReports },
-      }),
+      new SourceError(
+        ErrorCode.PRECONDITION_FAILED,
+        'None of the supplied sources have extractable document content — nothing to compile',
+        {
+          context: { sources: sourceReports },
+        },
+      ),
     );
   }
 
-  const mergedPath = canonicalSources.length === 1 ? canonicalSources[0]!.sourceId : `multi:${canonicalSources.map((s) => s.sourceId).join('+')}`;
+  const mergedPath =
+    canonicalSources.length === 1 ? canonicalSources[0]!.sourceId : `multi:${canonicalSources.map((s) => s.sourceId).join('+')}`;
   const merged = mergeExperienceDocuments(experienceDocuments, mergedPath);
 
   const extractionOptions = {
@@ -205,7 +228,10 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
 
   const knowledge = await extractKnowledgeGraph(merged, extractionOptions);
   const capability = await extractCapabilityGraph(merged, knowledge, extractionOptions);
-  const reasoning = await extractReasoningGraph(merged, { ...extractionOptions, ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}) });
+  const reasoning = await extractReasoningGraph(merged, {
+    ...extractionOptions,
+    ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
+  });
 
   // M1.1 — additive rule-level capability minting (see
   // `../capabilities/rule-capability-minter.ts`'s doc comment for the
@@ -217,7 +243,8 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
   // unchanged, so this can never regress or remove any capability the
   // pipeline already produced.
   const mintedCapabilities = mintRuleLevelCapabilities(reasoning);
-  const capabilityWithMintedRules = mintedCapabilities.length > 0 ? { ...capability, capabilities: [...capability.capabilities, ...mintedCapabilities] } : capability;
+  const capabilityWithMintedRules =
+    mintedCapabilities.length > 0 ? { ...capability, capabilities: [...capability.capabilities, ...mintedCapabilities] } : capability;
 
   const compileOptions = {
     ...(options.graphId !== undefined ? { graphId: options.graphId } : {}),
@@ -254,7 +281,9 @@ export async function compileSources(inputs: readonly unknown[], options: Compil
       createManifest({
         schemaVersion: compiled.value.graph.schemaVersion,
         ...(existing?.compilerVersion !== undefined ? { compilerVersion: existing.compilerVersion } : {}),
-        ...(existing !== undefined ? { professionTags: existing.professionTags, sourceManifestRefs: existing.sourceManifestRefs, passHistory: existing.passHistory } : {}),
+        ...(existing !== undefined
+          ? { professionTags: existing.professionTags, sourceManifestRefs: existing.sourceManifestRefs, passHistory: existing.passHistory }
+          : {}),
         graphHash: ContentHash(compiled.value.graph.contentHash()),
         ...(sourceQuality !== undefined ? { sourceQuality } : {}),
         ...(existing?.sourceQuality !== undefined && sourceQuality === undefined ? { sourceQuality: existing.sourceQuality } : {}),

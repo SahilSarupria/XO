@@ -1,5 +1,10 @@
 import { PackageId } from '@xo/types';
-import { resolveManifestCapabilityPermissions, type CapabilityPermissionRegistry, type PermissionManager, type PermissionRequirement } from '@xo/permissions';
+import {
+  resolveManifestCapabilityPermissions,
+  type CapabilityPermissionRegistry,
+  type PermissionManager,
+  type PermissionRequirement,
+} from '@xo/permissions';
 import type { ExecutionRequest } from '../execution/execution-request.js';
 import type { PermissionGate, PermissionGateVerdict } from './permission-gate.interface.js';
 
@@ -80,7 +85,10 @@ export function createPermissionManagerGate(options: PermissionManagerGateOption
         });
         if (decision.effect !== 'allow') {
           if (requirement.optional) continue;
-          return { allowed: false, reason: `Permission "${requirement.permission}" required by capability "${capabilityId}" was not granted: ${decision.reason}` };
+          return {
+            allowed: false,
+            reason: `Permission "${requirement.permission}" required by capability "${capabilityId}" was not granted: ${decision.reason}`,
+          };
         }
       }
       return { allowed: true };

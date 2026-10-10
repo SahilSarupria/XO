@@ -26,7 +26,13 @@ const SENTENCE_END_CHARS = new Set(['.', '!', '?']);
  */
 function precedingWordIsAbbreviation(text: string, periodIndex: number): boolean {
   let wordStart = periodIndex;
-  while (wordStart > 0 && text[wordStart - 1] !== ' ' && text[wordStart - 1] !== '\n' && text[wordStart - 1] !== '\t' && text[wordStart - 1] !== '\r') {
+  while (
+    wordStart > 0 &&
+    text[wordStart - 1] !== ' ' &&
+    text[wordStart - 1] !== '\n' &&
+    text[wordStart - 1] !== '\t' &&
+    text[wordStart - 1] !== '\r'
+  ) {
     wordStart -= 1;
   }
   const word = text.slice(wordStart, periodIndex).toLowerCase();

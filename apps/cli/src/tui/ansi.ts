@@ -56,11 +56,29 @@ const ESC = '\u001b';
 export const RESET = `${ESC}[0m`;
 
 const NAMED: Readonly<Record<string, number>> = {
-  black: 30, red: 31, green: 32, yellow: 33, blue: 34, magenta: 35, cyan: 36, white: 37,
-  gray: 90, brightRed: 91, brightGreen: 92, brightYellow: 93, brightBlue: 94, brightMagenta: 95, brightCyan: 96, brightWhite: 97,
+  black: 30,
+  red: 31,
+  green: 32,
+  yellow: 33,
+  blue: 34,
+  magenta: 35,
+  cyan: 36,
+  white: 37,
+  gray: 90,
+  brightRed: 91,
+  brightGreen: 92,
+  brightYellow: 93,
+  brightBlue: 94,
+  brightMagenta: 95,
+  brightCyan: 96,
+  brightWhite: 97,
 };
 
-interface Rgb { readonly r: number; readonly g: number; readonly b: number }
+interface Rgb {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+}
 
 function parseHex(hex: string): Rgb | undefined {
   const m = /^#([0-9a-f]{6})$/i.exec(hex);
@@ -102,7 +120,8 @@ export interface Painter {
 }
 
 export function createPainter(level: ColorLevel): Painter {
-  const wrap = (open: string, close: string, text: string): string => (level === 0 || text === '' ? text : `${ESC}[${open}m${text}${ESC}[${close}m`);
+  const wrap = (open: string, close: string, text: string): string =>
+    level === 0 || text === '' ? text : `${ESC}[${open}m${text}${ESC}[${close}m`;
 
   const fgCode = (color: string): string | undefined => {
     const named = NAMED[color];
@@ -152,7 +171,10 @@ export function gradientColor(stops: readonly string[], t: number): string {
   const b = parseHex(stops[i + 1]!);
   if (!a || !b) return stops[i]!;
   const f = scaled - i;
-  const mix = (x: number, y: number): string => Math.round(x + (y - x) * f).toString(16).padStart(2, '0');
+  const mix = (x: number, y: number): string =>
+    Math.round(x + (y - x) * f)
+      .toString(16)
+      .padStart(2, '0');
   return `#${mix(a.r, b.r)}${mix(a.g, b.g)}${mix(a.b, b.b)}`;
 }
 
@@ -167,7 +189,14 @@ export function stripAnsi(text: string): string {
 /** Terminal column width of one code point (0 for combining/zero-width, 2 for East Asian wide + emoji, else 1). */
 export function charWidth(cp: number): number {
   if (cp === 0 || cp < 32 || (cp >= 0x7f && cp < 0xa0)) return 0;
-  if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0x20d0 && cp <= 0x20ff) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp === 0xfeff) return 0;
+  if (
+    (cp >= 0x300 && cp <= 0x36f) ||
+    (cp >= 0x200b && cp <= 0x200f) ||
+    (cp >= 0x20d0 && cp <= 0x20ff) ||
+    (cp >= 0xfe00 && cp <= 0xfe0f) ||
+    cp === 0xfeff
+  )
+    return 0;
   if (
     (cp >= 0x1100 && cp <= 0x115f) ||
     (cp >= 0x2e80 && cp <= 0xa4cf) ||

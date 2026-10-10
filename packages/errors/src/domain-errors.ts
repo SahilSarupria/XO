@@ -20,7 +20,11 @@ export class UnimplementedError extends XoError {
 }
 
 export class ConfigError extends XoError {
-  constructor(code: typeof ErrorCode.CONFIG_MISSING_KEY | typeof ErrorCode.CONFIG_INVALID_VALUE, message: string, options?: XoErrorOptions) {
+  constructor(
+    code: typeof ErrorCode.CONFIG_MISSING_KEY | typeof ErrorCode.CONFIG_INVALID_VALUE,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
     super(code, message, options);
   }
 }
@@ -46,7 +50,11 @@ export class CryptoError extends XoError {
 }
 
 export class StorageError extends XoError {
-  constructor(code: typeof ErrorCode.STORAGE_OBJECT_NOT_FOUND | typeof ErrorCode.STORAGE_WRITE_FAILED, message: string, options?: XoErrorOptions) {
+  constructor(
+    code: typeof ErrorCode.STORAGE_OBJECT_NOT_FOUND | typeof ErrorCode.STORAGE_WRITE_FAILED,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
     super(code, message, options);
   }
 }
@@ -135,7 +143,11 @@ export class RuntimeError extends XoError {
 }
 
 export class DiError extends XoError {
-  constructor(code: typeof ErrorCode.DI_TOKEN_NOT_REGISTERED | typeof ErrorCode.DI_CIRCULAR_DEPENDENCY, message: string, options?: XoErrorOptions) {
+  constructor(
+    code: typeof ErrorCode.DI_TOKEN_NOT_REGISTERED | typeof ErrorCode.DI_CIRCULAR_DEPENDENCY,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
     super(code, message, options);
   }
 }
@@ -161,7 +173,11 @@ export class XoirError extends XoError {
 }
 
 export class PdfError extends XoError {
-  constructor(code: typeof ErrorCode.PDF_MALFORMED | typeof ErrorCode.PDF_UNSUPPORTED_FEATURE | typeof ErrorCode.PDF_ENCRYPTED, message: string, options?: XoErrorOptions) {
+  constructor(
+    code: typeof ErrorCode.PDF_MALFORMED | typeof ErrorCode.PDF_UNSUPPORTED_FEATURE | typeof ErrorCode.PDF_ENCRYPTED,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
     super(code, message, options);
   }
 }
@@ -227,7 +243,6 @@ export class AiError extends XoError {
   }
 }
 
-
 /**
  * Infrastructure / programmer-error failures from `@xo/permissions` — a
  * malformed request the manager fail-closes on, a policy configuration
@@ -239,7 +254,8 @@ export class AiError extends XoError {
  */
 export class PermissionError extends XoError {
   constructor(
-    code: typeof ErrorCode.PERMISSION_INVALID_REQUEST | typeof ErrorCode.PERMISSION_STORE_ERROR | typeof ErrorCode.PERMISSION_POLICY_INVALID,
+    code:
+      typeof ErrorCode.PERMISSION_INVALID_REQUEST | typeof ErrorCode.PERMISSION_STORE_ERROR | typeof ErrorCode.PERMISSION_POLICY_INVALID,
     message: string,
     options?: XoErrorOptions,
   ) {
@@ -257,7 +273,11 @@ export class PermissionError extends XoError {
  * per the auth/permissions boundary documented in `apps/api/README.md`.
  */
 export class AuthError extends XoError {
-  constructor(code: typeof ErrorCode.AUTH_KEY_MISSING | typeof ErrorCode.AUTH_KEY_INVALID | typeof ErrorCode.AUTH_KEY_REVOKED, message: string, options?: XoErrorOptions) {
+  constructor(
+    code: typeof ErrorCode.AUTH_KEY_MISSING | typeof ErrorCode.AUTH_KEY_INVALID | typeof ErrorCode.AUTH_KEY_REVOKED,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
     super(code, message, options);
   }
 }

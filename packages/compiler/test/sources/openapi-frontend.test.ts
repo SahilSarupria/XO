@@ -22,8 +22,14 @@ const MINIMAL_DOC = {
     '/brokerage/calculate': {
       post: {
         operationId: 'calculate_brokerage',
-        requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { premium: { type: 'number' }, rate: { type: 'number' } } } } } },
-        responses: { '200': { content: { 'application/json': { schema: { type: 'object', properties: { brokerage: { type: 'number' } } } } } } },
+        requestBody: {
+          content: {
+            'application/json': { schema: { type: 'object', properties: { premium: { type: 'number' }, rate: { type: 'number' } } } },
+          },
+        },
+        responses: {
+          '200': { content: { 'application/json': { schema: { type: 'object', properties: { brokerage: { type: 'number' } } } } } },
+        },
       },
     },
   },
@@ -66,9 +72,11 @@ test('rejection: an operation description does not become a schema property', ()
   assert.deepEqual(new Set(outputFields), new Set(['operation:output:brokerage']));
 });
 
-test('rejection: a non-200 response schema (e.g. 400 error schema) is never treated as the operation\'s authoritative output', () => {
+test("rejection: a non-200 response schema (e.g. 400 error schema) is never treated as the operation's authoritative output", () => {
   const doc = structuredClone(MINIMAL_DOC) as any;
-  doc.paths['/brokerage/calculate'].post.responses['400'] = { content: { 'application/json': { schema: { type: 'object', properties: { errorCode: { type: 'string' } } } } } };
+  doc.paths['/brokerage/calculate'].post.responses['400'] = {
+    content: { 'application/json': { schema: { type: 'object', properties: { errorCode: { type: 'string' } } } } },
+  };
   const result = frontend.ingest({ kind: 'openapi', text: JSON.stringify(doc), sourcePath: 'op.json' });
   const fields = paragraphFields(result);
   assert.equal(fields.has('operation:output:errorCode'), false);

@@ -49,7 +49,10 @@ test('POST /packages/validate rejects a non-object "publicKeys"', async () => {
   try {
     const bundle = buildFixtureBundle({ name: 'xo_validate_pk_pkg' });
     const archive = Buffer.from(await packBundle(bundle));
-    const res = await server.request('POST', '/packages/validate', { archiveBase64: archive.toString('base64'), publicKeys: 'not-an-object' });
+    const res = await server.request('POST', '/packages/validate', {
+      archiveBase64: archive.toString('base64'),
+      publicKeys: 'not-an-object',
+    });
     assert.equal(res.status, 400);
   } finally {
     await server.stop();
@@ -81,7 +84,11 @@ test('an arbitrary ?store= query parameter on the new workspace-scoped route is 
       const server = await TestServer.start({ workspaceDataDir: dataDir });
       try {
         const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
-        const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/packages/resolve?store=${encodeURIComponent(attackerDir)}`, { nameAtVersion: 'nope@1.0.0' });
+        const res = await server.request(
+          'POST',
+          `/workspaces/${workspace.workspaceId}/packages/resolve?store=${encodeURIComponent(attackerDir)}`,
+          { nameAtVersion: 'nope@1.0.0' },
+        );
         // Still resolves against the *workspace's* store (empty), not the attacker-supplied directory — a 404 ("package never installed"), never a 200 sourced from `attackerDir`.
         assert.equal(res.status, 404);
       } finally {
@@ -171,14 +178,19 @@ test('GET /workspaces/:workspaceId/packages/:name/:version/manifest returns an i
   });
 });
 
-test('a different identity cannot resolve/lock/read manifests through another identity\'s workspace-scoped package routes (404, not data from the wrong workspace)', async () => {
+test("a different identity cannot resolve/lock/read manifests through another identity's workspace-scoped package routes (404, not data from the wrong workspace)", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const owner = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
       const other = await server.issueAdditionalIdentity('identity-b');
 
-      const res = await server.request('GET', `/workspaces/${owner.workspaceId}/packages/foo/1.0.0/manifest`, undefined, TestServer.authHeader(other.apiKey));
+      const res = await server.request(
+        'GET',
+        `/workspaces/${owner.workspaceId}/packages/foo/1.0.0/manifest`,
+        undefined,
+        TestServer.authHeader(other.apiKey),
+      );
       assert.equal(res.status, 404);
     } finally {
       await server.stop();

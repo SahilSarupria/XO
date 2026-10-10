@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { atomicWriteJson, canonicalStringify, deleteFile, KeyedAsyncLock, listJsonFiles, readJsonChecked } from '../src/persistence/file/atomic-file-io.js';
+import {
+  atomicWriteJson,
+  canonicalStringify,
+  deleteFile,
+  KeyedAsyncLock,
+  listJsonFiles,
+  readJsonChecked,
+} from '../src/persistence/file/atomic-file-io.js';
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), 'xo-runtime-fileio-'));
@@ -112,10 +119,11 @@ test('listJsonFiles lists only .json files directly in the directory', async () 
 test('KeyedAsyncLock serializes operations on the same key', async () => {
   const lock = new KeyedAsyncLock();
   const order: number[] = [];
-  const op = (n: number, delayMs: number) => lock.withLock('key', async () => {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    order.push(n);
-  });
+  const op = (n: number, delayMs: number) =>
+    lock.withLock('key', async () => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      order.push(n);
+    });
   await Promise.all([op(1, 20), op(2, 5), op(3, 1)]);
   assert.deepEqual(order, [1, 2, 3]); // started-order, not completion-order, because each waits for the previous
 });
@@ -124,11 +132,12 @@ test('KeyedAsyncLock lets different keys run fully concurrently', async () => {
   const lock = new KeyedAsyncLock();
   const started: string[] = [];
   const finished: string[] = [];
-  const op = (key: string, delayMs: number) => lock.withLock(key, async () => {
-    started.push(key);
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    finished.push(key);
-  });
+  const op = (key: string, delayMs: number) =>
+    lock.withLock(key, async () => {
+      started.push(key);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      finished.push(key);
+    });
   await Promise.all([op('a', 30), op('b', 10)]);
   // 'b' (shorter delay, different key) finishes before 'a' despite starting after —
   // proof they ran concurrently rather than being serialized behind one global lock.
@@ -137,9 +146,11 @@ test('KeyedAsyncLock lets different keys run fully concurrently', async () => {
 
 test('KeyedAsyncLock does not permanently wedge a key after a failed operation', async () => {
   const lock = new KeyedAsyncLock();
-  await assert.rejects(lock.withLock('key', async () => {
-    throw new Error('boom');
-  }));
+  await assert.rejects(
+    lock.withLock('key', async () => {
+      throw new Error('boom');
+    }),
+  );
   const result = await lock.withLock('key', async () => 'still works');
   assert.equal(result, 'still works');
 });

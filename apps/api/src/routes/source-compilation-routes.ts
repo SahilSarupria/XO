@@ -3,7 +3,13 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceSourcesStore, workspaceCompilationsStore, workspaceApprovalsStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  workspaceSourcesStore,
+  workspaceCompilationsStore,
+  workspaceApprovalsStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -70,7 +76,10 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     // completion report's "idempotency and repeat compilation" section
     // for why this (rather than reusing an existing result for the same
     // source digest) is this milestone's deliberate, documented choice.
-    const created = await compilationStore.create(workspace.workspaceId, workspace.identityId, { sourceId, sourceDigestSha256: source.digestSha256 });
+    const created = await compilationStore.create(workspace.workspaceId, workspace.identityId, {
+      sourceId,
+      sourceDigestSha256: source.digestSha256,
+    });
     if (!created.ok) throw created.error;
 
     // Synchronous: by the time this call returns, `compileSourceRecord`
@@ -131,7 +140,8 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const compilationId = req.params['compilationId'];
     const capabilityId = req.params['capabilityId'];
-    if (compilationId === undefined || capabilityId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation or capability id');
+    if (compilationId === undefined || capabilityId === undefined)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation or capability id');
 
     // "Verify the capability belongs to the compilation" — checked
     // against the compilation's own persisted capability list (P0.4),

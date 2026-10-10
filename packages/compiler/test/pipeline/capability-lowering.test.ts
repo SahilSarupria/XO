@@ -18,7 +18,11 @@ import { lowerCapabilitiesToManifest } from '../../src/pipeline/capability-lower
 const now = () => '2026-01-01T00:00:00.000Z';
 
 /** Mirrors packager.test.ts's `addResolvableCapability` fixture: a capability + one linked `decision_node` whose condition parses under `StructuredComparisonBindingResolver`'s closed grammar — resolves to `'resolved'`, `implementationClass: 'deterministic_rule'`. */
-function graphWithResolvableCapability(suffix = 'a'): { readonly graph: XoirGraph; readonly capabilityId: string; readonly decisionId: string } {
+function graphWithResolvableCapability(suffix = 'a'): {
+  readonly graph: XoirGraph;
+  readonly capabilityId: string;
+  readonly decisionId: string;
+} {
   const graph = XoirGraph.create(XoirGraphId(`g-${suffix}`));
   const capabilityId = `capability:evaluate-claim-${suffix}`;
   const decisionId = `decision:deny-large-claim-${suffix}`;
@@ -36,7 +40,13 @@ function graphWithResolvableCapability(suffix = 'a'): { readonly graph: XoirGrap
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId, decisionId };
 }
 
@@ -64,12 +74,21 @@ function graphWithResolvableCapabilityAndPermissions(suffix = 'perm'): { readonl
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId };
 }
 
 /** Same shape as `graphWithResolvableCapability`, but the capability node's `requiredPermissions` is exactly whatever `permissions` the caller supplies — for Phase 3's permission-format-validation tests, which need to control the exact (valid/invalid/mixed) permission strings on the contract. */
-function graphWithResolvableCapabilityAndCustomPermissions(suffix: string, permissions: readonly string[]): { readonly graph: XoirGraph; readonly capabilityId: string } {
+function graphWithResolvableCapabilityAndCustomPermissions(
+  suffix: string,
+  permissions: readonly string[],
+): { readonly graph: XoirGraph; readonly capabilityId: string } {
   const graph = XoirGraph.create(XoirGraphId(`g-${suffix}`));
   const capabilityId = `capability:evaluate-claim-${suffix}`;
   const decisionId = `decision:deny-large-claim-${suffix}`;
@@ -92,7 +111,13 @@ function graphWithResolvableCapabilityAndCustomPermissions(suffix: string, permi
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId };
 }
 
@@ -116,7 +141,11 @@ function graphWithDeniedCapability(suffix = 'nd'): { readonly graph: XoirGraph; 
   graph.createAndAddNode({
     id: XoirNodeId(capabilityId),
     kind: 'capability',
-    properties: { name: 'Draft Freeform Reply', description: 'Drafts a freeform reply — inherently non-deterministic.', determinism: 'non_deterministic' },
+    properties: {
+      name: 'Draft Freeform Reply',
+      description: 'Drafts a freeform reply — inherently non-deterministic.',
+      determinism: 'non_deterministic',
+    },
     confidence: 0.7,
     now,
   });
@@ -127,7 +156,13 @@ function graphWithDeniedCapability(suffix = 'nd'): { readonly graph: XoirGraph; 
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId };
 }
 
@@ -213,7 +248,14 @@ test('an ambiguous capability produces no manifest declaration at all (so no exe
     name: 'always-agrees',
     resolve: (contract: { readonly id: string }) => ({
       status: 'resolved' as const,
-      binding: { id: `binding_${contract.id}_second`, contractId: contract.id, implementationClass: 'deterministic_rule' as const, resolverName: 'always-agrees', description: 'test double', derivation: {} },
+      binding: {
+        id: `binding_${contract.id}_second`,
+        contractId: contract.id,
+        implementationClass: 'deterministic_rule' as const,
+        resolverName: 'always-agrees',
+        description: 'test double',
+        derivation: {},
+      },
     }),
   };
   const result = lowerCapabilitiesToManifest(graph, { resolvers: [new StructuredComparisonBindingResolver(), secondResolver] });
@@ -290,7 +332,11 @@ test('Phase 3 (1): a single valid required permission still lowers to a determin
 });
 
 test('Phase 3 (2): multiple valid required permissions all lower unchanged', () => {
-  const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-valid2', ['runtime.execute', 'data.read', 'network.fetch']);
+  const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-valid2', [
+    'runtime.execute',
+    'data.read',
+    'network.fetch',
+  ]);
   const result = lowerCapabilitiesToManifest(graph);
   const declaration = result.declarations.find((d) => d.id === capabilityId);
   assert.ok(declaration, 'expected the capability to still be lowered');
@@ -301,7 +347,10 @@ test('Phase 3 (2): multiple valid required permissions all lower unchanged', () 
 test('Phase 3 (3): an invalid required permission prevents the capability from being lowered at all', () => {
   const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-invalid1', ['not_a_valid_permission_id']);
   const result = lowerCapabilitiesToManifest(graph);
-  assert.equal(result.declarations.find((d) => d.id === capabilityId), undefined);
+  assert.equal(
+    result.declarations.find((d) => d.id === capabilityId),
+    undefined,
+  );
   const outcome = result.outcomes.find((o) => o.contractId === capabilityId);
   assert.ok(outcome);
   assert.equal(outcome!.status, 'resolved'); // binding still resolved -- the contract itself is fine, only its permission metadata is malformed
@@ -311,9 +360,16 @@ test('Phase 3 (3): an invalid required permission prevents the capability from b
 });
 
 test('Phase 3 (4): a mixture of valid and invalid required permissions still prevents lowering (one bad entry is enough)', () => {
-  const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-mixed1', ['runtime.execute', 'totally-bogus', 'data.read']);
+  const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-mixed1', [
+    'runtime.execute',
+    'totally-bogus',
+    'data.read',
+  ]);
   const result = lowerCapabilitiesToManifest(graph);
-  assert.equal(result.declarations.find((d) => d.id === capabilityId), undefined);
+  assert.equal(
+    result.declarations.find((d) => d.id === capabilityId),
+    undefined,
+  );
   const outcome = result.outcomes.find((o) => o.contractId === capabilityId);
   assert.ok(outcome);
   assert.equal(outcome!.status, 'resolved');
@@ -324,7 +380,10 @@ test('Phase 3 (4): a mixture of valid and invalid required permissions still pre
 test('Phase 3 (4b): an unrecognized permission domain (well-formed shape, unknown domain) is also rejected, not just malformed syntax', () => {
   const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-baddomain1', ['spaceship.launch']);
   const result = lowerCapabilitiesToManifest(graph);
-  assert.equal(result.declarations.find((d) => d.id === capabilityId), undefined);
+  assert.equal(
+    result.declarations.find((d) => d.id === capabilityId),
+    undefined,
+  );
   const outcome = result.outcomes.find((o) => o.contractId === capabilityId);
   assert.ok(outcome);
   assert.equal(outcome!.declaration, undefined);
@@ -362,7 +421,10 @@ test('Phase 3 (6b): a denied (explicitly non_deterministic) capability is unaffe
 test('Phase 3 (7): an invalid-permission capability never sneaks through as a model-mode declaration -- it produces no declaration at all', () => {
   const { graph, capabilityId } = graphWithResolvableCapabilityAndCustomPermissions('p3-nomodel1', ['definitely not valid']);
   const result = lowerCapabilitiesToManifest(graph);
-  assert.equal(result.declarations.find((d) => d.id === capabilityId), undefined);
+  assert.equal(
+    result.declarations.find((d) => d.id === capabilityId),
+    undefined,
+  );
   // Assert over every declaration this run produced, not just the one
   // matching capabilityId, so a hidden second/fallback declaration for
   // the same capability (under any id) would still be caught.
@@ -383,7 +445,11 @@ test('Phase 3 (7): an invalid-permission capability never sneaks through as a mo
 // ---------------------------------------------------------------------------
 
 /** A capability with NO linked rules (no `decision_node`/`heuristic`), but ONE linked `concept` node carrying `subtype: 'action'` -- the exact shape `ActionEscalationBindingResolver` requires (`contract.rules.length === 0 && actionKnowledgeRefs.length > 0`). Mirrors `contract-builder-action-refs.test.ts`'s own fixture conventions. */
-function graphWithHumanInTheLoopCapability(suffix = 'hitl'): { readonly graph: XoirGraph; readonly capabilityId: string; readonly actionConceptId: string } {
+function graphWithHumanInTheLoopCapability(suffix = 'hitl'): {
+  readonly graph: XoirGraph;
+  readonly capabilityId: string;
+  readonly actionConceptId: string;
+} {
   const graph = XoirGraph.create(XoirGraphId(`g-${suffix}`));
   const capabilityId = `capability:reconcile-invoice-${suffix}`;
   const actionConceptId = `concept:reconcile-action-${suffix}`;
@@ -402,19 +468,32 @@ function graphWithHumanInTheLoopCapability(suffix = 'hitl'): { readonly graph: X
     confidence: 0.8,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(actionConceptId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(actionConceptId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId, actionConceptId };
 }
 
 /** Same shape, but the capability node also carries `requiredPermissions` -- exercises `requiredPermissionIds` passthrough for the `human_in_the_loop` path exactly as `graphWithResolvableCapabilityAndPermissions` does for `deterministic_rule`. */
-function graphWithHumanInTheLoopCapabilityAndPermissions(suffix = 'hitl-perm'): { readonly graph: XoirGraph; readonly capabilityId: string } {
+function graphWithHumanInTheLoopCapabilityAndPermissions(suffix = 'hitl-perm'): {
+  readonly graph: XoirGraph;
+  readonly capabilityId: string;
+} {
   const graph = XoirGraph.create(XoirGraphId(`g-${suffix}`));
   const capabilityId = `capability:reconcile-invoice-${suffix}`;
   const actionConceptId = `concept:reconcile-action-${suffix}`;
   graph.createAndAddNode({
     id: XoirNodeId(capabilityId),
     kind: 'capability',
-    properties: { name: 'Reconcile the invoice balance', description: 'Reconciles the invoice balance against payments received.', requiredPermissions: ['runtime.execute'] },
+    properties: {
+      name: 'Reconcile the invoice balance',
+      description: 'Reconciles the invoice balance against payments received.',
+      requiredPermissions: ['runtime.execute'],
+    },
     confidence: 0.65,
     now,
   });
@@ -426,7 +505,13 @@ function graphWithHumanInTheLoopCapabilityAndPermissions(suffix = 'hitl-perm'): 
     confidence: 0.8,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(actionConceptId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(actionConceptId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId };
 }
 
@@ -455,7 +540,7 @@ test('HITL (3): execution.contractId/bindingId match the real contract/binding i
   assert.equal(declaration.execution!.bindingId, `binding_${capabilityId}_action-escalation-resolver`);
 });
 
-test('HITL (4): inputSchema is omitted, never fabricated -- a human_in_the_loop binding\'s derivation carries actionKnowledgeRefs, not a {rules:[...]} shape', () => {
+test("HITL (4): inputSchema is omitted, never fabricated -- a human_in_the_loop binding's derivation carries actionKnowledgeRefs, not a {rules:[...]} shape", () => {
   const { graph, capabilityId } = graphWithHumanInTheLoopCapability('hitl4');
   const result = lowerCapabilitiesToManifest(graph);
   const declaration = result.declarations.find((d) => d.id === capabilityId)!;
@@ -487,7 +572,7 @@ test('HITL (7): a resolved deterministic_rule capability is completely unaffecte
   assert.ok(declaration.execution!.inputSchema, 'deterministic_rule inputSchema derivation is unaffected');
 });
 
-test('HITL (8): the two default resolvers never produce ambiguous for the same contract -- they partition disjointly by rules.length, per ActionEscalationBindingResolver\'s own documented invariant', () => {
+test("HITL (8): the two default resolvers never produce ambiguous for the same contract -- they partition disjointly by rules.length, per ActionEscalationBindingResolver's own documented invariant", () => {
   const { graph: detGraph, capabilityId: detId } = graphWithResolvableCapability('hitl8-det');
   const { graph: hitlGraph, capabilityId: hitlId } = graphWithHumanInTheLoopCapability('hitl8-hitl');
   const detResult = lowerCapabilitiesToManifest(detGraph);

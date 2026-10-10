@@ -5,5 +5,11 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../types" }, { "path": "../errors" }, { "path": "../xoir" }, { "path": "../capability-contract" }, { "path": "../crypto" }]
+  "references": [
+    { "path": "../types" },
+    { "path": "../errors" },
+    { "path": "../xoir" },
+    { "path": "../capability-contract" },
+    { "path": "../crypto" }
+  ]
 }

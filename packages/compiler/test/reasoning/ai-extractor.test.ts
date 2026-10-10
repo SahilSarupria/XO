@@ -21,10 +21,20 @@ function makeUnit(): ExperienceUnit {
 }
 
 const EMPTY_REASONING: ReasoningExtractionOutput = { steps: [], tradeoffs: [], exceptions: [], alternativePaths: [], failureModes: [] };
-const EMPTY_DECISION: DecisionGraphExtractionOutput = { decisions: [], branches: [], escalationPaths: [], riskThresholds: [], fallbacks: [] };
+const EMPTY_DECISION: DecisionGraphExtractionOutput = {
+  decisions: [],
+  branches: [],
+  escalationPaths: [],
+  riskThresholds: [],
+  fallbacks: [],
+};
 const EMPTY_CONSTRAINT: ConstraintExtractionOutput = { constraints: [], confidenceBoundaries: [] };
 
-function makeLayer(reasoning: ReasoningExtractionOutput, decision: DecisionGraphExtractionOutput, constraint: ConstraintExtractionOutput): AiCapabilityLayer {
+function makeLayer(
+  reasoning: ReasoningExtractionOutput,
+  decision: DecisionGraphExtractionOutput,
+  constraint: ConstraintExtractionOutput,
+): AiCapabilityLayer {
   const reasoningProvider = new ScriptableTestProvider('reasoning-provider', [{ kind: 'success', response: jsonResponse(reasoning) }]);
   const decisionProvider = new ScriptableTestProvider('decision-provider', [{ kind: 'success', response: jsonResponse(decision) }]);
   const constraintProvider = new ScriptableTestProvider('constraint-provider', [{ kind: 'success', response: jsonResponse(constraint) }]);
@@ -33,8 +43,16 @@ function makeLayer(reasoning: ReasoningExtractionOutput, decision: DecisionGraph
     policy: {
       rules: [
         { capability: 'extractReasoning', providerOrder: ['reasoning-provider'], modelByProvider: { 'reasoning-provider': 'test-model' } },
-        { capability: 'extractDecisionGraph', providerOrder: ['decision-provider'], modelByProvider: { 'decision-provider': 'test-model' } },
-        { capability: 'extractConstraints', providerOrder: ['constraint-provider'], modelByProvider: { 'constraint-provider': 'test-model' } },
+        {
+          capability: 'extractDecisionGraph',
+          providerOrder: ['decision-provider'],
+          modelByProvider: { 'decision-provider': 'test-model' },
+        },
+        {
+          capability: 'extractConstraints',
+          providerOrder: ['constraint-provider'],
+          modelByProvider: { 'constraint-provider': 'test-model' },
+        },
       ],
     },
     retryOptions: { maxAttempts: 1, initialDelayMs: 1, maxDelayMs: 1, backoffMultiplier: 1, sleep: async () => {} },
@@ -42,7 +60,10 @@ function makeLayer(reasoning: ReasoningExtractionOutput, decision: DecisionGraph
 }
 
 test('maps extractReasoning steps into justification candidates', async () => {
-  const output: ReasoningExtractionOutput = { ...EMPTY_REASONING, steps: [{ id: 's1', premise: 'the contract lacks a signature', conclusion: 'the agreement is voided', confidence: 0.85 }] };
+  const output: ReasoningExtractionOutput = {
+    ...EMPTY_REASONING,
+    steps: [{ id: 's1', premise: 'the contract lacks a signature', conclusion: 'the agreement is voided', confidence: 0.85 }],
+  };
   const extractor = new AiReasoningExtractor(makeLayer(output, EMPTY_DECISION, EMPTY_CONSTRAINT));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -55,7 +76,10 @@ test('maps extractReasoning steps into justification candidates', async () => {
 });
 
 test('maps extractReasoning exceptions into exception candidates', async () => {
-  const output: ReasoningExtractionOutput = { ...EMPTY_REASONING, exceptions: [{ condition: 'force majeure applies', deviation: 'the deadline is waived' }] };
+  const output: ReasoningExtractionOutput = {
+    ...EMPTY_REASONING,
+    exceptions: [{ condition: 'force majeure applies', deviation: 'the deadline is waived' }],
+  };
   const extractor = new AiReasoningExtractor(makeLayer(output, EMPTY_DECISION, EMPTY_CONSTRAINT));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -117,7 +141,10 @@ test('maps extractDecisionGraph branches into decision candidates with condition
 });
 
 test('maps extractDecisionGraph escalationPaths into escalation candidates (mapping onto XOIR escalation_rule downstream)', async () => {
-  const output: DecisionGraphExtractionOutput = { ...EMPTY_DECISION, escalationPaths: [{ triggerCondition: 'fraud is suspected', escalateTo: 'compliance team' }] };
+  const output: DecisionGraphExtractionOutput = {
+    ...EMPTY_DECISION,
+    escalationPaths: [{ triggerCondition: 'fraud is suspected', escalateTo: 'compliance team' }],
+  };
   const extractor = new AiReasoningExtractor(makeLayer(EMPTY_REASONING, output, EMPTY_CONSTRAINT));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -129,7 +156,12 @@ test('maps extractDecisionGraph escalationPaths into escalation candidates (mapp
 });
 
 test('maps extractDecisionGraph riskThresholds into risk_threshold candidates', async () => {
-  const output: DecisionGraphExtractionOutput = { ...EMPTY_DECISION, riskThresholds: [{ metric: 'transaction amount', thresholdDescription: 'above $10,000', aboveThresholdAction: 'require dual approval' }] };
+  const output: DecisionGraphExtractionOutput = {
+    ...EMPTY_DECISION,
+    riskThresholds: [
+      { metric: 'transaction amount', thresholdDescription: 'above $10,000', aboveThresholdAction: 'require dual approval' },
+    ],
+  };
   const extractor = new AiReasoningExtractor(makeLayer(EMPTY_REASONING, output, EMPTY_CONSTRAINT));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -155,7 +187,12 @@ test('maps extractDecisionGraph fallbacks into rule candidates, linked to the fa
 });
 
 test('maps extractConstraints constraints into policy candidates with severity/kind/applicability in metadata', async () => {
-  const output: ConstraintExtractionOutput = { constraints: [{ kind: 'regulatory', rule: 'Must retain records for 7 years', severity: 'blocking', applicability: 'all financial contracts' }], confidenceBoundaries: [] };
+  const output: ConstraintExtractionOutput = {
+    constraints: [
+      { kind: 'regulatory', rule: 'Must retain records for 7 years', severity: 'blocking', applicability: 'all financial contracts' },
+    ],
+    confidenceBoundaries: [],
+  };
   const extractor = new AiReasoningExtractor(makeLayer(EMPTY_REASONING, EMPTY_DECISION, output));
   const result = await extractor.extract(makeUnit());
   assert.ok(result.ok);
@@ -167,16 +204,30 @@ test('maps extractConstraints constraints into policy candidates with severity/k
 });
 
 test('one capability failing does not prevent the other two from contributing candidates', async () => {
-  const failingReasoningProvider = new ScriptableTestProvider('reasoning-provider', [{ kind: 'failure', error: new Error('provider down') }]);
-  const decisionProvider = new ScriptableTestProvider('decision-provider', [{ kind: 'success', response: jsonResponse({ ...EMPTY_DECISION, escalationPaths: [{ triggerCondition: 'x', escalateTo: 'y' }] }) }]);
-  const constraintProvider = new ScriptableTestProvider('constraint-provider', [{ kind: 'success', response: jsonResponse(EMPTY_CONSTRAINT) }]);
+  const failingReasoningProvider = new ScriptableTestProvider('reasoning-provider', [
+    { kind: 'failure', error: new Error('provider down') },
+  ]);
+  const decisionProvider = new ScriptableTestProvider('decision-provider', [
+    { kind: 'success', response: jsonResponse({ ...EMPTY_DECISION, escalationPaths: [{ triggerCondition: 'x', escalateTo: 'y' }] }) },
+  ]);
+  const constraintProvider = new ScriptableTestProvider('constraint-provider', [
+    { kind: 'success', response: jsonResponse(EMPTY_CONSTRAINT) },
+  ]);
   const layer = new AiCapabilityLayer({
     providers: [failingReasoningProvider, decisionProvider, constraintProvider],
     policy: {
       rules: [
         { capability: 'extractReasoning', providerOrder: ['reasoning-provider'], modelByProvider: { 'reasoning-provider': 'test-model' } },
-        { capability: 'extractDecisionGraph', providerOrder: ['decision-provider'], modelByProvider: { 'decision-provider': 'test-model' } },
-        { capability: 'extractConstraints', providerOrder: ['constraint-provider'], modelByProvider: { 'constraint-provider': 'test-model' } },
+        {
+          capability: 'extractDecisionGraph',
+          providerOrder: ['decision-provider'],
+          modelByProvider: { 'decision-provider': 'test-model' },
+        },
+        {
+          capability: 'extractConstraints',
+          providerOrder: ['constraint-provider'],
+          modelByProvider: { 'constraint-provider': 'test-model' },
+        },
       ],
     },
     retryOptions: { maxAttempts: 1, initialDelayMs: 1, maxDelayMs: 1, backoffMultiplier: 1, sleep: async () => {} },
@@ -195,8 +246,16 @@ test('all three capabilities failing surfaces as an error Result', async () => {
     policy: {
       rules: [
         { capability: 'extractReasoning', providerOrder: ['reasoning-provider'], modelByProvider: { 'reasoning-provider': 'test-model' } },
-        { capability: 'extractDecisionGraph', providerOrder: ['decision-provider'], modelByProvider: { 'decision-provider': 'test-model' } },
-        { capability: 'extractConstraints', providerOrder: ['constraint-provider'], modelByProvider: { 'constraint-provider': 'test-model' } },
+        {
+          capability: 'extractDecisionGraph',
+          providerOrder: ['decision-provider'],
+          modelByProvider: { 'decision-provider': 'test-model' },
+        },
+        {
+          capability: 'extractConstraints',
+          providerOrder: ['constraint-provider'],
+          modelByProvider: { 'constraint-provider': 'test-model' },
+        },
       ],
     },
     retryOptions: { maxAttempts: 1, initialDelayMs: 1, maxDelayMs: 1, backoffMultiplier: 1, sleep: async () => {} },

@@ -11,7 +11,10 @@ const SUBSYSTEM = 'benchmark';
  * / compare reports. All measurement logic lives in `@xo/benchmark`.
  */
 export function registerCommands(registry: CommandRegistry): void {
-  registry.declareSubsystem(SUBSYSTEM, 'Evaluate the real XO pipeline against expected semantics/capabilities/workflows/execution (@xo/benchmark).');
+  registry.declareSubsystem(
+    SUBSYSTEM,
+    'Evaluate the real XO pipeline against expected semantics/capabilities/workflows/execution (@xo/benchmark).',
+  );
 
   registry.register({
     name: 'benchmark-run',
@@ -23,7 +26,9 @@ export function registerCommands(registry: CommandRegistry): void {
     run: async (args) => {
       const suitePath = args.positionals[0];
       if (suitePath === undefined) {
-        process.stdout.write('xo benchmark-run <suite.json> [--baseline <report.json>] [--out <report.json>] [--source-root <dir>] [--summary] [--limit <n>] [--json]\n');
+        process.stdout.write(
+          'xo benchmark-run <suite.json> [--baseline <report.json>] [--out <report.json>] [--source-root <dir>] [--summary] [--limit <n>] [--json]\n',
+        );
         return 1;
       }
       const baselinePath = requireFlag(args.flags, 'baseline');
@@ -47,7 +52,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'benchmark-compare',
     subsystem: SUBSYSTEM,
-    usage: 'xo benchmark-compare <baseline.json> <current.json> [--json]\n                                         Compare two benchmark reports; exit 1 on a regression',
+    usage:
+      'xo benchmark-compare <baseline.json> <current.json> [--json]\n                                         Compare two benchmark reports; exit 1 on a regression',
     run: async (args) => {
       const [baselinePath, currentPath] = args.positionals;
       if (baselinePath === undefined || currentPath === undefined) {

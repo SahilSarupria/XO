@@ -2,6 +2,7 @@ import type { PackageId } from '@xo/types';
 import type { PermissionId } from './permission-id.js';
 import type { PermissionScope } from './scope.js';
 import { scopeKey } from './scope.js';
+import type { PermissionLifetime } from './decision.js';
 
 /**
  * A persisted `allow` decision — the only thing a {@link
@@ -21,7 +22,7 @@ export interface PermissionGrant {
   readonly packageId: PackageId;
   /** The capability that was executing when this grant was created, if any — provenance for §13's "revoke capability permissions", distinct from `scope.kind === 'capability'` (which instead *restricts where the grant applies*, see `scope.ts`). */
   readonly requesterCapabilityId?: string;
-  readonly lifetime: Extract<import('./decision.js').PermissionLifetime, 'session' | 'persistent'>;
+  readonly lifetime: Extract<PermissionLifetime, 'session' | 'persistent'>;
   readonly consentInvolved: boolean;
   readonly grantedAt: string;
 }
@@ -34,5 +35,5 @@ export interface PermissionGrantFilter {
   readonly packageId?: PackageId;
   readonly permission?: PermissionId;
   readonly capabilityId?: string;
-  readonly lifetime?: Extract<import('./decision.js').PermissionLifetime, 'session' | 'persistent'>;
+  readonly lifetime?: Extract<PermissionLifetime, 'session' | 'persistent'>;
 }

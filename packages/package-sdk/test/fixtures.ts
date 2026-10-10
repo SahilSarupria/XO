@@ -36,25 +36,42 @@ export function buildSampleBundle(
     readonly dependencies?: readonly DependencyDeclaration[];
   } = {},
 ): PackageBundle {
-const result = ManifestBuilder.create()
-    .setIdentity({ formatVersion: '1.0', name: overrides.name ?? 'xo_test_fixture', version: overrides.version ?? '1.0.0', creatorDid: 'did:xo:test-creator' })
+  const result = ManifestBuilder.create()
+    .setIdentity({
+      formatVersion: '1.0',
+      name: overrides.name ?? 'xo_test_fixture',
+      version: overrides.version ?? '1.0.0',
+      creatorDid: 'did:xo:test-creator',
+    })
     .setCompatibility(sampleCompatibility)
     .setMetadata(sampleMetadata)
     .setCapabilities(overrides.capabilities ?? [sampleCapability])
     .setDependencies(overrides.dependencies ?? [])
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode('{"nodes":[]}'), required: false })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode('{"nodes":[]}'),
+      required: false,
+    })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
 }
 
 /** Convenience wrapper over {@link buildSampleBundle} for resolver/lockfile tests, which only ever need the manifest, never the full bundle. */
-export function buildSampleManifest(overrides: {
-  readonly name?: string;
-  readonly version?: string;
-  readonly dependencies?: readonly DependencyDeclaration[];
-} = {}): XoManifest {
+export function buildSampleManifest(
+  overrides: {
+    readonly name?: string;
+    readonly version?: string;
+    readonly dependencies?: readonly DependencyDeclaration[];
+  } = {},
+): XoManifest {
   return buildSampleBundle(overrides).manifest;
 }

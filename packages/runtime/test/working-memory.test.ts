@@ -40,7 +40,7 @@ test('sessions are isolated from each other', () => {
   assert.equal(memory.get(SessionId('s2'))[0]?.content, 'for s2');
 });
 
-test('clear() removes a session\'s history entirely', () => {
+test("clear() removes a session's history entirely", () => {
   const memory = new MemoryManager();
   const sessionId = SessionId('s1');
   memory.append(sessionId, { role: 'user', content: 'hi', recordedAt: 't1' });

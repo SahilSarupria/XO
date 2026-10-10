@@ -9,13 +9,18 @@ import { NodeId, type WorkflowGraph } from '../src/workflow/workflow-graph.js';
 import { EnvironmentId } from '../src/ids.js';
 import type { ExecutionEnvironment, ExecutionRequest } from '../src/execution/execution-request.js';
 import type { ExecutionResult } from '../src/execution/execution-result.js';
-import { ExecutionCancellation } from '../src/cancellation/execution-cancellation.js';
+import type { ExecutionCancellation } from '../src/cancellation/execution-cancellation.js';
 import { InMemoryRuntimeStore } from '../src/persistence/in-memory-runtime-store.js';
 import { FileRuntimeStore } from '../src/persistence/file/file-runtime-store.js';
 import { RuntimeMemory } from '../src/memory/runtime-memory.js';
 
 function environment(overrides: Partial<ExecutionEnvironment> = {}): ExecutionEnvironment {
-  return { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z', ...overrides };
+  return {
+    environmentId: EnvironmentId('env_1'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
 }
 
 // Never actually invoked by these graphs (no `capability` nodes), but required by WorkflowExecutor's constructor.
@@ -103,7 +108,12 @@ test('two separate workflow runs (different workflowInstanceId) get isolated wor
 test('RuntimeStore.memory is wired through both InMemoryRuntimeStore and FileRuntimeStore, and RuntimeMemory can be built directly on top of it', async () => {
   const inMemoryStore = new InMemoryRuntimeStore();
   const runtimeMemoryA = new RuntimeMemory(inMemoryStore.memory);
-  const putResult = await runtimeMemoryA.put({ scope: { kind: 'runtime', scopeId: 'global' }, type: 'fact', key: 'version', value: '1.0.0' });
+  const putResult = await runtimeMemoryA.put({
+    scope: { kind: 'runtime', scopeId: 'global' },
+    type: 'fact',
+    key: 'version',
+    value: '1.0.0',
+  });
   assert.equal(putResult.ok, true);
 
   const dir = await mkdtemp(join(tmpdir(), 'xo-memory-runtimestore-'));

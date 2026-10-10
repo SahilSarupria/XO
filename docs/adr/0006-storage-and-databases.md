@@ -1,9 +1,11 @@
 # ADR 0006: Postgres + Redis (+ optional Neo4j), local-fs/in-memory reference implementations for now
 
 ## Status
+
 Accepted
 
 ## Context
+
 Three storage-shaped needs exist across the eventual platform: (1) blob
 storage for XO package components, (2) relational storage for the
 registry (published packages, benchmark runs, license/royalty records —
@@ -12,6 +14,7 @@ knowledge graph that may, for some XOs, outgrow a single process's
 memory.
 
 ## Decision
+
 - **Blob storage**: `BlobStore` interface (`packages/storage`), backed
   today by `LocalFsBlobStore`. Production target: S3/GCS/R2-compatible
   object storage behind the same interface.
@@ -24,6 +27,7 @@ memory.
 - **Caching/queueing**: Redis, provisioned, not yet consumed.
 
 ## Alternatives considered
+
 - **MongoDB instead of Postgres**: the registry's data (a benchmark run
   references a package; a license references a package and sums royalty
   splits to exactly 10000 bps per `SPECIFICATION.md` §4) is relational
@@ -32,7 +36,7 @@ memory.
   option if/when `runtime-core`'s `Retriever` needs semantic search,
   without provisioning a fourth database.
 - **A dedicated graph database (Neo4j) from day one, no in-memory
-  option**: rejected as the *only* option — most individual XOs'
+  option**: rejected as the _only_ option — most individual XOs'
   knowledge graphs (per `PACKAGE_README.md`'s worked example: 8 document
   types, 22 clause types) comfortably fit in memory. Keeping
   `GraphStore` as an interface with an in-memory default avoids forcing
@@ -43,6 +47,7 @@ memory.
   requirements with no workload to validate against.
 
 ## Consequences
+
 - `docker-compose.yml` provisions Postgres/Redis unconditionally and
   Neo4j behind a profile flag, so the next module (registry
   implementation) has real backing services to develop against

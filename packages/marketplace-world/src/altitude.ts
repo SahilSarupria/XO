@@ -1,4 +1,4 @@
-import { AltitudeModel, type AltitudeLevel } from '@xo/atlas'
+import { AltitudeModel, type AltitudeLevel } from '@xo/atlas';
 
 /**
  * The marketplace depth model.
@@ -52,8 +52,7 @@ export const MARKETPLACE_ALTITUDE_LEVELS: readonly AltitudeLevel[] = [
     id: 'memory',
     order: 6,
     label: 'Memory',
-    description:
-      'What the XO currently holds in memory becomes available. Same caveat as Reasoning: no runtime backs this yet.',
+    description: 'What the XO currently holds in memory becomes available. Same caveat as Reasoning: no runtime backs this yet.',
   },
   {
     id: 'execution',
@@ -61,8 +60,8 @@ export const MARKETPLACE_ALTITUDE_LEVELS: readonly AltitudeLevel[] = [
     label: 'Execution',
     description: 'The XO\u2019s live, in-progress work becomes available. Requires a runtime this repository does not yet have.',
   },
-]
+];
 
 export function createMarketplaceAltitudeModel(): AltitudeModel {
-  return new AltitudeModel(MARKETPLACE_ALTITUDE_LEVELS)
+  return new AltitudeModel(MARKETPLACE_ALTITUDE_LEVELS);
 }

@@ -132,7 +132,11 @@ test('Capability.dependencies produces both a properties mirror and real REQUIRE
 });
 
 test('a dependency id that is not present in this CapabilityGraph is skipped for edges but still recorded in the properties mirror', () => {
-  const cap = capability({ canonicalName: 'Review Contract', category: 'analysis', dependencies: ['cap_does_not_exist' as Capability['id']] });
+  const cap = capability({
+    canonicalName: 'Review Contract',
+    category: 'analysis',
+    dependencies: ['cap_does_not_exist' as Capability['id']],
+  });
   const graph: CapabilityGraph = { capabilities: [cap], relationships: [] };
   const result = capabilityGraphToXoir(graph);
   assert.ok(result.ok);
@@ -197,7 +201,11 @@ test('combining Stage 4 and Stage 5 output via `into`: requiredKnowledgeNodeIds 
 });
 
 test('requiredKnowledgeNodeIds is silently skipped (not an error) when converting a CapabilityGraph standalone, without `into`', () => {
-  const cap = capability({ canonicalName: 'Draft NDA', category: 'generation', requiredKnowledgeNodeIds: [computeKnowledgeNodeId('obligation', 'Must maintain confidentiality')] });
+  const cap = capability({
+    canonicalName: 'Draft NDA',
+    category: 'generation',
+    requiredKnowledgeNodeIds: [computeKnowledgeNodeId('obligation', 'Must maintain confidentiality')],
+  });
   const graph: CapabilityGraph = { capabilities: [cap], relationships: [] };
   const result = capabilityGraphToXoir(graph);
   assert.ok(result.ok);

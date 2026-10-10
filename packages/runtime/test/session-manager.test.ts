@@ -9,7 +9,11 @@ function request(id = 'req_1'): ExecutionRequest {
   return {
     requestId: RequestId(id),
     capabilityId: 'contract_analysis',
-    environment: { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z' },
+    environment: {
+      environmentId: EnvironmentId('env_1'),
+      hostProfile: { family: 'claude', capabilities: [] },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
     requestedAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -29,7 +33,13 @@ test('get() on an unknown sessionId returns undefined', () => {
 test('update() overwrites the stored value for a session', () => {
   const manager = new SessionManager();
   const session = manager.create(request());
-  const updated = withPlan(session, { planId: 'p1' as never, requestId: session.requestId, status: 'no_candidates', candidates: [], plannedAt: '2026-01-01T00:00:00.000Z' });
+  const updated = withPlan(session, {
+    planId: 'p1' as never,
+    requestId: session.requestId,
+    status: 'no_candidates',
+    candidates: [],
+    plannedAt: '2026-01-01T00:00:00.000Z',
+  });
   manager.update(updated);
   assert.equal(manager.get(session.sessionId)?.status, 'plan_failed');
 });

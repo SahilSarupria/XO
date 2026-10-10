@@ -1,6 +1,11 @@
 import { PackageId } from '@xo/types';
 import { PermissionId, resourceScope, type PermissionManager } from '@xo/permissions';
-import type { MemoryPermissionAction, MemoryPermissionGate, MemoryPermissionRequester, MemoryPermissionVerdict } from './memory-permission-gate.interface.js';
+import type {
+  MemoryPermissionAction,
+  MemoryPermissionGate,
+  MemoryPermissionRequester,
+  MemoryPermissionVerdict,
+} from './memory-permission-gate.interface.js';
 import type { MemoryScope } from './memory-types.js';
 import { scopeKey } from './memory-types.js';
 
@@ -35,7 +40,11 @@ const UNATTRIBUTED_PACKAGE_ID = PackageId('runtime:unattributed');
  */
 export function createPermissionManagerMemoryGate(options: MemoryPermissionManagerGateOptions): MemoryPermissionGate {
   return {
-    async check(action: MemoryPermissionAction, scope: MemoryScope, requester?: MemoryPermissionRequester): Promise<MemoryPermissionVerdict> {
+    async check(
+      action: MemoryPermissionAction,
+      scope: MemoryScope,
+      requester?: MemoryPermissionRequester,
+    ): Promise<MemoryPermissionVerdict> {
       const packageId = requester?.packageId !== undefined ? PackageId(requester.packageId) : UNATTRIBUTED_PACKAGE_ID;
       const decision = await options.manager.check({
         permission: PermissionId(ACTION_PERMISSION_ID[action]),

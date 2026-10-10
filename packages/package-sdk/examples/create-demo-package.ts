@@ -30,10 +30,10 @@ function section(title: string): void {
 }
 
 async function main(): Promise<void> {
-  const workDir = join(cwd(), "demo-output");
+  const workDir = join(cwd(), 'demo-output');
 
   await mkdir(workDir, {
-      recursive: true
+    recursive: true,
   });
   const archivePath = join(workDir, 'xo-demo-package-1.0.0.xo');
 
@@ -67,7 +67,13 @@ async function main(): Promise<void> {
     };
 
     const safetyRules = {
-      rules: [{ id: 'unauthorized_practice_of_law', trigger: 'hard', description: 'Never represent output as formal legal advice from a licensed attorney.' }],
+      rules: [
+        {
+          id: 'unauthorized_practice_of_law',
+          trigger: 'hard',
+          description: 'Never represent output as formal legal advice from a licensed attorney.',
+        },
+      ],
     };
 
     const benchmarkSuite = {
@@ -76,7 +82,8 @@ async function main(): Promise<void> {
 
     const metadata: XoMetadata = {
       domain: 'demo.contract-clause-lookup',
-      description: 'A minimal end-to-end demo XO used to exercise every stage of @xo/package-sdk. Not a real professional-capability package.',
+      description:
+        'A minimal end-to-end demo XO used to exercise every stage of @xo/package-sdk. Not a real professional-capability package.',
       scope: ['contract clause identification', 'clause pairing suggestions'],
       limitations: ['not legal advice', 'covers only two example clause types', 'demo data, not production-quality'],
       tags: ['demo', 'package-sdk-example'],
@@ -84,12 +91,32 @@ async function main(): Promise<void> {
     console.log(`Metadata domain: "${metadata.domain}"`);
 
     const unsignedBuild = ManifestBuilder.create()
-      .setIdentity({ formatVersion: '1.0', name: 'xo_demo_contract_clause_lookup', version: '1.0.0', creatorDid: 'did:xo:package-sdk-example' })
+      .setIdentity({
+        formatVersion: '1.0',
+        name: 'xo_demo_contract_clause_lookup',
+        version: '1.0.0',
+        creatorDid: 'did:xo:package-sdk-example',
+      })
       .setCompatibility(compatibility)
       .setMetadata(metadata)
-      .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode(JSON.stringify(knowledgeGraph, null, 2)), required: false })
-      .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify(safetyRules, null, 2)), required: true })
-      .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode(JSON.stringify(benchmarkSuite, null, 2)), required: true })
+      .addComponent({
+        kind: 'knowledge_graph',
+        path: 'knowledge/graph.json',
+        data: new TextEncoder().encode(JSON.stringify(knowledgeGraph, null, 2)),
+        required: false,
+      })
+      .addComponent({
+        kind: 'safety_rules',
+        path: 'safety/rules.json',
+        data: new TextEncoder().encode(JSON.stringify(safetyRules, null, 2)),
+        required: true,
+      })
+      .addComponent({
+        kind: 'benchmark_suite',
+        path: 'evaluation/benchmark_suite.json',
+        data: new TextEncoder().encode(JSON.stringify(benchmarkSuite, null, 2)),
+        required: true,
+      })
       .build();
 
     if (!unsignedBuild.ok) throw new Error(`Manifest build failed: ${unsignedBuild.error.message}`);
@@ -122,13 +149,38 @@ async function main(): Promise<void> {
     console.log(`Signature (truncated): ${signatureEntry.signature.slice(0, 32)}...`);
 
     const signedBuild = ManifestBuilder.create()
-      .setIdentity({ formatVersion: '1.0', name: 'xo_demo_contract_clause_lookup', version: '1.0.0', creatorDid: 'did:xo:package-sdk-example' })
+      .setIdentity({
+        formatVersion: '1.0',
+        name: 'xo_demo_contract_clause_lookup',
+        version: '1.0.0',
+        creatorDid: 'did:xo:package-sdk-example',
+      })
       .setCompatibility(compatibility)
       .setMetadata(metadata)
-      .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode(JSON.stringify(knowledgeGraph, null, 2)), required: false })
-      .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify(safetyRules, null, 2)), required: true })
-      .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode(JSON.stringify(benchmarkSuite, null, 2)), required: true })
-      .addSignature({ signerDid: signatureEntry.signerDid, role: signatureEntry.role, signature: signatureEntry.signature, publicKeyPem: signatureEntry.publicKeyPem })
+      .addComponent({
+        kind: 'knowledge_graph',
+        path: 'knowledge/graph.json',
+        data: new TextEncoder().encode(JSON.stringify(knowledgeGraph, null, 2)),
+        required: false,
+      })
+      .addComponent({
+        kind: 'safety_rules',
+        path: 'safety/rules.json',
+        data: new TextEncoder().encode(JSON.stringify(safetyRules, null, 2)),
+        required: true,
+      })
+      .addComponent({
+        kind: 'benchmark_suite',
+        path: 'evaluation/benchmark_suite.json',
+        data: new TextEncoder().encode(JSON.stringify(benchmarkSuite, null, 2)),
+        required: true,
+      })
+      .addSignature({
+        signerDid: signatureEntry.signerDid,
+        role: signatureEntry.role,
+        signature: signatureEntry.signature,
+        publicKeyPem: signatureEntry.publicKeyPem,
+      })
       .build();
 
     if (!signedBuild.ok) throw new Error(`Signed manifest build failed: ${signedBuild.error.message}`);
@@ -151,7 +203,9 @@ async function main(): Promise<void> {
     const readResult = await unpackArchive(readBackBytes);
     if (!readResult.ok) throw new Error(`Failed to read archive back: ${readResult.error.message}`);
     const readBundle = readResult.value;
-    console.log(`Read back "${readBundle.manifest.name}@${readBundle.manifest.version}" with ${readBundle.components.length} component(s).`);
+    console.log(
+      `Read back "${readBundle.manifest.name}@${readBundle.manifest.version}" with ${readBundle.components.length} component(s).`,
+    );
 
     // ------------------------------------------------------------------
     // 9. Validate hashes and signatures
@@ -218,23 +272,24 @@ async function main(): Promise<void> {
     console.log(`Total bytes:       ${summary.totalComponentBytes}`);
     console.log('Components:');
     for (const component of summary.components) {
-      console.log(`  - ${component.kind.padEnd(16)} ${component.path.padEnd(36)} ${component.size.toString().padStart(6)} bytes  required=${component.required}  ${component.hash}`);
+      console.log(
+        `  - ${component.kind.padEnd(16)} ${component.path.padEnd(36)} ${component.size.toString().padStart(6)} bytes  required=${component.required}  ${component.hash}`,
+      );
     }
 
-    section("Done");
+    section('Done');
 
-console.log("Output written to:");
-console.log(workDir);
+    console.log('Output written to:');
+    console.log(workDir);
 
-console.log("Archive:");
-console.log(archivePath);
+    console.log('Archive:');
+    console.log(archivePath);
 
-console.log("Installed package:");
-console.log(installRoot);
+    console.log('Installed package:');
+    console.log(installRoot);
 
-console.log("Every stage completed successfully.");
-
-} finally {
+    console.log('Every stage completed successfully.');
+  } finally {
     // Clean up the temporary working directory if you want to keep it for inspection, comment out the next line.
     // await rm(workDir, { recursive: true, force: true });
   }

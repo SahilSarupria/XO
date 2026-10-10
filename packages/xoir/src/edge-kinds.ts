@@ -153,9 +153,7 @@ export interface CreateEdgeInput<K extends XoirEdgeKind, P extends XoirPropertyB
 }
 
 /** Builds an edge with metadata defaults filled in. As with {@link createNode}, hashing happens separately (hashing.ts#hashEdge), applied by `graph.ts#XoirGraph.addEdge`. */
-export function createEdge<K extends XoirEdgeKind, P extends XoirPropertyBag>(
-  input: CreateEdgeInput<K, P>,
-): Omit<XoirEdge<K, P>, 'hash'> {
+export function createEdge<K extends XoirEdgeKind, P extends XoirPropertyBag>(input: CreateEdgeInput<K, P>): Omit<XoirEdge<K, P>, 'hash'> {
   const now = input.now ?? (() => new Date().toISOString());
   const confidence = input.confidence ?? input.confidenceDetail?.score ?? 1;
   const base = {

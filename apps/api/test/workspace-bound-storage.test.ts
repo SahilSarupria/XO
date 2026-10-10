@@ -35,7 +35,13 @@ test('unauthenticated requests to every workspace-bound route family are rejecte
   try {
     const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
     for (const family of ROUTE_FAMILIES) {
-      const res = await server.request(family.method, `/workspaces/${workspace.workspaceId}${family.suffix}`, family.body, {}, { skipAuth: true });
+      const res = await server.request(
+        family.method,
+        `/workspaces/${workspace.workspaceId}${family.suffix}`,
+        family.body,
+        {},
+        { skipAuth: true },
+      );
       assert.equal(res.status, 401, `expected 401 for unauthenticated ${family.label} request`);
     }
   } finally {
@@ -73,7 +79,10 @@ test('absolute-path-shaped and traversal-shaped workspace ids are rejected clean
     for (const family of ROUTE_FAMILIES) {
       for (const maliciousId of maliciousIds) {
         const res = await server.request(family.method, `/workspaces/${maliciousId}${family.suffix}`, family.body);
-        assert.ok([400, 404].includes(res.status), `expected a clean 4xx for malicious workspace id "${maliciousId}" on ${family.label} route, got ${res.status}`);
+        assert.ok(
+          [400, 404].includes(res.status),
+          `expected a clean 4xx for malicious workspace id "${maliciousId}" on ${family.label} route, got ${res.status}`,
+        );
       }
     }
   } finally {
@@ -89,10 +98,15 @@ test('a legacy ?store=/?registry= query parameter never influences which workspa
         const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
         const attackerParam = encodeURIComponent(attackerDir);
 
-        const packageRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/packages/resolve?store=${attackerParam}`, { nameAtVersion: 'nope@1.0.0' });
+        const packageRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/packages/resolve?store=${attackerParam}`, {
+          nameAtVersion: 'nope@1.0.0',
+        });
         assert.equal(packageRes.status, 404); // resolves against the empty *workspace* store, not the attacker directory
 
-        const registryRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/registry/search?q=anything&registry=${attackerParam}`);
+        const registryRes = await server.request(
+          'GET',
+          `/workspaces/${workspace.workspaceId}/registry/search?q=anything&registry=${attackerParam}`,
+        );
         assert.equal(registryRes.status, 200); // real RegistryClient call against the workspace's own (empty) registry store
 
         const runtimeRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/runtime/context?store=${attackerParam}`);

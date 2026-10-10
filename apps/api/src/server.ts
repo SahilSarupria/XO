@@ -72,7 +72,8 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
  */
 export function buildRouter(deps: ServerDeps = {}): Router {
   const apiKeyStore = deps.apiKeyStore ?? new FsApiKeyStore(new LocalFsBlobStore(deps.apiKeysDir ?? loadConfig().apiKeysDir));
-  const workspaceStore = deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));
+  const workspaceStore =
+    deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));
   const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
   const router = new Router();
   router.use(createApiKeyAuth(apiKeyStore));
@@ -101,7 +102,10 @@ export function createHttpServer(deps: ServerDeps = {}): Server {
         if (resolved === undefined) {
           const status = router.hasPathForOtherMethod(incoming.method ?? 'GET', url.pathname) ? 405 : 404;
           const code = status === 405 ? ErrorCode.UNIMPLEMENTED : ErrorCode.NOT_FOUND;
-          const message = status === 405 ? `method "${incoming.method}" not supported for "${url.pathname}"` : `no route for "${incoming.method} ${url.pathname}"`;
+          const message =
+            status === 405
+              ? `method "${incoming.method}" not supported for "${url.pathname}"`
+              : `no route for "${incoming.method} ${url.pathname}"`;
           writeResponse(res, errorToResponse(new XoError(code, message)));
           return;
         }

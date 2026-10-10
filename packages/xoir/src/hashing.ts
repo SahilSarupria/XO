@@ -100,7 +100,11 @@ export function verifyEdgeHash(edge: XoirEdge, hasher: Hasher = defaultHasher): 
  * insensitive to insertion order (two graphs with the same nodes/edges
  * added in a different order produce the same graph hash).
  */
-export function hashGraphContents(nodeHashes: readonly ContentHash[], edgeHashes: readonly ContentHash[], hasher: Hasher = defaultHasher): ContentHash {
+export function hashGraphContents(
+  nodeHashes: readonly ContentHash[],
+  edgeHashes: readonly ContentHash[],
+  hasher: Hasher = defaultHasher,
+): ContentHash {
   const allHashes = [...nodeHashes].sort().concat([...edgeHashes].sort());
   if (allHashes.length === 0) {
     return ContentHash(hasher.hash('xoir:empty-graph'));

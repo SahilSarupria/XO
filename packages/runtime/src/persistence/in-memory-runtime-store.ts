@@ -84,7 +84,12 @@ class InMemoryCheckpointRecordStore implements CheckpointRecordStore {
   async save(checkpoint: WorkflowCheckpoint): Promise<Result<VersionedEnvelope<CheckpointRecord>, RuntimeError>> {
     const nextSequence = (this.sequenceByExecution.get(checkpoint.workflowInstanceId) ?? -1) + 1;
     this.sequenceByExecution.set(checkpoint.workflowInstanceId, nextSequence);
-    const record: CheckpointRecord = { checkpointId: checkpoint.checkpointId, executionId: checkpoint.workflowInstanceId, sequence: nextSequence, checkpoint };
+    const record: CheckpointRecord = {
+      checkpointId: checkpoint.checkpointId,
+      executionId: checkpoint.workflowInstanceId,
+      sequence: nextSequence,
+      checkpoint,
+    };
     const wrapped = envelope(record, this.now);
     this.checkpoints.set(checkpoint.checkpointId, wrapped);
     return ok(wrapped);
@@ -102,7 +107,9 @@ class InMemoryCheckpointRecordStore implements CheckpointRecordStore {
     );
   }
 
-  async latestForExecution(executionId: WorkflowInstanceId): Promise<Result<VersionedEnvelope<CheckpointRecord> | undefined, RuntimeError>> {
+  async latestForExecution(
+    executionId: WorkflowInstanceId,
+  ): Promise<Result<VersionedEnvelope<CheckpointRecord> | undefined, RuntimeError>> {
     const forExecution = await this.listForExecution(executionId);
     if (!forExecution.ok) return forExecution;
     return ok(forExecution.value[forExecution.value.length - 1]);
@@ -126,7 +133,10 @@ class InMemoryReceiptStore implements ReceiptStore {
     else this.byExecution.set(executionId, [record]);
   }
 
-  async saveExecutionReceipt(executionId: WorkflowInstanceId | undefined, receipt: ExecutionReceipt): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>> {
+  async saveExecutionReceipt(
+    executionId: WorkflowInstanceId | undefined,
+    receipt: ExecutionReceipt,
+  ): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>> {
     const wrapped = envelope<PersistedReceipt>({ kind: 'execution', receipt }, this.now);
     this.executionReceipts.set(receipt.receiptId, wrapped);
     this.addAssociation(executionId, wrapped);

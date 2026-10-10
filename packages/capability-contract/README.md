@@ -31,7 +31,7 @@ resolution, without ever needing to understand XOIR itself.
 This package's own `package.json` still lists `@xo/xoir` as a dependency
 (because `contract-builder.ts`/`contract-embed.ts` need it), so it is a real, transitive npm
 dependency of anything that imports this package — including
-`@xo/runtime`. Runtime's *source code* never imports from `@xo/xoir`
+`@xo/runtime`. Runtime's _source code_ never imports from `@xo/xoir`
 (only from this package's xoir-free modules), so this doesn't reintroduce
 the behavioral coupling described above (Runtime still never assumes
 XOIR-shaped content on a mounted package in general — it only
@@ -51,14 +51,14 @@ The only `BindingResolver` implemented is `StructuredComparisonBindingResolver`,
 which resolves a contract only when every linked rule's condition matches
 this closed comparison grammar:
 
-| Phrase | Operator |
-|---|---|
-| `exceeds`, `is more than`, `is greater than` | `>` |
-| `is less than`, `is under` | `<` |
-| `is at least` | `>=` |
-| `is at most` | `<=` |
-| `equals`, `is equal to` | `==` |
-| `is not equal to`, `does not equal` | `!=` |
+| Phrase                                       | Operator |
+| -------------------------------------------- | -------- |
+| `exceeds`, `is more than`, `is greater than` | `>`      |
+| `is less than`, `is under`                   | `<`      |
+| `is at least`                                | `>=`     |
+| `is at most`                                 | `<=`     |
+| `equals`, `is equal to`                      | `==`     |
+| `is not equal to`, `does not equal`          | `!=`     |
 
 Anything else — a compound condition, a non-numeric comparison, a rule with
 an exception clause, an unmatched field name — resolves `unresolved`, never

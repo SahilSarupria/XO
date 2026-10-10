@@ -53,11 +53,30 @@ interface WorkflowExecutionWire {
   readonly createdAt: string;
   readonly startedAt?: string;
   readonly completedAt?: string;
-  readonly finalResult?: { readonly outcome: string; readonly stepResults: readonly { readonly order: number; readonly capabilityId: string; readonly executionId: string; readonly output: unknown }[] };
+  readonly finalResult?: {
+    readonly outcome: string;
+    readonly stepResults: readonly {
+      readonly order: number;
+      readonly capabilityId: string;
+      readonly executionId: string;
+      readonly output: unknown;
+    }[];
+  };
   readonly rejection?: { readonly stepIndex: number; readonly executionId: string; readonly decision: string };
   readonly errorCode?: string;
   readonly errorMessage?: string;
-  readonly provenance: { readonly compilationId: string; readonly workflowId: string; readonly graphHash?: string; readonly steps: readonly { readonly order: number; readonly capabilityId: string; readonly contractId?: string; readonly bindingId?: string; readonly executionId?: string }[] };
+  readonly provenance: {
+    readonly compilationId: string;
+    readonly workflowId: string;
+    readonly graphHash?: string;
+    readonly steps: readonly {
+      readonly order: number;
+      readonly capabilityId: string;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly executionId?: string;
+    }[];
+  };
 }
 interface WorkflowViewWire {
   readonly workflowId: string;
@@ -65,8 +84,22 @@ interface WorkflowViewWire {
   readonly status: string;
   readonly executable: boolean;
   readonly notExecutableReasons: readonly string[];
-  readonly steps: readonly { readonly order: number; readonly capabilityId: string; readonly executionClass?: string; readonly bound: boolean; readonly approved: boolean }[];
-  readonly dataFlow: { readonly provenBindings: readonly { readonly producerCapabilityId: string; readonly outputParameterName: string; readonly consumerCapabilityId: string; readonly inputParameterName: string; readonly wired: boolean }[] };
+  readonly steps: readonly {
+    readonly order: number;
+    readonly capabilityId: string;
+    readonly executionClass?: string;
+    readonly bound: boolean;
+    readonly approved: boolean;
+  }[];
+  readonly dataFlow: {
+    readonly provenBindings: readonly {
+      readonly producerCapabilityId: string;
+      readonly outputParameterName: string;
+      readonly consumerCapabilityId: string;
+      readonly inputParameterName: string;
+      readonly wired: boolean;
+    }[];
+  };
 }
 interface ExecutionWire {
   readonly executionId: string;
@@ -103,7 +136,13 @@ async function withEnv(fn: (env: Env) => Promise<void>): Promise<void> {
   await withTempDir('xo-p08-data-', async (dataDir) => {
     await withTempDir('xo-p08-ws-', async (workspacesDir) => {
       const server = await TestServer.start({ workspaceDataDir: dataDir, workspacesDir });
-      const env: { -readonly [K in keyof Env]: Env[K] } = { dataDir, workspacesDir, server, workspace: undefined as never, compilationId: '' };
+      const env: { -readonly [K in keyof Env]: Env[K] } = {
+        dataDir,
+        workspacesDir,
+        server,
+        workspace: undefined as never,
+        compilationId: '',
+      };
       try {
         env.workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
         env.compilationId = (await storeFixtureCompilation(env.workspace, dataDir)).compilationId;
@@ -186,18 +225,32 @@ test('discovery: GET /workflows exposes every workflow composed from the stored 
     const flow = byFirst(IDS.flowA);
     assert.equal(flow.status, 'executable_candidate');
     assert.equal(flow.executable, true);
-    assert.deepEqual(flow.steps.map((s) => [s.order, s.capabilityId, s.executionClass, s.bound, s.approved]), [
-      [0, IDS.flowA, 'deterministic_rule', true, false],
-      [1, IDS.flowB, 'deterministic_rule', true, false],
+    assert.deepEqual(
+      flow.steps.map((s) => [s.order, s.capabilityId, s.executionClass, s.bound, s.approved]),
+      [
+        [0, IDS.flowA, 'deterministic_rule', true, false],
+        [1, IDS.flowB, 'deterministic_rule', true, false],
+      ],
+    );
+    assert.deepEqual(flow.dataFlow.provenBindings, [
+      {
+        producerCapabilityId: IDS.flowA,
+        outputParameterName: 'matched',
+        consumerCapabilityId: IDS.flowB,
+        inputParameterName: 'matched',
+        wired: true,
+      },
     ]);
-    assert.deepEqual(flow.dataFlow.provenBindings, [{ producerCapabilityId: IDS.flowA, outputParameterName: 'matched', consumerCapabilityId: IDS.flowB, inputParameterName: 'matched', wired: true }]);
 
     const chain = byFirst(IDS.hitlA);
-    assert.deepEqual(chain.steps.map((s) => [s.capabilityId, s.executionClass]), [
-      [IDS.hitlA, 'deterministic_rule'],
-      [IDS.hitlB, 'human_in_the_loop'],
-      [IDS.hitlC, 'deterministic_rule'],
-    ]);
+    assert.deepEqual(
+      chain.steps.map((s) => [s.capabilityId, s.executionClass]),
+      [
+        [IDS.hitlA, 'deterministic_rule'],
+        [IDS.hitlB, 'human_in_the_loop'],
+        [IDS.hitlC, 'deterministic_rule'],
+      ],
+    );
 
     // Statuses are preserved verbatim, never upgraded.
     assert.equal(byFirst(IDS.orphan).status, 'not_executable_yet');
@@ -209,7 +262,10 @@ test('discovery: GET /workflows exposes every workflow composed from the stored 
     // approval state is reflected per step
     await approve(env, IDS.flowA);
     const after = (await env.server.request('GET', ws(env, '/workflows'))).json<{ workflows: WorkflowViewWire[] }>().workflows;
-    assert.deepEqual(after.find((w) => w.steps[0]?.capabilityId === IDS.flowA)!.steps.map((s) => s.approved), [true, false]);
+    assert.deepEqual(
+      after.find((w) => w.steps[0]?.capabilityId === IDS.flowA)!.steps.map((s) => s.approved),
+      [true, false],
+    );
 
     // filter + 404 + auth
     const filtered = await env.server.request('GET', ws(env, `/workflows?compilationId=${env.compilationId}`));
@@ -235,8 +291,14 @@ test('a deterministic two-step workflow executes sequentially through the existi
     assert.equal(wf.workspaceId, env.workspace.workspaceId);
     assert.equal(wf.identityId, env.server.identityId);
     assert.equal(wf.compilationId, env.compilationId);
-    assert.deepEqual(wf.steps.map((s) => s.status), ['succeeded', 'succeeded']);
-    assert.deepEqual(wf.steps.map((s) => s.capabilityId), [IDS.flowA, IDS.flowB]);
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['succeeded', 'succeeded'],
+    );
+    assert.deepEqual(
+      wf.steps.map((s) => s.capabilityId),
+      [IDS.flowA, IDS.flowB],
+    );
     assert.equal(wf.currentStepIndex, null);
     assert.ok(wf.startedAt && wf.completedAt);
     assert.equal(wf.finalResult?.outcome, 'completed');
@@ -261,10 +323,16 @@ test('a deterministic two-step workflow executes sequentially through the existi
     const got = await getWorkflowExecution(env, wf.workflowExecutionId);
     assert.deepEqual(got, wf);
     const list = (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: WorkflowExecutionWire[] }>();
-    assert.deepEqual(list.workflowExecutions.map((w) => w.workflowExecutionId), [wf.workflowExecutionId]);
+    assert.deepEqual(
+      list.workflowExecutions.map((w) => w.workflowExecutionId),
+      [wf.workflowExecutionId],
+    );
     const onDisk = JSON.parse(await readFile(metadataPath(env, wf.workflowExecutionId), 'utf8')) as WorkflowExecutionWire;
     assert.equal(onDisk.status, 'succeeded');
-    assert.deepEqual(onDisk.steps.map((s) => s.executionId), wf.steps.map((s) => s.executionId));
+    assert.deepEqual(
+      onDisk.steps.map((s) => s.executionId),
+      wf.steps.map((s) => s.executionId),
+    );
     assert.ok(onDisk.revision >= 5, `revision counts every persisted transition (got ${onDisk.revision})`);
 
     // #22 provenance/execution ids stay correlated
@@ -308,7 +376,10 @@ test('data flow is value-faithful: a producer that does NOT match transfers matc
 
 test('not_executable_yet and semantically_invalid workflows are rejected with 422 XO_WORKFLOW_NOT_EXECUTABLE and leave no workflow execution behind', async () => {
   await withEnv(async (env) => {
-    for (const [first, status] of [[IDS.orphan, 'not_executable_yet'], [IDS.cycleX, 'semantically_invalid']] as const) {
+    for (const [first, status] of [
+      [IDS.orphan, 'not_executable_yet'],
+      [IDS.cycleX, 'semantically_invalid'],
+    ] as const) {
       const res = await startWorkflow(env, first, {});
       assert.equal(res.status, 422, res.bodyText);
       const body = res.json<ErrorWire>();
@@ -324,9 +395,15 @@ test('not_executable_yet and semantically_invalid workflows are rejected with 42
 
 test('starting an unknown workflow id, or a workflow in an unknown compilation, is 404 (not WORKFLOW_NOT_EXECUTABLE)', async () => {
   await withEnv(async (env) => {
-    assert.equal((await env.server.request('POST', ws(env, '/workflows/wf_doesnotexist/executions'), { compilationId: env.compilationId })).status, 404);
+    assert.equal(
+      (await env.server.request('POST', ws(env, '/workflows/wf_doesnotexist/executions'), { compilationId: env.compilationId })).status,
+      404,
+    );
     const wfId = await workflowIdStartingWith(env, IDS.flowA);
-    assert.equal((await env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), { compilationId: 'comp_doesnotexist' })).status, 404);
+    assert.equal(
+      (await env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), { compilationId: 'comp_doesnotexist' })).status,
+      404,
+    );
   });
 });
 
@@ -338,7 +415,10 @@ test('a multi-step workflow stops at its HITL step: A executed, B waiting_for_hu
   await withEnv(async (env) => {
     const wf = await startHitlChain(env);
     assert.equal(wf.status, 'waiting_for_human');
-    assert.deepEqual(wf.steps.map((s) => s.status), ['succeeded', 'waiting_for_human', 'pending']);
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['succeeded', 'waiting_for_human', 'pending'],
+    );
     assert.equal(wf.currentStepIndex, 1);
     assert.equal(wf.currentStepExecutionId, wf.steps[1]!.executionId);
     assert.deepEqual(wf.pendingHumanTask, { stepIndex: 1, executionId: wf.steps[1]!.executionId, humanTaskStatus: 'pending' });
@@ -356,12 +436,17 @@ test('a multi-step workflow stops at its HITL step: A executed, B waiting_for_hu
     assert.equal(b.output?.status, 'escalation_required');
 
     // The underlying task is the P0.7 human task, visible through the existing human-task API.
-    const tasks = (await env.server.request('GET', ws(env, '/human-tasks'))).json<{ tasks?: ExecutionWire[]; humanTasks?: ExecutionWire[] }>();
+    const tasks = (await env.server.request('GET', ws(env, '/human-tasks'))).json<{
+      tasks?: ExecutionWire[];
+      humanTasks?: ExecutionWire[];
+    }>();
     const listed = tasks.tasks ?? tasks.humanTasks ?? [];
     assert.ok(listed.some((t) => t.executionId === b.executionId));
 
     // Waiting is not success: no decision -> refused, nothing runs.
-    const bare = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), { expectedStepExecutionId: b.executionId });
+    const bare = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), {
+      expectedStepExecutionId: b.executionId,
+    });
     assert.equal(bare.status, 400);
     assert.equal((await listExecutions(env)).length, 2);
     assert.equal((await getWorkflowExecution(env, wf.workflowExecutionId)).status, 'waiting_for_human');
@@ -377,13 +462,20 @@ test('approving the pending HITL step resumes it, runs C, never re-runs A, prese
     const waiting = await startHitlChain(env);
     const [aId, bId] = [waiting.steps[0]!.executionId!, waiting.steps[1]!.executionId!];
 
-    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', data: { note: 'looks fine' }, expectedStepExecutionId: bId });
+    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      data: { note: 'looks fine' },
+      expectedStepExecutionId: bId,
+    });
     assert.equal(res.status, 200, res.bodyText);
     const wf = res.json<WorkflowExecutionWire>();
 
     assert.equal(wf.workflowExecutionId, waiting.workflowExecutionId);
     assert.equal(wf.status, 'succeeded');
-    assert.deepEqual(wf.steps.map((s) => s.status), ['succeeded', 'succeeded', 'succeeded']);
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['succeeded', 'succeeded', 'succeeded'],
+    );
     assert.equal(wf.steps[0]!.executionId, aId, 'A keeps its original execution id');
     assert.equal(wf.steps[1]!.executionId, bId, 'B keeps its original execution id');
     assert.equal(wf.pendingHumanTask, undefined);
@@ -412,11 +504,14 @@ test('approving the pending HITL step resumes it, runs C, never re-runs A, prese
 
     // #15 final result persisted, on disk and via GET
     assert.equal(wf.finalResult?.outcome, 'completed');
-    assert.deepEqual(wf.finalResult?.stepResults.map((r) => [r.order, r.capabilityId, r.executionId]), [
-      [0, IDS.hitlA, aId],
-      [1, IDS.hitlB, bId],
-      [2, IDS.hitlC, wf.steps[2]!.executionId],
-    ]);
+    assert.deepEqual(
+      wf.finalResult?.stepResults.map((r) => [r.order, r.capabilityId, r.executionId]),
+      [
+        [0, IDS.hitlA, aId],
+        [1, IDS.hitlB, bId],
+        [2, IDS.hitlC, wf.steps[2]!.executionId],
+      ],
+    );
     const onDisk = JSON.parse(await readFile(metadataPath(env, wf.workflowExecutionId), 'utf8')) as WorkflowExecutionWire;
     assert.deepEqual(onDisk.finalResult, wf.finalResult);
     assert.equal(onDisk.status, 'succeeded');
@@ -438,11 +533,16 @@ test('a decision-less resume continues a workflow whose human task was already r
     // Multi-step => the expected id is still mandatory.
     assert.equal((await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {})).status, 400);
     // A decision cannot be applied twice.
-    const dup = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: bId });
+    const dup = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: bId,
+    });
     assert.equal(dup.status, 409);
     assert.equal(dup.json<ErrorWire>().error.context?.['reason'], 'not_resumable');
 
-    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { expectedStepExecutionId: bId });
+    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      expectedStepExecutionId: bId,
+    });
     assert.equal(res.status, 200, res.bodyText);
     assert.equal(res.json<WorkflowExecutionWire>().status, 'succeeded');
     assert.equal((await listExecutions(env)).length, 3);
@@ -457,13 +557,23 @@ test('human rejection ends the workflow honestly: step rejected, later step skip
   await withEnv(async (env) => {
     const waiting = await startHitlChain(env);
     const bId = waiting.steps[1]!.executionId!;
-    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'reject', data: { note: 'not authorized' }, expectedStepExecutionId: bId });
+    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'reject',
+      data: { note: 'not authorized' },
+      expectedStepExecutionId: bId,
+    });
     assert.equal(res.status, 200, res.bodyText);
     const wf = res.json<WorkflowExecutionWire>();
 
     assert.equal(wf.status, 'rejected');
-    assert.deepEqual(wf.steps.map((s) => s.status), ['succeeded', 'rejected', 'skipped']);
-    assert.deepEqual(wf.rejection && { stepIndex: wf.rejection.stepIndex, executionId: wf.rejection.executionId, decision: wf.rejection.decision }, { stepIndex: 1, executionId: bId, decision: 'reject' });
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['succeeded', 'rejected', 'skipped'],
+    );
+    assert.deepEqual(
+      wf.rejection && { stepIndex: wf.rejection.stepIndex, executionId: wf.rejection.executionId, decision: wf.rejection.decision },
+      { stepIndex: 1, executionId: bId, decision: 'reject' },
+    );
     assert.equal(wf.finalResult, undefined, 'a rejected workflow has no success result');
     assert.equal(wf.pendingHumanTask, undefined);
     assert.equal(wf.currentStepIndex, null);
@@ -472,7 +582,10 @@ test('human rejection ends the workflow honestly: step rejected, later step skip
     assert.equal((await listExecutions(env)).length, 2, 'C never executed');
 
     // Terminal: cannot be resumed again.
-    const again = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: bId });
+    const again = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: bId,
+    });
     assert.equal(again.status, 409);
     assert.equal(again.json<ErrorWire>().error.context?.['reason'], 'terminal');
     assert.equal((await getWorkflowExecution(env, wf.workflowExecutionId)).status, 'rejected');
@@ -527,7 +640,10 @@ test('expectedStepExecutionId: required for a multi-step workflow with a pending
     assert.equal(started.status, 201, started.bodyText);
     const wf = started.json<WorkflowExecutionWire>();
     assert.equal(wf.status, 'waiting_for_human');
-    assert.deepEqual(wf.steps.map((s) => s.status), ['waiting_for_human', 'pending']);
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['waiting_for_human', 'pending'],
+    );
     const h1 = wf.steps[0]!.executionId!;
     const path = ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`);
 
@@ -537,7 +653,10 @@ test('expectedStepExecutionId: required for a multi-step workflow with a pending
     assert.equal(missing.json<ErrorWire>().error.context?.['reason'], 'expected_step_execution_id_required');
 
     // wrong -> 409, and the human task was NOT resolved
-    const wrong = await env.server.request('POST', path, { decision: 'approve', expectedStepExecutionId: 'exec_00000000000000000000000000000000' });
+    const wrong = await env.server.request('POST', path, {
+      decision: 'approve',
+      expectedStepExecutionId: 'exec_00000000000000000000000000000000',
+    });
     assert.equal(wrong.status, 409);
     assert.equal(wrong.json<ErrorWire>().error.context?.['reason'], 'stale_step_execution');
     assert.equal((await getExecution(env, h1)).humanTask?.status, 'pending');
@@ -548,7 +667,10 @@ test('expectedStepExecutionId: required for a multi-step workflow with a pending
     assert.equal(next.status, 200, next.bodyText);
     const atH2 = next.json<WorkflowExecutionWire>();
     assert.equal(atH2.status, 'waiting_for_human');
-    assert.deepEqual(atH2.steps.map((s) => s.status), ['succeeded', 'waiting_for_human']);
+    assert.deepEqual(
+      atH2.steps.map((s) => s.status),
+      ['succeeded', 'waiting_for_human'],
+    );
     const h2 = atH2.steps[1]!.executionId!;
     assert.notEqual(h2, h1);
     assert.equal(atH2.pendingHumanTask?.executionId, h2);
@@ -571,14 +693,22 @@ test('stale revision: expectedRevision that no longer matches is a deterministic
   await withEnv(async (env) => {
     const waiting = await startHitlChain(env);
     const path = ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`);
-    const stale = await env.server.request('POST', path, { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId, expectedRevision: waiting.revision - 1 });
+    const stale = await env.server.request('POST', path, {
+      decision: 'approve',
+      expectedStepExecutionId: waiting.steps[1]!.executionId,
+      expectedRevision: waiting.revision - 1,
+    });
     assert.equal(stale.status, 409);
     assert.equal(stale.json<ErrorWire>().error.context?.['reason'], 'stale_revision');
     assert.deepEqual(await getWorkflowExecution(env, waiting.workflowExecutionId), waiting);
     assert.equal((await getExecution(env, waiting.steps[1]!.executionId!)).humanTask?.status, 'pending');
 
     // the current revision is accepted
-    const ok = await env.server.request('POST', path, { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId, expectedRevision: waiting.revision });
+    const ok = await env.server.request('POST', path, {
+      decision: 'approve',
+      expectedStepExecutionId: waiting.steps[1]!.executionId,
+      expectedRevision: waiting.revision,
+    });
     assert.equal(ok.status, 200, ok.bodyText);
   });
 });
@@ -587,7 +717,14 @@ test('FsWorkflowExecutionStore.save is compare-and-swap: a stale expected revisi
   await withTempDir('xo-p08-store-', async (dir) => {
     const store = new FsWorkflowExecutionStore(new LocalFsBlobStore(dir));
     const id = mintWorkflowExecutionId();
-    const created = await store.create('ws_x', asAuthenticated('ident_x'), { workflowExecutionId: id, compilationId: 'comp_x', workflowId: 'wf_x', workflowName: 'x', input: {}, steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }] });
+    const created = await store.create('ws_x', asAuthenticated('ident_x'), {
+      workflowExecutionId: id,
+      compilationId: 'comp_x',
+      workflowId: 'wf_x',
+      workflowName: 'x',
+      input: {},
+      steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }],
+    });
     assert.ok(created.ok);
     assert.equal(created.value.revision, 0);
 
@@ -626,11 +763,19 @@ test('a pending HITL workflow survives a server restart and then completes', asy
     const after = await getWorkflowExecution(env, waiting.workflowExecutionId);
     assert.deepEqual(after, waiting, 'identical persisted state after restart');
     assert.equal(after.status, 'waiting_for_human');
-    assert.deepEqual(after.steps.map((s) => s.status), ['succeeded', 'waiting_for_human', 'pending']);
-    const listed = (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: WorkflowExecutionWire[] }>();
+    assert.deepEqual(
+      after.steps.map((s) => s.status),
+      ['succeeded', 'waiting_for_human', 'pending'],
+    );
+    const listed = (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{
+      workflowExecutions: WorkflowExecutionWire[];
+    }>();
     assert.equal(listed.workflowExecutions.length, 1);
 
-    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: bId });
+    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: bId,
+    });
     assert.equal(res.status, 200, res.bodyText);
     const done = res.json<WorkflowExecutionWire>();
     assert.equal(done.status, 'succeeded');
@@ -647,9 +792,17 @@ test('recovery A — a step left `running` whose execution never completed is re
     // Reproduce exactly what a crash between "step marked running" and "execution completed" leaves on disk:
     // an ExecutionRecord created but never completed, and a workflow record that says the step is running.
     const execStore = new FsExecutionStore(new LocalFsBlobStore(join(env.dataDir, env.workspace.workspaceId, 'executions')));
-    const orphan = await execStore.create(env.workspace.workspaceId, asAuthenticated(env.workspace.identityId), { compilationId: env.compilationId, capabilityId: IDS.hitlB, input: HITL_CHAIN_INPUT });
+    const orphan = await execStore.create(env.workspace.workspaceId, asAuthenticated(env.workspace.identityId), {
+      compilationId: env.compilationId,
+      capabilityId: IDS.hitlB,
+      input: HITL_CHAIN_INPUT,
+    });
     assert.ok(orphan.ok);
-    const crashed = { ...waiting, status: 'running', steps: waiting.steps.map((s, i) => (i === 1 ? { ...s, status: 'running', executionId: orphan.value.executionId } : s)) } as Record<string, unknown>;
+    const crashed = {
+      ...waiting,
+      status: 'running',
+      steps: waiting.steps.map((s, i) => (i === 1 ? { ...s, status: 'running', executionId: orphan.value.executionId } : s)),
+    } as Record<string, unknown>;
     delete crashed['pendingHumanTask'];
     await writeFile(metadataPath(env, waiting.workflowExecutionId), JSON.stringify(crashed));
 
@@ -658,7 +811,10 @@ test('recovery A — a step left `running` whose execution never completed is re
 
     const recovered = await getWorkflowExecution(env, waiting.workflowExecutionId);
     assert.equal(recovered.status, 'interrupted');
-    assert.deepEqual(recovered.steps.map((s) => s.status), ['succeeded', 'interrupted', 'pending']);
+    assert.deepEqual(
+      recovered.steps.map((s) => s.status),
+      ['succeeded', 'interrupted', 'pending'],
+    );
     assert.equal(recovered.finalResult, undefined);
     // idempotent: reading again does not re-transition
     assert.equal((await getWorkflowExecution(env, waiting.workflowExecutionId)).revision, recovered.revision);
@@ -666,7 +822,11 @@ test('recovery A — a step left `running` whose execution never completed is re
     assert.notEqual((await getExecution(env, orphan.value.executionId)).status, 'succeeded');
 
     // A decision cannot be supplied to an interrupted workflow (no pending human task).
-    assert.equal((await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve' })).status, 400);
+    assert.equal(
+      (await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve' }))
+        .status,
+      400,
+    );
 
     const resumed = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {});
     assert.equal(resumed.status, 200, resumed.bodyText);
@@ -677,7 +837,10 @@ test('recovery A — a step left `running` whose execution never completed is re
     assert.notEqual(newB, orphan.value.executionId);
     assert.deepEqual(atB.steps[1]!.supersededExecutionIds, [orphan.value.executionId]);
 
-    const done = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: newB });
+    const done = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: newB,
+    });
     assert.equal(done.status, 200, done.bodyText);
     assert.equal(done.json<WorkflowExecutionWire>().status, 'succeeded');
     assert.equal(done.json<WorkflowExecutionWire>().steps[0]!.executionId, aExec);
@@ -689,7 +852,11 @@ test('recovery B — a step left `running` whose execution DID complete before t
     const waiting = await startHitlChain(env);
     const bId = waiting.steps[1]!.executionId!;
     // crash after the human-task execution completed (waiting_for_human) but before the workflow record advanced
-    const crashed = { ...waiting, status: 'running', steps: waiting.steps.map((s, i) => (i === 1 ? { ...s, status: 'running' } : s)) } as Record<string, unknown>;
+    const crashed = {
+      ...waiting,
+      status: 'running',
+      steps: waiting.steps.map((s, i) => (i === 1 ? { ...s, status: 'running' } : s)),
+    } as Record<string, unknown>;
     delete crashed['pendingHumanTask'];
     await writeFile(metadataPath(env, waiting.workflowExecutionId), JSON.stringify(crashed));
 
@@ -704,20 +871,26 @@ test('recovery B — a step left `running` whose execution DID complete before t
   });
 });
 
-test('proven data flow survives a human pause AND a server restart: A\'s persisted output reaches C\'s input after B is approved', async () => {
+test("proven data flow survives a human pause AND a server restart: A's persisted output reaches C's input after B is approved", async () => {
   await withEnv(async (env) => {
     for (const id of [IDS.xsegA, IDS.xsegH, IDS.xsegC]) await approve(env, id);
     const res = await startWorkflow(env, IDS.xsegA, { intake_score: 80, review_amount: 900 });
     assert.equal(res.status, 201, res.bodyText);
     const waiting = res.json<WorkflowExecutionWire>();
     assert.equal(waiting.status, 'waiting_for_human');
-    assert.deepEqual(waiting.steps.map((s) => s.status), ['succeeded', 'waiting_for_human', 'pending']);
+    assert.deepEqual(
+      waiting.steps.map((s) => s.status),
+      ['succeeded', 'waiting_for_human', 'pending'],
+    );
     assert.equal((waiting.steps[0]!.result as { matched?: boolean }).matched, true);
 
     await env.server.stop();
     env.server = await TestServer.start({ workspaceDataDir: env.dataDir, workspacesDir: env.workspacesDir });
 
-    const done = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId });
+    const done = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: waiting.steps[1]!.executionId,
+    });
     assert.equal(done.status, 200, done.bodyText);
     const wf = done.json<WorkflowExecutionWire>();
     assert.equal(wf.status, 'succeeded');
@@ -742,10 +915,30 @@ test('cross-workspace and cross-identity access to workflows and workflow execut
     const other = (await env.server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
     const otherPath = (suffix: string): string => `/workspaces/${other.workspaceId}${suffix}`;
     assert.equal((await env.server.request('GET', otherPath(`/workflow-executions/${waiting.workflowExecutionId}`))).status, 404);
-    assert.equal((await env.server.request('POST', otherPath(`/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId })).status, 404);
-    assert.equal((await env.server.request('GET', otherPath('/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions.length, 0);
+    assert.equal(
+      (
+        await env.server.request('POST', otherPath(`/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+          decision: 'approve',
+          expectedStepExecutionId: waiting.steps[1]!.executionId,
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (await env.server.request('GET', otherPath('/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions
+        .length,
+      0,
+    );
     assert.equal((await env.server.request('GET', otherPath('/workflows'))).json<{ workflows: unknown[] }>().workflows.length, 0);
-    assert.equal((await env.server.request('POST', otherPath(`/workflows/${wfId}/executions`), { compilationId: env.compilationId, input: HITL_CHAIN_INPUT })).status, 404);
+    assert.equal(
+      (
+        await env.server.request('POST', otherPath(`/workflows/${wfId}/executions`), {
+          compilationId: env.compilationId,
+          input: HITL_CHAIN_INPUT,
+        })
+      ).status,
+      404,
+    );
 
     // (b) a different identity cannot address the first workspace at all
     const intruder = await env.server.issueAdditionalIdentity('someone-else');
@@ -754,7 +947,11 @@ test('cross-workspace and cross-identity access to workflows and workflow execut
       ['GET', '/workflows', undefined],
       ['GET', '/workflow-executions', undefined],
       ['GET', `/workflow-executions/${waiting.workflowExecutionId}`, undefined],
-      ['POST', `/workflow-executions/${waiting.workflowExecutionId}/resume`, { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId }],
+      [
+        'POST',
+        `/workflow-executions/${waiting.workflowExecutionId}/resume`,
+        { decision: 'approve', expectedStepExecutionId: waiting.steps[1]!.executionId },
+      ],
       ['POST', `/workflows/${wfId}/executions`, { compilationId: env.compilationId }],
     ] as const) {
       const res = await env.server.request(method, ws(env, suffix), body, h);
@@ -774,9 +971,27 @@ test('unknown/forbidden request-body fields are rejected with 400; the client ca
     await approve(env, IDS.flowA);
     await approve(env, IDS.flowB);
     const wfId = await workflowIdStartingWith(env, IDS.flowA);
-    const start = (extra: Record<string, unknown>) => env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), { compilationId: env.compilationId, input: { claim_amount: 15000, payout_amount: 800 }, ...extra });
+    const start = (extra: Record<string, unknown>) =>
+      env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), {
+        compilationId: env.compilationId,
+        input: { claim_amount: 15000, payout_amount: 800 },
+        ...extra,
+      });
 
-    for (const field of ['steps', 'capabilityIds', 'capabilityId', 'bindings', 'bindingOverrides', 'executionClass', 'runtimeDeclaration', 'identityId', 'workspaceId', 'path', 'storageKey', 'graph']) {
+    for (const field of [
+      'steps',
+      'capabilityIds',
+      'capabilityId',
+      'bindings',
+      'bindingOverrides',
+      'executionClass',
+      'runtimeDeclaration',
+      'identityId',
+      'workspaceId',
+      'path',
+      'storageKey',
+      'graph',
+    ]) {
       const res = await start({ [field]: field === 'steps' ? [{ capabilityId: IDS.hitlC }] : 'x' });
       assert.equal(res.status, 400, `${field} -> ${res.status} ${res.bodyText}`);
       const err = res.json<ErrorWire>().error;
@@ -786,7 +1001,11 @@ test('unknown/forbidden request-body fields are rejected with 400; the client ca
     // a path/body workflowId mismatch is refused, not "resolved"
     assert.equal((await start({ workflowId: 'wf_other' })).status, 400);
     // nothing was created by any refused request
-    assert.equal((await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions.length, 0);
+    assert.equal(
+      (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions
+        .length,
+      0,
+    );
     assert.equal((await listExecutions(env)).length, 0);
 
     // The payload cannot smuggle in a field no step declares (e.g. an attempt to inject the proven-binding value or an unrelated key).
@@ -797,19 +1016,29 @@ test('unknown/forbidden request-body fields are rejected with 400; the client ca
     // A valid request derives the plan from the compilation only: exactly the composed two steps, in composed order.
     const ok = await start({});
     assert.equal(ok.status, 201, ok.bodyText);
-    assert.deepEqual(ok.json<WorkflowExecutionWire>().steps.map((s) => s.capabilityId), [IDS.flowA, IDS.flowB]);
+    assert.deepEqual(
+      ok.json<WorkflowExecutionWire>().steps.map((s) => s.capabilityId),
+      [IDS.flowA, IDS.flowB],
+    );
 
     // resume rejects unknown fields too
     const wf = ok.json<WorkflowExecutionWire>();
-    const resume = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), { decision: 'approve', capabilityId: IDS.hitlC });
+    const resume = await env.server.request('POST', ws(env, `/workflow-executions/${wf.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      capabilityId: IDS.hitlC,
+    });
     assert.equal(resume.status, 400);
     // and input must be a bounded plain object
     assert.equal((await start({ input: [1, 2] })).status, 400);
-    assert.equal((await env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), { input: {} })).status, 400, 'compilationId is required');
+    assert.equal(
+      (await env.server.request('POST', ws(env, `/workflows/${wfId}/executions`), { input: {} })).status,
+      400,
+      'compilationId is required',
+    );
   });
 });
 
-test('workflow input is validated against every step\'s declared schema before anything is persisted', async () => {
+test("workflow input is validated against every step's declared schema before anything is persisted", async () => {
   await withEnv(async (env) => {
     await approve(env, IDS.flowA);
     await approve(env, IDS.flowB);
@@ -818,7 +1047,11 @@ test('workflow input is validated against every step\'s declared schema before a
     assert.match(missing.json<ErrorWire>().error.message, /payout_amount/);
     const wrongType = await startWorkflow(env, IDS.flowA, { claim_amount: 'lots', payout_amount: 800 });
     assert.equal(wrongType.status, 400);
-    assert.equal((await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions.length, 0);
+    assert.equal(
+      (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions
+        .length,
+      0,
+    );
   });
 });
 
@@ -842,7 +1075,11 @@ test('required permissions and approvals are enforced fail-closed at start: an u
     assert.equal(denied.status, 403, denied.bodyText);
     assert.match(denied.json<ErrorWire>().error.message, /filesystem\.read/);
 
-    assert.equal((await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions.length, 0);
+    assert.equal(
+      (await env.server.request('GET', ws(env, '/workflow-executions'))).json<{ workflowExecutions: unknown[] }>().workflowExecutions
+        .length,
+      0,
+    );
     assert.equal((await listExecutions(env)).length, 0, 'no step ran');
   });
 });
@@ -860,12 +1097,18 @@ test('authorization is re-checked before EVERY step: an approval that disappears
     assert.ok(cKeys.length > 0, `found approval file(s) for C among ${keys.value.join(', ')}`);
     for (const k of cKeys) await rm(join(approvalsDir, k));
 
-    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), { decision: 'approve', expectedStepExecutionId: bId });
+    const res = await env.server.request('POST', ws(env, `/workflow-executions/${waiting.workflowExecutionId}/resume`), {
+      decision: 'approve',
+      expectedStepExecutionId: bId,
+    });
     assert.equal(res.status, 200, res.bodyText);
     const wf = res.json<WorkflowExecutionWire>();
     assert.equal(wf.status, 'failed');
     assert.equal(wf.errorCode, 'XO_RUNTIME_PERMISSION_DENIED');
-    assert.deepEqual(wf.steps.map((s) => s.status), ['succeeded', 'succeeded', 'failed']);
+    assert.deepEqual(
+      wf.steps.map((s) => s.status),
+      ['succeeded', 'succeeded', 'failed'],
+    );
     assert.equal(wf.steps[2]!.error?.code, 'XO_RUNTIME_PERMISSION_DENIED');
     assert.equal(wf.finalResult, undefined, 'a failed workflow never reports success');
     const c = await getExecution(env, wf.steps[2]!.executionId!);
@@ -878,7 +1121,9 @@ test('authorization is re-checked before EVERY step: an approval that disappears
 // Real-fixture customer-value demo: Commercial Property PDF, end to end over the API
 // ---------------------------------------------------------------------------
 
-const COMMERCIAL_PROPERTY_PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const COMMERCIAL_PROPERTY_PDF = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 
 test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the one executable workflow starts, waits for a human, resumes and succeeds; its multi-step siblings are honestly rejected', async () => {
   await withTempDir('xo-p08-demo-data-', async (dataDir) => {
@@ -889,7 +1134,10 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         const base = `/workspaces/${workspace.workspaceId}`;
         const pdf = await readFile(COMMERCIAL_PROPERTY_PDF);
         const source = (await server.request('POST', `${base}/sources?filename=policy.pdf`, pdf)).json<{ sourceId: string }>();
-        const compiled = (await server.request('POST', `${base}/sources/${source.sourceId}/compile`)).json<{ compilationId: string; status: string }>();
+        const compiled = (await server.request('POST', `${base}/sources/${source.sourceId}/compile`)).json<{
+          compilationId: string;
+          status: string;
+        }>();
         assert.equal(compiled.status, 'succeeded');
 
         const { workflows } = (await server.request('GET', `${base}/workflows`)).json<{ workflows: WorkflowViewWire[] }>();
@@ -904,7 +1152,9 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
 
         // Honest rejection of everything that is not executable.
         for (const w of workflows.filter((x) => x.status !== 'executable_candidate')) {
-          const res = await server.request('POST', `${base}/workflows/${w.workflowId}/executions`, { compilationId: compiled.compilationId });
+          const res = await server.request('POST', `${base}/workflows/${w.workflowId}/executions`, {
+            compilationId: compiled.compilationId,
+          });
           assert.equal(res.status, 422, `${w.status} -> ${res.status}`);
           assert.equal(res.json<ErrorWire>().error.code, 'XO_WORKFLOW_NOT_EXECUTABLE');
         }
@@ -912,16 +1162,32 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         const runnable = workflows.find((w) => w.status === 'executable_candidate')!;
         assert.equal(runnable.steps[0]!.executionClass, 'human_in_the_loop');
         // Unapproved -> 403; approve -> start.
-        assert.equal((await server.request('POST', `${base}/workflows/${runnable.workflowId}/executions`, { compilationId: compiled.compilationId })).status, 403);
-        await server.request('POST', `${base}/compilations/${compiled.compilationId}/capabilities/${runnable.steps[0]!.capabilityId}/approve`);
-        const startRes = await server.request('POST', `${base}/workflows/${runnable.workflowId}/executions`, { compilationId: compiled.compilationId, input: {} });
+        assert.equal(
+          (await server.request('POST', `${base}/workflows/${runnable.workflowId}/executions`, { compilationId: compiled.compilationId }))
+            .status,
+          403,
+        );
+        await server.request(
+          'POST',
+          `${base}/compilations/${compiled.compilationId}/capabilities/${runnable.steps[0]!.capabilityId}/approve`,
+        );
+        const startRes = await server.request('POST', `${base}/workflows/${runnable.workflowId}/executions`, {
+          compilationId: compiled.compilationId,
+          input: {},
+        });
         assert.equal(startRes.status, 201, startRes.bodyText);
         const waiting = startRes.json<WorkflowExecutionWire>();
         assert.equal(waiting.status, 'waiting_for_human');
-        assert.deepEqual(waiting.steps.map((s) => s.status), ['waiting_for_human']);
+        assert.deepEqual(
+          waiting.steps.map((s) => s.status),
+          ['waiting_for_human'],
+        );
 
         // Single-step workflow: P0.7-compatible resume needs no expectedStepExecutionId.
-        const res = await server.request('POST', `${base}/workflow-executions/${waiting.workflowExecutionId}/resume`, { decision: 'approve', data: { note: 'reviewed by underwriter' } });
+        const res = await server.request('POST', `${base}/workflow-executions/${waiting.workflowExecutionId}/resume`, {
+          decision: 'approve',
+          data: { note: 'reviewed by underwriter' },
+        });
         assert.equal(res.status, 200, res.bodyText);
         const done = res.json<WorkflowExecutionWire>();
         assert.equal(done.status, 'succeeded');
@@ -930,8 +1196,9 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         const exec = (await server.request('GET', `${base}/executions/${done.steps[0]!.executionId}`)).json<ExecutionWire>();
         assert.equal(exec.humanTask?.decision, 'approve');
         assert.equal(exec.output?.status, 'human_confirmed');
-        // eslint-disable-next-line no-console
-        console.log(`# DEMO workflow ${runnable.workflowId}: ${waiting.status} -> ${done.status} (execution ${done.steps[0]!.executionId})`);
+        console.log(
+          `# DEMO workflow ${runnable.workflowId}: ${waiting.status} -> ${done.status} (execution ${done.steps[0]!.executionId})`,
+        );
       } finally {
         await server.stop();
       }
@@ -947,7 +1214,16 @@ test('OpenAPI documents all five P0.8 routes, the statuses, expectedStepExecutio
   assert.ok(paths['/workspaces/{workspaceId}/workflow-executions']?.['get']);
   assert.ok(paths['/workspaces/{workspaceId}/workflow-executions/{workflowExecutionId}']?.['get']);
   assert.ok(paths['/workspaces/{workspaceId}/workflow-executions/{workflowExecutionId}/resume']?.['post']);
-  for (const needle of ['XO_WORKFLOW_NOT_EXECUTABLE', 'expectedStepExecutionId', 'waiting_for_human', 'interrupted', 'skipped', 'exactly-once is NOT provided', 'executable_candidate', 'semantically_invalid']) {
+  for (const needle of [
+    'XO_WORKFLOW_NOT_EXECUTABLE',
+    'expectedStepExecutionId',
+    'waiting_for_human',
+    'interrupted',
+    'skipped',
+    'exactly-once is NOT provided',
+    'executable_candidate',
+    'semantically_invalid',
+  ]) {
     assert.ok(doc.includes(needle), `OpenAPI should mention "${needle}"`);
   }
 });

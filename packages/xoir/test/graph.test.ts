@@ -5,11 +5,33 @@ import { XoirGraphId, XoirNodeId, XoirEdgeId } from '../src/ids.js';
 
 function buildSampleGraph(): XoirGraph {
   const graph = XoirGraph.create(XoirGraphId('sample'));
-  graph.createAndAddNode({ id: XoirNodeId('cap-draft-nda'), kind: 'capability', properties: { name: 'Draft NDA', description: 'Drafts a mutual NDA' } });
-  graph.createAndAddNode({ id: XoirNodeId('k-nda-duration'), kind: 'knowledge', properties: { statement: 'NDAs typically run 2-5 years', domain: 'contract-law' } });
-  graph.createAndAddNode({ id: XoirNodeId('constraint-jurisdiction'), kind: 'constraint', properties: { rule: 'Must specify governing law', severity: 'blocking' } });
-  graph.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'DEPENDS_ON', fromId: XoirNodeId('cap-draft-nda'), toId: XoirNodeId('k-nda-duration') });
-  graph.createAndAddEdge({ id: XoirEdgeId('e2'), kind: 'REQUIRES', fromId: XoirNodeId('cap-draft-nda'), toId: XoirNodeId('constraint-jurisdiction') });
+  graph.createAndAddNode({
+    id: XoirNodeId('cap-draft-nda'),
+    kind: 'capability',
+    properties: { name: 'Draft NDA', description: 'Drafts a mutual NDA' },
+  });
+  graph.createAndAddNode({
+    id: XoirNodeId('k-nda-duration'),
+    kind: 'knowledge',
+    properties: { statement: 'NDAs typically run 2-5 years', domain: 'contract-law' },
+  });
+  graph.createAndAddNode({
+    id: XoirNodeId('constraint-jurisdiction'),
+    kind: 'constraint',
+    properties: { rule: 'Must specify governing law', severity: 'blocking' },
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'DEPENDS_ON',
+    fromId: XoirNodeId('cap-draft-nda'),
+    toId: XoirNodeId('k-nda-duration'),
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e2'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('cap-draft-nda'),
+    toId: XoirNodeId('constraint-jurisdiction'),
+  });
   return graph;
 }
 

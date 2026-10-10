@@ -58,7 +58,8 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
   const fallback = node.canonicalLabel;
   const structuredCondition = toXoirStructuredValue(node.structuredCondition) as Readonly<Record<string, XoirValue>> | undefined;
   const structuredAction = toXoirStructuredValue(node.structuredAction) as Readonly<Record<string, XoirValue>> | undefined;
-  const structuredExceptions = toXoirStructuredValue(node.structuredExceptions) as readonly Readonly<Record<string, XoirValue>>[] | undefined;
+  const structuredExceptions = toXoirStructuredValue(node.structuredExceptions) as
+    readonly Readonly<Record<string, XoirValue>>[] | undefined;
   switch (kind) {
     case 'heuristic':
       return {
@@ -72,7 +73,9 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
     case 'constraint':
       return {
         rule: node.action ?? node.condition ?? fallback,
-        severity: (node.metadata.severity as 'info' | 'warning' | 'blocking' | undefined) ?? (node.nodeType === 'prohibition' ? 'blocking' : 'warning'),
+        severity:
+          (node.metadata.severity as 'info' | 'warning' | 'blocking' | undefined) ??
+          (node.nodeType === 'prohibition' ? 'blocking' : 'warning'),
         ...(structuredCondition !== undefined ? { structuredCondition } : {}),
       };
     case 'decision_node':
@@ -88,7 +91,11 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
     case 'escalation_rule':
       return { triggerCondition: node.condition ?? fallback, escalationTarget: node.action ?? fallback };
     case 'risk_policy':
-      return { domain: node.metadata.metric ?? node.condition ?? fallback, toleranceLevel: node.condition ?? fallback, overrideConditions: node.exceptionConditions };
+      return {
+        domain: node.metadata.metric ?? node.condition ?? fallback,
+        toleranceLevel: node.condition ?? fallback,
+        overrideConditions: node.exceptionConditions,
+      };
     default:
       return { condition: node.condition ?? fallback, action: node.action ?? fallback, exceptionConditions: node.exceptionConditions };
   }
@@ -126,7 +133,10 @@ export function reasoningGraphToXoir(graph: ReasoningGraph, options: ReasoningGr
       ...nowOpt(options.now),
     });
     if (!result.ok) return err(result.error);
-    searchableTextByNodeId.set(node.id, [node.condition, node.action, node.outcome].filter((v): v is string => v !== undefined).join(' \u0000 '));
+    searchableTextByNodeId.set(
+      node.id,
+      [node.condition, node.action, node.outcome].filter((v): v is string => v !== undefined).join(' \u0000 '),
+    );
     unitIdByNodeId.set(node.id, node.provenance[0]?.experienceUnitId);
   }
 

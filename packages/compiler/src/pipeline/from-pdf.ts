@@ -85,7 +85,11 @@ function deriveDocumentTitle(loaded: LoadedPdfDocument, parsedRoot: DocumentSect
  * the result is `ok(...)` with `valid` reflecting Stage 6's own
  * validation outcome, exactly as `compileXoir` already documents.
  */
-export async function compilePdfToXoir(bytes: Uint8Array, sourcePath: string, options: CompilePdfOptions = {}): Promise<Result<CompiledPdfResult, XoError>> {
+export async function compilePdfToXoir(
+  bytes: Uint8Array,
+  sourcePath: string,
+  options: CompilePdfOptions = {},
+): Promise<Result<CompiledPdfResult, XoError>> {
   const loadResult = new NodePdfLoader().load(bytes, sourcePath);
   if (!loadResult.ok) return err(loadResult.error);
   const loadedDocument = loadResult.value;
@@ -93,7 +97,12 @@ export async function compilePdfToXoir(bytes: Uint8Array, sourcePath: string, op
   const parsedDocument = parseDocument(loadedDocument);
   const documentTitle = deriveDocumentTitle(loadedDocument, parsedDocument.root, sourcePath);
 
-  const experienceDocument = await chunkDocument(parsedDocument, sourcePath, documentTitle, options.boundaryResolver ? { resolver: options.boundaryResolver } : {});
+  const experienceDocument = await chunkDocument(
+    parsedDocument,
+    sourcePath,
+    documentTitle,
+    options.boundaryResolver ? { resolver: options.boundaryResolver } : {},
+  );
 
   const sharedExtractionOptions = {
     ...(options.aiCore !== undefined ? { aiCore: options.aiCore } : {}),
@@ -122,7 +131,8 @@ export async function compilePdfToXoir(bytes: Uint8Array, sourcePath: string, op
   // this call site was the one missing it (the packaged-artifact
   // discrepancy for `cap_rule_2a15163541fa80841ee32ba0602c07b4`).
   const mintedCapabilities = mintRuleLevelCapabilities(reasoning);
-  const capabilityWithMintedRules = mintedCapabilities.length > 0 ? { ...capability, capabilities: [...capability.capabilities, ...mintedCapabilities] } : capability;
+  const capabilityWithMintedRules =
+    mintedCapabilities.length > 0 ? { ...capability, capabilities: [...capability.capabilities, ...mintedCapabilities] } : capability;
 
   const compiled = await compileXoir(
     { kind: 'combined', knowledge, capability: capabilityWithMintedRules, reasoning },

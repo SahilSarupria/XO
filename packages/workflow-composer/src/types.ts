@@ -171,23 +171,11 @@ export interface CompositionOptions {
 // Executability & Strategy Evidence Audit Report Types
 // ---------------------------------------------------------------------------
 
-export type WorkflowExecutabilityStatus =
-  | 'executable_candidate'
-  | 'not_executable_yet'
-  | 'semantically_invalid';
+export type WorkflowExecutabilityStatus = 'executable_candidate' | 'not_executable_yet' | 'semantically_invalid';
 
-export type StrategyCategory =
-  | 'deterministic'
-  | 'hitl'
-  | 'model'
-  | 'hybrid'
-  | 'insufficient';
+export type StrategyCategory = 'deterministic' | 'hitl' | 'model' | 'hybrid' | 'insufficient';
 
-export type StepAuthority =
-  | 'proven'
-  | 'eligible'
-  | 'insufficient'
-  | 'blocked';
+export type StepAuthority = 'proven' | 'eligible' | 'insufficient' | 'blocked';
 
 export type ExecutabilityBlockerKind =
   | 'unresolved_strategy'
@@ -257,15 +245,13 @@ export interface WorkflowExecutabilityReport {
 
 export interface AuditWorkflowOptions {
   /** Optional caller-supplied manifest capability declarations or execution declarations mapped by capabilityId. */
-  readonly capabilityExecutionDeclarations?: ReadonlyMap<string, CapabilityExecutionDeclaration> | Record<string, CapabilityExecutionDeclaration>;
+  readonly capabilityExecutionDeclarations?:
+    ReadonlyMap<string, CapabilityExecutionDeclaration> | Record<string, CapabilityExecutionDeclaration>;
   /** Below this confidence threshold, step authority becomes 'blocked' due to low confidence. Defaults to 0. */
   readonly minStepConfidence?: number;
 }
 
-export type StepDataBindingStatus =
-  | 'proven'
-  | 'suggestive'
-  | 'unbound';
+export type StepDataBindingStatus = 'proven' | 'suggestive' | 'unbound';
 
 export interface StepDataBinding {
   readonly producerStepId: CandidateWorkflowStepId;
@@ -278,11 +264,7 @@ export interface StepDataBinding {
 
   readonly status: StepDataBindingStatus;
 
-  readonly evidenceKind:
-    | 'explicit_contract_match'
-    | 'concept_produces_consumes'
-    | 'name_similarity_only'
-    | 'unproven';
+  readonly evidenceKind: 'explicit_contract_match' | 'concept_produces_consumes' | 'name_similarity_only' | 'unproven';
 
   readonly rationale: string;
 }
@@ -294,10 +276,6 @@ export interface WorkflowDataFlowReport {
     readonly stepId: CandidateWorkflowStepId;
     readonly capabilityId: string;
     readonly parameterName: string;
-    readonly derivedFrom:
-      | 'declared'
-      | 'rule_derived'
-      | 'unknown';
+    readonly derivedFrom: 'declared' | 'rule_derived' | 'unknown';
   }[];
 }
-

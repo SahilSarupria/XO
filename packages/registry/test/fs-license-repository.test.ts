@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { FsLicenseRepository, validateRoyaltySplit } from '../src/license/fs-license-repository.js';
 import { withTempStore } from './test-helpers.js';
 
-function sampleLicense(overrides: Partial<{ id: string; royaltySplit: { role: 'creator' | 'reviewer' | 'dataset_contributor' | 'platform'; basisPoints: number }[] }> = {}) {
+function sampleLicense(
+  overrides: Partial<{
+    id: string;
+    royaltySplit: { role: 'creator' | 'reviewer' | 'dataset_contributor' | 'platform'; basisPoints: number }[];
+  }> = {},
+) {
   return {
     id: overrides.id ?? 'license-1',
     packageId: 'sha256:' + 'a'.repeat(64),

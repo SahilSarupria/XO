@@ -33,7 +33,10 @@ function writeOctal(buf: Buffer, offset: number, length: number, value: number):
 }
 
 function parseOctal(buf: Buffer, offset: number, length: number): number {
-  const raw = buf.toString('ascii', offset, offset + length).replace(/\0/g, '').trim();
+  const raw = buf
+    .toString('ascii', offset, offset + length)
+    .replace(/\0/g, '')
+    .trim();
   return raw.length > 0 ? Number.parseInt(raw, 8) : 0;
 }
 

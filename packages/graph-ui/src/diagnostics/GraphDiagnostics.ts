@@ -1,5 +1,5 @@
 import type { GraphModel } from '../model/GraphModel.js';
-import { GraphLayouts } from '../layout/GraphLayouts.js';
+import type { GraphLayouts } from '../layout/GraphLayouts.js';
 import { GraphSearch } from '../search/GraphSearch.js';
 import type { GraphLayoutOptions, LayoutKind } from '../model/types.js';
 import type { RenderFrame } from '../render/adapters/GraphRenderAdapter.js';
@@ -82,7 +82,12 @@ export class GraphDiagnostics {
   }
 
   /** Rule-based performance recommendations given basic graph/layout stats — pure and deterministic, no measurement involved. */
-  static recommendations(stats: { nodeCount: number; edgeCount: number; activeLayoutKind?: string; virtualizationEnabled?: boolean }): readonly string[] {
+  static recommendations(stats: {
+    nodeCount: number;
+    edgeCount: number;
+    activeLayoutKind?: string;
+    virtualizationEnabled?: boolean;
+  }): readonly string[] {
     const recs: string[] = [];
     if (stats.activeLayoutKind === 'force-directed' && stats.nodeCount > 2000) {
       recs.push('force-directed layout is O(n^2) per iteration — switch to hierarchical/grid above a few thousand nodes.');
@@ -94,7 +99,9 @@ export class GraphDiagnostics {
       recs.push('Edge count is far higher than node count — consider edge bundling or filtering by type before rendering.');
     }
     if (stats.nodeCount > 100_000) {
-      recs.push('At 100k+ nodes, build a SpatialIndex once per model snapshot and query it rather than scanning the full node list per interaction.');
+      recs.push(
+        'At 100k+ nodes, build a SpatialIndex once per model snapshot and query it rather than scanning the full node list per interaction.',
+      );
     }
     return recs;
   }

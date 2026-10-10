@@ -1,4 +1,4 @@
-import { GraphSelection } from './GraphSelection.js';
+import type { GraphSelection } from './GraphSelection.js';
 
 /**
  * Immutable, named registry of saved selections — "save this selection as

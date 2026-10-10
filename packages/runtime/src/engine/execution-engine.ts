@@ -3,21 +3,21 @@ import type { Logger } from '@xo/logger';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import type { CapabilityExecutor } from '../ai/capability-executor.js';
 import { CapabilityExecutor as CapabilityExecutorImpl } from '../ai/capability-executor.js';
-import { BudgetManager } from '../budget/budget-manager.js';
-import { ContextAssembler } from '../context/context-assembler.js';
+import type { BudgetManager } from '../budget/budget-manager.js';
+import type { ContextAssembler } from '../context/context-assembler.js';
 import { ExecutionCancellation } from '../cancellation/execution-cancellation.js';
 import type { ExecutionRequest } from '../execution/execution-request.js';
 import type { ExecutionResult } from '../execution/execution-result.js';
 import type { ExecutionHooks } from '../hooks/execution-hooks.js';
 import { composeMiddleware, type ExecutionMiddleware } from '../hooks/execution-middleware.js';
 import type { ExecutionId, SessionId } from '../ids.js';
-import { MemoryManager } from '../memory/working-memory.js';
+import type { MemoryManager } from '../memory/working-memory.js';
 import type { RuntimeInstrumentation } from '../observability/instrumentation.js';
-import { PromptAssembler } from '../prompt/prompt-assembler.js';
+import type { PromptAssembler } from '../prompt/prompt-assembler.js';
 import { KnowledgeRetriever } from '../retrieval/knowledge-retriever.js';
-import { ResponseAssembler } from '../response/response-assembler.js';
+import type { ResponseAssembler } from '../response/response-assembler.js';
 import type { RuntimeContext } from '../runtime-context.js';
-import { SafetyPipeline } from '../safety/safety-pipeline.js';
+import type { SafetyPipeline } from '../safety/safety-pipeline.js';
 import { withFailed, type ExecutionSession } from '../session/execution-session.js';
 import { SessionManager } from '../session/session-manager.js';
 import type { StreamingResponse } from '../streaming/streaming-response.js';
@@ -85,7 +85,12 @@ export class ExecutionEngine {
   private readonly activeCancellations = new Map<string, ExecutionCancellation>();
   private readonly defaultTimeoutMs: number | undefined;
 
-  constructor(getContext: () => RuntimeContext, installer: PackageInstaller, provider: ModelProvider, options: ExecutionEngineOptions = {}) {
+  constructor(
+    getContext: () => RuntimeContext,
+    installer: PackageInstaller,
+    provider: ModelProvider,
+    options: ExecutionEngineOptions = {},
+  ) {
     this.sessionManager = new SessionManager(options.now);
     const retriever = new KnowledgeRetriever(installer, {
       ...(options.logger !== undefined ? { logger: options.logger } : {}),
@@ -98,7 +103,9 @@ export class ExecutionEngine {
     });
     const model = options.model ?? provider.describeCapabilities().models[0];
     if (model === undefined) {
-      throw new Error('ExecutionEngine: no model specified and the provided ModelProvider advertises no models — pass options.model explicitly');
+      throw new Error(
+        'ExecutionEngine: no model specified and the provided ModelProvider advertises no models — pass options.model explicitly',
+      );
     }
 
     this.pipeline = new ExecutionPipeline(getContext, retriever, capabilityExecutor, this.sessionManager, model, {
@@ -148,7 +155,8 @@ export class ExecutionEngine {
         this.activeCancellations.delete(executionId);
       }
     };
-    const composeForCancellation = (cancellation: ExecutionCancellation) => composeMiddleware(options.middleware ?? [], (request) => core(request, cancellation));
+    const composeForCancellation = (cancellation: ExecutionCancellation) =>
+      composeMiddleware(options.middleware ?? [], (request) => core(request, cancellation));
     this.runWithMiddleware = (request, cancellation) => composeForCancellation(cancellation)(request);
   }
 
@@ -175,10 +183,17 @@ export class ExecutionEngine {
    * `result` that resolves to the same `RUNTIME_EXECUTION_ALREADY_IN_FLIGHT`
    * shape the non-streaming path returns.
    */
-  executeStreaming(request: ExecutionRequest, cancellation: ExecutionCancellation = new ExecutionCancellation(this.defaultTimeoutMs)): StreamingResponse {
+  executeStreaming(
+    request: ExecutionRequest,
+    cancellation: ExecutionCancellation = new ExecutionCancellation(this.defaultTimeoutMs),
+  ): StreamingResponse {
     const executionId = deriveExecutionId(request.requestId);
     if (this.activeCancellations.has(executionId)) {
-      return { executionId, events: (async function* () {})(), result: Promise.resolve(this.buildAlreadyInFlightResult(request, executionId)) };
+      return {
+        executionId,
+        events: (async function* () {})(),
+        result: Promise.resolve(this.buildAlreadyInFlightResult(request, executionId)),
+      };
     }
     const streaming = this.pipeline.runStreaming(request, cancellation);
     this.activeCancellations.set(streaming.executionId, cancellation);

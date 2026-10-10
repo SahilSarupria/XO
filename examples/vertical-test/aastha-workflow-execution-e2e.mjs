@@ -59,7 +59,9 @@ async function main() {
   const dataFlow = auditWorkflowDataFlow(workflow, graph);
   console.log(`Executability status (pre-execution): ${execReport.status}`);
   console.log(`Proven data-flow bindings: ${dataFlow.bindings.length}  |  Unbound inputs: ${dataFlow.unboundInputs.length}`);
-  console.log('(No field-level output->input relationship is provable from this document\'s evidence — every step below runs from its own contract, not from a prior step\'s output.)\n');
+  console.log(
+    "(No field-level output->input relationship is provable from this document's evidence — every step below runs from its own contract, not from a prior step's output.)\n",
+  );
 
   // 5. THE BRIDGE: CandidateWorkflow -> registered bindings + WorkflowGraph.
   const registry = new RuntimeCapabilityRegistry();
@@ -74,12 +76,17 @@ async function main() {
       console.log(`         reason: ${s.reason}`);
     }
   }
-  console.log(`\n${prepared.steps.length - prepared.unboundStepCount}/${prepared.steps.length} steps bound to a registered, executable binding.\n`);
+  console.log(
+    `\n${prepared.steps.length - prepared.unboundStepCount}/${prepared.steps.length} steps bound to a registered, executable binding.\n`,
+  );
 
   // 6. THE EXECUTOR: real WorkflowExecutor, running the real registered
   // bindings through the real RuntimeCapabilityExecutor — via the
   // documented customNodeHandlers extension point, not a second engine.
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const executor = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+  });
   const workflowExecutor = new WorkflowExecutor(
     async () => {
       throw new Error('unreachable: this bridge graph contains no built-in "capability" nodes');
@@ -87,7 +94,11 @@ async function main() {
     { customNodeHandlers: new Map([['custom:capability-authority', makeCapabilityAuthorityNodeHandler(executor)]]) },
   );
 
-  const environment = { environmentId: EnvironmentId('env_aastha_demo'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: new Date().toISOString() };
+  const environment = {
+    environmentId: EnvironmentId('env_aastha_demo'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: new Date().toISOString(),
+  };
   const result = await workflowExecutor.run(prepared.graph, environment);
 
   console.log(line('-'));
@@ -126,7 +137,9 @@ async function main() {
   }
 
   if (prepared.unboundStepCount > 0) {
-    console.log(`\n${prepared.unboundStepCount} step(s) could not be bound to any executable strategy and were excluded from the graph — see "Steps" above.`);
+    console.log(
+      `\n${prepared.unboundStepCount} step(s) could not be bound to any executable strategy and were excluded from the graph — see "Steps" above.`,
+    );
   }
 }
 

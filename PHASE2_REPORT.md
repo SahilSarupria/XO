@@ -2,20 +2,20 @@
 
 ## 1. Phase 2 diagnosis
 
-**What was lost, and where.** Phase 0/1's `rule-pattern-parser.ts` correctly *finds* rules and splits them into `condition`/`action`/`outcome`/`exceptionConditions` — but every one of those fields is a plain string. That string flowed verbatim through `ReasoningNode` → `reasoning-to-xoir.ts#buildProperties` → XOIR `heuristic`/`decision_node`/`constraint` node properties → `contract-builder.ts` → `SemanticCapabilityRule.condition`/`outcome`, with meaning (which field, which comparison, which threshold, which logical relationship) never extracted anywhere along that chain. The **only** place any structure existed was `@xo/capability-contract`'s `comparison-grammar.ts`, applied very late (at binding-resolution time) and deliberately narrow: exactly one numeric comparison per rule, no AND/OR, no ranges, no categorical state, no temporal, no exceptions — and its output was never written back into XOIR/EIR, so nothing downstream of the resolver (packaging, benchmarking, other consumers) could see it either.
+**What was lost, and where.** Phase 0/1's `rule-pattern-parser.ts` correctly _finds_ rules and splits them into `condition`/`action`/`outcome`/`exceptionConditions` — but every one of those fields is a plain string. That string flowed verbatim through `ReasoningNode` → `reasoning-to-xoir.ts#buildProperties` → XOIR `heuristic`/`decision_node`/`constraint` node properties → `contract-builder.ts` → `SemanticCapabilityRule.condition`/`outcome`, with meaning (which field, which comparison, which threshold, which logical relationship) never extracted anywhere along that chain. The **only** place any structure existed was `@xo/capability-contract`'s `comparison-grammar.ts`, applied very late (at binding-resolution time) and deliberately narrow: exactly one numeric comparison per rule, no AND/OR, no ranges, no categorical state, no temporal, no exceptions — and its output was never written back into XOIR/EIR, so nothing downstream of the resolver (packaging, benchmarking, other consumers) could see it either.
 
 ## 2. Structured representation
 
-Reused, not reinvented: `@xo/capability-contract` already owned "the one closed deterministic grammar" as its architectural charter (see its `comparison-grammar.ts`). Phase 2 adds a second, additive module in the same package — `structured-expression-grammar.ts` — rather than inventing a new IR layer, a second competing representation, or touching XOIR's node/edge *taxonomy*. The new type is:
+Reused, not reinvented: `@xo/capability-contract` already owned "the one closed deterministic grammar" as its architectural charter (see its `comparison-grammar.ts`). Phase 2 adds a second, additive module in the same package — `structured-expression-grammar.ts` — rather than inventing a new IR layer, a second competing representation, or touching XOIR's node/edge _taxonomy_. The new type is:
 
 ```ts
 type StructuredCondition =
-  | { type: 'comparison';  field: string; operator: '>'|'<'|'>='|'<='|'=='|'!='; value: number; unit?: string }
-  | { type: 'categorical'; field: string; operator: '=='|'!='; value: string }
-  | { type: 'range';       field: string; min: number; max: number; unit?: string }
-  | { type: 'temporal';    relation: 'within'|'after'|'before'|'during'; amount?: number; unit?: string; anchor?: string }
+  | { type: 'comparison'; field: string; operator: '>' | '<' | '>=' | '<=' | '==' | '!='; value: number; unit?: string }
+  | { type: 'categorical'; field: string; operator: '==' | '!='; value: string }
+  | { type: 'range'; field: string; min: number; max: number; unit?: string }
+  | { type: 'temporal'; relation: 'within' | 'after' | 'before' | 'during'; amount?: number; unit?: string; anchor?: string }
   | { type: 'and'; operands: StructuredCondition[] }
-  | { type: 'or';  operands: StructuredCondition[] };
+  | { type: 'or'; operands: StructuredCondition[] };
 
 type StructuredAction = { type: 'action'; action: string; target?: string };
 type StructuredExceptionCondition = { raw: string; condition?: StructuredCondition };
@@ -24,20 +24,20 @@ type StructuredExceptionCondition = { raw: string; condition?: StructuredConditi
 - `field`/`action`/`operator`/`value` — self-explanatory; `field` is kept as the natural-language noun phrase (e.g. `"the claim assessment amount"`), never forced into a synthetic identifier — identifier resolution is `capability-contract`'s existing `resolveFieldKey`'s job, unchanged.
 - `unit` — currency code/symbol, carried when present (`"INR 10,000"` → `value: 10000, unit: 'INR'`).
 - `temporal` — **structure only**, never evaluated. Exactly one of `{amount,unit}` or `anchor` is set. No wall-clock/reference-date model exists anywhere in this code — by design (see §8, out of scope).
-- `and`/`or` — built only when *every* operand independently parses; one bad operand fails the whole expression (never a silently-smaller, wrong conjunction).
+- `and`/`or` — built only when _every_ operand independently parses; one bad operand fails the whole expression (never a silently-smaller, wrong conjunction).
 
 **Where it's attached:** optional fields on `ReasoningNode` (compiler-internal), on XOIR's `HeuristicNodeProps`/`DecisionNodeNodeProps`/`ConstraintNodeProps` (the three kinds `contract-builder.ts` actually consumes — `reasoning_step`/`escalation_rule`/`risk_policy` deliberately untouched, see §8), and on `SemanticCapabilityRule`. All additive; every existing field is unchanged, and the fields are always absent (never emitted as `null`/best-effort-wrong) when the source text doesn't confidently parse.
 
 ## 3. Before → after
 
-| | Real `burglary-policy.pdf` | Synthetic `synthetic-claim-rules.txt` | Phase 2 synthetic benchmark (46→47¹ cases) |
-|---|---|---|---|
-| Rules discovered (unchanged from Phase 1) | 8 | 1 | — |
-| Rules with `structuredCondition` | 6 | 1 | 29 (of 30 non-`unresolved`-expected cases) |
-| Rules with `structuredAction` | 0² | 1 | 6 (of 6 non-`unresolved`-expected action cases) |
-| Unresolved (correctly, no shape matched) | 2 | 0 | 18 |
-| Structured semantic **precision** | 6/6 = 100% | 1/1 = 100% | **29/29 = 100%** |
-| Structured semantic **recall** (of confidently-structurable ground truth) | 6/6 = 100% | 1/1 = 100% | **29/29 = 100%** |
+|                                                                           | Real `burglary-policy.pdf` | Synthetic `synthetic-claim-rules.txt` | Phase 2 synthetic benchmark (46→47¹ cases)      |
+| ------------------------------------------------------------------------- | -------------------------- | ------------------------------------- | ----------------------------------------------- |
+| Rules discovered (unchanged from Phase 1)                                 | 8                          | 1                                     | —                                               |
+| Rules with `structuredCondition`                                          | 6                          | 1                                     | 29 (of 30 non-`unresolved`-expected cases)      |
+| Rules with `structuredAction`                                             | 0²                         | 1                                     | 6 (of 6 non-`unresolved`-expected action cases) |
+| Unresolved (correctly, no shape matched)                                  | 2                          | 0                                     | 18                                              |
+| Structured semantic **precision**                                         | 6/6 = 100%                 | 1/1 = 100%                            | **29/29 = 100%**                                |
+| Structured semantic **recall** (of confidently-structurable ground truth) | 6/6 = 100%                 | 1/1 = 100%                            | **29/29 = 100%**                                |
 
 ¹ 47 after the `<=`-category negative case added during test-driven fixture completion (see §6).
 ² The real corpus's 8 rules are exclusion/obligation statements (`constraint` kind, no action/outcome slot in that XOIR shape) — action structuring only applies to `heuristic`/`decision_node` kinds, and none of the 8 real rules are `decision`/`rule` type. This is a real, honest property of this specific document, not a Phase 2 limitation — the synthetic fixture (§4) demonstrates action structuring works correctly where the shape applies.
@@ -58,6 +58,7 @@ LOWERING: StructuredComparisonBindingResolver -> status "resolved", implementati
           evaluate({claim_assessment_amount: 15000}) -> {matched:true, outcome:"deny the claim"}
           evaluate({claim_assessment_amount: 5000})  -> {matched:false}
 ```
+
 (Verified against a live `capability` node + `REQUIRES` edge, end to end, not just unit-tested in isolation.)
 
 **Real `burglary-policy.pdf`, categorical exclusions:**
@@ -75,6 +76,7 @@ LOWERING: categorical leaf compiles to a deterministic string-equality check; no
 SOURCE:   "Theft and RSMD is Excluded"
 STRUCTURED CONDITION: {type:'categorical', field:'Theft and RSMD', operator:'==', value:'excluded'}
 ```
+
 (Demonstrates the grammar correctly does NOT tear this apart into a false "Theft AND RSMD-is-excluded" conjunction — neither "Theft" nor "RSMD is Excluded" independently parses as a condition, so the whole phrase is kept as one field.)
 
 ```
@@ -93,6 +95,7 @@ SOURCE: "...maintained in well working condition throughout policy period"      
 ## 5. Files changed
 
 New files:
+
 - `packages/capability-contract/src/structured-expression-grammar.ts` — the Phase 2 grammar.
 - `packages/capability-contract/test/structured-expression-grammar.test.ts` (32 tests)
 - `packages/capability-contract/test/structured-comparison-resolver-phase2.test.ts` (10 tests)
@@ -103,6 +106,7 @@ New files:
 - `examples/vertical-test/phase2-semantic-benchmark.ts` — benchmark runner/report script.
 
 Modified files:
+
 - `packages/capability-contract/src/types.ts` — `SemanticCapabilityRule.structuredCondition`/`structuredAction`/`structuredExceptions` (optional, additive).
 - `packages/capability-contract/src/index.ts` — export the new module.
 - `packages/capability-contract/src/contract-builder.ts` — projects XOIR structured properties into the contract.
@@ -119,11 +123,11 @@ Modified files:
 
 ## 6. Tests
 
-| | Total | Passed | Failed | Skipped | New | Notes |
-|---|---|---|---|---|---|---|
-| `@xo/compiler` | 555 | 555 | 0 | 0 | 21 | 534 Phase 0/1 baseline + 21 Phase 2 |
-| `@xo/capability-contract` | 78 | 78 | 0 | 0 | 42 | 36 baseline + 32 grammar + 10 resolver |
-| `@xo/xoir` | 119 | 119 | 0 | 0 | 0 | Unaffected (only optional property-type additions) |
+|                           | Total | Passed | Failed | Skipped | New | Notes                                              |
+| ------------------------- | ----- | ------ | ------ | ------- | --- | -------------------------------------------------- |
+| `@xo/compiler`            | 555   | 555    | 0      | 0       | 21  | 534 Phase 0/1 baseline + 21 Phase 2                |
+| `@xo/capability-contract` | 78    | 78     | 0      | 0       | 42  | 36 baseline + 32 grammar + 10 resolver             |
+| `@xo/xoir`                | 119   | 119    | 0      | 0       | 0   | Unaffected (only optional property-type additions) |
 
 During test-driven development I found and fixed **3 real grammar bugs** before they reached production code: a range parser capturing a trailing copula word into `field`; comparison/temporal atoms silently spanning a top-level `"or"`, swallowing an unrelated clause into a wrong field; and a categorical atom similarly swallowing a genuine `"A and B"` conjunction where both operands independently parsed. All three are now covered by explicit regression tests. I also found and fixed one incomplete fixture category (`<=` had no negative case) during writing the benchmark's own category-completeness test.
 
@@ -143,7 +147,7 @@ Pre-existing failures found (not introduced by Phase 2, not fixed — see §7/§
 - **Real-PDF extraction artifact**: the real `burglary-policy.pdf`'s "The policy is not valid, if any of the information provided is incorrect" sentence is split across a page boundary by Phase 0/1's paragraph chunking, leaving only `"valid"` as the `action` text for that rule. Phase 2 correctly leaves this unstructured (`"valid"` is not a recognized imperative verb) rather than guessing — but the underlying truncation is a Phase 0/1 chunking limitation, not something Phase 2 should paper over.
 - **`ai-extractor.ts`** (the optional, disabled-by-default AI-assisted extraction path) was not wired to compute structured semantics — it's off by default (`hybrid-extractor.ts` only uses it when an `aiExtractor` is explicitly supplied) and untested in the current environment. Wiring it would be a small, mechanical follow-up using the same `buildStructuredSemantics` function.
 - **`reasoning_step`/`escalation_rule`/`risk_policy`** XOIR kinds were deliberately left without a structured-condition slot — nothing downstream (`contract-builder.ts`) consumes them into a `SemanticCapabilityRule` today, so adding structure there would be speculative rather than the "smallest correct extension" the brief asks for.
-- **`StructuredComparisonBindingResolver`'s temporal handling**: a `structuredCondition` containing a `temporal` leaf (bare, or nested inside `and`/`or`) fails compilation and falls back to the legacy single-comparison grammar on raw text. This is intentional (no temporal logic engine, per the brief), but means a rule whose *only* condition is temporal can never resolve to an executable binding today — it's structured, but inert. A future Phase 3+ execution model would need a wall-clock/reference-date input contract before that could change.
+- **`StructuredComparisonBindingResolver`'s temporal handling**: a `structuredCondition` containing a `temporal` leaf (bare, or nested inside `and`/`or`) fails compilation and falls back to the legacy single-comparison grammar on raw text. This is intentional (no temporal logic engine, per the brief), but means a rule whose _only_ condition is temporal can never resolve to an executable binding today — it's structured, but inert. A future Phase 3+ execution model would need a wall-clock/reference-date input contract before that could change.
 - **Multi-document precedence, layout-aware document intelligence, OCR, production observability/persistence, enterprise security, XO ecosystem/Studio/roadmap** — untouched, as instructed.
 
 ## 9. Final verdict

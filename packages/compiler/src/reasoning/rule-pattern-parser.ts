@@ -89,7 +89,20 @@ function indexOfFirstComma(text: string): number {
   return -1;
 }
 
-const DECISION_VERBS = ['approve', 'approves', 'reject', 'rejects', 'grant', 'grants', 'deny', 'denies', 'accept', 'accepts', 'decline', 'declines'];
+const DECISION_VERBS = [
+  'approve',
+  'approves',
+  'reject',
+  'rejects',
+  'grant',
+  'grants',
+  'deny',
+  'denies',
+  'accept',
+  'accepts',
+  'decline',
+  'declines',
+];
 
 function startsWithDecisionVerb(text: string): boolean {
   const lower = text.trim().toLowerCase();
@@ -208,7 +221,12 @@ function parseRule(sentence: string): ParseResult {
       companionOf: primaryCandidate.canonicalLabel,
     };
     candidates.push(exceptionCandidate);
-    edges.push({ type: 'overrides', fromLabel: exceptionCandidate.canonicalLabel, toLabel: primaryCandidate.canonicalLabel, confidence: 0.7 });
+    edges.push({
+      type: 'overrides',
+      fromLabel: exceptionCandidate.canonicalLabel,
+      toLabel: primaryCandidate.canonicalLabel,
+      confidence: 0.7,
+    });
   }
 
   if (alternative !== undefined && alternative.length > 0) {
@@ -222,7 +240,12 @@ function parseRule(sentence: string): ParseResult {
       companionOf: primaryCandidate.canonicalLabel,
     };
     candidates.push(altCandidate);
-    edges.push({ type: 'alternative_to', fromLabel: primaryCandidate.canonicalLabel, toLabel: altCandidate.canonicalLabel, confidence: 0.65 });
+    edges.push({
+      type: 'alternative_to',
+      fromLabel: primaryCandidate.canonicalLabel,
+      toLabel: altCandidate.canonicalLabel,
+      confidence: 0.65,
+    });
   }
 
   return { candidates, edges };
@@ -287,7 +310,13 @@ function findCommaThenIf(lower: string): number {
   for (;;) {
     const idx = lower.indexOf(',', from);
     if (idx === -1) return -1;
-    if (lower.slice(idx + 1).trimStart().startsWith('if ')) return idx;
+    if (
+      lower
+        .slice(idx + 1)
+        .trimStart()
+        .startsWith('if ')
+    )
+      return idx;
     from = idx + 1;
   }
 }
@@ -482,7 +511,11 @@ function parsePolicy(sentence: string): ParseResult {
   // guard, not a blacklist of subject words.
   const mustIdx = indexOfPhraseBoundary(lower, 'must');
   if (mustIdx > 0) {
-    const subjectWords = sentence.slice(0, mustIdx).trim().split(/\s+/).filter((w) => w.length > 0);
+    const subjectWords = sentence
+      .slice(0, mustIdx)
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
     if (subjectWords.length > 0 && subjectWords.length <= 4) {
       const text = clean(sentence.slice(mustIdx));
       if (text.length > 0) {

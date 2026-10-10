@@ -116,8 +116,24 @@ export interface CreateExecutionInput {
 }
 
 export type ExecutionOutcomeInput =
-  | { readonly status: 'succeeded'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }
-  | { readonly status: 'waiting_for_human'; readonly output: unknown; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly graphHash?: string; readonly contractContentHash?: string }
+  | {
+      readonly status: 'succeeded';
+      readonly output: unknown;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly graphHash?: string;
+      readonly contractContentHash?: string;
+    }
+  | {
+      readonly status: 'waiting_for_human';
+      readonly output: unknown;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly graphHash?: string;
+      readonly contractContentHash?: string;
+    }
   | { readonly status: 'failed'; readonly errorCode: string; readonly errorMessage: string };
 
 export interface ResolveHumanTaskInput {
@@ -134,7 +150,8 @@ export interface ResolveHumanTaskInput {
  * the route) from "it was, but is already resolved" (a state conflict,
  * mapped to 409) — see `human-task-routes.ts`.
  */
-export type ResolveHumanTaskFailure = { readonly kind: 'not_a_human_task' } | { readonly kind: 'already_resolved'; readonly record: ExecutionRecord };
+export type ResolveHumanTaskFailure =
+  { readonly kind: 'not_a_human_task' } | { readonly kind: 'already_resolved'; readonly record: ExecutionRecord };
 
 /** Scoped to exactly one workspace by construction — see `ApprovalStore`'s identical doc comment. */
 export interface ExecutionStore {
@@ -157,7 +174,10 @@ export interface ExecutionStore {
    * this store method only guarantees the single-writer, no-lock-held
    * case is correct.
    */
-  resolveHumanTask(executionId: string, input: ResolveHumanTaskInput): Promise<Result<ExecutionRecord | ResolveHumanTaskFailure, NotFoundError>>;
+  resolveHumanTask(
+    executionId: string,
+    input: ResolveHumanTaskInput,
+  ): Promise<Result<ExecutionRecord | ResolveHumanTaskFailure, NotFoundError>>;
 }
 
 const EXECUTION_ID_PATTERN = /^exe_[0-9a-f]{32}$/;

@@ -57,10 +57,18 @@ test('an "exception" node (maps to heuristic, per canonicalKindForReasoningNodeT
 });
 
 test('an out-of-scope canonical kind (justification/escalation/risk_threshold) never structures — no XOIR slot exists for these kinds', () => {
-  const justification = buildStructuredSemantics({ nodeType: 'justification', condition: 'the claim status is approved', exceptionConditions: [] });
+  const justification = buildStructuredSemantics({
+    nodeType: 'justification',
+    condition: 'the claim status is approved',
+    exceptionConditions: [],
+  });
   assert.deepEqual(justification, {});
 
-  const escalation = buildStructuredSemantics({ nodeType: 'escalation', condition: 'the claim amount exceeds 50000', exceptionConditions: [] });
+  const escalation = buildStructuredSemantics({
+    nodeType: 'escalation',
+    condition: 'the claim amount exceeds 50000',
+    exceptionConditions: [],
+  });
   assert.deepEqual(escalation, {});
 
   const risk = buildStructuredSemantics({ nodeType: 'risk_threshold', condition: 'the risk score exceeds 80', exceptionConditions: [] });
@@ -85,7 +93,12 @@ test('a real burglary-policy.pdf extraction artifact ("valid" as a standalone ac
     action: 'valid',
     exceptionConditions: [],
   });
-  assert.deepEqual(result.structuredCondition, { type: 'categorical', field: 'any of the information provided', operator: '==', value: 'incorrect' });
+  assert.deepEqual(result.structuredCondition, {
+    type: 'categorical',
+    field: 'any of the information provided',
+    operator: '==',
+    value: 'incorrect',
+  });
   assert.equal(result.structuredAction, undefined);
 });
 
@@ -100,7 +113,10 @@ test('exceptionConditions are structured best-effort, one entry per raw exceptio
   });
   assert.deepEqual(result.structuredExceptions, [
     { raw: 'the customer has a premium subscription' }, // "premium subscription" is out of the closed categorical vocabulary — correctly left unresolved
-    { raw: 'the claim status is approved', condition: { type: 'categorical', field: 'the claim status', operator: '==', value: 'approved' } },
+    {
+      raw: 'the claim status is approved',
+      condition: { type: 'categorical', field: 'the claim status', operator: '==', value: 'approved' },
+    },
   ]);
 });
 

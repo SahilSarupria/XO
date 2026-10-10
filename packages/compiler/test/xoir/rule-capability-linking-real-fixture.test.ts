@@ -22,7 +22,9 @@ import type { XoirGraph } from '@xo/xoir';
  * diagnostic scripts.
  */
 
-const FIXTURE_PATH = fileURLToPath(new URL('../../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const FIXTURE_PATH = fileURLToPath(
+  new URL('../../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 const TARGET_CAPABILITY_ID = 'cap_rule_2a15163541fa80841ee32ba0602c07b4';
 
 async function compileRealFixture() {
@@ -74,9 +76,17 @@ function candidatePoolTermFrequency(graph: XoirGraph): ReadonlyMap<string, numbe
 
 test('real policy fixture: no same_unit_term_overlap REQUIRES edge has sharedTerms that are ONLY numeric', async () => {
   const graph = await compileRealFixture();
-  const sameUnitEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap');
+  const sameUnitEdges = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap',
+    );
 
-  assert.ok(sameUnitEdges.length > 0, 'sanity: the real fixture must still produce some same_unit_term_overlap edges (this is not a test that the tier stopped firing)');
+  assert.ok(
+    sameUnitEdges.length > 0,
+    'sanity: the real fixture must still produce some same_unit_term_overlap edges (this is not a test that the tier stopped firing)',
+  );
 
   const numericOnly = sameUnitEdges.filter((e) => {
     const terms = (e.metadata.custom as { sharedTerms?: readonly string[] } | undefined)?.sharedTerms ?? [];
@@ -91,19 +101,32 @@ test('real policy fixture: no same_unit_term_overlap REQUIRES edge has sharedTer
 
 test('real policy fixture: legitimate numeric+textual same-unit links (a clause number corroborating shared real vocabulary) are preserved, not collateral damage', async () => {
   const graph = await compileRealFixture();
-  const sameUnitEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap');
+  const sameUnitEdges = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap',
+    );
 
   const mixedNumericAndTextual = sameUnitEdges.filter((e) => {
     const terms = (e.metadata.custom as { sharedTerms?: readonly string[] } | undefined)?.sharedTerms ?? [];
     return terms.some(isPurelyNumeric) && terms.some((t) => !isPurelyNumeric(t));
   });
-  assert.ok(mixedNumericAndTextual.length > 0, 'at least one real same-unit link legitimately combining a clause number with real shared vocabulary (e.g. a shared digit alongside "deductible" or "claim") must survive the fix');
+  assert.ok(
+    mixedNumericAndTextual.length > 0,
+    'at least one real same-unit link legitimately combining a clause number with real shared vocabulary (e.g. a shared digit alongside "deductible" or "claim") must survive the fix',
+  );
 });
 
 test('real policy fixture (Problem B.1): no surviving same_unit_term_overlap edge rests on a single textual term whose candidate-pool document frequency is >= 2', async () => {
   const graph = await compileRealFixture();
   const frequency = candidatePoolTermFrequency(graph);
-  const sameUnitEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap');
+  const sameUnitEdges = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap',
+    );
 
   const violations = sameUnitEdges.filter((e) => {
     const terms = (e.metadata.custom as { sharedTerms?: readonly string[] } | undefined)?.sharedTerms ?? [];
@@ -126,13 +149,21 @@ test('real policy fixture (Problem B.1): no surviving same_unit_term_overlap edg
 
 test('real policy fixture (Problem B.1): multi-term same_unit_term_overlap links remain present after the ambiguity gate', async () => {
   const graph = await compileRealFixture();
-  const sameUnitEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap');
+  const sameUnitEdges = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' && (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap',
+    );
 
   const multiTerm = sameUnitEdges.filter((e) => {
     const terms = (e.metadata.custom as { sharedTerms?: readonly string[] } | undefined)?.sharedTerms ?? [];
     return terms.length >= 2;
   });
-  assert.ok(multiTerm.length > 0, 'multi-term same-unit links (e.g. combining "insurer" and "loss") must survive the ambiguity gate — it only ever applies to single-term matches');
+  assert.ok(
+    multiTerm.length > 0,
+    'multi-term same-unit links (e.g. combining "insurer" and "loss") must survive the ambiguity gate — it only ever applies to single-term matches',
+  );
 });
 
 test(`real policy fixture: target capability ${TARGET_CAPABILITY_ID} is discovered, minted, and linked to its originating rule, unaffected by the numeric-evidence and corpus-frequency fixes`, async () => {
@@ -158,7 +189,7 @@ test(`real policy fixture: target capability ${TARGET_CAPABILITY_ID} is discover
   const edgesToTarget = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.toId as unknown as string) === TARGET_CAPABILITY_ID);
   assert.equal(edgesToTarget.length, 1);
   assert.equal((edgesToTarget[0]!.metadata.custom as { evidenceKind?: string }).evidenceKind, 'rule_capability_derivation');
-  assert.equal((edgesToTarget[0]!.fromId as unknown as string), sourceNodeId);
+  assert.equal(edgesToTarget[0]!.fromId as unknown as string, sourceNodeId);
 });
 
 // ---------------------------------------------------------------------------
@@ -260,12 +291,24 @@ test('Problem C — API fixture: "Create a Charge" gains structurally nested rea
   // ("Create a Charge") names — but it means a name-substring anchor of "collect payment"
   // no longer locates it. sectionPath is the robust anchor already used for this same
   // purpose two tests below (the clinical-fixture root-capability lookup).
-  const capNode = graph.allNodes().find((n) => n.kind === 'capability' && (n.metadata.sourceRefs[0]?.sectionPath ?? []).some((p) => p.includes('Create a Charge')));
+  const capNode = graph
+    .allNodes()
+    .find((n) => n.kind === 'capability' && (n.metadata.sourceRefs[0]?.sectionPath ?? []).some((p) => p.includes('Create a Charge')));
   assert.ok(capNode, 'the "Create a Charge" capability must still be discovered — this is not a Problem C concern');
   if (!capNode) return;
 
-  const structuralEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.toId as unknown as string) === (capNode.id as unknown as string) && (e.metadata.custom as { evidenceKind?: string }).evidenceKind === 'structural_containment');
-  assert.ok(structuralEdges.length > 0, 'at least one previously-invisible, structurally-nested reasoning node must now be linked via structural_containment');
+  const structuralEdges = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' &&
+        (e.toId as unknown as string) === (capNode.id as unknown as string) &&
+        (e.metadata.custom as { evidenceKind?: string }).evidenceKind === 'structural_containment',
+    );
+  assert.ok(
+    structuralEdges.length > 0,
+    'at least one previously-invisible, structurally-nested reasoning node must now be linked via structural_containment',
+  );
 
   // Per the task: do not require the capability to fully RESOLVE — the
   // Problem C investigation and the domain-bias experiment both
@@ -279,15 +322,30 @@ test('Problem C — clinical fixture: the document-root capability does NOT abso
   const graph = await compileDocumentFixture(CLINICAL_PROTOCOL_FIXTURE, 'clinical-protocol.md', 'Clinical');
   const rootCap = graph.allNodes().find((n) => n.kind === 'capability' && (n.metadata.sourceRefs[0]?.sectionPath ?? []).length <= 1);
   if (!rootCap) return; // no root-level capability discovered in this run — nothing to absorb, trivially satisfies the assertion below anyway
-  const structuralEdgesToRoot = graph.allEdges().filter((e) => e.kind === 'REQUIRES' && (e.toId as unknown as string) === (rootCap.id as unknown as string) && (e.metadata.custom as { evidenceKind?: string }).evidenceKind === 'structural_containment');
-  assert.equal(structuralEdgesToRoot.length, 0, 'a document-root-level capability must never receive a structural_containment edge, regardless of how many reasoning nodes exist beneath it');
+  const structuralEdgesToRoot = graph
+    .allEdges()
+    .filter(
+      (e) =>
+        e.kind === 'REQUIRES' &&
+        (e.toId as unknown as string) === (rootCap.id as unknown as string) &&
+        (e.metadata.custom as { evidenceKind?: string }).evidenceKind === 'structural_containment',
+    );
+  assert.equal(
+    structuralEdgesToRoot.length,
+    0,
+    'a document-root-level capability must never receive a structural_containment edge, regardless of how many reasoning nodes exist beneath it',
+  );
 });
 
 test('Problem C — insurance fixture: existing behavior does not regress', async () => {
   const graph = await compileRealFixture();
   const requiresEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES');
-  const sameUnitEdges = requiresEdges.filter((e) => (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap');
-  const exactLabelEdges = requiresEdges.filter((e) => (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'exact_label');
+  const sameUnitEdges = requiresEdges.filter(
+    (e) => (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'same_unit_term_overlap',
+  );
+  const exactLabelEdges = requiresEdges.filter(
+    (e) => (e.metadata.custom as { evidenceKind?: string } | undefined)?.evidenceKind === 'exact_label',
+  );
 
   // Exact counts established by the Problem B.1 delivery. `resolvedCount`
   // is re-asserted here unchanged — Problem C must add new
@@ -330,8 +388,16 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // their sections, sourceConfidence 0.5, no corruption. `exactLabelEdges`
   // (113) is unchanged by either pass — neither adds new exact-label
   // evidence on this fixture.
-  assert.equal(sameUnitEdges.length, 25, 'same_unit_term_overlap edge count reflects Layer 2B\'s active-voice verb-inflection improvements on this fixture (see comment above); verified via controlled revert to be free of corruption');
-  assert.equal(exactLabelEdges.length, 108, 'exact_label edge count reflects Layer 3\'s removal of 5 spurious "Before"-substring links (see comment above); verified to be a false-positive-only change, not a loss of genuine evidence');
+  assert.equal(
+    sameUnitEdges.length,
+    25,
+    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements on this fixture (see comment above); verified via controlled revert to be free of corruption",
+  );
+  assert.equal(
+    exactLabelEdges.length,
+    108,
+    'exact_label edge count reflects Layer 3\'s removal of 5 spurious "Before"-substring links (see comment above); verified to be a false-positive-only change, not a loss of genuine evidence',
+  );
 
   // Human-in-the-Loop Execution Class Lowering milestone: `resolvedCount`
   // moved from 17 (this test's original Problem B.1/C baseline) to 18 (+1
@@ -344,10 +410,22 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // resolutions on this fixture.
   const lowered = lowerCapabilitiesToManifest(graph);
   const resolvedCount = lowered.outcomes.filter((o) => o.status === 'resolved').length;
-  assert.equal(resolvedCount, 20, 'total resolved capability count reflects the Human-in-the-Loop milestone (+1) and Layer 2B (+2 deterministic_rule) on top of the Problem B.1 baseline (17)');
+  assert.equal(
+    resolvedCount,
+    20,
+    'total resolved capability count reflects the Human-in-the-Loop milestone (+1) and Layer 2B (+2 deterministic_rule) on top of the Problem B.1 baseline (17)',
+  );
 
   const deterministicRuleCount = lowered.declarations.filter((d) => d.execution?.mode === 'deterministic_rule').length;
   const humanInTheLoopCount = lowered.declarations.filter((d) => d.execution?.mode === 'human_in_the_loop').length;
-  assert.equal(deterministicRuleCount, 19, 'the deterministic_rule resolution count is the Problem B.1 baseline (17) plus Layer 2B\'s two new "Record..." capabilities, both deterministically resolvable');
-  assert.equal(humanInTheLoopCount, 1, 'human_in_the_loop count is unchanged by Layer 2B — still exactly the one capability from the Human-in-the-Loop milestone');
+  assert.equal(
+    deterministicRuleCount,
+    19,
+    'the deterministic_rule resolution count is the Problem B.1 baseline (17) plus Layer 2B\'s two new "Record..." capabilities, both deterministically resolvable',
+  );
+  assert.equal(
+    humanInTheLoopCount,
+    1,
+    'human_in_the_loop count is unchanged by Layer 2B — still exactly the one capability from the Human-in-the-Loop milestone',
+  );
 });

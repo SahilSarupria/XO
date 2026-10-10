@@ -1,4 +1,11 @@
-import { resolveCapabilityBinding, STANDARD_BINDING_RESOLVERS, type BindingOutcome, type BindingResolver, type CapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
+import {
+  resolveCapabilityBinding,
+  STANDARD_BINDING_RESOLVERS,
+  type BindingOutcome,
+  type BindingResolver,
+  type CapabilityBinding,
+  type SemanticCapabilityContract,
+} from '@xo/capability-contract';
 import type { ContentHash } from '@xo/types';
 import type { RuntimeError } from '@xo/errors';
 import type { PermissionContext, PermissionManager } from '@xo/permissions';
@@ -56,7 +63,10 @@ import { registerResolvedCapabilityBinding } from './capability-binding-registra
  * (`xo run` resolves only `StructuredComparisonBindingResolver`) passes
  * its own — this function never widens what a caller asked for.
  */
-export function resolveContractBinding(contract: SemanticCapabilityContract, resolvers: readonly BindingResolver[] = STANDARD_BINDING_RESOLVERS): BindingOutcome {
+export function resolveContractBinding(
+  contract: SemanticCapabilityContract,
+  resolvers: readonly BindingResolver[] = STANDARD_BINDING_RESOLVERS,
+): BindingOutcome {
   return resolveCapabilityBinding(contract, resolvers);
 }
 
@@ -88,9 +98,18 @@ export type ExecuteResolvedContractOutcome =
  * executor is deliberately NOT caught here — callers that want a
  * defensive catch (`apps/api`) keep theirs, exactly as before.
  */
-export async function executeResolvedContract(contract: SemanticCapabilityContract, binding: CapabilityBinding, request: ExecuteResolvedContractRequest): Promise<ExecuteResolvedContractOutcome> {
+export async function executeResolvedContract(
+  contract: SemanticCapabilityContract,
+  binding: CapabilityBinding,
+  request: ExecuteResolvedContractRequest,
+): Promise<ExecuteResolvedContractOutcome> {
   const registry = new RuntimeCapabilityRegistry();
-  const registered = registerResolvedCapabilityBinding(registry, contract, binding, request.graphHash !== undefined ? { graphHash: request.graphHash } : {});
+  const registered = registerResolvedCapabilityBinding(
+    registry,
+    contract,
+    binding,
+    request.graphHash !== undefined ? { graphHash: request.graphHash } : {},
+  );
   if (!registered.ok) return { ok: false, stage: 'registration', error: registered.error };
 
   const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: request.permissionManager });
