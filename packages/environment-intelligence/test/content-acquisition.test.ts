@@ -124,8 +124,8 @@ test('out-of-scope keys are rejected BEFORE the gate is asked and before any rea
       ['..\\outside\\secret.txt', 'absolute_or_backslash'],
       ['', 'invalid_key'],
       ['ok.txt\0.png', 'invalid_key'],
-      ['link.txt', 'symlink_escape'],
-      ['linkdir/secret.txt', 'symlink_escape'],
+      ['link.txt', 'symlink_not_followed'],
+      ['linkdir/secret.txt', 'symlink_not_followed'],
       ['./ok.txt', 'dot_or_empty_segment'],
     ];
     for (const [key, reason] of bad) {
