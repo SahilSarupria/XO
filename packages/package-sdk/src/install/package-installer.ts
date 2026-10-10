@@ -5,6 +5,7 @@ import { ErrorCode, InstallError, PackageError, StorageError } from '@xo/errors'
 import { fingerprintManifest } from '../hashing/fingerprint.js';
 import { classifyBump } from '../manifest/semver.js';
 import { PackageValidator } from '../validation/package-validator.js';
+import { componentCollisionProblem, componentPathProblem, confinementProblem, packageSegmentProblem } from '../validation/safe-path.js';
 import { isXoManifest } from '../validation/schema.js';
 import type { InstalledPackageRecord, PackageBundle, ValidationReport } from '../types.js';
 import { Clock, SystemClock } from './clock.js';
@@ -21,6 +22,46 @@ function packagePrefix(name: string, version: string): string {
 
 function recordKey(name: string, version: string): string {
   return `_records/${name}@${version}.json`;
+}
+
+/**
+ * Path-confinement gate for {@link PackageInstaller.install}. Returns a
+ * description of the first unsafe name/version/component path, or
+ * `undefined` if everything stays inside `<name>/<version>/`.
+ *
+ * This deliberately lives in the installer — not only in
+ * `PackageValidator` — because `skipValidation` bypasses the validator
+ * but must never bypass confinement: it is a security boundary, not a
+ * quality check. It inspects both the manifest's declared component paths
+ * and the bundle's own component paths (the ones actually written), and
+ * runs before any `store` call so a rejected package causes zero writes.
+ */
+function findUnsafeInstallLocation(bundle: PackageBundle): string | undefined {
+  const { name, version } = bundle.manifest;
+  const identityProblem = packageSegmentProblem('name', name) ?? packageSegmentProblem('version', version);
+  if (identityProblem) return identityProblem;
+
+  const prefix = packagePrefix(name, version);
+  const paths = [...Object.values(bundle.manifest.components).map((e) => e.path), ...bundle.components.map((c) => c.path)];
+  for (const path of paths) {
+    const problem = componentPathProblem(path) ?? confinementProblem(prefix, path);
+    if (problem) return problem;
+  }
+  return componentCollisionProblem(bundle.components.map((c) => c.path));
+}
+
+/**
+ * Identity gate for the methods that take a caller-supplied `name`/`version`
+ * (some of which arrive straight from HTTP request parameters). A package
+ * with an unsafe name or version can never have been installed — `install()`
+ * refuses it — so these methods answer exactly as for any other package that
+ * is not installed, rather than letting `a/../other` alias another package's
+ * directory.
+ */
+function notInstalledIfUnsafe(name: string, version: string): InstallError | undefined {
+  return (packageSegmentProblem('name', name) ?? packageSegmentProblem('version', version))
+    ? new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}" is not installed`)
+    : undefined;
 }
 
 export interface InstallOptions {
@@ -67,6 +108,12 @@ export class PackageInstaller {
   async install(bundle: PackageBundle, options: InstallOptions = {}): Promise<Result<InstalledPackageRecord, InstallError | PackageError>> {
     const { name, version } = bundle.manifest;
 
+    // Confinement first, unconditionally (even with skipValidation), and before any store access.
+    const unsafe = findUnsafeInstallLocation(bundle);
+    if (unsafe) {
+      return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Refusing to install package: unsafe install location — ${unsafe}`));
+    }
+
     if (!options.skipValidation) {
       const report = this.validator.validateAll(bundle);
       if (!report.valid) {
@@ -106,12 +153,28 @@ export class PackageInstaller {
   }
 
   async uninstall(name: string, version: string): Promise<Result<void, InstallError>> {
+    const unsafeIdentity = notInstalledIfUnsafe(name, version);
+    if (unsafeIdentity) return err(unsafeIdentity);
     const key = recordKey(name, version);
     const recordRaw = await this.store.get(key);
     if (!recordRaw.ok) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}" is not installed`));
     }
     const record = JSON.parse(new TextDecoder().decode(recordRaw.value)) as InstalledPackageRecord;
+
+    // Fail closed before deleting anything: a record written by a pre-fix install can list paths that point into another package's directory.
+    const prefix = packagePrefix(name, version);
+    const outside = record.componentPaths.find(
+      (path) => !path.startsWith(`${prefix}/`) || confinementProblem(prefix, path.slice(prefix.length + 1)) !== undefined,
+    );
+    if (outside !== undefined) {
+      return err(
+        new InstallError(
+          ErrorCode.PACKAGE_VALIDATION_FAILED,
+          `Refusing to uninstall "${name}@${version}": its install record lists "${outside}", which is outside "${prefix}/". Nothing was deleted.`,
+        ),
+      );
+    }
 
     for (const path of record.componentPaths) await this.store.delete(path);
     await this.store.delete(`${packagePrefix(name, version)}/manifest.json`);
@@ -149,6 +212,8 @@ export class PackageInstaller {
 
   /** Re-points the active version pointer to an already-installed (but no longer active) version — the rollback counterpart to {@link upgrade}. Fails if that version's files were previously removed via `uninstall`. */
   async rollback(name: string, toVersion: string): Promise<Result<void, InstallError>> {
+    const unsafeIdentity = notInstalledIfUnsafe(name, toVersion);
+    if (unsafeIdentity) return err(unsafeIdentity);
     const has = await this.store.has(recordKey(name, toVersion));
     if (!has) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `Cannot roll back "${name}" to "${toVersion}": that version's files are not present (was it uninstalled?)`));
@@ -186,6 +251,8 @@ export class PackageInstaller {
    * component bytes the caller may not need just to mount a package).
    */
   async getManifest(name: string, version: string): Promise<Result<PackageBundle['manifest'], InstallError | PackageError>> {
+    const unsafeIdentity = notInstalledIfUnsafe(name, version);
+    if (unsafeIdentity) return err(unsafeIdentity);
     const raw = await this.store.get(`${packagePrefix(name, version)}/manifest.json`);
     if (!raw.ok) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}" is not installed`));
@@ -240,6 +307,8 @@ export class PackageInstaller {
 
   /** Re-hashes every installed file for `name@version` against its recorded manifest — detects on-disk corruption or tampering after install, distinct from `PackageValidator` validating a bundle before install. */
   async verifyInstallation(name: string, version: string): Promise<Result<ValidationReport, InstallError>> {
+    const unsafeIdentity = notInstalledIfUnsafe(name, version);
+    if (unsafeIdentity) return err(unsafeIdentity);
     const manifestRaw = await this.store.get(`${packagePrefix(name, version)}/manifest.json`);
     if (!manifestRaw.ok) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}" is not installed`));
