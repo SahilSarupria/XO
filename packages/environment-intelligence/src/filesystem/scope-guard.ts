@@ -91,13 +91,9 @@ export async function resolveInside(realRoot: string, resourceKey: string): Prom
     } catch (e) {
       const code = errnoOf(e);
       if (code === 'ENOENT') {
-        return err(
-          discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }),
-        );
+        return err(discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }));
       }
-      return err(
-        discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }),
-      );
+      return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }));
     }
   }
 
