@@ -4,6 +4,7 @@ import { Sha256Hasher, buildMerkleRoot } from '@xo/crypto';
 import { hashComponent } from '../hashing/component-hasher.js';
 import { isValidSemVer, isValidSemVerRange } from '../manifest/semver.js';
 import { PackageVerifier } from '../signing/package-signer.js';
+import { componentCollisionProblem, componentPathProblem, packageSegmentProblem } from './safe-path.js';
 import { isXoManifest, isXoMetadata } from './schema.js';
 import type { PackageBundle, ValidationIssue, ValidationReport } from '../types.js';
 
@@ -47,6 +48,41 @@ export class PackageValidator {
 
   validateVersion(manifest: XoManifest): readonly ValidationIssue[] {
     return isValidSemVer(manifest.version) ? [] : [issue('error', 'VERSION_INVALID', `"${manifest.version}" is not a valid semantic version`, 'manifest.json#version')];
+  }
+
+  /**
+   * Rejects any package name, version, or component path that could address
+   * a location outside this package's own `<name>/<version>/` install
+   * directory (path traversal, absolute or Windows-style paths, reserved
+   * installer filenames). Checks both `manifest.components[*].path` and the
+   * bundle's own `components[*].path`, because the installer writes the
+   * latter while manifest-only checks would see the former.
+   */
+  validatePathSafety(bundle: PackageBundle): readonly ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    for (const label of ['name', 'version'] as const) {
+      const problem = packageSegmentProblem(label, bundle.manifest[label]);
+      if (problem) issues.push(issue('error', 'PACKAGE_IDENTITY_UNSAFE', problem, `manifest.json#${label}`));
+    }
+    const declared = Object.entries(bundle.manifest.components ?? {}).map(([kind, entry]) => [kind, entry.path] as const);
+    const carried = bundle.components.map((c) => [c.kind, c.path] as const);
+    const seen = new Set<string>();
+    for (const [kind, path] of [...declared, ...carried]) {
+      const key = `${kind}\u0000${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const problem = componentPathProblem(path);
+      if (problem)
+        issues.push(
+          issue('error', 'COMPONENT_PATH_UNSAFE', `Component "${kind}": ${problem}`, typeof path === 'string' ? path : undefined),
+        );
+    }
+    const collisions = new Set([
+      componentCollisionProblem(declared.map(([, path]) => path)),
+      componentCollisionProblem(carried.map(([, path]) => path)),
+    ]);
+    for (const problem of collisions) if (problem) issues.push(issue('error', 'COMPONENT_PATH_COLLISION', problem));
+    return issues;
   }
 
   /** Detects two components declaring the same archive path — an archive that would silently overwrite one component's file with another's on extraction. */
@@ -215,6 +251,7 @@ export class PackageValidator {
     const issues = [
       ...this.validateSchema(bundle.manifest),
       ...this.validateVersion(bundle.manifest),
+      ...this.validatePathSafety(bundle),
       ...this.validateNoDuplicatePaths(bundle.manifest),
       ...this.validateRequiredComponents(bundle),
       ...this.validateCapabilities(bundle.manifest),

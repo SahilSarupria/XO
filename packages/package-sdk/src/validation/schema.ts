@@ -8,6 +8,7 @@ import type {
   XoManifest,
   XoMetadata,
 } from '@xo/types';
+import { componentPathProblem, packageSegmentProblem } from './safe-path.js';
 
 const COMPONENT_KINDS: readonly ComponentKind[] = [
   'knowledge_graph',
@@ -31,7 +32,14 @@ function isContentHash(value: unknown): value is string {
 }
 
 function isComponentEntry(value: unknown): value is ComponentEntry {
-  return isRecord(value) && typeof value.path === 'string' && isContentHash(value.hash) && typeof value.required === 'boolean';
+  // `path` becomes part of an on-disk install location, so an unsafe one (traversal, absolute, Windows-style, reserved) is a shape violation, not just a style problem — see safe-path.ts.
+  return (
+    isRecord(value) &&
+    typeof value.path === 'string' &&
+    componentPathProblem(value.path) === undefined &&
+    isContentHash(value.hash) &&
+    typeof value.required === 'boolean'
+  );
 }
 
 function isCompatibilityDeclaration(value: unknown): value is CompatibilityDeclaration {
@@ -212,6 +220,7 @@ export function isXoManifest(value: unknown): value is XoManifest {
   if (!isRecord(value)) return false;
   if (typeof value.formatVersion !== 'string') return false;
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
+  if (packageSegmentProblem('name', value.name) !== undefined) return false;
   if (typeof value.version !== 'string') return false;
   if (typeof value.creatorDid !== 'string' || value.creatorDid.length === 0) return false;
   if (!isCompatibilityDeclaration(value.compatibility)) return false;
