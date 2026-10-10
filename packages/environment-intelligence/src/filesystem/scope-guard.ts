@@ -78,6 +78,23 @@ export async function resolveInside(realRoot: string, resourceKey: string): Prom
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return violation('dot_or_empty_segment');
   const abs = join(realRoot, ...segments);
   if (!isInside(realRoot, abs)) return violation('lexical_escape');
+
+  // Reject symlinks in EVERY path component, not just the final component.
+  // This blocks in-root aliases (for example, "alias -> .ssh") as well as
+  // escapes. Acquisition also verifies the opened descriptor to close the
+  // check/open race; this preflight keeps ordinary symlink requests explicit.
+  let current = realRoot;
+  for (const segment of segments) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return violation('symlink_not_followed');
+    } catch (e) {
+      const code = errnoOf(e);
+      if (code === 'ENOENT') return err(discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource no longer exists', { errno: code }));
+      return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { errno: code }));
+    }
+  }
+
   let real: string;
   try {
     real = await realpath(abs);
