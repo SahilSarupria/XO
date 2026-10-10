@@ -95,8 +95,5 @@ test('a node built with sourceRefs unioned ahead of merge time preserves every c
   assert.ok(result.ok);
   if (!result.ok) return;
   assert.equal(result.value.metadata.sourceRefs.length, 2);
-  assert.deepEqual(
-    result.value.metadata.sourceRefs.map((r) => r.documentPath).sort(),
-    ['source-a.pdf', 'source-b.pdf'],
-  );
+  assert.deepEqual(result.value.metadata.sourceRefs.map((r) => r.documentPath).sort(), ['source-a.pdf', 'source-b.pdf']);
 });

@@ -48,7 +48,10 @@ export class GeminiProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
-    const systemText = request.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const systemText = request.messages
+      .filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join('\n\n');
     const contents = request.messages
       .filter((m) => m.role !== 'system')
       .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));

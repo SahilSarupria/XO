@@ -14,7 +14,10 @@ function buildGraph(): XoirGraph {
 
 test('toJson produces nodes/edges sorted by id', () => {
   const json = toJson(buildGraph());
-  assert.deepEqual(json.nodes.map((n) => n.id), ['a', 'b']);
+  assert.deepEqual(
+    json.nodes.map((n) => n.id),
+    ['a', 'b'],
+  );
 });
 
 test('fromJson(toJson(graph)) round-trips to an equivalent graph (same content hash)', () => {
@@ -50,7 +53,13 @@ test('xoirGraphCodec.decode fails cleanly on malformed input', () => {
 
 test('metadata.producedBy and metadata.reviewStatus round-trip through toJson/fromJson', () => {
   const graph = XoirGraph.create(XoirGraphId('ser2'));
-  graph.createAndAddNode({ id: XoirNodeId('c'), kind: 'capability', properties: { name: 'C', description: 'd' }, producedBy: 'structured-operation', reviewStatus: 'human_confirmed' });
+  graph.createAndAddNode({
+    id: XoirNodeId('c'),
+    kind: 'capability',
+    properties: { name: 'C', description: 'd' },
+    producedBy: 'structured-operation',
+    reviewStatus: 'human_confirmed',
+  });
   const roundTripped = fromJson(toJson(graph));
   assert.ok(roundTripped.ok);
   if (!roundTripped.ok) return;

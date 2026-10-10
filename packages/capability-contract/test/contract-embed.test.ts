@@ -18,7 +18,12 @@ function buildGraph(): XoirGraph {
     kind: 'decision_node',
     properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', rationale: 'r' },
   });
-  graph.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'REQUIRES', fromId: XoirNodeId('decision:deny-large-claim'), toId: XoirNodeId('capability:claim-evaluation') });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('decision:deny-large-claim'),
+    toId: XoirNodeId('capability:claim-evaluation'),
+  });
   return graph;
 }
 
@@ -95,9 +100,18 @@ test('embedContractInCapabilityNode preserves an edge touching the capability no
 
 test('embedContractInCapabilityNode preserves multiple edges in both directions (incoming and outgoing)', () => {
   const graph = buildGraph();
-  graph.createAndAddNode({ id: XoirNodeId('safety:review-required'), kind: 'safety_policy', properties: { statement: 'flag for manual review', enforcementLevel: 'block' } });
+  graph.createAndAddNode({
+    id: XoirNodeId('safety:review-required'),
+    kind: 'safety_policy',
+    properties: { statement: 'flag for manual review', enforcementLevel: 'block' },
+  });
   // An outgoing edge FROM the capability node this time, not just incoming.
-  const addResult = graph.createAndAddEdge({ id: XoirEdgeId('e2'), kind: 'ESCALATES_TO', fromId: XoirNodeId('capability:claim-evaluation'), toId: XoirNodeId('safety:review-required') });
+  const addResult = graph.createAndAddEdge({
+    id: XoirEdgeId('e2'),
+    kind: 'ESCALATES_TO',
+    fromId: XoirNodeId('capability:claim-evaluation'),
+    toId: XoirNodeId('safety:review-required'),
+  });
   assert.equal(addResult.ok, true);
   assert.equal(graph.allEdges().length, 2);
 
@@ -107,14 +121,22 @@ test('embedContractInCapabilityNode preserves multiple edges in both directions 
   const edgesAfter = graph.allEdges();
   assert.equal(edgesAfter.length, 2, 'both the incoming REQUIRES edge and the outgoing escalates_to edge must survive');
   assert.ok(edgesAfter.some((e) => e.id === 'e1'));
-  assert.ok(edgesAfter.some((e) => e.id === 'e2' && e.fromId === 'capability:claim-evaluation' && e.toId === 'safety:review-required'), 'the ESCALATES_TO edge must survive too');
+  assert.ok(
+    edgesAfter.some((e) => e.id === 'e2' && e.fromId === 'capability:claim-evaluation' && e.toId === 'safety:review-required'),
+    'the ESCALATES_TO edge must survive too',
+  );
 });
 
 test('embedContractInCapabilityNode does not affect edges between two OTHER, unrelated nodes', () => {
   const graph = buildGraph();
   graph.createAndAddNode({ id: XoirNodeId('concept:unrelated'), kind: 'concept', properties: { definition: 'something else entirely' } });
   graph.createAndAddNode({ id: XoirNodeId('fact:unrelated'), kind: 'fact', properties: { statement: 'an unrelated fact' } });
-  graph.createAndAddEdge({ id: XoirEdgeId('e-unrelated'), kind: 'SUPPORTS', fromId: XoirNodeId('fact:unrelated'), toId: XoirNodeId('concept:unrelated') });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e-unrelated'),
+    kind: 'SUPPORTS',
+    fromId: XoirNodeId('fact:unrelated'),
+    toId: XoirNodeId('concept:unrelated'),
+  });
 
   const result = embedContractInCapabilityNode(graph, XoirNodeId('capability:claim-evaluation'));
   assert.equal(result.ok, true);

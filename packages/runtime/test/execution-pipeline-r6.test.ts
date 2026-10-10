@@ -491,7 +491,7 @@ test('R6-simulation: simulation is refused for streaming execution rather than s
       permissionGate: allowAllPermissionGate,
     });
     const streaming = engine.executeStreaming(modelRequest({ simulate: true }));
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
     for await (const _event of streaming.events) {
       /* drain — expected to yield nothing */
     }

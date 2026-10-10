@@ -112,11 +112,19 @@ test('an AND-join (merge) node stays waiting until ALL predecessors are terminal
       { from: NodeId('b'), to: NodeId('merge') },
     ],
   };
-  const onlyOneDone = { ...createInitialState(now), completedNodes: [NodeId('fork'), NodeId('a')], takenEdges: [edgeKey(NodeId('fork'), NodeId('a')), edgeKey(NodeId('fork'), NodeId('b')), edgeKey(NodeId('a'), NodeId('merge'))] };
+  const onlyOneDone = {
+    ...createInitialState(now),
+    completedNodes: [NodeId('fork'), NodeId('a')],
+    takenEdges: [edgeKey(NodeId('fork'), NodeId('a')), edgeKey(NodeId('fork'), NodeId('b')), edgeKey(NodeId('a'), NodeId('merge'))],
+  };
   const cursor1 = scheduler.computeCursor(g, onlyOneDone);
   assert.deepEqual(cursor1.waiting, [NodeId('merge')]);
 
-  const bothDone = { ...onlyOneDone, completedNodes: [...onlyOneDone.completedNodes, NodeId('b')], takenEdges: [...onlyOneDone.takenEdges, edgeKey(NodeId('b'), NodeId('merge'))] };
+  const bothDone = {
+    ...onlyOneDone,
+    completedNodes: [...onlyOneDone.completedNodes, NodeId('b')],
+    takenEdges: [...onlyOneDone.takenEdges, edgeKey(NodeId('b'), NodeId('merge'))],
+  };
   const cursor2 = scheduler.computeCursor(g, bothDone);
   assert.deepEqual(cursor2.ready, [NodeId('merge')]);
 });
@@ -137,7 +145,11 @@ test('parallel fan-out: both branches are ready simultaneously', () => {
       { from: NodeId('fork'), to: NodeId('b') },
     ],
   };
-  const state = { ...createInitialState(now), completedNodes: [NodeId('fork')], takenEdges: [edgeKey(NodeId('fork'), NodeId('a')), edgeKey(NodeId('fork'), NodeId('b'))] };
+  const state = {
+    ...createInitialState(now),
+    completedNodes: [NodeId('fork')],
+    takenEdges: [edgeKey(NodeId('fork'), NodeId('a')), edgeKey(NodeId('fork'), NodeId('b'))],
+  };
   const cursor = scheduler.computeCursor(g, state);
   assert.deepEqual(cursor.ready, [NodeId('a'), NodeId('b')]);
 });
@@ -166,7 +178,11 @@ test('ready/toSkip/waiting are always sorted by graph declaration order, indepen
   const state = {
     ...createInitialState(now),
     completedNodes: [NodeId('start')],
-    takenEdges: [edgeKey(NodeId('start'), NodeId('zebra')), edgeKey(NodeId('start'), NodeId('apple')), edgeKey(NodeId('start'), NodeId('mango'))],
+    takenEdges: [
+      edgeKey(NodeId('start'), NodeId('zebra')),
+      edgeKey(NodeId('start'), NodeId('apple')),
+      edgeKey(NodeId('start'), NodeId('mango')),
+    ],
   };
   const cursor = scheduler.computeCursor(g, state);
   assert.deepEqual(cursor.ready, [NodeId('zebra'), NodeId('apple'), NodeId('mango')]); // declaration order, not alphabetical

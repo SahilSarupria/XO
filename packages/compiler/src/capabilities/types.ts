@@ -23,7 +23,8 @@ export type KnownCapabilityCategory =
   | 'execution';
 export type CapabilityCategory = KnownCapabilityCategory | `custom:${string}`;
 
-export type KnownCapabilityRelationType = 'depends_on' | 'invokes' | 'produces' | 'consumes' | 'extends' | 'requires' | 'enables' | 'conflicts_with' | 'complements';
+export type KnownCapabilityRelationType =
+  'depends_on' | 'invokes' | 'produces' | 'consumes' | 'extends' | 'requires' | 'enables' | 'conflicts_with' | 'complements';
 export type CapabilityRelationType = KnownCapabilityRelationType | `custom:${string}`;
 
 /**

@@ -25,7 +25,12 @@ import type { ReasoningGraph } from '../reasoning/types.js';
 export type PipelineInput =
   | { readonly kind: 'knowledge'; readonly graph: KnowledgeGraph; readonly reasoning?: ReasoningGraph }
   | { readonly kind: 'capability'; readonly graph: CapabilityGraph; readonly reasoning?: ReasoningGraph }
-  | { readonly kind: 'combined'; readonly knowledge: KnowledgeGraph; readonly capability: CapabilityGraph; readonly reasoning?: ReasoningGraph }
+  | {
+      readonly kind: 'combined';
+      readonly knowledge: KnowledgeGraph;
+      readonly capability: CapabilityGraph;
+      readonly reasoning?: ReasoningGraph;
+    }
   | { readonly kind: 'xoir'; readonly graph: XoirGraph };
 
 export interface CompileXoirOptions {

@@ -73,11 +73,21 @@ export class FsCompilationStore implements CompilationStore {
     const found = await this.get(compilationId);
     if (!found.ok) return err(found.error);
 
-    const stored: StoredResult = { capabilities: input.capabilities, discoveredCount: input.discoveredCount, resolvedCount: input.resolvedCount, graph: input.graph };
+    const stored: StoredResult = {
+      capabilities: input.capabilities,
+      discoveredCount: input.discoveredCount,
+      resolvedCount: input.resolvedCount,
+      graph: input.graph,
+    };
     const putResult = await this.store.put(resultKey(compilationId), JSON.stringify(stored), { contentType: 'application/json' });
     if (!putResult.ok) return err(putResult.error);
 
-    const record: CompilationRecord = { ...found.value, status: 'succeeded', completedAt: new Date().toISOString(), resultStorageKey: resultKey(compilationId) };
+    const record: CompilationRecord = {
+      ...found.value,
+      status: 'succeeded',
+      completedAt: new Date().toISOString(),
+      resultStorageKey: resultKey(compilationId),
+    };
     const putMetadata = await this.store.put(metadataKey(compilationId), JSON.stringify(record), { contentType: 'application/json' });
     if (!putMetadata.ok) return err(putMetadata.error);
     return ok(record);
@@ -87,7 +97,13 @@ export class FsCompilationStore implements CompilationStore {
     const found = await this.get(compilationId);
     if (!found.ok) return err(found.error);
 
-    const record: CompilationRecord = { ...found.value, status: 'failed', completedAt: new Date().toISOString(), errorCode: input.errorCode, errorMessage: input.errorMessage };
+    const record: CompilationRecord = {
+      ...found.value,
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+    };
     const putMetadata = await this.store.put(metadataKey(compilationId), JSON.stringify(record), { contentType: 'application/json' });
     if (!putMetadata.ok) return err(putMetadata.error);
     return ok(record);

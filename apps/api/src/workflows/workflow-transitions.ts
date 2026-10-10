@@ -36,7 +36,16 @@ function withoutKeys<T extends object>(value: T, keys: readonly string[]): T {
   return copy as T;
 }
 
-function updateProvenance(record: WorkflowExecutionRecord, index: number, patch: { contractId?: string | undefined; bindingId?: string | undefined; sourceXoirNodeIds?: readonly string[] | undefined; executionId?: string | undefined }): WorkflowExecutionRecord['provenance'] {
+function updateProvenance(
+  record: WorkflowExecutionRecord,
+  index: number,
+  patch: {
+    contractId?: string | undefined;
+    bindingId?: string | undefined;
+    sourceXoirNodeIds?: readonly string[] | undefined;
+    executionId?: string | undefined;
+  },
+): WorkflowExecutionRecord['provenance'] {
   return {
     ...record.provenance,
     steps: record.provenance.steps.map((p) =>
@@ -81,7 +90,10 @@ export interface StepStartInfo {
 
 export function withStepStarted(record: WorkflowExecutionRecord, index: number, info: StepStartInfo, now: string): WorkflowExecutionRecord {
   const prior = record.steps[index]!;
-  const superseded = prior.executionId !== undefined && prior.status === 'interrupted' ? [...(prior.supersededExecutionIds ?? []), prior.executionId] : prior.supersededExecutionIds;
+  const superseded =
+    prior.executionId !== undefined && prior.status === 'interrupted'
+      ? [...(prior.supersededExecutionIds ?? []), prior.executionId]
+      : prior.supersededExecutionIds;
   const next: WorkflowStepState = {
     ...withoutKeys(prior, ['completedAt', 'result', 'error']),
     status: 'running',
@@ -107,12 +119,24 @@ export type StepOutcome =
   | { readonly kind: 'waiting_for_human' }
   | { readonly kind: 'failed'; readonly code: string; readonly message: string };
 
-function finishSucceeded(record: WorkflowExecutionRecord, index: number, output: unknown, sourceXoirNodeIds: readonly string[] | undefined, now: string): WorkflowExecutionRecord {
+function finishSucceeded(
+  record: WorkflowExecutionRecord,
+  index: number,
+  output: unknown,
+  sourceXoirNodeIds: readonly string[] | undefined,
+  now: string,
+): WorkflowExecutionRecord {
   const step = record.steps[index]!;
   const nextStep: WorkflowStepState = { ...step, status: 'succeeded', completedAt: now, result: output };
   const steps = replaceStep(record.steps, index, nextStep);
-  const completedStepExecutionIds = step.executionId !== undefined ? [...record.completedStepExecutionIds, step.executionId] : record.completedStepExecutionIds;
-  const base = { ...withoutKeys(record, ['pendingHumanTask', 'currentStepExecutionId']), steps, completedStepExecutionIds, provenance: updateProvenance(record, index, { sourceXoirNodeIds }) };
+  const completedStepExecutionIds =
+    step.executionId !== undefined ? [...record.completedStepExecutionIds, step.executionId] : record.completedStepExecutionIds;
+  const base = {
+    ...withoutKeys(record, ['pendingHumanTask', 'currentStepExecutionId']),
+    steps,
+    completedStepExecutionIds,
+    provenance: updateProvenance(record, index, { sourceXoirNodeIds }),
+  };
   const candidate: WorkflowExecutionRecord = base;
   if (allStepsSucceeded(candidate)) {
     return {
@@ -144,7 +168,12 @@ function finishFailed(record: WorkflowExecutionRecord, index: number, code: stri
 }
 
 /** Applies the outcome of one step's capability execution (P0.5 semantics) to the workflow record. */
-export function withStepOutcome(record: WorkflowExecutionRecord, index: number, outcome: StepOutcome, now: string): WorkflowExecutionRecord {
+export function withStepOutcome(
+  record: WorkflowExecutionRecord,
+  index: number,
+  outcome: StepOutcome,
+  now: string,
+): WorkflowExecutionRecord {
   switch (outcome.kind) {
     case 'succeeded':
       return finishSucceeded(record, index, outcome.output, outcome.sourceXoirNodeIds, now);
@@ -157,7 +186,9 @@ export function withStepOutcome(record: WorkflowExecutionRecord, index: number, 
         steps: replaceStep(record.steps, index, { ...step, status: 'waiting_for_human' }),
         status: 'waiting_for_human',
         currentStepIndex: index,
-        ...(step.executionId !== undefined ? { currentStepExecutionId: step.executionId, pendingHumanTask: { stepIndex: index, executionId: step.executionId } } : {}),
+        ...(step.executionId !== undefined
+          ? { currentStepExecutionId: step.executionId, pendingHumanTask: { stepIndex: index, executionId: step.executionId } }
+          : {}),
       };
     }
   }
@@ -174,7 +205,12 @@ export function withStepOutcome(record: WorkflowExecutionRecord, index: number, 
  * cannot be continued honestly and fails the workflow with
  * `HITL_RESUME_UNSUPPORTED`.
  */
-export function withHumanResolution(record: WorkflowExecutionRecord, index: number, execution: ExecutionRecord, now: string): WorkflowExecutionRecord {
+export function withHumanResolution(
+  record: WorkflowExecutionRecord,
+  index: number,
+  execution: ExecutionRecord,
+  now: string,
+): WorkflowExecutionRecord {
   switch (execution.status) {
     case 'succeeded':
       return finishSucceeded(record, index, execution.output, execution.sourceXoirNodeIds, now);
@@ -197,10 +233,19 @@ export function withHumanResolution(record: WorkflowExecutionRecord, index: numb
       };
     }
     case 'failed':
-      return finishFailed(record, index, execution.errorCode ?? ErrorCode.UNKNOWN, execution.errorMessage ?? 'human task resume failed', now);
+      return finishFailed(
+        record,
+        index,
+        execution.errorCode ?? ErrorCode.UNKNOWN,
+        execution.errorMessage ?? 'human task resume failed',
+        now,
+      );
     default: {
       const outcome = execution.humanTask?.resumeOutcome;
-      const message = outcome !== undefined && (outcome.kind === 'unsupported' || outcome.kind === 'failed') ? outcome.errorMessage : `execution "${execution.executionId}" is still ${execution.status} after its human task was resolved`;
+      const message =
+        outcome !== undefined && (outcome.kind === 'unsupported' || outcome.kind === 'failed')
+          ? outcome.errorMessage
+          : `execution "${execution.executionId}" is still ${execution.status} after its human task was resolved`;
       return finishFailed(record, index, ErrorCode.HITL_RESUME_UNSUPPORTED, message, now);
     }
   }
@@ -210,7 +255,14 @@ export function withHumanResolution(record: WorkflowExecutionRecord, index: numb
 export function withWorkflowFailure(record: WorkflowExecutionRecord, code: string, message: string, now: string): WorkflowExecutionRecord {
   const index = record.steps.findIndex((s) => s.status === 'running' || s.status === 'interrupted' || s.status === 'pending');
   if (index >= 0) return finishFailed(record, index, code, message, now);
-  return { ...withoutKeys(record, ['pendingHumanTask', 'currentStepExecutionId']), status: 'failed', currentStepIndex: null, completedAt: now, errorCode: code, errorMessage: message };
+  return {
+    ...withoutKeys(record, ['pendingHumanTask', 'currentStepExecutionId']),
+    status: 'failed',
+    currentStepIndex: null,
+    completedAt: now,
+    errorCode: code,
+    errorMessage: message,
+  };
 }
 
 /** The process that was driving this workflow is gone (or never got to start a step). The running step, if any, is `interrupted` — NOT assumed succeeded or failed. */

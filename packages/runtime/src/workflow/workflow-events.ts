@@ -1,7 +1,8 @@
 import type { NodeId } from './workflow-graph.js';
 import type { WorkflowInstanceId } from '../ids.js';
 
-export type WorkflowEventType = 'started' | 'completed' | 'failed' | 'cancelled' | 'checkpoint' | 'resumed' | 'node_started' | 'node_completed' | 'node_failed';
+export type WorkflowEventType =
+  'started' | 'completed' | 'failed' | 'cancelled' | 'checkpoint' | 'resumed' | 'node_started' | 'node_completed' | 'node_failed';
 
 export interface WorkflowEvent {
   readonly type: WorkflowEventType;

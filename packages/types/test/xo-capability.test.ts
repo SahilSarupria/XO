@@ -44,7 +44,11 @@ test('a full CapabilityDeclaration with execution.mode human_in_the_loop type-ch
     estimatedCost: { currency: 'USD', amount: 0 },
     estimatedLatencyMs: 0,
     confidence: { score: 0.65, basis: 'self_reported' },
-    execution: { mode: 'human_in_the_loop', bindingId: 'binding_capability:reconcile-invoice_action-escalation-resolver', contractId: 'capability:reconcile-invoice' },
+    execution: {
+      mode: 'human_in_the_loop',
+      bindingId: 'binding_capability:reconcile-invoice_action-escalation-resolver',
+      contractId: 'capability:reconcile-invoice',
+    },
   };
   assert.equal(declaration.execution!.mode, 'human_in_the_loop');
 });

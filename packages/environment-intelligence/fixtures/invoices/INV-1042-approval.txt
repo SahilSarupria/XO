@@ -1,0 +1,2 @@
+Approval record for INV-1042
+Approved: yes (fixture data)

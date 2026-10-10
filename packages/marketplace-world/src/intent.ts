@@ -1,5 +1,5 @@
-import { IntentFocus, type IntentFocusOptions, type WorldCoordinates } from '@xo/atlas'
-import type { MarketplaceWorld, XOId } from './types.js'
+import { IntentFocus, type IntentFocusOptions, type WorldCoordinates } from '@xo/atlas';
+import type { MarketplaceWorld, XOId } from './types.js';
 
 /**
  * A resolved candidate the consumer has already determined is
@@ -9,8 +9,8 @@ import type { MarketplaceWorld, XOId } from './types.js'
  * hands the result in as (xoId, score) pairs.
  */
 export interface ResolvedCandidate {
-  readonly xoId: XOId
-  readonly score: number
+  readonly xoId: XOId;
+  readonly score: number;
 }
 
 /**
@@ -18,12 +18,12 @@ export interface ResolvedCandidate {
  * the resulting camera target in marketplace terms.
  */
 export class MarketplaceIntent {
-  private readonly world: MarketplaceWorld
-  private readonly focus: IntentFocus
+  private readonly world: MarketplaceWorld;
+  private readonly focus: IntentFocus;
 
   constructor(world: MarketplaceWorld, options: IntentFocusOptions = {}) {
-    this.world = world
-    this.focus = new IntentFocus(options)
+    this.world = world;
+    this.focus = new IntentFocus(options);
   }
 
   /** Register a fresh set of resolved candidates, e.g. after the
@@ -32,24 +32,24 @@ export class MarketplaceIntent {
   update(candidates: readonly ResolvedCandidate[], now?: number): void {
     const withPositions = candidates
       .map((c) => {
-        const position = this.world.positions.get(c.xoId)
-        return position ? { id: c.xoId, position, score: c.score } : null
+        const position = this.world.positions.get(c.xoId);
+        return position ? { id: c.xoId, position, score: c.score } : null;
       })
-      .filter((c): c is { id: XOId; position: WorldCoordinates; score: number } => c !== null)
-    this.focus.update(withPositions, now)
+      .filter((c): c is { id: XOId; position: WorldCoordinates; score: number } => c !== null);
+    this.focus.update(withPositions, now);
   }
 
   /** The single most relevant XO right now, or null. */
   topXOId(now?: number): XOId | null {
-    return this.focus.top(now)?.id ?? null
+    return this.focus.top(now)?.id ?? null;
   }
 
   /** Where the camera should be steered to reflect current intent. */
   target(now?: number): WorldCoordinates | null {
-    return this.focus.target(now)
+    return this.focus.target(now);
   }
 
   clear(): void {
-    this.focus.clear()
+    this.focus.clear();
   }
 }

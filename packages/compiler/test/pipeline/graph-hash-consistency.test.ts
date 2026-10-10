@@ -15,10 +15,29 @@ const now = () => '2026-01-01T00:00:00.000Z';
 
 function graphWithManifest(withManifest = true): XoirGraph {
   const graph = XoirGraph.create(XoirGraphId('g'));
-  graph.createAndAddNode({ id: XoirNodeId('capability:c'), kind: 'capability', properties: { name: 'E', description: 'd', determinism: 'deterministic' }, confidence: 0.7, now });
-  graph.createAndAddNode({ id: XoirNodeId('decision:d'), kind: 'decision_node', properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' }, confidence: 0.9, now });
-  graph.createAndAddEdge({ id: XoirEdgeId('r'), kind: 'REQUIRES', fromId: XoirNodeId('decision:d'), toId: XoirNodeId('capability:c'), now });
-  if (withManifest) graph.setManifest(createManifest({ schemaVersion: graph.schemaVersion, graphHash: ContentHash(graph.contentHash()), now }));
+  graph.createAndAddNode({
+    id: XoirNodeId('capability:c'),
+    kind: 'capability',
+    properties: { name: 'E', description: 'd', determinism: 'deterministic' },
+    confidence: 0.7,
+    now,
+  });
+  graph.createAndAddNode({
+    id: XoirNodeId('decision:d'),
+    kind: 'decision_node',
+    properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' },
+    confidence: 0.9,
+    now,
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('r'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('decision:d'),
+    toId: XoirNodeId('capability:c'),
+    now,
+  });
+  if (withManifest)
+    graph.setManifest(createManifest({ schemaVersion: graph.schemaVersion, graphHash: ContentHash(graph.contentHash()), now }));
   return graph;
 }
 

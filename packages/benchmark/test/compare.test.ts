@@ -4,14 +4,27 @@ import { mkdtemp, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildReport, compareReports, evaluateCase, formatRegression, runSuite, validateSuiteDefinition, type BenchmarkCaseDefinition, type BenchmarkReport, type PipelineObservation } from '../src/index.js';
+import {
+  buildReport,
+  compareReports,
+  evaluateCase,
+  formatRegression,
+  runSuite,
+  validateSuiteDefinition,
+  type BenchmarkCaseDefinition,
+  type BenchmarkReport,
+  type PipelineObservation,
+} from '../src/index.js';
 import { cap, capRun, caseDef, node, observation, wf } from './helpers.js';
 
 const rule = (id: string, q: string) => node(id, 'decision_node', { question: q, outcome: 'x' }, { pages: [1] });
 const fact = (id: string, q: string) => ({ id, kind: 'decision_node', identify: [{ path: 'question', contains: q }] });
 
 function report(defs: readonly BenchmarkCaseDefinition[], obs: readonly PipelineObservation[], suiteId = 's'): BenchmarkReport {
-  return buildReport(suiteId, defs.map((d, i) => evaluateCase(d, obs[i]!)));
+  return buildReport(
+    suiteId,
+    defs.map((d, i) => evaluateCase(d, obs[i]!)),
+  );
 }
 const finding = (r: ReturnType<typeof compareReports>, metricId: string) => r.regressions.find((f) => f.metricId === metricId);
 
@@ -21,7 +34,10 @@ test('identical runs compare as no_change, with no findings and unchanged stage 
   const r = compareReports(report([d], [o]), report([d], [o]));
   assert.equal(r.classification, 'no_change');
   assert.deepEqual([r.compilationOutputChanged, r.executionOutputChanged, r.executionOnlyRegression], [false, false, false]);
-  assert.deepEqual([r.regressions, r.improvements, r.tradeoffs, r.warnings].map((l) => l.length), [0, 0, 0, 0]);
+  assert.deepEqual(
+    [r.regressions, r.improvements, r.tradeoffs, r.warnings].map((l) => l.length),
+    [0, 0, 0, 0],
+  );
 });
 
 test('"improved recall but introduced semantic false positives": reported as a TRADEOFF naming the new unexpected items — never as a plain improvement', () => {
@@ -37,17 +53,35 @@ test('"improved recall but introduced semantic false positives": reported as a T
   assert.deepEqual(recall.resolved, ['c1|b']);
   assert.deepEqual(precision.newlyFailing, ['c1|decision_node|spurious one', 'c1|decision_node|spurious two']);
   assert.equal(r.tradeoffs.length, 1);
-  assert.match(r.tradeoffs[0]!.message, /semanticRecall improved 50\.0% \(1\/2\) -> 100\.0% \(2\/2\) but semanticPrecision regressed 100\.0% \(1\/1\) -> 50\.0% \(2\/4\).*newly failing: c1:decision_node\|spurious one, c1:decision_node\|spurious two/);
+  assert.match(
+    r.tradeoffs[0]!.message,
+    /semanticRecall improved 50\.0% \(1\/2\) -> 100\.0% \(2\/2\) but semanticPrecision regressed 100\.0% \(1\/1\) -> 50\.0% \(2\/4\).*newly failing: c1:decision_node\|spurious one, c1:decision_node\|spurious two/,
+  );
   assert.equal(r.classification, 'mixed');
   assert.match(formatRegression(r), /Tradeoffs \(1\)/);
 });
 
 test('"a runtime change did not change semantic compilation but broke execution": compile/capability/workflow stage OUTPUTS are identical, an execution metric regressed => execution-only, attributed to `execution`', () => {
-  const capExec = { id: 'e1', kind: 'capability' as const, target: { equals: 'K' }, input: {}, expect: { outcome: 'succeeded' as const, output: { matched: true } } };
-  const d = caseDef({ semantics: { facts: [fact('a', 'alpha')] }, capabilities: { items: [{ id: 'k', name: { equals: 'K' }, executionClass: 'deterministic_rule' as const }] } }, [capExec]);
+  const capExec = {
+    id: 'e1',
+    kind: 'capability' as const,
+    target: { equals: 'K' },
+    input: {},
+    expect: { outcome: 'succeeded' as const, output: { matched: true } },
+  };
+  const d = caseDef(
+    {
+      semantics: { facts: [fact('a', 'alpha')] },
+      capabilities: { items: [{ id: 'k', name: { equals: 'K' }, executionClass: 'deterministic_rule' as const }] },
+    },
+    [capExec],
+  );
   const compileSide = { nodes: [rule('n1', 'alpha')], capabilities: [cap('c1', 'K')] };
   const before = observation({ ...compileSide, executions: [capRun('e1', { output: { matched: true } })] });
-  const after = observation({ ...compileSide, executions: [capRun('e1', { outcome: 'error', errorCode: 'XO_RUNTIME_EXECUTION_FAILED', message: 'evaluator threw' })] });
+  const after = observation({
+    ...compileSide,
+    executions: [capRun('e1', { outcome: 'error', errorCode: 'XO_RUNTIME_EXECUTION_FAILED', message: 'evaluator threw' })],
+  });
   const r = compareReports(report([d], [before]), report([d], [after]));
 
   assert.equal(r.compilationOutputChanged, false, 'the semantic compilation output is byte-for-byte the same');
@@ -73,8 +107,40 @@ test('a COMPILE-side regression is attributed to compilation, and the execution 
 });
 
 test('lost coverage: when an upstream item vanishes, a downstream metric whose denominator shrinks is flagged `coverage_reduced` — a ratio alone would have hidden it', () => {
-  const d = caseDef({ workflows: { items: [{ id: 'w', steps: [{ equals: 'A' }, { equals: 'B' }], dataFlow: { bindings: [{ producer: { equals: 'A' }, output: 'o', consumer: { equals: 'B' }, input: 'i', status: 'proven' as const }] } }] } });
-  const flow = wf('wf1', [['a', 'A'], ['b', 'B']], { bindings: [{ producerCapabilityId: 'a', producerName: 'A', output: 'o', consumerCapabilityId: 'b', consumerName: 'B', input: 'i', status: 'proven', wired: true }] });
+  const d = caseDef({
+    workflows: {
+      items: [
+        {
+          id: 'w',
+          steps: [{ equals: 'A' }, { equals: 'B' }],
+          dataFlow: {
+            bindings: [{ producer: { equals: 'A' }, output: 'o', consumer: { equals: 'B' }, input: 'i', status: 'proven' as const }],
+          },
+        },
+      ],
+    },
+  });
+  const flow = wf(
+    'wf1',
+    [
+      ['a', 'A'],
+      ['b', 'B'],
+    ],
+    {
+      bindings: [
+        {
+          producerCapabilityId: 'a',
+          producerName: 'A',
+          output: 'o',
+          consumerCapabilityId: 'b',
+          consumerName: 'B',
+          input: 'i',
+          status: 'proven',
+          wired: true,
+        },
+      ],
+    },
+  );
   const before = observation({ capabilities: [cap('a', 'A'), cap('b', 'B')], workflows: [flow] });
   const after = observation({ capabilities: [cap('a', 'A'), cap('b', 'B')], workflows: [] });
   const r = compareReports(report([d], [before]), report([d], [after]));
@@ -97,7 +163,10 @@ test('item-aware verdicts: fixing one item while breaking another leaves the rat
 
 test('improvement only => `improved`', () => {
   const d = caseDef({ semantics: { facts: [fact('a', 'alpha'), fact('b', 'beta')] } });
-  const r = compareReports(report([d], [observation({ nodes: [rule('n1', 'alpha')] })]), report([d], [observation({ nodes: [rule('n1', 'alpha'), rule('n2', 'beta')] })]));
+  const r = compareReports(
+    report([d], [observation({ nodes: [rule('n1', 'alpha')] })]),
+    report([d], [observation({ nodes: [rule('n1', 'alpha'), rule('n2', 'beta')] })]),
+  );
   assert.equal(r.classification, 'improved');
   assert.equal(r.regressions.length + r.tradeoffs.length, 0);
 });
@@ -157,8 +226,14 @@ test('REAL pipeline regression detection: removing the precedence edge between t
     assert.equal(r.executionOnlyRegression, false);
     const ids = new Set(r.regressions.map((f) => f.metricId));
     for (const id of ['workflowRecall', 'executionCorrectness']) assert.ok(ids.has(id as never), `${id} regressed: ${[...ids].join(', ')}`);
-    assert.ok(r.warnings.some((w) => w.kind === 'coverage_reduced' && w.metricId === 'dataFlowCorrectness'), 'the proven-binding assertion disappeared with the workflow');
-    assert.ok(r.warnings.some((w) => w.kind === 'coverage_reduced' && w.metricId === 'runtimeDataFlowTransfer') || r.regressions.some((f) => f.metricId === 'runtimeDataFlowTransfer'));
+    assert.ok(
+      r.warnings.some((w) => w.kind === 'coverage_reduced' && w.metricId === 'dataFlowCorrectness'),
+      'the proven-binding assertion disappeared with the workflow',
+    );
+    assert.ok(
+      r.warnings.some((w) => w.kind === 'coverage_reduced' && w.metricId === 'runtimeDataFlowTransfer') ||
+        r.regressions.some((f) => f.metricId === 'runtimeDataFlowTransfer'),
+    );
     // The workflow-execution failures are attributed to the compile side (the workflow no longer exists), not to the runtime.
     const exec = current.cases[0]!.items.filter((i) => i.dimension === 'execution' && i.outcome !== 'passed');
     assert.ok(exec.length > 0);
@@ -170,4 +245,3 @@ test('REAL pipeline regression detection: removing the precedence edge between t
     await rm(dir, { recursive: true, force: true });
   }
 });
-

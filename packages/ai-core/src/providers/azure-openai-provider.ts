@@ -61,7 +61,9 @@ export class AzureOpenAiProvider implements ModelProvider {
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
         messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
-        response_format: request.responseSchema ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } } : undefined,
+        response_format: request.responseSchema
+          ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } }
+          : undefined,
       }),
     });
 
@@ -80,7 +82,14 @@ export class AzureOpenAiProvider implements ModelProvider {
       text: choice.message.content ?? '',
       usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens },
       modelUsed: request.model,
-      finishReason: choice.finish_reason === 'stop' ? 'stop' : choice.finish_reason === 'length' ? 'length' : choice.finish_reason === 'content_filter' ? 'content_filter' : 'error',
+      finishReason:
+        choice.finish_reason === 'stop'
+          ? 'stop'
+          : choice.finish_reason === 'length'
+            ? 'length'
+            : choice.finish_reason === 'content_filter'
+              ? 'content_filter'
+              : 'error',
     };
   }
 }

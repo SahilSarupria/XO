@@ -50,7 +50,7 @@ test('--version and -v print the package version', async () => {
   }
 });
 
-test('`init --version` is still init\'s own flag, not the CLI version flag', async () => {
+test("`init --version` is still init's own flag, not the CLI version flag", async () => {
   const r = await capture(() => run(['init'], quiet)); // missing args -> init's own usage line, exit 1
   assert.equal(r.code, 1);
   assert.doesNotMatch(r.out, new RegExp(`^xo ${pkgVersion}$`, 'm'));
@@ -68,8 +68,11 @@ test('--help (and -h) still print the global usage and now document interactive 
   }
 });
 
-test('<command> --help / -h prints just that command\'s usage', async () => {
-  for (const argv of [['compile', '--help'], ['compile', '-h']]) {
+test("<command> --help / -h prints just that command's usage", async () => {
+  for (const argv of [
+    ['compile', '--help'],
+    ['compile', '-h'],
+  ]) {
     const r = await capture(() => run(argv, quiet));
     assert.equal(r.code, 0);
     assert.match(r.out, /xo compile <source>/);
@@ -114,7 +117,7 @@ test('-p: needs text, needs a store, and never falls into the interactive sessio
   });
 });
 
-test('without a terminal, `run([])` never starts the interactive session, even if the caller\'s own stdio is a TTY', async () => {
+test("without a terminal, `run([])` never starts the interactive session, even if the caller's own stdio is a TTY", async () => {
   const r = await capture(() => run([], quiet));
   assert.equal(r.code, 0);
   assert.match(r.out, /Experience Object platform CLI/);
@@ -164,14 +167,24 @@ test('--help with a TTY terminal prints usage instead of starting the session', 
 test('one-shot output is colorized on a color TTY, and stripping the colors gives exactly the plain output', async () => {
   const plain = await capture(() => run(['doctor'], quiet));
   const term = fakeTerminal();
-  const colored = await capture(() => run(['doctor'], quiet, { terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor' } } }));
+  const colored = await capture(() =>
+    run(['doctor'], quiet, { terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor' } } }),
+  );
   assert.equal(colored.code, plain.code);
   assert.match(colored.out, /\u001b\[/);
   assert.equal(stripAnsi(colored.out), plain.out);
 
-  const noColor = await capture(() => run(['doctor', '--no-color'], quiet, { terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor' } } }));
+  const noColor = await capture(() =>
+    run(['doctor', '--no-color'], quiet, {
+      terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor' } },
+    }),
+  );
   assert.equal(noColor.out, plain.out);
-  const envOff = await capture(() => run(['doctor'], quiet, { terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor', NO_COLOR: '1' } } }));
+  const envOff = await capture(() =>
+    run(['doctor'], quiet, {
+      terminal: { stdin: term.stdin, stdout: term.stdout as never, env: { COLORTERM: 'truecolor', NO_COLOR: '1' } },
+    }),
+  );
   assert.equal(envOff.out, plain.out);
 });
 
@@ -194,6 +207,8 @@ test('every registered command has a description the session menu can show', () 
 test('no registered command shares a name with a session command (which would silently shadow it)', () => {
   const registry = buildRegistry();
   const registered = new Set([...registry.listBySubsystem().values()].flatMap((s) => s.commands.map((c) => c.name)));
-  const clashes = sessionCatalog().filter((e) => registered.has(e.name)).map((e) => e.name);
+  const clashes = sessionCatalog()
+    .filter((e) => registered.has(e.name))
+    .map((e) => e.name);
   assert.deepEqual(clashes, []);
 });

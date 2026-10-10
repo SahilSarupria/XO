@@ -32,7 +32,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'publish',
     subsystem: SUBSYSTEM,
-    usage: 'xo publish <archive.xo> --registry <dir>\n                                         Verify and publish a package to a local registry',
+    usage:
+      'xo publish <archive.xo> --registry <dir>\n                                         Verify and publish a package to a local registry',
     run: async (args) => {
       const archivePath = args.positionals[0];
       const registryDir = requireFlag(args.flags, 'registry');
@@ -62,7 +63,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'registry',
     subsystem: SUBSYSTEM,
-    usage: 'xo registry inspect <id> --registry <dir>\n                                         Print a published package plus its recorded benchmark runs',
+    usage:
+      'xo registry inspect <id> --registry <dir>\n                                         Print a published package plus its recorded benchmark runs',
     run: async (args) => {
       const subcommand = args.positionals[0];
       if (subcommand !== 'inspect') {

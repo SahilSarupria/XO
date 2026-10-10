@@ -64,7 +64,12 @@ export function deserializeCapabilityGraph(json: string): Result<CapabilityGraph
     return err(new SerializationError(ErrorCode.SERIALIZATION_PARSE_FAILED, 'Failed to parse CapabilityGraph JSON', { cause }));
   }
   if (!isCapabilityGraphShape(parsed)) {
-    return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, 'Parsed JSON does not have the shape of a CapabilityGraph ({ capabilities: [], relationships: [] })'));
+    return err(
+      new SerializationError(
+        ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+        'Parsed JSON does not have the shape of a CapabilityGraph ({ capabilities: [], relationships: [] })',
+      ),
+    );
   }
   return ok(parsed);
 }

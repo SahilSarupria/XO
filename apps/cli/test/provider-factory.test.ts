@@ -30,7 +30,10 @@ test('azure-openai requires both an API key and an endpoint', () => {
   assert.equal(missingEndpoint.ok, false);
   if (!missingEndpoint.ok) assert.match(missingEndpoint.error, /endpoint/);
 
-  const ok = resolveProvider({ provider: 'azure-openai' }, { AZURE_OPENAI_API_KEY: 'k', AZURE_OPENAI_ENDPOINT: 'https://my-resource.openai.azure.com' });
+  const ok = resolveProvider(
+    { provider: 'azure-openai' },
+    { AZURE_OPENAI_API_KEY: 'k', AZURE_OPENAI_ENDPOINT: 'https://my-resource.openai.azure.com' },
+  );
   assert.equal(ok.ok, true);
   if (ok.ok) assert.equal(ok.value.id, 'azure-openai');
 });

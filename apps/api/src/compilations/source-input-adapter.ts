@@ -40,7 +40,9 @@ export function buildCompilerSourceInput(extension: string, bytes: Uint8Array, s
     case '.md':
       return { kind: 'document', text: new TextDecoder().decode(bytes), sourcePath };
     default:
-      throw new Error(`internal error: extension "${extension}" passed SUPPORTED_EXTENSIONS but has no compiler source-input mapping — this is a bug in source.ts/source-input-adapter.ts staying in sync, not a client error`);
+      throw new Error(
+        `internal error: extension "${extension}" passed SUPPORTED_EXTENSIONS but has no compiler source-input mapping — this is a bug in source.ts/source-input-adapter.ts staying in sync, not a client error`,
+      );
   }
 }
 
@@ -54,5 +56,10 @@ function looksLikeOpenApiDocument(text: string): boolean {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false;
   const candidate = parsed as Record<string, unknown>;
-  return typeof candidate.openapi === 'string' && candidate.openapi.startsWith('3.') && typeof candidate.paths === 'object' && candidate.paths !== null;
+  return (
+    typeof candidate.openapi === 'string' &&
+    candidate.openapi.startsWith('3.') &&
+    typeof candidate.paths === 'object' &&
+    candidate.paths !== null
+  );
 }

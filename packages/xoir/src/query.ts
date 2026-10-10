@@ -79,7 +79,8 @@ export function findPath(graph: XoirGraph, fromId: XoirNodeId, toId: XoirNodeId,
   while (queue.length > 0) {
     const { id, path } = queue.shift()!;
     if (path.length - 1 >= maxDepth) continue;
-    const neighborOpts = options.edgeKind !== undefined ? { edgeKind: options.edgeKind, direction: 'outgoing' as const } : { direction: 'outgoing' as const };
+    const neighborOpts =
+      options.edgeKind !== undefined ? { edgeKind: options.edgeKind, direction: 'outgoing' as const } : { direction: 'outgoing' as const };
     for (const neighbor of graph.neighbors(id, neighborOpts)) {
       if (visited.has(neighbor.id)) continue;
       const nextPath = [...path, neighbor.id];

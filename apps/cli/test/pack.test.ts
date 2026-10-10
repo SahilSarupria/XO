@@ -55,7 +55,7 @@ test('pack on a document (non-directory) input points at xo create instead of gu
   });
 });
 
-test('pack on a directory with no xo.project.json passes through build\'s own error', async () => {
+test("pack on a directory with no xo.project.json passes through build's own error", async () => {
   await withTempDir('xo-pack-test-', async (tmp) => {
     const result = await packCommand({ dir: tmp });
     assert.equal(result.exitCode, 1);

@@ -69,7 +69,13 @@ export const SEQUENCE_RELATION_TYPE: CapabilityRelationType = 'custom:sequence';
 const SEQUENCE_WITHIN_UNIT_CONFIDENCE = 0.45;
 const SEQUENCE_CROSS_UNIT_CONFIDENCE = 0.35;
 
-function unitProvenance(unit: { readonly id: string; readonly provenance: { readonly documentPath: string; readonly pages: readonly number[]; readonly sectionPath: readonly string[] } }, confidence: number): KnowledgeProvenance {
+function unitProvenance(
+  unit: {
+    readonly id: string;
+    readonly provenance: { readonly documentPath: string; readonly pages: readonly number[]; readonly sectionPath: readonly string[] };
+  },
+  confidence: number,
+): KnowledgeProvenance {
   return {
     experienceUnitId: unit.id,
     documentPath: unit.provenance.documentPath,
@@ -114,7 +120,13 @@ export function buildCapabilityRelationships(
   }
   const accumulators = new Map<string, EdgeAccumulator>();
 
-  const pushEdge = (type: CapabilityRelationType, fromId: CapabilityId | undefined, toId: CapabilityId | undefined, confidence: number, provenance: KnowledgeProvenance): void => {
+  const pushEdge = (
+    type: CapabilityRelationType,
+    fromId: CapabilityId | undefined,
+    toId: CapabilityId | undefined,
+    confidence: number,
+    provenance: KnowledgeProvenance,
+  ): void => {
     if (fromId === undefined || toId === undefined || fromId === toId) return;
     const key = `${type}\u0000${fromId}\u0000${toId}`;
     const existing = accumulators.get(key);
@@ -161,7 +173,13 @@ export function buildCapabilityRelationships(
       }
       if (previousId !== undefined) {
         pushEdge('complements', candidateId, previousId, COMPLEMENTS_CONFIDENCE, unitProvenance(unit, COMPLEMENTS_CONFIDENCE));
-        pushEdge(SEQUENCE_RELATION_TYPE, previousId, candidateId, SEQUENCE_WITHIN_UNIT_CONFIDENCE, unitProvenance(unit, SEQUENCE_WITHIN_UNIT_CONFIDENCE));
+        pushEdge(
+          SEQUENCE_RELATION_TYPE,
+          previousId,
+          candidateId,
+          SEQUENCE_WITHIN_UNIT_CONFIDENCE,
+          unitProvenance(unit, SEQUENCE_WITHIN_UNIT_CONFIDENCE),
+        );
       }
       if (firstId === undefined) firstId = candidateId;
       previousId = candidateId;
@@ -223,7 +241,13 @@ export function buildCapabilityRelationships(
       // followed by plain prose) is left exactly as before: this
       // exclusion only fires on a *proven* unordered/unordered pair.
       if (prevUnit.listKind === 'unordered' && nextUnit.listKind === 'unordered') continue;
-      pushEdge(SEQUENCE_RELATION_TYPE, prevEndpoints.lastId, nextEndpoints.firstId, SEQUENCE_CROSS_UNIT_CONFIDENCE, unitProvenance(prevUnit, SEQUENCE_CROSS_UNIT_CONFIDENCE));
+      pushEdge(
+        SEQUENCE_RELATION_TYPE,
+        prevEndpoints.lastId,
+        nextEndpoints.firstId,
+        SEQUENCE_CROSS_UNIT_CONFIDENCE,
+        unitProvenance(prevUnit, SEQUENCE_CROSS_UNIT_CONFIDENCE),
+      );
     }
   }
 
@@ -233,7 +257,14 @@ export function buildCapabilityRelationships(
       if (fromCap.id === toCap.id) continue;
       if (toCap.canonicalName.length < MIN_MENTION_LABEL_LENGTH) continue;
       if (fromCap.description.includes(toCap.canonicalName)) {
-        const provenance: KnowledgeProvenance = fromCap.provenance[0] ?? { experienceUnitId: '', documentPath: '', pages: [], sectionPath: [], charOffsetRange: undefined, confidence: DEPENDS_ON_CONFIDENCE };
+        const provenance: KnowledgeProvenance = fromCap.provenance[0] ?? {
+          experienceUnitId: '',
+          documentPath: '',
+          pages: [],
+          sectionPath: [],
+          charOffsetRange: undefined,
+          confidence: DEPENDS_ON_CONFIDENCE,
+        };
         pushEdge('depends_on', fromCap.id, toCap.id, DEPENDS_ON_CONFIDENCE, provenance);
       }
     }

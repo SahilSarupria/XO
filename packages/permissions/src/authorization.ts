@@ -285,12 +285,7 @@ export function subjectPrincipal(subject: AuthorizationSubject): Principal | und
 // ── The decision ────────────────────────────────────────────────────────
 
 export type AuthorizationDenialCode =
-  | 'no-policy'
-  | 'no-subject'
-  | 'no-requester'
-  | 'unresolved-declaration'
-  | 'permission-denied'
-  | 'evaluation-error';
+  'no-policy' | 'no-subject' | 'no-requester' | 'unresolved-declaration' | 'permission-denied' | 'evaluation-error';
 
 export type AuthorizationOutcome =
   | { readonly allowed: true; readonly checked: readonly PermissionRequirement[] }

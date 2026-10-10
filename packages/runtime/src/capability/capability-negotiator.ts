@@ -52,7 +52,11 @@ export class CapabilityNegotiator {
    * explicitly opted into being usable in a degraded form rather than
    * excluded outright.
    */
-  filterIncompatible(candidates: readonly CapabilityDescriptor[], request: ExecutionRequest, context: RuntimeContext): readonly ResolvedCandidate[] {
+  filterIncompatible(
+    candidates: readonly CapabilityDescriptor[],
+    request: ExecutionRequest,
+    context: RuntimeContext,
+  ): readonly ResolvedCandidate[] {
     const resolved: ResolvedCandidate[] = [];
     for (const capability of candidates) {
       const mounted = context.registry.get(capability.packageName, capability.packageVersion);
@@ -119,7 +123,8 @@ export class CapabilityNegotiator {
     const deduplicated = this.resolveDuplicates(compatible);
     const ranked = this.rank(deduplicated);
 
-    const status: ExecutionPlanStatus = ranked.length > 0 ? 'planned' : discovered.length === 0 ? 'no_candidates' : 'no_compatible_candidate';
+    const status: ExecutionPlanStatus =
+      ranked.length > 0 ? 'planned' : discovered.length === 0 ? 'no_candidates' : 'no_compatible_candidate';
 
     const plan: ExecutionPlan = Object.freeze({
       planId: PlanId(`plan_${request.requestId}`),

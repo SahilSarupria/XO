@@ -61,7 +61,12 @@ test('generateUpgradePlan marks removing a required component as unsafe', () => 
     .setIdentity({ formatVersion: '1.0', name: from.manifest.name, version: '1.1.0', creatorDid: from.manifest.creatorDid })
     .setCompatibility(sampleCompatibility)
     .setMetadata(sampleMetadata)
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{}'), required: true });
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{}'),
+      required: true,
+    });
   const to = toBuilder.build();
   assert.ok(to.ok);
 
@@ -78,8 +83,18 @@ test('generateUpgradePlan is safe for a well-formed additive minor bump', () => 
     .setCompatibility(sampleCompatibility)
     .setMetadata(sampleMetadata)
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
-    .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode('{"nodes":[1]}'), required: false })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
+    .addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode('{"nodes":[1]}'),
+      required: false,
+    })
     .build();
   assert.ok(to.ok);
   const plan = generateUpgradePlan(from, to.value);

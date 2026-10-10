@@ -1,12 +1,4 @@
-import type {
-  Capability,
-  Community,
-  MarketplaceWorld,
-  Publisher,
-  Relationship,
-  Workflow,
-  XOEntity,
-} from './types.js'
+import type { Capability, Community, MarketplaceWorld, Publisher, Relationship, Workflow, XOEntity } from './types.js';
 
 /**
  * A plain-JSON-safe form of MarketplaceWorld \u2014 Maps replaced with
@@ -15,13 +7,13 @@ import type {
  * JSON, not just structurally-equal objects).
  */
 export interface SerializedWorld {
-  readonly xos: readonly XOEntity[]
-  readonly capabilities: readonly Capability[]
-  readonly workflows: readonly Workflow[]
-  readonly publishers: readonly Publisher[]
-  readonly communities: readonly Community[]
-  readonly relationships: readonly Relationship[]
-  readonly positions: readonly { readonly xoId: string; readonly x: number; readonly y: number }[]
+  readonly xos: readonly XOEntity[];
+  readonly capabilities: readonly Capability[];
+  readonly workflows: readonly Workflow[];
+  readonly publishers: readonly Publisher[];
+  readonly communities: readonly Community[];
+  readonly relationships: readonly Relationship[];
+  readonly positions: readonly { readonly xoId: string; readonly x: number; readonly y: number }[];
 }
 
 export function serializeWorld(world: MarketplaceWorld): SerializedWorld {
@@ -36,7 +28,7 @@ export function serializeWorld(world: MarketplaceWorld): SerializedWorld {
       [...world.positions.entries()].map(([xoId, p]) => ({ xoId, x: p.x, y: p.y })),
       (p) => p.xoId,
     ),
-  }
+  };
 }
 
 export function deserializeWorld(data: SerializedWorld): MarketplaceWorld {
@@ -48,9 +40,9 @@ export function deserializeWorld(data: SerializedWorld): MarketplaceWorld {
     communities: new Map(data.communities.map((c) => [c.id, c])),
     relationships: [...data.relationships],
     positions: new Map(data.positions.map((p) => [p.xoId, { x: p.x, y: p.y }])),
-  }
+  };
 }
 
 function sortedBy<T>(items: T[], key: (item: T) => string): T[] {
-  return [...items].sort((a, b) => key(a).localeCompare(key(b)))
+  return [...items].sort((a, b) => key(a).localeCompare(key(b)));
 }

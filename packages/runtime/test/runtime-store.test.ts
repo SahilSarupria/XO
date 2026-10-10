@@ -20,7 +20,16 @@ import type { WorkflowInstance } from '../src/workflow/workflow-instance.js';
 const now = () => new Date('2026-01-01T00:00:00.000Z');
 
 function fixtureSession(id = 's1'): ExecutionSession {
-  return { sessionId: SessionId(id), requestId: RequestId('r1'), mountedPackages: [], chosenCapabilities: [], status: 'completed', receipts: [], createdAt: 't', updatedAt: 't' };
+  return {
+    sessionId: SessionId(id),
+    requestId: RequestId('r1'),
+    mountedPackages: [],
+    chosenCapabilities: [],
+    status: 'completed',
+    receipts: [],
+    createdAt: 't',
+    updatedAt: 't',
+  };
 }
 
 function fixtureGraph(id = 'g1'): WorkflowGraph {
@@ -153,7 +162,10 @@ for (const fixture of fixtures) {
       assert.ok(listed.ok);
       if (listed.ok) {
         assert.equal(listed.value.length, 3);
-        assert.deepEqual(listed.value.map((r) => r.data.sequence), [0, 1, 2]);
+        assert.deepEqual(
+          listed.value.map((r) => r.data.sequence),
+          [0, 1, 2],
+        );
       }
 
       const latest = await store.checkpoints.latestForExecution(WorkflowInstanceId('wf-cp'));
@@ -203,7 +215,12 @@ for (const fixture of fixtures) {
       const executionReceipt = fixtureExecutionReceipt('er1');
       await store.receipts.saveExecutionReceipt(instance.workflowInstanceId, executionReceipt);
 
-      const workflowReceipt = buildWorkflowReceipt({ instance, nodeReceipts: [{ nodeId: NodeId('a'), receipt: executionReceipt }], durationMs: 5, now });
+      const workflowReceipt = buildWorkflowReceipt({
+        instance,
+        nodeReceipts: [{ nodeId: NodeId('a'), receipt: executionReceipt }],
+        durationMs: 5,
+        now,
+      });
       await store.receipts.saveWorkflowReceipt(workflowReceipt);
 
       const gotExecution = await store.receipts.getExecutionReceipt('er1' as never);
@@ -303,7 +320,11 @@ for (const fixture of fixtures) {
   test(`[${fixture.name}] multiple independent sessions can be created and listed together`, async () => {
     const { store, cleanup } = await fixture.create();
     try {
-      await Promise.all([store.sessions.create(fixtureSession('m1')), store.sessions.create(fixtureSession('m2')), store.sessions.create(fixtureSession('m3'))]);
+      await Promise.all([
+        store.sessions.create(fixtureSession('m1')),
+        store.sessions.create(fixtureSession('m2')),
+        store.sessions.create(fixtureSession('m3')),
+      ]);
       const listed = await store.sessions.list();
       assert.equal(listed.ok && listed.value.length, 3);
     } finally {
@@ -383,7 +404,12 @@ test('[FileRuntimeStore] checkpoint sequence numbering continues correctly acros
     const storeB = new FileRuntimeStore({ rootDir: dir, now });
     const saved = await storeB.checkpoints.save(createCheckpoint(instance, now));
     assert.ok(saved.ok);
-    if (saved.ok) assert.equal(saved.value.data.sequence, 2, 'a fresh store instance must continue numbering from what is actually on disk, not restart at 0');
+    if (saved.ok)
+      assert.equal(
+        saved.value.data.sequence,
+        2,
+        'a fresh store instance must continue numbering from what is actually on disk, not restart at 0',
+      );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

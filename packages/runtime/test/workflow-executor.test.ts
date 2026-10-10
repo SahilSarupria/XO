@@ -5,21 +5,43 @@ import { ok } from '@xo/types';
 import { WorkflowExecutor } from '../src/workflow/workflow-executor.js';
 import { WorkflowEventEmitter, type WorkflowEvent } from '../src/workflow/workflow-events.js';
 import { NodeId, type WorkflowGraph } from '../src/workflow/workflow-graph.js';
-import { EnvironmentId, RequestId } from '../src/ids.js';
+import { EnvironmentId } from '../src/ids.js';
 import type { ExecutionEnvironment, ExecutionRequest } from '../src/execution/execution-request.js';
 import type { ExecutionResult } from '../src/execution/execution-result.js';
 import { ExecutionCancellation } from '../src/cancellation/execution-cancellation.js';
 import { SessionId } from '../src/ids.js';
 
 function environment(overrides: Partial<ExecutionEnvironment> = {}): ExecutionEnvironment {
-  return { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z', ...overrides };
+  return {
+    environmentId: EnvironmentId('env_1'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
 }
 
 function stubExecutionResult(request: ExecutionRequest, content: string): ExecutionResult {
   return {
     executionId: request.requestId as unknown as ExecutionResult['executionId'],
-    session: { sessionId: SessionId('s'), requestId: request.requestId, mountedPackages: [], chosenCapabilities: [], status: 'completed', receipts: [], createdAt: 't', updatedAt: 't' },
-    response: { content, stopReason: 'end_turn', usage: { promptTokens: 1, completionTokens: 1 }, capabilityId: request.capabilityId ?? '', packageName: 'stub_pkg', packageVersion: '1.0.0', degraded: false },
+    session: {
+      sessionId: SessionId('s'),
+      requestId: request.requestId,
+      mountedPackages: [],
+      chosenCapabilities: [],
+      status: 'completed',
+      receipts: [],
+      createdAt: 't',
+      updatedAt: 't',
+    },
+    response: {
+      content,
+      stopReason: 'end_turn',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      capabilityId: request.capabilityId ?? '',
+      packageName: 'stub_pkg',
+      packageVersion: '1.0.0',
+      degraded: false,
+    },
     receipt: {
       receiptId: 'r' as never,
       requestId: request.requestId,
@@ -61,15 +83,27 @@ class StubCapabilityRunner {
     const delayMs = this.delays.get(capabilityId);
     if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (cancellation.isCancelled) {
-      return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, 'cancelled') };
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, 'cancelled'),
+      };
     }
     if (this.permanentFailures.has(capabilityId)) {
-      return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `stub failure for ${capabilityId}`) };
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `stub failure for ${capabilityId}`),
+      };
     }
     const remaining = this.failuresRemaining.get(capabilityId) ?? 0;
     if (remaining > 0) {
       this.failuresRemaining.set(capabilityId, remaining - 1);
-      return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `transient failure for ${capabilityId}`) };
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `transient failure for ${capabilityId}`),
+      };
     }
     return stubExecutionResult(request, `${capabilityId}-output`);
   };
@@ -149,7 +183,11 @@ test('conditional branch: the decision selects one path, the other resolves to s
     ],
     edges: [
       { from: NodeId('check'), to: NodeId('decide') },
-      { from: NodeId('decide'), to: NodeId('high'), condition: { kind: 'expression', field: 'check', operator: 'eq', value: 'cap_check-output' } },
+      {
+        from: NodeId('decide'),
+        to: NodeId('high'),
+        condition: { kind: 'expression', field: 'check', operator: 'eq', value: 'cap_check-output' },
+      },
       { from: NodeId('decide'), to: NodeId('low') },
     ],
   };
@@ -170,7 +208,14 @@ test('retry: a node that fails twice then succeeds completes with attempt 3 reco
     graphId: 'retry',
     version: '1.0.0',
     startNodeId: NodeId('flaky'),
-    nodes: [{ id: NodeId('flaky'), type: 'capability', config: { capabilityId: 'cap_flaky', input: 'x' }, retryPolicy: { maxAttempts: 3, backoffMs: 1 } }],
+    nodes: [
+      {
+        id: NodeId('flaky'),
+        type: 'capability',
+        config: { capabilityId: 'cap_flaky', input: 'x' },
+        retryPolicy: { maxAttempts: 3, backoffMs: 1 },
+      },
+    ],
     edges: [],
   };
 
@@ -190,7 +235,14 @@ test('retry exhausted: a permanently failing node fails the whole workflow', asy
     graphId: 'retry-exhausted',
     version: '1.0.0',
     startNodeId: NodeId('broken'),
-    nodes: [{ id: NodeId('broken'), type: 'capability', config: { capabilityId: 'cap_broken', input: 'x' }, retryPolicy: { maxAttempts: 2, backoffMs: 1 } }],
+    nodes: [
+      {
+        id: NodeId('broken'),
+        type: 'capability',
+        config: { capabilityId: 'cap_broken', input: 'x' },
+        retryPolicy: { maxAttempts: 2, backoffMs: 1 },
+      },
+    ],
     edges: [],
   };
 
@@ -362,7 +414,13 @@ test('loop: runs the body graph until the exit condition is met, tracking iterat
     graphId: 'loop-outer',
     version: '1.0.0',
     startNodeId: NodeId('loop'),
-    nodes: [{ id: NodeId('loop'), type: 'loop', config: { bodyGraph: body, maxIterations: 5, exitCondition: { kind: 'expression', field: 'step', operator: 'eq', value: '3' } } }],
+    nodes: [
+      {
+        id: NodeId('loop'),
+        type: 'loop',
+        config: { bodyGraph: body, maxIterations: 5, exitCondition: { kind: 'expression', field: 'step', operator: 'eq', value: '3' } },
+      },
+    ],
     edges: [],
   };
 
@@ -385,7 +443,13 @@ test('loop: maxIterations guards against a never-satisfied exit condition', asyn
     graphId: 'loop-outer-2',
     version: '1.0.0',
     startNodeId: NodeId('loop'),
-    nodes: [{ id: NodeId('loop'), type: 'loop', config: { bodyGraph: body, maxIterations: 4, exitCondition: { kind: 'expression', field: 'never', operator: 'truthy' } } }],
+    nodes: [
+      {
+        id: NodeId('loop'),
+        type: 'loop',
+        config: { bodyGraph: body, maxIterations: 4, exitCondition: { kind: 'expression', field: 'never', operator: 'truthy' } },
+      },
+    ],
     edges: [],
   };
 

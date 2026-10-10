@@ -1,4 +1,4 @@
-import { clamp01 } from './types.js'
+import { clamp01 } from './types.js';
 
 /**
  * Semantic zoom.
@@ -15,57 +15,57 @@ import { clamp01 } from './types.js'
  * content model.
  */
 export interface SemanticZoomRule<T = unknown> {
-  readonly id: string
+  readonly id: string;
   /** Altitude at which this begins to appear (visibility 0). */
-  readonly appearsAt: number
+  readonly appearsAt: number;
   /** Altitude at which this is fully present (visibility 1). */
-  readonly fullyVisibleAt: number
-  readonly data?: T
+  readonly fullyVisibleAt: number;
+  readonly data?: T;
 }
 
 export interface EmergenceState<T = unknown> {
-  readonly id: string
+  readonly id: string;
   /** 0 = not yet emerged, 1 = fully present. Never negative or above 1. */
-  readonly visibility: number
-  readonly data?: T
+  readonly visibility: number;
+  readonly data?: T;
 }
 
 export class SemanticZoomRegistry<T = unknown> {
-  private readonly rules = new Map<string, SemanticZoomRule<T>>()
+  private readonly rules = new Map<string, SemanticZoomRule<T>>();
 
   register(rule: SemanticZoomRule<T>): void {
-    this.rules.set(rule.id, rule)
+    this.rules.set(rule.id, rule);
   }
 
   unregister(id: string): void {
-    this.rules.delete(id)
+    this.rules.delete(id);
   }
 
   clear(): void {
-    this.rules.clear()
+    this.rules.clear();
   }
 
   /** Every registered rule's emergence state at a given altitude. */
   at(altitude: number): EmergenceState<T>[] {
-    const states: EmergenceState<T>[] = []
+    const states: EmergenceState<T>[] = [];
     for (const rule of this.rules.values()) {
-      states.push({ id: rule.id, visibility: emergence(rule, altitude), data: rule.data })
+      states.push({ id: rule.id, visibility: emergence(rule, altitude), data: rule.data });
     }
-    return states
+    return states;
   }
 
   /** Only what has begun to emerge (visibility > 0), most visible first. */
   visible(altitude: number): EmergenceState<T>[] {
     return this.at(altitude)
       .filter((state) => state.visibility > 0)
-      .sort((a, b) => b.visibility - a.visibility)
+      .sort((a, b) => b.visibility - a.visibility);
   }
 }
 
 function emergence<T>(rule: SemanticZoomRule<T>, altitude: number): number {
-  const span = rule.fullyVisibleAt - rule.appearsAt
+  const span = rule.fullyVisibleAt - rule.appearsAt;
   if (span <= 0) {
-    return altitude >= rule.appearsAt ? 1 : 0
+    return altitude >= rule.appearsAt ? 1 : 0;
   }
-  return clamp01((altitude - rule.appearsAt) / span)
+  return clamp01((altitude - rule.appearsAt) / span);
 }

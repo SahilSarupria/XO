@@ -12,7 +12,10 @@ function samplePlugin(): GraphPlugin {
     layouts: [
       {
         kind: 'diagonal',
-        compute: (model) => ({ kind: 'diagonal' as any, positions: model.nodes.map((n, i) => ({ id: n.id, position: { x: i * 10, y: i * 10 } })) }),
+        compute: (model) => ({
+          kind: 'diagonal' as any,
+          positions: model.nodes.map((n, i) => ({ id: n.id, position: { x: i * 10, y: i * 10 } })),
+        }),
       },
     ],
     commands: {
@@ -22,7 +25,10 @@ function samplePlugin(): GraphPlugin {
     selectionBehaviors: { keepAll: (_model, selection) => selection },
     exporters: { csv: () => 'a,b,c' },
     validators: {
-      noOrphans: (model) => model.edges.filter((e) => !model.getNode(e.source)).map((e) => ({ severity: 'error' as const, message: 'missing source', edgeId: e.id })),
+      noOrphans: (model) =>
+        model.edges
+          .filter((e) => !model.getNode(e.source))
+          .map((e) => ({ severity: 'error' as const, message: 'missing source', edgeId: e.id })),
     },
     decorators: { noop: () => {} },
   };
@@ -49,7 +55,9 @@ test('GraphPluginRegistry.register tracks the plugin and wires provided targets'
   assert.deepEqual(registry.pluginNames, ['my-plugin']);
   assert.ok(layouts.has('diagonal'));
 
-  const controller = new GraphController({ model: GraphModel.empty().upsertNode({ id: 'pinged', type: 't', label: 'P', position: { x: 0, y: 0 } }) });
+  const controller = new GraphController({
+    model: GraphModel.empty().upsertNode({ id: 'pinged', type: 't', label: 'P', position: { x: 0, y: 0 } }),
+  });
   commands.execute('ping', { controller });
   assert.ok(controller.getState().selection.hasNode('pinged'));
 });

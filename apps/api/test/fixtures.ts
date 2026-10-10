@@ -21,20 +21,34 @@ const sampleMetadata: XoMetadata = {
   limitations: ['not a real professional capability'],
 };
 
-export function buildFixtureBundle(overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {}): PackageBundle {
+export function buildFixtureBundle(
+  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {},
+): PackageBundle {
   const name = overrides.name ?? 'xo_api_test_fixture';
   const version = overrides.version ?? '1.0.0';
   const result = ManifestBuilder.create()
     .setIdentity({ formatVersion: '1.0', name, version, creatorDid: overrides.creatorDid ?? 'did:xo:test-creator' })
     .setCompatibility(sampleCompatibility)
     .setMetadata(sampleMetadata)
-    .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode(JSON.stringify({ rules: [], for: `${name}@${version}` })), required: true })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true })
+    .addComponent({
+      kind: 'safety_rules',
+      path: 'safety/rules.json',
+      data: new TextEncoder().encode(JSON.stringify({ rules: [], for: `${name}@${version}` })),
+      required: true,
+    })
+    .addComponent({
+      kind: 'benchmark_suite',
+      path: 'evaluation/benchmark_suite.json',
+      data: new TextEncoder().encode('{"categories":[]}'),
+      required: true,
+    })
     .build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
 }
 
-export function buildFixtureManifest(overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {}): XoManifest {
+export function buildFixtureManifest(
+  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {},
+): XoManifest {
   return buildFixtureBundle(overrides).manifest;
 }

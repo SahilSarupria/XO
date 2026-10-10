@@ -79,26 +79,26 @@ providers/
 
 ## Cross-cutting behaviors, and where to find their tests
 
-| Behavior | Module | Tests |
-|---|---|---|
-| Provider abstraction | `provider-types.ts` | exercised throughout `router.test.ts` |
-| Capability routing | `router.ts`, `model-selection.ts` | `router.test.ts`, `model-selection.test.ts` |
-| Retries | `retry.ts` | `retry.test.ts` |
-| Fallbacks | `router.ts` | `router.test.ts` ("falls back to the next provider...") |
-| Streaming | `provider-types.ts`'s `completeStream` | `deterministic-replay-provider.test.ts` |
-| Structured outputs | `json-schema.ts`, `capability-schemas.ts` | `json-schema.test.ts` |
-| Schema validation | `router.ts`'s post-parse validation step | `router.test.ts` ("fails schema validation...") |
-| Prompt versioning | `prompt/prompt-registry.ts` | `prompt-registry.test.ts` |
-| Caching | `cache.ts` | `cache.test.ts`, `router.test.ts` |
-| Telemetry | `router.ts`'s `Tracer`/`Meter` calls (reuses `@xo/observability`) | exercised, not separately asserted on — see "Known limitations" |
-| Cost accounting | `cost.ts` | `cost.test.ts`, `router.test.ts` |
-| Rate limiting | `rate-limiter.ts` | `rate-limiter.test.ts`, `router.test.ts` |
-| Circuit breakers | `circuit-breaker.ts` | `circuit-breaker.test.ts`, `router.test.ts` |
-| Deterministic replay for tests | `providers/deterministic-replay-provider.ts` | `deterministic-replay-provider.test.ts` |
-| Mock providers | `providers/scriptable-test-provider.ts` | used throughout `router.test.ts` |
-| Provider capability discovery | `AiCapabilityLayer#describeProviders()` | `router.test.ts` |
-| Model selection policies | `model-selection.ts` | `model-selection.test.ts` |
-| Future multimodal models | `ProviderCapabilityDescriptor.supportsVision` | descriptor-only today — see "Known limitations" |
+| Behavior                       | Module                                                            | Tests                                                           |
+| ------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------- |
+| Provider abstraction           | `provider-types.ts`                                               | exercised throughout `router.test.ts`                           |
+| Capability routing             | `router.ts`, `model-selection.ts`                                 | `router.test.ts`, `model-selection.test.ts`                     |
+| Retries                        | `retry.ts`                                                        | `retry.test.ts`                                                 |
+| Fallbacks                      | `router.ts`                                                       | `router.test.ts` ("falls back to the next provider...")         |
+| Streaming                      | `provider-types.ts`'s `completeStream`                            | `deterministic-replay-provider.test.ts`                         |
+| Structured outputs             | `json-schema.ts`, `capability-schemas.ts`                         | `json-schema.test.ts`                                           |
+| Schema validation              | `router.ts`'s post-parse validation step                          | `router.test.ts` ("fails schema validation...")                 |
+| Prompt versioning              | `prompt/prompt-registry.ts`                                       | `prompt-registry.test.ts`                                       |
+| Caching                        | `cache.ts`                                                        | `cache.test.ts`, `router.test.ts`                               |
+| Telemetry                      | `router.ts`'s `Tracer`/`Meter` calls (reuses `@xo/observability`) | exercised, not separately asserted on — see "Known limitations" |
+| Cost accounting                | `cost.ts`                                                         | `cost.test.ts`, `router.test.ts`                                |
+| Rate limiting                  | `rate-limiter.ts`                                                 | `rate-limiter.test.ts`, `router.test.ts`                        |
+| Circuit breakers               | `circuit-breaker.ts`                                              | `circuit-breaker.test.ts`, `router.test.ts`                     |
+| Deterministic replay for tests | `providers/deterministic-replay-provider.ts`                      | `deterministic-replay-provider.test.ts`                         |
+| Mock providers                 | `providers/scriptable-test-provider.ts`                           | used throughout `router.test.ts`                                |
+| Provider capability discovery  | `AiCapabilityLayer#describeProviders()`                           | `router.test.ts`                                                |
+| Model selection policies       | `model-selection.ts`                                              | `model-selection.test.ts`                                       |
+| Future multimodal models       | `ProviderCapabilityDescriptor.supportsVision`                     | descriptor-only today — see "Known limitations"                 |
 
 ## Known limitations (real, not hidden)
 

@@ -35,7 +35,14 @@ test('composes the connected capability cluster into one workflow, ordered by di
   assert.equal(clustered.steps.length, 6);
   assert.deepEqual(
     [...clustered.sourceCapabilityIds].sort(),
-    ['clause_extraction', 'document_intake_classification', 'escalation_memo', 'final_summary_report', 'redline_drafting', 'risk_flagging'].sort(),
+    [
+      'clause_extraction',
+      'document_intake_classification',
+      'escalation_memo',
+      'final_summary_report',
+      'redline_drafting',
+      'risk_flagging',
+    ].sort(),
   );
 
   // Precedence constraints derived from REQUIRES edges — checked relationally,
@@ -58,8 +65,14 @@ test('composes the connected capability cluster into one workflow, ordered by di
   }
 
   // No cycle, no conflict -> not blocking.
-  assert.equal(clustered.gaps.some((g) => g.kind === 'circular_dependency'), false);
-  assert.equal(clustered.gaps.some((g) => g.kind === 'conflicting_capabilities'), false);
+  assert.equal(
+    clustered.gaps.some((g) => g.kind === 'circular_dependency'),
+    false,
+  );
+  assert.equal(
+    clustered.gaps.some((g) => g.kind === 'conflicting_capabilities'),
+    false,
+  );
   assert.equal(clustered.requiresHumanDecision, false);
 
   // Confidence is the weakest link (escalation_memo, 0.81), not an average.
@@ -115,7 +128,10 @@ test('capabilityNodeIds restricts composition to the requested subset', () => {
   if (!result.ok) return;
   assert.equal(result.value.length, 1);
   assert.equal(result.value[0]!.steps.length, 2);
-  assert.equal(indexOf(result.value[0]!.steps, 'document_intake_classification') < indexOf(result.value[0]!.steps, 'clause_extraction'), true);
+  assert.equal(
+    indexOf(result.value[0]!.steps, 'document_intake_classification') < indexOf(result.value[0]!.steps, 'clause_extraction'),
+    true,
+  );
 });
 
 test('an unknown requested capability id is a Result error, not a thrown exception', () => {
@@ -227,7 +243,19 @@ test('embedded contract id and source evidence are carried onto the step without
     properties: {
       name: 'Draft NDA',
       description: 'Drafts a standard mutual NDA.',
-      semanticCapabilityContract: { id: 'sc_draft_nda', name: 'Draft NDA', description: 'x', inputs: [], outputs: [], requiredPermissions: [], determinism: 'unknown', rules: [], confidence: 0.9, sourceRefs: [], sourceXoirNodeIds: [] },
+      semanticCapabilityContract: {
+        id: 'sc_draft_nda',
+        name: 'Draft NDA',
+        description: 'x',
+        inputs: [],
+        outputs: [],
+        requiredPermissions: [],
+        determinism: 'unknown',
+        rules: [],
+        confidence: 0.9,
+        sourceRefs: [],
+        sourceXoirNodeIds: [],
+      },
     },
     confidence: 0.9,
     sourceRefs: [{ documentPath: 'knowledge/graph.json', locator: 'NDA clause' }],

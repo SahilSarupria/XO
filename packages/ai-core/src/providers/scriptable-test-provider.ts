@@ -1,6 +1,7 @@
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderId, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
-export type ScriptedOutcome = { readonly kind: 'success'; readonly response: ProviderResponse } | { readonly kind: 'failure'; readonly error: unknown };
+export type ScriptedOutcome =
+  { readonly kind: 'success'; readonly response: ProviderResponse } | { readonly kind: 'failure'; readonly error: unknown };
 
 /**
  * A test double for `ModelProvider` whose outcomes are scripted call-by-
@@ -45,6 +46,10 @@ export class ScriptableTestProvider implements ModelProvider {
   }
 }
 
-export function jsonResponse(value: unknown, usage: { inputTokens: number; outputTokens: number } = { inputTokens: 10, outputTokens: 10 }, modelUsed = 'test-model'): ProviderResponse {
+export function jsonResponse(
+  value: unknown,
+  usage: { inputTokens: number; outputTokens: number } = { inputTokens: 10, outputTokens: 10 },
+  modelUsed = 'test-model',
+): ProviderResponse {
   return { text: JSON.stringify(value), usage, modelUsed, finishReason: 'stop' };
 }

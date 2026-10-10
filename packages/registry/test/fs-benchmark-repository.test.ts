@@ -65,10 +65,7 @@ test('listForPackage() returns every run for that package across categories, and
 
     const runsForA = await repo.listForPackage(packageA);
     assert.equal(runsForA.length, 2);
-    assert.deepEqual(
-      runsForA.map((r) => r.id).sort(),
-      ['run-a1', 'run-a2'],
-    );
+    assert.deepEqual(runsForA.map((r) => r.id).sort(), ['run-a1', 'run-a2']);
 
     const runsForB = await repo.listForPackage(packageB);
     assert.equal(runsForB.length, 1);

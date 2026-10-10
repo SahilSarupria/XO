@@ -26,11 +26,15 @@ export function deepEqualNormalized(a: unknown, b: unknown): boolean {
 }
 
 /** Every key of `expected` must be present in `actual` with a deep-equal (normalized) value; extra keys in `actual` are allowed. */
-export function isSubsetMatch(actual: unknown, expected: Record<string, unknown>): { readonly ok: boolean; readonly mismatches: readonly string[] } {
+export function isSubsetMatch(
+  actual: unknown,
+  expected: Record<string, unknown>,
+): { readonly ok: boolean; readonly mismatches: readonly string[] } {
   const mismatches: string[] = [];
   for (const key of Object.keys(expected).sort(compareStrings)) {
     const got = isPlainObject(actual) ? actual[key] : undefined;
-    if (!deepEqualNormalized(got, expected[key])) mismatches.push(`${key}: expected ${JSON.stringify(expected[key])}, got ${JSON.stringify(got)}`);
+    if (!deepEqualNormalized(got, expected[key]))
+      mismatches.push(`${key}: expected ${JSON.stringify(expected[key])}, got ${JSON.stringify(got)}`);
   }
   return { ok: mismatches.length === 0, mismatches };
 }
@@ -92,7 +96,11 @@ export function describeMatcher(matcher: NameMatcher): string {
  * assigned a distinct matching candidate AND the two lists have equal
  * length (a perfect matching).
  */
-export function perfectAssignment<T>(matchers: readonly NameMatcher[], candidates: readonly T[], nameOf: (candidate: T) => string): boolean {
+export function perfectAssignment<T>(
+  matchers: readonly NameMatcher[],
+  candidates: readonly T[],
+  nameOf: (candidate: T) => string,
+): boolean {
   if (matchers.length !== candidates.length) return false;
   const owner: number[] = new Array<number>(candidates.length).fill(-1);
   const adjacency = matchers.map((m) => candidates.map((c, i) => (matchesName(nameOf(c), m) ? i : -1)).filter((i) => i >= 0));
@@ -115,7 +123,10 @@ export function perfectAssignment<T>(matchers: readonly NameMatcher[], candidate
 }
 
 /** Set comparison of two string lists under `normalizeText` — order and duplicates irrelevant. */
-export function diffNormalizedSets(expected: readonly string[], actual: readonly string[]): { readonly missing: readonly string[]; readonly unexpected: readonly string[] } {
+export function diffNormalizedSets(
+  expected: readonly string[],
+  actual: readonly string[],
+): { readonly missing: readonly string[]; readonly unexpected: readonly string[] } {
   const exp = new Set(expected.map(normalizeText));
   const act = new Set(actual.map(normalizeText));
   return {

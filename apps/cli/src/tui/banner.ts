@@ -44,7 +44,10 @@ export function renderBanner(ui: Ui, version: string, columns: number): string[]
     ` ${ui.painter.bold('Tips for getting started:')}`,
     ...tip(1, `${ui.accent('/compile')} <file|dir|.zip> turns documents into XOIR. Type ${ui.accent('@')} then Tab to pick a file.`),
     ...tip(2, `${ui.accent('/store')} <dir> points the session at installed packages; plain text then queries them.`),
-    ...tip(3, `${ui.accent('/help')} lists every command. ${ui.accent('!')}<cmd> runs a shell command. ${ui.accent('/theme')} changes colors.`),
+    ...tip(
+      3,
+      `${ui.accent('/help')} lists every command. ${ui.accent('!')}<cmd> runs a shell command. ${ui.accent('/theme')} changes colors.`,
+    ),
     '',
   );
   return lines;

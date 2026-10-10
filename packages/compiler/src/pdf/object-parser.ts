@@ -36,7 +36,10 @@ export class ObjectParser {
     const genTok = this.lexer.next();
     const objTok = this.lexer.next();
     if (numTok.kind !== 'number' || genTok.kind !== 'number' || objTok.text !== 'obj') {
-      throw new PdfError(ErrorCode.PDF_MALFORMED, `Expected "<n> <g> obj" at byte offset ${byteOffset}, got "${numTok.text} ${genTok.text} ${objTok.text}"`);
+      throw new PdfError(
+        ErrorCode.PDF_MALFORMED,
+        `Expected "<n> <g> obj" at byte offset ${byteOffset}, got "${numTok.text} ${genTok.text} ${objTok.text}"`,
+      );
     }
     const objectNumber = Number.parseInt(numTok.text, 10);
     const generation = Number.parseInt(genTok.text, 10);
@@ -45,7 +48,14 @@ export class ObjectParser {
     // A dictionary immediately followed by `stream` is a stream object, not a plain dictionary.
     const savedPos = this.lexer.position;
     const maybeStream = this.lexer.next();
-    if (maybeStream.kind === 'keyword' && maybeStream.text === STREAM_KEYWORD && value !== null && typeof value === 'object' && 'kind' in value && value.kind === 'dictionary') {
+    if (
+      maybeStream.kind === 'keyword' &&
+      maybeStream.text === STREAM_KEYWORD &&
+      value !== null &&
+      typeof value === 'object' &&
+      'kind' in value &&
+      value.kind === 'dictionary'
+    ) {
       value = this.readStreamBody(value, resolveLength);
     } else {
       this.lexer.seek(savedPos);
@@ -115,7 +125,11 @@ export class ObjectParser {
       const keyTok = this.lexer.next();
       if (keyTok.kind === 'dict_end') break;
       if (keyTok.kind === 'eof') throw new PdfError(ErrorCode.PDF_MALFORMED, `Unterminated dictionary at byte offset ${keyTok.offset}`);
-      if (keyTok.kind !== 'name') throw new PdfError(ErrorCode.PDF_MALFORMED, `Expected a /Name dictionary key at byte offset ${keyTok.offset}, got "${keyTok.text}"`);
+      if (keyTok.kind !== 'name')
+        throw new PdfError(
+          ErrorCode.PDF_MALFORMED,
+          `Expected a /Name dictionary key at byte offset ${keyTok.offset}, got "${keyTok.text}"`,
+        );
       const value = this.parseValue();
       entries.set(keyTok.text, value);
     }

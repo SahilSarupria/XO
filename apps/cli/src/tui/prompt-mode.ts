@@ -72,7 +72,8 @@ export async function runPromptMode(o: PromptModeOptions): Promise<number> {
   const settings = new SettingsStore(o.home).load().settings;
   const storeDir = o.storeFlag ?? settings.storeDir;
   if (!storeDir) {
-    for (const line of failWith('-p needs a package store: pass --store <dir> (or set one with /store in an interactive session)').lines) o.stdout(`${line}\n`);
+    for (const line of failWith('-p needs a package store: pass --store <dir> (or set one with /store in an interactive session)').lines)
+      o.stdout(`${line}\n`);
     return 1;
   }
   const provider = o.provider ?? settings.provider;

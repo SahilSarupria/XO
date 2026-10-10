@@ -57,7 +57,10 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
 
     const aiResult = await this.aiExtractor.extract(unit);
     if (!aiResult.ok) {
-      this.logger.warn('AI knowledge extraction unavailable for this unit; falling back to rule-based only', { unitId: unit.id, error: aiResult.error.message });
+      this.logger.warn('AI knowledge extraction unavailable for this unit; falling back to rule-based only', {
+        unitId: unit.id,
+        error: aiResult.error.message,
+      });
       return ok({ nodes: ruleNodes, edges: ruleResult.value.edges });
     }
 

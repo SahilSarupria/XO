@@ -93,10 +93,15 @@ export function buildCorporateLawyerFixtureGraph(): XoirGraph {
     confidence: 0.9,
     documentPath: 'reasoning/case_library.json',
   });
-  addCapability('citation_lookup', 'Citation Lookup', 'Looks up statutory/case citations on demand — used standalone, not part of the review pipeline.', {
-    confidence: 0.97,
-    documentPath: 'knowledge/graph.json',
-  });
+  addCapability(
+    'citation_lookup',
+    'Citation Lookup',
+    'Looks up statutory/case citations on demand — used standalone, not part of the review pipeline.',
+    {
+      confidence: 0.97,
+      documentPath: 'knowledge/graph.json',
+    },
+  );
 
   requires('clause_extraction', 'document_intake_classification');
   requires('risk_flagging', 'clause_extraction');
@@ -125,7 +130,12 @@ export function buildCyclicFixtureGraph(): XoirGraph {
     ['cap_b', 'cap_c'],
     ['cap_c', 'cap_a'],
   ] as const) {
-    const result = graph.createAndAddEdge({ id: XoirEdgeId(`req_${from}_${to}`), kind: 'REQUIRES', fromId: XoirNodeId(from), toId: XoirNodeId(to) });
+    const result = graph.createAndAddEdge({
+      id: XoirEdgeId(`req_${from}_${to}`),
+      kind: 'REQUIRES',
+      fromId: XoirNodeId(from),
+      toId: XoirNodeId(to),
+    });
     if (!result.ok) throw new Error(result.error.message);
   }
   return graph;
@@ -159,7 +169,11 @@ export function buildInconsistentDependencyFixtureGraph(): XoirGraph {
   const a = graph.createAndAddNode({
     id: XoirNodeId('needs_phantom'),
     kind: 'capability',
-    properties: { name: 'needs_phantom', description: 'Declares a dependency with no matching edge.', dependencies: ['phantom_capability'] },
+    properties: {
+      name: 'needs_phantom',
+      description: 'Declares a dependency with no matching edge.',
+      dependencies: ['phantom_capability'],
+    },
     confidence: 0.7,
   });
   if (!a.ok) throw new Error(a.error.message);

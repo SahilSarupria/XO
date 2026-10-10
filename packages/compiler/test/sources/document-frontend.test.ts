@@ -11,7 +11,19 @@ test('canHandle accepts tagged document input, rejects everything else', () => {
 });
 
 test('classifies markdown-style headings, paragraphs, and list items into a nested ParsedDocument', () => {
-  const text = ['# Title', '', 'Intro paragraph one.', 'Intro paragraph one continues.', '', '## Section A', '', '- first item', '- second item', '', 'Closing paragraph.'].join('\n');
+  const text = [
+    '# Title',
+    '',
+    'Intro paragraph one.',
+    'Intro paragraph one continues.',
+    '',
+    '## Section A',
+    '',
+    '- first item',
+    '- second item',
+    '',
+    'Closing paragraph.',
+  ].join('\n');
 
   const result = frontend.ingest({ kind: 'document', text, sourcePath: 'doc.md' });
   assert.equal(result.ok, true);

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { containsAnyPhrase, detectDefinedTerm, startsWithAnyPhrase, OBLIGATION_CUES, EXCEPTION_CUES } from '../../src/semantic/lexical-cues.js';
+import {
+  containsAnyPhrase,
+  detectDefinedTerm,
+  startsWithAnyPhrase,
+  OBLIGATION_CUES,
+  EXCEPTION_CUES,
+} from '../../src/semantic/lexical-cues.js';
 
 test('containsAnyPhrase finds a phrase at a word boundary', () => {
   assert.equal(containsAnyPhrase('The Contractor shall deliver the goods.', OBLIGATION_CUES), true);

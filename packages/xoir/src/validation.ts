@@ -80,7 +80,9 @@ function isKnownKind(kind: string): kind is KnownXoirNodeKind {
  * unambiguous rule are listed; everything else is unconstrained by
  * design. `undefined` for `from`/`to` means "no constraint on that side."
  */
-const EDGE_ENDPOINT_KIND_CONSTRAINTS: Readonly<Partial<Record<string, { readonly from?: readonly string[]; readonly to?: readonly string[] }>>> = {
+const EDGE_ENDPOINT_KIND_CONSTRAINTS: Readonly<
+  Partial<Record<string, { readonly from?: readonly string[]; readonly to?: readonly string[] }>>
+> = {
   // COMPOSES_INTO is the Linker's capability-composition edge (EXPERIENCE_COMPILER.md §5.5) — both endpoints are Capabilities.
   COMPOSES_INTO: { from: ['capability'], to: ['capability'] },
   // ESCALATES_TO always terminates at either an explicit EscalationRule or the Capability/human process it hands off to — never at a bare Fact/Concept.
@@ -104,29 +106,56 @@ export function validateGraph(graph: XoirGraph): ValidationReport {
   const issues: ValidationIssue[] = [];
 
   if (!isSchemaVersionSupported(graph.schemaVersion)) {
-    issues.push({ kind: 'unsupported_schema_version', subjectId: undefined, message: `Graph schemaVersion ${graph.schemaVersion} is not supported by this build` });
+    issues.push({
+      kind: 'unsupported_schema_version',
+      subjectId: undefined,
+      message: `Graph schemaVersion ${graph.schemaVersion} is not supported by this build`,
+    });
   }
 
   for (const node of graph.allNodes()) {
     if (!verifyNodeHash(node)) {
-      issues.push({ kind: 'hash_mismatch', subjectId: node.id, message: `Node "${node.id}" carried hash does not match a fresh computation` });
+      issues.push({
+        kind: 'hash_mismatch',
+        subjectId: node.id,
+        message: `Node "${node.id}" carried hash does not match a fresh computation`,
+      });
     }
     if (node.metadata.confidence < 0 || node.metadata.confidence > 1) {
-      issues.push({ kind: 'invalid_confidence_range', subjectId: node.id, message: `Node "${node.id}" confidence ${node.metadata.confidence} is outside [0, 1]` });
+      issues.push({
+        kind: 'invalid_confidence_range',
+        subjectId: node.id,
+        message: `Node "${node.id}" confidence ${node.metadata.confidence} is outside [0, 1]`,
+      });
     }
-    if (node.metadata.confidenceDetail !== undefined && (node.metadata.confidenceDetail.score < 0 || node.metadata.confidenceDetail.score > 1)) {
-      issues.push({ kind: 'invalid_confidence_range', subjectId: node.id, message: `Node "${node.id}" confidenceDetail.score ${node.metadata.confidenceDetail.score} is outside [0, 1]` });
+    if (
+      node.metadata.confidenceDetail !== undefined &&
+      (node.metadata.confidenceDetail.score < 0 || node.metadata.confidenceDetail.score > 1)
+    ) {
+      issues.push({
+        kind: 'invalid_confidence_range',
+        subjectId: node.id,
+        message: `Node "${node.id}" confidenceDetail.score ${node.metadata.confidenceDetail.score} is outside [0, 1]`,
+      });
     }
     for (const ref of node.metadata.sourceRefs) {
       if (!isNonEmptyString(ref.documentPath)) {
-        issues.push({ kind: 'invalid_provenance_reference', subjectId: node.id, message: `Node "${node.id}" has a sourceRef with an empty documentPath` });
+        issues.push({
+          kind: 'invalid_provenance_reference',
+          subjectId: node.id,
+          message: `Node "${node.id}" has a sourceRef with an empty documentPath`,
+        });
       }
     }
     if (isKnownKind(node.kind)) {
       const required = REQUIRED_PROPERTIES_BY_KNOWN_KIND[node.kind];
       for (const key of required) {
         if (!(key in node.properties)) {
-          issues.push({ kind: 'missing_required_property', subjectId: node.id, message: `Node "${node.id}" (kind "${node.kind}") is missing required property "${key}"` });
+          issues.push({
+            kind: 'missing_required_property',
+            subjectId: node.id,
+            message: `Node "${node.id}" (kind "${node.kind}") is missing required property "${key}"`,
+          });
         }
       }
     }
@@ -134,20 +163,39 @@ export function validateGraph(graph: XoirGraph): ValidationReport {
 
   for (const edge of graph.allEdges()) {
     if (!verifyEdgeHash(edge)) {
-      issues.push({ kind: 'hash_mismatch', subjectId: edge.id, message: `Edge "${edge.id}" carried hash does not match a fresh computation` });
+      issues.push({
+        kind: 'hash_mismatch',
+        subjectId: edge.id,
+        message: `Edge "${edge.id}" carried hash does not match a fresh computation`,
+      });
     }
-    if (edge.metadata.confidenceDetail !== undefined && (edge.metadata.confidenceDetail.score < 0 || edge.metadata.confidenceDetail.score > 1)) {
-      issues.push({ kind: 'invalid_confidence_range', subjectId: edge.id, message: `Edge "${edge.id}" confidenceDetail.score ${edge.metadata.confidenceDetail.score} is outside [0, 1]` });
+    if (
+      edge.metadata.confidenceDetail !== undefined &&
+      (edge.metadata.confidenceDetail.score < 0 || edge.metadata.confidenceDetail.score > 1)
+    ) {
+      issues.push({
+        kind: 'invalid_confidence_range',
+        subjectId: edge.id,
+        message: `Edge "${edge.id}" confidenceDetail.score ${edge.metadata.confidenceDetail.score} is outside [0, 1]`,
+      });
     }
     for (const ref of edge.metadata.sourceRefs) {
       if (!isNonEmptyString(ref.documentPath)) {
-        issues.push({ kind: 'invalid_provenance_reference', subjectId: edge.id, message: `Edge "${edge.id}" has a sourceRef with an empty documentPath` });
+        issues.push({
+          kind: 'invalid_provenance_reference',
+          subjectId: edge.id,
+          message: `Edge "${edge.id}" has a sourceRef with an empty documentPath`,
+        });
       }
     }
     const fromNode = graph.getNode(edge.fromId);
     const toNode = graph.getNode(edge.toId);
     if (!fromNode.ok || !toNode.ok) {
-      issues.push({ kind: 'dangling_edge_reference', subjectId: edge.id, message: `Edge "${edge.id}" references a node not present in the graph` });
+      issues.push({
+        kind: 'dangling_edge_reference',
+        subjectId: edge.id,
+        message: `Edge "${edge.id}" references a node not present in the graph`,
+      });
       continue;
     }
     checkEdgeEndpointCompatibility(edge, fromNode.value, toNode.value, issues);

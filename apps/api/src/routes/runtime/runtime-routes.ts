@@ -42,9 +42,12 @@ import { registerMovedStub } from '../moved-stub.js';
 
 /** P1.0 M1 kill switch for the model-assisted execution route. Typed `boolean` (not a literal) so the guarded code below stays type-checked. */
 const AI_EXECUTION_ENABLED: boolean = false;
-export const AI_EXECUTION_DISABLED_MESSAGE = 'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
+export const AI_EXECUTION_DISABLED_MESSAGE =
+  'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
 
-async function bootstrapRuntime(store: BlobStore): Promise<{ readonly runtime: Runtime; readonly installer: PackageInstaller; readonly bootstrapWarnings: readonly string[] }> {
+async function bootstrapRuntime(
+  store: BlobStore,
+): Promise<{ readonly runtime: Runtime; readonly installer: PackageInstaller; readonly bootstrapWarnings: readonly string[] }> {
   const installer = new PackageInstaller(store);
   const runtime = new Runtime(installer);
   const bootstrap = await runtime.bootstrap();
@@ -91,7 +94,10 @@ function parseExecuteBody(body: ExecuteBody): {
   if (body.hostFamily !== undefined && typeof body.hostFamily !== 'string') {
     throw new XoError(ErrorCode.RUNTIME_INVALID_REQUEST, '"hostFamily", if present, must be a string');
   }
-  if (body.hostCapabilities !== undefined && (!Array.isArray(body.hostCapabilities) || !body.hostCapabilities.every((c) => typeof c === 'string'))) {
+  if (
+    body.hostCapabilities !== undefined &&
+    (!Array.isArray(body.hostCapabilities) || !body.hostCapabilities.every((c) => typeof c === 'string'))
+  ) {
     throw new XoError(ErrorCode.RUNTIME_INVALID_REQUEST, '"hostCapabilities", if present, must be an array of strings');
   }
   if (body.tokenBudget !== undefined && typeof body.tokenBudget !== 'number') {
@@ -166,7 +172,10 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
 
     const models = provider.describeCapabilities().models;
     if (parsed.model === undefined && models.length === 0) {
-      throw new XoError(ErrorCode.RUNTIME_INVALID_REQUEST, `provider "${provider.id}" advertises no models of its own — pass "model" in the request body`);
+      throw new XoError(
+        ErrorCode.RUNTIME_INVALID_REQUEST,
+        `provider "${provider.id}" advertises no models of its own — pass "model" in the request body`,
+      );
     }
 
     const { runtime, installer, bootstrapWarnings } = await bootstrapRuntime(workspacePackagesStore(workspace, dataConfig));
@@ -175,7 +184,9 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
     try {
       engine = new ExecutionEngine(() => runtime.context(), installer, provider, parsed.model !== undefined ? { model: parsed.model } : {});
     } catch (cause) {
-      throw new XoError(ErrorCode.RUNTIME_INVALID_REQUEST, `could not construct the execution engine: ${(cause as Error).message}`, { cause });
+      throw new XoError(ErrorCode.RUNTIME_INVALID_REQUEST, `could not construct the execution engine: ${(cause as Error).message}`, {
+        cause,
+      });
     }
 
     const now = new Date();

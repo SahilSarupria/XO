@@ -1,12 +1,4 @@
-import type {
-  EdgeGroup,
-  EdgeId,
-  GraphEdge,
-  GraphNode,
-  GroupId,
-  NodeGroup,
-  NodeId,
-} from './types.js';
+import type { EdgeGroup, EdgeId, GraphEdge, GraphNode, GroupId, NodeGroup, NodeId } from './types.js';
 
 /**
  * GraphModel is immutable: every mutating method returns a new GraphModel
@@ -128,9 +120,7 @@ export class GraphModel {
     nodesById.delete(id);
     const nodeOrder = this.nodeOrder.filter((n) => n !== id);
     // Cascade: drop edges touching the removed node, for referential integrity.
-    const edgesById = new Map(
-      [...this.edgesById].filter(([, e]) => e.source !== id && e.target !== id),
-    );
+    const edgesById = new Map([...this.edgesById].filter(([, e]) => e.source !== id && e.target !== id));
     const edgeOrder = this.edgeOrder.filter((eid) => edgesById.has(eid));
     return new GraphModel({
       nodes: nodeOrder.map((n) => nodesById.get(n) as GraphNode),
@@ -192,12 +182,11 @@ export class GraphModel {
 
   /** Merge another model's nodes/edges/groups into this one (upsert semantics). */
   merge(other: GraphModel): GraphModel {
-    return this.upsertNodes(other.nodes)
-      .upsertEdges(other.edges)
-      .withGroups(other.nodeGroups, other.edgeGroups);
+    return this.upsertNodes(other.nodes).upsertEdges(other.edges).withGroups(other.nodeGroups, other.edgeGroups);
   }
 
   private withGroups(nodeGroups: readonly NodeGroup[], edgeGroups: readonly EdgeGroup[]): GraphModel {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- immutable fold over `this`
     let model: GraphModel = this;
     for (const g of nodeGroups) model = model.upsertNodeGroup(g);
     for (const g of edgeGroups) model = model.upsertEdgeGroup(g);

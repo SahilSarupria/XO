@@ -4,7 +4,13 @@ import { mergeKnowledgeGraphs, parseKnowledgeGraphSlice } from '../src/retrieval
 import type { RetrievedSlice } from '../src/retrieval/retrieved-slice.js';
 
 function slice(packageName: string, content: unknown, componentKind: RetrievedSlice['componentKind'] = 'knowledge_graph'): RetrievedSlice {
-  return { packageName, packageVersion: '1.0.0', componentKind, content: typeof content === 'string' ? content : JSON.stringify(content), estimatedTokens: 1 };
+  return {
+    packageName,
+    packageVersion: '1.0.0',
+    componentKind,
+    content: typeof content === 'string' ? content : JSON.stringify(content),
+    estimatedTokens: 1,
+  };
 }
 
 test('parseKnowledgeGraphSlice returns undefined for a non-knowledge_graph slice', () => {

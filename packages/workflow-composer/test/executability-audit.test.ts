@@ -285,7 +285,11 @@ test('Workflow Executability & Strategy Evidence Audit', async (t) => {
     // Proven dependencies must NOT include COMPLEMENTS
     assert.equal(report.provenDependencies.length, 0);
     // COMPLEMENTS yields ambiguous precedence, not proven dependency
-    assert.ok(report.suggestiveOrdering.some((s) => s.kind === 'ambiguous_precedence' || s.kind === 'source_order_only' || s.kind === 'source_derived_ordering'));
+    assert.ok(
+      report.suggestiveOrdering.some(
+        (s) => s.kind === 'ambiguous_precedence' || s.kind === 'source_order_only' || s.kind === 'source_derived_ordering',
+      ),
+    );
   });
 
   await t.test('9. ambiguous step precedence is reported', () => {

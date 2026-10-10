@@ -45,9 +45,18 @@ export function buildSimulatedProviderResponse(request: ProviderRequest): Provid
  */
 const unreachableProvider: ModelProvider = {
   id: 'xo-runtime-simulation-unreachable-provider',
-  describeCapabilities: () => ({ providerId: 'xo-runtime-simulation-unreachable-provider', models: [], supportsStreaming: false, supportsStructuredOutput: false, supportsVision: false, maxContextTokens: 0 }),
+  describeCapabilities: () => ({
+    providerId: 'xo-runtime-simulation-unreachable-provider',
+    models: [],
+    supportsStreaming: false,
+    supportsStructuredOutput: false,
+    supportsVision: false,
+    maxContextTokens: 0,
+  }),
   complete: () => {
-    throw new Error('SimulatingCapabilityExecutor: a live provider call was attempted during simulation — this is a bug, simulation must never reach a real ModelProvider');
+    throw new Error(
+      'SimulatingCapabilityExecutor: a live provider call was attempted during simulation — this is a bug, simulation must never reach a real ModelProvider',
+    );
   },
 };
 

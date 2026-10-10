@@ -88,7 +88,7 @@ capability/environment) plus a `defaultEffect` (default `DENY`).
 This deliberately differs from the spec's own literal example precedence
 order ("explicit deny > explicit scoped allow > broader allow > default >
 prompt"), which is self-contradictory against the spec's own worked
-example (a scoped allow overriding a *broader* global deny is impossible
+example (a scoped allow overriding a _broader_ global deny is impossible
 if "explicit deny" always wins outright). "Most specific rule wins, ties
 go to deny" is what real ACL/firewall engines do, resolves the
 contradiction, and makes the worked example actually work — see
@@ -121,13 +121,13 @@ nothing narrower than "everywhere" to violate.
 `PermissionStore` (`store.ts`) persists **only `allow` grants** — there is
 no persisted "deny grant". Deny is always derived from the policy engine
 (see "Stored grant vs. policy precedence" below); revocation only ever
-needs to *remove* an allow grant. `InMemoryPermissionStore` is included
+needs to _remove_ an allow grant. `InMemoryPermissionStore` is included
 for tests and for hosts that only need `once`/`session` lifetimes; a real
 deployment supplies its own backend (SQLite, an OS credential store,
 encrypted cloud storage) implementing the same interface — the engine
 never changes either way.
 
-- **`once`** — never persisted; non-persistence *is* the consumption
+- **`once`** — never persisted; non-persistence _is_ the consumption
   mechanism.
 - **`session`** — persisted, cleared by `PermissionManager.endSession()`.
 - **`persistent`** — persisted, survives restarts if the store does,
@@ -144,7 +144,7 @@ of authorization, and they can disagree. The precedence is:
    every existing grant for that permission/scope/package, without
    walking the store and deleting each grant individually. "Explicit"
    matters here: this is the policy engine actually matching a `DENY`
-   rule, never the *default-deny fallback* that applies when nothing
+   rule, never the _default-deny fallback_ that applies when nothing
    matches. The fallback must not override a grant, or grants would be
    pointless — a grant exists precisely for permissions no policy rule
    covers.
@@ -180,7 +180,7 @@ Two composable sources feed a capability's required permissions, and
    `resolveManifestCapabilityPermissions` groups every manifest permission
    declaration that names a `capabilityId` into a per-capability
    requirement list — see "Manifest integration" below. Nothing needs to
-   be registered anywhere for this to take effect; the manifest *is* the
+   be registered anywhere for this to take effect; the manifest _is_ the
    registration.
 2. **`CapabilityPermissionRegistry`** (`capability-mapping.ts`,
    supplementary). For capabilities that aren't backed by a manifest at
@@ -204,7 +204,7 @@ fields on each permission declaration:
 Absent `permissions` means zero permission requirements — under this
 package's default-deny model, that's "requests nothing", never "may do
 anything". A manifest's scope is a plain string with no explicit kind;
-`manifest.ts` resolves the scope's kind from the permission's *domain*
+`manifest.ts` resolves the scope's kind from the permission's _domain_
 (`filesystem.*` → `path`, `network.*` → `host`, everything else →
 `resource`) — a documented heuristic, not a general scope grammar. A
 permission needing a different scope shape should be requested
@@ -220,7 +220,7 @@ never attributed to, or enforced against, any specific capability.
 Deliberately conservative: adding this optional field can never silently
 start denying a capability that was previously unrestricted, and a
 capability with no `capabilityId`-matched declaration at all is
-permissionless *by design*, not by omission (see "Fail-closed on missing
+permissionless _by design_, not by omission (see "Fail-closed on missing
 requirements" below for the distinction that matters).
 
 `@xo/runtime`'s `PackageLoader.mount` refuses to mount a package whose
@@ -244,7 +244,7 @@ gate.** `request.auxiliaryCapabilityIds`' data is retrieved and merged
 into context alongside the primary capability's own — without a check
 there, an auxiliary id would be a live bypass: a capability whose own
 permission check would fail could still have its data pulled in as an
-"auxiliary" of some *other*, permitted request. There is no path through
+"auxiliary" of some _other_, permitted request. There is no path through
 `ExecutionPipeline` that reaches component retrieval or the AI provider
 without a gate check first, primary or auxiliary alike; an auxiliary
 denial fails the whole request rather than silently dropping that one

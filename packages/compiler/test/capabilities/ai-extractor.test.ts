@@ -33,7 +33,16 @@ function makeLayer(output: AiCapabilityExtractionOutput): AiCapabilityLayer {
 }
 
 test('converts ai-core extractCapabilities items into candidate capabilities', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Send Confirmation Email', description: 'Sends a confirmation email upon event completion.', evidenceExcerptOffsets: [[0, 10]], confidence: 0.85 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [
+      {
+        name: 'Send Confirmation Email',
+        description: 'Sends a confirmation email upon event completion.',
+        evidenceExcerptOffsets: [[0, 10]],
+        confidence: 0.85,
+      },
+    ],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);
@@ -43,7 +52,16 @@ test('converts ai-core extractCapabilities items into candidate capabilities', a
 });
 
 test('guesses a category from the name/description via the shared verb lexicon', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Send Confirmation', description: 'This capability can send a message to a party.', evidenceExcerptOffsets: [], confidence: 0.8 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [
+      {
+        name: 'Send Confirmation',
+        description: 'This capability can send a message to a party.',
+        evidenceExcerptOffsets: [],
+        confidence: 0.8,
+      },
+    ],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);
@@ -52,7 +70,16 @@ test('guesses a category from the name/description via the shared verb lexicon',
 });
 
 test('falls back to the "action" category when no lexicon verb matches', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Something Unusual', description: 'A capability with no recognizable verb at all.', evidenceExcerptOffsets: [], confidence: 0.5 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [
+      {
+        name: 'Something Unusual',
+        description: 'A capability with no recognizable verb at all.',
+        evidenceExcerptOffsets: [],
+        confidence: 0.5,
+      },
+    ],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);
@@ -61,7 +88,9 @@ test('falls back to the "action" category when no lexicon verb matches', async (
 });
 
 test('uses the first evidence offset pair for provenance when present', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [[5, 15]], confidence: 0.7 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [[5, 15]], confidence: 0.7 }],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);
@@ -70,7 +99,9 @@ test('uses the first evidence offset pair for provenance when present', async ()
 });
 
 test('leaves charOffsetRange undefined when no evidence offsets are reported', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [], confidence: 0.7 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [], confidence: 0.7 }],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);
@@ -78,8 +109,10 @@ test('leaves charOffsetRange undefined when no evidence offsets are reported', a
   assert.equal(result.value.capabilities[0]!.provenance.charOffsetRange, undefined);
 });
 
-test('produces no edges (ai-core\'s extractCapabilities has no relationship field of its own)', async () => {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [], confidence: 0.7 }] };
+test("produces no edges (ai-core's extractCapabilities has no relationship field of its own)", async () => {
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [{ name: 'Send Email', description: 'x', evidenceExcerptOffsets: [], confidence: 0.7 }],
+  };
   const extractor = new AiCapabilityExtractor(makeLayer(output));
   const result = await extractor.extract(makeUnit(), emptyGraph);
   assert.ok(result.ok);

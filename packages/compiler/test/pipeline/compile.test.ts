@@ -15,10 +15,20 @@ import { buildSemanticCapabilityContract } from '@xo/capability-contract';
 const now = () => '2026-01-01T00:00:00.000Z';
 
 function provenance(overrides: Partial<KnowledgeProvenance> = {}): KnowledgeProvenance {
-  return { experienceUnitId: 'u1', documentPath: 'doc.pdf', pages: [1], sectionPath: ['S'], charOffsetRange: [0, 5], confidence: 0.9, ...overrides };
+  return {
+    experienceUnitId: 'u1',
+    documentPath: 'doc.pdf',
+    pages: [1],
+    sectionPath: ['S'],
+    charOffsetRange: [0, 5],
+    confidence: 0.9,
+    ...overrides,
+  };
 }
 
-function knowledgeNode(overrides: Partial<KnowledgeNode> & { canonicalLabel: string; semanticType: KnowledgeNode['semanticType'] }): KnowledgeNode {
+function knowledgeNode(
+  overrides: Partial<KnowledgeNode> & { canonicalLabel: string; semanticType: KnowledgeNode['semanticType'] },
+): KnowledgeNode {
   return {
     id: overrides.id ?? computeKnowledgeNodeId(overrides.semanticType, overrides.canonicalLabel),
     semanticType: overrides.semanticType,
@@ -107,39 +117,77 @@ test('pipeline: combined input converts Knowledge + Capability via the `into` me
 // ---------------------------------------------------------------------------
 
 test('pipeline: a knowledge-stage constraint node links to a capability via exact-label evidence, with no requiredKnowledgeNodeIds relationship at all', async () => {
-  const kNode = knowledgeNode({ semanticType: 'constraint', canonicalLabel: 'If the claim assessment amount exceeds 10000, deny the claim.', provenance: [provenance({ experienceUnitId: 'unit-rule' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'constraint',
+    canonicalLabel: 'If the claim assessment amount exceeds 10000, deny the claim.',
+    provenance: [provenance({ experienceUnitId: 'unit-rule' })],
+  });
   const kg: KnowledgeGraph = { nodes: [kNode], edges: [] };
-  const cap = capability({ canonicalName: 'Claim Assessment', category: 'analysis', provenance: [provenance({ experienceUnitId: 'unit-capability' })] });
+  const cap = capability({
+    canonicalName: 'Claim Assessment',
+    category: 'analysis',
+    provenance: [provenance({ experienceUnitId: 'unit-capability' })],
+  });
   const cg: CapabilityGraph = { capabilities: [cap], relationships: [] };
 
   const result = await compileXoir({ kind: 'combined', knowledge: kg, capability: cg }, { now });
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const linkEdge = result.value.graph.allEdges().find((e) => e.kind === 'REQUIRES' && e.fromId === XoirNodeId(kNode.id as unknown as string) && e.toId === XoirNodeId(cap.id as unknown as string));
+  const linkEdge = result.value.graph
+    .allEdges()
+    .find(
+      (e) =>
+        e.kind === 'REQUIRES' &&
+        e.fromId === XoirNodeId(kNode.id as unknown as string) &&
+        e.toId === XoirNodeId(cap.id as unknown as string),
+    );
   assert.ok(linkEdge, 'expected a constraint -> capability REQUIRES edge from content-mention linking');
   assert.equal(linkEdge!.metadata.custom['evidenceKind'], 'exact_label');
 });
 
 test('pipeline: a knowledge-stage constraint node links to a capability via same-unit term overlap, with no exact label substring', async () => {
-  const kNode = knowledgeNode({ semanticType: 'constraint', canonicalLabel: 'The amount claimed must not exceed 5000', provenance: [provenance({ experienceUnitId: 'unit-shared' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'constraint',
+    canonicalLabel: 'The amount claimed must not exceed 5000',
+    provenance: [provenance({ experienceUnitId: 'unit-shared' })],
+  });
   const kg: KnowledgeGraph = { nodes: [kNode], edges: [] };
-  const cap = capability({ canonicalName: 'Claim Assessment', category: 'analysis', provenance: [provenance({ experienceUnitId: 'unit-shared' })] });
+  const cap = capability({
+    canonicalName: 'Claim Assessment',
+    category: 'analysis',
+    provenance: [provenance({ experienceUnitId: 'unit-shared' })],
+  });
   const cg: CapabilityGraph = { capabilities: [cap], relationships: [] };
 
   const result = await compileXoir({ kind: 'combined', knowledge: kg, capability: cg }, { now });
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const linkEdge = result.value.graph.allEdges().find((e) => e.kind === 'REQUIRES' && e.fromId === XoirNodeId(kNode.id as unknown as string) && e.toId === XoirNodeId(cap.id as unknown as string));
+  const linkEdge = result.value.graph
+    .allEdges()
+    .find(
+      (e) =>
+        e.kind === 'REQUIRES' &&
+        e.fromId === XoirNodeId(kNode.id as unknown as string) &&
+        e.toId === XoirNodeId(cap.id as unknown as string),
+    );
   assert.ok(linkEdge, 'expected a constraint -> capability REQUIRES edge from same-unit-term-overlap evidence');
   assert.equal(linkEdge!.metadata.custom['evidenceKind'], 'same_unit_term_overlap');
 });
 
 test('pipeline: an unrelated knowledge-stage constraint (different unit, no shared vocabulary, no exact label) is NOT linked to any capability — false negatives preserved over false positives', async () => {
-  const kNode = knowledgeNode({ semanticType: 'constraint', canonicalLabel: 'Employees must complete annual training', provenance: [provenance({ experienceUnitId: 'unit-far-away' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'constraint',
+    canonicalLabel: 'Employees must complete annual training',
+    provenance: [provenance({ experienceUnitId: 'unit-far-away' })],
+  });
   const kg: KnowledgeGraph = { nodes: [kNode], edges: [] };
-  const cap = capability({ canonicalName: 'Claim Assessment', category: 'analysis', provenance: [provenance({ experienceUnitId: 'unit-capability' })] });
+  const cap = capability({
+    canonicalName: 'Claim Assessment',
+    category: 'analysis',
+    provenance: [provenance({ experienceUnitId: 'unit-capability' })],
+  });
   const cg: CapabilityGraph = { capabilities: [cap], relationships: [] };
 
   const result = await compileXoir({ kind: 'combined', knowledge: kg, capability: cg }, { now });
@@ -151,9 +199,17 @@ test('pipeline: an unrelated knowledge-stage constraint (different unit, no shar
 });
 
 test('pipeline: a knowledge-stage concept/fact node (not constraint/obligation/exception) is never treated as a rule source, even with an exact-label match', async () => {
-  const kNode = knowledgeNode({ semanticType: 'concept', canonicalLabel: 'Claim Assessment procedures apply to all commercial property claims', provenance: [provenance({ experienceUnitId: 'unit-rule' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'concept',
+    canonicalLabel: 'Claim Assessment procedures apply to all commercial property claims',
+    provenance: [provenance({ experienceUnitId: 'unit-rule' })],
+  });
   const kg: KnowledgeGraph = { nodes: [kNode], edges: [] };
-  const cap = capability({ canonicalName: 'Claim Assessment', category: 'analysis', provenance: [provenance({ experienceUnitId: 'unit-capability' })] });
+  const cap = capability({
+    canonicalName: 'Claim Assessment',
+    category: 'analysis',
+    provenance: [provenance({ experienceUnitId: 'unit-capability' })],
+  });
   const cg: CapabilityGraph = { capabilities: [cap], relationships: [] };
 
   const result = await compileXoir({ kind: 'combined', knowledge: kg, capability: cg }, { now });
@@ -174,9 +230,17 @@ test('pipeline: a knowledge-stage concept/fact node (not constraint/obligation/e
 // ---------------------------------------------------------------------------
 
 test('end-to-end: a knowledge-stage constraint linked via content-mention evidence produces a non-empty, correctly-typed SemanticCapabilityContract.rules entry', async () => {
-  const kNode = knowledgeNode({ semanticType: 'constraint', canonicalLabel: 'If the claim assessment amount exceeds 10000, deny the claim.', provenance: [provenance({ experienceUnitId: 'unit-rule' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'constraint',
+    canonicalLabel: 'If the claim assessment amount exceeds 10000, deny the claim.',
+    provenance: [provenance({ experienceUnitId: 'unit-rule' })],
+  });
   const kg: KnowledgeGraph = { nodes: [kNode], edges: [] };
-  const cap = capability({ canonicalName: 'Claim Assessment', category: 'analysis', provenance: [provenance({ experienceUnitId: 'unit-capability' })] });
+  const cap = capability({
+    canonicalName: 'Claim Assessment',
+    category: 'analysis',
+    provenance: [provenance({ experienceUnitId: 'unit-capability' })],
+  });
   const cg: CapabilityGraph = { capabilities: [cap], relationships: [] };
 
   const result = await compileXoir({ kind: 'combined', knowledge: kg, capability: cg }, { now });
@@ -289,10 +353,7 @@ test('normalization: sourceRefs are reordered into canonical order without losin
   assert.ok(xoirNode.ok);
   if (!xoirNode.ok) return;
   assert.equal(xoirNode.value.metadata.sourceRefs.length, 2);
-  assert.deepEqual(
-    xoirNode.value.metadata.sourceRefs.map((r) => r.documentPath).sort(),
-    ['a.pdf', 'z.pdf'],
-  );
+  assert.deepEqual(xoirNode.value.metadata.sourceRefs.map((r) => r.documentPath).sort(), ['a.pdf', 'z.pdf']);
 });
 
 test('normalization: two structurally-equivalent inputs with different array/insertion orders normalize to the identical content hash', async () => {
@@ -314,8 +375,22 @@ test('normalization: exact-duplicate edges (same kind/from/to under different id
   const kg: KnowledgeGraph = {
     nodes: [a, b],
     edges: [
-      { id: 'edge-1', type: 'located_in', fromNodeId: a.id, toNodeId: b.id, confidence: 0.7, provenance: [provenance({ documentPath: 'x.pdf' })] },
-      { id: 'edge-2', type: 'located_in', fromNodeId: a.id, toNodeId: b.id, confidence: 0.6, provenance: [provenance({ documentPath: 'y.pdf' })] },
+      {
+        id: 'edge-1',
+        type: 'located_in',
+        fromNodeId: a.id,
+        toNodeId: b.id,
+        confidence: 0.7,
+        provenance: [provenance({ documentPath: 'x.pdf' })],
+      },
+      {
+        id: 'edge-2',
+        type: 'located_in',
+        fromNodeId: a.id,
+        toNodeId: b.id,
+        confidence: 0.6,
+        provenance: [provenance({ documentPath: 'y.pdf' })],
+      },
     ],
   };
   const result = await compileXoir({ kind: 'knowledge', graph: kg }, { now });
@@ -330,7 +405,11 @@ test('normalization: exact-duplicate edges (same kind/from/to under different id
 });
 
 test('normalization: no information is lost — node/edge/provenance counts are identical before and after normalization', async () => {
-  const a = knowledgeNode({ semanticType: 'organization', canonicalLabel: 'Acme Corp', provenance: [provenance({ documentPath: 'x.pdf' })] });
+  const a = knowledgeNode({
+    semanticType: 'organization',
+    canonicalLabel: 'Acme Corp',
+    provenance: [provenance({ documentPath: 'x.pdf' })],
+  });
   const b = knowledgeNode({ semanticType: 'jurisdiction', canonicalLabel: 'New York' });
   const kg: KnowledgeGraph = {
     nodes: [a, b],

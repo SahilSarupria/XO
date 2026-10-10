@@ -19,7 +19,11 @@ export async function captureOutput<T>(fn: () => Promise<T> | T): Promise<Captur
   const realOut = process.stdout.write;
   const realErr = process.stderr.write;
 
-  const divert = ((chunk: string | Uint8Array, encodingOrCb?: BufferEncoding | ((err?: Error | null) => void), cb?: (err?: Error | null) => void): boolean => {
+  const divert = ((
+    chunk: string | Uint8Array,
+    encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ): boolean => {
     chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
     const done = typeof encodingOrCb === 'function' ? encodingOrCb : cb;
     if (done) done();

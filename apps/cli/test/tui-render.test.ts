@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPainter, detectColorLevel, gradientColor, stripAnsi, truncate, visibleLength, wrapAnsi, charWidth } from '../src/tui/ansi.js';
+import {
+  createPainter,
+  detectColorLevel,
+  gradientColor,
+  stripAnsi,
+  truncate,
+  visibleLength,
+  wrapAnsi,
+  charWidth,
+} from '../src/tui/ansi.js';
 import { renderBox } from '../src/tui/box.js';
 import { highlightLine, highlightOutput } from '../src/tui/highlight.js';
 import { renderMarkdown } from '../src/tui/markdown.js';
@@ -142,7 +151,7 @@ test('highlightLine actually colors the shapes it claims to (level 3)', () => {
   assert.equal(highlightLine('nothing special here', ui3), 'nothing special here');
 });
 
-test('highlightOutput pretty-prints one-line JSON and leaves other lines\' text alone', () => {
+test("highlightOutput pretty-prints one-line JSON and leaves other lines' text alone", () => {
   const lines = highlightOutput('{"status":"completed","n":[1,2]}', ui0);
   assert.deepEqual(lines, ['{', '  "status": "completed",', '  "n": [', '    1,', '    2', '  ]', '}']);
   const mixed = highlightOutput('error: nope\nfoo: bar\n\n', ui3).map(stripAnsi);

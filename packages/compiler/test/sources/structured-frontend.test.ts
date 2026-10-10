@@ -95,7 +95,8 @@ test('CSV: each paragraph block carries structuredField with the raw string cell
 
   const formulaBlock = byField.get('formula');
   assert.equal(formulaBlock?.kind, 'paragraph');
-  if (formulaBlock?.kind === 'paragraph') assert.deepEqual(formulaBlock.structuredField, { fieldName: 'formula', rawValue: 'sum of line item amounts' });
+  if (formulaBlock?.kind === 'paragraph')
+    assert.deepEqual(formulaBlock.structuredField, { fieldName: 'formula', rawValue: 'sum of line item amounts' });
 
   const derivedFromBlock = byField.get('derived_from');
   assert.equal(derivedFromBlock?.kind, 'paragraph');
@@ -149,17 +150,26 @@ test('JSON: a nested object/array value falls back to the same stringified form 
 });
 
 test('field order in structuredField matches source key/column order (JSON and CSV)', () => {
-  const jsonResult = frontend.ingest({ kind: 'structured', format: 'json', text: JSON.stringify([{ z: 1, a: 2, m: 3 }]), sourcePath: 'order.json' });
+  const jsonResult = frontend.ingest({
+    kind: 'structured',
+    format: 'json',
+    text: JSON.stringify([{ z: 1, a: 2, m: 3 }]),
+    sourcePath: 'order.json',
+  });
   assert.equal(jsonResult.ok, true);
   if (jsonResult.ok && jsonResult.value.content.kind === 'document') {
-    const names = jsonResult.value.content.parsed.root.subsections[0]!.blocks.filter((b) => b.kind === 'paragraph').map((b) => (b.kind === 'paragraph' ? b.structuredField?.fieldName : undefined));
+    const names = jsonResult.value.content.parsed.root.subsections[0]!.blocks.filter((b) => b.kind === 'paragraph').map((b) =>
+      b.kind === 'paragraph' ? b.structuredField?.fieldName : undefined,
+    );
     assert.deepEqual(names, ['z', 'a', 'm']);
   }
 
   const csvResult = frontend.ingest({ kind: 'structured', format: 'csv', text: ['z,a,m', '1,2,3'].join('\n'), sourcePath: 'order.csv' });
   assert.equal(csvResult.ok, true);
   if (csvResult.ok && csvResult.value.content.kind === 'document') {
-    const names = csvResult.value.content.parsed.root.subsections[0]!.blocks.filter((b) => b.kind === 'paragraph').map((b) => (b.kind === 'paragraph' ? b.structuredField?.fieldName : undefined));
+    const names = csvResult.value.content.parsed.root.subsections[0]!.blocks.filter((b) => b.kind === 'paragraph').map((b) =>
+      b.kind === 'paragraph' ? b.structuredField?.fieldName : undefined,
+    );
     assert.deepEqual(names, ['z', 'a', 'm']);
   }
 });

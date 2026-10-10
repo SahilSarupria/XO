@@ -79,8 +79,15 @@ test('headless prose whose synthesized title happens to contain a category keywo
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.equal(result.value.capabilities.find((c) => c.localId === 'title'), undefined, 'must not produce a title-path capability');
-  assert.ok(result.value.capabilities.some((c) => c.category === 'validation' && c.name.startsWith('Reconcile')), 'the legitimate verb-based capability must still be detected');
+  assert.equal(
+    result.value.capabilities.find((c) => c.localId === 'title'),
+    undefined,
+    'must not produce a title-path capability',
+  );
+  assert.ok(
+    result.value.capabilities.some((c) => c.category === 'validation' && c.name.startsWith('Reconcile')),
+    'the legitimate verb-based capability must still be detected',
+  );
 });
 
 test('detects a command-snippet-based capability with parsed inputs', async () => {
@@ -98,7 +105,17 @@ test('detects a command-snippet-based capability with parsed inputs', async () =
 test('links a capability to knowledge nodes mentioned in the same sentence', async () => {
   const unit = makeUnit({ content: 'Send the report to Acme Corp promptly.' });
   const knowledgeGraph: KnowledgeGraph = {
-    nodes: [{ id: 'kn_1' as never, semanticType: 'organization', canonicalLabel: 'Acme Corp', aliases: [], confidence: 0.8, provenance: [], metadata: {} }],
+    nodes: [
+      {
+        id: 'kn_1' as never,
+        semanticType: 'organization',
+        canonicalLabel: 'Acme Corp',
+        aliases: [],
+        confidence: 0.8,
+        provenance: [],
+        metadata: {},
+      },
+    ],
     edges: [],
   };
   const result = await extractor.extract(unit, knowledgeGraph);
@@ -155,7 +172,10 @@ test('each newly added cross-domain verb produces a capability candidate', async
     assert.ok(result.ok, `extraction failed for "${content}"`);
     if (!result.ok) continue;
     const cap = result.value.capabilities.find((c) => c.category === category);
-    assert.ok(cap, `expected a "${category}" capability for "${content}", got: ${JSON.stringify(result.value.capabilities.map((c) => c.category))}`);
+    assert.ok(
+      cap,
+      `expected a "${category}" capability for "${content}", got: ${JSON.stringify(result.value.capabilities.map((c) => c.category))}`,
+    );
   }
 });
 
@@ -174,7 +194,16 @@ test('recovers a same-unit action node when its canonical label was truncated (d
         canonicalLabel: 'Record incoming payments (which typically…',
         aliases: [],
         confidence: 0.7,
-        provenance: [{ experienceUnitId: 'unit-trunc', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 }],
+        provenance: [
+          {
+            experienceUnitId: 'unit-trunc',
+            documentPath: 'doc.pdf',
+            pages: [1],
+            sectionPath: [],
+            charOffsetRange: undefined,
+            confidence: 0.7,
+          },
+        ],
         metadata: {},
       },
     ],
@@ -198,7 +227,16 @@ test('does not recover a same-unit process node whose canonical label matches ex
         canonicalLabel: 'Escalate unresolved cases',
         aliases: [],
         confidence: 0.7,
-        provenance: [{ experienceUnitId: 'unit-exact', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 }],
+        provenance: [
+          {
+            experienceUnitId: 'unit-exact',
+            documentPath: 'doc.pdf',
+            pages: [1],
+            sectionPath: [],
+            charOffsetRange: undefined,
+            confidence: 0.7,
+          },
+        ],
         metadata: {},
       },
     ],
@@ -222,7 +260,16 @@ test('a same-unit concept/entity node is NOT recovered as a capability dependenc
         canonicalLabel: 'Some unrelated concept never mentioned verbatim here',
         aliases: [],
         confidence: 0.7,
-        provenance: [{ experienceUnitId: 'unit-concept', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 }],
+        provenance: [
+          {
+            experienceUnitId: 'unit-concept',
+            documentPath: 'doc.pdf',
+            pages: [1],
+            sectionPath: [],
+            charOffsetRange: undefined,
+            confidence: 0.7,
+          },
+        ],
         metadata: {},
       },
       {
@@ -231,7 +278,16 @@ test('a same-unit concept/entity node is NOT recovered as a capability dependenc
         canonicalLabel: 'Also unrelated and not mentioned',
         aliases: [],
         confidence: 0.6,
-        provenance: [{ experienceUnitId: 'unit-concept', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.6 }],
+        provenance: [
+          {
+            experienceUnitId: 'unit-concept',
+            documentPath: 'doc.pdf',
+            pages: [1],
+            sectionPath: [],
+            charOffsetRange: undefined,
+            confidence: 0.6,
+          },
+        ],
         metadata: {},
       },
     ],
@@ -256,7 +312,9 @@ test('an action node from a DIFFERENT ExperienceUnit is not recovered merely bec
         canonicalLabel: 'Record incoming payments (from a different…',
         aliases: [],
         confidence: 0.7,
-        provenance: [{ experienceUnitId: 'unit-b', documentPath: 'doc.pdf', pages: [2], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 }],
+        provenance: [
+          { experienceUnitId: 'unit-b', documentPath: 'doc.pdf', pages: [2], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 },
+        ],
         metadata: {},
       },
     ],
@@ -285,7 +343,16 @@ test('the title-based capability path also benefits from same-unit action recove
         canonicalLabel: 'Reconcile the invoice balance against the…',
         aliases: [],
         confidence: 0.7,
-        provenance: [{ experienceUnitId: 'unit-title', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.7 }],
+        provenance: [
+          {
+            experienceUnitId: 'unit-title',
+            documentPath: 'doc.pdf',
+            pages: [1],
+            sectionPath: [],
+            charOffsetRange: undefined,
+            confidence: 0.7,
+          },
+        ],
         metadata: {},
       },
     ],
@@ -350,7 +417,10 @@ test('active third-person-singular present tense ("-s") is recognized for other 
     const result = await extractor.extract(unit, emptyGraph);
     assert.ok(result.ok);
     if (!result.ok) continue;
-    assert.ok(result.value.capabilities.some((c) => c.name.startsWith(expectedPrefix)), `expected a "${expectedPrefix}"-prefixed capability for "${content}"`);
+    assert.ok(
+      result.value.capabilities.some((c) => c.name.startsWith(expectedPrefix)),
+      `expected a "${expectedPrefix}"-prefixed capability for "${content}"`,
+    );
   }
 });
 
@@ -365,7 +435,10 @@ test('active past tense ("-ed") is recognized without requiring passive-auxiliar
     const result = await extractor.extract(unit, emptyGraph);
     assert.ok(result.ok);
     if (!result.ok) continue;
-    assert.ok(result.value.capabilities.some((c) => c.name.startsWith(expectedPrefix)), `expected a "${expectedPrefix}"-prefixed capability for "${content}"`);
+    assert.ok(
+      result.value.capabilities.some((c) => c.name.startsWith(expectedPrefix)),
+      `expected a "${expectedPrefix}"-prefixed capability for "${content}"`,
+    );
   }
 });
 
@@ -375,7 +448,10 @@ test('a plural noun ending in "-s" immediately after a determiner is NOT mistake
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.ok(!result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('record')), '"records" (a determiner-preceded plural noun) must not be read as the verb "record"');
+  assert.ok(
+    !result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('record')),
+    '"records" (a determiner-preceded plural noun) must not be read as the verb "record"',
+  );
 });
 
 test('a plural noun ending in "-s" immediately before an auxiliary/copula is NOT mistaken for a verb, even without a preceding determiner', async () => {
@@ -390,13 +466,28 @@ test('a plural noun ending in "-s" immediately before an auxiliary/copula is NOT
 });
 
 test('noun/verb ambiguity is resolved by local context, not by the lemma alone: the same verb is accepted or rejected per sentence', async () => {
-  const positive = await extractor.extract(makeUnit({ title: 'Untitled', content: 'The referee matches players of similar skill level.' }), emptyGraph);
+  const positive = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'The referee matches players of similar skill level.' }),
+    emptyGraph,
+  );
   assert.ok(positive.ok);
-  if (positive.ok) assert.ok(positive.value.capabilities.some((c) => c.name.startsWith('Match')), '"matches" as a genuine verb (object follows, no determiner before) must still be recognized');
+  if (positive.ok)
+    assert.ok(
+      positive.value.capabilities.some((c) => c.name.startsWith('Match')),
+      '"matches" as a genuine verb (object follows, no determiner before) must still be recognized',
+    );
 
-  const negative = await extractor.extract(makeUnit({ title: 'Untitled', content: 'The matches were postponed due to weather.' }), emptyGraph);
+  const negative = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'The matches were postponed due to weather.' }),
+    emptyGraph,
+  );
   assert.ok(negative.ok);
-  if (negative.ok) assert.deepEqual(negative.value.capabilities, [], '"matches" as a noun subject (determiner before, aux after) must not be recognized in the same lemma');
+  if (negative.ok)
+    assert.deepEqual(
+      negative.value.capabilities,
+      [],
+      '"matches" as a noun subject (determiner before, aux after) must not be recognized in the same lemma',
+    );
 });
 
 test('a passive sentence with a noun/verb-ambiguous subject still correctly captures its own genuine passive verb', async () => {
@@ -407,33 +498,50 @@ test('a passive sentence with a noun/verb-ambiguous subject still correctly capt
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.ok(!result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('record')), '"records" itself must still not be read as a verb');
-  assert.ok(result.value.capabilities.some((c) => c.name.startsWith('Review')), 'the genuine passive verb "reviewed" in the same sentence must still be captured');
+  assert.ok(
+    !result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('record')),
+    '"records" itself must still not be read as a verb',
+  );
+  assert.ok(
+    result.value.capabilities.some((c) => c.name.startsWith('Review')),
+    'the genuine passive verb "reviewed" in the same sentence must still be captured',
+  );
 });
 
 test('a reduced relative clause ("a document created solely to exercise...") is NOT mistaken for an active main-clause action', async () => {
   // The exact real regression this guard exists for: synthetic-property-policy-quality.test.ts's
   // fixture boilerplate ("...document created solely to exercise the XO compiler's...") was briefly
   // misread as an active "Create" capability once "-ed" active-voice matching was added.
-  const content = "This is a synthetic, non-real property insurance policy document created solely to exercise the XO compiler's semantic extraction pipeline end to end.";
+  const content =
+    "This is a synthetic, non-real property insurance policy document created solely to exercise the XO compiler's semantic extraction pipeline end to end.";
   const unit = makeUnit({ title: 'Untitled', content });
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.deepEqual(result.value.capabilities, [], 'a participle modifying a preceding noun, followed by an adverb, must not be read as a genuine active-voice event');
+  assert.deepEqual(
+    result.value.capabilities,
+    [],
+    'a participle modifying a preceding noun, followed by an adverb, must not be read as a genuine active-voice event',
+  );
 });
 
 test('a reduced relative clause followed by a preposition ("reports generated from the CRM", "data validated by the auditor") is NOT mistaken for an active main-clause action', async () => {
   // The real Aastha case: "...based on the 'Policy Booked' reports generated from the CRM." — a
   // participle modifying "reports", not a real event; "generated" is immediately followed by "from",
   // never a direct object, since the reduced relative clause has none of its own to give.
-  const cases = ['...based on the "Policy Booked" reports generated from the CRM.', 'The figures were checked against data validated by the auditor last quarter.'];
+  const cases = [
+    '...based on the "Policy Booked" reports generated from the CRM.',
+    'The figures were checked against data validated by the auditor last quarter.',
+  ];
   for (const content of cases) {
     const unit = makeUnit({ title: 'Untitled', content });
     const result = await extractor.extract(unit, emptyGraph);
     assert.ok(result.ok);
     if (!result.ok) continue;
-    assert.ok(!result.value.capabilities.some((c) => c.name.startsWith('Generate') || c.name.startsWith('Validate')), `expected no "Generate"/"Validate" capability for "${content}"`);
+    assert.ok(
+      !result.value.capabilities.some((c) => c.name.startsWith('Generate') || c.name.startsWith('Validate')),
+      `expected no "Generate"/"Validate" capability for "${content}"`,
+    );
   }
 });
 
@@ -447,17 +555,31 @@ test('a word cited verbatim inside quotation marks (a report/label name, e.g. "P
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.ok(!result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('book')), 'a quoted label must not be read as an active-voice verb');
+  assert.ok(
+    !result.value.capabilities.some((c) => c.name.toLowerCase().startsWith('book')),
+    'a quoted label must not be read as an active-voice verb',
+  );
 });
 
 test('existing passive-voice behavior (both categories and the execution exclusion) is unaffected by the active-voice additions', async () => {
-  const create = await extractor.extract(makeUnit({ title: 'Untitled', content: 'Invoices are created automatically at the end of each cycle.' }), emptyGraph);
+  const create = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'Invoices are created automatically at the end of each cycle.' }),
+    emptyGraph,
+  );
   assert.ok(create.ok);
   if (create.ok) assert.ok(create.value.capabilities.some((c) => c.name.startsWith('Create')));
 
-  const configured = await extractor.extract(makeUnit({ title: 'Untitled', content: 'The server is configured with default settings.' }), emptyGraph);
+  const configured = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'The server is configured with default settings.' }),
+    emptyGraph,
+  );
   assert.ok(configured.ok);
-  if (configured.ok) assert.deepEqual(configured.value.capabilities, [], 'passive "execution"-category phrasing ("is configured") must still be excluded, unchanged');
+  if (configured.ok)
+    assert.deepEqual(
+      configured.value.capabilities,
+      [],
+      'passive "execution"-category phrasing ("is configured") must still be excluded, unchanged',
+    );
 });
 
 test('a sentence-initial past-tense participle with no subject ("Validated reconciliation data.") is NOT mistaken for an imperative or active-voice event', async () => {
@@ -472,7 +594,11 @@ test('a sentence-initial past-tense participle with no subject ("Validated recon
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.deepEqual(result.value.capabilities, [], 'a subjectless, sentence-initial past-tense participle must not be read as a genuine active-voice event');
+  assert.deepEqual(
+    result.value.capabilities,
+    [],
+    'a subjectless, sentence-initial past-tense participle must not be read as a genuine active-voice event',
+  );
 });
 
 test('a base-form imperative as the first word of a sentence is unaffected by the sentence-initial-past-tense guard (still a genuine command)', async () => {
@@ -481,18 +607,36 @@ test('a base-form imperative as the first word of a sentence is unaffected by th
   const result = await extractor.extract(unit, emptyGraph);
   assert.ok(result.ok);
   if (!result.ok) return;
-  assert.ok(result.value.capabilities.some((c) => c.name.startsWith('Reconcile')), 'a base-form sentence-initial imperative is untouched — the new guard only applies to "-ed" forms');
+  assert.ok(
+    result.value.capabilities.some((c) => c.name.startsWith('Reconcile')),
+    'a base-form sentence-initial imperative is untouched — the new guard only applies to "-ed" forms',
+  );
 });
 
 test('a modal followed by the bare passive infinitive ("must be recorded", "must be configured") is treated as genuinely passive, preserving the execution-category exclusion', async () => {
   // "be" after a modal (must/shall/should/...) is just as passive as "is/are/was/were" — routing it
   // through the active-past-tense branch instead would have let an execution-category verb slip
   // through unexcluded ("must be configured" incorrectly becoming an active "Configure" capability).
-  const recorded = await extractor.extract(makeUnit({ title: 'Untitled', content: 'All required approvals must be recorded in the claim file.' }), emptyGraph);
+  const recorded = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'All required approvals must be recorded in the claim file.' }),
+    emptyGraph,
+  );
   assert.ok(recorded.ok);
-  if (recorded.ok) assert.ok(recorded.value.capabilities.some((c) => c.name.startsWith('Record') && c.category === 'generation'), 'a non-execution-category verb ("record") must still be captured via the passive path');
+  if (recorded.ok)
+    assert.ok(
+      recorded.value.capabilities.some((c) => c.name.startsWith('Record') && c.category === 'generation'),
+      'a non-execution-category verb ("record") must still be captured via the passive path',
+    );
 
-  const configured = await extractor.extract(makeUnit({ title: 'Untitled', content: 'The system must be configured before go-live.' }), emptyGraph);
+  const configured = await extractor.extract(
+    makeUnit({ title: 'Untitled', content: 'The system must be configured before go-live.' }),
+    emptyGraph,
+  );
   assert.ok(configured.ok);
-  if (configured.ok) assert.deepEqual(configured.value.capabilities, [], 'an execution-category verb ("configure") after a modal+bare-"be" passive must still be excluded, exactly like "is configured"');
+  if (configured.ok)
+    assert.deepEqual(
+      configured.value.capabilities,
+      [],
+      'an execution-category verb ("configure") after a modal+bare-"be" passive must still be excluded, exactly like "is configured"',
+    );
 });

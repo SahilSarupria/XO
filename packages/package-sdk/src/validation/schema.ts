@@ -8,6 +8,7 @@ import type {
   XoManifest,
   XoMetadata,
 } from '@xo/types';
+import { componentPathProblem, packageSegmentProblem } from './safe-path.js';
 
 const COMPONENT_KINDS: readonly ComponentKind[] = [
   'knowledge_graph',
@@ -31,7 +32,14 @@ function isContentHash(value: unknown): value is string {
 }
 
 function isComponentEntry(value: unknown): value is ComponentEntry {
-  return isRecord(value) && typeof value.path === 'string' && isContentHash(value.hash) && typeof value.required === 'boolean';
+  // `path` becomes part of an on-disk install location, so an unsafe one (traversal, absolute, Windows-style, reserved) is a shape violation, not just a style problem — see safe-path.ts.
+  return (
+    isRecord(value) &&
+    typeof value.path === 'string' &&
+    componentPathProblem(value.path) === undefined &&
+    isContentHash(value.hash) &&
+    typeof value.required === 'boolean'
+  );
 }
 
 function isCompatibilityDeclaration(value: unknown): value is CompatibilityDeclaration {
@@ -163,14 +171,24 @@ function isCapabilityExecutionDeclaration(value: unknown): boolean {
   if (value.bindingId !== undefined && typeof value.bindingId !== 'string') return false;
   if (value.contractId !== undefined && typeof value.contractId !== 'string') return false;
   if (value.inputSchema !== undefined && !isCapabilityInputSchema(value.inputSchema)) return false;
-  if (value.requiredPermissionIds !== undefined && (!Array.isArray(value.requiredPermissionIds) || !value.requiredPermissionIds.every((p) => typeof p === 'string'))) return false;
+  if (
+    value.requiredPermissionIds !== undefined &&
+    (!Array.isArray(value.requiredPermissionIds) || !value.requiredPermissionIds.every((p) => typeof p === 'string'))
+  )
+    return false;
   // R5: hybridSteps is meaningful only for mode: 'hybrid', but is checked
   // structurally whenever present (a non-hybrid declaration that somehow
   // carries a hybridSteps array is just as malformed as one with a wrong
   // bindingId type — reject rather than silently ignore).
-  if (value.hybridSteps !== undefined && (!Array.isArray(value.hybridSteps) || !value.hybridSteps.every(isHybridExecutionStep))) return false;
+  if (value.hybridSteps !== undefined && (!Array.isArray(value.hybridSteps) || !value.hybridSteps.every(isHybridExecutionStep)))
+    return false;
   if (value.mode === 'hybrid' && (!Array.isArray(value.hybridSteps) || value.hybridSteps.length === 0)) return false;
-  if (value.mode === 'hybrid' && Array.isArray(value.hybridSteps) && !hasWellFormedHybridStepOrdering(value.hybridSteps as Record<string, unknown>[])) return false;
+  if (
+    value.mode === 'hybrid' &&
+    Array.isArray(value.hybridSteps) &&
+    !hasWellFormedHybridStepOrdering(value.hybridSteps as Record<string, unknown>[])
+  )
+    return false;
   return true;
 }
 
@@ -180,8 +198,10 @@ function isCapabilityDeclaration(value: unknown): value is CapabilityDeclaration
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
   if (typeof value.description !== 'string' || value.description.length === 0) return false;
   if (!Array.isArray(value.providerCompatibility) || !value.providerCompatibility.every((f) => typeof f === 'string')) return false;
-  if (!Array.isArray(value.requiredComponents) || !value.requiredComponents.every((k) => COMPONENT_KINDS.includes(k as ComponentKind))) return false;
-  if (!isRecord(value.estimatedCost) || typeof value.estimatedCost.currency !== 'string' || typeof value.estimatedCost.amount !== 'number') return false;
+  if (!Array.isArray(value.requiredComponents) || !value.requiredComponents.every((k) => COMPONENT_KINDS.includes(k as ComponentKind)))
+    return false;
+  if (!isRecord(value.estimatedCost) || typeof value.estimatedCost.currency !== 'string' || typeof value.estimatedCost.amount !== 'number')
+    return false;
   if (typeof value.estimatedLatencyMs !== 'number') return false;
   if (!isRecord(value.confidence) || typeof value.confidence.score !== 'number') return false;
   if (!['self_reported', 'benchmark', 'expert_review'].includes(value.confidence.basis as string)) return false;
@@ -212,6 +232,7 @@ export function isXoManifest(value: unknown): value is XoManifest {
   if (!isRecord(value)) return false;
   if (typeof value.formatVersion !== 'string') return false;
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
+  if (packageSegmentProblem('name', value.name) !== undefined) return false;
   if (typeof value.version !== 'string') return false;
   if (typeof value.creatorDid !== 'string' || value.creatorDid.length === 0) return false;
   if (!isCompatibilityDeclaration(value.compatibility)) return false;
@@ -230,7 +251,11 @@ export function isXoManifest(value: unknown): value is XoManifest {
   if (value.signatures !== undefined) {
     if (!Array.isArray(value.signatures)) return false;
     const rolesOk = value.signatures.every(
-      (s) => isRecord(s) && typeof s.signerDid === 'string' && ['creator', 'reviewer', 'co_signer'].includes(s.role as string) && typeof s.signature === 'string',
+      (s) =>
+        isRecord(s) &&
+        typeof s.signerDid === 'string' &&
+        ['creator', 'reviewer', 'co_signer'].includes(s.role as string) &&
+        typeof s.signature === 'string',
     );
     if (!rolesOk) return false;
   }

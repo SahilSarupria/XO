@@ -10,7 +10,13 @@ import { observeCase, type ObserveOptions } from './observe.js';
 export const REPORT_SCHEMA_VERSION = 1 as const;
 
 /** Metrics that describe the output without comparing it to any expectation. They never make an otherwise expectation-free suite count as "measured". */
-export const DESCRIPTIVE_METRICS: ReadonlySet<MetricId> = new Set<MetricId>(['observedSourceRefCoverage', 'producerAttributionCoverage', 'provenanceChainCoverage', 'executionProvenanceAgreement', 'crossPathConsistency']);
+export const DESCRIPTIVE_METRICS: ReadonlySet<MetricId> = new Set<MetricId>([
+  'observedSourceRefCoverage',
+  'producerAttributionCoverage',
+  'provenanceChainCoverage',
+  'executionProvenanceAgreement',
+  'crossPathConsistency',
+]);
 
 export interface BenchmarkReport {
   readonly schemaVersion: typeof REPORT_SCHEMA_VERSION;
@@ -34,7 +40,11 @@ export interface BenchmarkReport {
 function sumRecords(records: readonly Readonly<Record<string, number>>[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const r of records) for (const [k, v] of Object.entries(r)) out[k] = (out[k] ?? 0) + v;
-  return Object.fromEntries(Object.keys(out).sort(compareStrings).map((k) => [k, out[k]!]));
+  return Object.fromEntries(
+    Object.keys(out)
+      .sort(compareStrings)
+      .map((k) => [k, out[k]!]),
+  );
 }
 
 function aggregateObserved(cases: readonly CaseEvaluation[]): ObservedSummary {
@@ -51,7 +61,10 @@ function aggregateObserved(cases: readonly CaseEvaluation[]): ObservedSummary {
       totalSteps: evaluated.reduce((n, c) => n + c.observed.workflows.totalSteps, 0),
       byExecutability: sumRecords(evaluated.map((c) => c.observed.workflows.byExecutability)),
     },
-    executions: { total: evaluated.reduce((n, c) => n + c.observed.executions.total, 0), byOutcome: sumRecords(evaluated.map((c) => c.observed.executions.byOutcome)) },
+    executions: {
+      total: evaluated.reduce((n, c) => n + c.observed.executions.total, 0),
+      byOutcome: sumRecords(evaluated.map((c) => c.observed.executions.byOutcome)),
+    },
   };
 }
 
@@ -89,12 +102,19 @@ export async function runSuite(suite: BenchmarkSuiteDefinition, options: Observe
 }
 
 /** Minimal structural validation of a previously written report (a baseline read back from disk). */
-export function parseReport(raw: unknown): { readonly ok: true; readonly value: BenchmarkReport } | { readonly ok: false; readonly message: string } {
+export function parseReport(
+  raw: unknown,
+): { readonly ok: true; readonly value: BenchmarkReport } | { readonly ok: false; readonly message: string } {
   if (!isPlainObject(raw)) return { ok: false, message: 'report must be a JSON object' };
-  if (raw['schemaVersion'] !== REPORT_SCHEMA_VERSION) return { ok: false, message: `unsupported report schemaVersion ${JSON.stringify(raw['schemaVersion'])} (expected ${REPORT_SCHEMA_VERSION})` };
+  if (raw['schemaVersion'] !== REPORT_SCHEMA_VERSION)
+    return {
+      ok: false,
+      message: `unsupported report schemaVersion ${JSON.stringify(raw['schemaVersion'])} (expected ${REPORT_SCHEMA_VERSION})`,
+    };
   if (typeof raw['suiteId'] !== 'string') return { ok: false, message: 'report.suiteId must be a string' };
   if (!Array.isArray(raw['cases'])) return { ok: false, message: 'report.cases must be an array' };
-  if (!isPlainObject(raw['aggregate']) || !Array.isArray((raw['aggregate'] as Record<string, unknown>)['metrics'])) return { ok: false, message: 'report.aggregate.metrics must be an array' };
+  if (!isPlainObject(raw['aggregate']) || !Array.isArray((raw['aggregate'] as Record<string, unknown>)['metrics']))
+    return { ok: false, message: 'report.aggregate.metrics must be an array' };
   return { ok: true, value: raw as unknown as BenchmarkReport };
 }
 

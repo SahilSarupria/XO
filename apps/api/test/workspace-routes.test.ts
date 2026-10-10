@@ -79,7 +79,9 @@ test('GET /workspaces lists only workspaces owned by the authenticated identity'
 
       const mine1 = (await server.request('POST', '/workspaces', { name: 'mine-1' })).json<WorkspaceWire>();
       const mine2 = (await server.request('POST', '/workspaces', { name: 'mine-2' })).json<WorkspaceWire>();
-      const theirs = (await server.request('POST', '/workspaces', { name: 'theirs' }, TestServer.authHeader(other.apiKey))).json<WorkspaceWire>();
+      const theirs = (
+        await server.request('POST', '/workspaces', { name: 'theirs' }, TestServer.authHeader(other.apiKey))
+      ).json<WorkspaceWire>();
 
       const listMine = await server.request('GET', '/workspaces');
       assert.equal(listMine.status, 200);
@@ -116,7 +118,9 @@ test('identity A cannot retrieve identity B workspace by id — fails closed as 
     const server = await TestServer.start({ workspacesDir }, 'identity-a');
     try {
       const b = await server.issueAdditionalIdentity('identity-b');
-      const bWorkspace = (await server.request('POST', '/workspaces', { name: 'b-only' }, TestServer.authHeader(b.apiKey))).json<WorkspaceWire>();
+      const bWorkspace = (
+        await server.request('POST', '/workspaces', { name: 'b-only' }, TestServer.authHeader(b.apiKey))
+      ).json<WorkspaceWire>();
 
       const asA = await server.request('GET', `/workspaces/${bWorkspace.workspaceId}`);
       assert.equal(asA.status, 404);

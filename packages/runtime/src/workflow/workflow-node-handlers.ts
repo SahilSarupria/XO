@@ -7,6 +7,7 @@ import type { WorkflowContext } from './workflow-context.js';
 import { evaluateCondition } from './workflow-condition.js';
 import type { NodeId, WorkflowEdge, WorkflowGraph, WorkflowNode } from './workflow-graph.js';
 import type { WorkflowNodeReceipt } from './workflow-receipt.js';
+import type { WorkflowCondition } from './workflow-graph.js';
 
 /** What a `NodeHandler` produces for one node execution. */
 export interface NodeHandlerResult {
@@ -31,12 +32,19 @@ export type NodeHandler = (node: WorkflowNode, context: WorkflowContext) => Prom
  * negotiation/retrieval/context/prompt/AI-call logic, and zero
  * modification to how any of that already works.
  */
-export function makeCapabilityNodeHandler(runCapability: (request: ExecutionRequest, cancellation: WorkflowContext['cancellation']) => Promise<ExecutionResult>): NodeHandler {
+export function makeCapabilityNodeHandler(
+  runCapability: (request: ExecutionRequest, cancellation: WorkflowContext['cancellation']) => Promise<ExecutionResult>,
+): NodeHandler {
   return async (node, context) => {
     const config = node.config ?? {};
     const capabilityId = typeof config.capabilityId === 'string' ? config.capabilityId : undefined;
     if (!capabilityId) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, `Workflow node "${node.id}" (type "capability") is missing a string "capabilityId" in its config`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_INVALID_REQUEST,
+          `Workflow node "${node.id}" (type "capability") is missing a string "capabilityId" in its config`,
+        ),
+      );
     }
     const input = typeof config.input === 'string' ? config.input : '';
     const auxiliaryCapabilityIds = Array.isArray(config.auxiliaryCapabilityIds) ? (config.auxiliaryCapabilityIds as string[]) : undefined;
@@ -78,7 +86,12 @@ function decisionHandler(scheduler: { outgoingEdges: (graph: WorkflowGraph, node
     const edges = scheduler.outgoingEdges(context.graph, node.id);
     const selected = edges.find((edge) => edge.condition === undefined || evaluateCondition(edge.condition, context.state.outputs));
     if (!selected) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Decision node "${node.id}" had no matching outgoing edge and no default (unconditioned) edge`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_EXECUTION_FAILED,
+          `Decision node "${node.id}" had no matching outgoing edge and no default (unconditioned) edge`,
+        ),
+      );
     }
     return ok({ takenEdges: [selected] });
   };
@@ -98,7 +111,22 @@ const DEFAULT_MAX_LOOP_ITERATIONS = 1000;
  * at the cost of a loop body always being a self-contained subgraph
  * rather than an arbitrary back-edge in the main graph.
  */
-function makeLoopHandler(runNestedGraph: (graph: WorkflowGraph, context: WorkflowContext, outputs: Readonly<Record<string, unknown>>) => Promise<Result<{ outputs: Readonly<Record<string, unknown>>; nodeReceipts: readonly WorkflowNodeReceipt[]; resourceUsage: NodeHandlerResult['resourceUsage'] }, RuntimeError>>): NodeHandler {
+function makeLoopHandler(
+  runNestedGraph: (
+    graph: WorkflowGraph,
+    context: WorkflowContext,
+    outputs: Readonly<Record<string, unknown>>,
+  ) => Promise<
+    Result<
+      {
+        outputs: Readonly<Record<string, unknown>>;
+        nodeReceipts: readonly WorkflowNodeReceipt[];
+        resourceUsage: NodeHandlerResult['resourceUsage'];
+      },
+      RuntimeError
+    >
+  >,
+): NodeHandler {
   return async (node, context) => {
     const config = node.config ?? {};
     const bodyGraph = config.bodyGraph as WorkflowGraph | undefined;
@@ -106,7 +134,7 @@ function makeLoopHandler(runNestedGraph: (graph: WorkflowGraph, context: Workflo
       return err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, `Loop node "${node.id}" is missing a "bodyGraph" in its config`));
     }
     const maxIterations = typeof config.maxIterations === 'number' ? config.maxIterations : DEFAULT_MAX_LOOP_ITERATIONS;
-    const exitCondition = config.exitCondition as import('./workflow-graph.js').WorkflowCondition | undefined;
+    const exitCondition = config.exitCondition as WorkflowCondition | undefined;
 
     let outputs = context.state.outputs;
     const nodeReceipts: WorkflowNodeReceipt[] = [];
@@ -147,7 +175,22 @@ function makeDelayHandler(sleep: (ms: number, signal: AbortSignal) => Promise<vo
   };
 }
 
-function makeSubworkflowHandler(runNestedGraph: (graph: WorkflowGraph, context: WorkflowContext, outputs: Readonly<Record<string, unknown>>) => Promise<Result<{ outputs: Readonly<Record<string, unknown>>; nodeReceipts: readonly WorkflowNodeReceipt[]; resourceUsage: NodeHandlerResult['resourceUsage'] }, RuntimeError>>): NodeHandler {
+function makeSubworkflowHandler(
+  runNestedGraph: (
+    graph: WorkflowGraph,
+    context: WorkflowContext,
+    outputs: Readonly<Record<string, unknown>>,
+  ) => Promise<
+    Result<
+      {
+        outputs: Readonly<Record<string, unknown>>;
+        nodeReceipts: readonly WorkflowNodeReceipt[];
+        resourceUsage: NodeHandlerResult['resourceUsage'];
+      },
+      RuntimeError
+    >
+  >,
+): NodeHandler {
   return async (node, context) => {
     const config = node.config ?? {};
     const graph = config.graph as WorkflowGraph | undefined;
@@ -156,14 +199,31 @@ function makeSubworkflowHandler(runNestedGraph: (graph: WorkflowGraph, context: 
     }
     const result = await runNestedGraph(graph, context, context.state.outputs);
     if (!result.ok) return result;
-    return ok({ output: result.value.outputs, nodeReceipts: result.value.nodeReceipts, ...(result.value.resourceUsage ? { resourceUsage: result.value.resourceUsage } : {}) });
+    return ok({
+      output: result.value.outputs,
+      nodeReceipts: result.value.nodeReceipts,
+      ...(result.value.resourceUsage ? { resourceUsage: result.value.resourceUsage } : {}),
+    });
   };
 }
 
 export interface BuiltinHandlerDeps {
   readonly scheduler: { outgoingEdges: (graph: WorkflowGraph, nodeId: NodeId) => readonly WorkflowEdge[] };
   readonly runCapability: (request: ExecutionRequest, cancellation: WorkflowContext['cancellation']) => Promise<ExecutionResult>;
-  readonly runNestedGraph: (graph: WorkflowGraph, context: WorkflowContext, outputs: Readonly<Record<string, unknown>>) => Promise<Result<{ outputs: Readonly<Record<string, unknown>>; nodeReceipts: readonly WorkflowNodeReceipt[]; resourceUsage: NodeHandlerResult['resourceUsage'] }, RuntimeError>>;
+  readonly runNestedGraph: (
+    graph: WorkflowGraph,
+    context: WorkflowContext,
+    outputs: Readonly<Record<string, unknown>>,
+  ) => Promise<
+    Result<
+      {
+        outputs: Readonly<Record<string, unknown>>;
+        nodeReceipts: readonly WorkflowNodeReceipt[];
+        resourceUsage: NodeHandlerResult['resourceUsage'];
+      },
+      RuntimeError
+    >
+  >;
   readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 

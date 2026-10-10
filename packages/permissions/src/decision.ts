@@ -53,7 +53,9 @@ export interface DecisionInput {
   readonly decidedAt: string;
 }
 
-export function allowDecision(input: DecisionInput & { readonly grantedScope: PermissionScope; readonly lifetime: PermissionLifetime; readonly persistent?: boolean }): PermissionDecision {
+export function allowDecision(
+  input: DecisionInput & { readonly grantedScope: PermissionScope; readonly lifetime: PermissionLifetime; readonly persistent?: boolean },
+): PermissionDecision {
   return Object.freeze({
     request: input.request,
     effect: 'allow',

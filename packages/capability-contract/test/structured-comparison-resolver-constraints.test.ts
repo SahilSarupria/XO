@@ -56,7 +56,10 @@ function makeContract(overrides: Partial<SemanticCapabilityContract> = {}): Sema
 
 test('a bare constraint rule (no outcome) alongside a valid heuristic/decision_node rule no longer blocks resolution', () => {
   const contract = makeContract({
-    rules: [makeConstraint(), makeRule({ sourceNodeId: 'decision:amount', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' })],
+    rules: [
+      makeConstraint(),
+      makeRule({ sourceNodeId: 'decision:amount', condition: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' }),
+    ],
   });
   const resolver = new StructuredComparisonBindingResolver();
   const outcome = resolver.resolve(contract);
@@ -110,7 +113,14 @@ test('a contract whose ONLY linked rules are bare constraints remains unresolved
 
 test('a constraint kind rule that DOES carry a non-empty outcome is still treated as an executable rule (not skipped), same as any decision_node/heuristic', () => {
   const contract = makeContract({
-    rules: [makeRule({ kind: 'constraint', sourceNodeId: 'constraint:with-outcome', condition: 'the claimed loss amount exceeds 10000', outcome: 'refer to underwriting' })],
+    rules: [
+      makeRule({
+        kind: 'constraint',
+        sourceNodeId: 'constraint:with-outcome',
+        condition: 'the claimed loss amount exceeds 10000',
+        outcome: 'refer to underwriting',
+      }),
+    ],
   });
   const resolver = new StructuredComparisonBindingResolver();
   const outcome = resolver.resolve(contract);
@@ -118,7 +128,8 @@ test('a constraint kind rule that DOES carry a non-empty outcome is still treate
   if (outcome?.status !== 'resolved' || !outcome.binding.evaluate) throw new Error('expected resolved binding');
   const result = outcome.binding.evaluate({ claimed_loss_amount: 15000 });
   assert.equal(result.ok, true);
-  if (result.ok) assert.deepEqual(result.value, { matched: true, ruleSourceNodeId: 'constraint:with-outcome', outcome: 'refer to underwriting' });
+  if (result.ok)
+    assert.deepEqual(result.value, { matched: true, ruleSourceNodeId: 'constraint:with-outcome', outcome: 'refer to underwriting' });
 });
 
 test('an exception clause on a non-constraint rule still blocks the whole contract exactly as before (unchanged all-or-nothing discipline for decision_node/heuristic)', () => {

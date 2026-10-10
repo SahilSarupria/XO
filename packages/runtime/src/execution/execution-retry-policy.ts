@@ -1,4 +1,5 @@
-import { ErrorCode, RuntimeError } from '@xo/errors';
+import type { RuntimeError } from '@xo/errors';
+import { ErrorCode } from '@xo/errors';
 import type { ExecutionCancellation } from '../cancellation/execution-cancellation.js';
 
 /**

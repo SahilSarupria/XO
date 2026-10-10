@@ -3,7 +3,14 @@ import { CapabilityContractError } from '@xo/errors';
 import { ErrorCode } from '@xo/errors';
 import type { XoirGraph, XoirNode, XoirNodeId, XoirSourceRef } from '@xo/xoir';
 import type { CapabilityNodeProps, DecisionNodeNodeProps, HeuristicNodeProps, ConstraintNodeProps } from '@xo/xoir';
-import type { ActionKnowledgeRef, ContractDeterminism, ContractSourceRef, SemanticCapabilityContract, SemanticCapabilityParameter, SemanticCapabilityRule } from './types.js';
+import type {
+  ActionKnowledgeRef,
+  ContractDeterminism,
+  ContractSourceRef,
+  SemanticCapabilityContract,
+  SemanticCapabilityParameter,
+  SemanticCapabilityRule,
+} from './types.js';
 import type { StructuredAction, StructuredCondition, StructuredExceptionCondition } from './structured-expression-grammar.js';
 
 const RULE_KINDS = new Set(['decision_node', 'heuristic', 'constraint']);
@@ -41,7 +48,10 @@ function parseParam(entry: string): SemanticCapabilityParameter {
  * entry for this parameter's name, the param is returned unchanged: never
  * fabricate a type from a name or description.
  */
-function applyStructuredInputType(param: SemanticCapabilityParameter, inputTypes: Readonly<Record<string, string>> | undefined): SemanticCapabilityParameter {
+function applyStructuredInputType(
+  param: SemanticCapabilityParameter,
+  inputTypes: Readonly<Record<string, string>> | undefined,
+): SemanticCapabilityParameter {
   const declaredType = inputTypes?.[param.name];
   if (declaredType === undefined) return param;
   return { ...param, semanticType: normalizeDeclaredType(declaredType) };
@@ -246,14 +256,28 @@ export interface BuildContractOptions {
  * resolves to a node that isn't kind `'capability'` — this builder never
  * silently treats an unrelated node as a capability.
  */
-export function buildSemanticCapabilityContract(graph: XoirGraph, capabilityNodeId: XoirNodeId, options: BuildContractOptions = {}): Result<SemanticCapabilityContract, CapabilityContractError> {
+export function buildSemanticCapabilityContract(
+  graph: XoirGraph,
+  capabilityNodeId: XoirNodeId,
+  options: BuildContractOptions = {},
+): Result<SemanticCapabilityContract, CapabilityContractError> {
   const nodeResult = graph.getNode(capabilityNodeId);
   if (!nodeResult.ok) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND, `No XOIR node found for capability node id "${capabilityNodeId}"`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND,
+        `No XOIR node found for capability node id "${capabilityNodeId}"`,
+      ),
+    );
   }
   const node = nodeResult.value;
   if (node.kind !== 'capability') {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_SOURCE_NODE_INVALID, `Node "${capabilityNodeId}" is kind "${node.kind}", not "capability" — cannot build a SemanticCapabilityContract from it`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_SOURCE_NODE_INVALID,
+        `Node "${capabilityNodeId}" is kind "${node.kind}", not "capability" — cannot build a SemanticCapabilityContract from it`,
+      ),
+    );
   }
   const props = node.properties as unknown as CapabilityNodeProps;
 
@@ -289,7 +313,9 @@ export function buildSemanticCapabilityContract(graph: XoirGraph, capabilityNode
   // the compiler itself tagged `metadata.subtype` `'action'`/`'process'`
   // via Stage 4's shape-based operational-content detection — never a
   // vocabulary/category match on the capability's own text.
-  const linkedActionKnowledgeNodes = allLinkedNodes.filter((n) => n.kind === 'concept' && n.metadata.subtype !== undefined && ACTION_KNOWLEDGE_SUBTYPES.has(n.metadata.subtype));
+  const linkedActionKnowledgeNodes = allLinkedNodes.filter(
+    (n) => n.kind === 'concept' && n.metadata.subtype !== undefined && ACTION_KNOWLEDGE_SUBTYPES.has(n.metadata.subtype),
+  );
   const seenActionKnowledgeNodeIds = new Set<string>();
   const dedupedActionKnowledgeNodes = linkedActionKnowledgeNodes.filter((n) => {
     if (seenActionKnowledgeNodeIds.has(n.id as unknown as string)) return false;
@@ -360,7 +386,14 @@ export function buildSemanticCapabilityContract(graph: XoirGraph, capabilityNode
 }
 
 /** Convenience: every `capability` node in `graph`, each built into its own contract independently. A single node's build failure does not abort the whole batch — see `results`'s per-id outcome. */
-export function buildAllSemanticCapabilityContracts(graph: XoirGraph, options: BuildContractOptions = {}): readonly Result<SemanticCapabilityContract, CapabilityContractError>[] {
-  const capabilityNodes = graph.allNodes().filter((n) => n.kind === 'capability').slice().sort(byId);
+export function buildAllSemanticCapabilityContracts(
+  graph: XoirGraph,
+  options: BuildContractOptions = {},
+): readonly Result<SemanticCapabilityContract, CapabilityContractError>[] {
+  const capabilityNodes = graph
+    .allNodes()
+    .filter((n) => n.kind === 'capability')
+    .slice()
+    .sort(byId);
   return capabilityNodes.map((n) => buildSemanticCapabilityContract(graph, n.id, options));
 }

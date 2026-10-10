@@ -66,26 +66,31 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
       `  installedAt:   ${installResult.value.installedAt}`,
       `  manifestHash:  ${installResult.value.manifestHash}`,
       `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
-      ...(options.skipResolution && dependencies.length > 0 ? [`  (--skip-resolution: ${dependencies.length} declared dependencies were not resolved or locked)`] : []),
+      ...(options.skipResolution && dependencies.length > 0
+        ? [`  (--skip-resolution: ${dependencies.length} declared dependencies were not resolved or locked)`]
+        : []),
     ]);
   }
 
   const lookup = await buildLocalStoreLookup(installer);
   const resolveResult = await resolveDependencies(readResult.value.manifest, lookup);
   if (!resolveResult.ok) {
-    return failWith(`[${resolveResult.error.code}] ${resolveResult.error.message} — nothing was installed (resolve happens before install so a failed resolve never leaves a partially-dependent package on disk)`);
+    return failWith(
+      `[${resolveResult.error.code}] ${resolveResult.error.message} — nothing was installed (resolve happens before install so a failed resolve never leaves a partially-dependent package on disk)`,
+    );
   }
 
   const installResult = await installer.install(readResult.value, installOptions);
 
   if (!installResult.ok) return failWith(`[${installResult.error.code}] ${installResult.error.message}`);
 
-
   const lockfile = createLockfile(resolveResult.value);
   const lockKey = lockfileKey(installResult.value.name, installResult.value.version);
   const lockPut = await store.put(lockKey, serializeLockfile(lockfile), { contentType: 'application/json' });
   if (!lockPut.ok) {
-    return failWith(`"${installResult.value.name}@${installResult.value.version}" was installed, but writing its xo.lock failed: ${lockPut.error.message}`);
+    return failWith(
+      `"${installResult.value.name}@${installResult.value.version}" was installed, but writing its xo.lock failed: ${lockPut.error.message}`,
+    );
   }
 
   const skipped = resolveResult.value.skippedOptional;
@@ -95,10 +100,15 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
     `  installedAt:   ${installResult.value.installedAt}`,
     `  manifestHash:  ${installResult.value.manifestHash}`,
     `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
-  '',
+    '',
     `Resolved and locked ${resolveResult.value.resolved.length} dependenc${resolveResult.value.resolved.length === 1 ? 'y' : 'ies'}:`,
     ...resolveResult.value.resolved.map((d) => `  - ${d.name}@${d.version}`),
-    ...(skipped.length > 0 ? [`Skipped ${skipped.length} unresolvable optional dependenc${skipped.length === 1 ? 'y' : 'ies'}:`, ...skipped.map((s) => `  - ${s.name} (wanted by "${s.requestedBy}" at "${s.versionRange}"): ${s.reason}`)] : []),
+    ...(skipped.length > 0
+      ? [
+          `Skipped ${skipped.length} unresolvable optional dependenc${skipped.length === 1 ? 'y' : 'ies'}:`,
+          ...skipped.map((s) => `  - ${s.name} (wanted by "${s.requestedBy}" at "${s.versionRange}"): ${s.reason}`),
+        ]
+      : []),
     `Lockfile written to ${options.storeDir}/${lockKey}`,
   ]);
 }

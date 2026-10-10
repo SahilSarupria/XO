@@ -57,7 +57,6 @@ export { RULE_DERIVED_METADATA_KEY, RULE_DERIVED_SOURCE_NODE_ID_METADATA_KEY };
 
 /** Metadata key marking a `Capability` (and, once converted, its XOIR node) as minted by this module, rather than by `rule-based-extractor.ts`. Read by `rule-capability-linking.ts` to (a) exclude these capabilities from the generic same-unit-term-overlap candidate pool and (b) create each one's single deterministic edge back to its originating rule. Re-exported from `../xoir/rule-capability-linking.ts`, which is this constant's source of truth (see that module's doc comment for why). */
 
-
 /**
  * The XOIR-facing "outcome text" for a rule, matching
  * `../xoir/reasoning-to-xoir.ts#buildProperties`'s exact per-kind field
@@ -105,7 +104,12 @@ function isResolverCompilable(condition: StructuredCondition): boolean {
     return condition.operands.every(isResolverCompilable);
   }
   if (condition.type === 'temporal') {
-    return condition.amount !== undefined && condition.unit !== undefined && condition.field !== undefined && (condition.relation === 'within' || condition.relation === 'after');
+    return (
+      condition.amount !== undefined &&
+      condition.unit !== undefined &&
+      condition.field !== undefined &&
+      (condition.relation === 'within' || condition.relation === 'after')
+    );
   }
   return true;
 }
@@ -141,7 +145,6 @@ const hasher = new Sha256Hasher();
 function mintedCapabilityId(sourceReasoningNodeId: string): CapabilityId {
   return brand(`cap_rule_${hasher.hash(sourceReasoningNodeId).replace('sha256:', '').slice(0, 32)}`);
 }
-
 
 /** A short, deterministic, human-readable capability name derived from the rule's own outcome text — e.g. `"manager approval is required"` -> `"Manager Approval Is Required"`. Never guesses beyond simple title-casing; truncates (never mid-word) rather than fabricating a summary. */
 function nameFromOutcome(outcome: string): string {

@@ -63,7 +63,9 @@ test('store: list filters by packageId and permission', async () => {
   const store = new InMemoryPermissionStore();
   const otherPkg = PackageId('other.pkg');
   await store.set(makeGrant({ permission: Permissions.filesystem.read }));
-  await store.set(makeGrant({ permission: Permissions.network.connect, id: computeGrantId(pkg, Permissions.network.connect, globalScope()) }));
+  await store.set(
+    makeGrant({ permission: Permissions.network.connect, id: computeGrantId(pkg, Permissions.network.connect, globalScope()) }),
+  );
   await store.set(makeGrant({ packageId: otherPkg, id: computeGrantId(otherPkg, Permissions.filesystem.read, globalScope()) }));
 
   const byPackage = await store.list({ packageId: pkg });

@@ -26,10 +26,7 @@ export const forceDirectedLayout: LayoutEngine = {
 
     const ids = model.nodes.map((n) => n.id);
     const pos = new Map<NodeId, Point>(
-      ids.map((id) => [
-        id,
-        { x: (seededUnit(id, 1) - 0.5) * Math.sqrt(area), y: (seededUnit(id, 2) - 0.5) * Math.sqrt(area) },
-      ]),
+      ids.map((id) => [id, { x: (seededUnit(id, 1) - 0.5) * Math.sqrt(area), y: (seededUnit(id, 2) - 0.5) * Math.sqrt(area) }]),
     );
     const disp = new Map<NodeId, Point>(ids.map((id) => [id, { x: 0, y: 0 }]));
 

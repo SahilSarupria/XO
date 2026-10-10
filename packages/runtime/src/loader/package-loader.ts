@@ -7,7 +7,7 @@ import { NoopLogger } from '@xo/logger';
 import type { CapabilityDescriptor } from '../capability/capability-descriptor.js';
 import { MountId } from '../ids.js';
 import type { MountedPackage } from '../registry/mounted-package.js';
-import { PackageRegistry } from '../registry/mounted-package.js';
+import type { PackageRegistry } from '../registry/mounted-package.js';
 import type { RuntimeInstrumentation } from '../observability/instrumentation.js';
 
 export interface PackageLoaderOptions {
@@ -82,7 +82,11 @@ export class PackageLoader {
     const verification = await this.installer.verifyInstallation(name, version);
     if (!verification.ok) {
       this.instrumentation?.recordVerificationFailure({ package: name, version, reason: verification.error.code });
-      return err(new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Cannot mount "${name}@${version}": ${verification.error.message}`, { cause: verification.error }));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Cannot mount "${name}@${version}": ${verification.error.message}`, {
+          cause: verification.error,
+        }),
+      );
     }
     if (!verification.value.valid) {
       this.instrumentation?.recordVerificationFailure({ package: name, version, reason: 'validation_report_invalid' });
@@ -90,12 +94,18 @@ export class PackageLoader {
         .filter((issue) => issue.severity === 'error')
         .map((issue) => issue.message)
         .join('; ');
-      return err(new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Refusing to mount "${name}@${version}": failed verification: ${summary}`));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Refusing to mount "${name}@${version}": failed verification: ${summary}`),
+      );
     }
 
     const manifestResult = await this.installer.getManifest(name, version);
     if (!manifestResult.ok) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Cannot mount "${name}@${version}": ${manifestResult.error.message}`, { cause: manifestResult.error }));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Cannot mount "${name}@${version}": ${manifestResult.error.message}`, {
+          cause: manifestResult.error,
+        }),
+      );
     }
     const manifest = manifestResult.value;
 
@@ -109,9 +119,14 @@ export class PackageLoader {
     // above.
     const permissionValidation = resolveManifestCapabilityPermissions(manifest);
     if (!permissionValidation.ok) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Refusing to mount "${name}@${version}": malformed permission declaration(s) in manifest: ${permissionValidation.error.join('; ')}`));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_MOUNT_FAILED,
+          `Refusing to mount "${name}@${version}": malformed permission declaration(s) in manifest: ${permissionValidation.error.join('; ')}`,
+        ),
+      );
     }
-    
+
     const capabilities: readonly CapabilityDescriptor[] = (manifest.capabilities ?? []).map((declaration) => ({
       declaration,
       packageName: name,

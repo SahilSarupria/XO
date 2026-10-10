@@ -7,7 +7,9 @@ import { packBundle } from '@xo/package-sdk';
 import { capabilitiesCommand } from '../src/commands/compiler/capabilities.js';
 import { buildTestBundle, echoCapability, withTempDir } from './helpers.js';
 
-const OBLIGATION_TEXT = 'Acme Corp shall send a confirmation email to the Client upon completion of each milestone.\n' + 'The team shall generate a summary report weekly and deliver it to the Client.\n';
+const OBLIGATION_TEXT =
+  'Acme Corp shall send a confirmation email to the Client upon completion of each milestone.\n' +
+  'The team shall generate a summary report weekly and deliver it to the Client.\n';
 
 /**
  * The real benchmark fixture (`examples/vertical-test/`) — used below for
@@ -21,7 +23,9 @@ const OBLIGATION_TEXT = 'Acme Corp shall send a confirmation email to the Client
  * through requires a source with real decision-rule content, which this
  * fixture has.
  */
-const REAL_FIXTURE_PATH = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const REAL_FIXTURE_PATH = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 
 test('capabilities on a source file with no resolvable decision structure lists DISCOVERED capabilities and truthfully reports 0 resolved, with a real reason per capability', async () => {
   await withTempDir('xo-capabilities-test-', async (tmp) => {
@@ -67,7 +71,10 @@ test('capabilities on a source with real decision-rule content (the vertical-tes
   assert.equal(parsed.discovered.length, 23);
   assert.equal(parsed.resolvedCount, 15);
   assert.ok(parsed.resolvedCount > 0, 'this fixture must prove the positive case, not just 0-resolved');
-  assert.ok(parsed.resolvedCount < parsed.discovered.length, 'this fixture must also prove some discovered capabilities remain unresolved, not conflate the two counts');
+  assert.ok(
+    parsed.resolvedCount < parsed.discovered.length,
+    'this fixture must also prove some discovered capabilities remain unresolved, not conflate the two counts',
+  );
 });
 
 test('capabilities --json on a source reports a discovered array and a real resolvedCount/outcomes pair', async () => {

@@ -1,6 +1,6 @@
 import { Lexer } from './lexer.js';
 import { decodeStream } from './filters.js';
-import { isArray, isDictionary, isName, isPdfString, isStream, type PdfDictionary, type PdfValue } from './types.js';
+import { isArray, isDictionary, isName, isStream, type PdfDictionary, type PdfValue } from './types.js';
 
 /**
  * Resolves the actual bytes-shown-on-a-page → Unicode mapping for one font,
@@ -52,7 +52,10 @@ export type ResolveFn = (value: PdfValue) => PdfValue;
  * dictionary identity (cheap: a page's font set is small and stable, and
  * `Tf` reselects the same handful of fonts constantly within one page).
  */
-export function buildFontEncodingResolver(resources: PdfDictionary | undefined, resolve: ResolveFn): (fontName: string | undefined) => FontEncoding {
+export function buildFontEncodingResolver(
+  resources: PdfDictionary | undefined,
+  resolve: ResolveFn,
+): (fontName: string | undefined) => FontEncoding {
   const cache = new Map<string, FontEncoding>();
 
   return (fontName: string | undefined): FontEncoding => {
@@ -133,10 +136,33 @@ function buildWinAnsiTable(): string[] {
   for (let i = 0; i < 0x20; i += 1) table[i] = '';
   table[0x7f] = '';
   const upper: Record<number, number> = {
-    0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x0192, 0x84: 0x201e, 0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021,
-    0x88: 0x02c6, 0x89: 0x2030, 0x8a: 0x0160, 0x8b: 0x2039, 0x8c: 0x0152, 0x8e: 0x017d,
-    0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201c, 0x94: 0x201d, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014,
-    0x98: 0x02dc, 0x99: 0x2122, 0x9a: 0x0161, 0x9b: 0x203a, 0x9c: 0x0153, 0x9e: 0x017e, 0x9f: 0x0178,
+    0x80: 0x20ac,
+    0x82: 0x201a,
+    0x83: 0x0192,
+    0x84: 0x201e,
+    0x85: 0x2026,
+    0x86: 0x2020,
+    0x87: 0x2021,
+    0x88: 0x02c6,
+    0x89: 0x2030,
+    0x8a: 0x0160,
+    0x8b: 0x2039,
+    0x8c: 0x0152,
+    0x8e: 0x017d,
+    0x91: 0x2018,
+    0x92: 0x2019,
+    0x93: 0x201c,
+    0x94: 0x201d,
+    0x95: 0x2022,
+    0x96: 0x2013,
+    0x97: 0x2014,
+    0x98: 0x02dc,
+    0x99: 0x2122,
+    0x9a: 0x0161,
+    0x9b: 0x203a,
+    0x9c: 0x0153,
+    0x9e: 0x017e,
+    0x9f: 0x0178,
   };
   for (let i = 0x80; i <= 0x9f; i += 1) {
     const cp = upper[i];
@@ -148,18 +174,73 @@ function buildWinAnsiTable(): string[] {
 
 /** Standard glyph-name → Unicode mappings needed to apply a `/Differences` array, restricted to the names that actually occur in real-world Differences arrays (accented Latin letters, punctuation, a handful of symbols) rather than the full multi-hundred-entry Adobe Glyph List — sufficient for the common case, and a name outside this map falls back to leaving the base-encoding byte in place rather than guessing. */
 const GLYPH_NAME_TO_UNICODE: Readonly<Record<string, string>> = {
-  bullet: '\u2022', endash: '\u2013', emdash: '\u2014', quoteleft: '\u2018', quoteright: '\u2019',
-  quotedblleft: '\u201c', quotedblright: '\u201d', ellipsis: '\u2026', trademark: '\u2122',
-  Euro: '\u20ac', dagger: '\u2020', daggerdbl: '\u2021', fi: '\ufb01', fl: '\ufb02',
-  space: ' ', exclam: '!', quotedbl: '"', numbersign: '#', dollar: '$', percent: '%', ampersand: '&',
-  quotesingle: "'", parenleft: '(', parenright: ')', asterisk: '*', plus: '+', comma: ',', hyphen: '-',
-  period: '.', slash: '/', colon: ':', semicolon: ';', less: '<', equal: '=', greater: '>', question: '?',
-  at: '@', bracketleft: '[', backslash: '\\', bracketright: ']', underscore: '_', grave: '`',
-  braceleft: '{', bar: '|', braceright: '}', asciitilde: '~',
-  Aacute: '\u00c1', aacute: '\u00e1', Eacute: '\u00c9', eacute: '\u00e9', Iacute: '\u00cd', iacute: '\u00ed',
-  Oacute: '\u00d3', oacute: '\u00f3', Uacute: '\u00da', uacute: '\u00fa', Ntilde: '\u00d1', ntilde: '\u00f1',
-  Ccedilla: '\u00c7', ccedilla: '\u00e7', Adieresis: '\u00c4', adieresis: '\u00e4', Odieresis: '\u00d6',
-  odieresis: '\u00f6', Udieresis: '\u00dc', udieresis: '\u00fc', ssharp: '\u00df',
+  bullet: '\u2022',
+  endash: '\u2013',
+  emdash: '\u2014',
+  quoteleft: '\u2018',
+  quoteright: '\u2019',
+  quotedblleft: '\u201c',
+  quotedblright: '\u201d',
+  ellipsis: '\u2026',
+  trademark: '\u2122',
+  Euro: '\u20ac',
+  dagger: '\u2020',
+  daggerdbl: '\u2021',
+  fi: '\ufb01',
+  fl: '\ufb02',
+  space: ' ',
+  exclam: '!',
+  quotedbl: '"',
+  numbersign: '#',
+  dollar: '$',
+  percent: '%',
+  ampersand: '&',
+  quotesingle: "'",
+  parenleft: '(',
+  parenright: ')',
+  asterisk: '*',
+  plus: '+',
+  comma: ',',
+  hyphen: '-',
+  period: '.',
+  slash: '/',
+  colon: ':',
+  semicolon: ';',
+  less: '<',
+  equal: '=',
+  greater: '>',
+  question: '?',
+  at: '@',
+  bracketleft: '[',
+  backslash: '\\',
+  bracketright: ']',
+  underscore: '_',
+  grave: '`',
+  braceleft: '{',
+  bar: '|',
+  braceright: '}',
+  asciitilde: '~',
+  Aacute: '\u00c1',
+  aacute: '\u00e1',
+  Eacute: '\u00c9',
+  eacute: '\u00e9',
+  Iacute: '\u00cd',
+  iacute: '\u00ed',
+  Oacute: '\u00d3',
+  oacute: '\u00f3',
+  Uacute: '\u00da',
+  uacute: '\u00fa',
+  Ntilde: '\u00d1',
+  ntilde: '\u00f1',
+  Ccedilla: '\u00c7',
+  ccedilla: '\u00e7',
+  Adieresis: '\u00c4',
+  adieresis: '\u00e4',
+  Odieresis: '\u00d6',
+  odieresis: '\u00f6',
+  Udieresis: '\u00dc',
+  udieresis: '\u00fc',
+  ssharp: '\u00df',
 };
 
 function buildSimpleFontTable(font: PdfDictionary, resolve: ResolveFn): readonly string[] {

@@ -27,7 +27,12 @@ export class FsBenchmarkRepository implements BenchmarkRepository {
 
   async record(run: BenchmarkRun): Promise<Result<void, XoError>> {
     if (await this.store.has(runKey(run.id))) {
-      return err(new RegistryError(ErrorCode.REGISTRY_BENCHMARK_ALREADY_RECORDED, `Benchmark run "${run.id}" is already recorded — each run id must be recorded exactly once`));
+      return err(
+        new RegistryError(
+          ErrorCode.REGISTRY_BENCHMARK_ALREADY_RECORDED,
+          `Benchmark run "${run.id}" is already recorded — each run id must be recorded exactly once`,
+        ),
+      );
     }
 
     const payload = JSON.stringify(run);

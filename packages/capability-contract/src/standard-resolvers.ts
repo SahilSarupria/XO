@@ -34,4 +34,7 @@ import type { BindingResolver } from './types.js';
  * unaffected: this constant is an additive convenience for the common
  * case, never a requirement that every resolution use it.
  */
-export const STANDARD_BINDING_RESOLVERS: readonly BindingResolver[] = [new StructuredComparisonBindingResolver(), new ActionEscalationBindingResolver()];
+export const STANDARD_BINDING_RESOLVERS: readonly BindingResolver[] = [
+  new StructuredComparisonBindingResolver(),
+  new ActionEscalationBindingResolver(),
+];

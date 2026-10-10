@@ -55,7 +55,10 @@ test('install() rejects a bundle that fails validation (tampered component)', as
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
     const bundle = buildSampleBundle();
-    const tampered = { ...bundle, components: bundle.components.map((c) => (c.kind === 'safety_rules' ? { ...c, data: new TextEncoder().encode('tampered') } : c)) };
+    const tampered = {
+      ...bundle,
+      components: bundle.components.map((c) => (c.kind === 'safety_rules' ? { ...c, data: new TextEncoder().encode('tampered') } : c)),
+    };
     const result = await installer.install(tampered);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_VALIDATION_FAILED');
@@ -173,10 +176,7 @@ test('listAllInstalledRecords returns every installed version, unlike listInstal
     assert.equal((await installer.listInstalled()).length, 1);
     const all = await installer.listAllInstalledRecords();
     assert.equal(all.length, 2);
-    assert.deepEqual(
-      all.map((r) => r.version).sort(),
-      ['1.0.0', '1.1.0'],
-    );
+    assert.deepEqual(all.map((r) => r.version).sort(), ['1.0.0', '1.1.0']);
   });
 });
 
@@ -207,7 +207,7 @@ test('getManifest reports PACKAGE_NOT_INSTALLED for a version that was never ins
   });
 });
 
-test('getComponent reads a specific component\'s raw bytes for an installed version', async () => {
+test("getComponent reads a specific component's raw bytes for an installed version", async () => {
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
     const bundle = buildSampleBundle();
@@ -240,9 +240,7 @@ test('getComponent reports PACKAGE_NOT_INSTALLED for a version that was never in
   });
 });
 
-
 test('repairInstallation reinstalls from a known-good bundle over a corrupted install', async () => {
-
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
     const bundle = buildSampleBundle();

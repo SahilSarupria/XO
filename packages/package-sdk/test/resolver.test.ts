@@ -49,8 +49,16 @@ test('resolveDependencies: picks the highest available version satisfying the ra
 });
 
 test('buildDependencyGraph / resolveDependencies: a dependency cycle is caught and reported, not infinite-looped', async () => {
-  const a = buildSampleManifest({ name: 'xo_a', version: '1.0.0', dependencies: [{ name: 'xo_b', versionRange: '^1.0.0', kind: 'required' }] });
-  const b = buildSampleManifest({ name: 'xo_b', version: '1.0.0', dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }] });
+  const a = buildSampleManifest({
+    name: 'xo_a',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_b', versionRange: '^1.0.0', kind: 'required' }],
+  });
+  const b = buildSampleManifest({
+    name: 'xo_b',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }],
+  });
   const lookup = lookupFrom([a, b]);
 
   const graphResult = await buildDependencyGraph(a, lookup);
@@ -66,16 +74,32 @@ test('buildDependencyGraph / resolveDependencies: a dependency cycle is caught a
 });
 
 test('buildDependencyGraph: a longer cycle (A -> B -> C -> A) is also caught', async () => {
-  const a = buildSampleManifest({ name: 'xo_a', version: '1.0.0', dependencies: [{ name: 'xo_b', versionRange: '^1.0.0', kind: 'required' }] });
-  const b = buildSampleManifest({ name: 'xo_b', version: '1.0.0', dependencies: [{ name: 'xo_c', versionRange: '^1.0.0', kind: 'required' }] });
-  const c = buildSampleManifest({ name: 'xo_c', version: '1.0.0', dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }] });
+  const a = buildSampleManifest({
+    name: 'xo_a',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_b', versionRange: '^1.0.0', kind: 'required' }],
+  });
+  const b = buildSampleManifest({
+    name: 'xo_b',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_c', versionRange: '^1.0.0', kind: 'required' }],
+  });
+  const c = buildSampleManifest({
+    name: 'xo_c',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }],
+  });
   const result = await buildDependencyGraph(a, lookupFrom([a, b, c]));
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_DEPENDENCY_CYCLE');
 });
 
 test('a self-dependency is caught as a cycle of length one', async () => {
-  const a = buildSampleManifest({ name: 'xo_a', version: '1.0.0', dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }] });
+  const a = buildSampleManifest({
+    name: 'xo_a',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_a', versionRange: '^1.0.0', kind: 'required' }],
+  });
   const result = await buildDependencyGraph(a, lookupFrom([a]));
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_DEPENDENCY_CYCLE');
@@ -84,8 +108,16 @@ test('a self-dependency is caught as a cycle of length one', async () => {
 test('solveDependencyGraph: two requesters with unsatisfiable overlapping ranges produce a specific conflict error naming both', async () => {
   const shared1 = buildSampleManifest({ name: 'xo_shared', version: '1.0.0' });
   const shared2 = buildSampleManifest({ name: 'xo_shared', version: '2.0.0' });
-  const left = buildSampleManifest({ name: 'xo_left', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }] });
-  const right = buildSampleManifest({ name: 'xo_right', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '^2.0.0', kind: 'required' }] });
+  const left = buildSampleManifest({
+    name: 'xo_left',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }],
+  });
+  const right = buildSampleManifest({
+    name: 'xo_right',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_shared', versionRange: '^2.0.0', kind: 'required' }],
+  });
   const root = buildSampleManifest({
     name: 'xo_root',
     dependencies: [
@@ -107,7 +139,10 @@ test('solveDependencyGraph: two requesters with unsatisfiable overlapping ranges
 });
 
 test('a required dependency that names an unknown package is reported as unresolved, not a conflict', async () => {
-  const root = buildSampleManifest({ name: 'xo_root', dependencies: [{ name: 'xo_does_not_exist', versionRange: '^1.0.0', kind: 'required' }] });
+  const root = buildSampleManifest({
+    name: 'xo_root',
+    dependencies: [{ name: 'xo_does_not_exist', versionRange: '^1.0.0', kind: 'required' }],
+  });
   const result = await resolveDependencies(root, lookupFrom([]));
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_DEPENDENCY_UNRESOLVED');
@@ -192,8 +227,16 @@ test('a peer dependency that nothing else resolves is reported as a conflict rat
 
 test('a diamond dependency (root -> A, B; A -> shared, B -> shared) resolves the shared package once, at a version satisfying both', async () => {
   const shared = buildSampleManifest({ name: 'xo_shared', version: '1.3.0' });
-  const a = buildSampleManifest({ name: 'xo_a', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }] });
-  const b = buildSampleManifest({ name: 'xo_b', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '>=1.2.0', kind: 'required' }] });
+  const a = buildSampleManifest({
+    name: 'xo_a',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }],
+  });
+  const b = buildSampleManifest({
+    name: 'xo_b',
+    version: '1.0.0',
+    dependencies: [{ name: 'xo_shared', versionRange: '>=1.2.0', kind: 'required' }],
+  });
   const root = buildSampleManifest({
     name: 'xo_root',
     dependencies: [

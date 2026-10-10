@@ -14,20 +14,20 @@ Reasoning → Decisions → Constraints → XOIR Graph
 
 ## Status
 
-| Stage | Responsibility | Status |
-|---|---|---|
-| 1. PDF Loader | PDF → plain text + provenance | **Implemented** (`src/pdf/`) |
-| 2. Document Parser | headings/sections/lists/tables/hierarchy | **Implemented** (`src/document/`) — table detection is conservative/single-line-cell only, see "Known limitations" |
-| 3. Semantic Chunker | idea-sized chunks with provenance | **Implemented** (`src/semantic/`) — see "Known limitations" |
-| 4. Experience Knowledge Extractor | typed Knowledge Graph (concepts, entities, obligations, ...) | **Implemented** (`src/knowledge/`) — supersedes the original separate "Legal Entity Extractor" stage; see "Pipeline note," below |
-| 5. Capability Extractor | professional capabilities demonstrated | **Implemented** (`src/capabilities/`) — see "Known limitations" |
-| 6. Reasoning Extractor *(original numbering)* | decision logic, tradeoffs, heuristics | **Implemented** — see `src/reasoning/`, folded into "XOIR-First Compilation Pipeline Integration → Stage 7" below |
-| 7. Decision Graph Generator *(original numbering)* | decision/branch/escalation nodes | **Implemented** — see `src/reasoning/`, same section |
-| 8. Constraint Extractor *(original numbering)* | jurisdiction/safety/regulatory constraints | **Implemented** — see `src/reasoning/`, same section |
-| 9. XOIR Generator *(original numbering)* | assemble the validated graph | **Implemented** — see "XOIR-First Compilation Pipeline Integration" below (superseded/subsumed by Stage 5.5 + Stage 6, not a separate module) |
-| 8 *(new numbering track)*. Multi-Source Frontends | normalize PDF/document/image/HTML/structured input into one shared pipeline entry point | **Implemented** (`src/sources/`, `src/pipeline/compile-sources.ts`) — PDF and Document/HTML/Structured are fully supported end-to-end; Image is extensibility-only (no OCR/vision in this repo) — see "Stage 8," below |
+| Stage                                              | Responsibility                                                                          | Status                                                                                                                                                                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. PDF Loader                                      | PDF → plain text + provenance                                                           | **Implemented** (`src/pdf/`)                                                                                                                                                                                           |
+| 2. Document Parser                                 | headings/sections/lists/tables/hierarchy                                                | **Implemented** (`src/document/`) — table detection is conservative/single-line-cell only, see "Known limitations"                                                                                                     |
+| 3. Semantic Chunker                                | idea-sized chunks with provenance                                                       | **Implemented** (`src/semantic/`) — see "Known limitations"                                                                                                                                                            |
+| 4. Experience Knowledge Extractor                  | typed Knowledge Graph (concepts, entities, obligations, ...)                            | **Implemented** (`src/knowledge/`) — supersedes the original separate "Legal Entity Extractor" stage; see "Pipeline note," below                                                                                       |
+| 5. Capability Extractor                            | professional capabilities demonstrated                                                  | **Implemented** (`src/capabilities/`) — see "Known limitations"                                                                                                                                                        |
+| 6. Reasoning Extractor _(original numbering)_      | decision logic, tradeoffs, heuristics                                                   | **Implemented** — see `src/reasoning/`, folded into "XOIR-First Compilation Pipeline Integration → Stage 7" below                                                                                                      |
+| 7. Decision Graph Generator _(original numbering)_ | decision/branch/escalation nodes                                                        | **Implemented** — see `src/reasoning/`, same section                                                                                                                                                                   |
+| 8. Constraint Extractor _(original numbering)_     | jurisdiction/safety/regulatory constraints                                              | **Implemented** — see `src/reasoning/`, same section                                                                                                                                                                   |
+| 9. XOIR Generator _(original numbering)_           | assemble the validated graph                                                            | **Implemented** — see "XOIR-First Compilation Pipeline Integration" below (superseded/subsumed by Stage 5.5 + Stage 6, not a separate module)                                                                          |
+| 8 _(new numbering track)_. Multi-Source Frontends  | normalize PDF/document/image/HTML/structured input into one shared pipeline entry point | **Implemented** (`src/sources/`, `src/pipeline/compile-sources.ts`) — PDF and Document/HTML/Structured are fully supported end-to-end; Image is extensibility-only (no OCR/vision in this repo) — see "Stage 8," below |
 
-**Roadmap numbering, resolved:** the table above is the *original*
+**Roadmap numbering, resolved:** the table above is the _original_
 per-extractor plan, written before XOIR existed as a canonical
 representation. Two independently-numbered, cross-cutting stages were
 built on top of it afterward and use their own numbering:
@@ -160,7 +160,7 @@ the operators differ.
 
 ### Known limitations (real, not hidden)
 
-- **No cross-reference *streams*** (PDF 1.5+'s alternative to the classic
+- **No cross-reference _streams_** (PDF 1.5+'s alternative to the classic
   xref table, itself a compressed object stream). Most PDFs produced by
   common consumer tools (word processors, "Print to PDF") still use the
   classic table; PDFs from some newer/incremental-save-heavy toolchains
@@ -211,8 +211,9 @@ document-parser.ts    public API: parseDocument(LoadedPdfDocument) -> ParsedDocu
 ```
 
 **Known limitations:**
+
 - **Table detection is conservative, single-line-cell only.** `block-
-  builder.ts`'s `detectTableRowLines` (P0.9A area C) identifies genuine
+builder.ts`'s `detectTableRowLines` (P0.9A area C) identifies genuine
   tables using repeated multi-column line alignment (`>=3` columns,
   `>=3` consecutive lines, matching x-positions) — validated against real
   fixtures with zero false positives on pure-prose documents and correct
@@ -250,7 +251,7 @@ idea; nesting depth is preserved), and **shallow rhetorical cues**
 modal obligation language "shall"/"must", permission language "may", exception
 markers "unless"/"notwithstanding", example markers "for example"/"such
 as", and quoted-defined-term patterns "'X' means..."). A block is merged
-into the current unit only when it's a plain paragraph *and* classifies to
+into the current unit only when it's a plain paragraph _and_ classifies to
 the same semantic type as what's already accumulating — a type change
 (e.g. an obligation followed by an exception) is treated as a topic
 transition, closing the current unit and opening a new one.
@@ -266,18 +267,18 @@ legal-domain-specific.
 A first-class, reusable compiler artifact — not an internal
 implementation detail — representing one coherent idea:
 
-| Field | Purpose |
-|---|---|
-| `id` | Deterministic content hash (`unit-id.ts`) — never random |
-| `title` | Borrowed from the owning heading (a section's first unit) or synthesized from its own content |
-| `semanticType` | `definition` \| `obligation` \| `right` \| `exception` \| `example` \| `explanatory_note` \| `clause` \| `general`, or `custom:<name>` |
-| `content` | The unit's merged text |
-| `provenance` | Document path, pages, section heading path, per-source-block page/y-range, and the block-index range within its section (the spec's "paragraph boundaries") |
-| `hierarchy` | Depth, `parentUnitId`, and `siblingUnitIds` — see "Hierarchy," below |
-| `confidence` | The classification confidence that produced `semanticType` |
-| `relationships` | This unit's own outgoing relationships (a view onto the document-level relationship graph — see below) |
-| `documentReferences` | Other sections' heading text this unit's content textually mentions |
-| `metadata` | Open extension bag (empty by default in this stage) |
+| Field                | Purpose                                                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Deterministic content hash (`unit-id.ts`) — never random                                                                                                    |
+| `title`              | Borrowed from the owning heading (a section's first unit) or synthesized from its own content                                                               |
+| `semanticType`       | `definition` \| `obligation` \| `right` \| `exception` \| `example` \| `explanatory_note` \| `clause` \| `general`, or `custom:<name>`                      |
+| `content`            | The unit's merged text                                                                                                                                      |
+| `provenance`         | Document path, pages, section heading path, per-source-block page/y-range, and the block-index range within its section (the spec's "paragraph boundaries") |
+| `hierarchy`          | Depth, `parentUnitId`, and `siblingUnitIds` — see "Hierarchy," below                                                                                        |
+| `confidence`         | The classification confidence that produced `semanticType`                                                                                                  |
+| `relationships`      | This unit's own outgoing relationships (a view onto the document-level relationship graph — see below)                                                      |
+| `documentReferences` | Other sections' heading text this unit's content textually mentions                                                                                         |
+| `metadata`           | Open extension bag (empty by default in this stage)                                                                                                         |
 
 Every field here mirrors a design choice already made in `@xo/xoir`
 (content-addressable ids, an open `custom:<name>` type union, explicit
@@ -293,7 +294,7 @@ its own, is synthesized from the heading alone, so a heading followed
 immediately by subsections is still addressable — see
 `unit-builder.ts`'s handling of heading-only sections). Every other unit
 in that section points `hierarchy.parentUnitId` at the section's own
-anchor; the anchor itself points at its *parent* section's anchor — so
+anchor; the anchor itself points at its _parent_ section's anchor — so
 anchors chain up the document's full heading hierarchy, while ordinary
 units form a shallow star around their own section's anchor.
 `siblingUnitIds` lists every other unit in the same section, in reading
@@ -305,12 +306,12 @@ Experience Units know how they relate before Stage 4 ever runs. Four
 relationship kinds are computed deterministically, from real structural
 or lexical signal:
 
-| Type | Computed from | Confidence |
-|---|---|---|
-| `extends` | Every unit → its `hierarchy.parentUnitId` (always present when a parent exists) | 0.7 |
-| `defines` | A `definition` unit's captured term → every other unit whose content contains that exact term | 0.8 |
-| `supports` | An `example` unit → the nearest preceding non-example unit in the same section | 0.75 |
-| `references` | Any unit whose content textually mentions another section's heading → that section's anchor unit | 0.6 |
+| Type         | Computed from                                                                                    | Confidence |
+| ------------ | ------------------------------------------------------------------------------------------------ | ---------- |
+| `extends`    | Every unit → its `hierarchy.parentUnitId` (always present when a parent exists)                  | 0.7        |
+| `defines`    | A `definition` unit's captured term → every other unit whose content contains that exact term    | 0.8        |
+| `supports`   | An `example` unit → the nearest preceding non-example unit in the same section                   | 0.75       |
+| `references` | Any unit whose content textually mentions another section's heading → that section's anchor unit | 0.6        |
 
 `depends_on`, `contradicts`, `requires`, `implements`, and `explains` are
 valid `RelationType`s this stage's model supports (matching the compiler
@@ -387,7 +388,7 @@ back to the unit it came from.
   one now would overreach into Stage 4+'s territory.
 - **`supports` only looks one unit back**, within the same section — a
   document with several consecutive examples illustrating the same
-  clause links each to its *immediately preceding* non-example unit
+  clause links each to its _immediately preceding_ non-example unit
   (which may itself be another example once the chain runs past the
   first), not all of them back to the original clause.
 
@@ -400,7 +401,7 @@ type. That's not what this stage does. Every `KnowledgeNode` is a typed,
 provenance-carrying, aliasable, mergeable graph citizen — connected to
 other nodes by typed edges, ready to become the foundation every later
 stage (and eventually a `@xo/xoir` graph) builds on. Entity/organization
-detection is *part of* this stage (two node types among 23), not a
+detection is _part of_ this stage (two node types among 23), not a
 separate prior pass — see the "Pipeline note" in the Status table, above.
 
 ### The KnowledgeGraph model (`types.ts`)
@@ -485,7 +486,7 @@ implies in the other direction (whitespace-insensitive matching).
   `depends_on`/`derived_from`/`contradicts`/`references` relationships
   into candidate edges (a direct, no-translation-needed type match).
 - **`HybridKnowledgeExtractor`** — the default. Rule-based always runs
-  first; an AI extractor, if configured, runs *in addition* and its
+  first; an AI extractor, if configured, runs _in addition_ and its
   candidates are unioned in. If the AI call fails for a unit (no
   eligible provider, rate-limited, every candidate provider down —
   anything `@xo/ai-core` reports as an `err` Result), that unit silently
@@ -573,14 +574,14 @@ test of the AI-assisted path possible at all — see
 ### What a capability is here
 
 A `Capability` is not a flat string tag — it's everything an XO can
-*do*, described richly enough for a future runtime/execution layer to
+_do_, described richly enough for a future runtime/execution layer to
 act on: a deterministic id, canonical name, aliases, description,
 category, confidence, provenance (Stage 4's own `KnowledgeProvenance`
 model, reused verbatim — no parallel provenance shape), inputs, outputs,
 dependencies, the knowledge nodes and concepts it relates to, required
 permissions (empty until a permission model exists), invocation hints,
 examples, a machine-readable `signature`, and open metadata. This stage
-consumes Stage 3's `ExperienceDocument` *and* Stage 4's `KnowledgeGraph`
+consumes Stage 3's `ExperienceDocument` _and_ Stage 4's `KnowledgeGraph`
 together — every capability is extracted from a unit with the whole
 knowledge graph available for cross-referencing.
 
@@ -683,7 +684,7 @@ Built centrally, after merging, from four sources:
    pattern Stage 3's `supports` edges use).
 4. **`depends_on`** — content-mention: a capability whose description
    textually mentions another capability's canonical name. Every
-   `depends_on` edge is also mirrored onto the *from* capability's own
+   `depends_on` edge is also mirrored onto the _from_ capability's own
    `dependencies` field — a two-phase split (merge, then
    relationships-and-dependencies) matching Stage 3's
    `documentReferences` and Stage 4's edge-building precedent exactly.
@@ -742,7 +743,7 @@ possible at all.
 ## XOIR Reconciliation and the XOIR-First Compilation Pipeline (`src/xoir/`, `src/pipeline/`)
 
 Two pieces of cross-cutting architectural work sit here, orthogonal to the
-per-extractor stage numbering above (Stage 6 in the *table* above means
+per-extractor stage numbering above (Stage 6 in the _table_ above means
 "Reasoning Extractor," not what this section calls "Stage 6" — see the
 note at the end of this section for why the two numbering tracks
 diverged):
@@ -755,7 +756,7 @@ diverged):
   established — that document is authoritative for XOIR itself; this
   section only covers how `@xo/compiler` uses it.
 - **XOIR-First Compilation Pipeline Integration** (this section) made XOIR
-  a real boundary *inside the compiler pipeline*, not merely a conversion
+  a real boundary _inside the compiler pipeline_, not merely a conversion
   utility a caller might or might not use. Before this, nothing forced a
   caller to route Stage 4/5 output through validation or normalization;
   after this, `compileXoir()` (`src/pipeline/compile.ts`) is the one
@@ -775,7 +776,7 @@ After:   KnowledgeGraph ──→ XOIR ──→ compiler logic
 Once a `KnowledgeGraph`/`CapabilityGraph` has been converted, no code
 downstream of `compileXoir()` should depend on `KnowledgeGraph` semantic
 types or `CapabilityGraph` relation types again — those are Stage 4/5's
-own extraction-domain vocabulary, useful for *producing* evidence, not
+own extraction-domain vocabulary, useful for _producing_ evidence, not
 for reasoning about compiled expertise generically. This is what lets a
 future Stage 6 (Reasoning Extractor), Stage 7 (Decision Graph Generator),
 Stage 8 (Constraint Extractor), or an entirely new source adapter (image,
@@ -828,7 +829,7 @@ A future source adapter's whole interface into this compiler is meant to
 be exactly:
 
 ```ts
-const domainGraph = await extract(source);       // Stage 4/5-style adapter
+const domainGraph = await extract(source); // Stage 4/5-style adapter
 const result = await compileXoir({ kind: 'knowledge', graph: domainGraph });
 ```
 
@@ -870,21 +871,21 @@ deliberately conservative:
    produced them in.
 2. **Canonical provenance ordering** — sorts each node/edge's
    `sourceRefs` into canonical (content-sorted) order and recomputes its
-   hash to match. `sourceRefs` is a *set* of corroborating evidence, not
+   hash to match. `sourceRefs` is a _set_ of corroborating evidence, not
    a meaningful sequence (see `packages/xoir/README.md` §5), so two nodes
    backed by the same evidence in a different encounter order now hash
    identically. This is the one place normalization is allowed to change
    a node/edge's `hash` — the content is unchanged, only its ordering is
    canonicalized.
 3. **Safe exact-duplicate-edge collapsing** — two edges asserting the
-   identical relationship (`kind`, `fromId`, `toId`) under two *different*
+   identical relationship (`kind`, `fromId`, `toId`) under two _different_
    ids are collapsed into one, keeping the lexicographically-smallest id
    and unioning their `sourceRefs` (never dropping either side's
    evidence), with an `info`-severity diagnostic recording what was
    collapsed.
 
 **What normalization deliberately does NOT do** (Stage 6's explicit
-non-goals): it never infers that two differently-`id`'d *nodes* are "the
+non-goals): it never infers that two differently-`id`'d _nodes_ are "the
 same" — that would be exactly the speculative semantic-equivalence
 inference this stage is required to avoid; it never reorders
 `properties` values (property array order is domain-meaningful, not an
@@ -904,7 +905,7 @@ genuine id conflict to resolve — `into` is composition, not merge, and
 instruction to reuse Stage 5.5's `into` functionality rather than
 duplicate its semantics.
 
-A genuine **merge** — combining two or more *independently*-produced
+A genuine **merge** — combining two or more _independently_-produced
 `XoirGraph`s that may legitimately assert the same node/edge id (e.g. two
 separate extraction runs over overlapping source material, or
 incremental recompilation with new evidence) — is
@@ -913,12 +914,12 @@ added alongside this pipeline work since Stage 6 explicitly requires
 provenance-additive merge semantics `@xo/xoir`'s original `mergeGraphs`
 didn't provide — see that file's doc comment and
 `packages/xoir/README.md`'s "Merge engine" section for the full
-before/after). In short: two same-id candidates that agree on *core*
+before/after). In short: two same-id candidates that agree on _core_
 content (kind/subtype/properties/custom) are reconciled into one node
 with **unioned, deduplicated** `sourceRefs`/`tags` and a `confidenceDetail`
 reflecting the real, larger corroboration count — never a pick-one,
 discard-the-rest resolution. Only candidates whose core content
-*genuinely* differs are reported as a conflict and resolved via the same
+_genuinely_ differs are reported as a conflict and resolved via the same
 `MergeStrategy` `mergeGraphs` already used (`prefer_first` /
 `prefer_last` / `prefer_higher_confidence` / `error_on_conflict`).
 `CompileXoirOptions.mergeStrategy` is reserved for a future caller that
@@ -957,17 +958,17 @@ same `now` override, `compileXoir()` produces an identical
 combined Stage 4 + Stage 5 path. As established in the XOIR
 reconciliation: `createdAt`/`updatedAt` node/edge timestamps and manifest
 pass-history timestamps never enter any content hash; this pipeline adds
-nothing that changes that. The one *new* thing that affects a node/edge's
+nothing that changes that. The one _new_ thing that affects a node/edge's
 hash post-conversion is normalization's canonical `sourceRefs` ordering
 (§ above) — deliberately, so that two structurally-equivalent inputs
 encountered in a different order still converge on one canonical hash,
-which is a *stronger* determinism guarantee than existed before this
+which is a _stronger_ determinism guarantee than existed before this
 pipeline, not a weaker one.
 
 ### Why the numbering diverges from the Status table above
 
 See "Roadmap numbering, resolved" in the Status table's notes, above.
-Short version: the table's Stage 6/7/8/9 are the *original*
+Short version: the table's Stage 6/7/8/9 are the _original_
 per-extractor plan; `Stage 5.5`/`Stage 6`/`Stage 7` (this document's
 other numbering) are a separate, cross-cutting work track that
 established the canonical semantic representation, the pipeline
@@ -977,9 +978,9 @@ XOIR-native module rather than three separate ones.
 
 ## Stage 7: Reasoning & Decision Extraction (`src/reasoning/`)
 
-Extends the compiler from *what the source material knows*
-(`KnowledgeGraph`) and *what it can do* (`CapabilityGraph`) to
-*how it decides* — the explicit reasoning and decision-making structure
+Extends the compiler from _what the source material knows_
+(`KnowledgeGraph`) and _what it can do_ (`CapabilityGraph`) to
+_how it decides_ — the explicit reasoning and decision-making structure
 a source actually supports: rules, prerequisites, prohibitions, policies,
 decisions, alternatives, justifications, exceptions, escalations, and
 risk thresholds. Not a generic reasoning engine, and not permitted to
@@ -1011,9 +1012,9 @@ deterministic ids):
   network. `rule-pattern-parser.ts` does manual (no-regex, this package's
   established style — see `lexical-cues.ts`) sentence-pattern matching
   for a conservative, explicitly-scoped pattern set: `IF`/`WHEN ...
-  THEN` (single- and multi-condition), `BEFORE A, B must be completed`
+THEN` (single- and multi-condition), `BEFORE A, B must be completed`
   (prerequisite), `CANNOT`/`MUST NOT`/`DO NOT` (prohibition), `ONLY ...
-  MAY`/`MUST` (policy), `... is preferred when ...` (alternative),
+MAY`/`MUST` (policy), `... is preferred when ...` (alternative),
   `BECAUSE E, D` / `D, because E` (justification), `UNLESS` (inline
   exception, folded into the rule it modifies), `... ELSE`/`OTHERWISE`
   (IF/THEN/ELSE alternative branching), and `X overrides Y` (standalone
@@ -1046,7 +1047,7 @@ deterministic ids):
 
 A `ReasoningNode`'s id is a content hash over its node type + normalized
 canonical label (`node-id.ts#computeReasoningNodeId`) — the same rule
-stated by rule-based extraction *and* independently found by AI
+stated by rule-based extraction _and_ independently found by AI
 extraction converges on one node with corroborated confidence, never a
 duplicate (`merge.ts#mergeReasoningNodes`, mirroring
 `../knowledge/merge.ts` exactly, plus unioning `exceptionConditions`
@@ -1061,22 +1062,22 @@ identical node/edge ids, ordering, and provenance every time (see
 ### XOIR mapping (`src/xoir/reasoning-node-kind-mapping.ts`, `reasoning-edge-mapping.ts`, `reasoning-to-xoir.ts`)
 
 Per Stage 7's explicit instruction to reuse the existing taxonomy before
-extending it, every `ReasoningNodeType` maps onto an *existing* canonical
+extending it, every `ReasoningNodeType` maps onto an _existing_ canonical
 XOIR kind — **zero new XOIR node kinds were needed**:
 
-| Reasoning type | XOIR kind | Why |
-|---|---|---|
-| `rule`, `exception` | `heuristic` | `condition`/`action`/`exceptionConditions` is exactly `HeuristicNodeProps` |
-| `prerequisite`, `prohibition`, `policy` | `constraint` | all three are hard limits; differ only in `subtype`/`severity` |
-| `decision`, `alternative` | `decision_node` | an alternative is structurally another decision branch |
-| `justification` | `reasoning_step` | `premise`/`conclusion` is exactly `rationale`/`outcome` |
-| `escalation` | `escalation_rule` | `triggerCondition`/`escalationTarget` matches exactly — previously unused canonical kind |
-| `risk_threshold` | `risk_policy` | `domain`/`toleranceLevel` matches `metric`/`thresholdDescription` — also previously unused |
+| Reasoning type                          | XOIR kind         | Why                                                                                        |
+| --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `rule`, `exception`                     | `heuristic`       | `condition`/`action`/`exceptionConditions` is exactly `HeuristicNodeProps`                 |
+| `prerequisite`, `prohibition`, `policy` | `constraint`      | all three are hard limits; differ only in `subtype`/`severity`                             |
+| `decision`, `alternative`               | `decision_node`   | an alternative is structurally another decision branch                                     |
+| `justification`                         | `reasoning_step`  | `premise`/`conclusion` is exactly `rationale`/`outcome`                                    |
+| `escalation`                            | `escalation_rule` | `triggerCondition`/`escalationTarget` matches exactly — previously unused canonical kind   |
+| `risk_threshold`                        | `risk_policy`     | `domain`/`toleranceLevel` matches `metric`/`thresholdDescription` — also previously unused |
 
 Edges: 9 of the task's 10 suggested relationship names (`CONDITION_OF`,
 `REQUIRES`, `CONSTRAINS`→`GOVERNS`, `EXCLUDES`→`CONTRADICTS`,
 `OVERRIDES`→`SUPERSEDES`, `LEADS_TO`/`RESULTS_IN`→`TRIGGERED_BY`
-*reversed*, `SUPPORTS`/`JUSTIFIES`→`SUPPORTS`, `DEPENDS_ON`) reuse an
+_reversed_, `SUPPORTS`/`JUSTIFIES`→`SUPPORTS`, `DEPENDS_ON`) reuse an
 existing XOIR edge kind — see `reasoning-edge-mapping.ts` for the exact
 table and the reasoning behind each. **One genuine addition**:
 `ALTERNATIVE_TO` (`@xo/xoir`'s `edge-kinds.ts`) — "Option A instead of
@@ -1101,16 +1102,16 @@ uses). Never invents a link without a real textual match.
 
 `PipelineInput`'s `'knowledge'`/`'capability'`/`'combined'` variants
 gained an optional `reasoning?: ReasoningGraph` field. `compile.ts`'s
-`convertToXoir` composes it in *last*, via the same `into` mechanism
+`convertToXoir` composes it in _last_, via the same `into` mechanism
 Stage 6 established for Knowledge+Capability composition — Knowledge,
 Capability, and Reasoning ids all live in disjoint id spaces, so there is
 no genuine merge conflict, only composition, and converting reasoning
 last is what lets `linkReferencedNodes` find real Capability/Concept
 nodes already sitting in the target graph. No second `compileXoir`-like
-entry point exists. Reasoning *extraction/composition* itself needed no
+entry point exists. Reasoning _extraction/composition_ itself needed no
 dedicated `Pass` — it happens at the conversion step, the same
 architectural layer Stage 4/5's own adapters occupy, before any
-`PassManager` Stage 6 built ever runs. Semantic *validation* of that
+`PassManager` Stage 6 built ever runs. Semantic _validation_ of that
 composed output, however, is a genuine pass — see the next section.
 
 ### Semantic reasoning validation (`src/pipeline/reasoning-validate-pass.ts`)
@@ -1119,7 +1120,7 @@ Structural validity and semantic validity are different questions.
 `@xo/xoir#validateGraph` (reused via `validate-pass.ts`, Stage 6) answers
 "are all nodes/edges valid XOIR objects" — required properties present,
 confidence in range, no dangling edges. It is deliberately
-domain-agnostic: it has no concept of what a "decision" or a "rule" *is*,
+domain-agnostic: it has no concept of what a "decision" or a "rule" _is_,
 only that a `decision_node`/`heuristic` has the right property keys. That
 leaves a real gap Stage 7 output can fall into without tripping it: an
 explicitly **empty** `question`/`condition`/`rule` string passes
@@ -1142,7 +1143,7 @@ still a structurally well-formed edge.
      be non-blank, not merely present.
   2. **Relationship-shape checks** — an `ALTERNATIVE_TO` edge must
      connect two `decision_node`s (an alternative can only be an
-     alternative *to* another decision branch); a Stage-7-sourced
+     alternative _to_ another decision branch); a Stage-7-sourced
      `SUPERSEDES` (override) edge must target a node kind that actually
      has rule/decision/constraint content to override (`heuristic`,
      `decision_node`, `constraint`, `escalation_rule`, `risk_policy` —
@@ -1151,7 +1152,7 @@ still a structurally well-formed edge.
 - **What is intentionally NOT validated.** Dangling edge endpoints
   (missing nodes) — that's `@xo/xoir#validateGraph`'s
   `dangling_edge_reference` check, reused, never duplicated here.
-  Anything about a node/graph being *incomplete* — a unit that produced
+  Anything about a node/graph being _incomplete_ — a unit that produced
   no structured reasoning at all contributes zero nodes, which is
   correct, not an error (Stage 7's explicit "false-positive validation
   errors are worse than allowing unsupported ambiguity to remain
@@ -1163,8 +1164,8 @@ still a structurally well-formed edge.
   structured claim make sense," never "is this natural language good
   enough." `"Management generally prefers option A."` producing no
   structured decision is not flagged — nothing was claimed to be
-  structured in the first place. Only a node/edge that XOIR *already
-  claims* to be a rule/decision/override/alternative, but whose content
+  structured in the first place. Only a node/edge that XOIR _already
+  claims_ to be a rule/decision/override/alternative, but whose content
   contradicts what that claim requires, is an error.
 - **Diagnostic codes** (four, matching the pattern's `code`
   taxonomy elsewhere in this pipeline): `DECISION_MISSING_REQUIRED_STRUCTURE`,
@@ -1175,7 +1176,7 @@ still a structurally well-formed edge.
   `'error'`-severity, all attributed with `nodeId` or `edgeId`, reusing
   `@xo/xoir`'s `Diagnostic` type unchanged (`pass.ts`) — no second
   diagnostic model.
-- **Pipeline placement.** `compile.ts` runs this pass in the *same*
+- **Pipeline placement.** `compile.ts` runs this pass in the _same_
   `PassManager` as generic structural validation, registered right after
   it: `xoir-validation` → `reasoning-validation` → (only if both produced
   zero error-severity diagnostics) `xoir-normalization`. An
@@ -1206,7 +1207,7 @@ still a structurally well-formed edge.
 - **Cross-sentence exception resolution is not attempted.** "Exception E
   overrides rule R." (`parseStandaloneOverride`) extracts the exception
   node but does not resolve `R` to another sentence's rule node by text
-  matching — only the *inline* `UNLESS` form (same sentence) produces a
+  matching — only the _inline_ `UNLESS` form (same sentence) produces a
   real `overrides`/`SUPERSEDES` edge. Resolving free-text cross-sentence
   references conservatively is future work.
 - **Content-mention linking is textual, not semantic.** `Sign Contract`
@@ -1220,11 +1221,8 @@ still a structurally well-formed edge.
   swapped, or internally contradictory) is not and cannot be caught here
   — that would require actual language understanding, which this
   conservative, structural pass deliberately does not attempt. It
-  catches malformed *structure*, never linguistically-imperfect-but-
+  catches malformed _structure_, never linguistically-imperfect-but-
   well-formed content.
-
-
-
 
 ```ts
 import { readFileSync } from 'node:fs';
@@ -1248,7 +1246,9 @@ if (result.ok) {
   // Stage 4 — rule-based only (no aiCore option) still produces a correct, lower-confidence graph.
   const knowledgeGraph = await extractKnowledgeGraph(experienceDoc);
   for (const node of knowledgeGraph.nodes) {
-    console.log(`[${node.semanticType}] ${node.canonicalLabel}${node.aliases.length ? ` (aka ${node.aliases.join(', ')})` : ''} — confidence ${node.confidence}`);
+    console.log(
+      `[${node.semanticType}] ${node.canonicalLabel}${node.aliases.length ? ` (aka ${node.aliases.join(', ')})` : ''} — confidence ${node.confidence}`,
+    );
   }
   for (const edge of knowledgeGraph.edges) {
     console.log(`  ${edge.fromNodeId} --${edge.type}--> ${edge.toNodeId}`);
@@ -1277,7 +1277,9 @@ import { extractCapabilityGraph, hashCapabilityGraph } from '@xo/compiler';
 
 const capabilityGraph = await extractCapabilityGraph(experienceDoc, knowledgeGraph);
 for (const cap of capabilityGraph.capabilities) {
-  console.log(`[${cap.category}] ${cap.canonicalName}${cap.aliases.length ? ` (aka ${cap.aliases.join(', ')})` : ''} — confidence ${cap.confidence}`);
+  console.log(
+    `[${cap.category}] ${cap.canonicalName}${cap.aliases.length ? ` (aka ${cap.aliases.join(', ')})` : ''} — confidence ${cap.confidence}`,
+  );
   if (cap.dependencies.length > 0) console.log(`  depends on: ${cap.dependencies.join(', ')}`);
 }
 for (const rel of capabilityGraph.relationships) {
@@ -1286,7 +1288,10 @@ for (const rel of capabilityGraph.relationships) {
 console.log(`capability graph hash: ${hashCapabilityGraph(capabilityGraph)}`);
 
 // With AI assistance, same aiCore instance as Stage 4:
-const aiAssistedCapabilityGraph = await extractCapabilityGraph(experienceDoc, knowledgeGraph, { aiCore, domainHint: 'corporate contract law' });
+const aiAssistedCapabilityGraph = await extractCapabilityGraph(experienceDoc, knowledgeGraph, {
+  aiCore,
+  domainHint: 'corporate contract law',
+});
 ```
 
 ## Stage 8: Multi-Source Frontends & Source Normalization (`src/sources/`, `src/pipeline/compile-sources.ts`)
@@ -1296,7 +1301,7 @@ Everything above Stage 7 assumed one specific way in: a PDF, loaded by
 that pipeline completely intact and puts a **source-frontend boundary**
 in front of it, so a PDF, a plain-text/markdown document, an HTML page,
 or a JSON/CSV record set can all be normalized into the same shape and
-handed to the *exact same* Stage 3-7 pipeline — with zero branching on
+handed to the _exact same_ Stage 3-7 pipeline — with zero branching on
 source type anywhere in Stage 3 (`semantic/`), Stage 4 (`knowledge/`),
 Stage 5 (`capabilities/`), or Stage 7 (`reasoning/`).
 
@@ -1316,9 +1321,9 @@ only thing the rest of the compiler ever sees:
 
 ```ts
 interface CanonicalSource {
-  sourceId: string;              // deterministic content hash — never Date.now()/random
+  sourceId: string; // deterministic content hash — never Date.now()/random
   sourceType: 'pdf' | 'document' | 'image' | 'html' | 'structured';
-  sourcePath: string;             // human-facing label (filename, URL, caller-supplied)
+  sourcePath: string; // human-facing label (filename, URL, caller-supplied)
   content: DocumentSourceContent | BinarySourceContent;
   metadata: Readonly<Record<string, string>>;
   semanticExtractionAvailable: boolean;
@@ -1353,13 +1358,13 @@ already registered.
 
 ### Supported source types — fully supported vs. extensibility-only
 
-| Type | Frontend | Status | Notes |
-|---|---|---|---|
-| `pdf` | `PdfSourceFrontend` | **Fully supported** | The existing `NodePdfLoader` + `parseDocument` (Stage 1-2), unmodified, wrapped behind the frontend boundary. Detects untagged `{ bytes, sourcePath }` via the `%PDF-` magic header, or accepts explicit `{ kind: 'pdf', ... }`. |
-| `document` | `DocumentSourceFrontend` | **Fully supported** | Plain-text / lightly markdown-marked-up text (this repo had no separate DOCX/RTF ingestion to preserve — this is new capability, not a PDF refactor). Blank-line-separated paragraphs; `#`.."######" headings; `-`/`*`/`1.` list items. Builds a `ParsedDocument` directly via `buildSections` (the same section-nesting Stage 2 uses), rather than reimplementing Stage 2's PDF-specific line-grouping/font-stats machinery. |
-| `html` | `HtmlSourceFrontend` | **Fully supported** | Deterministic, fixture-based `<h1-6>`/`<p>`/`<li>` extraction with entity decoding and inner-tag stripping. No network access, no crawler — a `url` field is accepted purely as a provenance label for HTML the caller already fetched. `<script>`/`<style>` contents are stripped before scanning so they can never be mistaken for page content. |
-| `structured` | `StructuredSourceFrontend` | **Fully supported** | JSON (array-of-objects or a single object) and CSV (naive comma-split, no quoted-field support — a documented limitation, not a bug). Each record becomes one heading block ("Record N") plus one paragraph block per field, so field-level provenance survives (see below). |
-| `image` | `ImageSourceFrontend` | **Extensibility-only** | Represents bytes, MIME type (sniffed from PNG/JPEG/GIF/WEBP magic headers, or caller-supplied), and pixel dimensions (only for PNG/GIF, where the header is trivial to read without a real decoder — never guessed for other formats). `semanticExtractionAvailable` is always `false`: there is no OCR/vision dependency in this repository to wire up, and Stage 8 deliberately does not add one. A future OCR/vision frontend can upgrade this without any change to `CanonicalSource`, the registry, or Stage 3+. |
+| Type         | Frontend                   | Status                 | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------ | -------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pdf`        | `PdfSourceFrontend`        | **Fully supported**    | The existing `NodePdfLoader` + `parseDocument` (Stage 1-2), unmodified, wrapped behind the frontend boundary. Detects untagged `{ bytes, sourcePath }` via the `%PDF-` magic header, or accepts explicit `{ kind: 'pdf', ... }`.                                                                                                                                                                                                                                                                                      |
+| `document`   | `DocumentSourceFrontend`   | **Fully supported**    | Plain-text / lightly markdown-marked-up text (this repo had no separate DOCX/RTF ingestion to preserve — this is new capability, not a PDF refactor). Blank-line-separated paragraphs; `#`.."######" headings; `-`/`*`/`1.` list items. Builds a `ParsedDocument` directly via `buildSections` (the same section-nesting Stage 2 uses), rather than reimplementing Stage 2's PDF-specific line-grouping/font-stats machinery.                                                                                         |
+| `html`       | `HtmlSourceFrontend`       | **Fully supported**    | Deterministic, fixture-based `<h1-6>`/`<p>`/`<li>` extraction with entity decoding and inner-tag stripping. No network access, no crawler — a `url` field is accepted purely as a provenance label for HTML the caller already fetched. `<script>`/`<style>` contents are stripped before scanning so they can never be mistaken for page content.                                                                                                                                                                    |
+| `structured` | `StructuredSourceFrontend` | **Fully supported**    | JSON (array-of-objects or a single object) and CSV (naive comma-split, no quoted-field support — a documented limitation, not a bug). Each record becomes one heading block ("Record N") plus one paragraph block per field, so field-level provenance survives (see below).                                                                                                                                                                                                                                          |
+| `image`      | `ImageSourceFrontend`      | **Extensibility-only** | Represents bytes, MIME type (sniffed from PNG/JPEG/GIF/WEBP magic headers, or caller-supplied), and pixel dimensions (only for PNG/GIF, where the header is trivial to read without a real decoder — never guessed for other formats). `semanticExtractionAvailable` is always `false`: there is no OCR/vision dependency in this repository to wire up, and Stage 8 deliberately does not add one. A future OCR/vision frontend can upgrade this without any change to `CanonicalSource`, the registry, or Stage 3+. |
 
 None of the "fully supported" frontends duplicate Stage 4/5/7's
 extraction logic — they only build a `ParsedDocument`, and everything
@@ -1406,7 +1411,7 @@ if (merged.ok) {
 `compileSources` does **not** run N independent compilers and merge
 their outputs afterward. It normalizes every input to a
 `CanonicalSource` first, chunks each document-shaped source with the
-*unmodified* Stage 3 `chunkDocument` (each source's own `sourceId` as its
+_unmodified_ Stage 3 `chunkDocument` (each source's own `sourceId` as its
 `documentPath`), merges the resulting `ExperienceDocument`s into one, and
 then runs Stage 4 (`extractKnowledgeGraph`), Stage 5
 (`extractCapabilityGraph`), and Stage 7 (`extractReasoningGraph`) **once**

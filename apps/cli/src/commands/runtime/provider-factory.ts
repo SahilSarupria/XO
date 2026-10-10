@@ -41,7 +41,10 @@ function isSupportedProviderId(value: string): value is SupportedProviderId {
  * An explicit `--api-key`/`--endpoint` flag always wins over its
  * environment variable.
  */
-export function resolveProvider(flags: ProviderFlags, env: Readonly<Record<string, string | undefined>> = process.env): Result<ModelProvider, string> {
+export function resolveProvider(
+  flags: ProviderFlags,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Result<ModelProvider, string> {
   const providerId = flags.provider ?? 'anthropic';
   if (!isSupportedProviderId(providerId)) {
     return err(`unknown --provider "${providerId}" — supported: ${SUPPORTED_PROVIDER_IDS.join(', ')}`);
@@ -68,7 +71,10 @@ export function resolveProvider(flags: ProviderFlags, env: Readonly<Record<strin
       const apiKey = flags.apiKey ?? env['AZURE_OPENAI_API_KEY'];
       if (!apiKey) return err('azure-openai provider needs an API key — pass --api-key or set AZURE_OPENAI_API_KEY');
       const endpoint = flags.endpoint ?? env['AZURE_OPENAI_ENDPOINT'];
-      if (!endpoint) return err('azure-openai provider needs an endpoint — pass --endpoint or set AZURE_OPENAI_ENDPOINT (e.g. https://my-resource.openai.azure.com)');
+      if (!endpoint)
+        return err(
+          'azure-openai provider needs an endpoint — pass --endpoint or set AZURE_OPENAI_ENDPOINT (e.g. https://my-resource.openai.azure.com)',
+        );
       return ok(new AzureOpenAiProvider({ apiKey, endpoint, ...(flags.apiVersion !== undefined ? { apiVersion: flags.apiVersion } : {}) }));
     }
     case 'gemini': {

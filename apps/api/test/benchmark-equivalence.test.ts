@@ -30,7 +30,10 @@ interface CapabilityWire {
   readonly executionClass?: string;
 }
 
-async function apiCapabilities(relativePath: string): Promise<{ readonly capabilities: CapabilityWire[]; readonly ctx: { readonly server: TestServer; readonly workspace: WorkspaceRecord; readonly compilationId: string } }> {
+async function apiCapabilities(relativePath: string): Promise<{
+  readonly capabilities: CapabilityWire[];
+  readonly ctx: { readonly server: TestServer; readonly workspace: WorkspaceRecord; readonly compilationId: string };
+}> {
   const bytes = await readFile(`${REPO_ROOT}${relativePath}`);
   return await new Promise((resolve, reject) => {
     void withTempDir('xo-bm-equiv-data-', async (dataDir) => {
@@ -39,10 +42,17 @@ async function apiCapabilities(relativePath: string): Promise<{ readonly capabil
         try {
           const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
           const base = `/workspaces/${workspace.workspaceId}`;
-          const source = (await server.request('POST', `${base}/sources?filename=${relativePath.split('/').pop()}`, bytes)).json<{ sourceId: string }>();
-          const compiled = (await server.request('POST', `${base}/sources/${source.sourceId}/compile`)).json<{ compilationId: string; status: string }>();
+          const source = (await server.request('POST', `${base}/sources?filename=${relativePath.split('/').pop()}`, bytes)).json<{
+            sourceId: string;
+          }>();
+          const compiled = (await server.request('POST', `${base}/sources/${source.sourceId}/compile`)).json<{
+            compilationId: string;
+            status: string;
+          }>();
           assert.equal(compiled.status, 'succeeded');
-          const caps = (await server.request('GET', `${base}/compilations/${compiled.compilationId}/capabilities`)).json<{ capabilities: CapabilityWire[] }>().capabilities;
+          const caps = (await server.request('GET', `${base}/compilations/${compiled.compilationId}/capabilities`)).json<{
+            capabilities: CapabilityWire[];
+          }>().capabilities;
           resolve({ capabilities: caps, ctx: { server, workspace, compilationId: compiled.compilationId } });
         } catch (cause) {
           reject(cause);
@@ -76,7 +86,9 @@ test('the benchmark observer and the shipped API execution route agree on execut
         const base = `/workspaces/${workspace.workspaceId}`;
         const source = (await server.request('POST', `${base}/sources?filename=policy.pdf`, bytes)).json<{ sourceId: string }>();
         const compiled = (await server.request('POST', `${base}/sources/${source.sourceId}/compile`)).json<{ compilationId: string }>();
-        const caps = (await server.request('GET', `${base}/compilations/${compiled.compilationId}/capabilities`)).json<{ capabilities: CapabilityWire[] }>().capabilities;
+        const caps = (await server.request('GET', `${base}/compilations/${compiled.compilationId}/capabilities`)).json<{
+          capabilities: CapabilityWire[];
+        }>().capabilities;
 
         const observation = await observeCase(
           {
@@ -84,26 +96,52 @@ test('the benchmark observer and the shipped API execution route agree on execut
             sources: [{ kind: 'pdf', path: COMMERCIAL }],
             expect: {},
             execution: [
-              { id: 'det', kind: 'capability', target: { equals: 'The Claim Requires Manager Approval Before Settlement' }, input: { claim_amount: 15000 }, expect: { outcome: 'succeeded' } },
-              { id: 'hitl', kind: 'capability', target: { equals: 'Review not covered under standard rule' }, input: {}, expect: { outcome: 'waiting_for_human' } },
-              { id: 'unres', kind: 'capability', target: { contains: 'Notify the Insurer of a loss within' }, input: {}, expect: { outcome: 'not_executable' } },
+              {
+                id: 'det',
+                kind: 'capability',
+                target: { equals: 'The Claim Requires Manager Approval Before Settlement' },
+                input: { claim_amount: 15000 },
+                expect: { outcome: 'succeeded' },
+              },
+              {
+                id: 'hitl',
+                kind: 'capability',
+                target: { equals: 'Review not covered under standard rule' },
+                input: {},
+                expect: { outcome: 'waiting_for_human' },
+              },
+              {
+                id: 'unres',
+                kind: 'capability',
+                target: { contains: 'Notify the Insurer of a loss within' },
+                input: {},
+                expect: { outcome: 'not_executable' },
+              },
             ],
           },
           { sourceRoot: REPO_ROOT },
         );
-        const observedOutcome = (id: string) => (observation.executions.find((e) => e.requestId === id) as { outcome: string; output?: { matched?: boolean } }).outcome;
+        const observedOutcome = (id: string) =>
+          (observation.executions.find((e) => e.requestId === id) as { outcome: string; output?: { matched?: boolean } }).outcome;
 
         const byName = (name: string) => caps.find((c) => c.name === name)!;
         const approveAndExecute = async (cap: CapabilityWire, input: Record<string, unknown>) => {
           await server.request('POST', `${base}/compilations/${compiled.compilationId}/capabilities/${cap.capabilityId}/approve`);
-          return server.request('POST', `${base}/executions`, { compilationId: compiled.compilationId, capabilityId: cap.capabilityId, input });
+          return server.request('POST', `${base}/executions`, {
+            compilationId: compiled.compilationId,
+            capabilityId: cap.capabilityId,
+            input,
+          });
         };
 
         const det = await approveAndExecute(byName('The Claim Requires Manager Approval Before Settlement'), { claim_amount: 15000 });
         assert.equal(det.status, 201, det.bodyText);
         assert.equal(det.json<{ status: string; output: { matched: boolean } }>().status, 'succeeded');
         assert.equal(observedOutcome('det'), 'succeeded');
-        assert.equal((observation.executions.find((e) => e.requestId === 'det') as { output: { matched: boolean } }).output.matched, det.json<{ output: { matched: boolean } }>().output.matched);
+        assert.equal(
+          (observation.executions.find((e) => e.requestId === 'det') as { output: { matched: boolean } }).output.matched,
+          det.json<{ output: { matched: boolean } }>().output.matched,
+        );
 
         const hitl = await approveAndExecute(byName('Review not covered under standard rule'), {});
         assert.equal(hitl.json<{ status: string }>().status, 'waiting_for_human');

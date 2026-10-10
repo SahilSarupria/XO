@@ -1,9 +1,11 @@
 # ADR 0002: TypeScript on Node.js as the primary implementation language
 
 ## Status
+
 Accepted
 
 ## Context
+
 The XO format is JSON-shaped throughout (manifest, metadata, knowledge
 graph, decision trees, reasoning traces). The platform's five deployables
 share a large surface of types and interfaces. The team building this
@@ -11,12 +13,14 @@ share a large surface of types and interfaces. The team building this
 re-deriving the same domain types in multiple languages.
 
 ## Decision
+
 TypeScript on Node.js ≥20, for every package in this repo.
 
 ## Alternatives considered
+
 - **Go for the runtime**: better memory/concurrency characteristics for a
   process holding many mounted packages in memory simultaneously.
-  Rejected *for now*: would require either duplicating
+  Rejected _for now_: would require either duplicating
   `runtime-core`'s interfaces in a second language or generating one from
   the other (extra tooling with no implementation yet to validate it
   against). Revisit once `runtime-core` has a real implementation and
@@ -30,6 +34,7 @@ TypeScript on Node.js ≥20, for every package in this repo.
   replacement for this repo's language.
 
 ## Consequences
+
 - `packages/*`'s shared `Result`/branded-ID/error conventions are
   TypeScript-idiomatic; a future non-TS service must translate at its
   boundary (e.g. treat a `ContentHash` as a validated string, re-deriving

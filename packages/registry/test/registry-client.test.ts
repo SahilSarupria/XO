@@ -144,7 +144,12 @@ test('recordBenchmark() defaults challengeable to true when unspecified, and hon
     assert.equal(defaultRun.ok, true);
     if (defaultRun.ok) assert.equal(defaultRun.value.challengeable, true);
 
-    const explicitRun = await client.recordBenchmark({ packageId: 'sha256:' + 'a'.repeat(64), category: 'contract_analysis', score: 0.5, challengeable: false });
+    const explicitRun = await client.recordBenchmark({
+      packageId: 'sha256:' + 'a'.repeat(64),
+      category: 'contract_analysis',
+      score: 0.5,
+      challengeable: false,
+    });
     assert.equal(explicitRun.ok, true);
     if (explicitRun.ok) assert.equal(explicitRun.value.challengeable, false);
   });

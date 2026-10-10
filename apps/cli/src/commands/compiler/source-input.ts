@@ -27,7 +27,20 @@ import { extname } from 'node:path';
  * `KNOWN_EXTENSIONS` from here rather than re-listing it, so the two
  * can never drift apart.
  */
-export const KNOWN_EXTENSIONS: ReadonlySet<string> = new Set(['.pdf', '.html', '.htm', '.json', '.csv', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp']);
+export const KNOWN_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.pdf',
+  '.html',
+  '.htm',
+  '.json',
+  '.csv',
+  '.txt',
+  '.md',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+]);
 
 /**
  * Tags the bytes at `readPath` (where the file actually lives on disk)
@@ -66,7 +79,12 @@ function looksLikeOpenApiDocument(text: string): boolean {
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false;
   const candidate = parsed as Record<string, unknown>;
-  return typeof candidate.openapi === 'string' && candidate.openapi.startsWith('3.') && typeof candidate.paths === 'object' && candidate.paths !== null;
+  return (
+    typeof candidate.openapi === 'string' &&
+    candidate.openapi.startsWith('3.') &&
+    typeof candidate.paths === 'object' &&
+    candidate.paths !== null
+  );
 }
 
 export async function loadSourceInput(readPath: string, declaredPath: string = readPath): Promise<unknown> {
@@ -88,7 +106,9 @@ export async function loadSourceInput(readPath: string, declaredPath: string = r
     // manifest. Use `xo run`/`xo install` to execute an existing `.xo`
     // package, or point `xo workflow`/`xo compile`/`xo capabilities` at
     // the original source document(s) instead.
-    throw new Error(`"${declaredPath}" is a packaged .xo archive (an already-compiled, signed package), not a compilable source document. Use "xo run"/"xo install" to execute it, or pass the original source document(s) (PDF/JSON/HTML/CSV/text) to compile a fresh workflow.`);
+    throw new Error(
+      `"${declaredPath}" is a packaged .xo archive (an already-compiled, signed package), not a compilable source document. Use "xo run"/"xo install" to execute it, or pass the original source document(s) (PDF/JSON/HTML/CSV/text) to compile a fresh workflow.`,
+    );
   }
 
   if (ext === '.pdf') {

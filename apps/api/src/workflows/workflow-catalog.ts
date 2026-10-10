@@ -33,7 +33,10 @@ export interface ComposedCompilation {
   readonly workflows: readonly CandidateWorkflow[];
 }
 
-export function composeCompilationWorkflows(compiledGraphJson: unknown, fixedTimestamp: string): { readonly ok: true; readonly value: ComposedCompilation } | { readonly ok: false; readonly error: XoError } {
+export function composeCompilationWorkflows(
+  compiledGraphJson: unknown,
+  fixedTimestamp: string,
+): { readonly ok: true; readonly value: ComposedCompilation } | { readonly ok: false; readonly error: XoError } {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok) return { ok: false, error: new XoError(graphResult.error.code, graphResult.error.message) };
   const graph = graphResult.value;
@@ -66,10 +69,12 @@ export function resolveWorkflow(graph: XoirGraph, workflow: CandidateWorkflow): 
   if (workflow.steps.length === 0) reasons.push('workflow has no steps');
   if (audit.status !== 'executable_candidate') {
     reasons.push(`executability audit status is "${audit.status}"`);
-    for (const blocker of audit.blockers) reasons.push(`${blocker.kind}${blocker.capabilityId !== undefined ? ` (${blocker.capabilityId})` : ''}: ${blocker.description}`);
+    for (const blocker of audit.blockers)
+      reasons.push(`${blocker.kind}${blocker.capabilityId !== undefined ? ` (${blocker.capabilityId})` : ''}: ${blocker.description}`);
   }
   for (const step of prepared.steps) {
-    if (step.status === 'unbound') reasons.push(`step "${step.capabilityId}" could not be bound to an executable capability: ${step.reason ?? 'no reason reported'}`);
+    if (step.status === 'unbound')
+      reasons.push(`step "${step.capabilityId}" could not be bound to an executable capability: ${step.reason ?? 'no reason reported'}`);
   }
   return { workflow, audit, dataFlow, prepared, registry, executable: reasons.length === 0, notExecutableReasons: reasons };
 }
@@ -80,15 +85,23 @@ export function findWorkflow(composed: ComposedCompilation, workflowId: string):
 
 /** The single place `WORKFLOW_NOT_EXECUTABLE` is raised for a workflow that exists but may not be started. `context` carries the audit's own blockers verbatim. */
 export function workflowNotExecutableError(workflowId: string, compilationId: string, resolved: ResolvedWorkflow): XoError {
-  return new XoError(ErrorCode.WORKFLOW_NOT_EXECUTABLE, `workflow "${workflowId}" in compilation "${compilationId}" is not executable: ${resolved.notExecutableReasons[0] ?? 'unknown reason'}`, {
-    context: {
-      workflowId,
-      compilationId,
-      executabilityStatus: resolved.audit.status satisfies WorkflowExecutabilityStatus,
-      reasons: resolved.notExecutableReasons,
-      blockers: resolved.audit.blockers.map((b: ExecutabilityBlocker) => ({ kind: b.kind, description: b.description, ...(b.capabilityId !== undefined ? { capabilityId: b.capabilityId } : {}) })),
+  return new XoError(
+    ErrorCode.WORKFLOW_NOT_EXECUTABLE,
+    `workflow "${workflowId}" in compilation "${compilationId}" is not executable: ${resolved.notExecutableReasons[0] ?? 'unknown reason'}`,
+    {
+      context: {
+        workflowId,
+        compilationId,
+        executabilityStatus: resolved.audit.status satisfies WorkflowExecutabilityStatus,
+        reasons: resolved.notExecutableReasons,
+        blockers: resolved.audit.blockers.map((b: ExecutabilityBlocker) => ({
+          kind: b.kind,
+          description: b.description,
+          ...(b.capabilityId !== undefined ? { capabilityId: b.capabilityId } : {}),
+        })),
+      },
     },
-  });
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +125,12 @@ export interface WorkflowStepView {
   readonly confidence: number;
   /** Has THIS workspace approved this capability (P0.5)? Required for every step before a workflow may start. */
   readonly approved: boolean;
-  readonly inputs: readonly { readonly name: string; readonly runtimeKey: string; readonly semanticType: string; readonly required: boolean }[];
+  readonly inputs: readonly {
+    readonly name: string;
+    readonly runtimeKey: string;
+    readonly semanticType: string;
+    readonly required: boolean;
+  }[];
   readonly outputs: readonly { readonly name: string; readonly runtimeKey: string; readonly semanticType: string }[];
   readonly evidence: readonly { readonly documentPath: string; readonly locator?: string; readonly pages?: readonly number[] }[];
   readonly orderedAfter: readonly { readonly capabilityId: string; readonly evidenceStrength: string; readonly viaEdgeKind: string }[];
@@ -136,18 +154,37 @@ export interface WorkflowView {
   readonly steps: readonly WorkflowStepView[];
   readonly dataFlow: {
     /** Every `'proven'` binding the existing data-flow audit found; `wired: true` when the runtime bridge will actually transfer the producer's value at execution time (producer bound as `deterministic_rule` and both steps bound). */
-    readonly provenBindings: readonly { readonly producerCapabilityId: string; readonly outputParameterName: string; readonly consumerCapabilityId: string; readonly inputParameterName: string; readonly wired: boolean }[];
+    readonly provenBindings: readonly {
+      readonly producerCapabilityId: string;
+      readonly outputParameterName: string;
+      readonly consumerCapabilityId: string;
+      readonly inputParameterName: string;
+      readonly wired: boolean;
+    }[];
     readonly suggestiveBindingCount: number;
     readonly unboundInputCount: number;
   };
-  readonly provenDependencies: readonly { readonly fromCapabilityId: string; readonly toCapabilityId: string; readonly viaEdgeKind: string }[];
+  readonly provenDependencies: readonly {
+    readonly fromCapabilityId: string;
+    readonly toCapabilityId: string;
+    readonly viaEdgeKind: string;
+  }[];
   readonly suggestiveOrdering: readonly { readonly fromCapabilityId: string; readonly toCapabilityId: string; readonly kind: string }[];
   readonly processGrouping?: { readonly sectionPath: readonly string[]; readonly capabilityCount: number };
 }
 
-export function buildWorkflowView(compilationId: string, sourceId: string | undefined, resolved: ResolvedWorkflow, approvedCapabilityIds: ReadonlySet<string>): WorkflowView {
+export function buildWorkflowView(
+  compilationId: string,
+  sourceId: string | undefined,
+  resolved: ResolvedWorkflow,
+  approvedCapabilityIds: ReadonlySet<string>,
+): WorkflowView {
   const { workflow, audit, dataFlow, prepared } = resolved;
-  const wired = new Set(prepared.wiredInjections.map((b) => `${b.producerCapabilityId}|${b.outputParameterName}|${b.consumerCapabilityId}|${b.inputParameterName}`));
+  const wired = new Set(
+    prepared.wiredInjections.map(
+      (b) => `${b.producerCapabilityId}|${b.outputParameterName}|${b.consumerCapabilityId}|${b.inputParameterName}`,
+    ),
+  );
 
   const steps: WorkflowStepView[] = workflow.steps.map((step) => {
     const bridgeStep = prepared.steps.find((s) => s.capabilityId === step.capabilityId);
@@ -158,18 +195,41 @@ export function buildWorkflowView(compilationId: string, sourceId: string | unde
       capabilityId: step.capabilityId,
       name: step.capabilityName,
       description: step.description,
-      ...(bridgeStep?.contractId !== undefined ? { contractId: bridgeStep.contractId } : step.contractId !== undefined ? { contractId: step.contractId } : {}),
+      ...(bridgeStep?.contractId !== undefined
+        ? { contractId: bridgeStep.contractId }
+        : step.contractId !== undefined
+          ? { contractId: step.contractId }
+          : {}),
       ...(bridgeStep?.bindingId !== undefined ? { bindingId: bridgeStep.bindingId } : {}),
-      ...(bridgeStep?.status === 'bound' && bridgeStep.implementationClass !== undefined ? { executionClass: bridgeStep.implementationClass } : {}),
+      ...(bridgeStep?.status === 'bound' && bridgeStep.implementationClass !== undefined
+        ? { executionClass: bridgeStep.implementationClass }
+        : {}),
       bound: bridgeStep?.status === 'bound',
       ...(bridgeStep?.status === 'unbound' && bridgeStep.reason !== undefined ? { unboundReason: bridgeStep.reason } : {}),
       authority: auditStep?.authority ?? 'insufficient',
       confidence: step.confidence,
       approved: approvedCapabilityIds.has(step.capabilityId),
-      inputs: (bridgeStep?.inputs ?? []).map((p) => ({ name: p.name, runtimeKey: p.runtimeKey, semanticType: p.semanticType ?? 'unknown', required: p.required === true })),
-      outputs: (bridgeStep?.outputs ?? []).map((p) => ({ name: p.name, runtimeKey: p.runtimeKey, semanticType: p.semanticType ?? 'unknown' })),
-      evidence: step.evidence.map((e) => ({ documentPath: e.documentPath, ...(e.locator !== undefined ? { locator: e.locator } : {}), ...(e.pages !== undefined ? { pages: e.pages } : {}) })),
-      orderedAfter: step.rationale.orderedAfter.map((o) => ({ capabilityId: o.capabilityId, evidenceStrength: o.evidenceStrength, viaEdgeKind: o.viaEdgeKind })),
+      inputs: (bridgeStep?.inputs ?? []).map((p) => ({
+        name: p.name,
+        runtimeKey: p.runtimeKey,
+        semanticType: p.semanticType ?? 'unknown',
+        required: p.required === true,
+      })),
+      outputs: (bridgeStep?.outputs ?? []).map((p) => ({
+        name: p.name,
+        runtimeKey: p.runtimeKey,
+        semanticType: p.semanticType ?? 'unknown',
+      })),
+      evidence: step.evidence.map((e) => ({
+        documentPath: e.documentPath,
+        ...(e.locator !== undefined ? { locator: e.locator } : {}),
+        ...(e.pages !== undefined ? { pages: e.pages } : {}),
+      })),
+      orderedAfter: step.rationale.orderedAfter.map((o) => ({
+        capabilityId: o.capabilityId,
+        evidenceStrength: o.evidenceStrength,
+        viaEdgeKind: o.viaEdgeKind,
+      })),
     };
   });
 
@@ -182,7 +242,11 @@ export function buildWorkflowView(compilationId: string, sourceId: string | unde
     status: audit.status,
     executable: resolved.executable,
     notExecutableReasons: resolved.notExecutableReasons,
-    blockers: audit.blockers.map((b) => ({ kind: b.kind, description: b.description, ...(b.capabilityId !== undefined ? { capabilityId: b.capabilityId } : {}) })),
+    blockers: audit.blockers.map((b) => ({
+      kind: b.kind,
+      description: b.description,
+      ...(b.capabilityId !== undefined ? { capabilityId: b.capabilityId } : {}),
+    })),
     requiresHumanDecision: workflow.requiresHumanDecision,
     confidence: workflow.confidence,
     gaps: workflow.gaps.map((g) => ({ kind: g.kind, description: g.description, involvedCapabilityIds: g.involvedCapabilityIds })),
@@ -200,8 +264,20 @@ export function buildWorkflowView(compilationId: string, sourceId: string | unde
       suggestiveBindingCount: dataFlow.bindings.filter((b) => b.status === 'suggestive').length,
       unboundInputCount: dataFlow.unboundInputs.length,
     },
-    provenDependencies: audit.provenDependencies.map((d) => ({ fromCapabilityId: d.fromCapabilityId, toCapabilityId: d.toCapabilityId, viaEdgeKind: d.viaEdgeKind })),
-    suggestiveOrdering: audit.suggestiveOrdering.map((s) => ({ fromCapabilityId: s.fromCapabilityId, toCapabilityId: s.toCapabilityId, kind: s.kind })),
-    ...(workflow.processGrouping !== undefined ? { processGrouping: { sectionPath: workflow.processGrouping.sectionPath, capabilityCount: workflow.processGrouping.capabilityCount } } : {}),
+    provenDependencies: audit.provenDependencies.map((d) => ({
+      fromCapabilityId: d.fromCapabilityId,
+      toCapabilityId: d.toCapabilityId,
+      viaEdgeKind: d.viaEdgeKind,
+    })),
+    suggestiveOrdering: audit.suggestiveOrdering.map((s) => ({
+      fromCapabilityId: s.fromCapabilityId,
+      toCapabilityId: s.toCapabilityId,
+      kind: s.kind,
+    })),
+    ...(workflow.processGrouping !== undefined
+      ? {
+          processGrouping: { sectionPath: workflow.processGrouping.sectionPath, capabilityCount: workflow.processGrouping.capabilityCount },
+        }
+      : {}),
   };
 }

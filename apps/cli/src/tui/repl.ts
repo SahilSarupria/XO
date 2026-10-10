@@ -31,7 +31,12 @@ export interface QueryRequest {
   readonly provider?: string;
   readonly model?: string;
   readonly json?: boolean;
-  readonly providerFlags?: { readonly apiKey?: string; readonly baseUrl?: string; readonly endpoint?: string; readonly apiVersion?: string };
+  readonly providerFlags?: {
+    readonly apiKey?: string;
+    readonly baseUrl?: string;
+    readonly endpoint?: string;
+    readonly apiVersion?: string;
+  };
 }
 
 export interface ReplOutput extends EditorOutput {
@@ -162,7 +167,8 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
   };
 
   // Built per run so /theme and /settings witty apply to the very next command.
-  const newSpinner = (): Spinner => new Spinner({ ui, write: (s) => void rawWrite(s), columns: cols, enabled: stdout.isTTY === true, witty: session.witty });
+  const newSpinner = (): Spinner =>
+    new Spinner({ ui, write: (s) => void rawWrite(s), columns: cols, enabled: stdout.isTTY === true, witty: session.witty });
 
   // ------------------------------------------------------------ execution
 
@@ -198,7 +204,12 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
   function showResult(label: string, name: string, outcome: Outcome, highlight = true): void {
     const ok = outcome.exitCode === 0;
     const icon = ok ? ui.success('✓') : ui.error('✗');
-    const lines = outcome.text.trim() === '' ? [ui.muted('(no output)')] : highlight ? highlightOutput(outcome.text, ui) : outcome.text.replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n');
+    const lines =
+      outcome.text.trim() === ''
+        ? [ui.muted('(no output)')]
+        : highlight
+          ? highlightOutput(outcome.text, ui)
+          : outcome.text.replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n');
     print(
       renderBox(lines, {
         width: cols(),
@@ -222,8 +233,10 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
     };
     const first = args.positionals[0] ?? '';
     const installedRef = name === 'inspect' && /^[^/\\]+@[^/\\]+$/.test(first) && !first.endsWith('.xo');
-    if ((STORE_COMMANDS.has(name) || installedRef) && flags['store'] === undefined && session.storeDir) inject('store', session.storeDir, 'store');
-    if (REGISTRY_COMMANDS.has(name) && flags['registry'] === undefined && session.registryDir) inject('registry', session.registryDir, 'registry');
+    if ((STORE_COMMANDS.has(name) || installedRef) && flags['store'] === undefined && session.storeDir)
+      inject('store', session.storeDir, 'store');
+    if (REGISTRY_COMMANDS.has(name) && flags['registry'] === undefined && session.registryDir)
+      inject('registry', session.registryDir, 'registry');
     return { args: { ...args, flags, flagLists }, notes };
   }
 
@@ -249,14 +262,18 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
   }
 
   async function runShell(cmd: string): Promise<void> {
-    const outcome = await execute(`! ${cmd}`, () => new Promise((res) => {
-      let text = '';
-      const child = spawn(cmd, { shell: true, cwd: process.cwd(), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
-      child.stdout.on('data', (d: Buffer) => (text += d.toString('utf8')));
-      child.stderr.on('data', (d: Buffer) => (text += d.toString('utf8')));
-      child.on('error', (e) => res({ exitCode: 1, text: `${text}error: ${e.message}\n` }));
-      child.on('close', (code) => res({ exitCode: code ?? 1, text }));
-    }));
+    const outcome = await execute(
+      `! ${cmd}`,
+      () =>
+        new Promise((res) => {
+          let text = '';
+          const child = spawn(cmd, { shell: true, cwd: process.cwd(), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+          child.stdout.on('data', (d: Buffer) => (text += d.toString('utf8')));
+          child.stderr.on('data', (d: Buffer) => (text += d.toString('utf8')));
+          child.on('error', (e) => res({ exitCode: 1, text: `${text}error: ${e.message}\n` }));
+          child.on('close', (code) => res({ exitCode: code ?? 1, text }));
+        }),
+    );
     showResult(`! ${cmd}`, 'shell', outcome, false);
   }
 
@@ -288,7 +305,9 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
       print(
         [
           `${painter.bold(ui.error('error:'))} ${ui.error('no package store set.')}`,
-          ui.muted('  Plain text queries your installed XOs. Point the session at a store with /store <dir> (packages land there via /install <archive.xo>), and make sure a provider API key is set — see /provider.'),
+          ui.muted(
+            '  Plain text queries your installed XOs. Point the session at a store with /store <dir> (packages land there via /install <archive.xo>), and make sure a provider API key is set — see /provider.',
+          ),
         ].flatMap((l) => wrapAnsi(l, cols() - 1)),
       );
       session.record('query', false, 0);
@@ -318,7 +337,10 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
     const body = receiptAt === -1 ? lines : lines.slice(0, receiptAt);
     const receipt = receiptAt === -1 ? [] : lines.slice(receiptAt + 1);
     const warnings = body.filter((l) => l.startsWith('warning:'));
-    const message = body.filter((l) => !l.startsWith('warning:')).join('\n').trim();
+    const message = body
+      .filter((l) => !l.startsWith('warning:'))
+      .join('\n')
+      .trim();
 
     print(warnings.map((w) => ui.warning(w)));
     const rendered = renderMarkdown(message, ui).flatMap((l) => wrapAnsi(l, cols() - 2));
@@ -351,8 +373,13 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
       return;
     }
     if (registry.get(name)) return runRegistryCommand(name, rest, text.slice(1).trim());
-    const hint = closestMatch(name, catalog.map((e) => e.name));
-    print([`${painter.bold(ui.error('error:'))} ${ui.error(`unknown command "/${name}"`)}${hint ? ui.muted(`  — did you mean /${hint}?`) : ui.muted('  — /help lists all commands')}`]);
+    const hint = closestMatch(
+      name,
+      catalog.map((e) => e.name),
+    );
+    print([
+      `${painter.bold(ui.error('error:'))} ${ui.error(`unknown command "/${name}"`)}${hint ? ui.muted(`  — did you mean /${hint}?`) : ui.muted('  — /help lists all commands')}`,
+    ]);
   }
 
   async function dispatch(line: string, shell: boolean): Promise<void> {
@@ -423,4 +450,3 @@ export async function startRepl(deps: ReplDeps): Promise<number> {
   }
   return 0;
 }
-

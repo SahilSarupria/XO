@@ -35,7 +35,7 @@ export interface ExecutionRequest {
   readonly query?: string;
   readonly environment: ExecutionEnvironment;
   readonly requestedAt: string;
-/**
+  /**
    * Stage 2. The actual task/query text to send to the AI Capability
    * Layer once a capability has been planned — absent for a Stage
    * 1-only planning request (`Runtime.plan`), required by
@@ -85,4 +85,3 @@ export interface ExecutionRequest {
    */
   readonly simulate?: boolean;
 }
-

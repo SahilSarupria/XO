@@ -41,7 +41,11 @@ test('policy: PROMPT effect surfaces as a prompt decision', () => {
 test('policy precedence: a scoped ALLOW overrides a broader (global) DENY — §14 worked example', () => {
   const rules: PolicyRule[] = [
     { id: 'deny-fs-read-global', effect: 'DENY', match: { permission: Permissions.filesystem.read, scope: globalScope() } },
-    { id: 'allow-fs-read-workspace', effect: 'ALLOW', match: { permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') } },
+    {
+      id: 'allow-fs-read-workspace',
+      effect: 'ALLOW',
+      match: { permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') },
+    },
   ];
   const policy = new RuleBasedPolicy(rules);
 
@@ -87,16 +91,27 @@ test('policy precedence: package-scoped rule beats a rule with no package match'
   ];
   const policy = new RuleBasedPolicy(rules);
 
-  assert.equal(policy.evaluate(request({ permission: Permissions.network.connect, requester: { packageId: pkg } })).ruleId, 'allow-this-package');
-  assert.equal(policy.evaluate(request({ permission: Permissions.network.connect, requester: { packageId: otherPkg } })).ruleId, 'deny-all');
+  assert.equal(
+    policy.evaluate(request({ permission: Permissions.network.connect, requester: { packageId: pkg } })).ruleId,
+    'allow-this-package',
+  );
+  assert.equal(
+    policy.evaluate(request({ permission: Permissions.network.connect, requester: { packageId: otherPkg } })).ruleId,
+    'deny-all',
+  );
 });
 
 test('policy: environment dimension restricts a rule to matching context', () => {
-  const rules: PolicyRule[] = [{ id: 'allow-dev-only', effect: 'ALLOW', match: { permission: Permissions.secrets.read, environment: 'development' } }];
+  const rules: PolicyRule[] = [
+    { id: 'allow-dev-only', effect: 'ALLOW', match: { permission: Permissions.secrets.read, environment: 'development' } },
+  ];
   const policy = new RuleBasedPolicy(rules);
 
   assert.equal(policy.evaluate(request({ permission: Permissions.secrets.read, context: { environment: 'development' } })).effect, 'ALLOW');
-  assert.equal(policy.evaluate(request({ permission: Permissions.secrets.read, context: { environment: 'production' } })).effect, 'NO_MATCH');
+  assert.equal(
+    policy.evaluate(request({ permission: Permissions.secrets.read, context: { environment: 'production' } })).effect,
+    'NO_MATCH',
+  );
   assert.equal(policy.evaluate(request({ permission: Permissions.secrets.read })).effect, 'NO_MATCH');
 });
 

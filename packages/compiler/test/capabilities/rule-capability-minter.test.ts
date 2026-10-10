@@ -2,7 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExperienceDocument, ExperienceUnit } from '../../src/semantic/types.js';
 import { extractReasoningGraph } from '../../src/reasoning/reasoning-extractor.js';
-import { mintRuleLevelCapabilities, RULE_DERIVED_METADATA_KEY, RULE_DERIVED_SOURCE_NODE_ID_METADATA_KEY } from '../../src/capabilities/rule-capability-minter.js';
+import {
+  mintRuleLevelCapabilities,
+  RULE_DERIVED_METADATA_KEY,
+  RULE_DERIVED_SOURCE_NODE_ID_METADATA_KEY,
+} from '../../src/capabilities/rule-capability-minter.js';
 
 // Mirrors ../reasoning/reasoning-extractor.test.ts' own helpers exactly —
 // see that file for the rationale (real extraction end-to-end, never a
@@ -14,7 +18,13 @@ function makeUnit(overrides: Partial<ExperienceUnit> & { content: string }): Exp
     title: overrides.title ?? 'Unit',
     semanticType: overrides.semanticType ?? 'clause',
     content: overrides.content,
-    provenance: overrides.provenance ?? { documentPath: 'doc.pdf', pages: [1], sectionPath: ['Article 1'], blockProvenance: [], blockIndexRange: [0, 0] },
+    provenance: overrides.provenance ?? {
+      documentPath: 'doc.pdf',
+      pages: [1],
+      sectionPath: ['Article 1'],
+      blockProvenance: [],
+      blockIndexRange: [0, 0],
+    },
     hierarchy: overrides.hierarchy ?? { depth: 1, parentUnitId: undefined, siblingUnitIds: [] },
     confidence: overrides.confidence ?? 0.8,
     relationships: overrides.relationships ?? [],
@@ -37,7 +47,9 @@ async function mintFrom(content: string) {
 // ---------------------------------------------------------------------------
 
 test('M1.1 shape 1 — single numeric comparison: mints a dedicated capability', async () => {
-  const { graph, minted } = await mintFrom('If the claim amount exceeds INR 100,000, then a loss-adjuster assessment is required before settlement.');
+  const { graph, minted } = await mintFrom(
+    'If the claim amount exceeds INR 100,000, then a loss-adjuster assessment is required before settlement.',
+  );
   assert.equal(minted.length, 1);
   const cap = minted[0]!;
   assert.equal(cap.category, 'action');
@@ -54,13 +66,17 @@ test('M1.1 shape 1 — single numeric comparison: mints a dedicated capability',
 // ---------------------------------------------------------------------------
 
 test('M1.1 shape 2 — compound numeric + categorical (>): mints a dedicated capability via the existing AND grammar', async () => {
-  const { minted } = await mintFrom('If the claim amount is greater than INR 10,000 and all required documents are present, then manager approval is required.');
+  const { minted } = await mintFrom(
+    'If the claim amount is greater than INR 10,000 and all required documents are present, then manager approval is required.',
+  );
   assert.equal(minted.length, 1);
   assert.deepEqual(minted[0]!.metadata[RULE_DERIVED_METADATA_KEY], 'true');
 });
 
 test('M1.1 shape 3 — compound numeric + categorical (<=): mints a dedicated capability via the existing AND grammar', async () => {
-  const { minted } = await mintFrom('If the claim amount is less than or equal to INR 10,000 and all required documents are present, then manager approval is not required.');
+  const { minted } = await mintFrom(
+    'If the claim amount is less than or equal to INR 10,000 and all required documents are present, then manager approval is not required.',
+  );
   assert.equal(minted.length, 1);
   assert.deepEqual(minted[0]!.metadata[RULE_DERIVED_METADATA_KEY], 'true');
 });
@@ -70,7 +86,9 @@ test('M1.1 shape 3 — compound numeric + categorical (<=): mints a dedicated ca
 // ---------------------------------------------------------------------------
 
 test('M1.1 shape 4 — exception clause: never minted', async () => {
-  const { graph, minted } = await mintFrom('If the loss type is flood, then the claim must be denied, unless a flood endorsement is recorded.');
+  const { graph, minted } = await mintFrom(
+    'If the loss type is flood, then the claim must be denied, unless a flood endorsement is recorded.',
+  );
   assert.ok(graph.nodes.length >= 1, 'sanity: the rule itself is still discovered by reasoning extraction');
   assert.equal(minted.length, 0);
 });
@@ -80,8 +98,13 @@ test('M1.1 shape 4 — exception clause: never minted', async () => {
 // ---------------------------------------------------------------------------
 
 test('M1.1 shape 5 — temporal condition: never minted', async () => {
-  const { graph, minted } = await mintFrom('If the policy has expired before the date of loss, then the claim must be referred for coverage review.');
-  assert.ok(graph.nodes.some((n) => n.structuredCondition?.type === 'temporal'), 'sanity: this rule really is discovered with a temporal structured condition');
+  const { graph, minted } = await mintFrom(
+    'If the policy has expired before the date of loss, then the claim must be referred for coverage review.',
+  );
+  assert.ok(
+    graph.nodes.some((n) => n.structuredCondition?.type === 'temporal'),
+    'sanity: this rule really is discovered with a temporal structured condition',
+  );
   assert.equal(minted.length, 0);
 });
 
@@ -100,7 +123,10 @@ test('M1.1 shape 6 — prerequisite rule with an unparseable outcome shape: neve
 
 test('M1.1 shape 7 — bare constraint with no outcome: never minted', async () => {
   const { graph, minted } = await mintFrom('Only claims with an active Policy may be considered for settlement.');
-  assert.ok(graph.nodes.some((n) => n.outcome === undefined), 'sanity: this really is a bare constraint');
+  assert.ok(
+    graph.nodes.some((n) => n.outcome === undefined),
+    'sanity: this really is a bare constraint',
+  );
   assert.equal(minted.length, 0);
 });
 
@@ -132,7 +158,11 @@ test('M1.1 regression: two different rules with identical outcome text mint two 
   ]);
   const graph = await extractReasoningGraph(doc);
   const minted = mintRuleLevelCapabilities(graph);
-  assert.equal(minted.length, 2, `expected two distinct minted capabilities (one per originating rule), got ${JSON.stringify(minted.map((c) => c.metadata))}`);
+  assert.equal(
+    minted.length,
+    2,
+    `expected two distinct minted capabilities (one per originating rule), got ${JSON.stringify(minted.map((c) => c.metadata))}`,
+  );
   assert.notEqual(minted[0]!.id, minted[1]!.id);
 });
 
@@ -146,7 +176,9 @@ test('M1.1 regression: a document with no cleanly-executable rules mints nothing
 // ---------------------------------------------------------------------------
 
 test('M1.2: "denied" categorical state — "When a claim is denied, ..." now mints a dedicated capability (real policy §9.4)', async () => {
-  const { graph, minted } = await mintFrom('When a claim is denied, the system must record the denial reason and the policy clause supporting the decision.');
+  const { graph, minted } = await mintFrom(
+    'When a claim is denied, the system must record the denial reason and the policy clause supporting the decision.',
+  );
   assert.deepEqual(graph.nodes[0]!.structuredCondition, { type: 'categorical', field: 'a claim', operator: '==', value: 'denied' });
   assert.equal(minted.length, 1);
   assert.match(minted[0]!.canonicalName, /Record The Denial Reason/i);
@@ -164,20 +196,38 @@ test('M1.2: subject-prefixed "must" obligations (real policy §4.1/§6.1 shape) 
 // ---------------------------------------------------------------------------
 
 test('M1.3: "X satisfies the notification requirement" (real policy §8.1, within N days) now mints a dedicated capability', async () => {
-  const { graph, minted } = await mintFrom('A claim notification received within 7 calendar days of the reported loss date satisfies the notification requirement.');
-  assert.deepEqual(graph.nodes[0]!.structuredCondition, { type: 'temporal', relation: 'within', amount: 7, unit: 'days', field: 'reported loss date' });
+  const { graph, minted } = await mintFrom(
+    'A claim notification received within 7 calendar days of the reported loss date satisfies the notification requirement.',
+  );
+  assert.deepEqual(graph.nodes[0]!.structuredCondition, {
+    type: 'temporal',
+    relation: 'within',
+    amount: 7,
+    unit: 'days',
+    field: 'reported loss date',
+  });
   assert.equal(minted.length, 1);
   assert.match(minted[0]!.canonicalName, /Satisfies The Notification Requirement/i);
 });
 
 test('M1.3: "X does not satisfy the requirement" (real policy §8.2, more than N days) now mints a dedicated capability', async () => {
-  const { graph, minted } = await mintFrom('A claim notification received more than 7 calendar days after the reported loss date does not satisfy the standard notification requirement.');
-  assert.deepEqual(graph.nodes[0]!.structuredCondition, { type: 'temporal', relation: 'after', amount: 7, unit: 'days', field: 'reported loss date' });
+  const { graph, minted } = await mintFrom(
+    'A claim notification received more than 7 calendar days after the reported loss date does not satisfy the standard notification requirement.',
+  );
+  assert.deepEqual(graph.nodes[0]!.structuredCondition, {
+    type: 'temporal',
+    relation: 'after',
+    amount: 7,
+    unit: 'days',
+    field: 'reported loss date',
+  });
   assert.equal(minted.length, 1);
 });
 
 test('M1.3 negative: an anchor-based temporal rule (real policy §8.5, "policy expired before date of loss") is discovered but still never minted', async () => {
-  const { graph, minted } = await mintFrom('If the policy has expired before the date of loss, then the claim must be referred for coverage review.');
+  const { graph, minted } = await mintFrom(
+    'If the policy has expired before the date of loss, then the claim must be referred for coverage review.',
+  );
   assert.deepEqual(graph.nodes[0]!.structuredCondition, { type: 'temporal', relation: 'before', anchor: 'date of loss' });
   assert.equal(minted.length, 0, 'an anchor-only temporal condition has no runtime-comparable value and must remain unsupported');
 });
@@ -188,4 +238,3 @@ test('M1.3 negative: a duration temporal rule with no capturable field (no trail
   assert.equal((graph.nodes[0]!.structuredCondition as { field?: string }).field, undefined);
   assert.equal(minted.length, 0);
 });
-

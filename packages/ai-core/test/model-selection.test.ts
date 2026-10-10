@@ -9,7 +9,13 @@ function descriptor(providerId: string, supportsStructuredOutput: boolean): Prov
 
 test('returns candidates in providerOrder for a capability-specific rule', () => {
   const policy: ModelSelectionPolicy = {
-    rules: [{ capability: 'extractEntities', providerOrder: ['anthropic', 'openai'], modelByProvider: { anthropic: 'claude-x', openai: 'gpt-x' } }],
+    rules: [
+      {
+        capability: 'extractEntities',
+        providerOrder: ['anthropic', 'openai'],
+        modelByProvider: { anthropic: 'claude-x', openai: 'gpt-x' },
+      },
+    ],
   };
   const descriptors = new Map([
     ['anthropic', descriptor('anthropic', true)],
@@ -23,7 +29,9 @@ test('returns candidates in providerOrder for a capability-specific rule', () =>
 });
 
 test('falls back to a wildcard rule when no capability-specific rule exists', () => {
-  const policy: ModelSelectionPolicy = { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'claude-x' } }] };
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'claude-x' } }],
+  };
   const descriptors = new Map([['anthropic', descriptor('anthropic', true)]]);
   const candidates = selectCandidates(policy, 'extractConstraints', new Set(['anthropic']), descriptors, true);
   assert.equal(candidates.length, 1);
@@ -31,27 +39,47 @@ test('falls back to a wildcard rule when no capability-specific rule exists', ()
 
 test('excludes a provider that is not registered', () => {
   const policy: ModelSelectionPolicy = {
-    rules: [{ capability: 'extractEntities', providerOrder: ['anthropic', 'openai'], modelByProvider: { anthropic: 'claude-x', openai: 'gpt-x' } }],
+    rules: [
+      {
+        capability: 'extractEntities',
+        providerOrder: ['anthropic', 'openai'],
+        modelByProvider: { anthropic: 'claude-x', openai: 'gpt-x' },
+      },
+    ],
   };
   const descriptors = new Map([['anthropic', descriptor('anthropic', true)]]);
   const candidates = selectCandidates(policy, 'extractEntities', new Set(['anthropic']), descriptors, true);
-  assert.deepEqual(candidates.map((c) => c.providerId), ['anthropic']);
+  assert.deepEqual(
+    candidates.map((c) => c.providerId),
+    ['anthropic'],
+  );
 });
 
 test('excludes a provider lacking structured output support when required', () => {
   const policy: ModelSelectionPolicy = {
-    rules: [{ capability: 'extractEntities', providerOrder: ['ollama', 'anthropic'], modelByProvider: { ollama: 'llama3', anthropic: 'claude-x' } }],
+    rules: [
+      {
+        capability: 'extractEntities',
+        providerOrder: ['ollama', 'anthropic'],
+        modelByProvider: { ollama: 'llama3', anthropic: 'claude-x' },
+      },
+    ],
   };
   const descriptors = new Map([
     ['ollama', descriptor('ollama', false)],
     ['anthropic', descriptor('anthropic', true)],
   ]);
   const candidates = selectCandidates(policy, 'extractEntities', new Set(['ollama', 'anthropic']), descriptors, true);
-  assert.deepEqual(candidates.map((c) => c.providerId), ['anthropic']);
+  assert.deepEqual(
+    candidates.map((c) => c.providerId),
+    ['anthropic'],
+  );
 });
 
 test('does not filter by structured output when it is not required', () => {
-  const policy: ModelSelectionPolicy = { rules: [{ capability: 'extractEntities', providerOrder: ['ollama'], modelByProvider: { ollama: 'llama3' } }] };
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: 'extractEntities', providerOrder: ['ollama'], modelByProvider: { ollama: 'llama3' } }],
+  };
   const descriptors = new Map([['ollama', descriptor('ollama', false)]]);
   const candidates = selectCandidates(policy, 'extractEntities', new Set(['ollama']), descriptors, false);
   assert.equal(candidates.length, 1);

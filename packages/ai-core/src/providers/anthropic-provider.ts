@@ -53,7 +53,12 @@ export class AnthropicProvider implements ModelProvider {
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
     const systemMessages = request.messages.filter((m) => m.role === 'system').map((m) => m.content);
     const nonSystemMessages = request.messages.filter((m) => m.role !== 'system');
-    const system = [...systemMessages, request.responseSchema ? `Respond with JSON matching this schema exactly:\n${JSON.stringify(request.responseSchema)}` : undefined].filter((s): s is string => s !== undefined).join('\n\n');
+    const system = [
+      ...systemMessages,
+      request.responseSchema ? `Respond with JSON matching this schema exactly:\n${JSON.stringify(request.responseSchema)}` : undefined,
+    ]
+      .filter((s): s is string => s !== undefined)
+      .join('\n\n');
 
     const response = await this.fetchImpl(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
@@ -77,7 +82,10 @@ export class AnthropicProvider implements ModelProvider {
     }
 
     const data = (await response.json()) as AnthropicMessagesResponse;
-    const text = data.content.filter((block) => block.type === 'text').map((block) => block.text ?? '').join('');
+    const text = data.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text ?? '')
+      .join('');
 
     return {
       text,

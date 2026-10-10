@@ -3,7 +3,12 @@ import type { XoError } from '@xo/errors';
 import type { AiCapabilityLayer, DecisionGraphExtractionOutput, ReasoningExtractionOutput, ConstraintExtractionOutput } from '@xo/ai-core';
 import type { ExperienceUnit } from '../semantic/types.js';
 import type { KnowledgeProvenance } from '../knowledge/types.js';
-import type { CandidateReasoningEdgeRef, CandidateReasoningNode, ReasoningExtractionResult, ReasoningExtractor } from './extractor-types.js';
+import type {
+  CandidateReasoningEdgeRef,
+  CandidateReasoningNode,
+  ReasoningExtractionResult,
+  ReasoningExtractor,
+} from './extractor-types.js';
 
 const AI_EDGE_CONFIDENCE = 0.7;
 
@@ -44,9 +49,21 @@ export class AiReasoningExtractor implements ReasoningExtractor {
     });
 
     const [reasoningResult, decisionResult, constraintResult] = await Promise.all([
-      this.aiCore.extractReasoning({ input: this.focusQuestion !== undefined ? { focusQuestion: this.focusQuestion } : {}, excerpt, traceId: unit.id }),
-      this.aiCore.extractDecisionGraph({ input: this.focusQuestion !== undefined ? { focusQuestion: this.focusQuestion } : {}, excerpt, traceId: unit.id }),
-      this.aiCore.extractConstraints({ input: this.domainHint !== undefined ? { domainHint: this.domainHint } : {}, excerpt, traceId: unit.id }),
+      this.aiCore.extractReasoning({
+        input: this.focusQuestion !== undefined ? { focusQuestion: this.focusQuestion } : {},
+        excerpt,
+        traceId: unit.id,
+      }),
+      this.aiCore.extractDecisionGraph({
+        input: this.focusQuestion !== undefined ? { focusQuestion: this.focusQuestion } : {},
+        excerpt,
+        traceId: unit.id,
+      }),
+      this.aiCore.extractConstraints({
+        input: this.domainHint !== undefined ? { domainHint: this.domainHint } : {},
+        excerpt,
+        traceId: unit.id,
+      }),
     ]);
 
     const nodes: CandidateReasoningNode[] = [];
@@ -116,7 +133,13 @@ function mapReasoningOutput(
       sourceUnitId,
     });
     for (const stepId of path.stepIds) {
-      edges.push({ type: 'supports', fromLocalId: `step-${stepId}`, toLocalId: localId, confidence: AI_EDGE_CONFIDENCE, provenance: baseProvenance(AI_EDGE_CONFIDENCE) });
+      edges.push({
+        type: 'supports',
+        fromLocalId: `step-${stepId}`,
+        toLocalId: localId,
+        confidence: AI_EDGE_CONFIDENCE,
+        provenance: baseProvenance(AI_EDGE_CONFIDENCE),
+      });
     }
   });
 }
@@ -141,7 +164,13 @@ function mapDecisionGraphOutput(
       sourceUnitId,
     });
     for (const depId of decision.dependsOnDecisionIds) {
-      edges.push({ type: 'depends_on', fromLocalId: `decision-${decision.id}`, toLocalId: `decision-${depId}`, confidence: AI_EDGE_CONFIDENCE, provenance: baseProvenance(AI_EDGE_CONFIDENCE) });
+      edges.push({
+        type: 'depends_on',
+        fromLocalId: `decision-${decision.id}`,
+        toLocalId: `decision-${depId}`,
+        confidence: AI_EDGE_CONFIDENCE,
+        provenance: baseProvenance(AI_EDGE_CONFIDENCE),
+      });
     }
   }
 
@@ -159,9 +188,21 @@ function mapDecisionGraphOutput(
       metadata: { source: 'ai:extractDecisionGraph' },
       sourceUnitId,
     });
-    edges.push({ type: 'condition_of', fromLocalId: localId, toLocalId: `decision-${branch.decisionId}`, confidence: AI_EDGE_CONFIDENCE, provenance: baseProvenance(AI_EDGE_CONFIDENCE) });
+    edges.push({
+      type: 'condition_of',
+      fromLocalId: localId,
+      toLocalId: `decision-${branch.decisionId}`,
+      confidence: AI_EDGE_CONFIDENCE,
+      provenance: baseProvenance(AI_EDGE_CONFIDENCE),
+    });
     if (branch.leadsToDecisionId !== undefined) {
-      edges.push({ type: 'leads_to', fromLocalId: localId, toLocalId: `decision-${branch.leadsToDecisionId}`, confidence: AI_EDGE_CONFIDENCE, provenance: baseProvenance(AI_EDGE_CONFIDENCE) });
+      edges.push({
+        type: 'leads_to',
+        fromLocalId: localId,
+        toLocalId: `decision-${branch.leadsToDecisionId}`,
+        confidence: AI_EDGE_CONFIDENCE,
+        provenance: baseProvenance(AI_EDGE_CONFIDENCE),
+      });
     }
   });
 
@@ -210,12 +251,23 @@ function mapDecisionGraphOutput(
       sourceUnitId,
     });
     if (output.decisions.some((d) => d.id === fallback.whenDecisionFails)) {
-      edges.push({ type: 'condition_of', fromLocalId: localId, toLocalId: `decision-${fallback.whenDecisionFails}`, confidence: AI_EDGE_CONFIDENCE, provenance: baseProvenance(AI_EDGE_CONFIDENCE) });
+      edges.push({
+        type: 'condition_of',
+        fromLocalId: localId,
+        toLocalId: `decision-${fallback.whenDecisionFails}`,
+        confidence: AI_EDGE_CONFIDENCE,
+        provenance: baseProvenance(AI_EDGE_CONFIDENCE),
+      });
     }
   });
 }
 
-function mapConstraintOutput(output: ConstraintExtractionOutput, sourceUnitId: string, baseProvenance: (confidence: number) => KnowledgeProvenance, nodes: CandidateReasoningNode[]): void {
+function mapConstraintOutput(
+  output: ConstraintExtractionOutput,
+  sourceUnitId: string,
+  baseProvenance: (confidence: number) => KnowledgeProvenance,
+  nodes: CandidateReasoningNode[],
+): void {
   output.constraints.forEach((constraint, index) => {
     nodes.push({
       localId: `constraint-${index}`,
@@ -225,7 +277,12 @@ function mapConstraintOutput(output: ConstraintExtractionOutput, sourceUnitId: s
       exceptionConditions: [],
       confidence: AI_EDGE_CONFIDENCE,
       provenance: baseProvenance(AI_EDGE_CONFIDENCE),
-      metadata: { source: 'ai:extractConstraints', severity: constraint.severity, constraintKind: constraint.kind, applicability: constraint.applicability },
+      metadata: {
+        source: 'ai:extractConstraints',
+        severity: constraint.severity,
+        constraintKind: constraint.kind,
+        applicability: constraint.applicability,
+      },
       sourceUnitId,
     });
   });

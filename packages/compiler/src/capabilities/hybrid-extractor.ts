@@ -66,7 +66,10 @@ export class HybridCapabilityExtractor implements CapabilityExtractor {
 
     const aiResult = await this.aiExtractor.extract(unit, knowledgeGraph);
     if (!aiResult.ok) {
-      this.logger.warn('AI capability extraction unavailable for this unit; falling back to rule-based/structured-operation only', { unitId: unit.id, error: aiResult.error.message });
+      this.logger.warn('AI capability extraction unavailable for this unit; falling back to rule-based/structured-operation only', {
+        unitId: unit.id,
+        error: aiResult.error.message,
+      });
       return ok(structural);
     }
 

@@ -204,15 +204,15 @@ GraphAdapter.toGraphModel(source)
 
 Seven ship today, one per XO subsystem graph shape:
 
-| Adapter | Converts | Node types produced |
-|---|---|---|
-| `KnowledgeGraphAdapter` | entities + relations | `entity`, `concept` |
-| `CapabilityGraphAdapter` | capabilities + actions | `capability`, `action` |
-| `IntentGraphAdapter` | intents + slots | `intent`, `slot` |
-| `WorkflowGraphAdapter` | steps + transitions | `step`, `decision` |
-| `PermissionGraphAdapter` | roles + resources + grants | `role`, `resource` |
-| `ExecutionGraphAdapter` | execution nodes + edges (+ optional status snapshot) | caller-defined (`task` by default) |
-| `DependencyGraphAdapter` | packages + dependencies | `package` |
+| Adapter                  | Converts                                             | Node types produced                |
+| ------------------------ | ---------------------------------------------------- | ---------------------------------- |
+| `KnowledgeGraphAdapter`  | entities + relations                                 | `entity`, `concept`                |
+| `CapabilityGraphAdapter` | capabilities + actions                               | `capability`, `action`             |
+| `IntentGraphAdapter`     | intents + slots                                      | `intent`, `slot`                   |
+| `WorkflowGraphAdapter`   | steps + transitions                                  | `step`, `decision`                 |
+| `PermissionGraphAdapter` | roles + resources + grants                           | `role`, `resource`                 |
+| `ExecutionGraphAdapter`  | execution nodes + edges (+ optional status snapshot) | caller-defined (`task` by default) |
+| `DependencyGraphAdapter` | packages + dependencies                              | `package`                          |
 
 `ExecutionGraphAdapter` also exports `executionStateFromSource(source)`,
 which turns an optional `statuses` map on the source into a
@@ -253,14 +253,14 @@ agnostic.
 `GraphAnimation` instances (`start`/`stop`/`get`/`prune`). On top of those
 two primitives, named helpers cover every category the platform needs:
 
-| Category | Start | Read |
-|---|---|---|
-| Node move | `animateNodePosition` | `nodePositionAt` |
-| Edge flow | `animateEdgeFlow` (loops) | `edgeFlowPhaseAt` |
-| Highlight | `animateHighlight` (loops, pulses 0→1→0) | `highlightIntensityAt` |
-| Selection | `animateSelectionEnter` (fades in, holds) | `selectionIntensityAt` |
-| Execution active | `animateExecutionActive` (loops, pulses) | `executionIntensityAt` |
-| Viewport transition | `animateViewportTransition` | `viewportStateAt`, `isViewportTransitionComplete` |
+| Category            | Start                                     | Read                                              |
+| ------------------- | ----------------------------------------- | ------------------------------------------------- |
+| Node move           | `animateNodePosition`                     | `nodePositionAt`                                  |
+| Edge flow           | `animateEdgeFlow` (loops)                 | `edgeFlowPhaseAt`                                 |
+| Highlight           | `animateHighlight` (loops, pulses 0→1→0)  | `highlightIntensityAt`                            |
+| Selection           | `animateSelectionEnter` (fades in, holds) | `selectionIntensityAt`                            |
+| Execution active    | `animateExecutionActive` (loops, pulses)  | `executionIntensityAt`                            |
+| Viewport transition | `animateViewportTransition`               | `viewportStateAt`, `isViewportTransitionComplete` |
 
 **Animated execution path** is handled separately by
 `computeExecutionPathReveal(path, stepDurationMs, startedAtMs, nowMs)`,
@@ -331,7 +331,9 @@ methods, never by reaching past it:
 ```ts
 const commands = new GraphCommandRegistry();
 commands.execute('center', { controller, viewportSize }, { nodeId: 'n1' });
-commands.register('myCustomCommand', (ctx, args) => { /* ... */ });
+commands.register('myCustomCommand', (ctx, args) => {
+  /* ... */
+});
 ```
 
 Registering a new command (`registry.register(name, handler)`) works
@@ -469,7 +471,7 @@ linked camera propagates the same delta to every other linked camera
 A `GraphPlugin` declares what it contributes — `layouts`, `commands`,
 `animations`, `selectionBehaviors`, `exporters`, `validators`,
 `decorators` — and `installPlugin(plugin, { layouts, commands })` wires
-each piece into the corresponding *existing* registry
+each piece into the corresponding _existing_ registry
 (`GraphLayouts.register`, `GraphCommandRegistry.register`) via
 composition; it never reaches into or modifies core class internals.
 `GraphPluginRegistry` additionally tracks installed plugins and namespaces
@@ -499,16 +501,7 @@ for building an event/command history view.
 ## Public API
 
 ```ts
-import {
-  GraphCanvas,
-  GraphRenderer,
-  GraphController,
-  GraphModel,
-  GraphLayouts,
-  GraphTheme,
-  GraphSearch,
-  GraphFilters,
-} from '@xo/graph-ui';
+import { GraphCanvas, GraphRenderer, GraphController, GraphModel, GraphLayouts, GraphTheme, GraphSearch, GraphFilters } from '@xo/graph-ui';
 ```
 
 These eight are the primary API surface. Everything else Studio needs is
@@ -558,8 +551,12 @@ current public API:
 ```ts
 // XO Studio: load a workflow, lay it out, wire commands + undo, export a snapshot on save.
 import {
-  WorkflowGraphAdapter, GraphController, GraphCommandRegistry,
-  WorkflowGraphPreset, captureSnapshot, exportSnapshotToJson,
+  WorkflowGraphAdapter,
+  GraphController,
+  GraphCommandRegistry,
+  WorkflowGraphPreset,
+  captureSnapshot,
+  exportSnapshotToJson,
 } from '@xo/graph-ui';
 
 const model = WorkflowGraphAdapter.toGraphModel(studioWorkflowToSource(workflow));

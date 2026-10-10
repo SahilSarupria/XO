@@ -29,7 +29,9 @@ test('POST /workspaces/:workspaceId/sources uploads a source; response carries c
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, SAMPLE_PDF_BYTES, { 'content-type': 'application/pdf' });
+      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, SAMPLE_PDF_BYTES, {
+        'content-type': 'application/pdf',
+      });
       assert.equal(res.status, 201);
       const body = res.json<SourceWire>();
       assert.match(body.sourceId, /^src_[0-9a-f]{32}$/);
@@ -56,7 +58,11 @@ test('uploaded source metadata is persisted and independently retrievable via GE
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const uploaded = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=notes.md`, Buffer.from('# hello'), { 'content-type': 'text/markdown' })).json<SourceWire>();
+      const uploaded = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=notes.md`, Buffer.from('# hello'), {
+          'content-type': 'text/markdown',
+        })
+      ).json<SourceWire>();
 
       const fetched = await server.request('GET', `/workspaces/${workspace.workspaceId}/sources/${uploaded.sourceId}`);
       assert.equal(fetched.status, 200);
@@ -72,7 +78,11 @@ test('GET .../sources/:sourceId/content returns the exact uploaded bytes with th
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const uploaded = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, SAMPLE_PDF_BYTES, { 'content-type': 'application/pdf' })).json<SourceWire>();
+      const uploaded = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, SAMPLE_PDF_BYTES, {
+          'content-type': 'application/pdf',
+        })
+      ).json<SourceWire>();
 
       const contentRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/sources/${uploaded.sourceId}/content`);
       assert.equal(contentRes.status, 200);
@@ -84,7 +94,7 @@ test('GET .../sources/:sourceId/content returns the exact uploaded bytes with th
   });
 });
 
-test('GET /workspaces/:workspaceId/sources lists only this workspace\'s own sources, in creation order', async () => {
+test("GET /workspaces/:workspaceId/sources lists only this workspace's own sources, in creation order", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
@@ -92,9 +102,18 @@ test('GET /workspaces/:workspaceId/sources lists only this workspace\'s own sour
       const other = await server.issueAdditionalIdentity('identity-b');
       const theirs = await createWorkspace(server, TestServer.authHeader(other.apiKey));
 
-      const a = (await server.request('POST', `/workspaces/${mine.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))).json<SourceWire>();
-      const b = (await server.request('POST', `/workspaces/${mine.workspaceId}/sources?filename=b.txt`, Buffer.from('b'))).json<SourceWire>();
-      await server.request('POST', `/workspaces/${theirs.workspaceId}/sources?filename=c.txt`, Buffer.from('c'), TestServer.authHeader(other.apiKey));
+      const a = (
+        await server.request('POST', `/workspaces/${mine.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))
+      ).json<SourceWire>();
+      const b = (
+        await server.request('POST', `/workspaces/${mine.workspaceId}/sources?filename=b.txt`, Buffer.from('b'))
+      ).json<SourceWire>();
+      await server.request(
+        'POST',
+        `/workspaces/${theirs.workspaceId}/sources?filename=c.txt`,
+        Buffer.from('c'),
+        TestServer.authHeader(other.apiKey),
+      );
 
       const listed = await server.request('GET', `/workspaces/${mine.workspaceId}/sources`);
       assert.equal(listed.status, 200);
@@ -111,7 +130,9 @@ test('DELETE /workspaces/:workspaceId/sources/:sourceId removes both metadata an
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const uploaded = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))).json<SourceWire>();
+      const uploaded = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))
+      ).json<SourceWire>();
 
       const deleteRes = await server.request('DELETE', `/workspaces/${workspace.workspaceId}/sources/${uploaded.sourceId}`);
       assert.equal(deleteRes.status, 204);
@@ -133,7 +154,9 @@ test('unauthenticated requests to every source route are rejected (401)', async 
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      const uploaded = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))).json<SourceWire>();
+      const uploaded = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`, Buffer.from('a'))
+      ).json<SourceWire>();
 
       const calls: readonly [string, string][] = [
         ['POST', `/workspaces/${workspace.workspaceId}/sources?filename=b.txt`],
@@ -152,12 +175,14 @@ test('unauthenticated requests to every source route are rejected (401)', async 
   });
 });
 
-test('a different identity cannot list, get, download, or delete a source through a workspace it does not own (404, not the other workspace\'s data)', async () => {
+test("a different identity cannot list, get, download, or delete a source through a workspace it does not own (404, not the other workspace's data)", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const owner = await createWorkspace(server);
-      const uploaded = (await server.request('POST', `/workspaces/${owner.workspaceId}/sources?filename=secret.txt`, Buffer.from('secret'))).json<SourceWire>();
+      const uploaded = (
+        await server.request('POST', `/workspaces/${owner.workspaceId}/sources?filename=secret.txt`, Buffer.from('secret'))
+      ).json<SourceWire>();
       const other = await server.issueAdditionalIdentity('identity-b');
       const asOther = TestServer.authHeader(other.apiKey);
 
@@ -165,7 +190,12 @@ test('a different identity cannot list, get, download, or delete a source throug
       assert.equal(listRes.status, 404);
       const getRes = await server.request('GET', `/workspaces/${owner.workspaceId}/sources/${uploaded.sourceId}`, undefined, asOther);
       assert.equal(getRes.status, 404);
-      const contentRes = await server.request('GET', `/workspaces/${owner.workspaceId}/sources/${uploaded.sourceId}/content`, undefined, asOther);
+      const contentRes = await server.request(
+        'GET',
+        `/workspaces/${owner.workspaceId}/sources/${uploaded.sourceId}/content`,
+        undefined,
+        asOther,
+      );
       assert.equal(contentRes.status, 404);
       const deleteRes = await server.request('DELETE', `/workspaces/${owner.workspaceId}/sources/${uploaded.sourceId}`, undefined, asOther);
       assert.equal(deleteRes.status, 404);
@@ -194,7 +224,7 @@ test('an unknown workspace id fails closed (404) on every source route', async (
   }
 });
 
-test('a request body cannot override workspace or identity ownership: uploaded source always records the authenticated identity and the URL\'s workspaceId', async () => {
+test("a request body cannot override workspace or identity ownership: uploaded source always records the authenticated identity and the URL's workspaceId", async () => {
   await withTempDir('xo-api-data-', async (dataDir) => {
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
@@ -204,7 +234,11 @@ test('a request body cannot override workspace or identity ownership: uploaded s
       // this test proves that structurally: whatever bytes are sent,
       // the resulting record's identity/workspace always come from
       // `req.identity`/`requireOwnedWorkspace`, never request content.
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`, Buffer.from(JSON.stringify({ identityId: 'someone-else', workspaceId: 'ws_00000000000000000000000000000000' })));
+      const res = await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/sources?filename=a.txt`,
+        Buffer.from(JSON.stringify({ identityId: 'someone-else', workspaceId: 'ws_00000000000000000000000000000000' })),
+      );
       assert.equal(res.status, 201);
       const body = res.json<SourceWire>();
       assert.equal(body.identityId, server.identityId);
@@ -222,7 +256,11 @@ test('path/storage-prefix injection via filename is rejected; traversal-shaped s
       const workspace = await createWorkspace(server);
 
       for (const badFilename of ['../../etc/passwd', 'a/../../b.txt', 'sub/dir/file.txt', '..\\windows\\system32']) {
-        const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=${encodeURIComponent(badFilename)}`, Buffer.from('x'));
+        const res = await server.request(
+          'POST',
+          `/workspaces/${workspace.workspaceId}/sources?filename=${encodeURIComponent(badFilename)}`,
+          Buffer.from('x'),
+        );
         assert.equal(res.status, 400, `expected 400 for malicious filename "${badFilename}"`);
       }
 
@@ -309,7 +347,9 @@ test('source metadata and content survive a fresh API/server instance sharing bo
       try {
         const workspace = await createWorkspace(server1);
         workspaceId = workspace.workspaceId;
-        const uploaded = (await server1.request('POST', `/workspaces/${workspaceId}/sources?filename=durable.txt`, Buffer.from('durable content'))).json<SourceWire>();
+        const uploaded = (
+          await server1.request('POST', `/workspaces/${workspaceId}/sources?filename=durable.txt`, Buffer.from('durable content'))
+        ).json<SourceWire>();
         sourceId = uploaded.sourceId;
       } finally {
         await server1.stop();

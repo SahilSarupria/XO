@@ -7,7 +7,12 @@ const DEFINES_CONFIDENCE = 0.8;
 const SUPPORTS_CONFIDENCE = 0.75;
 const REFERENCES_CONFIDENCE = 0.6;
 
-function makeRelationship(type: ExperienceUnitRelationship['type'], fromUnitId: ExperienceUnitId, toUnitId: ExperienceUnitId, confidence: number): ExperienceUnitRelationship {
+function makeRelationship(
+  type: ExperienceUnitRelationship['type'],
+  fromUnitId: ExperienceUnitId,
+  toUnitId: ExperienceUnitId,
+  confidence: number,
+): ExperienceUnitRelationship {
   return { id: computeRelationshipId(type, fromUnitId, toUnitId), type, fromUnitId, toUnitId, confidence };
 }
 
@@ -26,7 +31,10 @@ function makeRelationship(type: ExperienceUnitRelationship['type'], fromUnitId: 
  * those deterministically here would overreach past what font size,
  * position, and shallow lexical cues can actually support.
  */
-export function buildRelationships(draftUnits: readonly DraftExperienceUnit[]): { readonly units: readonly ExperienceUnit[]; readonly relationshipGraph: RelationshipGraph } {
+export function buildRelationships(draftUnits: readonly DraftExperienceUnit[]): {
+  readonly units: readonly ExperienceUnit[];
+  readonly relationshipGraph: RelationshipGraph;
+} {
   const relationships: ExperienceUnitRelationship[] = [];
   const documentReferencesByUnitId = new Map<string, string[]>();
   for (const unit of draftUnits) documentReferencesByUnitId.set(unit.id, []);

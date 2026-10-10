@@ -19,7 +19,9 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
   },
-  "dependencies": {"@xo/logger":"0.1.0"},
+  "dependencies": {
+    "@xo/logger": "0.1.0"
+  },
   "devDependencies": {
     "tsx": "^4.16.0"
   }

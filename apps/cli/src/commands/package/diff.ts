@@ -8,7 +8,9 @@ export interface DiffOptions {
   readonly toPath: string;
 }
 
-async function loadBundle(path: string): Promise<{ readonly ok: true; readonly bundle: PackageBundle } | { readonly ok: false; readonly message: string }> {
+async function loadBundle(
+  path: string,
+): Promise<{ readonly ok: true; readonly bundle: PackageBundle } | { readonly ok: false; readonly message: string }> {
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await readFile(path));

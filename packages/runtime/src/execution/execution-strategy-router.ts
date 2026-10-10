@@ -61,7 +61,12 @@ import type { CapabilityExecutionMode } from '@xo/types';
  */
 export type ExecutionStrategyName = 'deterministic_rule' | 'model' | 'hybrid' | 'human_in_the_loop';
 
-const REGISTERED_STRATEGIES: ReadonlySet<ExecutionStrategyName> = new Set<ExecutionStrategyName>(['deterministic_rule', 'model', 'hybrid', 'human_in_the_loop']);
+const REGISTERED_STRATEGIES: ReadonlySet<ExecutionStrategyName> = new Set<ExecutionStrategyName>([
+  'deterministic_rule',
+  'model',
+  'hybrid',
+  'human_in_the_loop',
+]);
 
 export class ExecutionStrategyRouter {
   /**

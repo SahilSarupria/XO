@@ -16,14 +16,18 @@ function makeEditor(term: FakeTerminal, now: () => number = Date.now): { editor:
     output: term.stdout,
     ui: () => createUi(DEFAULT_THEME, createPainter(0)),
     history,
-    suggest: (buffer, cursor) => computeSuggestions(buffer, cursor, { catalog, cwd: process.cwd(), themes: ['xo-dark'], providers: ['anthropic'] }),
+    suggest: (buffer, cursor) =>
+      computeSuggestions(buffer, cursor, { catalog, cwd: process.cwd(), themes: ['xo-dark'], providers: ['anthropic'] }),
     footer: () => ({ left: 'left', center: 'center', right: 'right' }),
     now,
   });
   return { editor, history };
 }
 
-async function typeAndRead(keys: readonly string[], setup?: (t: FakeTerminal, e: PromptEditor, h: History) => Promise<void>): Promise<{ result: ReadResult; term: FakeTerminal; editor: PromptEditor }> {
+async function typeAndRead(
+  keys: readonly string[],
+  setup?: (t: FakeTerminal, e: PromptEditor, h: History) => Promise<void>,
+): Promise<{ result: ReadResult; term: FakeTerminal; editor: PromptEditor }> {
   const term = fakeTerminal(80);
   const { editor, history } = makeEditor(term);
   if (setup) await setup(term, editor, history);

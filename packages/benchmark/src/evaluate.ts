@@ -11,7 +11,17 @@ import type {
 } from './definition.js';
 import type { CaseEvaluation, ItemOutcome, ObservedSummary } from './evaluation-types.js';
 import { compareStrings } from './json.js';
-import { describeMatcher, describePredicate, deepEqualNormalized, evalAll, evalPredicate, isSubsetMatch, matchesName, normalizeText, perfectAssignment } from './match.js';
+import {
+  describeMatcher,
+  describePredicate,
+  deepEqualNormalized,
+  evalAll,
+  evalPredicate,
+  isSubsetMatch,
+  matchesName,
+  normalizeText,
+  perfectAssignment,
+} from './match.js';
 import { MetricBuilder, type MetricResult } from './metrics.js';
 import { STAMPING_ORIGINS, classifyProducerOrigin } from './producer.js';
 import type { ObservedAgreement, ObservedExecutionProvenance } from './observation.js';
@@ -54,7 +64,10 @@ function summarize(obs: PipelineObservation): ObservedSummary {
       totalSteps: obs.workflows.reduce((n, w) => n + w.steps.length, 0),
       byExecutability: count(obs.workflows.map((w) => w.executability)),
     },
-    executions: { total: obs.executions.length, byOutcome: count(obs.executions.map((e) => (e.kind === 'capability' ? e.outcome : `workflow:${e.runStatus ?? e.outcome}`))) },
+    executions: {
+      total: obs.executions.length,
+      byOutcome: count(obs.executions.map((e) => (e.kind === 'capability' ? e.outcome : `workflow:${e.runStatus ?? e.outcome}`))),
+    },
   };
 }
 
@@ -76,11 +89,13 @@ function upstreamFailure(obs: PipelineObservation, stage: StageName): { readonly
 function evidenceProblem(spec: EvidenceSpec, refs: readonly ObservedSourceRef[]): string | undefined {
   const min = spec.minSourceRefs ?? 1;
   if (refs.length < min) return `has ${refs.length} source ref(s), expected at least ${min}`;
-  if (spec.documentPath !== undefined && !refs.some((r) => r.documentPath.endsWith(spec.documentPath!))) return `no source ref from a document ending in "${spec.documentPath}" (cites: ${[...new Set(refs.map((r) => r.documentPath))].sort(compareStrings).join(', ') || 'none'})`;
+  if (spec.documentPath !== undefined && !refs.some((r) => r.documentPath.endsWith(spec.documentPath!)))
+    return `no source ref from a document ending in "${spec.documentPath}" (cites: ${[...new Set(refs.map((r) => r.documentPath))].sort(compareStrings).join(', ') || 'none'})`;
   if (spec.pages !== undefined) {
     const cited = new Set(refs.flatMap((r) => r.pages ?? []));
     const absent = spec.pages.filter((p) => !cited.has(p));
-    if (absent.length > 0) return `page(s) ${absent.join(', ')} not cited (cites: ${[...cited].sort((a, b) => a - b).join(', ') || 'none'})`;
+    if (absent.length > 0)
+      return `page(s) ${absent.join(', ')} not cited (cites: ${[...cited].sort((a, b) => a - b).join(', ') || 'none'})`;
   }
   return undefined;
 }
@@ -109,7 +124,13 @@ function brief(node: ObservedNode): string {
 // Semantics (XOIR facts)
 // ---------------------------------------------------------------------------
 
-function evaluateSemantics(def: BenchmarkCaseDefinition, obs: PipelineObservation, items: ItemOutcome[], out: MetricResult[], provenance: MetricBuilder): void {
+function evaluateSemantics(
+  def: BenchmarkCaseDefinition,
+  obs: PipelineObservation,
+  items: ItemOutcome[],
+  out: MetricResult[],
+  provenance: MetricBuilder,
+): void {
   const sem = def.expect.semantics;
   const compileFailure = stageFailureNote(obs, 'compile');
   const facts = [...(sem?.facts ?? [])].sort((a, b) => compareStrings(a.id, b.id));
@@ -120,15 +141,25 @@ function evaluateSemantics(def: BenchmarkCaseDefinition, obs: PipelineObservatio
   for (const n of obs.nodes) nodesByKind.set(n.kind, [...(nodesByKind.get(n.kind) ?? []), n]);
 
   const recall = new MetricBuilder('semanticRecall', 'compile', 'expected semantic facts located AND correct / expected semantic facts');
-  const correctness = new MetricBuilder('semanticCorrectness', 'compile', 'expected facts located and correct / expected facts located (identity matched) — isolates "wrong" from "absent"');
-  const precision = new MetricBuilder('semanticPrecision', 'compile', 'observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds');
+  const correctness = new MetricBuilder(
+    'semanticCorrectness',
+    'compile',
+    'expected facts located and correct / expected facts located (identity matched) — isolates "wrong" from "absent"',
+  );
+  const precision = new MetricBuilder(
+    'semanticPrecision',
+    'compile',
+    'observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds',
+  );
   const avoidance = new MetricBuilder('spuriousFactAvoidance', 'compile', 'forbidden facts absent from the output / forbidden facts');
   const correctNodes = new Set<string>();
   const incorrectNodes = new Set<string>();
   const claimed = new Set<string>();
 
   for (const fact of facts as readonly FactExpectation[]) {
-    const candidates = (nodesByKind.get(fact.kind) ?? []).filter((n) => evalAll(n.properties, fact.identify)).sort((a, b) => compareStrings(a.id, b.id));
+    const candidates = (nodesByKind.get(fact.kind) ?? [])
+      .filter((n) => evalAll(n.properties, fact.identify))
+      .sort((a, b) => compareStrings(a.id, b.id));
     if (candidates.length === 0) {
       const reason = compileFailure ?? `no ${fact.kind} node matches: ${fact.identify.map(describePredicate).join(' AND ')}`;
       items.push({ id: fact.id, dimension: 'fact', outcome: 'missing', detail: reason, attributedStage: 'compile' });
@@ -161,16 +192,34 @@ function evaluateSemantics(def: BenchmarkCaseDefinition, obs: PipelineObservatio
     for (const node of nodesByKind.get(kind) ?? []) {
       precision.record(correctNodes.has(node.id));
       if (correctNodes.has(node.id)) continue;
-      if (incorrectNodes.has(node.id)) precision.mismatched({ id: nodeKey(node), reason: `${brief(node)} matched an expected fact but is semantically incorrect`, attributedStage: 'compile' });
+      if (incorrectNodes.has(node.id))
+        precision.mismatched({
+          id: nodeKey(node),
+          reason: `${brief(node)} matched an expected fact but is semantically incorrect`,
+          attributedStage: 'compile',
+        });
       else {
-        precision.unexpected({ id: nodeKey(node), reason: `${brief(node)} is not among the expected ${kind} facts`, attributedStage: 'compile' });
-        items.push({ id: nodeKey(node), dimension: 'fact', outcome: 'unexpected', ref: node.id, detail: brief(node), attributedStage: 'compile' });
+        precision.unexpected({
+          id: nodeKey(node),
+          reason: `${brief(node)} is not among the expected ${kind} facts`,
+          attributedStage: 'compile',
+        });
+        items.push({
+          id: nodeKey(node),
+          dimension: 'fact',
+          outcome: 'unexpected',
+          ref: node.id,
+          detail: brief(node),
+          attributedStage: 'compile',
+        });
       }
     }
   }
 
   for (const f of forbidden) {
-    const hits = (nodesByKind.get(f.kind) ?? []).filter((n) => evalAll(n.properties, f.identify)).sort((a, b) => compareStrings(a.id, b.id));
+    const hits = (nodesByKind.get(f.kind) ?? [])
+      .filter((n) => evalAll(n.properties, f.identify))
+      .sort((a, b) => compareStrings(a.id, b.id));
     avoidance.record(hits.length === 0);
     for (const hit of hits) {
       const reason = `forbidden ${brief(hit)}${f.reason !== undefined ? ` — ${f.reason}` : ''}`;
@@ -195,27 +244,64 @@ function paramMatches(expected: string, p: { readonly name: string; readonly run
   return normalizeText(p.name) === e || normalizeText(p.runtimeKey) === e;
 }
 
-function evaluateParams(expected: readonly string[], actual: readonly { readonly name: string; readonly runtimeKey: string }[]): { readonly missing: readonly string[]; readonly unexpected: readonly string[] } {
+function evaluateParams(
+  expected: readonly string[],
+  actual: readonly { readonly name: string; readonly runtimeKey: string }[],
+): { readonly missing: readonly string[]; readonly unexpected: readonly string[] } {
   const missing = expected.filter((e) => !actual.some((p) => paramMatches(e, p))).map(normalizeText);
   const unexpected = actual.filter((p) => !expected.some((e) => paramMatches(e, p))).map((p) => normalizeText(p.name));
   return { missing: [...new Set(missing)].sort(compareStrings), unexpected: [...new Set(unexpected)].sort(compareStrings) };
 }
 
-function evaluateCapabilities(def: BenchmarkCaseDefinition, obs: PipelineObservation, items: ItemOutcome[], out: MetricResult[], provenance: MetricBuilder): void {
+function evaluateCapabilities(
+  def: BenchmarkCaseDefinition,
+  obs: PipelineObservation,
+  items: ItemOutcome[],
+  out: MetricResult[],
+  provenance: MetricBuilder,
+): void {
   const spec = def.expect.capabilities;
   const expected = [...(spec?.items ?? [])].sort((a, b) => compareStrings(a.id, b.id)) as readonly CapabilityExpectation[];
   const forbidden = [...(spec?.forbidden ?? [])].sort((a, b) => compareStrings(a.id, b.id));
   const observed = [...obs.capabilities].sort((a, b) => compareStrings(a.capabilityId, b.capabilityId));
   const failure = upstreamFailure(obs, 'capabilities');
 
-  const recall = new MetricBuilder('capabilityRecall', 'capabilities', 'expected capabilities discovered (identity matched) / expected capabilities');
-  const precision = new MetricBuilder('capabilityPrecision', 'capabilities', 'discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)');
-  const avoidance = new MetricBuilder('spuriousCapabilityAvoidance', 'capabilities', 'forbidden capabilities absent / forbidden capabilities');
-  const resolution = new MetricBuilder('resolutionAccuracy', 'capabilities', 'discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution');
-  const klass = new MetricBuilder('executionClassAccuracy', 'capabilities', 'discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)');
-  const producer = new MetricBuilder('producerAttributionCorrectness', 'capabilities', 'located capabilities created by a capability extractor whose producedBy equals the expected producer / such capabilities with an expected producer and an observed producer (P0.9C Step 4)');
+  const recall = new MetricBuilder(
+    'capabilityRecall',
+    'capabilities',
+    'expected capabilities discovered (identity matched) / expected capabilities',
+  );
+  const precision = new MetricBuilder(
+    'capabilityPrecision',
+    'capabilities',
+    'discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)',
+  );
+  const avoidance = new MetricBuilder(
+    'spuriousCapabilityAvoidance',
+    'capabilities',
+    'forbidden capabilities absent / forbidden capabilities',
+  );
+  const resolution = new MetricBuilder(
+    'resolutionAccuracy',
+    'capabilities',
+    'discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution',
+  );
+  const klass = new MetricBuilder(
+    'executionClassAccuracy',
+    'capabilities',
+    'discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)',
+  );
+  const producer = new MetricBuilder(
+    'producerAttributionCorrectness',
+    'capabilities',
+    'located capabilities created by a capability extractor whose producedBy equals the expected producer / such capabilities with an expected producer and an observed producer (P0.9C Step 4)',
+  );
   const nodeById = new Map(obs.nodes.map((n) => [n.id, n] as const));
-  const io = new MetricBuilder('structuredIoAccuracy', 'capabilities', 'declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions');
+  const io = new MetricBuilder(
+    'structuredIoAccuracy',
+    'capabilities',
+    'declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions',
+  );
 
   const claimed = new Set<string>();
 
@@ -290,15 +376,37 @@ function evaluateCapabilities(def: BenchmarkCaseDefinition, obs: PipelineObserva
         problems.push(`evidence: ${problem}`);
       }
     }
-    items.push(problems.length === 0 ? { id: exp.id, dimension: 'capability', outcome: 'found', ref: actual.capabilityId } : { id: exp.id, dimension: 'capability', outcome: 'incorrect', ref: actual.capabilityId, detail: problems.join(' | '), attributedStage: 'capabilities' });
+    items.push(
+      problems.length === 0
+        ? { id: exp.id, dimension: 'capability', outcome: 'found', ref: actual.capabilityId }
+        : {
+            id: exp.id,
+            dimension: 'capability',
+            outcome: 'incorrect',
+            ref: actual.capabilityId,
+            detail: problems.join(' | '),
+            attributedStage: 'capabilities',
+          },
+    );
   }
 
   if (spec?.closedWorld === true) {
     for (const cap of observed) {
       precision.record(claimed.has(cap.capabilityId));
       if (!claimed.has(cap.capabilityId)) {
-        precision.unexpected({ id: `capability|${normalizeText(cap.name)}`, reason: `discovered "${cap.name}" (${cap.resolution}/${cap.executionClass}) matches no expected capability`, attributedStage: 'capabilities' });
-        items.push({ id: `capability|${normalizeText(cap.name)}`, dimension: 'capability', outcome: 'unexpected', ref: cap.capabilityId, detail: cap.name, attributedStage: 'capabilities' });
+        precision.unexpected({
+          id: `capability|${normalizeText(cap.name)}`,
+          reason: `discovered "${cap.name}" (${cap.resolution}/${cap.executionClass}) matches no expected capability`,
+          attributedStage: 'capabilities',
+        });
+        items.push({
+          id: `capability|${normalizeText(cap.name)}`,
+          dimension: 'capability',
+          outcome: 'unexpected',
+          ref: cap.capabilityId,
+          detail: cap.name,
+          attributedStage: 'capabilities',
+        });
       }
     }
   }
@@ -308,7 +416,14 @@ function evaluateCapabilities(def: BenchmarkCaseDefinition, obs: PipelineObserva
     for (const hit of hits) {
       const reason = `forbidden capability "${hit.name}"${f.reason !== undefined ? ` — ${f.reason}` : ''}`;
       avoidance.unexpected({ id: f.id, reason, attributedStage: 'capabilities' });
-      items.push({ id: f.id, dimension: 'capability', outcome: 'spurious', ref: hit.capabilityId, detail: reason, attributedStage: 'capabilities' });
+      items.push({
+        id: f.id,
+        dimension: 'capability',
+        outcome: 'spurious',
+        ref: hit.capabilityId,
+        detail: reason,
+        attributedStage: 'capabilities',
+      });
     }
   }
 
@@ -326,7 +441,10 @@ function evaluateCapabilities(def: BenchmarkCaseDefinition, obs: PipelineObserva
 // ---------------------------------------------------------------------------
 
 function workflowKey(wf: ObservedWorkflow): string {
-  return `workflow|${[...wf.steps].sort((a, b) => a.order - b.order).map((s) => normalizeText(s.name)).join(' > ')}`;
+  return `workflow|${[...wf.steps]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => normalizeText(s.name))
+    .join(' > ')}`;
 }
 
 function classOfStep(step: { readonly executionClass: string }): ExpectedExecutionClass | string {
@@ -339,11 +457,31 @@ function evaluateWorkflows(def: BenchmarkCaseDefinition, obs: PipelineObservatio
   const observed = [...obs.workflows].sort((a, b) => compareStrings(a.workflowId, b.workflowId));
   const failure = upstreamFailure(obs, 'workflows');
 
-  const recall = new MetricBuilder('workflowRecall', 'workflows', 'expected workflows found (steps match exactly, any order) / expected workflows');
-  const precision = new MetricBuilder('workflowPrecision', 'workflows', 'observed workflows matched by an expectation / all observed workflows (closed-world suites only)');
-  const executability = new MetricBuilder('workflowExecutabilityAccuracy', 'workflows', 'found workflows whose audit status equals the expected executability / found workflows with an expected executability');
-  const structure = new MetricBuilder('workflowStructureAccuracy', 'workflows', 'found workflows whose step order / per-step execution classes equal the expected ones / such assertions');
-  const dataFlow = new MetricBuilder('dataFlowCorrectness', 'workflows', 'data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows');
+  const recall = new MetricBuilder(
+    'workflowRecall',
+    'workflows',
+    'expected workflows found (steps match exactly, any order) / expected workflows',
+  );
+  const precision = new MetricBuilder(
+    'workflowPrecision',
+    'workflows',
+    'observed workflows matched by an expectation / all observed workflows (closed-world suites only)',
+  );
+  const executability = new MetricBuilder(
+    'workflowExecutabilityAccuracy',
+    'workflows',
+    'found workflows whose audit status equals the expected executability / found workflows with an expected executability',
+  );
+  const structure = new MetricBuilder(
+    'workflowStructureAccuracy',
+    'workflows',
+    'found workflows whose step order / per-step execution classes equal the expected ones / such assertions',
+  );
+  const dataFlow = new MetricBuilder(
+    'dataFlowCorrectness',
+    'workflows',
+    'data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows',
+  );
 
   const claimed = new Set<string>();
   for (const exp of expected) {
@@ -351,7 +489,11 @@ function evaluateWorkflows(def: BenchmarkCaseDefinition, obs: PipelineObservatio
     if (candidates.length === 0) {
       const anyMissingCap = exp.steps.some((m) => !obs.capabilities.some((c) => matchesName(c.name, m)));
       const stage: StageName = failure?.stage ?? (anyMissingCap ? 'capabilities' : 'workflows');
-      const reason = failure?.note ?? (anyMissingCap ? `no workflow with steps [${exp.steps.map(describeMatcher).join('; ')}] — at least one step matches no discovered capability` : `no workflow with exactly the steps [${exp.steps.map(describeMatcher).join('; ')}]`);
+      const reason =
+        failure?.note ??
+        (anyMissingCap
+          ? `no workflow with steps [${exp.steps.map(describeMatcher).join('; ')}] — at least one step matches no discovered capability`
+          : `no workflow with exactly the steps [${exp.steps.map(describeMatcher).join('; ')}]`);
       recall.record(false).missing({ id: exp.id, reason, attributedStage: stage });
       items.push({ id: exp.id, dimension: 'workflow', outcome: 'missing', detail: reason, attributedStage: stage });
       continue;
@@ -394,7 +536,15 @@ function evaluateWorkflows(def: BenchmarkCaseDefinition, obs: PipelineObservatio
       const matchedProven = new Set<number>();
       exp.dataFlow.bindings.forEach((b, i) => {
         const bindingId = `${exp.id}.dataFlow[${i}]`;
-        const hits = wf.bindings.map((ob, idx) => ({ ob, idx })).filter(({ ob }) => matchesName(ob.producerName, b.producer) && matchesName(ob.consumerName, b.consumer) && normalizeText(ob.output) === normalizeText(b.output) && normalizeText(ob.input) === normalizeText(b.input));
+        const hits = wf.bindings
+          .map((ob, idx) => ({ ob, idx }))
+          .filter(
+            ({ ob }) =>
+              matchesName(ob.producerName, b.producer) &&
+              matchesName(ob.consumerName, b.consumer) &&
+              normalizeText(ob.output) === normalizeText(b.output) &&
+              normalizeText(ob.input) === normalizeText(b.input),
+          );
         const provenHits = hits.filter(({ ob }) => ob.status === 'proven');
         const label = `${describeMatcher(b.producer)}.${b.output} -> ${describeMatcher(b.consumer)}.${b.input}`;
         if (b.status === 'proven') {
@@ -423,22 +573,47 @@ function evaluateWorkflows(def: BenchmarkCaseDefinition, obs: PipelineObservatio
           if (!matchedProven.has(idx)) {
             dataFlow.record(false);
             const reason = `extra PROVEN binding ${ob.producerName}.${ob.output} -> ${ob.consumerName}.${ob.input} is not expected`;
-            dataFlow.unexpected({ id: `${exp.id}.dataFlow.extra:${normalizeText(ob.producerName)}.${ob.output}->${normalizeText(ob.consumerName)}.${ob.input}`, reason, attributedStage: 'workflows' });
+            dataFlow.unexpected({
+              id: `${exp.id}.dataFlow.extra:${normalizeText(ob.producerName)}.${ob.output}->${normalizeText(ob.consumerName)}.${ob.input}`,
+              reason,
+              attributedStage: 'workflows',
+            });
             problems.push(reason);
           }
         });
       }
     }
-    items.push(problems.length === 0 ? { id: exp.id, dimension: 'workflow', outcome: 'found', ref: wf.workflowId } : { id: exp.id, dimension: 'workflow', outcome: 'incorrect', ref: wf.workflowId, detail: problems.join(' | '), attributedStage: 'workflows' });
+    items.push(
+      problems.length === 0
+        ? { id: exp.id, dimension: 'workflow', outcome: 'found', ref: wf.workflowId }
+        : {
+            id: exp.id,
+            dimension: 'workflow',
+            outcome: 'incorrect',
+            ref: wf.workflowId,
+            detail: problems.join(' | '),
+            attributedStage: 'workflows',
+          },
+    );
   }
 
   if (spec?.closedWorld === true) {
     for (const wf of observed) {
       precision.record(claimed.has(wf.workflowId));
       if (!claimed.has(wf.workflowId)) {
-        const reason = `observed workflow [${[...wf.steps].sort((a, b) => a.order - b.order).map((s) => s.name).join(' -> ')}] (${wf.executability}) matches no expected workflow`;
+        const reason = `observed workflow [${[...wf.steps]
+          .sort((a, b) => a.order - b.order)
+          .map((s) => s.name)
+          .join(' -> ')}] (${wf.executability}) matches no expected workflow`;
         precision.unexpected({ id: workflowKey(wf), reason, attributedStage: 'workflows' });
-        items.push({ id: workflowKey(wf), dimension: 'workflow', outcome: 'unexpected', ref: wf.workflowId, detail: reason, attributedStage: 'workflows' });
+        items.push({
+          id: workflowKey(wf),
+          dimension: 'workflow',
+          outcome: 'unexpected',
+          ref: wf.workflowId,
+          detail: reason,
+          attributedStage: 'workflows',
+        });
       }
     }
   }
@@ -461,22 +636,35 @@ function attributeCapabilityRun(exp: CapabilityExecutionCase, got: ObservedCapab
   return 'execution';
 }
 
-function evaluateCapabilityRun(exp: CapabilityExecutionCase, got: ObservedCapabilityExecution | undefined, obs: PipelineObservation): { readonly pass: boolean; readonly reason?: string; readonly stage?: StageName } {
+function evaluateCapabilityRun(
+  exp: CapabilityExecutionCase,
+  got: ObservedCapabilityExecution | undefined,
+  obs: PipelineObservation,
+): { readonly pass: boolean; readonly reason?: string; readonly stage?: StageName } {
   if (got === undefined) {
     const f = upstreamFailure(obs, 'execution');
     return { pass: false, reason: f?.note ?? 'the request was not run', stage: f?.stage ?? 'execution' };
   }
   const reasons: string[] = [];
-  if (got.outcome !== exp.expect.outcome) reasons.push(`expected outcome "${exp.expect.outcome}", got "${got.outcome}"${got.message !== undefined ? ` (${got.message.slice(0, 160)})` : ''}`);
+  if (got.outcome !== exp.expect.outcome)
+    reasons.push(
+      `expected outcome "${exp.expect.outcome}", got "${got.outcome}"${got.message !== undefined ? ` (${got.message.slice(0, 160)})` : ''}`,
+    );
   if (exp.expect.output !== undefined) {
     const subset = isSubsetMatch(got.output, exp.expect.output);
     if (!subset.ok) reasons.push(`output mismatch: ${subset.mismatches.join('; ')}`);
   }
-  if (exp.expect.errorCode !== undefined && got.errorCode !== exp.expect.errorCode) reasons.push(`expected error code "${exp.expect.errorCode}", got "${got.errorCode ?? 'none'}"`);
+  if (exp.expect.errorCode !== undefined && got.errorCode !== exp.expect.errorCode)
+    reasons.push(`expected error code "${exp.expect.errorCode}", got "${got.errorCode ?? 'none'}"`);
   return reasons.length === 0 ? { pass: true } : { pass: false, reason: reasons.join(' | '), stage: attributeCapabilityRun(exp, got) };
 }
 
-function evaluateWorkflowRun(exp: WorkflowExecutionCase, got: ObservedWorkflowExecution | undefined, obs: PipelineObservation, transfer: MetricBuilder): { readonly pass: boolean; readonly reason?: string; readonly stage?: StageName } {
+function evaluateWorkflowRun(
+  exp: WorkflowExecutionCase,
+  got: ObservedWorkflowExecution | undefined,
+  obs: PipelineObservation,
+  transfer: MetricBuilder,
+): { readonly pass: boolean; readonly reason?: string; readonly stage?: StageName } {
   if (got === undefined) {
     const f = upstreamFailure(obs, 'execution');
     (exp.expect.injections ?? []).forEach(() => transfer.record(false));
@@ -485,14 +673,27 @@ function evaluateWorkflowRun(exp: WorkflowExecutionCase, got: ObservedWorkflowEx
   if (got.outcome === 'target_not_found' || got.outcome === 'target_ambiguous') {
     (exp.expect.injections ?? []).forEach(() => transfer.record(false));
     const anyMissingCap = exp.steps.some((m) => !obs.capabilities.some((c) => matchesName(c.name, m)));
-    return { pass: false, reason: got.outcome === 'target_not_found' ? `no workflow with exactly the steps [${exp.steps.map(describeMatcher).join('; ')}]` : `${got.candidateCount} workflows match the requested steps`, stage: anyMissingCap ? 'capabilities' : 'workflows' };
+    return {
+      pass: false,
+      reason:
+        got.outcome === 'target_not_found'
+          ? `no workflow with exactly the steps [${exp.steps.map(describeMatcher).join('; ')}]`
+          : `${got.candidateCount} workflows match the requested steps`,
+      stage: anyMissingCap ? 'capabilities' : 'workflows',
+    };
   }
   const reasons: string[] = [];
   let stage: StageName = 'execution';
   if (got.outcome === 'refused') {
     // Refused = not run: nothing further to check except that "not executable" was what the case expected.
     (exp.expect.injections ?? []).forEach(() => transfer.record(false));
-    return exp.expect.status === 'not_executable_yet' ? { pass: true } : { pass: false, reason: `expected run status "${exp.expect.status}", but the workflow was refused as not executable (${got.workflowExecutability}): ${got.message ?? ''}`, stage: 'workflows' };
+    return exp.expect.status === 'not_executable_yet'
+      ? { pass: true }
+      : {
+          pass: false,
+          reason: `expected run status "${exp.expect.status}", but the workflow was refused as not executable (${got.workflowExecutability}): ${got.message ?? ''}`,
+          stage: 'workflows',
+        };
   }
   if (got.runStatus !== exp.expect.status) {
     reasons.push(`expected run status "${exp.expect.status}", got "${got.runStatus}"`);
@@ -505,7 +706,10 @@ function evaluateWorkflowRun(exp: WorkflowExecutionCase, got: ObservedWorkflowEx
       continue;
     }
     const run = runs[0]!;
-    if (stepExp.outputStatus !== undefined && run.outputStatus !== stepExp.outputStatus) reasons.push(`${describeMatcher(stepExp.capability)}: expected output status "${stepExp.outputStatus}", got "${run.outputStatus ?? 'none'}"`);
+    if (stepExp.outputStatus !== undefined && run.outputStatus !== stepExp.outputStatus)
+      reasons.push(
+        `${describeMatcher(stepExp.capability)}: expected output status "${stepExp.outputStatus}", got "${run.outputStatus ?? 'none'}"`,
+      );
     if (stepExp.output !== undefined) {
       const subset = isSubsetMatch(run.output, stepExp.output);
       if (!subset.ok) reasons.push(`${describeMatcher(stepExp.capability)}: output mismatch: ${subset.mismatches.join('; ')}`);
@@ -514,7 +718,10 @@ function evaluateWorkflowRun(exp: WorkflowExecutionCase, got: ObservedWorkflowEx
   for (const inj of exp.expect.injections ?? []) {
     const producers = got.steps.filter((s) => matchesName(s.name, inj.producer));
     const consumers = got.steps.filter((s) => matchesName(s.name, inj.consumer));
-    const producerOut = producers.length === 1 && typeof producers[0]!.output === 'object' && producers[0]!.output !== null ? (producers[0]!.output as Record<string, unknown>)[inj.output] : undefined;
+    const producerOut =
+      producers.length === 1 && typeof producers[0]!.output === 'object' && producers[0]!.output !== null
+        ? (producers[0]!.output as Record<string, unknown>)[inj.output]
+        : undefined;
     const injected = consumers.length === 1 ? consumers[0]!.actualInput?.[inj.input] : undefined;
     const pass = producerOut !== undefined && injected !== undefined && deepEqualNormalized(producerOut, injected);
     transfer.record(pass);
@@ -530,8 +737,16 @@ function evaluateWorkflowRun(exp: WorkflowExecutionCase, got: ObservedWorkflowEx
 function evaluateExecution(def: BenchmarkCaseDefinition, obs: PipelineObservation, items: ItemOutcome[], out: MetricResult[]): void {
   const cases = [...(def.execution ?? [])].sort((a, b) => compareStrings(a.id, b.id));
   if (cases.length === 0) return;
-  const correctness = new MetricBuilder('executionCorrectness', 'execution', 'execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests');
-  const transfer = new MetricBuilder('runtimeDataFlowTransfer', 'execution', 'expected producer->consumer injections the RUNTIME actually performed (consumer received the producer value) / expected injections');
+  const correctness = new MetricBuilder(
+    'executionCorrectness',
+    'execution',
+    'execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests',
+  );
+  const transfer = new MetricBuilder(
+    'runtimeDataFlowTransfer',
+    'execution',
+    'expected producer->consumer injections the RUNTIME actually performed (consumer received the producer value) / expected injections',
+  );
   const byId = new Map<string, ObservedCapabilityExecution | ObservedWorkflowExecution>(obs.executions.map((e) => [e.requestId, e]));
   for (const exp of cases) {
     const got = byId.get(exp.id);
@@ -544,8 +759,18 @@ function evaluateExecution(def: BenchmarkCaseDefinition, obs: PipelineObservatio
       items.push({ id: exp.id, dimension: 'execution', outcome: 'passed' });
     } else {
       const outcome = got === undefined ? 'not_run' : 'failed';
-      items.push({ id: exp.id, dimension: 'execution', outcome, detail: verdict.reason ?? '', attributedStage: verdict.stage ?? 'execution' });
-      (got === undefined ? correctness.missing.bind(correctness) : correctness.mismatched.bind(correctness))({ id: exp.id, reason: verdict.reason ?? '', attributedStage: verdict.stage ?? 'execution' });
+      items.push({
+        id: exp.id,
+        dimension: 'execution',
+        outcome,
+        detail: verdict.reason ?? '',
+        attributedStage: verdict.stage ?? 'execution',
+      });
+      (got === undefined ? correctness.missing.bind(correctness) : correctness.mismatched.bind(correctness))({
+        id: exp.id,
+        reason: verdict.reason ?? '',
+        attributedStage: verdict.stage ?? 'execution',
+      });
     }
   }
   out.push(correctness.build());
@@ -561,7 +786,18 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   const observed = summarize(obs);
   const attribution = attributeCase(def, obs);
   if (obs.harnessError !== undefined) {
-    return { caseId: def.caseId, status: 'harness_error', harnessError: obs.harnessError, entry: obs.entry, attribution, stages: obs.stages, fingerprints: obs.fingerprints, observed, metrics: [], items: [] };
+    return {
+      caseId: def.caseId,
+      status: 'harness_error',
+      harnessError: obs.harnessError,
+      entry: obs.entry,
+      attribution,
+      stages: obs.stages,
+      fingerprints: obs.fingerprints,
+      observed,
+      metrics: [],
+      items: [],
+    };
   }
   const items: ItemOutcome[] = [];
   const metrics: MetricResult[] = [];
@@ -570,8 +806,13 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
     const compile = obs.stages.compile;
     const exp = def.expect.compile;
     const actualFailed = compile.status === 'failed';
-    const pass = exp.outcome === 'fails' ? actualFailed && (exp.errorCode === undefined || compile.errorCode === exp.errorCode) : !actualFailed;
-    const m = new MetricBuilder('compileOutcomeAccuracy', 'compile', 'compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1');
+    const pass =
+      exp.outcome === 'fails' ? actualFailed && (exp.errorCode === undefined || compile.errorCode === exp.errorCode) : !actualFailed;
+    const m = new MetricBuilder(
+      'compileOutcomeAccuracy',
+      'compile',
+      'compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1',
+    );
     m.record(pass);
     if (!pass) {
       const reason = `expected compile to ${exp.outcome}${exp.errorCode !== undefined ? ` with ${exp.errorCode}` : ''}; ${actualFailed ? `it failed: [${compile.errorCode}] ${compile.errorMessage}` : 'it succeeded'}`;
@@ -584,7 +825,11 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   }
 
   // Facts and capabilities both contribute evidence specs to ONE provenanceCompleteness metric.
-  const provenance = new MetricBuilder('provenanceCompleteness', 'compile', 'expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)');
+  const provenance = new MetricBuilder(
+    'provenanceCompleteness',
+    'compile',
+    'expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)',
+  );
   evaluateSemantics(def, obs, items, metrics, provenance);
   evaluateCapabilities(def, obs, items, metrics, provenance);
   const provenanceResult = provenance.build();
@@ -594,10 +839,15 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
 
   // Descriptive (expectation-free) provenance coverage over every observed node.
   if (obs.stages.compile.status !== 'failed' && obs.nodes.length > 0) {
-    const cov = new MetricBuilder('observedSourceRefCoverage', 'compile', 'observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)');
+    const cov = new MetricBuilder(
+      'observedSourceRefCoverage',
+      'compile',
+      'observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)',
+    );
     for (const n of obs.nodes) {
       cov.record(n.sourceRefs.length > 0);
-      if (n.sourceRefs.length === 0) cov.missing({ id: nodeKey(n), reason: `${brief(n)} carries no source reference`, attributedStage: 'compile' });
+      if (n.sourceRefs.length === 0)
+        cov.missing({ id: nodeKey(n), reason: `${brief(n)} carries no source reference`, attributedStage: 'compile' });
     }
     metrics.push(cov.build());
   }
@@ -607,13 +857,22 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   // from paths with no stamping site (reasoning-derived, rule-minted) are not judged: whether they should be attributed is not
   // established by the repository. Only where a single extractor can have produced each node (AI not exercised) and a compile ran.
   if (obs.stages.compile.status === 'ok' && attribution.configuration.ai === 'not_exercised') {
-    const coverage = new MetricBuilder('producerAttributionCoverage', 'compile', 'nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)');
+    const coverage = new MetricBuilder(
+      'producerAttributionCoverage',
+      'compile',
+      'nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)',
+    );
     for (const n of obs.nodes) {
       const origin = classifyProducerOrigin(n);
       const stamped = STAMPING_ORIGINS.includes(origin);
       if (stamped) {
         coverage.record(n.producedBy !== undefined);
-        if (n.producedBy === undefined) coverage.missing({ id: nodeKey(n), reason: `${brief(n)} was created by the ${origin.replace('_', ' ')} path but carries no producedBy`, attributedStage: 'compile' });
+        if (n.producedBy === undefined)
+          coverage.missing({
+            id: nodeKey(n),
+            reason: `${brief(n)} was created by the ${origin.replace('_', ' ')} path but carries no producedBy`,
+            attributedStage: 'compile',
+          });
       }
       coverage.count(`${stamped ? 'in_population' : 'not_judged'}.${origin}.${n.producedBy === undefined ? 'unattributed' : 'attributed'}`);
     }
@@ -626,24 +885,39 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   // projection) — never against an id merely being present. Binding state is observed (breakdown), not required: an `unresolved` binding is a
   // legitimate outcome. ExperienceUnit existence, manifest and runtime links are not observable here (L14).
   if (obs.stages.compile.status === 'ok' && obs.provenance !== undefined) {
-    const chain = new MetricBuilder('provenanceChainCoverage', 'capabilities', 'observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)');
+    const chain = new MetricBuilder(
+      'provenanceChainCoverage',
+      'capabilities',
+      'observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)',
+    );
     const sourcePaths = new Set((obs.sourceReports ?? []).map((r) => r.path));
     const nodesById = new Map(obs.nodes.map((n) => [n.id, n] as const));
-    const refKey = (r: { readonly documentPath: string; readonly pages?: readonly number[] | undefined }): string => `${r.documentPath}|${(r.pages ?? []).join(',')}`;
+    const refKey = (r: { readonly documentPath: string; readonly pages?: readonly number[] | undefined }): string =>
+      `${r.documentPath}|${(r.pages ?? []).join(',')}`;
     for (const p of [...obs.provenance.capabilities].sort((a, b) => compareStrings(a.capabilityId, b.capabilityId))) {
       const linked = p.sourceXoirNodeIds.map((id) => nodesById.get(id));
       const carried = new Set(linked.flatMap((n) => (n?.sourceRefs ?? []).map(refKey)));
       const links: Record<string, boolean> = {
         source_resolves: p.sourceRefs.length > 0 && p.sourceRefs.every((r) => sourcePaths.has(r.documentPath)),
-        nodes_resolve: p.sourceXoirNodeIds.length > 0 && linked.every((n) => n !== undefined) && p.sourceXoirNodeIds.includes(p.capabilityId),
+        nodes_resolve:
+          p.sourceXoirNodeIds.length > 0 && linked.every((n) => n !== undefined) && p.sourceXoirNodeIds.includes(p.capabilityId),
         refs_carried: p.sourceRefs.length > 0 && p.sourceRefs.every((r) => carried.has(refKey(r))),
         hash_deterministic: p.contractContentHash !== '' && p.contractContentHash === p.contractContentHashRecomputed,
       };
-      const broken = Object.entries(links).filter(([, ok]) => !ok).map(([k]) => k).sort(compareStrings);
+      const broken = Object.entries(links)
+        .filter(([, ok]) => !ok)
+        .map(([k]) => k)
+        .sort(compareStrings);
       chain.record(broken.length === 0);
-      for (const [k, ok] of Object.entries(links).sort(([a], [b]) => compareStrings(a, b))) chain.count(`link.${k}.${ok ? 'ok' : 'broken'}`);
+      for (const [k, ok] of Object.entries(links).sort(([a], [b]) => compareStrings(a, b)))
+        chain.count(`link.${k}.${ok ? 'ok' : 'broken'}`);
       chain.count(`binding.${p.binding.status}`);
-      if (broken.length > 0) chain.missing({ id: `capability|${p.capabilityId}`, reason: `capability "${p.name}": broken chain link(s) ${broken.join(', ')}`, attributedStage: 'capabilities' });
+      if (broken.length > 0)
+        chain.missing({
+          id: `capability|${p.capabilityId}`,
+          reason: `capability "${p.name}": broken chain link(s) ${broken.join(', ')}`,
+          attributedStage: 'capabilities',
+        });
     }
     const built = chain.build();
     if (built.measured) metrics.push(built);
@@ -653,7 +927,11 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   // workflow step). `agreement` is P0.9B's own field-by-field equality between what the execution recorded and the live-graph projection;
   // `unknown` (one side absent) and not-run / not-recorded units are reported, never scored as failures.
   {
-    const agreement = new MetricBuilder('executionProvenanceAgreement', 'execution', 'executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)');
+    const agreement = new MetricBuilder(
+      'executionProvenanceAgreement',
+      'execution',
+      'executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)',
+    );
     const stateOf = (p: ObservedExecutionProvenance): 'match' | 'mismatch' | 'unknown' => {
       const vals = Object.values(p.agreement) as ObservedAgreement[];
       return vals.includes('mismatch') ? 'mismatch' : vals.every((v) => v === 'match') ? 'match' : 'unknown';
@@ -664,14 +942,22 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
       if (state === 'unknown') return;
       agreement.record(state === 'match');
       if (state === 'mismatch') {
-        const fields = Object.entries(p.agreement).filter(([, v]) => v === 'mismatch').map(([k]) => k).sort(compareStrings);
-        agreement.mismatched({ id, reason: `recorded provenance disagrees with the live-graph view on ${fields.join(', ')}`, attributedStage: 'execution' });
+        const fields = Object.entries(p.agreement)
+          .filter(([, v]) => v === 'mismatch')
+          .map(([k]) => k)
+          .sort(compareStrings);
+        agreement.mismatched({
+          id,
+          reason: `recorded provenance disagrees with the live-graph view on ${fields.join(', ')}`,
+          attributedStage: 'execution',
+        });
       }
     };
     for (const e of [...obs.executions].sort((a, b) => compareStrings(a.requestId, b.requestId))) {
       if (e.kind === 'capability') {
         if (e.provenance !== undefined) judge(`execution|${e.requestId}`, e.provenance);
-        else agreement.count(e.outcome === 'succeeded' || e.outcome === 'waiting_for_human' ? 'state.not_observable' : 'state.not_exercised');
+        else
+          agreement.count(e.outcome === 'succeeded' || e.outcome === 'waiting_for_human' ? 'state.not_observable' : 'state.not_exercised');
       } else if (e.outcome !== 'ran') agreement.count('state.not_exercised');
       else
         for (const [i, step] of e.steps.entries()) {
@@ -689,16 +975,31 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   if (obs.paths !== undefined) {
     const live = obs.paths.find((p) => p.path === 'live_graph');
     if (live !== undefined) {
-      const cross = new MetricBuilder('crossPathConsistency', 'capabilities', 'cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)');
-      const pairs: readonly (readonly [CrossPathPair, CrossPathId])[] = [['live_vs_serialized', 'serialized_graph'], ['live_vs_package', 'package_boundary']];
+      const cross = new MetricBuilder(
+        'crossPathConsistency',
+        'capabilities',
+        'cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)',
+      );
+      const pairs: readonly (readonly [CrossPathPair, CrossPathId])[] = [
+        ['live_vs_serialized', 'serialized_graph'],
+        ['live_vs_package', 'package_boundary'],
+      ];
       for (const [pair, id] of pairs) {
         const other = obs.paths.find((p) => p.path === id);
-        if (other === undefined) { cross.count(`${pair}.*.not_exercised`); continue; }
+        if (other === undefined) {
+          cross.count(`${pair}.*.not_exercised`);
+          continue;
+        }
         for (const u of compareViews(pair, live, other)) {
           cross.count(`${pair}.${u.dimension}.${u.state}`);
           if (u.state !== 'match' && u.state !== 'mismatch') continue;
           cross.record(u.state === 'match');
-          if (u.state === 'mismatch') cross.mismatched({ id: `${pair}|${u.dimension}|${u.subject}`, reason: `${u.dimension}: live ${JSON.stringify(u.left)} vs ${id} ${JSON.stringify(u.right)}${u.reason ? ` (${u.reason})` : ''}`, attributedStage: 'capabilities' });
+          if (u.state === 'mismatch')
+            cross.mismatched({
+              id: `${pair}|${u.dimension}|${u.subject}`,
+              reason: `${u.dimension}: live ${JSON.stringify(u.left)} vs ${id} ${JSON.stringify(u.right)}${u.reason ? ` (${u.reason})` : ''}`,
+              attributedStage: 'capabilities',
+            });
         }
       }
       const built = cross.build();
@@ -707,6 +1008,18 @@ export function evaluateCase(def: BenchmarkCaseDefinition, obs: PipelineObservat
   }
 
   metrics.sort((a, b) => compareStrings(a.id, b.id));
-  items.sort((a, b) => compareStrings(`${a.dimension}|${a.id}|${a.outcome}|${a.ref ?? ''}`, `${b.dimension}|${b.id}|${b.outcome}|${b.ref ?? ''}`));
-  return { caseId: def.caseId, status: 'evaluated', entry: obs.entry, attribution, stages: obs.stages, fingerprints: obs.fingerprints, observed, metrics, items };
+  items.sort((a, b) =>
+    compareStrings(`${a.dimension}|${a.id}|${a.outcome}|${a.ref ?? ''}`, `${b.dimension}|${b.id}|${b.outcome}|${b.ref ?? ''}`),
+  );
+  return {
+    caseId: def.caseId,
+    status: 'evaluated',
+    entry: obs.entry,
+    attribution,
+    stages: obs.stages,
+    fingerprints: obs.fingerprints,
+    observed,
+    metrics,
+    items,
+  };
 }

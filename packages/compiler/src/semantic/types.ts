@@ -14,7 +14,8 @@ export type KnownSemanticType = 'definition' | 'obligation' | 'right' | 'excepti
 export type SemanticType = KnownSemanticType | `custom:${string}`;
 
 /** Known relationship kinds an Experience Unit can have to another (the compiler spec's example list). Open-ended via `custom:<name>`, matching `@xo/xoir`'s `XoirEdgeKind` — these become XOIR edges once Stage 10 runs, but are computed here, before any XOIR graph exists. */
-export type KnownRelationType = 'depends_on' | 'references' | 'extends' | 'contradicts' | 'defines' | 'explains' | 'requires' | 'implements' | 'supports';
+export type KnownRelationType =
+  'depends_on' | 'references' | 'extends' | 'contradicts' | 'defines' | 'explains' | 'requires' | 'implements' | 'supports';
 export type RelationType = KnownRelationType | `custom:${string}`;
 
 export interface ExperienceUnitRelationship {

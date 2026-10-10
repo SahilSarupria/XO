@@ -1,10 +1,14 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
-import { MemoryEntryId } from '../ids.js';
+import type { MemoryEntryId } from '../ids.js';
 import type { MemoryRecordStore, VersionedEnvelope } from '../persistence/runtime-store.interface.js';
 import { InMemoryDurableMemoryStore } from './in-memory-durable-memory-store.js';
 import { deriveMemoryEntryId, generateMemoryEntryId } from './memory-id.js';
-import { allowAllMemoryPermissionGate, type MemoryPermissionGate, type MemoryPermissionRequester } from './memory-permission-gate.interface.js';
+import {
+  allowAllMemoryPermissionGate,
+  type MemoryPermissionGate,
+  type MemoryPermissionRequester,
+} from './memory-permission-gate.interface.js';
 import { resolveExpiresAt } from './memory-ttl.js';
 import type { MemoryEntry, MemoryQuery, MemoryScope, MemoryWriteInput } from './memory-types.js';
 import { scopeKey } from './memory-types.js';
@@ -16,7 +20,10 @@ export interface RuntimeMemoryOptions {
 }
 
 function permissionDenied(action: string, scope: MemoryScope, reason: string | undefined): RuntimeError {
-  return new RuntimeError(ErrorCode.RUNTIME_PERMISSION_DENIED, `Memory "${action}" denied for scope "${scopeKey(scope)}"${reason ? `: ${reason}` : ''}`);
+  return new RuntimeError(
+    ErrorCode.RUNTIME_PERMISSION_DENIED,
+    `Memory "${action}" denied for scope "${scopeKey(scope)}"${reason ? `: ${reason}` : ''}`,
+  );
 }
 
 /**
@@ -93,14 +100,22 @@ export class RuntimeMemory {
     return this.store.put(entry);
   }
 
-  async get(scope: MemoryScope, id: MemoryEntryId, requester?: MemoryPermissionRequester): Promise<Result<VersionedEnvelope<MemoryEntry> | undefined, RuntimeError>> {
+  async get(
+    scope: MemoryScope,
+    id: MemoryEntryId,
+    requester?: MemoryPermissionRequester,
+  ): Promise<Result<VersionedEnvelope<MemoryEntry> | undefined, RuntimeError>> {
     const verdict = await this.permissionGate.check('read', scope, requester);
     if (!verdict.allowed) return err(permissionDenied('read', scope, verdict.reason));
     return this.store.get(scope, id);
   }
 
   /** Reads memory matching `query` within exactly one scope — never leaks into any other scope, even a related/broader one. Use {@link queryAcrossScopes} for the deliberate broader-scope case. */
-  async query(scope: MemoryScope, query?: MemoryQuery, requester?: MemoryPermissionRequester): Promise<Result<readonly VersionedEnvelope<MemoryEntry>[], RuntimeError>> {
+  async query(
+    scope: MemoryScope,
+    query?: MemoryQuery,
+    requester?: MemoryPermissionRequester,
+  ): Promise<Result<readonly VersionedEnvelope<MemoryEntry>[], RuntimeError>> {
     const verdict = await this.permissionGate.check('read', scope, requester);
     if (!verdict.allowed) return err(permissionDenied('read', scope, verdict.reason));
     return this.store.query(scope, query);
@@ -122,7 +137,11 @@ export class RuntimeMemory {
    * `createdAt` (ties broken by id) exactly like a single-scope `query`,
    * then `query.limit` (if given) is applied to the merged, sorted list.
    */
-  async queryAcrossScopes(scopes: readonly MemoryScope[], query?: MemoryQuery, requester?: MemoryPermissionRequester): Promise<Result<readonly VersionedEnvelope<MemoryEntry>[], RuntimeError>> {
+  async queryAcrossScopes(
+    scopes: readonly MemoryScope[],
+    query?: MemoryQuery,
+    requester?: MemoryPermissionRequester,
+  ): Promise<Result<readonly VersionedEnvelope<MemoryEntry>[], RuntimeError>> {
     const merged: VersionedEnvelope<MemoryEntry>[] = [];
     for (const scope of scopes) {
       const readVerdict = await this.permissionGate.check('read', scope, requester);

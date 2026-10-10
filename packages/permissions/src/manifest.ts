@@ -54,7 +54,9 @@ function scopeForDomain(domain: ReturnType<typeof permissionDomain>, scopeValue:
  * matching `@xo/package-sdk`'s `PackageValidator` convention of returning
  * every issue in one pass.
  */
-export function resolveManifestPermissions(manifest: { readonly permissions?: readonly ManifestPermissionDeclaration[] }): Result<readonly PermissionRequirement[], readonly string[]> {
+export function resolveManifestPermissions(manifest: {
+  readonly permissions?: readonly ManifestPermissionDeclaration[];
+}): Result<readonly PermissionRequirement[], readonly string[]> {
   const declarations = manifest.permissions ?? [];
   const requirements: PermissionRequirement[] = [];
   const errors: string[] = [];

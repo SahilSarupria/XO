@@ -38,7 +38,7 @@ Benchmark               <-- packages/registry-core's BenchmarkRepository (interf
 Results
 ```
 
-Module 1 builds every box's *foundation* — the types, errors, and
+Module 1 builds every box's _foundation_ — the types, errors, and
 infrastructure primitives every future box will need — without
 implementing any box's business logic.
 

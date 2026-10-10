@@ -16,7 +16,7 @@ same-`y` runs together and sorted by `x`, so a coincidentally-colliding, unrelat
 into the middle of the real line. Fixed by rejecting a same-`y` merge when the incoming run's `x` falls
 meaningfully behind the bucket's running max `x` — a real line's glyphs never go backward; a coincidental
 collision restarts at its own (unrelated) block's `x`. The identical root cause reappeared one stage up, in
-`document/block-builder.ts`'s paragraph-continuation merge (a near-zero y-gap between two *different*,
+`document/block-builder.ts`'s paragraph-continuation merge (a near-zero y-gap between two _different_,
 coincidentally-colliding lines was being accepted as a genuine wrapped continuation); fixed the same way — a
 real paragraph continuation always steps strictly downward, so a near-zero gap can only be a coincidental
 collision, never fixed to belong to the same paragraph.
@@ -28,14 +28,14 @@ collision, never fixed to belong to the same paragraph.
   unreachable — its source text was corrupted into `"ICdReMnt.ify..."` and so classified `not_executable`/dropped
   rather than discovered as a real task. Once Layer 0 fixed the corruption, `compileSources` (the same production
   path the benchmark harness calls) discovers it cleanly: capability node name `"Identify Actual brokerage Basic
-  Incentives"`, description `"Identify \"Actual\" brokerage (Basic + Incentives)."` — verified to match the source
+Incentives"`, description `"Identify \"Actual\" brokerage (Basic + Incentives)."` — verified to match the source
   PDF exactly via an independent `pdftotext -layout` extraction, and to satisfy this suite's own closed-world
   capability-evidence rules (resolved, human_in_the_loop, correctly attributed to page 1 / section "3. Brokerage
   Reconciliation (Reconciliation Tool)"). This is genuinely newly-supported evidence, not a benchmark-satisfying
   rewrite — no other expectation in this case was altered, weakened, or removed.
 - **Not added, and left deliberately unchanged:** a second span was also freed of character-level corruption by
   Layer 0 — `"validated reconciliation data."` (the true second line of item 2, "Partner Payouts: Calculate
-  channel-wise revenue share at the policy level based on the validated reconciliation data.") — but it is *not*
+  channel-wise revenue share at the policy level based on the validated reconciliation data.") — but it is _not_
   being added to ground truth, because what's actually discovered is **not** that sentence. It's a merge with an
   entirely unrelated bullet from a different numbered item: capability name/description
   `"validated reconciliation data. Channel-wise revenue generation (Referral/Digital/Sales/Associate/POSP)."`
@@ -60,11 +60,12 @@ larger, riskier change (the P0.9 Beta brief itself flags stream-order tie-breaki
 legitimate multi-column reconstruction elsewhere) than Layer 0's character-corruption scope. Left as an open,
 documented gap for separate investigation; downstream effects on this case's metrics are fully attributed to it
 below and are expected, not mysterious:
-  - `capabilityPrecision`: one unexpected capability (`validated reconciliation data. channel-wise revenue
-    generation (referral/digital/sales/associate/posp).`) — the merge artifact itself.
-  - `executionCorrectness`: `wf-partner-payouts-escalates` now fails — the merged capability no longer matches the
-    workflow step-name matcher `"Calculate channel-wise revenue share"`.
-  - `workflowRecall`: `wf-partner-payouts` now fails, same cause.
+
+- `capabilityPrecision`: one unexpected capability (`validated reconciliation data. channel-wise revenue
+generation (referral/digital/sales/associate/posp).`) — the merge artifact itself.
+- `executionCorrectness`: `wf-partner-payouts-escalates` now fails — the merged capability no longer matches the
+  workflow step-name matcher `"Calculate channel-wise revenue share"`.
+- `workflowRecall`: `wf-partner-payouts` now fails, same cause.
 
 None of `wf-receipts-and-bookkeeping`'s or `wf-reconciliation-tasks`'s missing-workflow status, nor the other 4
 pre-existing unexpected capabilities (`Brokerage Validation:`, `Generate via direct sales referral partners
@@ -89,18 +90,18 @@ field, so `capabilities/rule-based-extractor.ts`'s title/category-keyword capabi
 received." (ordinary prose whose synthesized title happens to contain the keyword "invoice") — both looked
 identical via `unit.title`. Fixed by propagating `headingTitle` through to `ExperienceUnit` and gating the
 title-path capability detection on it instead of `unit.title` (`unit.title === unit.headingTitle` whenever the
-latter is defined, so this only narrows *which* units are eligible — it changes no other behavior).
+latter is defined, so this only narrows _which_ units are eligible — it changes no other behavior).
 
 Resolved, with source-level verification (not just benchmark-metric improvement): the `Brokerage Validation:`
 capability (a bare heading-like label with no actionable content) and the duplicate `Reconcile the invoice
 balance against actual receipts received.` title-path candidate (which shadowed the legitimate verb-based
 candidate for the same sentence) both stopped being generated. **Bonus, unplanned but verified correct:** this
-also fully resolved the Layer 0 residual gap's *observable* effect (see above) — the `validated reconciliation
+also fully resolved the Layer 0 residual gap's _observable_ effect (see above) — the `validated reconciliation
 data. Channel-wise revenue generation (...)."` merged capability was itself generated via this exact false-positive
 mechanism (a merged unit's whole content becoming its synthesized, non-authored title), so it stopped being
 generated too, and `wf-partner-payouts` now composes and matches correctly — **without any change to
 `unit-builder.ts`**. To be precise about what is and isn't fixed: `unit-builder.ts`'s `groupBlocks` still merges
-the two unrelated blocks' *content* into one unit (unchanged, still a latent defect for any future consumer that
+the two unrelated blocks' _content_ into one unit (unchanged, still a latent defect for any future consumer that
 might rely on that content), but the specific way it was surfacing as a wrong benchmark result is gone.
 
 **Layer 1B — `vs.` sentence-boundary splitting.**
@@ -117,7 +118,7 @@ fragmented.
 
 **Ground truth change — found and fixed as a side effect of implementing Layer 1B, unrelated to the fix's own
 correctness:** the existing expectation `t3.4-reconcile-invoice-vs-receipt` (`name.contains: "Reconcile invoice
-amounts vs. receipt amounts"`, with a literal period after "vs") could never have matched *any* implementation,
+amounts vs. receipt amounts"`, with a literal period after "vs") could never have matched _any_ implementation,
 including a fully correct one — every capability name in this system strips punctuation from its object words
 (`objectWords.map(stripPunctuation)` in `rule-based-extractor.ts`), so a capability name never contains an
 embedded period. Proved independently by comparing to the sibling expectation in the same case,
@@ -144,12 +145,13 @@ and out of scope for Layer 1.
 
 **Section A — active-voice verb inflection.** `CAPABILITY_VERBS` already had base forms for every
 example verb the milestone named; the actual gap was that `findCapabilityVerb` only matched a word's
-*exact* base form — active-voice inflected forms ("generates", "reconciled") were invisible unless
+_exact_ base form — active-voice inflected forms ("generates", "reconciled") were invisible unless
 preceded by a passive auxiliary. Confirmed empirically against real Aastha text: `"The CRM generates a
 'Policy Booking Report'..."` was a real, previously-missed capability (the exact §9 gap from the
 original P0.9 audit).
 
 Implemented in `rule-based-extractor.ts`:
+
 - **Active past tense ("-ed")**: reuses the existing `-ed`-stripping helper (renamed
   `deriveEdSuffixBaseVerbCandidates`, no longer passive-only).
 - **Active present tense ("-s")**: gated behind two context guards (not preceded by a determiner,
@@ -162,6 +164,7 @@ Implemented in `rule-based-extractor.ts`:
 
 **Three real false positives found and fixed during verification** (each traced to source, reproduced,
 fixed with a targeted, principled — not Aastha-phrase-hardcoded — guard, then regression-tested):
+
 1. **Reduced relative clause + adverb** — "a document created **solely** to exercise..." misread as an
    active event. Guard: an immediately-following "-ly" word is evidence of a participial modifier
    (a transitive verb's object is never separated from it by an adverb).
@@ -175,7 +178,7 @@ fixed with a targeted, principled — not Aastha-phrase-hardcoded — guard, the
 4. **Sentence-initial past-tense participle with no subject** — `"Validated reconciliation data."`
    (itself a symptom of the already-documented Layer 0 residual gap — see below) misread as an
    imperative. Guard: unlike a base-form imperative ("Reconcile the accounts." — a normal instruction),
-   a sentence-initial *past-tense* verb with no subject before it is not a grammatical English sentence
+   a sentence-initial _past-tense_ verb with no subject before it is not a grammatical English sentence
    at all, and is far more likely to be a document-reconstruction artifact.
 
 Also found and fixed a real regression exposed by full-suite verification, unrelated to the above:
@@ -251,11 +254,12 @@ the evaluation path); `test/ground-truth.test.ts`.
 
 ## P0.9C Step 4 — Producer Attribution
 
-Full narrative: `PRODUCER_ATTRIBUTION.md`. Audit finding: `producedBy` is an *extractor name* stamped on the knowledge and capability-extractor paths only;
+Full narrative: `PRODUCER_ATTRIBUTION.md`. Audit finding: `producedBy` is an _extractor name_ stamped on the knowledge and capability-extractor paths only;
 reasoning-derived nodes and rule-minted capabilities have no stamping site (whether they should is not established by the repository). Only two values are ever
 observed (`rule-based`, `structured-operation`); `ai` and `hybrid` are not exercised.
 
 **Added (packages/benchmark only; no compiler, XOIR, runtime or contract change):**
+
 - metric `producerAttributionCoverage` (descriptive; population = nodes on a stamping path, classified without reading `producedBy`; not-judged paths reported in `breakdown`);
 - metric `producerAttributionCorrectness` (graded; optional golden `producedBy` on capability expectations, with a premise guard);
 - optional `producedBy` on `CapabilityExpectation`, `ObservedNode.subtype`, `src/producer.ts`, lint `unknown_expected_producer`, `PRODUCER_ATTRIBUTION.md`, `test/producer.test.ts`.
@@ -269,7 +273,7 @@ equal to each other).
 **Existing metrics:** unchanged. Both suites re-run on the real pipeline: `runtime-mechanics` byte-identical to its baseline; `vertical-fixtures` has zero differences
 outside the two new metrics. `EVALUATION_VERSION` stays `p0.9c-1`. The metric count is now 22 (20 historical + 2).
 
-**Earlier-step tests adjusted (intent preserved, scope narrowed):** Step 1 — "producer input never changes any metric / never a failure" now means *any historical metric*
+**Earlier-step tests adjusted (intent preserved, scope narrowed):** Step 1 — "producer input never changes any metric / never a failure" now means _any historical metric_
 (producer input deliberately feeds the two new metrics); Step 2 — "20 metrics" / reserved Step 4 dimensions updated for the two implemented metrics; Step 3 — the history test
 records the Step 4 fingerprint change; one metric-id list in `misc.test.ts`.
 

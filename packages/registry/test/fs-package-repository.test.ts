@@ -38,7 +38,11 @@ test('publish() rejects a manifest that fails schema validation', async () => {
     const repo = new FsPackageRepository(store);
     const badManifest = { formatVersion: '1.0' } as unknown as ReturnType<typeof buildFixtureManifest>;
 
-    const published = await repo.publish({ id: 'sha256:' + '1'.repeat(64), manifest: badManifest, publishedAt: '2026-01-01T00:00:00.000Z' });
+    const published = await repo.publish({
+      id: 'sha256:' + '1'.repeat(64),
+      manifest: badManifest,
+      publishedAt: '2026-01-01T00:00:00.000Z',
+    });
     assert.equal(published.ok, false);
     if (published.ok) return;
     assert.equal(published.error.code, 'XO_REGISTRY_PACKAGE_UNVERIFIED');
@@ -99,10 +103,7 @@ test('listByCreator() returns every package published by that creator, and none 
 
     const aliceRecords = await repo.listByCreator('did:xo:alice');
     assert.equal(aliceRecords.length, 2);
-    assert.deepEqual(
-      aliceRecords.map((r) => r.manifest.name).sort(),
-      ['xo_alice_one', 'xo_alice_two'],
-    );
+    assert.deepEqual(aliceRecords.map((r) => r.manifest.name).sort(), ['xo_alice_one', 'xo_alice_two']);
 
     const bobRecords = await repo.listByCreator('did:xo:bob');
     assert.equal(bobRecords.length, 1);

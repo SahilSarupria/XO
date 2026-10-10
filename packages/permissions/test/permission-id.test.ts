@@ -20,11 +20,24 @@ test('permission id: rejects unknown domain', () => {
 });
 
 test('permission id: rejects malformed strings', () => {
-  for (const bad of ['', 'filesystem', 'filesystem.', '.read', 'filesystem..read', 'Filesystem.Read', 'filesystem.read ', ' filesystem.read', 'filesystem.read.write', 'filesystem.re ad', 'filesystem.-read', 'filesystem.read-']) {
+  for (const bad of [
+    '',
+    'filesystem',
+    'filesystem.',
+    '.read',
+    'filesystem..read',
+    'Filesystem.Read',
+    'filesystem.read ',
+    ' filesystem.read',
+    'filesystem.read.write',
+    'filesystem.re ad',
+    'filesystem.-read',
+    'filesystem.read-',
+  ]) {
     const result = parsePermissionId(bad);
     assert.equal(result.ok, false, `expected "${bad}" to be rejected`);
   }
-}); 
+});
 
 test('permission id: no spoofing via lookalike domains', () => {
   // A domain that merely *contains* a known domain as a substring must

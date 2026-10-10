@@ -48,17 +48,13 @@ function proxy(req, res) {
   delete headers.origin;
   delete headers.referer;
 
-  const upstream = lib.request(
-    targetUrl,
-    { method: req.method, headers },
-    (upstreamRes) => {
-      res.writeHead(upstreamRes.statusCode || 502, {
-        ...upstreamRes.headers,
-        'access-control-allow-origin': '*',
-      });
-      upstreamRes.pipe(res);
-    },
-  );
+  const upstream = lib.request(targetUrl, { method: req.method, headers }, (upstreamRes) => {
+    res.writeHead(upstreamRes.statusCode || 502, {
+      ...upstreamRes.headers,
+      'access-control-allow-origin': '*',
+    });
+    upstreamRes.pipe(res);
+  });
 
   upstream.on('error', (err) => {
     if (!res.headersSent) {

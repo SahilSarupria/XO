@@ -15,7 +15,11 @@ import { lowerCapabilitiesToManifest } from '../../src/pipeline/capability-lower
 const now = () => '2026-01-01T00:00:00.000Z';
 
 /** Mirrors packager.test.ts's `addResolvableCapability` fixture: a capability + one linked `decision_node` whose condition parses under `StructuredComparisonBindingResolver`'s closed grammar — resolves to `'resolved'`, `implementationClass: 'deterministic_rule'`. */
-function graphWithResolvableCapability(suffix = 'a'): { readonly graph: XoirGraph; readonly capabilityId: string; readonly decisionId: string } {
+function graphWithResolvableCapability(suffix = 'a'): {
+  readonly graph: XoirGraph;
+  readonly capabilityId: string;
+  readonly decisionId: string;
+} {
   const graph = XoirGraph.create(XoirGraphId(`g-${suffix}`));
   const capabilityId = `capability:evaluate-claim-${suffix}`;
   const decisionId = `decision:deny-large-claim-${suffix}`;
@@ -33,10 +37,15 @@ function graphWithResolvableCapability(suffix = 'a'): { readonly graph: XoirGrap
     confidence: 0.9,
     now,
   });
-  graph.createAndAddEdge({ id: XoirEdgeId(`req-${suffix}`), kind: 'REQUIRES', fromId: XoirNodeId(decisionId), toId: XoirNodeId(capabilityId), now });
+  graph.createAndAddEdge({
+    id: XoirEdgeId(`req-${suffix}`),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(decisionId),
+    toId: XoirNodeId(capabilityId),
+    now,
+  });
   return { graph, capabilityId, decisionId };
 }
-
 
 test('the lowered declaration carries contractContentHash == the hash of the contract it was lowered from', () => {
   const { graph, capabilityId } = graphWithResolvableCapability('h1');
@@ -80,8 +89,20 @@ test('a semantic change to the source rule changes the lowered content hash', ()
   const decision = changed.graph.getNode(XoirNodeId(changed.decisionId));
   assert.ok(decision.ok);
   changed.graph.removeNode(XoirNodeId(changed.decisionId));
-  changed.graph.createAndAddNode({ id: XoirNodeId(changed.decisionId), kind: 'decision_node', properties: { question: 'the claimed loss amount exceeds 25000', outcome: 'deny the claim' }, confidence: 0.9, now });
-  changed.graph.createAndAddEdge({ id: XoirEdgeId('req-chg2b'), kind: 'REQUIRES', fromId: XoirNodeId(changed.decisionId), toId: XoirNodeId(changed.capabilityId), now });
+  changed.graph.createAndAddNode({
+    id: XoirNodeId(changed.decisionId),
+    kind: 'decision_node',
+    properties: { question: 'the claimed loss amount exceeds 25000', outcome: 'deny the claim' },
+    confidence: 0.9,
+    now,
+  });
+  changed.graph.createAndAddEdge({
+    id: XoirEdgeId('req-chg2b'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId(changed.decisionId),
+    toId: XoirNodeId(changed.capabilityId),
+    now,
+  });
   const a = lowerCapabilitiesToManifest(graph).declarations[0]!;
   const b = lowerCapabilitiesToManifest(changed.graph).declarations[0]!;
   assert.notEqual(a.execution!.contractContentHash, b.execution!.contractContentHash);

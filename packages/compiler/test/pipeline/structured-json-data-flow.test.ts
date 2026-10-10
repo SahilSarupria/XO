@@ -51,7 +51,10 @@ test('REAL STRUCTURED JSON: a directly-authored operation record preserves genui
 
 test('a structured JSON record with an unrecognized JSON-Schema-style type ("array") normalizes to \'unknown\', never a fabricated string/number/boolean', async () => {
   const record = { type: 'operation', name: 'ingest_batch', inputs: { items: { type: 'array' } } };
-  const result = await compileSources([{ kind: 'structured', format: 'json', text: JSON.stringify(record), sourcePath: 'ingest-batch.json' }], {});
+  const result = await compileSources(
+    [{ kind: 'structured', format: 'json', text: JSON.stringify(record), sourcePath: 'ingest-batch.json' }],
+    {},
+  );
   assert.equal(result.ok, true);
   if (!result.ok) return;
   const capability = result.value.graph.allNodes().find((n) => n.kind === 'capability' && n.properties.name === 'ingest_batch');

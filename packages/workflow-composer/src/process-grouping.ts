@@ -11,9 +11,7 @@ import type { ProcessGroupingEvidence } from './types.js';
  * meaning beyond an already-close textual match.
  */
 function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
 /**
@@ -58,7 +56,12 @@ function findProcessConceptNodeId(graph: XoirGraph, sectionPath: readonly string
     if (node.kind !== 'concept') continue;
     const subtype = node.metadata.subtype;
     if (subtype !== 'process' && subtype !== 'action') continue;
-    const ownsSection = node.metadata.sourceRefs.some((r) => r.sectionPath !== undefined && r.sectionPath.length === sectionPath.length && r.sectionPath.every((seg, i) => seg === sectionPath[i]));
+    const ownsSection = node.metadata.sourceRefs.some(
+      (r) =>
+        r.sectionPath !== undefined &&
+        r.sectionPath.length === sectionPath.length &&
+        r.sectionPath.every((seg, i) => seg === sectionPath[i]),
+    );
     if (!ownsSection) continue;
     const definition = node.properties['definition'];
     if (typeof definition !== 'string') continue;

@@ -51,7 +51,13 @@ function hybridCapability(hybridSteps: unknown): CapabilityDeclaration {
 }
 
 const validSteps: readonly HybridExecutionStep[] = [
-  { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] } },
+  {
+    stepId: 'det',
+    strategy: 'deterministic_rule',
+    input: { kind: 'request' },
+    contractId: 'capability:hybrid-det',
+    inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] },
+  },
   { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'det' } },
 ];
 
@@ -132,7 +138,13 @@ test('R5: two hybrid steps sharing the same stepId fail package validation (ambi
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
     const duplicateStepIds = [
-      { stepId: 'step', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] } },
+      {
+        stepId: 'step',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] },
+      },
       { stepId: 'step', strategy: 'model', input: { kind: 'request' } },
     ];
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(duplicateStepIds)] });
@@ -145,7 +157,9 @@ test('R5: two hybrid steps sharing the same stepId fail package validation (ambi
 test("R5: a hybrid step referencing its own stepId ({ kind: 'step' } self-reference) fails package validation", async () => {
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
-    const selfReferencing = [{ stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'det' }, contractId: 'capability:hybrid-det' }];
+    const selfReferencing = [
+      { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'det' }, contractId: 'capability:hybrid-det' },
+    ];
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(selfReferencing)] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, false);
@@ -186,7 +200,13 @@ test('R5: a longer, well-ordered hybrid chain where a later step references an e
     const installer = new PackageInstaller(store);
     // Proves the ordering check is "strictly earlier in the list", not "immediately preceding" -- step 3 may reference step 1 directly, skipping step 2.
     const chain = [
-      { stepId: 'first', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det', inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] } },
+      {
+        stepId: 'first',
+        strategy: 'deterministic_rule',
+        input: { kind: 'request' },
+        contractId: 'capability:hybrid-det',
+        inputSchema: { type: 'object', properties: { amount: { type: 'number' } }, required: ['amount'] },
+      },
       { stepId: 'second', strategy: 'model', input: { kind: 'request' } },
       { stepId: 'third', strategy: 'model', input: { kind: 'step', stepId: 'first' } },
     ];

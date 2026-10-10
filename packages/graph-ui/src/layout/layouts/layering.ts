@@ -26,9 +26,7 @@ export function computeLayeredPositions(
   }
 
   const layer = new Map<NodeId, number>();
-  const queue: NodeId[] = options?.seed
-    ? [options.seed]
-    : nodeIds.filter((id) => (indegree.get(id) ?? 0) === 0);
+  const queue: NodeId[] = options?.seed ? [options.seed] : nodeIds.filter((id) => (indegree.get(id) ?? 0) === 0);
   if (queue.length === 0 && nodeIds.length > 0) queue.push(nodeIds[0] as NodeId);
   for (const id of queue) layer.set(id, 0);
 

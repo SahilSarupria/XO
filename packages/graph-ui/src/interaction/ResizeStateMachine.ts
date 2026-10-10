@@ -40,8 +40,22 @@ export class ResizeStateMachine {
     return new ResizeStateMachine(IDLE);
   }
 
-  begin(targetId: NodeId, handle: ResizeHandle, originSize: Size, originPointer: Point, minSize: Size = { width: 1, height: 1 }): ResizeStateMachine {
-    return new ResizeStateMachine({ phase: 'resizing', targetId, handle, originSize, originPointer, currentPointer: originPointer, minSize });
+  begin(
+    targetId: NodeId,
+    handle: ResizeHandle,
+    originSize: Size,
+    originPointer: Point,
+    minSize: Size = { width: 1, height: 1 },
+  ): ResizeStateMachine {
+    return new ResizeStateMachine({
+      phase: 'resizing',
+      targetId,
+      handle,
+      originSize,
+      originPointer,
+      currentPointer: originPointer,
+      minSize,
+    });
   }
 
   move(currentPointer: Point): ResizeStateMachine {
@@ -67,8 +81,10 @@ export class ResizeStateMachine {
     const sign = HANDLE_SIGN[this.state.handle];
     const dx = this.state.currentPointer.x - this.state.originPointer.x;
     const dy = this.state.currentPointer.y - this.state.originPointer.y;
-    const width = sign.x === 0 ? this.state.originSize.width : Math.max(this.state.minSize.width, this.state.originSize.width + dx * sign.x);
-    const height = sign.y === 0 ? this.state.originSize.height : Math.max(this.state.minSize.height, this.state.originSize.height + dy * sign.y);
+    const width =
+      sign.x === 0 ? this.state.originSize.width : Math.max(this.state.minSize.width, this.state.originSize.width + dx * sign.x);
+    const height =
+      sign.y === 0 ? this.state.originSize.height : Math.max(this.state.minSize.height, this.state.originSize.height + dy * sign.y);
     return { width, height };
   }
 }

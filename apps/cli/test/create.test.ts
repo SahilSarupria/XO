@@ -97,7 +97,9 @@ test('create --json emits parseable JSON including discoveredCapabilities, resol
 });
 
 test('create against a source with real decision-rule content (the vertical-test benchmark fixture) reports and actually lowers a nonzero resolved count into manifest.capabilities', async () => {
-  const fixturePath = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+  const fixturePath = fileURLToPath(
+    new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+  );
   await withTempDir('xo-create-real-fixture-', async (tmp) => {
     const outPath = join(tmp, 'commercial.xo');
 
@@ -115,7 +117,10 @@ test('create against a source with real decision-rule content (the vertical-test
     assert.equal(parsed.resolvedCapabilities, 15);
     assert.equal(parsed.loweredCapabilities, 15);
     assert.ok(parsed.resolvedCapabilities > 0, 'must prove the positive case, not just 0-resolved');
-    assert.ok(parsed.resolvedCapabilities < parsed.discoveredCapabilities, 'must also prove some discovered capabilities remain unresolved');
+    assert.ok(
+      parsed.resolvedCapabilities < parsed.discoveredCapabilities,
+      'must also prove some discovered capabilities remain unresolved',
+    );
     assert.equal(parsed.capabilityOutcomes.length, 23);
 
     // And the manifest actually on disk must agree with what was

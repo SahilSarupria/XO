@@ -21,9 +21,14 @@ import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
 
 export type WorkflowExecutionStatus = 'created' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'interrupted';
 
-export type WorkflowStepStatus = 'pending' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'skipped' | 'interrupted';
+export type WorkflowStepStatus =
+  'pending' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'skipped' | 'interrupted';
 
-export const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set<WorkflowExecutionStatus>(['succeeded', 'failed', 'rejected']);
+export const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set<WorkflowExecutionStatus>([
+  'succeeded',
+  'failed',
+  'rejected',
+]);
 
 export interface WorkflowStepError {
   readonly code: string;
@@ -72,7 +77,12 @@ export interface PendingWorkflowHumanTask {
 
 export interface WorkflowFinalResult {
   readonly outcome: 'completed';
-  readonly stepResults: readonly { readonly order: number; readonly capabilityId: string; readonly executionId: string; readonly output: unknown }[];
+  readonly stepResults: readonly {
+    readonly order: number;
+    readonly capabilityId: string;
+    readonly executionId: string;
+    readonly output: unknown;
+  }[];
 }
 
 export interface WorkflowExecutionRecord {
@@ -121,7 +131,14 @@ export interface WorkflowExecutionRecord {
     /** P0.9B — see `CreateWorkflowExecutionInput.graphHash`'s doc comment. */
     readonly graphHash?: string;
     /** Per-step trace: capability node -> contract/binding -> underlying capability execution. Populated as steps run. */
-    readonly steps: readonly { readonly order: number; readonly capabilityId: string; readonly contractId?: string; readonly bindingId?: string; readonly sourceXoirNodeIds?: readonly string[]; readonly executionId?: string }[];
+    readonly steps: readonly {
+      readonly order: number;
+      readonly capabilityId: string;
+      readonly contractId?: string;
+      readonly bindingId?: string;
+      readonly sourceXoirNodeIds?: readonly string[];
+      readonly executionId?: string;
+    }[];
   };
 }
 
@@ -160,24 +177,41 @@ export interface CreateWorkflowExecutionInput {
  * completion report.
  */
 export class WorkflowConflictError extends XoError {
-  constructor(message: string, readonly reason: WorkflowConflictReason, context: Readonly<Record<string, unknown>> = {}) {
+  constructor(
+    message: string,
+    readonly reason: WorkflowConflictReason,
+    context: Readonly<Record<string, unknown>> = {},
+  ) {
     super(ErrorCode.RUNTIME_SESSION_INVALID_STATE, message, { context: { reason, ...context } });
     this.name = 'WorkflowConflictError';
   }
 }
 
-export type WorkflowConflictReason = 'stale_revision' | 'stale_step_execution' | 'step_execution_id_required' | 'not_resumable' | 'terminal' | 'in_flight';
+export type WorkflowConflictReason =
+  'stale_revision' | 'stale_step_execution' | 'step_execution_id_required' | 'not_resumable' | 'terminal' | 'in_flight';
 
 export class StaleWorkflowRevisionError extends WorkflowConflictError {
-  constructor(workflowExecutionId: string, readonly expectedRevision: number, readonly actualRevision: number) {
-    super(`workflow execution "${workflowExecutionId}" was modified concurrently: expected revision ${expectedRevision}, stored revision is ${actualRevision}`, 'stale_revision', { workflowExecutionId, expectedRevision, actualRevision });
+  constructor(
+    workflowExecutionId: string,
+    readonly expectedRevision: number,
+    readonly actualRevision: number,
+  ) {
+    super(
+      `workflow execution "${workflowExecutionId}" was modified concurrently: expected revision ${expectedRevision}, stored revision is ${actualRevision}`,
+      'stale_revision',
+      { workflowExecutionId, expectedRevision, actualRevision },
+    );
     this.name = 'StaleWorkflowRevisionError';
   }
 }
 
 /** Scoped to exactly one workspace by construction — same design as `ExecutionStore`. */
 export interface WorkflowExecutionStore {
-  create(workspaceId: string, principal: AuthenticatedPrincipal, input: CreateWorkflowExecutionInput): Promise<Result<WorkflowExecutionRecord, XoError>>;
+  create(
+    workspaceId: string,
+    principal: AuthenticatedPrincipal,
+    input: CreateWorkflowExecutionInput,
+  ): Promise<Result<WorkflowExecutionRecord, XoError>>;
   get(workflowExecutionId: string): Promise<Result<WorkflowExecutionRecord, NotFoundError>>;
   list(): Promise<Result<readonly WorkflowExecutionRecord[], XoError>>;
   /**

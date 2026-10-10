@@ -216,23 +216,11 @@ export {
   applySnapshot,
   exportToPrintSvg,
 } from './export/index.js';
-export type {
-  ClipboardPayload,
-  ExportFormat,
-  GraphSnapshot,
-  SvgExportOptions,
-  PngRasterizer,
-  GraphModelJson,
-} from './export/index.js';
+export type { ClipboardPayload, ExportFormat, GraphSnapshot, SvgExportOptions, PngRasterizer, GraphModelJson } from './export/index.js';
 
 // ---- history -------------------------------------------------
 
-export {
-  HistoryStack,
-  createViewportHistory,
-  createSelectionHistory,
-  createNavigationHistory,
-} from './history/index.js';
+export { HistoryStack, createViewportHistory, createSelectionHistory, createNavigationHistory } from './history/index.js';
 export type { ViewportHistory, SelectionHistory, NavigationHistory, NavigationEntry } from './history/index.js';
 
 // ---- commands -------------------------------------------------
@@ -311,13 +299,7 @@ export type {
 // ---- constraint engine -------------------------------------------------
 
 export { ConstraintEngine } from './constraints/ConstraintEngine.js';
-export type {
-  LockedAxis,
-  AlignmentRule,
-  DistributionRule,
-  NodeConstraint,
-  ConstraintViolation,
-} from './constraints/ConstraintEngine.js';
+export type { LockedAxis, AlignmentRule, DistributionRule, NodeConstraint, ConstraintViolation } from './constraints/ConstraintEngine.js';
 
 // ---- snap engine -------------------------------------------------
 
@@ -361,12 +343,7 @@ export type {
 // ---- diagnostics -------------------------------------------------
 
 export { GraphDiagnostics } from './diagnostics/GraphDiagnostics.js';
-export type {
-  TimingSample,
-  RenderCostEstimate,
-  MemoryEstimate,
-  Hotspot,
-} from './diagnostics/GraphDiagnostics.js';
+export type { TimingSample, RenderCostEstimate, MemoryEstimate, Hotspot } from './diagnostics/GraphDiagnostics.js';
 
 // ---- developer tools (data models only — no UI) -------------------------------------------------
 

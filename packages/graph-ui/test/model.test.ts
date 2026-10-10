@@ -16,7 +16,10 @@ test('upsertNode is immutable and preserves deterministic order', () => {
   assert.equal(m2.nodeCount, 1);
   const m3 = m2.upsertNode({ id: 'b', type: 't', label: 'B', position: { x: 0, y: 0 } });
   const m4 = m3.upsertNode({ id: 'a', type: 't', label: 'A2', position: { x: 1, y: 1 } });
-  assert.deepEqual(m4.nodes.map((n) => n.id), ['a', 'b']);
+  assert.deepEqual(
+    m4.nodes.map((n) => n.id),
+    ['a', 'b'],
+  );
   assert.equal(m4.getNode('a')?.label, 'A2');
 });
 

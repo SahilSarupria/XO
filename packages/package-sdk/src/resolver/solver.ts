@@ -119,7 +119,8 @@ export function solveDependencyGraph(graph: DependencyGraph): Result<SolveResult
       resolved.set(name, { name, version: chosen.version, manifest: chosen });
       continue;
     }
-    const reason = pool.length === 0 ? `no package named "${name}" is available` : `no available version of "${name}" satisfies every requested range`;
+    const reason =
+      pool.length === 0 ? `no package named "${name}" is available` : `no available version of "${name}" satisfies every requested range`;
     for (const edge of edges) {
       skippedOptional.push({ name, versionRange: edge.versionRange, requestedBy: edge.requester, reason });
     }

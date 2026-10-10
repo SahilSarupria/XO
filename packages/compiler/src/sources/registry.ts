@@ -1,4 +1,4 @@
-import { err, ok, type Result } from '@xo/types';
+import { err, type Result } from '@xo/types';
 import { ErrorCode, SourceError } from '@xo/errors';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource, SourceType } from './types.js';

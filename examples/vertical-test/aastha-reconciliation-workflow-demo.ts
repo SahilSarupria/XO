@@ -56,7 +56,9 @@ async function main() {
         console.log(`         ordered after (real dependency): ${logical.map((o) => `${o.capabilityId} via ${o.viaEdgeKind}`).join(', ')}`);
       }
       if (sourceDerived.length > 0) {
-        console.log(`         ordered after (source sequence only — NOT a proven dependency): ${sourceDerived.map((o) => `${o.capabilityId} via ${o.viaEdgeKind}`).join(', ')}`);
+        console.log(
+          `         ordered after (source sequence only — NOT a proven dependency): ${sourceDerived.map((o) => `${o.capabilityId} via ${o.viaEdgeKind}`).join(', ')}`,
+        );
       }
       if (step.rationale.tieBroken && step.rationale.orderedAfter.length === 0) {
         console.log('         position: no relationship to any sibling step — placed by deterministic tie-break');

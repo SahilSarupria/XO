@@ -279,7 +279,7 @@ export class PromptEditor {
 
   private sanitize(text: string): string {
     // Keep newlines, drop other control characters that would corrupt the layout.
-    // eslint-disable-next-line no-control-regex
+
     return text.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '');
   }
 
@@ -597,7 +597,9 @@ export class PromptEditor {
     lines.push(b(`╭${'─'.repeat(cols - 2)}╮`));
 
     if (this.buffer === '') {
-      const hint = this.shellMode ? 'Shell mode: type a command (Esc or Backspace to exit)' : 'Type / for commands, @ for files, or ask your installed XOs';
+      const hint = this.shellMode
+        ? 'Shell mode: type a command (Esc or Backspace to exit)'
+        : 'Type / for commands, @ for files, or ask your installed XOs';
       lines.push(`${b('│')} ${promptGlyph} ${padEnd(ui.muted(truncate(hint, textWidth)), textWidth)} ${b('│')}`);
     } else {
       layout.rows.forEach((row, i) => {
@@ -646,7 +648,8 @@ export class PromptEditor {
       const desc = item.description ? ui.muted(item.description) : '';
       return truncate(` ${marker} ${label} ${desc}`, cols - 1);
     });
-    if (total > windowSize) rows.push(truncate(ui.muted(`   (${this.selected + 1}/${total}) ↑↓ to navigate · Tab to accept · Esc to dismiss`), cols - 1));
+    if (total > windowSize)
+      rows.push(truncate(ui.muted(`   (${this.selected + 1}/${total}) ↑↓ to navigate · Tab to accept · Esc to dismiss`), cols - 1));
     return rows;
   }
 

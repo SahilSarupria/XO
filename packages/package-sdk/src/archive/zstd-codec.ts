@@ -1,4 +1,4 @@
-import { Readable, Transform } from 'node:stream';
+import type { Readable, Transform } from 'node:stream';
 import { createZstdCompress, createZstdDecompress, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, PackageError } from '@xo/errors';

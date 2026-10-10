@@ -52,7 +52,10 @@ export class CapabilityExecutor {
       const response = await this.provider.complete(request);
       const durationMs = this.now().getTime() - startedAt;
       this.instrumentation?.recordAiCallLatency(durationMs, { provider: this.provider.id, finishReason: response.finishReason });
-      this.instrumentation?.recordTokenUsage({ promptTokens: response.usage.inputTokens, completionTokens: response.usage.outputTokens }, { provider: this.provider.id });
+      this.instrumentation?.recordTokenUsage(
+        { promptTokens: response.usage.inputTokens, completionTokens: response.usage.outputTokens },
+        { provider: this.provider.id },
+      );
       return ok(response);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'unknown AI provider error';

@@ -29,7 +29,13 @@
  * structuring of node kinds nothing downstream reads yet.
  */
 
-import { parseStructuredAction, parseStructuredCondition, type StructuredAction, type StructuredCondition, type StructuredExceptionCondition } from '@xo/capability-contract';
+import {
+  parseStructuredAction,
+  parseStructuredCondition,
+  type StructuredAction,
+  type StructuredCondition,
+  type StructuredExceptionCondition,
+} from '@xo/capability-contract';
 import { canonicalKindForReasoningNodeType } from '../xoir/reasoning-node-kind-mapping.js';
 import type { ReasoningNodeType } from './types.js';
 
@@ -55,12 +61,18 @@ const EMPTY_OUTPUT: StructuredSemanticsOutput = {};
  * property names; this function's whole purpose is bridging that gap the
  * same way `buildProperties` does, one stage later, for the same node.
  */
-function resolveSourceTexts(input: StructuredSemanticsInput): { readonly conditionSourceText?: string; readonly actionSourceText?: string } {
+function resolveSourceTexts(input: StructuredSemanticsInput): {
+  readonly conditionSourceText?: string;
+  readonly actionSourceText?: string;
+} {
   const kind = canonicalKindForReasoningNodeType(input.nodeType);
   switch (kind) {
     case 'heuristic':
       // Matches buildProperties's `{ condition: node.condition ?? fallback, action: node.action ?? fallback }`.
-      return { ...(input.condition !== undefined ? { conditionSourceText: input.condition } : {}), ...(input.action !== undefined ? { actionSourceText: input.action } : {}) };
+      return {
+        ...(input.condition !== undefined ? { conditionSourceText: input.condition } : {}),
+        ...(input.action !== undefined ? { actionSourceText: input.action } : {}),
+      };
     case 'constraint': {
       // Matches buildProperties's `{ rule: node.action ?? node.condition ?? fallback }` — a constraint node has no separate action/outcome slot.
       const conditionSourceText = input.action ?? input.condition;
@@ -68,7 +80,10 @@ function resolveSourceTexts(input: StructuredSemanticsInput): { readonly conditi
     }
     case 'decision_node':
       // Matches buildProperties's `{ question: node.condition ?? fallback, outcome: node.outcome ?? fallback }`.
-      return { ...(input.condition !== undefined ? { conditionSourceText: input.condition } : {}), ...(input.outcome !== undefined ? { actionSourceText: input.outcome } : {}) };
+      return {
+        ...(input.condition !== undefined ? { conditionSourceText: input.condition } : {}),
+        ...(input.outcome !== undefined ? { actionSourceText: input.outcome } : {}),
+      };
     default:
       // reasoning_step / escalation_rule / risk_policy — see module doc comment.
       return {};

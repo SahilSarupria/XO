@@ -30,7 +30,10 @@ test('fingerprintManifest changes when any component hash changes', () => {
   const a = buildSampleBundle();
   const differentGraph = {
     ...a.manifest,
-    components: { ...a.manifest.components, knowledge_graph: { ...a.manifest.components.knowledge_graph!, hash: 'sha256:' + '0'.repeat(64) } },
+    components: {
+      ...a.manifest.components,
+      knowledge_graph: { ...a.manifest.components.knowledge_graph!, hash: 'sha256:' + '0'.repeat(64) },
+    },
   };
   assert.notEqual(fingerprintManifest(a.manifest), fingerprintManifest(differentGraph));
 });
@@ -49,12 +52,11 @@ test('signableManifestBytes and fingerprintManifest pick up the dependencies fie
   assert.notEqual(fingerprintManifest(withoutDeps), fingerprintManifest(withDeps));
 });
 
-test('fingerprintManifest changes when a dependency\'s version range changes, even with everything else identical', () => {
+test("fingerprintManifest changes when a dependency's version range changes, even with everything else identical", () => {
   const a = buildSampleBundle({ dependencies: [{ name: 'xo_core_math', versionRange: '^1.0.0', kind: 'required' }] }).manifest;
   const b = buildSampleBundle({ dependencies: [{ name: 'xo_core_math', versionRange: '^2.0.0', kind: 'required' }] }).manifest;
   assert.notEqual(fingerprintManifest(a), fingerprintManifest(b));
 });
-
 
 test('hashComponent produces a sha256:<hex> hash', () => {
   const hash = hashComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('x'), required: true });

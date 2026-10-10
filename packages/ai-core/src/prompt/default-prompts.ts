@@ -53,16 +53,20 @@ export const capabilitiesPromptV1 = definePromptTemplate<CapabilityExtractionInp
   },
 ]);
 
-export const decisionGraphPromptV1 = definePromptTemplate<DecisionGraphExtractionInput>('extractDecisionGraph', 'v1', (input, excerptText) => [
-  { role: 'system', content: SYSTEM_PREAMBLE },
-  {
-    role: 'user',
-    content:
-      `Extract a decision graph from the text below${input.focusQuestion ? ` — specifically: ${input.focusQuestion}` : ''}: decision nodes (with dependencies on other decisions), ` +
-      'branch conditions and outcomes, escalation paths, risk thresholds, and fallbacks for when a decision cannot be resolved.\n\n' +
-      `TEXT:\n${excerptText}`,
-  },
-]);
+export const decisionGraphPromptV1 = definePromptTemplate<DecisionGraphExtractionInput>(
+  'extractDecisionGraph',
+  'v1',
+  (input, excerptText) => [
+    { role: 'system', content: SYSTEM_PREAMBLE },
+    {
+      role: 'user',
+      content:
+        `Extract a decision graph from the text below${input.focusQuestion ? ` — specifically: ${input.focusQuestion}` : ''}: decision nodes (with dependencies on other decisions), ` +
+        'branch conditions and outcomes, escalation paths, risk thresholds, and fallbacks for when a decision cannot be resolved.\n\n' +
+        `TEXT:\n${excerptText}`,
+    },
+  ],
+);
 
 export const constraintsPromptV1 = definePromptTemplate<ConstraintExtractionInput>('extractConstraints', 'v1', (input, excerptText) => [
   { role: 'system', content: SYSTEM_PREAMBLE },

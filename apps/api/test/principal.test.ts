@@ -19,10 +19,17 @@ const PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial
 const DET = 'cap_rule_0f731679e7120779542267faaabe10ff';
 const HITL = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522';
 
-interface PrincipalWire { readonly kind: string; readonly id: string; readonly orgId?: string }
+interface PrincipalWire {
+  readonly kind: string;
+  readonly id: string;
+  readonly orgId?: string;
+}
 interface ExecWire {
-  readonly executionId: string; readonly identityId: string; readonly capabilityId: string;
-  readonly initiator?: PrincipalWire; readonly status: string;
+  readonly executionId: string;
+  readonly identityId: string;
+  readonly capabilityId: string;
+  readonly initiator?: PrincipalWire;
+  readonly status: string;
   readonly humanTask?: { readonly status: string; readonly resolverIdentityId?: string; readonly resolver?: PrincipalWire };
 }
 
@@ -35,8 +42,13 @@ function principal(kind: 'human' | 'service', id: string, orgId?: string): Authe
 async function setup(server: TestServer): Promise<{ workspace: WorkspaceRecord; compilationId: string }> {
   const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
   const bytes = await readFile(PDF);
-  const src = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, bytes)).json<{ sourceId: string }>();
-  const comp = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${src.sourceId}/compile`)).json<{ compilationId: string; status: string }>();
+  const src = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, bytes)).json<{
+    sourceId: string;
+  }>();
+  const comp = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${src.sourceId}/compile`)).json<{
+    compilationId: string;
+    status: string;
+  }>();
   assert.equal(comp.status, 'succeeded');
   return { workspace, compilationId: comp.compilationId };
 }
@@ -53,22 +65,44 @@ test('a key bound to a principal authenticates; the execution is attributed to e
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const key = generateApiKey();
-      const created = await server.apiKeyStore.create({ keyHash: hashApiKey(key), identityId: 'alice', principalKind: 'human', orgId: 'org.acme', createdAt: new Date().toISOString() });
+      const created = await server.apiKeyStore.create({
+        keyHash: hashApiKey(key),
+        identityId: 'alice',
+        principalKind: 'human',
+        orgId: 'org.acme',
+        createdAt: new Date().toISOString(),
+      });
       assert.equal(created.ok, true);
       const h = TestServer.authHeader(key);
       const workspace = (await server.request('POST', '/workspaces', {}, h)).json<WorkspaceRecord>();
       const bytes = await readFile(PDF);
-      const src = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, bytes, h)).json<{ sourceId: string }>();
-      const comp = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${src.sourceId}/compile`, undefined, h)).json<{ compilationId: string }>();
-      await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${comp.compilationId}/capabilities/${DET}/approve`, undefined, h);
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId: comp.compilationId, capabilityId: DET, input: { claim_amount: 1, loss: 'fire' } }, h);
+      const src = (await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=policy.pdf`, bytes, h)).json<{
+        sourceId: string;
+      }>();
+      const comp = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/sources/${src.sourceId}/compile`, undefined, h)
+      ).json<{ compilationId: string }>();
+      await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/compilations/${comp.compilationId}/capabilities/${DET}/approve`,
+        undefined,
+        h,
+      );
+      const res = await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/executions`,
+        { compilationId: comp.compilationId, capabilityId: DET, input: { claim_amount: 1, loss: 'fire' } },
+        h,
+      );
       assert.equal(res.status, 201);
       const rec = res.json<ExecWire>();
       assert.deepEqual(rec.initiator, { kind: 'human', id: 'alice', orgId: 'org.acme' });
       assert.equal(rec.identityId, 'alice');
       assert.notEqual(rec.initiator?.id, rec.capabilityId); // capability id is never the principal
       // persisted, and read back identically
-      const got = (await server.request('GET', `/workspaces/${workspace.workspaceId}/executions/${rec.executionId}`, undefined, h)).json<ExecWire>();
+      const got = (
+        await server.request('GET', `/workspaces/${workspace.workspaceId}/executions/${rec.executionId}`, undefined, h)
+      ).json<ExecWire>();
       assert.deepEqual(got.initiator, rec.initiator);
     } finally {
       await server.stop();
@@ -134,11 +168,25 @@ test('client-supplied identity (headers, query, body) cannot override the authen
     try {
       const { workspace, compilationId } = await setup(server);
       await approve(server, workspace.workspaceId, compilationId, DET);
-      const forged = { 'x-xo-principal': 'mallory', 'x-xo-principal-id': 'mallory', 'x-xo-identity': 'mallory', 'x-xo-org-id': 'evil', 'x-xo-principal-kind': 'human', 'x-forwarded-user': 'mallory' };
+      const forged = {
+        'x-xo-principal': 'mallory',
+        'x-xo-principal-id': 'mallory',
+        'x-xo-identity': 'mallory',
+        'x-xo-org-id': 'evil',
+        'x-xo-principal-kind': 'human',
+        'x-forwarded-user': 'mallory',
+      };
       const res = await server.request(
         'POST',
         `/workspaces/${workspace.workspaceId}/executions?principal=mallory&identityId=mallory&orgId=evil`,
-        { compilationId, capabilityId: DET, input: { claim_amount: 1, loss: 'fire' }, identityId: 'mallory', initiator: { kind: 'human', id: 'mallory', orgId: 'evil' }, principal: { kind: 'human', id: 'mallory' } },
+        {
+          compilationId,
+          capabilityId: DET,
+          input: { claim_amount: 1, loss: 'fire' },
+          identityId: 'mallory',
+          initiator: { kind: 'human', id: 'mallory', orgId: 'evil' },
+          principal: { kind: 'human', id: 'mallory' },
+        },
         forged,
       );
       assert.equal(res.status, 201);
@@ -160,11 +208,19 @@ test('HITL: initiator is preserved on resolve; the resolver is recorded separate
     try {
       const { workspace, compilationId } = await setup(server);
       await approve(server, workspace.workspaceId, compilationId, HITL);
-      const exec = (await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: HITL, input: {} })).json<ExecWire>();
+      const exec = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: HITL, input: {} })
+      ).json<ExecWire>();
       assert.equal(exec.status, 'waiting_for_human');
       assert.deepEqual(exec.initiator, { kind: 'service', id: server.identityId });
 
-      const resolved = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${exec.executionId}/resolve`, { decision: 'approve', data: {}, resolver: { kind: 'human', id: 'mallory' }, resolverIdentityId: 'mallory', initiator: { kind: 'human', id: 'mallory' } });
+      const resolved = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${exec.executionId}/resolve`, {
+        decision: 'approve',
+        data: {},
+        resolver: { kind: 'human', id: 'mallory' },
+        resolverIdentityId: 'mallory',
+        initiator: { kind: 'human', id: 'mallory' },
+      });
       assert.equal(resolved.status, 200);
       const rec = resolved.json<ExecWire>();
       assert.deepEqual(rec.initiator, { kind: 'service', id: server.identityId }); // unchanged
@@ -183,14 +239,28 @@ test('HITL at the service layer: a different authenticated resolver is recorded 
     try {
       const { workspace, compilationId } = await setup(server);
       await approve(server, workspace.workspaceId, compilationId, HITL);
-      const exec = (await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: HITL, input: {} })).json<ExecWire>();
+      const exec = (
+        await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: HITL, input: {} })
+      ).json<ExecWire>();
       const store = new FsExecutionStore(new LocalFsBlobStore(`${dataDir}/${workspace.workspaceId}/executions`));
       const comps = new FsCompilationStore(new LocalFsBlobStore(`${dataDir}/${workspace.workspaceId}/compilations`));
 
       // A fabricated / deserialized "principal" cannot resolve.
-      await assert.rejects(resolveHumanTaskExecution(store, comps, exec.executionId, 'approve', {}, { kind: 'human', id: 'forged' } as unknown as AuthenticatedPrincipal));
+      await assert.rejects(
+        resolveHumanTaskExecution(store, comps, exec.executionId, 'approve', {}, {
+          kind: 'human',
+          id: 'forged',
+        } as unknown as AuthenticatedPrincipal),
+      );
 
-      const out = await resolveHumanTaskExecution(store, comps, exec.executionId, 'approve', {}, principal('human', 'reviewer-bob', 'org.acme'));
+      const out = await resolveHumanTaskExecution(
+        store,
+        comps,
+        exec.executionId,
+        'approve',
+        {},
+        principal('human', 'reviewer-bob', 'org.acme'),
+      );
       assert.equal(out.kind, 'resolved');
       if (out.kind === 'resolved') {
         assert.deepEqual({ ...out.record.initiator }, { kind: 'service', id: server.identityId });
@@ -210,7 +280,16 @@ test('stores refuse a non-authenticated principal (no fabricated identity, no de
     const forged = { kind: 'human', id: 'x' } as unknown as AuthenticatedPrincipal;
     for (const bad of [forged, undefined as unknown as AuthenticatedPrincipal, 'ident_x' as unknown as AuthenticatedPrincipal]) {
       await assert.rejects(exec.create('ws', bad, { compilationId: 'c', capabilityId: 'k', input: {} }));
-      await assert.rejects(wf.create('ws', bad, { workflowExecutionId: 'wfx_00000000000000000000000000000002', compilationId: 'c', workflowId: 'w', workflowName: 'w', input: {}, steps: [] } as never));
+      await assert.rejects(
+        wf.create('ws', bad, {
+          workflowExecutionId: 'wfx_00000000000000000000000000000002',
+          compilationId: 'c',
+          workflowId: 'w',
+          workflowName: 'w',
+          input: {},
+          steps: [],
+        } as never),
+      );
     }
     assert.equal((await exec.list()).ok && (await exec.list()).ok, true);
     const listed = await exec.list();
@@ -221,7 +300,14 @@ test('stores refuse a non-authenticated principal (no fabricated identity, no de
 test('workflow record carries the initiating principal (snapshot, not authenticated)', async () => {
   await withTempDir('xo-api-data-', async (dir) => {
     const wf = new FsWorkflowExecutionStore(new LocalFsBlobStore(dir));
-    const created = await wf.create('ws_x', principal('service', 'svc-1', 'org.acme'), { workflowExecutionId: 'wfx_00000000000000000000000000000001', compilationId: 'c', workflowId: 'w', workflowName: 'w', input: {}, steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }] });
+    const created = await wf.create('ws_x', principal('service', 'svc-1', 'org.acme'), {
+      workflowExecutionId: 'wfx_00000000000000000000000000000001',
+      compilationId: 'c',
+      workflowId: 'w',
+      workflowName: 'w',
+      input: {},
+      steps: [{ stepId: 's#0', order: 0, capabilityId: 'cap_x', capabilityName: 'x' }],
+    });
     assert.ok(created.ok);
     if (created.ok) {
       assert.deepEqual({ ...created.value.initiator }, { kind: 'service', id: 'svc-1', orgId: 'org.acme' });
@@ -245,7 +331,11 @@ test('workspace isolation is intact: another authenticated principal still gets 
       assert.equal(missing.status, 404);
       assert.equal(ws.bodyText.replace(workspace.workspaceId, 'X'), missing.bodyText.replace('ws_nope', 'X'));
       // Having a principal does not approve anything: unapproved execution is still refused.
-      const refused = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: DET, input: {} });
+      const refused = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: DET,
+        input: {},
+      });
       assert.equal(refused.status, 403);
     } finally {
       await server.stop();
@@ -258,7 +348,12 @@ test('AI execution stays disabled: /runtime/execute is 501 even for a fully auth
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = (await server.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/runtime/execute`, { input: 'x', query: 'q' }, { 'x-xo-provider': 'ollama', 'x-xo-model': 'm' });
+      const res = await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/runtime/execute`,
+        { input: 'x', query: 'q' },
+        { 'x-xo-provider': 'ollama', 'x-xo-model': 'm' },
+      );
       assert.equal(res.status, 501);
     } finally {
       await server.stop();

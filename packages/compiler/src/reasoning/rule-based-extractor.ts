@@ -4,7 +4,12 @@ import type { ExperienceUnit } from '../semantic/types.js';
 import type { KnowledgeProvenance } from '../knowledge/types.js';
 import { splitSentences } from '../capabilities/sentence-split.js';
 import { parseSentence, type ParsedReasoningCandidate } from './rule-pattern-parser.js';
-import type { CandidateReasoningEdgeRef, CandidateReasoningNode, ReasoningExtractionResult, ReasoningExtractor } from './extractor-types.js';
+import type {
+  CandidateReasoningEdgeRef,
+  CandidateReasoningNode,
+  ReasoningExtractionResult,
+  ReasoningExtractor,
+} from './extractor-types.js';
 import { buildStructuredSemantics } from './structured-semantics.js';
 
 interface Paragraph {

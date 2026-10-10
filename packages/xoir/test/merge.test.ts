@@ -19,9 +19,19 @@ test('mergeGraphs unions disjoint graphs with no conflicts', () => {
 
 test('mergeGraphs treats identical-content duplicate nodes as a non-conflict', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'knowledge', properties: { statement: 's', domain: 'd' }, now: () => '2026-01-01T00:00:00.000Z' });
+  g1.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'knowledge',
+    properties: { statement: 's', domain: 'd' },
+    now: () => '2026-01-01T00:00:00.000Z',
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'knowledge', properties: { statement: 's', domain: 'd' }, now: () => '2026-01-01T00:00:00.000Z' });
+  g2.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'knowledge',
+    properties: { statement: 's', domain: 'd' },
+    now: () => '2026-01-01T00:00:00.000Z',
+  });
 
   const result = mergeGraphs([g1, g2], XoirGraphId('merged'));
   assert.ok(result.ok);
@@ -32,9 +42,19 @@ test('mergeGraphs treats identical-content duplicate nodes as a non-conflict', (
 
 test('mergeGraphs reports and resolves a conflicting duplicate id under prefer_higher_confidence', () => {
   const g1 = XoirGraph.create(XoirGraphId('g1'));
-  g1.createAndAddNode({ id: XoirNodeId('a'), kind: 'knowledge', properties: { statement: 'low-confidence version', domain: 'd' }, confidence: 0.2 });
+  g1.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'knowledge',
+    properties: { statement: 'low-confidence version', domain: 'd' },
+    confidence: 0.2,
+  });
   const g2 = XoirGraph.create(XoirGraphId('g2'));
-  g2.createAndAddNode({ id: XoirNodeId('a'), kind: 'knowledge', properties: { statement: 'high-confidence version', domain: 'd' }, confidence: 0.9 });
+  g2.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'knowledge',
+    properties: { statement: 'high-confidence version', domain: 'd' },
+    confidence: 0.9,
+  });
 
   const result = mergeGraphs([g1, g2], XoirGraphId('merged'), 'prefer_higher_confidence');
   assert.ok(result.ok);

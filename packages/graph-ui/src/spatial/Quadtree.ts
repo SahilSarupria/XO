@@ -16,7 +16,12 @@ function rectsIntersect(a: Rect, b: Rect): boolean {
 }
 
 function rectContains(outer: Rect, inner: Rect): boolean {
-  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height;
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
 }
 
 function quadrantsOf(bounds: Rect): [Rect, Rect, Rect, Rect] {

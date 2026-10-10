@@ -74,7 +74,11 @@ test('B: a ruleless, process-grounded capability also resolves to a human_in_the
 
 test('C: a contract with linked rules is left alone by this resolver (returns undefined), even if it also has action refs', () => {
   const resolver = new ActionEscalationBindingResolver();
-  const contract = makeContract({ rules: [makeRule()], actionKnowledgeRefs: [{ sourceNodeId: 'concept:x', subtype: 'action' }], determinism: 'deterministic' });
+  const contract = makeContract({
+    rules: [makeRule()],
+    actionKnowledgeRefs: [{ sourceNodeId: 'concept:x', subtype: 'action' }],
+    determinism: 'deterministic',
+  });
   const outcome = resolver.resolve(contract);
   assert.equal(outcome, undefined);
 });
@@ -105,7 +109,10 @@ test('D: resolveCapabilityBinding with both resolvers configured reports unresol
 // --- Determinism does not gate human_in_the_loop -------------------------------------
 
 test('a contract marked non_deterministic with action refs still resolves to human_in_the_loop (determinism gating is a deterministic_rule-only concern)', () => {
-  const contract = makeContract({ determinism: 'non_deterministic', actionKnowledgeRefs: [{ sourceNodeId: 'concept:x', subtype: 'action' }] });
+  const contract = makeContract({
+    determinism: 'non_deterministic',
+    actionKnowledgeRefs: [{ sourceNodeId: 'concept:x', subtype: 'action' }],
+  });
   const outcome = resolveCapabilityBinding(contract, [new StructuredComparisonBindingResolver(), new ActionEscalationBindingResolver()]);
   assert.equal(outcome.status, 'resolved');
   if (outcome.status !== 'resolved') return;
@@ -148,7 +155,10 @@ test('G: binding.derivation carries the exact actionKnowledgeRefs the contract w
     { sourceNodeId: 'concept:reconcile-action', subtype: 'action' },
     { sourceNodeId: 'concept:payment-recording', subtype: 'action' },
   ];
-  const contract = makeContract({ actionKnowledgeRefs: refs, sourceXoirNodeIds: ['capability:reconcile-invoice', ...refs.map((r) => r.sourceNodeId)] });
+  const contract = makeContract({
+    actionKnowledgeRefs: refs,
+    sourceXoirNodeIds: ['capability:reconcile-invoice', ...refs.map((r) => r.sourceNodeId)],
+  });
   const outcome = resolver.resolve(contract);
   assert.equal(outcome?.status, 'resolved');
   if (outcome?.status !== 'resolved') return;

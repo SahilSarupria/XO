@@ -12,7 +12,9 @@ function compileSegments(path: string): readonly RouteSegment[] {
   return path
     .split('/')
     .filter((segment) => segment.length > 0)
-    .map((segment): RouteSegment => (segment.startsWith(':') ? { kind: 'param', name: segment.slice(1) } : { kind: 'literal', value: segment }));
+    .map((segment): RouteSegment =>
+      segment.startsWith(':') ? { kind: 'param', name: segment.slice(1) } : { kind: 'literal', value: segment },
+    );
 }
 
 /**
@@ -78,13 +80,19 @@ export class Router {
 
   private composeMiddleware(handler: RouteHandler): RouteHandler {
     return (req) => {
-      const chain = this.middlewares.reduceRight<() => Promise<ApiResponse>>((next, middleware) => () => middleware(req, next), () => handler(req));
+      const chain = this.middlewares.reduceRight<() => Promise<ApiResponse>>(
+        (next, middleware) => () => middleware(req, next),
+        () => handler(req),
+      );
       return chain();
     };
   }
 }
 
-function matchSegments(routeSegments: readonly RouteSegment[], requestSegments: readonly string[]): Readonly<Record<string, string>> | undefined {
+function matchSegments(
+  routeSegments: readonly RouteSegment[],
+  requestSegments: readonly string[],
+): Readonly<Record<string, string>> | undefined {
   if (routeSegments.length !== requestSegments.length) return undefined;
   const params: Record<string, string> = {};
   for (let i = 0; i < routeSegments.length; i++) {

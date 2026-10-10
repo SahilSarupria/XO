@@ -12,8 +12,8 @@ import { createDefaultSourceFrontendRegistry } from '../../src/sources/default-r
 function stubFrontend(sourceType: SourceType, matches: (input: unknown) => boolean): SourceFrontend {
   return {
     sourceType,
-    canHandle: (input: unknown): input is unknown => matches(input),
-    ingest: (input: unknown): Result<CanonicalSource, SourceError> =>
+    canHandle: (_input: unknown): _input is unknown => matches(_input),
+    ingest: (_input: unknown): Result<CanonicalSource, SourceError> =>
       ok({
         sourceId: `stub_${sourceType}`,
         sourceType,

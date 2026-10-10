@@ -38,17 +38,26 @@ export interface ReasoningExtractionOptions {
  * hashes over normalized labels, never insertion order or randomness —
  * see `test/reasoning/reasoning-extractor.test.ts`'s determinism tests.
  */
-export async function extractReasoningGraph(experienceDocument: ExperienceDocument, options: ReasoningExtractionOptions = {}): Promise<ReasoningGraph> {
+export async function extractReasoningGraph(
+  experienceDocument: ExperienceDocument,
+  options: ReasoningExtractionOptions = {},
+): Promise<ReasoningGraph> {
   const extractor =
     options.extractor ??
-    new HybridReasoningExtractor(options.aiCore ? new AiReasoningExtractor(options.aiCore, options.domainHint, options.focusQuestion) : undefined, options.logger);
+    new HybridReasoningExtractor(
+      options.aiCore ? new AiReasoningExtractor(options.aiCore, options.domainHint, options.focusQuestion) : undefined,
+      options.logger,
+    );
 
   const perUnit: PerUnitReasoningExtraction[] = [];
   for (const unit of experienceDocument.units) {
     const result = await extractor.extract(unit);
     const extraction = result.ok ? result.value : { nodes: [], edges: [] };
     if (!result.ok) {
-      options.logger?.warn('Reasoning extraction failed for a unit; it contributes no nodes', { unitId: unit.id, error: result.error.message });
+      options.logger?.warn('Reasoning extraction failed for a unit; it contributes no nodes', {
+        unitId: unit.id,
+        error: result.error.message,
+      });
     }
     perUnit.push({ unit, extraction });
   }

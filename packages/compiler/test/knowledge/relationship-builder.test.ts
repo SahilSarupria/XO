@@ -21,20 +21,34 @@ function makeUnit(id: string, content: string, overrides: Partial<ExperienceUnit
   };
 }
 
-function primaryCandidate(unitId: string, label: string, semanticType: CandidateKnowledgeNode['semanticType'] = 'concept'): CandidateKnowledgeNode {
+function primaryCandidate(
+  unitId: string,
+  label: string,
+  semanticType: CandidateKnowledgeNode['semanticType'] = 'concept',
+): CandidateKnowledgeNode {
   return {
     localId: 'primary',
     semanticType,
     label,
     confidence: 0.8,
-    provenance: { experienceUnitId: unitId, documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.8 },
+    provenance: {
+      experienceUnitId: unitId,
+      documentPath: 'doc.pdf',
+      pages: [1],
+      sectionPath: [],
+      charOffsetRange: undefined,
+      confidence: 0.8,
+    },
     metadata: {},
     isUnitPrimary: true,
     sourceUnitId: unitId,
   };
 }
 
-function makeExperienceDocument(units: readonly ExperienceUnit[], relationships: ExperienceDocument['relationshipGraph']['relationships'] = []): ExperienceDocument {
+function makeExperienceDocument(
+  units: readonly ExperienceUnit[],
+  relationships: ExperienceDocument['relationshipGraph']['relationships'] = [],
+): ExperienceDocument {
   return { documentPath: 'doc.pdf', documentTitle: undefined, units, relationshipGraph: { relationships } };
 }
 
@@ -96,7 +110,13 @@ test('creates a content-mention "references" edge when a unit\'s content mention
   const u2 = makeUnit('u2', 'Acme Corp appears again here.');
   const perUnit: PerUnitExtraction[] = [
     { unit: u1, extraction: { nodes: [primaryCandidate('u1', 'Clause about Acme')], edges: [] } },
-    { unit: u2, extraction: { nodes: [{ ...primaryCandidate('u2', 'Acme Corp', 'organization'), isUnitPrimary: false, localId: 'entity-0' }], edges: [] } },
+    {
+      unit: u2,
+      extraction: {
+        nodes: [{ ...primaryCandidate('u2', 'Acme Corp', 'organization'), isUnitPrimary: false, localId: 'entity-0' }],
+        edges: [],
+      },
+    },
   ];
   const mergeResult = mergeKnowledgeNodes(perUnit);
   const doc = makeExperienceDocument([u1, u2]);

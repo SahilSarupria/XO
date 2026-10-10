@@ -138,7 +138,10 @@ test('buildBenchmarkSuiteComponent has no note once real evaluation_artifact nod
   graph.createAndAddNode({
     id: 'eval:1' as never,
     kind: 'evaluation_artifact',
-    properties: { input: 'Given an incomplete KYC field, what should the capability do?', expectedBehavior: 'Ask for the missing field before proceeding.' },
+    properties: {
+      input: 'Given an incomplete KYC field, what should the capability do?',
+      expectedBehavior: 'Ask for the missing field before proceeding.',
+    },
     confidence: 0.5,
     now,
   });
@@ -161,7 +164,7 @@ test('buildReasoningTracesComponent emits one JSON object per line (JSONL), unde
   assert.equal(buildReasoningTracesComponent(empty), undefined);
 });
 
-test('buildCaseLibraryComponent / buildLongTermMemoryGraphComponent are undefined for a graph with no failure_case/success_pattern/memory_unit nodes (today\'s real, honest outcome)', () => {
+test("buildCaseLibraryComponent / buildLongTermMemoryGraphComponent are undefined for a graph with no failure_case/success_pattern/memory_unit nodes (today's real, honest outcome)", () => {
   const graph = buildGraph();
   assert.equal(buildCaseLibraryComponent(graph), undefined);
   assert.equal(buildLongTermMemoryGraphComponent(graph), undefined);

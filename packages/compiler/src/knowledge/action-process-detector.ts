@@ -35,29 +35,152 @@ export type OperationalContentKind = 'action' | 'process';
 /** Closed-class words that indicate the sentence has an explicit subject, is a question, or is otherwise declarative/descriptive rather than imperative — none of these are ever the first word of a genuine bare command ("Install the dependency.", "Verify the health endpoint."). Function words only, never open-class/domain vocabulary. */
 const NON_IMPERATIVE_LEADING_WORDS = new Set([
   // determiners / articles
-  'the', 'a', 'an', 'this', 'that', 'these', 'those', 'each', 'every', 'any', 'all', 'some', 'no', 'both', 'either', 'neither',
+  'the',
+  'a',
+  'an',
+  'this',
+  'that',
+  'these',
+  'those',
+  'each',
+  'every',
+  'any',
+  'all',
+  'some',
+  'no',
+  'both',
+  'either',
+  'neither',
   // pronouns
-  'it', 'he', 'she', 'they', 'we', 'i', 'you', 'him', 'her', 'them', 'us', 'this', 'there', 'here', 'who', 'what', 'which', 'whom', 'whose',
+  'it',
+  'he',
+  'she',
+  'they',
+  'we',
+  'i',
+  'you',
+  'him',
+  'her',
+  'them',
+  'us',
+  'this',
+  'there',
+  'here',
+  'who',
+  'what',
+  'which',
+  'whom',
+  'whose',
   // copula / auxiliary / modal verbs (declarative or conditional-inversion signals, e.g. "Should the amount exceed...")
-  'is', 'are', 'was', 'were', 'be', 'being', 'been', 'am',
-  'has', 'have', 'had',
-  'will', 'shall', 'must', 'may', 'should', 'can', 'could', 'would', 'might', 'do', 'does', 'did',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'being',
+  'been',
+  'am',
+  'has',
+  'have',
+  'had',
+  'will',
+  'shall',
+  'must',
+  'may',
+  'should',
+  'can',
+  'could',
+  'would',
+  'might',
+  'do',
+  'does',
+  'did',
   // coordinating / subordinating conjunctions and conditional subordinators
-  'and', 'or', 'but', 'nor', 'yet', 'so',
-  'if', 'when', 'unless', 'while', 'although', 'though', 'because', 'since', 'as', 'once', 'until', 'whenever', 'wherever', 'whereas',
+  'and',
+  'or',
+  'but',
+  'nor',
+  'yet',
+  'so',
+  'if',
+  'when',
+  'unless',
+  'while',
+  'although',
+  'though',
+  'because',
+  'since',
+  'as',
+  'once',
+  'until',
+  'whenever',
+  'wherever',
+  'whereas',
   // numbers / list-marker artifacts occasionally left in unit content
-  'one', 'two', 'three', 'four', 'five',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
 ]);
 
 /** Mid-sentence conditional subordinators — a leading-word check alone would miss "..., if the amount exceeds the threshold, escalate the case" (trailing/embedded conditional). Deliberately distinct from `EXCEPTION_CUES` (unless/except/notwithstanding), which Stage 3 already checks before a unit ever reaches `general`/`clause`. */
 const EMBEDDED_CONDITIONAL_CUES = ['if ', 'when ', 'unless ', 'in case ', 'in the event'];
 
-const PROCESS_COMPOSITION_CUES = ['consists of', 'consist of', 'comprises', 'comprise of', 'is composed of', 'are composed of', 'made up of'];
+const PROCESS_COMPOSITION_CUES = [
+  'consists of',
+  'consist of',
+  'comprises',
+  'comprise of',
+  'is composed of',
+  'are composed of',
+  'made up of',
+];
 
-const SEQUENCE_MARKERS = ['first,', 'first ', 'second,', 'second ', 'third,', 'next,', 'next ', 'then,', 'then ', 'finally,', 'finally ', 'subsequently', 'afterward', 'afterwards', 'lastly'];
+const SEQUENCE_MARKERS = [
+  'first,',
+  'first ',
+  'second,',
+  'second ',
+  'third,',
+  'next,',
+  'next ',
+  'then,',
+  'then ',
+  'finally,',
+  'finally ',
+  'subsequently',
+  'afterward',
+  'afterwards',
+  'lastly',
+];
 
 /** A narrower set than the leading-word list: true auxiliary/copula/modal verbs only (no determiners, pronouns, or conjunctions). Checked against the first few words of a sentence, not just the first, to catch passive/declarative constructions with a bare-noun subject and no article ("Business is generated via...", "Payment is processed by...") — the leading word alone ("Business", "Payment") is not a recognizable function word, but the copula immediately after it is an unambiguous declarative signal. */
-const AUX_COPULA_WORDS = new Set(['is', 'are', 'was', 'were', 'be', 'being', 'been', 'am', 'has', 'have', 'had', 'will', 'shall', 'must', 'may', 'should', 'can', 'could', 'would', 'might', 'do', 'does', 'did']);
+const AUX_COPULA_WORDS = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'being',
+  'been',
+  'am',
+  'has',
+  'have',
+  'had',
+  'will',
+  'shall',
+  'must',
+  'may',
+  'should',
+  'can',
+  'could',
+  'would',
+  'might',
+  'do',
+  'does',
+  'did',
+]);
 
 function firstWords(text: string, count: number): readonly string[] {
   return text
@@ -83,7 +206,10 @@ function firstWord(text: string): string {
 }
 
 function wordCount(text: string): number {
-  return text.trim().split(/\s+/).filter((w) => w.length > 0).length;
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0).length;
 }
 
 function countMatchingPhrases(text: string, phrases: readonly string[]): number {
@@ -101,7 +227,9 @@ function countMatchingPhrases(text: string, phrases: readonly string[]): number 
  * of these cues later in its content.
  */
 function hasHigherPrecedenceCue(content: string): boolean {
-  return containsAnyPhrase(content, OBLIGATION_CUES) || containsAnyPhrase(content, EXCEPTION_CUES) || containsAnyPhrase(content, RIGHT_CUES);
+  return (
+    containsAnyPhrase(content, OBLIGATION_CUES) || containsAnyPhrase(content, EXCEPTION_CUES) || containsAnyPhrase(content, RIGHT_CUES)
+  );
 }
 
 function hasConditionalCue(content: string): boolean {

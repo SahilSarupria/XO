@@ -10,9 +10,18 @@ import type { ExecutionResult } from '../execution/execution-result.js';
  * `ExecutionResult` after — including short-circuiting by not calling
  * `next` at all.
  */
-export type ExecutionMiddleware = (request: ExecutionRequest, next: (request: ExecutionRequest) => Promise<ExecutionResult>) => Promise<ExecutionResult>;
+export type ExecutionMiddleware = (
+  request: ExecutionRequest,
+  next: (request: ExecutionRequest) => Promise<ExecutionResult>,
+) => Promise<ExecutionResult>;
 
 /** Composes `middleware` (outermost first) around `core`, the pipeline's actual execution function. */
-export function composeMiddleware(middleware: readonly ExecutionMiddleware[], core: (request: ExecutionRequest) => Promise<ExecutionResult>): (request: ExecutionRequest) => Promise<ExecutionResult> {
-  return middleware.reduceRight<(request: ExecutionRequest) => Promise<ExecutionResult>>((next, mw) => (request) => mw(request, next), core);
+export function composeMiddleware(
+  middleware: readonly ExecutionMiddleware[],
+  core: (request: ExecutionRequest) => Promise<ExecutionResult>,
+): (request: ExecutionRequest) => Promise<ExecutionResult> {
+  return middleware.reduceRight<(request: ExecutionRequest) => Promise<ExecutionResult>>(
+    (next, mw) => (request) => mw(request, next),
+    core,
+  );
 }

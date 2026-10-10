@@ -18,7 +18,12 @@ export interface StructuredSourceInput {
 function isStructuredSourceInput(input: unknown): input is StructuredSourceInput {
   if (typeof input !== 'object' || input === null) return false;
   const candidate = input as Partial<StructuredSourceInput>;
-  return candidate.kind === 'structured' && (candidate.format === 'json' || candidate.format === 'csv') && typeof candidate.text === 'string' && typeof candidate.sourcePath === 'string';
+  return (
+    candidate.kind === 'structured' &&
+    (candidate.format === 'json' || candidate.format === 'csv') &&
+    typeof candidate.text === 'string' &&
+    typeof candidate.sourcePath === 'string'
+  );
 }
 
 type Record_ = Readonly<Record<string, unknown>>;
@@ -97,7 +102,8 @@ function isOperationRecord(record: Record_): record is StructuredOperationRecord
   if (typeof record.name !== 'string' || record.name.trim().length === 0) return false;
   if (record.inputs !== undefined && !isParameterMap(record.inputs)) return false;
   if (record.outputs !== undefined && !isParameterMap(record.outputs)) return false;
-  if (record.requires !== undefined && !(Array.isArray(record.requires) && record.requires.every((r) => typeof r === 'string'))) return false;
+  if (record.requires !== undefined && !(Array.isArray(record.requires) && record.requires.every((r) => typeof r === 'string')))
+    return false;
   return true;
 }
 
@@ -213,10 +219,20 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
   ingest(input: StructuredSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
     const parsed = input.format === 'json' ? parseJson(input.text) : parseCsv(input.text);
     if (!parsed.ok) {
-      return err(new SourceError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Structured source "${input.sourcePath}" (${input.format}) is invalid: ${parsed.error}`, { context: { sourcePath: input.sourcePath, format: input.format } }));
+      return err(
+        new SourceError(
+          ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+          `Structured source "${input.sourcePath}" (${input.format}) is invalid: ${parsed.error}`,
+          { context: { sourcePath: input.sourcePath, format: input.format } },
+        ),
+      );
     }
     if (parsed.value.length === 0) {
-      return err(new SourceError(ErrorCode.PRECONDITION_FAILED, `Structured source "${input.sourcePath}" contains no records`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(ErrorCode.PRECONDITION_FAILED, `Structured source "${input.sourcePath}" contains no records`, {
+          context: { sourcePath: input.sourcePath },
+        }),
+      );
     }
 
     const blocks: DocumentBlock[] = [];

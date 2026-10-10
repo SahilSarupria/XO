@@ -16,7 +16,19 @@ export interface CatalogEntry {
 
 /** Commands whose first positional is a filesystem path (drives Tab-completion). */
 export const PATH_COMMANDS: ReadonlySet<string> = new Set([
-  'compile', 'capabilities', 'create', 'workflow', 'inspect', 'verify', 'install', 'pack', 'build', 'init', 'diff', 'fingerprint', 'publish',
+  'compile',
+  'capabilities',
+  'create',
+  'workflow',
+  'inspect',
+  'verify',
+  'install',
+  'pack',
+  'build',
+  'init',
+  'diff',
+  'fingerprint',
+  'publish',
 ]);
 
 /** Flags whose value is a path, for Tab-completion after them. */
@@ -49,7 +61,7 @@ export function argHintFromUsage(usage: string, name: string): string | undefine
   if (!m) return undefined;
   const positional: string[] = [];
   for (const token of m[1]!.split(/\s+/)) {
-    if (token === '' ) continue;
+    if (token === '') continue;
     if (token.startsWith('[') || token.startsWith('--')) break;
     positional.push(token);
   }

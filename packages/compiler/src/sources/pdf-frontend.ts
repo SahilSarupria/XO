@@ -55,7 +55,11 @@ export class PdfSourceFrontend implements SourceFrontend<PdfSourceInput> {
   ingest(input: PdfSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
     const loaded = this.loader.load(input.bytes, input.sourcePath);
     if (!loaded.ok) {
-      return err(new SourceError(ErrorCode.SERIALIZATION_PARSE_FAILED, `Failed to load PDF source "${input.sourcePath}": ${loaded.error.message}`, { cause: loaded.error }));
+      return err(
+        new SourceError(ErrorCode.SERIALIZATION_PARSE_FAILED, `Failed to load PDF source "${input.sourcePath}": ${loaded.error.message}`, {
+          cause: loaded.error,
+        }),
+      );
     }
 
     const parsed = parseDocument(loaded.value);

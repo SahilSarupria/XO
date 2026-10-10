@@ -70,7 +70,12 @@ test('does not report a lone sentence-initial subordinator as a capitalized run'
 });
 
 test('does not report other lone sentence-initial function words as capitalized runs', () => {
-  for (const sentence of ['The Company reviews every claim.', 'Where the loss occurs, notify the insurer.', 'Upon receipt, process the claim.', 'Any claim exceeding the limit is escalated.']) {
+  for (const sentence of [
+    'The Company reviews every claim.',
+    'Where the loss occurs, notify the insurer.',
+    'Upon receipt, process the claim.',
+    'Any claim exceeding the limit is escalated.',
+  ]) {
     const runs = detectCapitalizedRuns(sentence);
     const leadWord = sentence.split(' ')[0]!;
     assert.ok(!runs.some((r) => r.text === leadWord), `expected no lone run for leading word "${leadWord}" in: ${sentence}`);
@@ -95,5 +100,8 @@ test('does not filter a function word that appears mid-sentence in lowercase', (
   // place, so this is really testing that the fix only ever touches
   // capitalized single-word runs, never ordinary lowercase text.
   const runs = detectCapitalizedRuns('Acme says it will process this claim promptly.');
-  assert.deepEqual(runs.map((r) => r.text), ['Acme']);
+  assert.deepEqual(
+    runs.map((r) => r.text),
+    ['Acme'],
+  );
 });

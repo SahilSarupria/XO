@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { XoirGraph } from '../src/graph.js';
-import { XoirGraphId, XoirNodeId, XoirEdgeId } from '../src/ids.js';
+import { XoirGraphId, XoirNodeId } from '../src/ids.js';
 import { validateGraph } from '../src/validation.js';
 
 test('validateGraph reports valid for a well-formed graph', () => {
@@ -43,7 +43,12 @@ test('validateGraph flags a hash mismatch after a node is tampered with', () => 
 
 test('validateGraph flags an out-of-range confidence value', () => {
   const graph = XoirGraph.create(XoirGraphId('g'));
-  const created = graph.createAndAddNode({ id: XoirNodeId('a'), kind: 'knowledge', properties: { statement: 's', domain: 'd' }, confidence: 1.5 });
+  const created = graph.createAndAddNode({
+    id: XoirNodeId('a'),
+    kind: 'knowledge',
+    properties: { statement: 's', domain: 'd' },
+    confidence: 1.5,
+  });
   assert.ok(created.ok);
   const report = validateGraph(graph);
   assert.ok(report.issues.some((i) => i.kind === 'invalid_confidence_range'));

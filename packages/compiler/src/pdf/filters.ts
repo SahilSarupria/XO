@@ -51,7 +51,10 @@ function applyPredictor(data: Uint8Array, parms: PdfDictionary | undefined): Uin
 
   if (predictor === 2) {
     if (bitsPerComponent !== 8) {
-      throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `TIFF predictor with BitsPerComponent ${bitsPerComponent} is not supported (only 8 is)`);
+      throw new PdfError(
+        ErrorCode.PDF_UNSUPPORTED_FEATURE,
+        `TIFF predictor with BitsPerComponent ${bitsPerComponent} is not supported (only 8 is)`,
+      );
     }
     const out = Uint8Array.from(data);
     const rowCount = Math.floor(out.length / rowBytes);
@@ -81,11 +84,21 @@ function applyPredictor(data: Uint8Array, parms: PdfDictionary | undefined): Uin
       const c = i >= bytesPerPixel ? prevRow[i - bytesPerPixel]! : 0; // upper-left
       let value: number;
       switch (tag) {
-        case 0: value = raw; break; // None
-        case 1: value = raw + a; break; // Sub
-        case 2: value = raw + b; break; // Up
-        case 3: value = raw + Math.floor((a + b) / 2); break; // Average
-        case 4: value = raw + paethPredictor(a, b, c); break; // Paeth
+        case 0:
+          value = raw;
+          break; // None
+        case 1:
+          value = raw + a;
+          break; // Sub
+        case 2:
+          value = raw + b;
+          break; // Up
+        case 3:
+          value = raw + Math.floor((a + b) / 2);
+          break; // Average
+        case 4:
+          value = raw + paethPredictor(a, b, c);
+          break; // Paeth
         default:
           throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `Unknown PNG predictor row filter type ${tag}`);
       }

@@ -111,7 +111,11 @@ async function capabilitiesFromArchive(archivePath: string, json?: boolean): Pro
  * ./company-documents` show" are answered by literally the same source
  * resolution and the same merged compilation.
  */
-async function capabilitiesFromSource(sourcePath: string, options: Pick<CompileSourcesOptions, 'domainHint'>, json?: boolean): Promise<CommandResult> {
+async function capabilitiesFromSource(
+  sourcePath: string,
+  options: Pick<CompileSourcesOptions, 'domainHint'>,
+  json?: boolean,
+): Promise<CommandResult> {
   let collected: Awaited<ReturnType<typeof collectSources>>;
   try {
     collected = await collectSources([sourcePath]);

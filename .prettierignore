@@ -2,3 +2,18 @@ dist
 coverage
 node_modules
 *.tsbuildinfo
+
+# Generated output and runtime data (byte-exact / machine-written, never hand-formatted)
+**/.xo-data/
+**/.xo-studio/
+**/output/
+**/demo-output/
+dist-test/
+
+# Byte-pinned artifacts: tests verify these by content hash, reformatting breaks them
+packages/benchmark/baselines/
+packages/benchmark/test/fixtures/
+**/fixtures/**/*.json
+examples/vertical-test/*.json
+packages/benchmark/ground-truth/
+packages/benchmark/suites/

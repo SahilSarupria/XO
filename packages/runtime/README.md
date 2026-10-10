@@ -2,13 +2,13 @@
 
 **Stage 1: Package Mounting & Execution Pipeline.** Discovers installed
 `.xo` packages, verifies them, mounts them as executable capabilities,
-and deterministically *plans* requests against them — the "operating
+and deterministically _plans_ requests against them — the "operating
 system loading applications" analogy the original brief described.
 
 **Stage 2: executing an installed Experience Object.** Takes a planned
 request the rest of the way: retrieves a mounted package's components,
 merges knowledge graphs across packages, assembles context and a prompt,
-calls into `@xo/ai-core`'s provider-agnostic `ModelProvider` (the *only*
+calls into `@xo/ai-core`'s provider-agnostic `ModelProvider` (the _only_
 integration point with that package), and produces a structured
 response, execution receipt, and session — with cancellation, timeouts,
 streaming, budgets, safety, hooks, and middleware. See "Stage 2" below
@@ -46,7 +46,7 @@ below for why they aren't implemented verbatim).
 `mount(packageId, hostFamily) -> MountedPackage`. This package
 deliberately doesn't implement it. `runtime-core`'s `MountedPackage` bakes
 a specific host's resolved compatibility level into the mount itself —
-appropriate for a later stage where mounting *is* a per-request,
+appropriate for a later stage where mounting _is_ a per-request,
 per-host operation. Stage 1's mount is host-agnostic: a package is loaded
 once, and any number of different `ExecutionRequest`s (each with its own
 `HostProfile`) can be planned against it afterward, each resolving its
@@ -60,21 +60,21 @@ should implement.
 
 ## Module map
 
-| Module | Responsibility |
-|---|---|
-| `ids.ts` | Branded operational identifiers (`MountId`, `RequestId`, `PlanId`, `ReceiptId`, `SessionId`, `EnvironmentId`) — runtime-local, distinct from `@xo/types`' package-format identifiers. |
-| `registry/mounted-package.ts` | `MountedPackage` (immutable mount record) and `PackageRegistry` (immutable, copy-on-write, name→version→`MountedPackage`, multiple versions coexist). |
-| `capability/capability-descriptor.ts` | `CapabilityDescriptor`: a package's declared `CapabilityDeclaration` paired with which package offers it. |
-| `capability/capability-registry.ts` | Derived index over every mounted package's capabilities: exact-id `find`, deterministic substring `search`. |
-| `capability/capability-negotiator.ts` | `CapabilityNegotiator.plan`: discover → filter incompatible → resolve duplicates → rank. Pure deterministic planning, no AI reasoning. |
-| `runtime-context.ts` | `RuntimeContext`: an immutable snapshot pairing a `PackageRegistry` with its derived `CapabilityRegistry`. |
-| `execution/execution-request.ts` | `ExecutionEnvironment` (host profile, provider, token budget) and `ExecutionRequest` (capability id or free-text query, against an environment). |
-| `execution/execution-plan.ts` | `RankedCandidate` and `ExecutionPlan` — the negotiator's deterministic output. |
-| `session/execution-receipt.ts` | `ExecutionReceipt` (immutable per-attempt record) and `buildReceipt`. |
-| `session/execution-session.ts` | `ExecutionSession` (immutable, per-request lifecycle tracker) and `createSession`/`withPlan`/`withReceipt`. |
-| `loader/package-loader.ts` | `PackageLoader`: `discover`, `mount`, `unmount`, `reload`, `mountAllDiscovered` — wraps `@xo/package-sdk`'s `PackageInstaller` for discovery and verification rather than reimplementing hash/Merkle/signature checking. |
-| `observability/instrumentation.ts` | `RuntimeInstrumentation`: mount time, verification failures, planning latency, mounted package/component counts, via `@xo/observability`'s `Meter`/`Tracer` ports. |
-| `runtime.ts` | `Runtime`: the stateful facade holding "the current registry" and swapping it atomically on mount/unmount/reload — everything else here is a pure value type or a pure function over one. |
+| Module                                | Responsibility                                                                                                                                                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ids.ts`                              | Branded operational identifiers (`MountId`, `RequestId`, `PlanId`, `ReceiptId`, `SessionId`, `EnvironmentId`) — runtime-local, distinct from `@xo/types`' package-format identifiers.                                    |
+| `registry/mounted-package.ts`         | `MountedPackage` (immutable mount record) and `PackageRegistry` (immutable, copy-on-write, name→version→`MountedPackage`, multiple versions coexist).                                                                    |
+| `capability/capability-descriptor.ts` | `CapabilityDescriptor`: a package's declared `CapabilityDeclaration` paired with which package offers it.                                                                                                                |
+| `capability/capability-registry.ts`   | Derived index over every mounted package's capabilities: exact-id `find`, deterministic substring `search`.                                                                                                              |
+| `capability/capability-negotiator.ts` | `CapabilityNegotiator.plan`: discover → filter incompatible → resolve duplicates → rank. Pure deterministic planning, no AI reasoning.                                                                                   |
+| `runtime-context.ts`                  | `RuntimeContext`: an immutable snapshot pairing a `PackageRegistry` with its derived `CapabilityRegistry`.                                                                                                               |
+| `execution/execution-request.ts`      | `ExecutionEnvironment` (host profile, provider, token budget) and `ExecutionRequest` (capability id or free-text query, against an environment).                                                                         |
+| `execution/execution-plan.ts`         | `RankedCandidate` and `ExecutionPlan` — the negotiator's deterministic output.                                                                                                                                           |
+| `session/execution-receipt.ts`        | `ExecutionReceipt` (immutable per-attempt record) and `buildReceipt`.                                                                                                                                                    |
+| `session/execution-session.ts`        | `ExecutionSession` (immutable, per-request lifecycle tracker) and `createSession`/`withPlan`/`withReceipt`.                                                                                                              |
+| `loader/package-loader.ts`            | `PackageLoader`: `discover`, `mount`, `unmount`, `reload`, `mountAllDiscovered` — wraps `@xo/package-sdk`'s `PackageInstaller` for discovery and verification rather than reimplementing hash/Merkle/signature checking. |
+| `observability/instrumentation.ts`    | `RuntimeInstrumentation`: mount time, verification failures, planning latency, mounted package/component counts, via `@xo/observability`'s `Meter`/`Tracer` ports.                                                       |
+| `runtime.ts`                          | `Runtime`: the stateful facade holding "the current registry" and swapping it atomically on mount/unmount/reload — everything else here is a pure value type or a pure function over one.                                |
 
 ## Design choices worth knowing about
 
@@ -82,7 +82,7 @@ should implement.
   (`MountedPackage`, `PackageRegistry`, `ExecutionPlan`, `ExecutionReceipt`,
   `ExecutionSession`) is immutable and `Object.freeze`d; every mutating
   operation (`PackageLoader.mount`, `PackageRegistry.withMounted`, ...)
-  returns a *new* value rather than mutating in place, mirroring
+  returns a _new_ value rather than mutating in place, mirroring
   `@xo/package-sdk`'s `ManifestBuilder`. `Runtime` is the one stateful
   piece — the "process table" that holds the current immutable snapshot
   and swaps it — matching the OS-loading-applications analogy without
@@ -106,7 +106,7 @@ should implement.
   `resolveCompatibility` (`@xo/package-sdk`) is only ever called from
   `CapabilityNegotiator`, against a specific `ExecutionRequest`'s
   `HostProfile` — never from `PackageLoader`. A mounted package doesn't
-  have "a compatibility level"; it has one *per request*.
+  have "a compatibility level"; it has one _per request_.
 - **`fallbackPolicy` decides whether `L0` excludes a candidate.**
   `resolveCompatibility` returning `L0` (host family not declared, or its
   capabilities fall short) doesn't automatically disqualify a candidate —
@@ -135,7 +135,7 @@ Stage 1 had no prompt assembly, retrieval, or provider call for a
 receipt to describe. `buildReceipt` (Stage 1) records the outcome of the
 mount-verification + deterministic-planning pipeline alone —
 `packagesUsed`/`componentHashes`/`capabilitiesInvoked` describe what
-planning *selected*, not what a model did with it, and `tokenUsage` is a
+planning _selected_, not what a model did with it, and `tokenUsage` is a
 fixed `{0, 0}` placeholder. `buildExecutionReceipt` (Stage 2) is the real
 thing: the same `ExecutionReceipt` shape, but `tokenUsage`/`estimatedCost`
 come from an actual `StructuredResponse` and `degraded` reflects what
@@ -221,7 +221,7 @@ about vendors; everything built on top of it, including
 `complete`/optional-`completeStream` shape Stage 2's `CapabilityExecutor`
 needs. See that class's doc comment for the full reasoning, and "What
 integrating at the `ModelProvider` layer costs" below for what this
-means Stage 2 does *not* get for free.
+means Stage 2 does _not_ get for free.
 
 ### Execution flow
 
@@ -236,26 +236,26 @@ Layer and assemble the final response.
 
 ### Module map (Stage 2 additions)
 
-| Module | Responsibility |
-|---|---|
-| `retrieval/retrieved-slice.ts` | `RetrievedSlice` (package-attributed, superset of `@xo/runtime-core`'s `RetrievedSlice`) and a documented, approximate `estimateTokens`. |
-| `retrieval/knowledge-graph-merge.ts` | `mergeKnowledgeGraphs`: deterministic dedup-by-id merge across every mounted package's `knowledge_graph` component, with conflict detection. |
-| `retrieval/knowledge-retriever.ts` | `KnowledgeRetriever`: fetches component bytes via `PackageInstaller.getComponent` (new in `@xo/package-sdk`, see below), wraps them as slices. |
-| `context/context-assembler.ts` | `ContextAssembler`: builds the system prompt from slices. |
-| `prompt/prompt-assembler.ts` | `PromptAssembler`: builds the exact `ProviderRequest` `@xo/ai-core`'s `ModelProvider` expects, folding in working-memory turns. |
-| `ai/capability-executor.ts` | `CapabilityExecutor`: **the only place this package calls `@xo/ai-core`.** Talks to `ModelProvider`, not `AiCapabilityLayer` (see above). Translates failures to `RuntimeError`; passes success through unchanged; falls back to a single `complete()` call for a provider without `completeStream`. |
-| `response/response-assembler.ts` | `ResponseAssembler`: `StructuredResponse` — the AI response, attributed and degradation-flagged, with `@xo/ai-core`'s field names (`inputTokens`/`outputTokens`, `finishReason`) translated to this package's own stable vocabulary (`promptTokens`/`completionTokens`, `stopReason`). |
-| `memory/working-memory.ts` | `MemoryManager`: bounded, in-process, per-session turn history. **Working memory only** — see its own doc comment for exactly what that excludes. |
-| `budget/budget-manager.ts` | `BudgetManager`: priority-ordered slice trimming to fit a token budget; `safety_rules` is never dropped. |
-| `safety/safety-pipeline.ts` | `SafetyPipeline`: deterministic pattern-matching allow/block/redact against a package's own `safety_rules` component. |
-| `cancellation/execution-cancellation.ts` | `ExecutionCancellation`: wraps `AbortController`, doubles as the timeout mechanism. Enforced at the pipeline level only — see below. |
-| `hooks/execution-hooks.ts` | `ExecutionHooks` (per-stage lifecycle callbacks) + `runHook` (a throwing hook never fails the execution it's observing). |
-| `hooks/execution-middleware.ts` | `ExecutionMiddleware` + `composeMiddleware` — onion-model wrapping of the whole execution, distinct from per-stage hooks. |
-| `streaming/streaming-response.ts` | `StreamingResponse`: `events` (live `ProviderStreamEvent`s) + `result` (a `Promise<ExecutionResult>` resolved once the stream ends). |
-| `session/session-manager.ts` | `SessionManager`: the stateful, `Map`-based counterpart to Stage 1's pure session functions. |
-| `engine/execution-id.ts` | `deriveExecutionId`: pure, deterministic `RequestId -> ExecutionId`. |
-| `engine/execution-pipeline.ts` | `ExecutionPipeline`: the orchestrator described above. |
-| `engine/execution-engine.ts` | `ExecutionEngine`: the top-level facade — middleware composition, the live cancellation registry, `execute`/`executeWithCancellation`/`executeStreaming`/`cancel`. Takes a `ModelProvider` and defaults `options.model` from it if not given explicitly. |
+| Module                                   | Responsibility                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `retrieval/retrieved-slice.ts`           | `RetrievedSlice` (package-attributed, superset of `@xo/runtime-core`'s `RetrievedSlice`) and a documented, approximate `estimateTokens`.                                                                                                                                                             |
+| `retrieval/knowledge-graph-merge.ts`     | `mergeKnowledgeGraphs`: deterministic dedup-by-id merge across every mounted package's `knowledge_graph` component, with conflict detection.                                                                                                                                                         |
+| `retrieval/knowledge-retriever.ts`       | `KnowledgeRetriever`: fetches component bytes via `PackageInstaller.getComponent` (new in `@xo/package-sdk`, see below), wraps them as slices.                                                                                                                                                       |
+| `context/context-assembler.ts`           | `ContextAssembler`: builds the system prompt from slices.                                                                                                                                                                                                                                            |
+| `prompt/prompt-assembler.ts`             | `PromptAssembler`: builds the exact `ProviderRequest` `@xo/ai-core`'s `ModelProvider` expects, folding in working-memory turns.                                                                                                                                                                      |
+| `ai/capability-executor.ts`              | `CapabilityExecutor`: **the only place this package calls `@xo/ai-core`.** Talks to `ModelProvider`, not `AiCapabilityLayer` (see above). Translates failures to `RuntimeError`; passes success through unchanged; falls back to a single `complete()` call for a provider without `completeStream`. |
+| `response/response-assembler.ts`         | `ResponseAssembler`: `StructuredResponse` — the AI response, attributed and degradation-flagged, with `@xo/ai-core`'s field names (`inputTokens`/`outputTokens`, `finishReason`) translated to this package's own stable vocabulary (`promptTokens`/`completionTokens`, `stopReason`).               |
+| `memory/working-memory.ts`               | `MemoryManager`: bounded, in-process, per-session turn history. **Working memory only** — see its own doc comment for exactly what that excludes.                                                                                                                                                    |
+| `budget/budget-manager.ts`               | `BudgetManager`: priority-ordered slice trimming to fit a token budget; `safety_rules` is never dropped.                                                                                                                                                                                             |
+| `safety/safety-pipeline.ts`              | `SafetyPipeline`: deterministic pattern-matching allow/block/redact against a package's own `safety_rules` component.                                                                                                                                                                                |
+| `cancellation/execution-cancellation.ts` | `ExecutionCancellation`: wraps `AbortController`, doubles as the timeout mechanism. Enforced at the pipeline level only — see below.                                                                                                                                                                 |
+| `hooks/execution-hooks.ts`               | `ExecutionHooks` (per-stage lifecycle callbacks) + `runHook` (a throwing hook never fails the execution it's observing).                                                                                                                                                                             |
+| `hooks/execution-middleware.ts`          | `ExecutionMiddleware` + `composeMiddleware` — onion-model wrapping of the whole execution, distinct from per-stage hooks.                                                                                                                                                                            |
+| `streaming/streaming-response.ts`        | `StreamingResponse`: `events` (live `ProviderStreamEvent`s) + `result` (a `Promise<ExecutionResult>` resolved once the stream ends).                                                                                                                                                                 |
+| `session/session-manager.ts`             | `SessionManager`: the stateful, `Map`-based counterpart to Stage 1's pure session functions.                                                                                                                                                                                                         |
+| `engine/execution-id.ts`                 | `deriveExecutionId`: pure, deterministic `RequestId -> ExecutionId`.                                                                                                                                                                                                                                 |
+| `engine/execution-pipeline.ts`           | `ExecutionPipeline`: the orchestrator described above.                                                                                                                                                                                                                                               |
+| `engine/execution-engine.ts`             | `ExecutionEngine`: the top-level facade — middleware composition, the live cancellation registry, `execute`/`executeWithCancellation`/`executeStreaming`/`cancel`. Takes a `ModelProvider` and defaults `options.model` from it if not given explicitly.                                             |
 
 ### What integrating at the `ModelProvider` layer costs
 
@@ -279,12 +279,12 @@ free:
 - **No cost/cache accounting from `@xo/ai-core`.** `cost.ts`/`cache.ts`
   exist and work, but again as part of `AiCapabilityLayer`'s machinery.
   Stage 2's own cost figure in a receipt (`estimatedCost`) still comes
-  from the *capability's own declaration* in the manifest, same as
+  from the _capability's own declaration_ in the manifest, same as
   before — not from `@xo/ai-core`.
 - **No `AbortSignal` on `ProviderRequest`.** There's no cancellation
   field on the request at all, so an in-flight provider call can't
   actually be aborted at the network/HTTP level. `ExecutionCancellation`
-  and `raceCancellation` still guarantee the *pipeline* stops waiting and
+  and `raceCancellation` still guarantee the _pipeline_ stops waiting and
   returns promptly on cancel/timeout — but the underlying call (if the
   concrete `ModelProvider` implementation made a real HTTP request) keeps
   running in the background until it naturally resolves or errors; its
@@ -303,8 +303,8 @@ made to this package (`listAllInstalledRecords`, `getManifest`) — see
 `packages/package-sdk/README.md`:
 
 - **`PackageInstaller.getComponent(name, version, kind)`** — Stage 1
-  only ever needed a package's *manifest*; Stage 2's retrieval needs
-  actual component *content* (a knowledge graph's JSON, safety rules'
+  only ever needed a package's _manifest_; Stage 2's retrieval needs
+  actual component _content_ (a knowledge graph's JSON, safety rules'
   JSON, ...), which nothing in the SDK previously exposed a way to read.
 
 ### Why several Stage 2 types don't reuse `@xo/runtime-core`'s interfaces directly
@@ -319,7 +319,7 @@ request by a single `packageId: string`, which forces composite-string
 package identity (`"name@version"` or similar) — a real correctness risk
 this package's `MountedPackage`/`PackageRegistry` deliberately avoid by
 using plain `name`/`version` fields throughout. `SafetyChecker`'s
-`'allow' | 'block' | 'redact'` verdict vocabulary *is* reused directly
+`'allow' | 'block' | 'redact'` verdict vocabulary _is_ reused directly
 (`SafetyVerdict` in `safety-pipeline.ts`) — it's a plain string union
 with no such mismatch to work around.
 
@@ -339,7 +339,7 @@ a `timeoutMs` schedules an automatic `cancel('timeout')`.
 `@xo/ai-core`'s `ProviderRequest` has no `AbortSignal`/cancellation field
 at all (see "What integrating at the `ModelProvider` layer costs"
 above), so cancellation can't be threaded down into the provider call
-itself — `ExecutionPipeline.raceCancellation` is the *only* enforcement
+itself — `ExecutionPipeline.raceCancellation` is the _only_ enforcement
 point: it races the AI call against the cancellation signal and returns
 as soon as either settles, guaranteeing the pipeline stops waiting
 promptly on cancel/timeout, but the underlying provider call (if it made
@@ -350,7 +350,7 @@ naturally resolves; its result is simply discarded rather than used.
 
 `ExecutionHooks` are per-stage observers (`onPlanned`, `onRetrieved`,
 ...) that can never affect the execution — a throwing hook is caught and
-logged, never propagated. `ExecutionMiddleware` wraps the *entire*
+logged, never propagated. `ExecutionMiddleware` wraps the _entire_
 execution in an onion model and genuinely can affect it (modify the
 request, short-circuit by never calling `next`, inspect/replace the
 final `ExecutionResult`) — the two are deliberately different tools for
@@ -366,8 +366,6 @@ candidate under `fallbackPolicy: 'degrade_gracefully'`. A safety **block**
 (as opposed to a redact) is the one thing that does fail the execution —
 degradation is for content that had to be trimmed or altered, not for
 content that should never have been processed at all.
-
-
 
 ```
 npm test              # node --test, 176 tests
@@ -409,7 +407,7 @@ OR-join with decision-skip propagation, declaration-order determinism
 independent of `Map`/`Set` iteration), condition evaluation (every
 `ConditionOperator`, dot-path resolution, the `predicate` escape hatch),
 retries (transient-then-success, exhausted-retries failure with the
-*actual* failing error surfaced — not a generic one), per-node timeouts,
+_actual_ failing error surfaced — not a generic one), per-node timeouts,
 mid-run cancellation (including the specific "a node failing due to
 cancellation must not become permanently un-resumable" case), failure
 propagation to downstream nodes, `loop` (iteration counting, the
@@ -465,8 +463,8 @@ Every node type — the nine fixed ones (`start`, `end`, `capability`,
 `WorkflowScheduler.computeCursor` (see its own extensive doc comment) is
 the entire scheduling algorithm, and it's one rule: a node is `ready`
 once every incoming edge's source has reached a terminal state
-(`completed`/`failed`/`skipped`) *and* at least one of them is
-`completed`; if every incoming source is terminal but *none* is
+(`completed`/`failed`/`skipped`) _and_ at least one of them is
+`completed`; if every incoming source is terminal but _none_ is
 `completed`, the node resolves to `skipped` instead (propagating forward
 without ever reaching a handler). This one rule is what makes:
 
@@ -479,11 +477,11 @@ without ever reaching a handler). This one rule is what makes:
   OR-join (multiple predecessors, but only the taken branch actually
   completes)
 
-...fall out of the *same* rule, with `merge`/`sequence` staying pure
+...fall out of the _same_ rule, with `merge`/`sequence` staying pure
 documentation markers rather than scheduler-special-cased node types.
 
 The one subtlety this requires: a `decision` node "completing" doesn't
-mean *every* outgoing edge is satisfied — only the one it selected.
+mean _every_ outgoing edge is satisfied — only the one it selected.
 `WorkflowState.takenEdges` tracks exactly which edges were actually
 traversed (every outgoing edge, by default, for an ordinary node; only
 the selected one for `decision`/`loop`), and the scheduler treats an
@@ -522,7 +520,7 @@ nested graph.
   configured, which let cancellation race behind an in-flight untimed
   node's completion; fixed before this delivery, see the test
   "cancellation: cancelling mid-run..."). A node that fails specifically
-  *because* the workflow was cancelled is deliberately **not** recorded
+  _because_ the workflow was cancelled is deliberately **not** recorded
   as a permanent `failedNodes` entry — it stays unvisited, so a
   subsequent `resume()` can retry it cleanly rather than finding it
   permanently blocked.
@@ -543,7 +541,7 @@ is also callable directly at any point a caller has an instance in hand.
 ### Integration with `ExecutionPipeline`
 
 `ExecutionRequest` gained one new optional field, `workflowGraph`.
-`ExecutionPipeline.run()` checks it as the *very first thing it does* —
+`ExecutionPipeline.run()` checks it as the _very first thing it does_ —
 set, the request is delegated entirely to an internal `WorkflowExecutor`
 (constructed once, in the constructor, wired to call back into `run()`
 itself for `capability` nodes); absent, every line below that check is
@@ -598,7 +596,6 @@ methods were needed).
   must finish within N ms regardless of per-node timeouts" concept
   beyond that.
 
-
 ## Stage 4: Durable Runtime State & Persistence
 
 Everything Stage 1-3 produces — sessions, workflow execution state,
@@ -615,7 +612,7 @@ before.
 
 `RuntimeStore` (`persistence/runtime-store.interface.ts`) has four
 sub-stores — `sessions`, `executions`, `checkpoints`, `receipts` — and
-every one of them stores the *actual* Stage 1-3 types
+every one of them stores the _actual_ Stage 1-3 types
 (`ExecutionSession`, `WorkflowInstance`, `WorkflowCheckpoint`,
 `ExecutionReceipt`/`WorkflowReceipt`) wrapped in a small versioned
 envelope (`{ version, persistedAt, data }`), not a redesigned schema.
@@ -653,6 +650,7 @@ not added to `WorkflowCheckpoint`, so that type stays untouched too.
   a single shared database file would be for this stage's scope.
 
   Layout:
+
   ```
   sessions/<sessionId>.json
   executions/<executionId>.json
@@ -665,8 +663,8 @@ not added to `WorkflowCheckpoint`, so that type stays untouched too.
 ### Concurrency: per-key locking, not a global lock
 
 `KeyedAsyncLock` (`persistence/file/atomic-file-io.ts`) serializes
-operations that touch the *same* record (e.g. two writes to the same
-session id racing each other) while letting operations on *different*
+operations that touch the _same_ record (e.g. two writes to the same
+session id racing each other) while letting operations on _different_
 records run fully concurrently — "avoid global locks that unnecessarily
 serialize unrelated executions." This is purely in-process ordering
 (chained promises per key); the atomic rename is what actually protects
@@ -735,7 +733,7 @@ If the process dies **between** a node's own execution and the next
 persistence point (i.e. mid-round, before that round's state update is
 persisted), that node's result is lost. On resume, the scheduler sees
 that node as still unvisited (its predecessor, if any, is whatever the
-*last persisted* state says) and dispatches it again. This is
+_last persisted_ state says) and dispatches it again. This is
 **at-least-once execution, not exactly-once** — a node whose side effect
 isn't naturally idempotent (e.g. a `capability` node that sends an
 email) could genuinely run twice across a crash-and-resume. This runtime
@@ -743,7 +741,7 @@ does not claim otherwise anywhere, and callers whose node handlers have
 non-idempotent side effects should account for this explicitly (e.g. via
 their own idempotency keys derived from `NodeId` + `WorkflowInstanceId`).
 
-A node that fails specifically *because* the workflow was cancelled
+A node that fails specifically _because_ the workflow was cancelled
 (Stage 3's existing distinction — see "Retries, timeouts, and
 cancellation" above) is, as before, excluded from `failedNodes` so it
 remains eligible for a clean retry on resume, rather than being
@@ -754,17 +752,18 @@ not just the crash case.
 ### A real bug Stage 4's own tests found and fixed
 
 `WorkflowCheckpoint.checkpointId` was generated from `workflowInstanceId`
-+ wall-clock milliseconds alone. Two checkpoints for the same execution
-created within the same millisecond — entirely possible for a fast,
-unthrottled workflow, and something Stage 4's own `checkpointEveryRound`
-tests hit directly — would collide and silently overwrite each other in
-any `Map`/file keyed by checkpoint id. Fixed by adding a module-scoped
-monotonic counter to the id (`workflow/workflow-checkpoint.ts`) — a
-plain incrementing counter, not randomness, so it stays consistent with
-this whole subsystem's "no randomness" constraint. This is a Stage 3
-file with a Stage 3 bug, found while building Stage 4; fixing it there
-(rather than working around it only in the new persistence layer) was
-the correct fix regardless of which stage's tests happened to catch it.
+
+- wall-clock milliseconds alone. Two checkpoints for the same execution
+  created within the same millisecond — entirely possible for a fast,
+  unthrottled workflow, and something Stage 4's own `checkpointEveryRound`
+  tests hit directly — would collide and silently overwrite each other in
+  any `Map`/file keyed by checkpoint id. Fixed by adding a module-scoped
+  monotonic counter to the id (`workflow/workflow-checkpoint.ts`) — a
+  plain incrementing counter, not randomness, so it stays consistent with
+  this whole subsystem's "no randomness" constraint. This is a Stage 3
+  file with a Stage 3 bug, found while building Stage 4; fixing it there
+  (rather than working around it only in the new persistence layer) was
+  the correct fix regardless of which stage's tests happened to catch it.
 
 ### Versioning and migration
 
@@ -807,7 +806,7 @@ for the very first future record shape change to slip past unnoticed.
 ## Stage 5: Durable Runtime Memory & Context
 
 Stage 4 answered "where is execution/workflow state stored?" Stage 5
-answers a different question: "what does the runtime *remember* across
+answers a different question: "what does the runtime _remember_ across
 executions, how is it scoped, how is it retrieved, and how is it
 persisted safely?" It is additive on top of Stage 4's persistence
 boundary, not a replacement for anything Stage 1-4 built.
@@ -826,11 +825,11 @@ boundary, not a replacement for anything Stage 1-4 built.
  sessions           context
 ```
 
-Stage 5 memory is *not* a replacement for checkpoints, `ExecutionRecord`,
+Stage 5 memory is _not_ a replacement for checkpoints, `ExecutionRecord`,
 `WorkflowState`, or receipts, and does not merge with any of them. It
 also isn't a replacement for the pre-existing `MemoryManager`
 (`memory/working-memory.ts`) — that class is unchanged and still owns
-exactly what it always owned: per-session conversational *turn history*
+exactly what it always owned: per-session conversational _turn history_
 (user/assistant/tool messages), transient, in-process only, feeding
 `PromptAssembler`. Stage 5's `RuntimeMemory` is durable, structured,
 scoped, and explicitly written — a different thing serving a different
@@ -861,13 +860,13 @@ interface MemoryEntry {
   id: MemoryEntryId;
   scope: MemoryScope;
   type: 'fact' | 'preference' | 'result' | 'context';
-  key?: string;               // upsert identity within a scope
+  key?: string; // upsert identity within a scope
   value: unknown;
   provenance?: MemoryProvenance;
   metadata?: Readonly<Record<string, unknown>>;
   createdAt: string;
   updatedAt: string;
-  expiresAt?: string;         // TTL — absent means "never expires"
+  expiresAt?: string; // TTL — absent means "never expires"
 }
 ```
 
@@ -882,13 +881,16 @@ names (user preference → `preference`, workflow fact/learned context →
 
 ```ts
 type MemoryScopeKind = 'execution' | 'session' | 'workflow' | 'runtime';
-interface MemoryScope { kind: MemoryScopeKind; scopeId: string; }
+interface MemoryScope {
+  kind: MemoryScopeKind;
+  scopeId: string;
+}
 ```
 
 A closed set, matching `@xo/permissions`' closed-domain pattern for the
 same reason: an open-ended scope string would let a bug (or a hostile
 package) mint a scope no isolation code was ever reviewed against.
-`capability` and `package` scopes (mentioned as *candidates* in the
+`capability` and `package` scopes (mentioned as _candidates_ in the
 brief) were deliberately **not** added — nothing in this codebase
 currently identifies "the current capability" or "the current package"
 as a durable, addressable scope root the way it does `WorkflowInstanceId`
@@ -897,7 +899,7 @@ member and a new directory-name mapping in `FileMemoryRecordStore`,
 never a change to how the existing kinds behave.
 
 The isolation invariant — "memory from one scope must not accidentally
-leak into another scope" — is enforced *structurally*, not by a filter a
+leak into another scope" — is enforced _structurally_, not by a filter a
 caller could forget:
 
 - `InMemoryDurableMemoryStore` partitions by a `Map` keyed on
@@ -913,8 +915,8 @@ caller could forget:
 
 Tested directly (`test/memory-record-store.test.ts`,
 `test/runtime-memory.test.ts`): execution-vs-execution,
-session-vs-session, and workflow-vs-execution isolation *even when the
-underlying scopeId string is identical* — `executionScope('x')` and
+session-vs-session, and workflow-vs-execution isolation _even when the
+underlying scopeId string is identical_ — `executionScope('x')` and
 `workflowScope('x')` derive different deterministic ids and never see
 each other's entries, on both the in-memory and file-backed stores.
 
@@ -955,7 +957,7 @@ changes to how they construct or use `sessions`/`executions`/
 
 Per the brief's explicit instruction, this stage does not invent a new
 authorization framework. `memory/memory-permission-gate.interface.ts` is
-a minimal *port* (no `@xo/permissions` import, mirroring
+a minimal _port_ (no `@xo/permissions` import, mirroring
 `permissions/permission-gate.interface.ts`'s existing pattern for
 capability execution) with four independently-checked actions — `read`,
 `write`, `delete`, `share` — and a default,
@@ -996,14 +998,14 @@ interface MemoryProvenance {
   capabilityId?: string;
   sessionId?: string;
   recordedAt: string;
-  confidence: number;   // 0-1, required — never silently "certain" by omission
+  confidence: number; // 0-1, required — never silently "certain" by omission
 }
 ```
 
 Shape-consistent with `KnowledgeProvenance` (structured origin fields
 plus a single `confidence: number`), but the origin fields describe
-*where in a runtime this memory came from* (which execution, which
-capability, which session) rather than *where in a source document* —
+_where in a runtime this memory came from_ (which execution, which
+capability, which session) rather than _where in a source document_ —
 `KnowledgeProvenance`'s `documentPath`/`pages`/`sectionPath`/
 `charOffsetRange` have no meaning for something a capability generated
 at runtime. `confidence` deliberately lives only on `provenance`, not as
@@ -1022,8 +1024,8 @@ file-store restart.
 `memory/memory-id.ts` draws the line the brief asks for (§14) explicitly:
 
 - **`deriveMemoryEntryId(scope, key)`** — a pure `sha256(scopeKey +
-  "::" + key)`-derived id. The same `(scope, key)` always derives the
-  same id, so `RuntimeMemory.put` with a `key` is an *upsert*: writing
+"::" + key)`-derived id. The same `(scope, key)` always derives the
+  same id, so `RuntimeMemory.put` with a `key` is an _upsert_: writing
   `preference.language` twice replaces the same entry (preserving its
   original `createdAt`, updating `updatedAt`) rather than creating a
   duplicate. Plain `node:crypto`, the same primitive
@@ -1042,7 +1044,7 @@ file-store restart.
 `memory/memory-ttl.ts`: `resolveExpiresAt` (absolute `expiresAt` wins
 over a relative `ttlSeconds` if both are given) and `isExpired` (an
 entry expiring at exactly `now` counts as expired — tested explicitly as
-a boundary case on both stores). Enforced at the *store* layer, not only
+a boundary case on both stores). Enforced at the _store_ layer, not only
 in `RuntimeMemory`, so any caller reading a `RuntimeStore.memory`
 directly — not just one going through the `RuntimeMemory` facade — gets
 correct expiration semantics. `query(..., { includeExpired: true })` is
@@ -1061,7 +1063,7 @@ interface WorkflowContext {
   state: WorkflowState;
   environment: ExecutionEnvironment;
   cancellation: ExecutionCancellation;
-  memory?: ScopedRuntimeMemory;   // Stage 5
+  memory?: ScopedRuntimeMemory; // Stage 5
 }
 ```
 
@@ -1091,7 +1093,7 @@ persistence store directly to capabilities" actually requires in code.
 into `ContextAssembler`/`PromptAssembler` so retrieved memories are
 injected into a capability's prompt without being asked. The brief's
 own diagram (execution → memory query → relevant memories → context
-assembly → capability execution) describes a *contract*, and Stage 5
+assembly → capability execution) describes a _contract_, and Stage 5
 establishes exactly that contract (`RuntimeMemory`, `ScopedRuntimeMemory`,
 `queryAcrossScopes`) without prematurely picking how/when a host chooses
 to fold query results into an assembled prompt — see §13's explicit

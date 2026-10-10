@@ -3,7 +3,6 @@ import type { LayoutEngine } from '../layout/types.js';
 import type { GraphCommandRegistry } from '../commands/GraphCommandRegistry.js';
 import type { GraphCommandContext, GraphCommandHandler } from '../commands/types.js';
 import type { GraphAnimationEngine } from '../animation/GraphAnimationEngine.js';
-import type { GraphAnimation } from '../animation/GraphAnimation.js';
 import type { GraphModel } from '../model/GraphModel.js';
 import type { GraphSelection } from '../selection/GraphSelection.js';
 
@@ -33,6 +32,7 @@ export interface GraphPlugin {
   readonly name: string;
   readonly interactions?: Readonly<Record<string, unknown>>;
   readonly layouts?: readonly LayoutEngine[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous registry: each command has its own args type
   readonly commands?: Readonly<Record<string, GraphCommandHandler<any>>>;
   readonly animations?: Readonly<Record<string, AnimationFactory>>;
   readonly selectionBehaviors?: Readonly<Record<string, SelectionBehavior>>;

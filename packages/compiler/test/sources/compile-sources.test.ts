@@ -21,7 +21,11 @@ function samplePdfBytes(): Uint8Array {
 
 const htmlInput = {
   kind: 'html' as const,
-  html: '<html><head><title>Confidentiality FAQ</title></head><body>' + '<h1>Confidentiality FAQ</h1>' + '<p>Confidential information must not be disclosed to third parties without prior written consent.</p>' + '</body></html>',
+  html:
+    '<html><head><title>Confidentiality FAQ</title></head><body>' +
+    '<h1>Confidentiality FAQ</h1>' +
+    '<p>Confidential information must not be disclosed to third parties without prior written consent.</p>' +
+    '</body></html>',
   sourcePath: 'faq.html',
 };
 
@@ -60,8 +64,16 @@ test('compileSources: heterogeneous PDF + HTML + JSON sources compile together i
 });
 
 test('multi-source compilation does not collide unit ids across sources with identical text content', async () => {
-  const identicalTextA = { kind: 'document' as const, text: 'The parties agree to keep all information confidential.', sourcePath: 'copy-a.txt' };
-  const identicalTextB = { kind: 'document' as const, text: 'The parties agree to keep all information confidential.', sourcePath: 'copy-b.txt' };
+  const identicalTextA = {
+    kind: 'document' as const,
+    text: 'The parties agree to keep all information confidential.',
+    sourcePath: 'copy-a.txt',
+  };
+  const identicalTextB = {
+    kind: 'document' as const,
+    text: 'The parties agree to keep all information confidential.',
+    sourcePath: 'copy-b.txt',
+  };
   const result = await compileSources([identicalTextA, identicalTextB]);
   assert.equal(result.ok, true);
   if (!result.ok) return;

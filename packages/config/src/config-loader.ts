@@ -40,7 +40,10 @@ function parseField(key: string, spec: FieldSpec, raw: string | undefined): unkn
     }
     case 'enum': {
       if (!spec.values.includes(raw)) {
-        throw new ConfigError(ErrorCode.CONFIG_INVALID_VALUE, `Config key "${key}" must be one of [${spec.values.join(', ')}], got "${raw}"`);
+        throw new ConfigError(
+          ErrorCode.CONFIG_INVALID_VALUE,
+          `Config key "${key}" must be one of [${spec.values.join(', ')}], got "${raw}"`,
+        );
       }
       return raw;
     }

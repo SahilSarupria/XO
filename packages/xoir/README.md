@@ -2,12 +2,12 @@
 
 XOIR is **the single canonical semantic representation of a compiled
 Experience Object.** Think of it the way you'd think of LLVM IR: every
-compiler frontend/extraction stage compiles *into* XOIR, every
+compiler frontend/extraction stage compiles _into_ XOIR, every
 optimization/analysis pass transforms XOIR, every XO package is generated
-*from* XOIR, and every runtime ultimately consumes data produced from
+_from_ XOIR, and every runtime ultimately consumes data produced from
 XOIR. Stage-specific extraction models (Stage 4's `KnowledgeGraph`, Stage
 5's `CapabilityGraph`, both in `@xo/compiler`) are useful
-*extraction-domain* models, not competing canonical representations —
+_extraction-domain_ models, not competing canonical representations —
 they convert into XOIR through an explicit boundary (see "Stage 4/5
 mapping" below), and nothing downstream of that boundary should ever
 target anything other than XOIR.
@@ -30,7 +30,7 @@ knowledge of any specific frontend.
 - **Immutable values, mutable container.** A `XoirNode`/`XoirEdge` is a
   frozen-by-convention value: every field is `readonly`, and nothing in
   this package mutates one in place. `XoirGraph` itself is a mutable
-  *builder* — nodes and edges are added/removed incrementally as a
+  _builder_ — nodes and edges are added/removed incrementally as a
   compiler frontend or pass runs — the same split LLVM draws between an
   immutable `Instruction` and a mutable `BasicBlock`/`Module`.
 - **Content-addressable identity.** Every node and edge carries a
@@ -55,8 +55,8 @@ XOIR exists so that N extraction frontends (a PDF adapter, a Git-history
 adapter, a future Slack adapter, ...) and M downstream consumers
 (optimization passes, the Linker, Benchmark Synthesis, the Packager) meet
 at one typed, versioned, content-addressed graph instead of needing
-N×M bespoke translations. It represents *the semantics of compiled
-expertise* — what a professional knows, how they decide, where they've
+N×M bespoke translations. It represents _the semantics of compiled
+expertise_ — what a professional knows, how they decide, where they've
 been wrong before — never package/registry/marketplace metadata (§16,
 §18) and never live runtime state (§17).
 
@@ -69,23 +69,23 @@ envelope (§5–6).
 The **canonical** semantic node kinds — each answering "what semantic
 role does this piece of expertise play?" — are:
 
-| Kind | Represents |
-|---|---|
-| `concept` | A domain entity or term |
-| `fact` | A stated, source-grounded claim |
-| `heuristic` | A rule of thumb, with exception conditions |
-| `decision_node` | One branch point in a decision graph |
-| `reasoning_step` | One step in an ordered reasoning chain |
-| `preference` | A stable stylistic/communication choice |
-| `risk_policy` | A risk-tolerance rule |
-| `escalation_rule` | When to defer to a human or another capability |
-| `failure_case` | A known bad outcome and its cause |
-| `success_pattern` | A known good outcome and what produced it |
-| `capability` | A named, invokable unit of skill (absorbs the full `CapabilitySignature` — §4) |
-| `constraint` | A hard limit a capability must respect |
-| `safety_policy` | A rule the compiled XO must never violate |
-| `memory_unit` | A durable fact/episode for the runtime's memory graph |
-| `evaluation_artifact` | A test case or benchmark item derived from evidence |
+| Kind                  | Represents                                                                     |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `concept`             | A domain entity or term                                                        |
+| `fact`                | A stated, source-grounded claim                                                |
+| `heuristic`           | A rule of thumb, with exception conditions                                     |
+| `decision_node`       | One branch point in a decision graph                                           |
+| `reasoning_step`      | One step in an ordered reasoning chain                                         |
+| `preference`          | A stable stylistic/communication choice                                        |
+| `risk_policy`         | A risk-tolerance rule                                                          |
+| `escalation_rule`     | When to defer to a human or another capability                                 |
+| `failure_case`        | A known bad outcome and its cause                                              |
+| `success_pattern`     | A known good outcome and what produced it                                      |
+| `capability`          | A named, invokable unit of skill (absorbs the full `CapabilitySignature` — §4) |
+| `constraint`          | A hard limit a capability must respect                                         |
+| `safety_policy`       | A rule the compiled XO must never violate                                      |
+| `memory_unit`         | A durable fact/episode for the runtime's memory graph                          |
+| `evaluation_artifact` | A test case or benchmark item derived from evidence                            |
 
 `capability`, `constraint`, and `safety_policy` predate the taxonomy
 reconciliation and needed no rename — they were already exactly what a
@@ -108,17 +108,17 @@ roles with package-layer concerns: `knowledge`, `reasoning`, `decision`,
 stranded. `LEGACY_NODE_KIND_MIGRATION` (`node-kinds.ts`) is the explicit,
 documented mapping a pass uses to upgrade one:
 
-| Legacy kind | Canonical target |
-|---|---|
-| `reasoning` | `reasoning_step` |
-| `decision` | `decision_node` |
-| `memory` | `memory_unit` |
-| `evaluation` | `evaluation_artifact` |
-| `benchmark` | `evaluation_artifact` |
-| `knowledge` | *(ambiguous — content-dependent: `concept`/`fact`/`heuristic`)* |
-| `case_study` | *(ambiguous — content-dependent: `failure_case`/`success_pattern`/`evaluation_artifact`)* |
-| `prompt_strategy` | *(not a semantic node — derive from `reasoning_step`/`preference` subgraphs at packaging time)* |
-| `metadata`, `provenance`, `license`, `identity`, `version` | *(not semantic nodes — package/manifest/registry layer; see §16–18)* |
+| Legacy kind                                                | Canonical target                                                                                |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `reasoning`                                                | `reasoning_step`                                                                                |
+| `decision`                                                 | `decision_node`                                                                                 |
+| `memory`                                                   | `memory_unit`                                                                                   |
+| `evaluation`                                               | `evaluation_artifact`                                                                           |
+| `benchmark`                                                | `evaluation_artifact`                                                                           |
+| `knowledge`                                                | _(ambiguous — content-dependent: `concept`/`fact`/`heuristic`)_                                 |
+| `case_study`                                               | _(ambiguous — content-dependent: `failure_case`/`success_pattern`/`evaluation_artifact`)_       |
+| `prompt_strategy`                                          | _(not a semantic node — derive from `reasoning_step`/`preference` subgraphs at packaging time)_ |
+| `metadata`, `provenance`, `license`, `identity`, `version` | _(not semantic nodes — package/manifest/registry layer; see §16–18)_                            |
 
 New code should always mint canonical kinds. `migrateLegacyNodeKind(kind)`
 returns `undefined` for the ambiguous/package-layer cases rather than
@@ -128,7 +128,7 @@ guessing — a caller migrating one of those must inspect the node's own
 ## 4. The kind/subtype split, and Capability's absorbed signature
 
 `kind` is the semantic-role axis (§2); `metadata.subtype` (§5) is the
-domain/entity classification *within* that role — e.g. `kind: 'concept',
+domain/entity classification _within_ that role — e.g. `kind: 'concept',
 subtype: 'organization'` or `kind: 'fact', subtype: 'metric'`. XOIR's
 core operations never switch on `subtype`; it is a free-form string, not
 a second closed enum, because domain classification is a profession
@@ -156,15 +156,15 @@ extension bag distinct from `properties`), and `subtype` (§4).
 `XoirSourceRef` answers "where did this claim come from": `documentPath`
 (the only field required for backward compatibility), plus
 `experienceUnitId`, `pages`, `sectionPath`, `charOffsetRange`, and
-`sourceConfidence` (that *source's* confidence, distinct from the
+`sourceConfidence` (that _source's_ confidence, distinct from the
 node/edge's own overall `confidence`, which may combine several
 sources). Provenance is **additive**: when a node is corroborated by
 multiple sources, `sourceRefs` carries every one of them — merging is
 never allowed to silently overwrite or pick one (see "Merge engine"
-below; `mergeGraphs` itself resolves *id* conflicts, it does not
+below; `mergeGraphs` itself resolves _id_ conflicts, it does not
 auto-union differently-sourced duplicate claims — an adapter converting
 multiple raw sources into one canonical node is expected to union
-`sourceRefs` *before* constructing that node, exactly as
+`sourceRefs` _before_ constructing that node, exactly as
 `@xo/compiler`'s Stage 4/5 adapters do).
 
 Edges carry the identical `sourceRefs`/`confidence`/`confidenceDetail`
@@ -174,7 +174,7 @@ provenance, distinct from either endpoint's.
 
 ## 6. Confidence model (`confidence.ts`)
 
-A bare `number` says "how sure," not "sure *how*." `XoirConfidence` makes
+A bare `number` says "how sure," not "sure _how_." `XoirConfidence` makes
 that explicit: `score` (0–1, mirrored by `metadata.confidence`), `basis`
 (`'stated' | 'observed' | 'inferred' | 'hybrid_extraction' |
 'expert_provided' | 'unknown'`), `evidenceStrength` (`'weak' | 'moderate'
@@ -195,7 +195,7 @@ so the two never disagree.
 
 ## 7. Canonical edge taxonomy
 
-`CoreXoirEdgeKind` — relationships that express how expertise *behaves*
+`CoreXoirEdgeKind` — relationships that express how expertise _behaves_
 (dependency, conflict, derivation, composition): `REQUIRES`,
 `CONTRADICTS`, `SUPPORTS`, `REFINES`, `SUPERSEDES`, `ESCALATES_TO`,
 `TRIGGERED_BY`, `CO_OCCURS_WITH`, `DERIVED_FROM`, `COMPOSES_INTO`. The
@@ -225,7 +225,7 @@ exclusive-choice relationship no existing edge kind covers without a
 real semantic stretch — `COMPOSES_INTO`/`COMPLEMENTS` both mean
 "combines with" (the opposite), and `CONTRADICTS` is for two claims that
 logically disagree, not two options a decision-maker is choosing between
-(both can be independently true — only one gets *chosen*). Symmetric by
+(both can be independently true — only one gets _chosen_). Symmetric by
 convention: producers only need to emit one direction.
 
 Both are open-ended via `custom:<name>`, same convention as nodes.
@@ -245,7 +245,7 @@ listed is unconstrained by design.
 — `validateGraph` never treats a cycle as a structural error, and
 `hasCycle()` is purely informational. `topologicalOrder(edgeKinds?)`
 fails cleanly with `XOIR_CYCLE_DETECTED` — never a silent partial order —
-whenever the *selected* edges aren't acyclic. A pass that needs a DAG
+whenever the _selected_ edges aren't acyclic. A pass that needs a DAG
 view of one specific relationship (an execution-dependency graph, a
 decision-dependency graph, a compiler-pass-dependency graph) restricts
 the walk to just that edge kind: `graph.topologicalOrder(['REQUIRES'])`.
@@ -323,7 +323,7 @@ guessing at an unknown version's shape.
 `canonicalStringify` (`hashing.ts`) is the one function every hash goes
 through: object keys sorted, arrays order-preserved (order is meaningful
 data), exactly one textual form per value. `hashNode`/`hashEdge` hash
-everything about a node/edge *except* its own `hash` field (circular) and
+everything about a node/edge _except_ its own `hash` field (circular) and
 `updatedAt`/`createdAt` bookkeeping timestamps — including, as of this
 reconciliation, `subtype` and `confidenceDetail`. `hashGraphContents`
 builds a Merkle root over every node/edge hash, sorted first so it's
@@ -343,7 +343,7 @@ a Stage 4 `KnowledgeGraph` losslessly:
   verbatim as `metadata.subtype`, regardless of which kind it landed on.
 - **Provenance**: every `KnowledgeProvenance` → `XoirSourceRef` 1:1
   (`provenance.ts#provenanceToSourceRefs`).
-- **Confidence**: the bare number is kept, *and* a full `XoirConfidence`
+- **Confidence**: the bare number is kept, _and_ a full `XoirConfidence`
   is derived with real corroboration (`provenance.length`) and an
   evidence-strength bucket from that count — never a fabricated basis.
 - **Edges**: all 21 `KnownKnowledgeEdgeType`s map 1:1 to XOIR edge kinds
@@ -359,7 +359,7 @@ converts a Stage 5 `CapabilityGraph` losslessly:
   verbatim. Stage 5's own `computeCapabilityId` (word-stemming +
   synonym-folding match key) already merges "Send Email" / "Email
   Sending" / "Mail Sender" into one `Capability` with three aliases
-  *before* this adapter ever runs — converting that one already-merged
+  _before_ this adapter ever runs — converting that one already-merged
   `Capability` yields exactly one XOIR `capability` node, with all three
   surface forms retained in `properties.aliases`. See
   `@xo/compiler`'s `test/xoir/capability-to-xoir.test.ts`'s worked
@@ -370,7 +370,7 @@ converts a Stage 5 `CapabilityGraph` losslessly:
   `properties.dependencies` mirror and real `REQUIRES` edges (built in a
   second pass so declaration order doesn't matter).
 - **Required knowledge**: `Capability.requiredKnowledgeNodeIds` becomes
-  `REQUIRES` edges to the corresponding Stage-4-derived nodes *when*
+  `REQUIRES` edges to the corresponding Stage-4-derived nodes _when_
   converting into a graph that already has them (`options.into` — see
   "Combining Stage 4 and Stage 5 output" below); silently skipped
   otherwise, same policy as Stage 4's edge handling.
@@ -390,7 +390,7 @@ edges actually resolve.
 ## 16. XOIR vs XO Package
 
 XOIR is the canonical **semantic compiler representation** — sufficient
-to *generate* an XO package (each `manifest.json`/`knowledge/graph.json`/
+to _generate_ an XO package (each `manifest.json`/`knowledge/graph.json`/
 `reasoning/*`/`safety/rules.json`/etc. component is a projection of some
 typed view over the graph), but it does not itself absorb every package
 concern: licensing terms, publisher identity, marketplace listing state,
@@ -461,14 +461,14 @@ never matched to each other — that's `merge.ts`'s concern, not diff's.
 
 `mergeGraphs(graphs, newGraphId, strategy)` unions multiple graphs,
 preserving identity by `id`. Two nodes sharing an id with identical
-content merge silently; two nodes sharing an id with *different* content
+content merge silently; two nodes sharing an id with _different_ content
 are a reported conflict, resolved per `strategy` (`prefer_first` /
 `prefer_last` / `prefer_higher_confidence` (default) /
 `error_on_conflict`), always reported in `MergeResult.conflicts`
 regardless of which strategy resolved it. `mergeGraphs` does not union
 provenance across differently-sourced duplicate claims on its own — an
 adapter combining multiple raw sources into one canonical node (§14, §15)
-is expected to union `sourceRefs` *before* constructing that node.
+is expected to union `sourceRefs` _before_ constructing that node.
 
 ## Visitor / Pass frameworks
 
@@ -488,16 +488,9 @@ version).
 ## Example
 
 ```ts
-import {
-  XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId,
-  validateGraph, confidenceFromScore, createManifest,
-} from '@xo/xoir';
+import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId, validateGraph, confidenceFromScore, createManifest } from '@xo/xoir';
 
-const graph = XoirGraph.create(
-  XoirGraphId('nda-lawyer-v1'),
-  1,
-  createManifest({ schemaVersion: 1, professionTags: ['corporate-law'] }),
-);
+const graph = XoirGraph.create(XoirGraphId('nda-lawyer-v1'), 1, createManifest({ schemaVersion: 1, professionTags: ['corporate-law'] }));
 
 graph.createAndAddNode({
   id: XoirNodeId('cap-draft-nda'),
@@ -519,7 +512,7 @@ graph.createAndAddEdge({
 });
 
 const report = validateGraph(graph); // { valid: true, issues: [] }
-console.log(graph.contentHash());    // sha256:...
+console.log(graph.contentHash()); // sha256:...
 ```
 
 ## Extension points for future modules

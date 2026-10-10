@@ -16,7 +16,10 @@ import type { SemanticCapabilityContract } from './types.js';
 function contractToPropertyBag(contract: SemanticCapabilityContract): Record<string, XoirValue> {
   // P0.9B: the embedded contract carries its own semantic content hash
   // (recomputed here, never copied from a possibly-stale `contract.contentHash`).
-  return JSON.parse(JSON.stringify({ ...contract, contentHash: computeContractContentHash(contract) })) as unknown as Record<string, XoirValue>;
+  return JSON.parse(JSON.stringify({ ...contract, contentHash: computeContractContentHash(contract) })) as unknown as Record<
+    string,
+    XoirValue
+  >;
 }
 
 /**
@@ -45,12 +48,21 @@ function contractToPropertyBag(contract: SemanticCapabilityContract): Record<str
  * "last touched" timestamp this function should be allowed to bump as a
  * side effect of an unrelated properties change.
  */
-function replaceCapabilityNodeProperties(graph: XoirGraph, node: XoirNode, newProperties: CapabilityNodeProps): Result<XoirNode, CapabilityContractError> {
+function replaceCapabilityNodeProperties(
+  graph: XoirGraph,
+  node: XoirNode,
+  newProperties: CapabilityNodeProps,
+): Result<XoirNode, CapabilityContractError> {
   const touchingEdges: XoirEdge[] = graph.allEdges().filter((e) => e.fromId === node.id || e.toId === node.id);
 
   const removeResult = graph.removeNode(node.id);
   if (!removeResult.ok) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_MALFORMED, `Failed to remove node "${node.id}" before re-adding it with an embedded contract: ${removeResult.error.message}`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_MALFORMED,
+        `Failed to remove node "${node.id}" before re-adding it with an embedded contract: ${removeResult.error.message}`,
+      ),
+    );
   }
 
   const addResult = graph.createAndAddNode({
@@ -62,17 +74,29 @@ function replaceCapabilityNodeProperties(graph: XoirGraph, node: XoirNode, newPr
     custom: node.metadata.custom,
     version: node.version,
     now: () => node.metadata.createdAt,
-    ...(node.metadata.confidenceDetail !== undefined ? { confidenceDetail: node.metadata.confidenceDetail } : { confidence: node.metadata.confidence }),
+    ...(node.metadata.confidenceDetail !== undefined
+      ? { confidenceDetail: node.metadata.confidenceDetail }
+      : { confidence: node.metadata.confidence }),
     ...(node.metadata.subtype !== undefined ? { subtype: node.metadata.subtype } : {}),
   });
   if (!addResult.ok) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_MALFORMED, `Failed to re-add node "${node.id}" with an embedded contract: ${addResult.error.message}`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_MALFORMED,
+        `Failed to re-add node "${node.id}" with an embedded contract: ${addResult.error.message}`,
+      ),
+    );
   }
 
   for (const edge of touchingEdges) {
     const readdResult = graph.addEdge(edge);
     if (!readdResult.ok) {
-      return err(new CapabilityContractError(ErrorCode.CONTRACT_MALFORMED, `Failed to restore edge "${edge.id}" (${edge.kind}: ${edge.fromId} -> ${edge.toId}) after re-adding node "${node.id}" with an embedded contract: ${readdResult.error.message}`));
+      return err(
+        new CapabilityContractError(
+          ErrorCode.CONTRACT_MALFORMED,
+          `Failed to restore edge "${edge.id}" (${edge.kind}: ${edge.fromId} -> ${edge.toId}) after re-adding node "${node.id}" with an embedded contract: ${readdResult.error.message}`,
+        ),
+      );
     }
   }
 
@@ -97,18 +121,30 @@ function replaceCapabilityNodeProperties(graph: XoirGraph, node: XoirNode, newPr
  * has no dependency on `@xo/xoir`; see `extractContractFromPropertyBag`
  * below for the runtime-side counterpart, which needs no `XoirGraph`).
  */
-export function embedContractInCapabilityNode(graph: XoirGraph, capabilityNodeId: XoirNodeId, options: BuildContractOptions = {}): Result<XoirNode, CapabilityContractError> {
+export function embedContractInCapabilityNode(
+  graph: XoirGraph,
+  capabilityNodeId: XoirNodeId,
+  options: BuildContractOptions = {},
+): Result<XoirNode, CapabilityContractError> {
   const contractResult = buildSemanticCapabilityContract(graph, capabilityNodeId, options);
   if (!contractResult.ok) return err(contractResult.error);
 
   const nodeResult = graph.getNode(capabilityNodeId);
   if (!nodeResult.ok) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND, `No XOIR node found for capability node id "${capabilityNodeId}"`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND,
+        `No XOIR node found for capability node id "${capabilityNodeId}"`,
+      ),
+    );
   }
   const node = nodeResult.value;
   const existingProps = node.properties as unknown as CapabilityNodeProps;
 
-  return replaceCapabilityNodeProperties(graph, node, { ...existingProps, semanticCapabilityContract: contractToPropertyBag(contractResult.value) });
+  return replaceCapabilityNodeProperties(graph, node, {
+    ...existingProps,
+    semanticCapabilityContract: contractToPropertyBag(contractResult.value),
+  });
 }
 
 /**
@@ -132,10 +168,19 @@ export function embedContractInCapabilityNode(graph: XoirGraph, capabilityNodeId
  * behavior is identical between both entry points, verified by the same
  * test suite.
  */
-export function embedResolvedContractInCapabilityNode(graph: XoirGraph, capabilityNodeId: XoirNodeId, contract: SemanticCapabilityContract): Result<XoirNode, CapabilityContractError> {
+export function embedResolvedContractInCapabilityNode(
+  graph: XoirGraph,
+  capabilityNodeId: XoirNodeId,
+  contract: SemanticCapabilityContract,
+): Result<XoirNode, CapabilityContractError> {
   const nodeResult = graph.getNode(capabilityNodeId);
   if (!nodeResult.ok) {
-    return err(new CapabilityContractError(ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND, `No XOIR node found for capability node id "${capabilityNodeId}"`));
+    return err(
+      new CapabilityContractError(
+        ErrorCode.CONTRACT_SOURCE_NODE_NOT_FOUND,
+        `No XOIR node found for capability node id "${capabilityNodeId}"`,
+      ),
+    );
   }
   const node = nodeResult.value;
   const existingProps = node.properties as unknown as CapabilityNodeProps;

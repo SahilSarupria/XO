@@ -1,4 +1,4 @@
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 import type { PackageBundle } from '../types.js';
 import { canonicalJson } from '../hashing/fingerprint.js';
 import { tarEntriesToBuffer, tarEntriesToStream, type TarEntry } from './tar-codec.js';

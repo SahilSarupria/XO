@@ -52,7 +52,11 @@ function defaultMetadata(compiled: CompiledPdfResult, sourcePath: string): XoMet
  * inside a CI smoke test, for instance, has no signing key and shouldn't
  * need one just to check the packaging step works.
  */
-export async function compilePdfToPackage(bytes: Uint8Array, sourcePath: string, options: CompilePdfToPackageOptions): Promise<Result<CompiledPdfPackageResult, XoError>> {
+export async function compilePdfToPackage(
+  bytes: Uint8Array,
+  sourcePath: string,
+  options: CompilePdfToPackageOptions,
+): Promise<Result<CompiledPdfPackageResult, XoError>> {
   const compiled = await compilePdfToXoir(bytes, sourcePath, options);
   if (!compiled.ok) return err(compiled.error);
 

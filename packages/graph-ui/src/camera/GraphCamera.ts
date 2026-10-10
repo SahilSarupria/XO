@@ -99,7 +99,12 @@ export class GraphCamera {
   // ---- animated travel -------------------------------------------------
 
   /** Starts an animated transition to `target`, returning both the updated camera (committed immediately, for history/bookmark purposes) and an animation engine a renderer can sample every frame via `GraphCamera.animatedStateAt`. */
-  travelTo(target: GraphViewportState, durationMs: number, nowMs: number, easing?: Easing): { camera: GraphCamera; engine: GraphAnimationEngine } {
+  travelTo(
+    target: GraphViewportState,
+    durationMs: number,
+    nowMs: number,
+    easing?: Easing,
+  ): { camera: GraphCamera; engine: GraphAnimationEngine } {
     const engine = animateViewportTransition(GraphAnimationEngine.empty(), this.viewport.state, target, durationMs, nowMs, easing);
     return { camera: this.withViewport(new GraphViewport(target)), engine };
   }

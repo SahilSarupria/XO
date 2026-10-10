@@ -31,7 +31,9 @@ export class MigrationRegistry<T> {
     while (version < CURRENT_RUNTIME_STORE_VERSION) {
       const step = this.migrations.get(version);
       if (!step) {
-        throw new Error(`No migration registered to advance a persisted record from version ${version} (target: ${CURRENT_RUNTIME_STORE_VERSION})`);
+        throw new Error(
+          `No migration registered to advance a persisted record from version ${version} (target: ${CURRENT_RUNTIME_STORE_VERSION})`,
+        );
       }
       value = step(value);
       version += 1;

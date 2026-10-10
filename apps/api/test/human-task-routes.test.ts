@@ -40,7 +40,9 @@ interface ExecutionWire {
   readonly humanTask?: HumanTaskInfoWire;
 }
 
-const COMMERCIAL_PROPERTY_PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const COMMERCIAL_PROPERTY_PDF = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 const DETERMINISTIC_CAPABILITY_ID = 'cap_rule_0f731679e7120779542267faaabe10ff';
 const HITL_CAPABILITY_ID = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522'; // "Review not covered under standard rule" — the fixture's one human_in_the_loop capability
 
@@ -48,17 +50,29 @@ async function createWorkspace(server: TestServer, extraHeaders?: Readonly<Recor
   return (await server.request('POST', '/workspaces', {}, extraHeaders)).json<WorkspaceRecord>();
 }
 
-async function uploadAndCompile(server: TestServer, workspaceId: string, extraHeaders?: Readonly<Record<string, string>>): Promise<{ compilationId: string }> {
+async function uploadAndCompile(
+  server: TestServer,
+  workspaceId: string,
+  extraHeaders?: Readonly<Record<string, string>>,
+): Promise<{ compilationId: string }> {
   const pdfBytes = await readFile(COMMERCIAL_PROPERTY_PDF);
-  const source = (await server.request('POST', `/workspaces/${workspaceId}/sources?filename=policy.pdf`, pdfBytes, extraHeaders)).json<SourceWire>();
-  const compiled = (await server.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`, undefined, extraHeaders)).json<CompilationWire>();
+  const source = (
+    await server.request('POST', `/workspaces/${workspaceId}/sources?filename=policy.pdf`, pdfBytes, extraHeaders)
+  ).json<SourceWire>();
+  const compiled = (
+    await server.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`, undefined, extraHeaders)
+  ).json<CompilationWire>();
   assert.equal(compiled.status, 'succeeded', 'test fixture setup: expected compilation to succeed');
   return { compilationId: compiled.compilationId };
 }
 
 async function approveAndExecuteHitl(server: TestServer, workspaceId: string, compilationId: string): Promise<ExecutionWire> {
   await server.request('POST', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${HITL_CAPABILITY_ID}/approve`);
-  const execRes = await server.request('POST', `/workspaces/${workspaceId}/executions`, { compilationId, capabilityId: HITL_CAPABILITY_ID, input: {} });
+  const execRes = await server.request('POST', `/workspaces/${workspaceId}/executions`, {
+    compilationId,
+    capabilityId: HITL_CAPABILITY_ID,
+    input: {},
+  });
   assert.equal(execRes.status, 201);
   return execRes.json<ExecutionWire>();
 }
@@ -104,7 +118,9 @@ test('full HITL demo: waiting_for_human -> list pending tasks -> retrieve task -
         assert.equal(getRes.json<ExecutionWire>().executionId, executionId);
 
         // 10. Resolve with a valid decision.
-        const resolveRes = await server1.request('POST', `/workspaces/${workspaceId}/executions/${executionId}/resolve`, { decision: 'approve' });
+        const resolveRes = await server1.request('POST', `/workspaces/${workspaceId}/executions/${executionId}/resolve`, {
+          decision: 'approve',
+        });
         assert.equal(resolveRes.status, 200);
         const resolved = resolveRes.json<ExecutionWire>();
 
@@ -117,7 +133,8 @@ test('full HITL demo: waiting_for_human -> list pending tasks -> retrieve task -
         assert.equal(resolved.humanTask?.status, 'resolved');
         assert.equal(resolved.humanTask?.decision, 'approve');
         assert.equal(resolved.humanTask?.resumeOutcome?.kind, 'succeeded');
-        const resumeOutput = resolved.humanTask?.resumeOutcome as { output?: { status?: string; originalEscalation?: { status?: string } } } | undefined;
+        const resumeOutput = resolved.humanTask?.resumeOutcome as
+          { output?: { status?: string; originalEscalation?: { status?: string } } } | undefined;
         assert.equal(resumeOutput?.output?.status, 'human_confirmed');
         assert.equal(resumeOutput?.output?.originalEscalation?.status, 'escalation_required');
         // The underlying execution status genuinely transitions — this is the real, honest result of the resume.
@@ -142,7 +159,9 @@ test('full HITL demo: waiting_for_human -> list pending tasks -> retrieve task -
         assert.equal(record.humanTask?.resolverIdentityId, identityId);
 
         // 13. Attempt a second resolution and verify it cannot overwrite the first.
-        const secondResolve = await server2.request('POST', `/workspaces/${workspaceId}/executions/${executionId}/resolve`, { decision: 'reject' });
+        const secondResolve = await server2.request('POST', `/workspaces/${workspaceId}/executions/${executionId}/resolve`, {
+          decision: 'reject',
+        });
         assert.equal(secondResolve.status, 409);
         const afterSecond = secondResolve.json<ExecutionWire>();
         assert.equal(afterSecond.humanTask?.decision, 'approve'); // NOT overwritten to 'reject'
@@ -165,12 +184,17 @@ test('invalid decisions are rejected with 400', async () => {
     const execution = await approveAndExecuteHitl(server, workspace.workspaceId, compilationId);
 
     for (const badDecision of ['maybe', 'yes', '', 123, null]) {
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: badDecision });
+      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+        decision: badDecision,
+      });
       assert.equal(res.status, 400, `expected 400 for decision ${JSON.stringify(badDecision)}`);
     }
 
     // Non-object "data" is also rejected.
-    const badData = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve', data: 'not-an-object' });
+    const badData = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'approve',
+      data: 'not-an-object',
+    });
     assert.equal(badData.status, 400);
 
     // The task must still be pending — none of the bad requests resolved it.
@@ -186,12 +210,21 @@ test('a non-HITL execution cannot be resolved as a human task (400), and does no
   try {
     const workspace = await createWorkspace(server);
     const { compilationId } = await uploadAndCompile(server, workspace.workspaceId);
-    await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`);
-    const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: DETERMINISTIC_CAPABILITY_ID, input: { claim_amount: 15000, loss: 'fire' } });
+    await server.request(
+      'POST',
+      `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`,
+    );
+    const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+      compilationId,
+      capabilityId: DETERMINISTIC_CAPABILITY_ID,
+      input: { claim_amount: 15000, loss: 'fire' },
+    });
     const execution = execRes.json<ExecutionWire>();
     assert.equal(execution.status, 'succeeded');
 
-    const resolveRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve' });
+    const resolveRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'approve',
+    });
     assert.equal(resolveRes.status, 400);
 
     const getHumanTask = await server.request('GET', `/workspaces/${workspace.workspaceId}/human-tasks/${execution.executionId}`);
@@ -211,7 +244,14 @@ test('unknown workspace returns 404 on human-task and resolve routes', async () 
     const unknownId = 'ws_ffffffffffffffffffffffffffffffff';
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/human-tasks`)).status, 404);
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/human-tasks/exe_ffffffffffffffffffffffffffffffff`)).status, 404);
-    assert.equal((await server.request('POST', `/workspaces/${unknownId}/executions/exe_ffffffffffffffffffffffffffffffff/resolve`, { decision: 'approve' })).status, 404);
+    assert.equal(
+      (
+        await server.request('POST', `/workspaces/${unknownId}/executions/exe_ffffffffffffffffffffffffffffffff/resolve`, {
+          decision: 'approve',
+        })
+      ).status,
+      404,
+    );
   } finally {
     await server.stop();
   }
@@ -228,11 +268,26 @@ test('cross-identity workspace access returns 404 on human-task and resolve rout
     const asOther = TestServer.authHeader(other.apiKey);
 
     assert.equal((await server.request('GET', `/workspaces/${workspace.workspaceId}/human-tasks`, undefined, asOther)).status, 404);
-    assert.equal((await server.request('GET', `/workspaces/${workspace.workspaceId}/human-tasks/${execution.executionId}`, undefined, asOther)).status, 404);
-    assert.equal((await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve' }, asOther)).status, 404);
+    assert.equal(
+      (await server.request('GET', `/workspaces/${workspace.workspaceId}/human-tasks/${execution.executionId}`, undefined, asOther)).status,
+      404,
+    );
+    assert.equal(
+      (
+        await server.request(
+          'POST',
+          `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`,
+          { decision: 'approve' },
+          asOther,
+        )
+      ).status,
+      404,
+    );
 
     // Confirm the owner can still resolve it — nothing was consumed by the rejected cross-identity attempts.
-    const ownerResolve = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve' });
+    const ownerResolve = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions/${execution.executionId}/resolve`, {
+      decision: 'approve',
+    });
     assert.equal(ownerResolve.status, 200);
   } finally {
     await server.stop();
@@ -248,7 +303,14 @@ test('cross-workspace execution access returns 404: a human task from workspace 
     const execution = await approveAndExecuteHitl(server, workspaceA.workspaceId, compilationId);
 
     assert.equal((await server.request('GET', `/workspaces/${workspaceB.workspaceId}/human-tasks/${execution.executionId}`)).status, 404);
-    assert.equal((await server.request('POST', `/workspaces/${workspaceB.workspaceId}/executions/${execution.executionId}/resolve`, { decision: 'approve' })).status, 404);
+    assert.equal(
+      (
+        await server.request('POST', `/workspaces/${workspaceB.workspaceId}/executions/${execution.executionId}/resolve`, {
+          decision: 'approve',
+        })
+      ).status,
+      404,
+    );
 
     const listB = await server.request('GET', `/workspaces/${workspaceB.workspaceId}/human-tasks`);
     assert.deepEqual(listB.json<{ humanTasks: readonly ExecutionWire[] }>().humanTasks, []);

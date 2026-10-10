@@ -63,16 +63,32 @@ test('verify reports [WARN] signature (not FAIL) when signatures are present but
       .setCompatibility(testCompatibility)
       .setMetadata({ domain: 'testing', description: 'CLI test fixture package', scope: ['testing'], limitations: [] })
       .setCapabilities([echoCapability])
-      .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', data: new TextEncoder().encode('{"nodes":[],"edges":[]}'), required: false })
+      .addComponent({
+        kind: 'knowledge_graph',
+        path: 'knowledge/graph.json',
+        data: new TextEncoder().encode('{"nodes":[],"edges":[]}'),
+        required: false,
+      })
       .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
-      .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', data: new TextEncoder().encode('{"categories":[]}'), required: true });
+      .addComponent({
+        kind: 'benchmark_suite',
+        path: 'evaluation/benchmark_suite.json',
+        data: new TextEncoder().encode('{"categories":[]}'),
+        required: true,
+      });
 
     const unsigned = builder.build();
     assert.ok(unsigned.ok);
 
     const signer = new Ed25519Signer();
     const keyPair = signer.generateKeyPair();
-    const entry = new PackageSigner(signer).sign(unsigned.value.manifest, 'did:xo:verify-test-signer', 'creator', keyPair.privateKey, keyPair.publicKey);
+    const entry = new PackageSigner(signer).sign(
+      unsigned.value.manifest,
+      'did:xo:verify-test-signer',
+      'creator',
+      keyPair.privateKey,
+      keyPair.publicKey,
+    );
 
     const signed = builder.addSignature(entry).build();
     assert.ok(signed.ok);

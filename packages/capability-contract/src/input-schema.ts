@@ -13,8 +13,7 @@ export interface CapabilityInputValidationIssue {
 }
 
 export type CapabilityInputValidationResult =
-  | { readonly valid: true }
-  | { readonly valid: false; readonly issues: readonly CapabilityInputValidationIssue[] };
+  { readonly valid: true } | { readonly valid: false; readonly issues: readonly CapabilityInputValidationIssue[] };
 
 /**
  * R2's validation boundary: capability → execution declaration → input
@@ -48,7 +47,7 @@ export function validateCapabilityInput(schema: CapabilityInputSchema, input: un
   for (const [key, value] of Object.entries(obj)) {
     const propertySchema = schema.properties[key];
     if (propertySchema === undefined) {
-      issues.push({ property: key, message: 'unknown property — not declared in this capability\'s input schema' });
+      issues.push({ property: key, message: "unknown property — not declared in this capability's input schema" });
       continue;
     }
     if (!schema.required.includes(key) && value === undefined) continue; // optional property genuinely absent is fine; handled by the `in` check above for required ones

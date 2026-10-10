@@ -45,7 +45,11 @@ test('benchmark-run --out writes a report; --baseline against it reports NO_CHAN
     const written = JSON.parse(await readFile(out, 'utf8')) as { suiteId: string; schemaVersion: number };
     assert.deepEqual([written.suiteId, written.schemaVersion], ['runtime-mechanics', 1]);
     // (P0.9C final closure) the accepted baseline was refreshed (Step 5-6 metrics included): it is exactly what the current pipeline produces.
-    assert.equal(await readFile(out, 'utf8'), await readFile(MECHANICS_BASELINE, 'utf8'), 'the accepted baseline is exactly what the current pipeline produces');
+    assert.equal(
+      await readFile(out, 'utf8'),
+      await readFile(MECHANICS_BASELINE, 'utf8'),
+      'the accepted baseline is exactly what the current pipeline produces',
+    );
 
     const again = await benchmarkRunCommand({ suitePath: MECHANICS_SUITE, baselinePath: out, json: false, summaryOnly: true });
     assert.equal(again.exitCode, 0);
@@ -61,7 +65,13 @@ test('benchmark-run --out writes a report; --baseline against it reports NO_CHAN
 test('benchmark-run --baseline exits 1 on a regression and names it (a "compiler change" that removes a precedence edge is caught)', async () => {
   await withTempDir('xo-bm-cli-regress-', async (dir) => {
     const root = await mutatedRoot(dir);
-    const result = await benchmarkRunCommand({ suitePath: MECHANICS_SUITE, baselinePath: MECHANICS_BASELINE, sourceRoot: root, json: false, summaryOnly: true });
+    const result = await benchmarkRunCommand({
+      suitePath: MECHANICS_SUITE,
+      baselinePath: MECHANICS_BASELINE,
+      sourceRoot: root,
+      json: false,
+      summaryOnly: true,
+    });
     assert.equal(result.exitCode, 1);
     const text = result.lines.join('\n');
     assert.match(text, /Regression comparison for suite "runtime-mechanics": REGRESSED/);
@@ -80,23 +90,43 @@ test('benchmark-run: invalid / unreadable inputs are clear failures (exit 1) wit
     assert.equal(missing.exitCode, 1);
     assert.match(missing.lines.join('\n'), /cannot read suite file/);
 
-    await writeFile(join(dir, 'invalid.json'), JSON.stringify({ schemaVersion: 1, suiteId: 's', cases: [{ caseId: 'c', sources: [{ kind: 'nope', path: 'a' }], expect: {} }] }));
+    await writeFile(
+      join(dir, 'invalid.json'),
+      JSON.stringify({ schemaVersion: 1, suiteId: 's', cases: [{ caseId: 'c', sources: [{ kind: 'nope', path: 'a' }], expect: {} }] }),
+    );
     const invalid = await benchmarkRunCommand({ suitePath: join(dir, 'invalid.json'), json: false, summaryOnly: false });
     assert.equal(invalid.exitCode, 1);
     assert.match(invalid.lines.join('\n'), /\$\.cases\[0\]\.sources\[0\]\.kind: must be one of/);
 
     const badBaseline = join(dir, 'baseline.json');
     await writeFile(badBaseline, JSON.stringify({ hello: 'world' }));
-    const withBadBaseline = await benchmarkRunCommand({ suitePath: MECHANICS_SUITE, baselinePath: badBaseline, json: false, summaryOnly: false });
+    const withBadBaseline = await benchmarkRunCommand({
+      suitePath: MECHANICS_SUITE,
+      baselinePath: badBaseline,
+      json: false,
+      summaryOnly: false,
+    });
     assert.equal(withBadBaseline.exitCode, 1);
     assert.match(withBadBaseline.lines.join('\n'), /is not a benchmark report/);
 
-    const noBaseline = await benchmarkRunCommand({ suitePath: MECHANICS_SUITE, baselinePath: join(dir, 'gone.json'), json: false, summaryOnly: false });
+    const noBaseline = await benchmarkRunCommand({
+      suitePath: MECHANICS_SUITE,
+      baselinePath: join(dir, 'gone.json'),
+      json: false,
+      summaryOnly: false,
+    });
     assert.equal(noBaseline.exitCode, 1);
     assert.match(noBaseline.lines.join('\n'), /cannot read report/);
 
     // A case the harness cannot run (missing source file) is exit 1 too — loudly not a pass.
-    await writeFile(join(dir, 'harness.json'), JSON.stringify({ schemaVersion: 1, suiteId: 'h', cases: [{ caseId: 'c', sources: [{ kind: 'document', path: 'absent.txt' }], expect: {} }] }));
+    await writeFile(
+      join(dir, 'harness.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        suiteId: 'h',
+        cases: [{ caseId: 'c', sources: [{ kind: 'document', path: 'absent.txt' }], expect: {} }],
+      }),
+    );
     const harness = await benchmarkRunCommand({ suitePath: join(dir, 'harness.json'), json: false, summaryOnly: false });
     assert.equal(harness.exitCode, 1);
     assert.match(harness.lines.join('\n'), /HARNESS ERROR/);

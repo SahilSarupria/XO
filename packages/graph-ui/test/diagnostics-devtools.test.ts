@@ -5,7 +5,6 @@ import { GraphLayouts } from '../src/layout/GraphLayouts.js';
 import { GraphDiagnostics } from '../src/diagnostics/GraphDiagnostics.js';
 import { GraphCamera } from '../src/camera/GraphCamera.js';
 import { GraphSelection } from '../src/selection/GraphSelection.js';
-import { GraphExecutionState } from '../src/execution/GraphExecutionState.js';
 import { GraphAnimationEngine } from '../src/animation/GraphAnimationEngine.js';
 import { HistoryStack } from '../src/history/HistoryStack.js';
 import { DragStateMachine } from '../src/interaction/DragStateMachine.js';
@@ -66,7 +65,10 @@ test('GraphDiagnostics.estimateMemory scales with graph size', () => {
 
 test('GraphDiagnostics.hotspots filters and sorts by elapsed time descending', () => {
   const hotspots = GraphDiagnostics.hotspots({ layout: 50, search: 5, render: 200 }, 10);
-  assert.deepEqual(hotspots.map((h) => h.name), ['render', 'layout']);
+  assert.deepEqual(
+    hotspots.map((h) => h.name),
+    ['render', 'layout'],
+  );
 });
 
 test('GraphDiagnostics.recommendations gives rule-based, deterministic advice', () => {
@@ -85,7 +87,12 @@ test('inspectGraph summarizes node/edge type counts', () => {
 });
 
 test('inspectInteraction aggregates the four interaction state machines', () => {
-  const snapshot = inspectInteraction(DragStateMachine.idle().state, ResizeStateMachine.idle().state, HoverManager.none().state, FocusManager.none().state);
+  const snapshot = inspectInteraction(
+    DragStateMachine.idle().state,
+    ResizeStateMachine.idle().state,
+    HoverManager.none().state,
+    FocusManager.none().state,
+  );
   assert.equal(snapshot.drag.phase, 'idle');
   assert.equal(snapshot.hover.kind, 'none');
 });
@@ -142,13 +149,19 @@ test('Timeline.append is immutable, ordered, and capped', () => {
   const t3 = t2.append('third', 300);
   assert.equal(t0.length, 0, 'original must be untouched');
   assert.equal(t3.length, 2, 'capped at limit');
-  assert.deepEqual(t3.entries.map((e) => e.payload), ['second', 'third']);
+  assert.deepEqual(
+    t3.entries.map((e) => e.payload),
+    ['second', 'third'],
+  );
 });
 
 test('Timeline.between filters by an inclusive time range', () => {
   const t = Timeline.empty<string>().append('a', 0).append('b', 100).append('c', 200);
   const between = t.between(50, 150);
-  assert.deepEqual(between.map((e) => e.payload), ['b']);
+  assert.deepEqual(
+    between.map((e) => e.payload),
+    ['b'],
+  );
 });
 
 test('Timeline.last returns the most recent entry', () => {

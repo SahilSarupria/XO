@@ -4,6 +4,7 @@ import { Sha256Hasher, buildMerkleRoot } from '@xo/crypto';
 import { hashComponent } from '../hashing/component-hasher.js';
 import { isValidSemVer, isValidSemVerRange } from '../manifest/semver.js';
 import { PackageVerifier } from '../signing/package-signer.js';
+import { componentCollisionProblem, componentPathProblem, packageSegmentProblem } from './safe-path.js';
 import { isXoManifest, isXoMetadata } from './schema.js';
 import type { PackageBundle, ValidationIssue, ValidationReport } from '../types.js';
 
@@ -46,7 +47,44 @@ export class PackageValidator {
   }
 
   validateVersion(manifest: XoManifest): readonly ValidationIssue[] {
-    return isValidSemVer(manifest.version) ? [] : [issue('error', 'VERSION_INVALID', `"${manifest.version}" is not a valid semantic version`, 'manifest.json#version')];
+    return isValidSemVer(manifest.version)
+      ? []
+      : [issue('error', 'VERSION_INVALID', `"${manifest.version}" is not a valid semantic version`, 'manifest.json#version')];
+  }
+
+  /**
+   * Rejects any package name, version, or component path that could address
+   * a location outside this package's own `<name>/<version>/` install
+   * directory (path traversal, absolute or Windows-style paths, reserved
+   * installer filenames). Checks both `manifest.components[*].path` and the
+   * bundle's own `components[*].path`, because the installer writes the
+   * latter while manifest-only checks would see the former.
+   */
+  validatePathSafety(bundle: PackageBundle): readonly ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    for (const label of ['name', 'version'] as const) {
+      const problem = packageSegmentProblem(label, bundle.manifest[label]);
+      if (problem) issues.push(issue('error', 'PACKAGE_IDENTITY_UNSAFE', problem, `manifest.json#${label}`));
+    }
+    const declared = Object.entries(bundle.manifest.components ?? {}).map(([kind, entry]) => [kind, entry.path] as const);
+    const carried = bundle.components.map((c) => [c.kind, c.path] as const);
+    const seen = new Set<string>();
+    for (const [kind, path] of [...declared, ...carried]) {
+      const key = `${kind}\u0000${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const problem = componentPathProblem(path);
+      if (problem)
+        issues.push(
+          issue('error', 'COMPONENT_PATH_UNSAFE', `Component "${kind}": ${problem}`, typeof path === 'string' ? path : undefined),
+        );
+    }
+    const collisions = new Set([
+      componentCollisionProblem(declared.map(([, path]) => path)),
+      componentCollisionProblem(carried.map(([, path]) => path)),
+    ]);
+    for (const problem of collisions) if (problem) issues.push(issue('error', 'COMPONENT_PATH_COLLISION', problem));
+    return issues;
   }
 
   /** Detects two components declaring the same archive path — an archive that would silently overwrite one component's file with another's on extraction. */
@@ -56,7 +94,9 @@ export class PackageValidator {
     for (const [kind, entry] of Object.entries(manifest.components)) {
       const owner = seen.get(entry.path);
       if (owner) {
-        issues.push(issue('error', 'COMPONENT_DUPLICATE_PATH', `Components "${owner}" and "${kind}" both declare path "${entry.path}"`, entry.path));
+        issues.push(
+          issue('error', 'COMPONENT_DUPLICATE_PATH', `Components "${owner}" and "${kind}" both declare path "${entry.path}"`, entry.path),
+        );
       } else {
         seen.set(entry.path, kind);
       }
@@ -69,13 +109,21 @@ export class PackageValidator {
     const issues: ValidationIssue[] = [];
     for (const [kind, entry] of Object.entries(bundle.manifest.components)) {
       if (entry.required && !present.has(kind as (typeof bundle.components)[number]['kind'])) {
-        issues.push(issue('error', 'REQUIRED_COMPONENT_MISSING', `Required component "${kind}" (${entry.path}) is not present`, entry.path));
+        issues.push(
+          issue('error', 'REQUIRED_COMPONENT_MISSING', `Required component "${kind}" (${entry.path}) is not present`, entry.path),
+        );
       }
     }
     // The two components SPECIFICATION.md §1.2 hard-enforces for every publicly admitted XO.
     for (const mandatory of ['safety_rules', 'benchmark_suite'] as const) {
       if (!(mandatory in bundle.manifest.components)) {
-        issues.push(issue('error', 'MANDATORY_COMPONENT_ABSENT', `"${mandatory}" must be declared for a package to be admitted to the public marketplace`));
+        issues.push(
+          issue(
+            'error',
+            'MANDATORY_COMPONENT_ABSENT',
+            `"${mandatory}" must be declared for a package to be admitted to the public marketplace`,
+          ),
+        );
       }
     }
     return issues;
@@ -105,22 +153,45 @@ export class PackageValidator {
       for (const kind of capability.requiredComponents) {
         if (!(kind in manifest.components)) {
           issues.push(
-            issue('error', 'CAPABILITY_REQUIRED_COMPONENT_UNDECLARED', `Capability "${capability.id}" requires component "${kind}", which is not declared in manifest.components`, path),
+            issue(
+              'error',
+              'CAPABILITY_REQUIRED_COMPONENT_UNDECLARED',
+              `Capability "${capability.id}" requires component "${kind}", which is not declared in manifest.components`,
+              path,
+            ),
           );
         }
       }
 
       if (capability.confidence.score < 0 || capability.confidence.score > 1) {
-        issues.push(issue('error', 'CAPABILITY_CONFIDENCE_OUT_OF_RANGE', `Capability "${capability.id}" confidence.score (${capability.confidence.score}) must be between 0 and 1`, path));
+        issues.push(
+          issue(
+            'error',
+            'CAPABILITY_CONFIDENCE_OUT_OF_RANGE',
+            `Capability "${capability.id}" confidence.score (${capability.confidence.score}) must be between 0 and 1`,
+            path,
+          ),
+        );
       }
       if (capability.estimatedLatencyMs < 0) {
-        issues.push(issue('error', 'CAPABILITY_NEGATIVE_LATENCY', `Capability "${capability.id}" estimatedLatencyMs must not be negative`, path));
+        issues.push(
+          issue('error', 'CAPABILITY_NEGATIVE_LATENCY', `Capability "${capability.id}" estimatedLatencyMs must not be negative`, path),
+        );
       }
       if (capability.estimatedCost.amount < 0) {
-        issues.push(issue('error', 'CAPABILITY_NEGATIVE_COST', `Capability "${capability.id}" estimatedCost.amount must not be negative`, path));
+        issues.push(
+          issue('error', 'CAPABILITY_NEGATIVE_COST', `Capability "${capability.id}" estimatedCost.amount must not be negative`, path),
+        );
       }
       if (capability.providerCompatibility.length === 0) {
-        issues.push(issue('warning', 'CAPABILITY_NO_PROVIDER_COMPATIBILITY', `Capability "${capability.id}" declares no providerCompatibility — no host family can ever resolve it`, path));
+        issues.push(
+          issue(
+            'warning',
+            'CAPABILITY_NO_PROVIDER_COMPATIBILITY',
+            `Capability "${capability.id}" declares no providerCompatibility — no host family can ever resolve it`,
+            path,
+          ),
+        );
       }
     }
     return issues;
@@ -135,27 +206,13 @@ export class PackageValidator {
       const path = `manifest.json#dependencies[${dependency.name}]`;
 
       if (seenNames.has(dependency.name)) {
-        issues.push(
-          issue(
-            'error',
-            'DEPENDENCY_DUPLICATE_NAME',
-            `Dependency "${dependency.name}" is declared more than once`,
-            path,
-          ),
-        );
+        issues.push(issue('error', 'DEPENDENCY_DUPLICATE_NAME', `Dependency "${dependency.name}" is declared more than once`, path));
       }
 
       seenNames.add(dependency.name);
 
       if (dependency.name === manifest.name) {
-        issues.push(
-          issue(
-            'error',
-            'DEPENDENCY_SELF_REFERENCE',
-            `Package "${manifest.name}" cannot declare itself as a dependency`,
-            path,
-          ),
-        );
+        issues.push(issue('error', 'DEPENDENCY_SELF_REFERENCE', `Package "${manifest.name}" cannot declare itself as a dependency`, path));
       }
 
       if (!isValidSemVerRange(dependency.versionRange)) {
@@ -178,12 +235,26 @@ export class PackageValidator {
     for (const component of bundle.components) {
       const entry = bundle.manifest.components[component.kind];
       if (!entry) {
-        issues.push(issue('warning', 'COMPONENT_NOT_IN_MANIFEST', `Component "${component.kind}" is present but not declared in manifest.components`, component.path));
+        issues.push(
+          issue(
+            'warning',
+            'COMPONENT_NOT_IN_MANIFEST',
+            `Component "${component.kind}" is present but not declared in manifest.components`,
+            component.path,
+          ),
+        );
         continue;
       }
       const actual = hashComponent(component, this.hasher);
       if (actual !== entry.hash) {
-        issues.push(issue('error', 'HASH_MISMATCH', `Component "${component.kind}" hash does not match manifest (expected ${entry.hash}, got ${actual})`, entry.path));
+        issues.push(
+          issue(
+            'error',
+            'HASH_MISMATCH',
+            `Component "${component.kind}" hash does not match manifest (expected ${entry.hash}, got ${actual})`,
+            entry.path,
+          ),
+        );
       }
     }
     return issues;
@@ -197,7 +268,14 @@ export class PackageValidator {
     if (leaves.length === 0) return [];
     const expected = buildMerkleRoot(leaves, this.hasher);
     if (expected !== bundle.manifest.merkleRoot) {
-      return [issue('error', 'MERKLE_ROOT_MISMATCH', `Manifest merkleRoot (${bundle.manifest.merkleRoot}) does not match the root computed from component hashes (${expected})`, 'manifest.json#merkleRoot')];
+      return [
+        issue(
+          'error',
+          'MERKLE_ROOT_MISMATCH',
+          `Manifest merkleRoot (${bundle.manifest.merkleRoot}) does not match the root computed from component hashes (${expected})`,
+          'manifest.json#merkleRoot',
+        ),
+      ];
     }
     return [];
   }
@@ -205,7 +283,13 @@ export class PackageValidator {
   validateSignatures(manifest: XoManifest): readonly ValidationIssue[] {
     if (!manifest.signatures || manifest.signatures.length === 0) return [];
     if (!this.resolvePublicKey) {
-      return [issue('warning', 'SIGNATURES_UNVERIFIED', 'Manifest carries signatures but no public-key resolver was supplied — skipping cryptographic verification')];
+      return [
+        issue(
+          'warning',
+          'SIGNATURES_UNVERIFIED',
+          'Manifest carries signatures but no public-key resolver was supplied — skipping cryptographic verification',
+        ),
+      ];
     }
     const result = this.verifier.verifyAll(manifest, [], this.resolvePublicKey);
     return result.ok ? [] : [issue('error', 'SIGNATURE_INVALID', result.error.message, 'signatures/signatures.json')];
@@ -215,6 +299,7 @@ export class PackageValidator {
     const issues = [
       ...this.validateSchema(bundle.manifest),
       ...this.validateVersion(bundle.manifest),
+      ...this.validatePathSafety(bundle),
       ...this.validateNoDuplicatePaths(bundle.manifest),
       ...this.validateRequiredComponents(bundle),
       ...this.validateCapabilities(bundle.manifest),

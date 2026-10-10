@@ -38,7 +38,10 @@ test('withMounted() returns a new registry and leaves the original untouched', (
 });
 
 test('multiple versions of the same package name are mounted simultaneously', () => {
-  const registry = PackageRegistry.empty().withMounted(fakeMount('xo_a', '1.0.0')).withMounted(fakeMount('xo_a', '1.1.0')).withMounted(fakeMount('xo_a', '2.0.0'));
+  const registry = PackageRegistry.empty()
+    .withMounted(fakeMount('xo_a', '1.0.0'))
+    .withMounted(fakeMount('xo_a', '1.1.0'))
+    .withMounted(fakeMount('xo_a', '2.0.0'));
 
   assert.equal(registry.packageCount, 1, 'one distinct package name');
   assert.equal(registry.mountCount, 3, 'three distinct mounted versions');
