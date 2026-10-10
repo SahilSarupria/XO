@@ -17,7 +17,7 @@
     "build": "tsc -b tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
     "test": "node --import tsx --test test/acquisition-exclusion.test.ts test/content-acquisition.test.ts test/environment-model.test.ts test/filesystem-discovery.test.ts test/source-state.test.ts",
-    "test:coverage": "node --import tsx --experimental-test-coverage --test test/*.test.ts",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test",
     "demo": "node --import tsx demo/run-demo.ts"
   },
   "dependencies": {

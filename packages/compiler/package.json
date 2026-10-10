@@ -16,8 +16,8 @@
   "scripts": {
     "build": "tsc -b tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "node --import tsx --test test/**/*.test.ts test/**/**/*.test.ts",
-    "test:coverage": "node --import tsx --experimental-test-coverage --test test/**/*.test.ts"
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
   "dependencies": {
     "@xo/types": "0.1.0",
