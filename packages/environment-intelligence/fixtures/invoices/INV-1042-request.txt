@@ -1,0 +1,3 @@
+Purchase request PR for invoice INV-1042
+Requested by: (fixture data)
+Amount: 1200.00
