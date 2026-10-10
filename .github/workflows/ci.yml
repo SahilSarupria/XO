@@ -30,6 +30,23 @@ jobs:
       - name: Typecheck (composite project build)
         run: npm run typecheck
 
+      # Keep focused package validation ahead of known repository-wide lint debt,
+      # so package regressions are visible even when the global lint gate fails.
+      - name: Test Environment Intelligence
+        run: npm run test -w @xo/environment-intelligence
+
+      - name: Build Environment Intelligence
+        run: npm run build -w @xo/environment-intelligence
+
+      - name: Run Environment Intelligence demo
+        run: npm run demo -w @xo/environment-intelligence
+
+      - name: Lint Environment Intelligence
+        run: npx eslint packages/environment-intelligence --max-warnings=0
+
+      - name: Format check Environment Intelligence
+        run: npx prettier --check packages/environment-intelligence docs/environment-intelligence/ARCHITECTURE.md
+
       - name: Lint
         run: npm run lint
 
