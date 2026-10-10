@@ -66,8 +66,8 @@ export async function resolveRoot(root: string): Promise<Result<string, Discover
  * Resolves a source-relative resource key to an absolute path that is
  * PROVEN to be inside the real root. Rejects: absolute keys, `..` or `.`
  * segments, NUL, empty segments, any path whose real location (after
- * resolving every intermediate symlink) escapes the root, and a final
- * component that is itself a symlink (links are never followed).
+ * resolving every intermediate symlink) escapes the root, and any symlink
+ * in any path component (links are never followed).
  */
 export async function resolveInside(realRoot: string, resourceKey: string): Promise<Result<string, DiscoveryError>> {
   const violation = (reason: string): Result<never, DiscoveryError> =>
