@@ -21,26 +21,39 @@ import type { ConnectorId } from './ids.js';
  */
 export interface AuthorizationRequest {
   readonly connectorId: ConnectorId;
-  readonly operation: ConnectorOperation;
+  /** A connector operation, or `declare_sources` for registering administrator-declared systems (see `registerDeclaredSources`). */
+  readonly operation: ConnectorOperation | 'declare_sources';
   readonly permission: string;
   readonly scope: PermissionScope;
   readonly principal?: Principal;
   readonly reason: string;
 }
 
-/** Who stands behind a decision. Persisted into every piece of evidence's provenance. */
+/**
+ * Who stands behind a decision. This is DERIVED by the enforcement point from
+ * how the decision object was minted (see `trusted-decision.ts`); it is never
+ * a field a port can set. A decision object that was not minted by a trusted
+ * constructor has authority `none`, whatever its shape claims.
+ */
 export type AuthorityKind =
-  /** No authority was consulted (e.g. fail-closed default). Never accompanies an `allow`. */
+  /** No authority was consulted, or the decision was not minted by a trusted constructor. Never accompanies an `allow`. */
   | 'none'
-  /** Produced by the platform's authoritative authorization gate. */
+  /** Minted by the platform authorization boundary (`PermissionManagerAuthorization`) from a real `PermissionManager` decision. */
   | 'platform'
   /** An explicit local operator allow-list, with NO platform verification. Development/demo only. */
   | 'development_unverified';
 
+/**
+ * What a port answers. Deliberately has NO authority field: an `allow` is
+ * honoured only if the exact object was minted by a trusted constructor
+ * (`mintDevelopmentDecision`, or the platform adapter), which the
+ * enforcement point checks by identity. Anything else - a plain object, a
+ * structural copy, a JSON round-trip - is treated as no authority and fails
+ * closed. `prompt` means "a human/approval step is still required" and is
+ * treated as NOT authorized.
+ */
 export interface AuthorizationDecision {
-  /** `prompt` means "a human/approval step is still required" and is treated as NOT authorized. */
   readonly effect: 'allow' | 'deny' | 'prompt';
-  readonly authority: AuthorityKind;
   readonly reason: string;
 }
 
@@ -50,11 +63,11 @@ export interface AuthorizationPort {
 
 /**
  * Fail-closed default. Used whenever no authorization port is wired in:
- * every request answers `prompt`, so discovery reports
+ * every request answers `prompt` with no authority, so discovery reports
  * `authorization_required` and reads nothing.
  */
 export class FailClosedAuthorization implements AuthorizationPort {
   async decide(): Promise<AuthorizationDecision> {
-    return { effect: 'prompt', authority: 'none', reason: 'no authorization gate is configured; nothing is authorized by default' };
+    return { effect: 'prompt', reason: 'no authorization gate is configured; nothing is authorized by default' };
   }
 }

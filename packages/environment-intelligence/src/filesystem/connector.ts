@@ -3,7 +3,7 @@ import { lstat, open, readdir } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { err, ok, type Result } from '@xo/types';
-import type { AuthorizationDecision } from '../authorization.js';
+import { requireAuthorization, type TrustedAllow } from '../authorization-gate.js';
 import type {
   AcquisitionOutcome,
   AcquisitionRequest,
@@ -29,7 +29,7 @@ import {
   type FilesystemScope,
 } from './config.js';
 import { extractIdentifiers, isSafeName } from './sanitize.js';
-import { resolveInside, resolveRoot } from './scope-guard.js';
+import { resolveInside, resolveRoot, validateKeyLexically, validateRootLexically } from './scope-guard.js';
 
 export const FILESYSTEM_CONNECTOR_ID = ConnectorId('xo.connector.local-filesystem');
 export const FILESYSTEM_CONNECTOR_VERSION = '0.1.0';
@@ -132,31 +132,49 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     operation: ConnectorOperation,
     permission: string,
     realRoot: string,
-  ): Promise<Result<AuthorizationDecision, DiscoveryError>> {
-    let decision: AuthorizationDecision;
-    try {
-      decision = await ctx.authorization.decide({
-        connectorId: FILESYSTEM_CONNECTOR_ID,
-        operation,
-        permission,
-        scope: { kind: 'path', path: realRoot },
-        ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
-        reason: `local filesystem ${operation} within the approved root`,
-      });
-    } catch (e) {
-      return err(internalError(e, 'authorization gate'));
-    }
-    if (decision.effect === 'allow' && decision.authority !== 'none') return ok(decision);
-    if (decision.effect === 'deny')
-      return err(
-        discoveryError(DiscoveryErrorCode.AUTHORIZATION_DENIED, 'authorization was denied', { permission, authority: decision.authority }),
-      );
-    return err(
-      discoveryError(DiscoveryErrorCode.AUTHORIZATION_REQUIRED, 'authorization is required before this source can be read', {
-        permission,
-        authority: decision.authority,
-      }),
-    );
+  ): Promise<Result<TrustedAllow, DiscoveryError>> {
+    return requireAuthorization(ctx.authorization, {
+      connectorId: FILESYSTEM_CONNECTOR_ID,
+      operation,
+      permission,
+      scope: { kind: 'path', path: realRoot },
+      ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
+      reason: `local filesystem ${operation} within the approved root`,
+    });
+  }
+
+  /**
+   * The ONLY way an operation obtains a usable root. Order is the security
+   * property:
+   *   1. pure string validation of the caller's root (no filesystem access);
+   *   2. an authorization decision for exactly that lexical path;
+   *   3. only then resolve the real path (the first filesystem access);
+   *   4. if the real path differs from the lexical one (a symlink in the
+   *      path), a SEPARATE decision for the real path before anything is
+   *      listed or read.
+   * A denied or unauthenticated request therefore never causes the requested
+   * path to be probed, and learns nothing about whether it exists or what it
+   * is. Decisions are never cached or reused across operations or paths.
+   * Consequence for `once`-lifetime grants: each operation (detect, validate_connection, discover or
+   * acquire_content) consumes its own allow, and a symlinked root consumes two (lexical, then real path), so a
+   * single `once` allow authorizes only one operation. This is intentional; grant semantics are unchanged.
+   */
+  private async authorizeRoot(
+    ctx: ConnectorContext,
+    operation: ConnectorOperation,
+    permission: string,
+    requestedRoot: string,
+  ): Promise<Result<{ readonly realRoot: string; readonly allow: TrustedAllow }, DiscoveryError>> {
+    const lexical = validateRootLexically(requestedRoot);
+    if (!lexical.ok) return lexical;
+    const first = await this.authorize(ctx, operation, permission, lexical.value);
+    if (!first.ok) return first;
+    const resolved = await resolveRoot(lexical.value);
+    if (!resolved.ok) return resolved;
+    if (resolved.value === lexical.value) return ok({ realRoot: resolved.value, allow: first.value });
+    const second = await this.authorize(ctx, operation, permission, resolved.value);
+    if (!second.ok) return second;
+    return ok({ realRoot: resolved.value, allow: second.value });
   }
 
   private sourceFor(realRoot: string, ctx: ConnectorContext): DetectedSource {
@@ -191,7 +209,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     locator: string,
     operation: ConnectorOperation,
     permission: string,
-    decision: AuthorizationDecision,
+    allow: TrustedAllow,
     ctx: ConnectorContext,
     steps: readonly TransformationStep[],
   ): Evidence['provenance'] {
@@ -204,8 +222,8 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       access: {
         operation,
         permission,
-        authority: decision.authority,
-        decisionReason: decision.reason,
+        authority: allow.authority,
+        decisionReason: allow.decision.reason,
         ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
       },
       transformationChain: steps,
@@ -228,9 +246,9 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
   async detectSource(request: DiscoveryRequest<FilesystemScope>, ctx: ConnectorContext): Promise<Result<DetectedSource, DiscoveryError>> {
     const bad = this.checkRequest(request);
     if (bad !== undefined) return err(bad);
-    const root = await resolveRoot(request.scope.root);
+    const root = await this.authorizeRoot(ctx, 'detect', PERMISSION_LIST, request.scope.root);
     if (!root.ok) return root;
-    return ok(this.sourceFor(root.value, ctx));
+    return ok(this.sourceFor(root.value.realRoot, ctx));
   }
 
   async validateConnection(
@@ -240,17 +258,15 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const bad = this.checkRequest(request);
     if (bad !== undefined) return err(bad);
     if (ctx.signal?.aborted) return err(discoveryError(DiscoveryErrorCode.CANCELLED, 'cancelled before validation'));
-    const root = await resolveRoot(request.scope.root);
+    const root = await this.authorizeRoot(ctx, 'validate_connection', PERMISSION_LIST, request.scope.root);
     if (!root.ok) return root;
-    const auth = await this.authorize(ctx, 'validate_connection', PERMISSION_LIST, root.value);
-    if (!auth.ok) return auth;
     try {
-      await readdir(root.value);
+      await readdir(root.value.realRoot);
     } catch (e) {
       const errno = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null;
       return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'approved root is not readable', { errno }));
     }
-    const source = this.sourceFor(root.value, ctx);
+    const source = this.sourceFor(root.value.realRoot, ctx);
     return ok({ sourceId: source.sourceId, validatedAt: ctx.clock.now().toISOString(), details: { readable: true } });
   }
 
@@ -258,11 +274,10 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const bad = this.checkRequest(request);
     if (bad !== undefined) return err(bad);
     if (ctx.signal?.aborted) return err(discoveryError(DiscoveryErrorCode.CANCELLED, 'cancelled before discovery'));
-    const root = await resolveRoot(request.scope.root);
+    const root = await this.authorizeRoot(ctx, 'discover', PERMISSION_LIST, request.scope.root);
     if (!root.ok) return root;
-    const realRoot = root.value;
-    const auth = await this.authorize(ctx, 'discover', PERMISSION_LIST, realRoot);
-    if (!auth.ok) return auth;
+    const realRoot = root.value.realRoot;
+    const auth = { value: root.value.allow };
 
     const limits = effectiveLimits(request.scope);
     const extraExcluded = new Set((request.scope.extraExcludedNames ?? []).map((n) => n.toLowerCase()));
@@ -436,17 +451,6 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       );
     }
     if (ctx.signal?.aborted) return err(discoveryError(DiscoveryErrorCode.CANCELLED, 'cancelled before acquisition'));
-    const root = await resolveRoot(request.scope.root);
-    if (!root.ok) return root;
-    const realRoot = root.value;
-    const source = this.sourceFor(realRoot, ctx);
-    if (source.sourceId !== request.sourceId) {
-      return err(
-        discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'request names a different source than the approved scope', {
-          reason: 'source_mismatch',
-        }),
-      );
-    }
     const limits: FilesystemLimits = effectiveLimits(request.scope);
     if (request.resourceKeys.length > limits.maxContentFiles) {
       return err(
@@ -456,23 +460,42 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         }),
       );
     }
-    // Fail closed: validate EVERY key against the scope before reading ANY file, and before asking the gate.
-    // Exclusion policy is applied to the whole path (not only the basename) and is identical to discovery's,
-    // so a directly requested key under an excluded directory is never opened. Excluded keys are counted, not read.
+    // Step 1 - PURE string checks only (no filesystem access, so they are safe before authorization):
+    // key shape, and the exclusion policy applied to every directory segment (identical to discovery's).
+    // Excluded keys are never opened; they are counted.
     const extraExcludedForContent = new Set((request.scope.extraExcludedNames ?? []).map((n) => n.toLowerCase()));
-    const resolved: { key: string; abs: string }[] = [];
+    const permittedKeys: string[] = [];
     let excludedCount = 0;
     for (const key of request.resourceKeys) {
-      const inside = await resolveInside(realRoot, key);
-      if (!inside.ok) return inside;
+      const lexical = validateKeyLexically(key);
+      if (!lexical.ok) return lexical;
       if (hasExcludedDirectorySegment(key, extraExcludedForContent)) {
         excludedCount += 1;
         continue;
       }
+      permittedKeys.push(key);
+    }
+    // Step 2 - authorization (read permission) for the lexical root, then for the real root if it differs.
+    // The root is not resolved, and no key is touched on disk, before this succeeds.
+    const root = await this.authorizeRoot(ctx, 'acquire_content', PERMISSION_READ, request.scope.root);
+    if (!root.ok) return root;
+    const realRoot = root.value.realRoot;
+    const auth = { value: root.value.allow };
+    const source = this.sourceFor(realRoot, ctx);
+    if (source.sourceId !== request.sourceId) {
+      return err(
+        discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'request names a different source than the approved scope', {
+          reason: 'source_mismatch',
+        }),
+      );
+    }
+    // Step 3 - only now touch the filesystem for the keys. Fail closed: EVERY key is verified before ANY file is read.
+    const resolved: { key: string; abs: string }[] = [];
+    for (const key of permittedKeys) {
+      const inside = await resolveInside(realRoot, key);
+      if (!inside.ok) return inside;
       resolved.push({ key, abs: inside.value });
     }
-    const auth = await this.authorize(ctx, 'acquire_content', PERMISSION_READ, realRoot);
-    if (!auth.ok) return auth;
 
     const startMs = ctx.clock.now().getTime();
     const skipped = new Map<string, number>();
