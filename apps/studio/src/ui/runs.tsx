@@ -32,6 +32,7 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
         <Badge tone={view.tone}>{view.label}</Badge> <span className="muted small">{formatWhen(e.completedAt ?? e.requestedAt)}</span>
       </p>
       {view.detail !== undefined ? <p className={view.tone === 'danger' ? 'outcome-detail danger-text' : 'outcome-detail'}>{view.detail}</p> : null}
+      {view.hint !== undefined ? <p className="outcome-detail muted">{view.hint}</p> : null}
       {pending ? (
         <div className="decision">
           <p>This step needs a person. Choose what should happen:</p>
@@ -66,6 +67,8 @@ interface Row {
   readonly id: number;
   readonly name: string;
   readonly value: string;
+  /** Where the field name came from. 'inferred' names are hints scraped from an earlier error message, never a schema. */
+  readonly origin: 'inferred' | 'entered';
 }
 
 /**
@@ -77,7 +80,7 @@ interface Row {
 export function RunPanel(props: { workspaceId: string; compilationId: string; capabilityId: string; lastExecution: Execution | undefined; onRan: () => void }) {
   const { client } = useSession();
   const suggested = props.lastExecution !== undefined ? suggestedFieldsFromFailure(props.lastExecution) : [];
-  const [rows, setRows] = useState<Row[]>(() => suggested.map((name, i) => ({ id: i, name, value: '' })));
+  const [rows, setRows] = useState<Row[]>(() => suggested.map((name, i) => ({ id: i, name, value: '', origin: 'inferred' as const })));
   const [nextId, setNextId] = useState(suggested.length);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | undefined>();
@@ -100,11 +103,14 @@ export function RunPanel(props: { workspaceId: string; compilationId: string; ca
   return (
     <div className="run-panel">
       <h4>Run this rule</h4>
-      <p className="muted small">This really runs the rule through XO and records the attempt. Enter the details it needs. Text is sent as text; JSON such as {'{"amount": 1200}'} is sent as structured data.</p>
-      {suggested.length > 0 ? <p className="small">XO reported these details were missing last time, so they are filled in below.</p> : null}
+      <p className="muted small">This really runs the rule through XO and records the attempt.</p>
+      <p className="notice notice-info small">
+        XO does not publish the list of details this rule needs, so Studio cannot show you a verified form. {suggested.length > 0 ? 'The names below were taken from XO\u2019s last error message for this rule. They are hints, not a checked schema, and may be incomplete.' : 'Add the details you know it needs; XO will check them and say what is missing.'} Numbers and true/false are sent as numbers and booleans; put text in quotes (for example &quot;42&quot;) to send it as text.
+      </p>
       {rows.map((r) => (
         <div className="row field-row" key={r.id}>
           <input aria-label="Detail name" value={r.name} onChange={(e) => update(r.id, { name: e.target.value })} placeholder="name" />
+          {r.origin === 'inferred' ? <Badge tone="neutral">hint from XO&rsquo;s last error</Badge> : null}
           <input aria-label={`Value for ${r.name || 'detail'}`} value={r.value} onChange={(e) => update(r.id, { value: e.target.value })} placeholder="value" />
           <Button variant="quiet" aria-label={`Remove ${r.name || 'detail'}`} onClick={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}>
             Remove
@@ -115,7 +121,7 @@ export function RunPanel(props: { workspaceId: string; compilationId: string; ca
         <Button
           variant="quiet"
           onClick={() => {
-            setRows((rs) => [...rs, { id: nextId, name: '', value: '' }]);
+            setRows((rs) => [...rs, { id: nextId, name: '', value: '', origin: 'entered' }]);
             setNextId(nextId + 1);
           }}
         >

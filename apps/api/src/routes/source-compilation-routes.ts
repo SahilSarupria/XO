@@ -17,6 +17,7 @@ import { compileSourceRecord } from '../compilations/compile-source.js';
 import type { CompilationRecord, CapabilityProjection } from '../compilations/compilation.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import { isApproved } from '../approvals/approval.js';
+import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
 
 /**
  * Source -> compilation -> capability, over the exact same
@@ -154,6 +155,18 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     if (!capsFound.ok) throw capsFound.error;
     const capability = capsFound.value.find((c) => c.capabilityId === capabilityId);
     if (capability === undefined) throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
+
+    // WP2-A: an approval is only recordable for a capability the platform can carry out. A
+    // non-resolved binding is refused with the same code execution would report for it. This
+    // is an eligibility filter, not authorization; execution re-derives the binding and
+    // re-checks approval independently (see approvals/approval-eligibility.ts).
+    const blockedCode = approvalBlockedCode(capability.status);
+    if (blockedCode !== undefined) {
+      throw new XoError(
+        blockedCode,
+        `capability "${capabilityId}" cannot be approved: its binding status is "${capability.status}", so it cannot be carried out.`,
+      );
+    }
 
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
     const approved = await approvalStore.approve(compilationId, capabilityId, workspace.workspaceId, workspace.identityId);

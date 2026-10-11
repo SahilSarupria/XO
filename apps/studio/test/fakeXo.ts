@@ -21,8 +21,10 @@ export class FakeXo {
     { capabilityId: 'cap_hitl', name: 'Review not covered', description: 'Claims outside the standard rule go to a human.', status: 'resolved', executionClass: 'human_in_the_loop', confidence: 0.45 },
     { capabilityId: 'cap_open', name: 'Notify the Insurer', description: '4.1 The Insured must notify within 7 days.', status: 'unresolved', reason: 'structured-comparison-resolver: no executable outcome', confidence: 0.55 },
   ];
+  /** Simulates a stale view: the server refuses an approval Studio's view thought was allowed. */
+  approveRefusal = false;
   failNextCompile: { errorMessage: string; errorCode: string } | undefined;
-  executeBehavior: 'invalid_input' | 'succeed' | 'waiting_for_human' | 'unavailable' | 'forbidden' = 'invalid_input';
+  executeBehavior: 'invalid_input' | 'binding_unresolved' | 'succeed' | 'waiting_for_human' | 'unavailable' | 'forbidden' = 'invalid_input';
   calls: Array<{ method: string; path: string; body?: unknown }> = [];
   private n = 0;
   private id(p: string) { return `${p}_${(++this.n).toString(16).padStart(32, '0')}`; }
@@ -66,6 +68,8 @@ export class FakeXo {
       return reply(200, { compilationId: cid, capabilities: this.caps.map((c) => ({ ...c, contractId: c.capabilityId, provenance: [{ documentPath: 'src', pages: [2] }], approved: this.approvals.has(`${cid}:${c.capabilityId}`) })) });
     }
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/compilations\/([^/]+)\/capabilities\/([^/]+)\/approve$/))) {
+      const target = this.caps.find((c) => c.capabilityId === m![2]);
+      if (this.approveRefusal || target?.status === 'unresolved') return err(422, 'XO_BINDING_UNRESOLVED', `capability "${m[2]}" cannot be approved: its binding status is "unresolved", so it cannot be carried out.`);
       this.approvals.add(`${m[1]}:${m[2]}`);
       return reply(200, { compilationId: m[1], capabilityId: m[2], status: 'approved', approvedAt: new Date().toISOString() });
     }
@@ -76,7 +80,9 @@ export class FakeXo {
       if (!this.approvals.has(`${body.compilationId}:${body.capabilityId}`)) return err(403, 'XO_RUNTIME_PERMISSION_DENIED', 'capability is not approved');
       const base = { executionId: this.id('exe'), compilationId: body.compilationId, capabilityId: body.capabilityId, requestedAt: new Date().toISOString(), completedAt: new Date().toISOString(), input: body.input, initiator: { kind: 'human', id: 'sally' } };
       const rec =
-        this.executeBehavior === 'invalid_input'
+        this.executeBehavior === 'binding_unresolved'
+          ? { ...base, status: 'failed', errorCode: 'XO_BINDING_UNRESOLVED', errorMessage: 'capability could not be bound' }
+          : this.executeBehavior === 'invalid_input'
           ? { ...base, status: 'failed', errorCode: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID', errorMessage: 'input validation failed: claim: missing required property; lossadjuster_assessment: missing required property' }
           : this.executeBehavior === 'waiting_for_human'
             ? { ...base, status: 'waiting_for_human', output: { escalated: true }, humanTask: { status: 'pending' } }

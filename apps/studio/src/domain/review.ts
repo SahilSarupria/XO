@@ -39,13 +39,13 @@ export function canRun(c: Capability): boolean {
 export const REVIEW_STATE_LABEL: Record<ReviewState, string> = {
   needs_attention: 'Needs more information',
   ready_for_review: 'Ready for your review',
-  approved: 'Approved',
+  approved: 'Approval recorded',
 };
 
 export const REVIEW_STATE_EXPLANATION: Record<ReviewState, string> = {
   needs_attention: 'XO found this rule in your document, but does not yet have enough detail to carry it out on its own.',
   ready_for_review: 'XO can carry this out. Check that it matches what your document says, then approve it.',
-  approved: 'You approved this. It can now be run.',
+  approved: 'An approval is recorded for this rule. It is not a guarantee that a run will succeed: XO still checks the details you provide when you run it.',
 };
 
 export function executionClassLabel(executionClass: string | undefined): string | undefined {
@@ -91,7 +91,24 @@ export interface OutcomeView {
   readonly label: string;
   readonly tone: OutcomeTone;
   readonly detail?: string;
+  /** What the person can do about it. Present for failures the platform describes with a known code. */
+  readonly hint?: string;
 }
+
+/** Platform error codes Studio gives specific wording to. Anything else falls back to the platform's own message. */
+export const PLATFORM_CODE = {
+  BINDING_UNRESOLVED: 'XO_BINDING_UNRESOLVED',
+  BINDING_AMBIGUOUS: 'XO_BINDING_AMBIGUOUS',
+  BINDING_DENIED: 'XO_BINDING_DENIED',
+  INPUT_INVALID: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID',
+} as const;
+
+function isBindingCode(code: string | undefined): boolean {
+  return code === PLATFORM_CODE.BINDING_UNRESOLVED || code === PLATFORM_CODE.BINDING_AMBIGUOUS || code === PLATFORM_CODE.BINDING_DENIED;
+}
+
+const BINDING_HINT = 'XO found this rule but cannot carry it out yet, so nothing ran. It needs a clearer or more complete source document.';
+const INPUT_HINT = 'Nothing ran. Check the details you entered against the message above and try again.';
 
 /** How an execution is described to a person. A failed run is never shown as a success. */
 export function describeExecution(e: Execution): OutcomeView {
@@ -107,7 +124,12 @@ export function describeExecution(e: Execution): OutcomeView {
     case 'running':
       return { label: 'Running', tone: 'neutral' };
     case 'failed':
-      return { label: 'Did not complete', tone: 'danger', ...(e.errorMessage !== undefined ? { detail: e.errorMessage } : {}) };
+      return {
+        label: 'Did not complete',
+        tone: 'danger',
+        ...(e.errorMessage !== undefined ? { detail: e.errorMessage } : {}),
+        ...(isBindingCode(e.errorCode) ? { hint: BINDING_HINT } : e.errorCode === PLATFORM_CODE.INPUT_INVALID ? { hint: INPUT_HINT } : {}),
+      };
   }
 }
 
@@ -152,13 +174,19 @@ export interface ProblemView {
  * platform code/message remains available to Builder Mode via `problem` itself.
  */
 export function describeProblem(p: ApiProblem): ProblemView {
+  // A platform code that says exactly why is more useful than the generic wording for its HTTP class.
+  if (isBindingCode(p.code)) {
+    return { title: 'XO cannot carry this rule out yet', body: 'The rule was found in your document, but XO does not have enough detail to act on it, so nothing was recorded or run.', next: 'Add a clearer or more complete document and analyse it again.' };
+  }
   switch (p.kind) {
     case 'unauthenticated':
       return { title: 'Your access key was not accepted', body: 'XO could not confirm who you are, so nothing was done.', next: 'Check the key and try again, or ask your administrator for a new one.' };
     case 'forbidden':
-      return { title: 'You do not have permission to do this', body: 'XO understood the request but your account is not allowed to do it.', next: 'Ask an administrator for access if you think you need it.' };
+      // 403 covers more than one cause (e.g. the rule is not approved, or the account is not allowed). Studio does not guess which.
+      return { title: 'XO refused this action', body: 'XO understood the request but did not allow it. Either the rule is not approved or your account is not permitted to do this. Nothing was run.', next: 'Refresh and check the rule shows an approval; otherwise ask an administrator for access.' };
     case 'not_found':
-      return { title: 'XO could not find that', body: 'It may have been removed, or it may not belong to your workspace.', next: 'Go back and choose something from your workspace.' };
+      // The platform answers 404 for things you cannot access as well as things that do not exist, on purpose. Studio does not say which.
+      return { title: 'XO could not find that for you', body: 'It does not exist, or you do not have access to it. XO does not say which.', next: 'Go back and choose something from your workspace.' };
     case 'rejected':
       return { title: 'XO did not accept this request', body: p.message, next: 'Adjust what you sent and try again.' };
     case 'unavailable':

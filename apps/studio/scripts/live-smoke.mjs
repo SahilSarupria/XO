@@ -44,6 +44,14 @@ const det = caps.find((c) => c.executionClass === 'deterministic_rule');
 const hitl = caps.find((c) => c.executionClass === 'human_in_the_loop');
 check('found a deterministic and a human-in-the-loop capability', det && hitl);
 
+const unresolvedCap = caps.find((c) => c.status === 'unresolved');
+if (unresolvedCap) {
+  const blocked = await client.approveCapability(ws.workspaceId, cmp.compilationId, unresolvedCap.capabilityId);
+  check('approving an UNRESOLVED capability is refused (422 XO_BINDING_UNRESOLVED), not recorded', !blocked.ok && blocked.problem.status === 422 && blocked.problem.code === 'XO_BINDING_UNRESOLVED', JSON.stringify(blocked));
+  const recheck = must(await client.getCapabilities(ws.workspaceId, cmp.compilationId), 'capabilities re-read');
+  check('...and it still shows as not approved', recheck.find((c) => c.capabilityId === unresolvedCap.capabilityId)?.approved === false);
+}
+
 const refused = await client.createExecution(ws.workspaceId, cmp.compilationId, det.capabilityId, {});
 check('run before approval is refused by the platform (not shown as success)', !refused.ok, JSON.stringify(refused));
 if (!refused.ok) console.log(`      refusal: ${refused.problem.kind} HTTP ${refused.problem.status} ${refused.problem.code}`);

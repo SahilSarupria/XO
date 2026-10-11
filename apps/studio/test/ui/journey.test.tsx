@@ -70,7 +70,7 @@ describe('golden path: context → analyse → review → approve → run', () =
     await user.click(within(det).getByRole('button', { name: /^approve$/i }));
     expect(api.calls.some((c) => c.path.endsWith('/approve'))).toBe(false);
     await user.click(within(det).getByRole('button', { name: /confirm approval/i }));
-    await waitFor(() => expect(within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByText('Approved')).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByText('Approval recorded')).toBeInTheDocument());
     expect(api.calls.filter((c) => c.path.endsWith('/approve'))).toHaveLength(1);
 
     // run with no details: the platform rejects the input and Studio says so — it is NOT shown as success
@@ -149,7 +149,8 @@ describe('honest handling of things that cannot proceed', () => {
     await user.click(await within(card()).findByRole('button', { name: /run…/i }));
     api.executeBehavior = 'forbidden';
     await user.click(screen.getByRole('button', { name: /^run$/i }));
-    expect(await screen.findByText(/do not have permission/i)).toBeInTheDocument();
+    expect(await screen.findByText(/XO refused this action/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing was run/i)).toBeInTheDocument();
     expect(screen.queryByText('Completed')).not.toBeInTheDocument();
   });
 
@@ -216,5 +217,66 @@ describe('Builder Mode', () => {
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /start|execute|run/i })).not.toBeInTheDocument();
+  });
+});
+
+
+describe('WP2: truthful semantics', () => {
+  async function toApprovedCard(api: FakeXo) {
+    const user = await connect(api);
+    await createWorkspaceAndUpload(user);
+    await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
+    const card = () => screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!;
+    await user.click(await within(card()).findByRole('button', { name: /^approve$/i }));
+    await user.click(within(card()).getByRole('button', { name: /confirm approval/i }));
+    await within(card()).findByText('Approval recorded');
+    return { user, card };
+  }
+
+  it('says an approval is recorded, not that the rule is cleared to run', async () => {
+    const { card } = await toApprovedCard(new FakeXo());
+    expect(within(card()).getByText(/not a guarantee that a run will succeed/i)).toBeInTheDocument();
+    expect(within(card()).queryByText(/can now be run/i)).not.toBeInTheDocument();
+  });
+
+  it('labels field names taken from an error message as hints, and says no verified form exists', async () => {
+    const api = new FakeXo();
+    const { user, card } = await toApprovedCard(api);
+    await user.click(within(card()).getByRole('button', { name: /run…/i }));
+    expect(screen.getByText(/does not publish the list of details/i)).toBeInTheDocument();
+    expect(screen.queryByText(/hint from XO/i)).not.toBeInTheDocument(); // nothing inferred yet
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    await screen.findByText('Did not complete');
+    await user.click(within(card()).getByRole('button', { name: /run…/i }));
+    expect(screen.getAllByText(/hint from XO/i).length).toBe(2);
+    expect(screen.getByText(/hints, not a checked schema/i)).toBeInTheDocument();
+    // a field the person adds is not labelled as a hint
+    await user.click(screen.getByRole('button', { name: /add a detail/i }));
+    expect(screen.getAllByText(/hint from XO/i).length).toBe(2);
+  });
+
+  it('a run that XO cannot bind is a failure with guidance, never a success', async () => {
+    const api = new FakeXo();
+    api.executeBehavior = 'binding_unresolved';
+    const { user, card } = await toApprovedCard(api);
+    await user.click(within(card()).getByRole('button', { name: /run…/i }));
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    expect(await screen.findByText('Did not complete')).toBeInTheDocument();
+    expect(screen.getByText(/cannot carry it out yet, so nothing ran/i)).toBeInTheDocument();
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument();
+  });
+
+  it('a refused approval (stale view) is shown as XO refusing, and the rule is not shown as approved', async () => {
+    const api = new FakeXo();
+    const user = await connect(api);
+    await createWorkspaceAndUpload(user);
+    await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
+    const card = () => screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!;
+    api.approveRefusal = true;
+    await user.click(await within(card()).findByRole('button', { name: /^approve$/i }));
+    await user.click(within(card()).getByRole('button', { name: /confirm approval/i }));
+    expect(await within(card()).findByText(/cannot carry this rule out yet/i)).toBeInTheDocument();
+    expect(within(card()).queryByText('Approval recorded')).not.toBeInTheDocument();
+    expect(api.approvals.size).toBe(0);
   });
 });

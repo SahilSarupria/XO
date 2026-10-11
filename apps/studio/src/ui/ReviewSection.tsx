@@ -61,7 +61,7 @@ export function ReviewSection(props: {
         <FilterChip current={filter} id="all" onSelect={setFilter} label="All" n={s.total} />
         <FilterChip current={filter} id="needs_attention" onSelect={setFilter} label="Needs more information" n={s.needsAttention} />
         <FilterChip current={filter} id="ready_for_review" onSelect={setFilter} label="Ready for review" n={s.readyForReview} />
-        <FilterChip current={filter} id="approved" onSelect={setFilter} label="Approved" n={s.approved} />
+        <FilterChip current={filter} id="approved" onSelect={setFilter} label="Approval recorded" n={s.approved} />
       </div>
 
       <p className="notice notice-info small">

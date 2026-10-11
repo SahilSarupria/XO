@@ -107,8 +107,8 @@ src/styles/tokens.css   design tokens;  app.css = components using only tokens
 
 None of these were implemented. Each is a request for a contract change owned by the platform workstream.
 
-- **G1 Input contract.** No endpoint returns a capability's input schema. Studio can only learn required fields from an input-validation failure message (pre-fills names via a tolerant parse; degrades to none) and offers free-form name/value entry. Proposal: `GET .../capabilities/:id/contract` returning field names/types. Tests: schema round-trip. Also note: every failed attempt persists an execution record.
-- **G2 Approve non-executable capability.** From code reading (not exercised): the approve route checks membership only, so unresolved capabilities can be approved server-side. Proposal: reject with a 4xx unless binding is `resolved`.
+- **G1 Input contract.** No endpoint returns a capability's input schema. Studio can only learn required fields from an input-validation failure message (pre-fills names via a tolerant parse; degrades to none) and offers free-form name/value entry. Proposal: `GET .../capabilities/:id/contract` returning field names/types. Tests: schema round-trip. Also note: every failed attempt persists an execution record. *WP2-B: an authoritative schema already exists (`declaration.execution.inputSchema`); a projection proposal is in `WP2_FINDINGS.md`. Not implemented.*
+- **G2 Approve non-executable capability.** *Confirmed and fixed in WP2-A* (approve now refuses non-resolved capabilities; see `WP2_FINDINGS.md`). It was a correctness gap, not an execution bypass.
 - **G3 Same-origin hosting.** Document/ship a supported reverse-proxy or opt-in CORS allowlist.
 - **G4 Human sessions.** API-key-only auth; needs login/session for people (P1.0 identity follow-ups).
 - **G5 Approval integrity.** A user can approve their own upload; independent approval and content-binding are P1.0 M3. Studio's notice says so.

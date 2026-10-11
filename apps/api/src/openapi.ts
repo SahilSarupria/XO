@@ -469,7 +469,7 @@ export const openApiDocument = {
       post: {
         summary: 'Approve a discovered capability for execution',
         description:
-          'Records that the authenticated identity approved this exact capability from this exact compilation, in this workspace. Only approved capabilities may be executed via POST .../executions. No review comments, multi-reviewer quorum, or un-approve endpoint in this milestone.',
+          'Records that the authenticated identity approved this exact capability from this exact compilation, in this workspace. Only approved capabilities may be executed via POST .../executions. No review comments, multi-reviewer quorum, or un-approve endpoint in this milestone. Only a capability whose binding status is `resolved` can be approved: a non-resolved capability is refused (nothing is recorded) with the same code execution reports for that status. Approval is an eligibility-filtered acknowledgement, not authorization: execution re-derives the binding and re-checks the approval independently.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
@@ -477,6 +477,11 @@ export const openApiDocument = {
         ],
         responses: {
           '200': { description: 'ApprovalRecord' },
+          '422': {
+            description:
+              'XO_BINDING_UNRESOLVED or XO_BINDING_AMBIGUOUS — the capability is not resolved, so it cannot be carried out and no approval is recorded',
+          },
+          '403': { description: 'XO_BINDING_DENIED — the capability binding was denied; no approval is recorded' },
           '404': { description: 'Unknown compilation/capability, or workspace not owned by the caller' },
         },
       },

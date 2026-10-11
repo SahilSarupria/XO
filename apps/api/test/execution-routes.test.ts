@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { LocalFsBlobStore } from '@xo/storage';
+import { FsApprovalStore } from '../src/approvals/fs-approval-store.js';
 import { fileURLToPath } from 'node:url';
 import { TestServer, withTempDir } from './test-helpers.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
@@ -79,6 +82,34 @@ async function uploadAndCompile(
   ).json<CompilationWire>();
   assert.equal(compiled.status, 'succeeded', 'test fixture setup: expected compilation to succeed');
   return { sourceId: source.sourceId, compilationId: compiled.compilationId };
+}
+
+/**
+ * A real, approvable capability: the first `resolved` capability of the Commercial Property fixture.
+ * (The obligation-language markdown fixture yields only unresolved capabilities, which the approve
+ * route refuses — see approval-eligibility.test.ts.)
+ */
+async function compileResolvedFixture(
+  server: TestServer,
+  workspaceId: string,
+  extraHeaders?: Readonly<Record<string, string>>,
+): Promise<{ compilationId: string; capabilityId: string }> {
+  const { compilationId } = await uploadAndCompile(
+    server,
+    workspaceId,
+    'policy.pdf',
+    await readFile(COMMERCIAL_PROPERTY_PDF),
+    extraHeaders,
+  );
+  const capsRes = await server.request(
+    'GET',
+    `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities`,
+    undefined,
+    extraHeaders,
+  );
+  const resolved = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities.find((c) => c.status === 'resolved');
+  assert.ok(resolved, 'test fixture setup: expected a resolved capability in the Commercial Property fixture');
+  return { compilationId, capabilityId: resolved!.capabilityId };
 }
 
 test('full customer-value demo: workspace -> upload -> compile -> capabilities -> approve -> reject unapproved execution -> execute approved deterministic capability -> real result + persisted record', async () => {
@@ -216,35 +247,41 @@ test('input contract validation is enforced: a missing required field is rejecte
   });
 });
 
-test('unresolved capability cannot execute: rejected with a structured error, never silently routed through a deterministic path', async () => {
-  const server = await TestServer.start();
-  try {
-    const workspace = await createWorkspace(server);
-    const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
+test('unresolved capability cannot execute even with an approval record present: rejected with a structured error, never silently routed through a deterministic path', async () => {
+  await withTempDir('xo-api-data-', async (dataDir) => {
+    const server = await TestServer.start({ workspaceDataDir: dataDir });
+    try {
+      const workspace = await createWorkspace(server);
+      const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
 
-    const capsRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities`);
-    const unresolved = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities.find((c) => c.status === 'unresolved');
-    assert.ok(unresolved, 'test fixture setup: expected an unresolved capability from obligation-language markdown');
+      const capsRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities`);
+      const unresolved = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities.find((c) => c.status === 'unresolved');
+      assert.ok(unresolved, 'test fixture setup: expected an unresolved capability from obligation-language markdown');
 
-    // Approve it anyway — approval doesn't require executability; the execution route itself must independently refuse to run it.
-    const approveRes = await server.request(
-      'POST',
-      `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${unresolved!.capabilityId}/approve`,
-    );
-    assert.equal(approveRes.status, 200);
+      // WP2-A: the approve route now refuses an unresolved capability (see approval-eligibility.test.ts).
+      // Execution must STILL refuse it independently, so seed an approval record directly (as a record
+      // written before that check existed would be) and prove the execution boundary holds.
+      const seeded = await new FsApprovalStore(new LocalFsBlobStore(join(dataDir, workspace.workspaceId, 'approvals'))).approve(
+        compilationId,
+        unresolved!.capabilityId,
+        workspace.workspaceId,
+        server.identityId,
+      );
+      assert.ok(seeded.ok);
 
-    const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
-      compilationId,
-      capabilityId: unresolved!.capabilityId,
-      input: {},
-    });
-    assert.equal(execRes.status, 200);
-    const execution = execRes.json<ExecutionWire>();
-    assert.equal(execution.status, 'failed');
-    assert.equal(execution.errorCode, 'XO_BINDING_UNRESOLVED');
-  } finally {
-    await server.stop();
-  }
+      const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: unresolved!.capabilityId,
+        input: {},
+      });
+      assert.equal(execRes.status, 200);
+      const execution = execRes.json<ExecutionWire>();
+      assert.equal(execution.status, 'failed');
+      assert.equal(execution.errorCode, 'XO_BINDING_UNRESOLVED');
+    } finally {
+      await server.stop();
+    }
+  });
 });
 
 test('unapproved capability execution is rejected (403) and no execution record is created for it', async () => {
@@ -280,10 +317,9 @@ test('approval persists after a fresh server instance starts against the same wo
       try {
         const workspace = await createWorkspace(server1);
         workspaceId = workspace.workspaceId;
-        const result = await uploadAndCompile(server1, workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-        compilationId = result.compilationId;
-        const capsRes = await server1.request('GET', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities`);
-        capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
+        const picked = await compileResolvedFixture(server1, workspaceId);
+        compilationId = picked.compilationId;
+        capabilityId = picked.capabilityId;
         const approveRes = await server1.request(
           'POST',
           `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`,
@@ -317,9 +353,7 @@ test('execution records persist after a fresh server instance starts', async () 
       try {
         const workspace = await createWorkspace(server1);
         workspaceId = workspace.workspaceId;
-        const { compilationId } = await uploadAndCompile(server1, workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-        const capsRes = await server1.request('GET', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities`);
-        const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
+        const { compilationId, capabilityId } = await compileResolvedFixture(server1, workspaceId);
         await server1.request('POST', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
         const execRes = await server1.request('POST', `/workspaces/${workspaceId}/executions`, { compilationId, capabilityId, input: {} });
         executionId = execRes.json<ExecutionWire>().executionId;
@@ -368,10 +402,12 @@ test('cross-identity workspace access returns 404 on approval and execution rout
   const server = await TestServer.start();
   try {
     const owner = await createWorkspace(server);
-    const { compilationId } = await uploadAndCompile(server, owner.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-    const capsRes = await server.request('GET', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities`);
-    const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
-    await server.request('POST', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
+    const { compilationId, capabilityId } = await compileResolvedFixture(server, owner.workspaceId);
+    assert.equal(
+      (await server.request('POST', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`))
+        .status,
+      200,
+    );
     const execution = (
       await server.request('POST', `/workspaces/${owner.workspaceId}/executions`, { compilationId, capabilityId, input: {} })
     ).json<ExecutionWire>();
@@ -410,9 +446,7 @@ test('cross-workspace compilation/capability access returns 404: a capability fr
   try {
     const workspaceA = await createWorkspace(server);
     const workspaceB = await createWorkspace(server);
-    const { compilationId } = await uploadAndCompile(server, workspaceA.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-    const capsRes = await server.request('GET', `/workspaces/${workspaceA.workspaceId}/compilations/${compilationId}/capabilities`);
-    const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
+    const { compilationId, capabilityId } = await compileResolvedFixture(server, workspaceA.workspaceId);
 
     const approveThroughB = await server.request(
       'POST',
@@ -432,32 +466,41 @@ test('cross-workspace compilation/capability access returns 404: a capability fr
 });
 
 test('a client cannot override identity, workspace, capability, execution class, or runtime declaration via the request body', async () => {
-  const server = await TestServer.start();
-  try {
-    const workspace = await createWorkspace(server);
-    const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
-    const capsRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities`);
-    const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
-    await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
+  await withTempDir('xo-api-data-', async (dataDir) => {
+    const server = await TestServer.start({ workspaceDataDir: dataDir });
+    try {
+      const workspace = await createWorkspace(server);
+      const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'agreement.md', Buffer.from(OBLIGATION_MARKDOWN));
+      const capsRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities`);
+      const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
+      // capabilities[0] of this fixture is unresolved, which the approve route now refuses; seed the record directly so the smuggling attempt still reaches the execution boundary.
+      const seeded = await new FsApprovalStore(new LocalFsBlobStore(join(dataDir, workspace.workspaceId, 'approvals'))).approve(
+        compilationId,
+        capabilityId,
+        workspace.workspaceId,
+        server.identityId,
+      );
+      assert.ok(seeded.ok);
 
-    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
-      compilationId,
-      capabilityId,
-      input: {},
-      identityId: 'someone-else',
-      workspaceId: 'ws_00000000000000000000000000000000',
-      executionClass: 'deterministic_rule',
-      runtimeDeclaration: { id: capabilityId, execution: { mode: 'deterministic_rule' }, evaluate: 'ignored' },
-    });
-    assert.equal(res.status, 200); // this capability is unresolved — a genuine, honest rejection, not a fabricated success from the smuggled fields
-    const execution = res.json<ExecutionWire>();
-    assert.equal(execution.identityId, server.identityId);
-    assert.equal(execution.workspaceId, workspace.workspaceId);
-    assert.notEqual(execution.status, 'succeeded');
-    assert.equal(execution.errorCode, 'XO_BINDING_UNRESOLVED'); // proves the server re-derived the binding itself rather than trusting the smuggled "deterministic_rule" claim
-  } finally {
-    await server.stop();
-  }
+      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId,
+        input: {},
+        identityId: 'someone-else',
+        workspaceId: 'ws_00000000000000000000000000000000',
+        executionClass: 'deterministic_rule',
+        runtimeDeclaration: { id: capabilityId, execution: { mode: 'deterministic_rule' }, evaluate: 'ignored' },
+      });
+      assert.equal(res.status, 200); // this capability is unresolved — a genuine, honest rejection, not a fabricated success from the smuggled fields
+      const execution = res.json<ExecutionWire>();
+      assert.equal(execution.identityId, server.identityId);
+      assert.equal(execution.workspaceId, workspace.workspaceId);
+      assert.notEqual(execution.status, 'succeeded');
+      assert.equal(execution.errorCode, 'XO_BINDING_UNRESOLVED'); // proves the server re-derived the binding itself rather than trusting the smuggled "deterministic_rule" claim
+    } finally {
+      await server.stop();
+    }
+  });
 });
 
 test('unauthenticated requests to approval and execution routes are rejected (401)', async () => {
