@@ -208,6 +208,15 @@ export class AnchoredTree {
         platform: ops.platform,
         detail,
       });
+    // F6: hardened content acquisition is Linux-only. Windows is refused explicitly (its reparse-point/junction and
+    // path semantics are not handled by this connector); other non-Linux hosts (macOS) lack the /proc anchor. Neither
+    // falls back to a weaker path-based read; the refusal is reported before any request path is touched.
+    if (ops.platform === 'win32')
+      throw fatal(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'filesystem content acquisition is not supported on Windows', {
+        reason: 'fd_traversal_unavailable',
+        platform: ops.platform,
+        detail: 'platform_windows_unsupported',
+      });
     if (ops.platform !== 'linux') throw unavailable('platform_not_linux');
     const dirFlags = O_DIR_FLAGS();
     if (dirFlags === undefined) throw unavailable('missing_open_flags');
