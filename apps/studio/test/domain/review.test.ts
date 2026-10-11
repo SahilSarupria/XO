@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PLATFORM_CODE,
+  buildInputFromContract,
   canApprove,
   canRun,
   coerceFieldValue,
@@ -203,5 +204,37 @@ describe('WP2-D error semantics', () => {
     );
     expect(describeExecution(exec({ status: 'failed', errorCode: 'XO_SOMETHING_ELSE', errorMessage: 'm' })).hint).toBeUndefined();
     expect(describeExecution(exec({ status: 'succeeded' })).hint).toBeUndefined();
+  });
+});
+
+describe('buildInputFromContract', () => {
+  const contract = {
+    required: ['claim_amount', 'loss'],
+    properties: { claim_amount: { type: 'number' }, loss: { type: 'string' }, reported: { type: 'boolean' } },
+  } as const;
+
+  it('converts to the declared types and omits empty optional fields', () => {
+    expect(buildInputFromContract(contract, { claim_amount: ' 1200.5 ', loss: 'fire' })).toEqual({
+      ok: true,
+      input: { claim_amount: 1200.5, loss: 'fire' },
+    });
+    expect(buildInputFromContract(contract, { claim_amount: '1', loss: 'x', reported: 'true' })).toEqual({
+      ok: true,
+      input: { claim_amount: 1, loss: 'x', reported: true },
+    });
+  });
+
+  it('reports every problem and never builds partial input', () => {
+    const r = buildInputFromContract(contract, { claim_amount: 'abc', reported: 'maybe' });
+    expect(r).toEqual({ ok: false, errors: { claim_amount: 'Enter a number.', loss: 'Required.', reported: 'Choose true or false.' } });
+  });
+
+  it('keeps text as text even when it looks numeric, and only ever sends declared properties', () => {
+    const r = buildInputFromContract(contract, { claim_amount: '1', loss: '42', not_declared: 'x' });
+    expect(r).toEqual({ ok: true, input: { claim_amount: 1, loss: '42' } });
+  });
+
+  it('a rule with an empty contract builds empty input', () => {
+    expect(buildInputFromContract({ required: [], properties: {} }, {})).toEqual({ ok: true, input: {} });
   });
 });

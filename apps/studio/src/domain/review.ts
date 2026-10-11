@@ -1,5 +1,5 @@
 import type { ApiProblem } from '../platform/client';
-import type { Capability, Execution } from '../platform/wire';
+import type { Capability, Execution, InputContract } from '../platform/wire';
 
 /**
  * The review state shown to a person. It is DERIVED, never stored or invented, from
@@ -272,4 +272,35 @@ export function nextStep(args: {
   if (args.executions === 0)
     return { step: 'run', headline: 'Try an approved rule', hint: 'Run one approved rule to see exactly what XO does with it.' };
   return { step: 'done', headline: 'Keep going', hint: 'Review more rules, add more documents, or check your run history.' };
+}
+
+export type ContractBuildResult =
+  | { readonly ok: true; readonly input: Record<string, unknown> }
+  | { readonly ok: false; readonly errors: Readonly<Record<string, string>> };
+
+/**
+ * Turns what a person typed into the exact input XO's published contract describes. Advisory only:
+ * it exists so people get immediate, plain feedback; the server's validation remains the sole authority
+ * and its verdict is always shown. Optional fields left empty are omitted (the contract rejects unknown
+ * properties and treats an absent optional property as fine). Only declared properties are ever sent.
+ */
+export function buildInputFromContract(contract: InputContract, values: Readonly<Record<string, string>>): ContractBuildResult {
+  const input: Record<string, unknown> = {};
+  const errors: Record<string, string> = {};
+  for (const [name, def] of Object.entries(contract.properties)) {
+    const raw = (values[name] ?? '').trim();
+    const isRequired = contract.required.includes(name);
+    if (raw.length === 0) {
+      if (isRequired) errors[name] = 'Required.';
+      continue;
+    }
+    if (def.type === 'string') input[name] = values[name] ?? '';
+    else if (def.type === 'number') {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) errors[name] = 'Enter a number.';
+      else input[name] = n;
+    } else if (raw === 'true' || raw === 'false') input[name] = raw === 'true';
+    else errors[name] = 'Choose true or false.';
+  }
+  return Object.keys(errors).length === 0 ? { ok: true, input } : { ok: false, errors };
 }

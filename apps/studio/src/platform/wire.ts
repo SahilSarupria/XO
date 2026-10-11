@@ -136,6 +136,17 @@ export interface Provenance {
   readonly locator?: string;
   readonly pages?: readonly number[];
 }
+/**
+ * The platform's authoritative input contract for a capability (`CapabilityInputSchema` in @xo/types,
+ * published on the capability projection as `inputContract`). Flat by design: primitive properties only.
+ * ABSENT means "no published contract" — never "no inputs needed".
+ */
+export type InputPropertyType = 'string' | 'number' | 'boolean';
+export interface InputContract {
+  readonly required: readonly string[];
+  readonly properties: Readonly<Record<string, { readonly type: InputPropertyType }>>;
+}
+
 export interface Capability {
   readonly capabilityId: string;
   readonly contractId: string;
@@ -148,7 +159,25 @@ export interface Capability {
   readonly confidence: number;
   readonly declaredConfidence?: { readonly score: number; readonly basis: string };
   readonly provenance: readonly Provenance[];
+  readonly inputContract?: InputContract;
   readonly approved: boolean;
+}
+
+function parseInputContract(v: unknown, path: string): InputContract {
+  const o = obj(v, path);
+  if (o['type'] !== 'object') throw new WireParseError(`${path}.type`, 'object');
+  const rawProps = obj(o['properties'], `${path}.properties`);
+  const properties: Record<string, { readonly type: InputPropertyType }> = {};
+  for (const [name, def] of Object.entries(rawProps)) {
+    const t = obj(def, `${path}.properties.${name}`)['type'];
+    if (t !== 'string' && t !== 'number' && t !== 'boolean')
+      throw new WireParseError(`${path}.properties.${name}.type`, 'string|number|boolean');
+    properties[name] = { type: t };
+  }
+  const required = strArr(o['required'], `${path}.required`);
+  // A contract that requires a property it never declares cannot be trusted to drive a form.
+  for (const r of required) if (!(r in properties)) throw new WireParseError(`${path}.required`, 'only declared properties');
+  return { required, properties };
 }
 export function parseCapability(v: unknown, path = 'capability'): Capability {
   const o = obj(v, path);
@@ -188,6 +217,7 @@ export function parseCapability(v: unknown, path = 'capability'): Capability {
     confidence: num(o['confidence'], `${path}.confidence`),
     ...(declaredConfidence !== undefined ? { declaredConfidence } : {}),
     provenance,
+    ...(o['inputContract'] !== undefined ? { inputContract: parseInputContract(o['inputContract'], `${path}.inputContract`) } : {}),
     approved: bool(o['approved'], `${path}.approved`),
   };
 }

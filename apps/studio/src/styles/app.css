@@ -593,3 +593,17 @@ details summary {
   max-height: 22rem;
   margin: var(--s-2) 0 0;
 }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.field select,
+.field input[aria-invalid='true'],
+.field select[aria-invalid='true'] {
+  max-width: 24rem;
+}
+.field [aria-invalid='true'] {
+  border-color: var(--danger);
+}

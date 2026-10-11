@@ -576,6 +576,8 @@ export const openApiDocument = {
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',
+        description:
+          'Each capability carries its binding `status`, evidence, confidence, and `approved`. `inputContract` (optional, additive) is the capability\'s authoritative input schema — the same flat `CapabilityInputSchema` execution validates against: { type: \"object\", properties: { name: { type: \"string\" | \"number\" | \"boolean\" } }, required: string[] }. Properties not declared are rejected at execution. ABSENCE MEANS NO PUBLISHED CONTRACT, NOT \"NO INPUTS NEEDED\" (no structural validation happens without a schema); compilations stored before this field existed also omit it — recompile to obtain it. It is advisory for building forms: the server remains the sole validation authority.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },

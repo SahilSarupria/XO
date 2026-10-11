@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { coerceFieldValue, describeExecution, suggestedFieldsFromFailure } from '../domain/review';
+import { buildInputFromContract, coerceFieldValue, describeExecution, suggestedFieldsFromFailure } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
-import type { Execution } from '../platform/wire';
+import type { Execution, InputContract } from '../platform/wire';
 import { Badge, Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
 
@@ -79,13 +79,113 @@ interface Row {
  * so inputs are free-form name/value pairs, pre-filled with any field names the platform
  * itself reported as missing on an earlier attempt.
  */
-export function RunPanel(props: {
+interface RunPanelProps {
   workspaceId: string;
   compilationId: string;
   capabilityId: string;
   lastExecution: Execution | undefined;
+  /** XO's published input contract for this capability, when it has one. Absent = no published contract. */
+  inputContract: InputContract | undefined;
   onRan: () => void;
-}) {
+}
+
+/** Guided form when XO publishes an input contract; otherwise the honest free-form fallback. */
+export function RunPanel(props: RunPanelProps) {
+  return props.inputContract !== undefined ? <GuidedRunPanel {...props} contract={props.inputContract} /> : <FreeFormRunPanel {...props} />;
+}
+
+/**
+ * The details XO says this rule takes, taken from its published input contract (the same definition the
+ * server validates against). Studio only converts what you type to the declared types and sends the declared
+ * properties; XO still validates on run and its verdict is shown unchanged.
+ */
+function GuidedRunPanel(props: RunPanelProps & { contract: InputContract }) {
+  const { client } = useSession();
+  const { contract } = props;
+  const names = Object.keys(contract.properties).sort(
+    (a, b) => Number(contract.required.includes(b)) - Number(contract.required.includes(a)) || a.localeCompare(b),
+  );
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<ApiProblem | undefined>();
+
+  async function run() {
+    const built = buildInputFromContract(contract, values);
+    if (!built.ok) {
+      setErrors({ ...built.errors });
+      return;
+    }
+    setErrors({});
+    setBusy(true);
+    setProblem(undefined);
+    const res = await client.createExecution(props.workspaceId, props.compilationId, props.capabilityId, built.input);
+    setBusy(false);
+    if (res.ok) props.onRan();
+    else setProblem(res.problem);
+  }
+
+  return (
+    <div className="run-panel">
+      <h4>Run this rule</h4>
+      <p className="muted small">This really runs the rule through XO and records the attempt.</p>
+      <p className="notice notice-info small">
+        These are the details XO says this rule takes. XO still checks them when you run, and tells you if anything is wrong.
+      </p>
+      {names.length === 0 ? <p className="small">This rule takes no details.</p> : null}
+      {names.map((name) => {
+        const def = contract.properties[name]!;
+        const required = contract.required.includes(name);
+        const id = `contract-${props.capabilityId}-${name}`;
+        const err = errors[name];
+        return (
+          <div className="field" key={name}>
+            <label htmlFor={id}>
+              {name}{' '}
+              <span className="muted small">
+                · {required ? 'required' : 'optional'} · {def.type === 'boolean' ? 'true or false' : def.type}
+              </span>
+            </label>
+            {def.type === 'boolean' ? (
+              <select
+                id={id}
+                value={values[name] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
+                aria-invalid={err !== undefined}
+              >
+                <option value="">{required ? 'Choose…' : 'Not set'}</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            ) : (
+              <input
+                id={id}
+                value={values[name] ?? ''}
+                inputMode={def.type === 'number' ? 'decimal' : 'text'}
+                onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
+                aria-invalid={err !== undefined}
+                aria-describedby={err !== undefined ? `${id}-err` : undefined}
+              />
+            )}
+            {err !== undefined ? (
+              <p id={`${id}-err`} className="danger-text small" role="alert">
+                {err}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+      <div className="row">
+        <Button variant="primary" disabled={busy} onClick={() => void run()}>
+          {busy ? 'Running…' : 'Run'}
+        </Button>
+      </div>
+      {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+    </div>
+  );
+}
+
+function FreeFormRunPanel(props: RunPanelProps) {
   const { client } = useSession();
   const suggested = props.lastExecution !== undefined ? suggestedFieldsFromFailure(props.lastExecution) : [];
   const [rows, setRows] = useState<Row[]>(() => suggested.map((name, i) => ({ id: i, name, value: '', origin: 'inferred' as const })));

@@ -197,6 +197,7 @@ function CapabilityCard(props: {
             compilationId={props.compilationId}
             capabilityId={c.capabilityId}
             lastExecution={props.lastExecution}
+            inputContract={c.inputContract}
             onRan={() => {
               setRunning(false);
               props.onChanged();

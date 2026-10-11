@@ -84,3 +84,38 @@ describe('XoClient', () => {
     expect(r).toMatchObject({ ok: false, problem: { kind: 'forbidden' } });
   });
 });
+
+describe('input contract parsing', () => {
+  const baseCap = {
+    capabilityId: 'c',
+    contractId: 'c',
+    name: 'n',
+    description: 'd',
+    status: 'resolved',
+    confidence: 1,
+    provenance: [],
+    approved: false,
+  };
+  const get = (cap: unknown) =>
+    new XoClient({
+      apiKey: 'k',
+      fetch: fakeFetch({ 'GET /workspaces/w/compilations/c/capabilities': () => ({ body: { capabilities: [cap] } }) }).fetch,
+    }).getCapabilities('w', 'c');
+
+  it('parses a published contract', async () => {
+    const r = await get({ ...baseCap, inputContract: { type: 'object', properties: { a: { type: 'number' } }, required: ['a'] } });
+    expect(r.ok && r.value[0]?.inputContract).toEqual({ required: ['a'], properties: { a: { type: 'number' } } });
+  });
+  it('absence stays absence (no contract is never read as "no inputs")', async () => {
+    const r = await get(baseCap);
+    expect(r.ok && r.value[0]?.inputContract).toBeUndefined();
+  });
+  it.each([
+    ['unknown property type', { type: 'object', properties: { a: { type: 'date' } }, required: [] }],
+    ['required property that is not declared', { type: 'object', properties: {}, required: ['a'] }],
+    ['not an object schema', { type: 'array', properties: {}, required: [] }],
+    ['not an object at all', 'nope'],
+  ])('rejects a malformed contract (%s) instead of driving a form from it', async (_n, bad) => {
+    expect(await get({ ...baseCap, inputContract: bad })).toMatchObject({ ok: false, problem: { kind: 'malformed' } });
+  });
+});

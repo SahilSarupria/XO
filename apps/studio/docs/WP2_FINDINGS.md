@@ -58,6 +58,14 @@ Not changed: legacy approval records for unresolved capabilities (if any exist i
 6. **Tests required:** projection equals the lowered declaration's schema for resolved capabilities and is absent for unresolved/none; property test that omitting each `required` key yields `INPUT_INVALID` and supplying exactly the projected contract passes validation; unknown-property rejection; OpenAPI test; Studio parser/guided-form tests; live smoke assertion on the real PDF.
 7. **Files/packages:** `apps/api/src/compilations/compile-source.ts` + `compilation.ts` (projection), `apps/api/src/openapi.ts`, `apps/api/test/*`; Studio `platform/wire.ts`, `ui/runs.tsx`. To avoid a merge conflict with M2 (which edits `execute-capability.ts`), reuse `findInputSchema` only after extracting it post-M2, or compute the projection from the same lowering outcome inside `compile-source.ts`. No changes to `@xo/types` or `@xo/capability-contract`.
 
+### Status: item 2 of the proposal is now implemented (additive)
+
+- **API:** `inputContract` is published on the capability projection, populated from the same lowered `declaration.execution.inputSchema` that execution enforces, typed with the existing `CapabilityInputSchema` (no new format). Absent means "no published contract". Compilations stored before this change do not have it; recompile to obtain it. Documented in OpenAPI.
+- **Tests that tie the published contract to enforcement** (`apps/api/test/input-contract.test.ts`, real PDF, real routes): omitting each required property is rejected as `INPUT_INVALID` naming it; input built exactly from the contract is not rejected; undeclared and wrongly typed properties are rejected; unresolved capabilities publish none. A mutation check (publishing a contract with `required: []`) fails 3 of the 5 tests.
+- **Studio:** a guided form is used only when a contract is published (typed fields, required/optional, no free-form extras because undeclared properties are rejected). It is advisory: the server still validates and its verdict is shown unchanged. Without a contract the honest free-form fallback below is used. A malformed contract is rejected as untrusted instead of driving a form.
+- **Real-data note:** on the Commercial Property PDF, 19 of 33 capabilities publish a contract, and its fields are flat strings (for example `claim`, `lossadjuster_assessment` are `string`), so the previous free-form entry could not have been typed correctly without guessing.
+- **Not done (owner decision):** structured `issues[]` on failed records, and validating input before persisting an execution record. Both change execution behaviour and were left as proposals.
+
 ### Studio fallback in the meantime (implemented)
 
 Inferred names are labelled "hint from XO's last error", the panel states that XO does not publish the required details and that Studio cannot show a verified form, and numbers/booleans/quoted-text behaviour is explained. Nothing implies a validated schema.
@@ -94,7 +102,7 @@ Missing contracts to request before Studio can start workflows: a per-workflow i
 
 ## Remaining gaps and dependencies
 
-- Input contract exposure (WP2-B proposal) — needs owner decision and a platform change.
+- Input contract: exposure is implemented (see WP2-B status); structured `issues[]` and validate-before-persist remain owner decisions.
 - Workflow start/resume UX — needs a design pass; blocked on re-verification after M2.
 - Approval is still a self-recorded acknowledgement (P1.0 M3); API-key-only auth (no human login); durable audit (M4); no per-capability validation output.
 - Legacy approval records for unresolved capabilities, if present in a deployment, are left as-is (displayed truthfully).

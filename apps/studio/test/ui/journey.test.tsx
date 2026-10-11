@@ -297,3 +297,73 @@ describe('WP2: truthful semantics', () => {
     expect(api.approvals.size).toBe(0);
   });
 });
+
+describe('guided run form (published input contract)', () => {
+  async function toRunPanel(api: FakeXo) {
+    const user = await connect(api);
+    await createWorkspaceAndUpload(user);
+    await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
+    const card = () => screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!;
+    await user.click(await within(card()).findByRole('button', { name: /^approve$/i }));
+    await user.click(within(card()).getByRole('button', { name: /confirm approval/i }));
+    await user.click(await within(card()).findByRole('button', { name: /run…/i }));
+    return { user, card };
+  }
+
+  it('shows the published details with required/optional and types, and offers no free-form fields', async () => {
+    const api = new FakeXo();
+    api.publishContract = true;
+    await toRunPanel(api);
+    expect(screen.getByLabelText(/claim_amount/)).toBeInTheDocument();
+    expect(screen.getByText(/claim_amount/).textContent).toMatch(/required/);
+    expect(screen.getByLabelText(/reported/).tagName).toBe('SELECT');
+    expect(screen.queryByRole('button', { name: /add a detail/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/cannot show you a verified form/i)).not.toBeInTheDocument();
+  });
+
+  it('blocks an incomplete form locally without any request, then sends exactly the declared, typed input', async () => {
+    const api = new FakeXo();
+    api.publishContract = true;
+    api.executeBehavior = 'succeed';
+    const { user, card } = await toRunPanel(api);
+    const before = api.calls.filter((c) => c.path.endsWith('/executions') && c.method === 'POST').length;
+
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    expect(await screen.findAllByText('Required.')).toHaveLength(2);
+    await user.type(screen.getByLabelText(/claim_amount/), 'abc');
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    expect(await screen.findByText('Enter a number.')).toBeInTheDocument();
+    expect(api.calls.filter((c) => c.path.endsWith('/executions') && c.method === 'POST')).toHaveLength(before);
+
+    await user.clear(screen.getByLabelText(/claim_amount/));
+    await user.type(screen.getByLabelText(/claim_amount/), '1200');
+    await user.type(screen.getByLabelText(/loss/), 'fire');
+    await user.selectOptions(screen.getByLabelText(/reported/), 'true');
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    await waitFor(() => expect(within(card()).getByText('Completed')).toBeInTheDocument());
+    const last = api.calls.filter((c) => c.method === 'POST' && c.path.endsWith('/executions')).at(-1)!;
+    expect(last.body).toEqual({
+      compilationId: expect.any(String),
+      capabilityId: 'cap_det',
+      input: { claim_amount: 1200, loss: 'fire', reported: true },
+    });
+  });
+
+  it("still shows the platform's own verdict when XO rejects what the form allowed (server stays authoritative)", async () => {
+    const api = new FakeXo();
+    api.publishContract = true; // executeBehavior defaults to invalid_input
+    const { user, card } = await toRunPanel(api);
+    await user.type(screen.getByLabelText(/claim_amount/), '1');
+    await user.type(screen.getByLabelText(/loss/), 'x');
+    await user.click(screen.getByRole('button', { name: /^run$/i }));
+    await waitFor(() => expect(within(card()).getByText('Did not complete')).toBeInTheDocument());
+    expect(within(card()).getByText(/missing required property/i)).toBeInTheDocument();
+  });
+
+  it('without a published contract the honest free-form fallback is used and says so', async () => {
+    const api = new FakeXo();
+    await toRunPanel(api);
+    expect(screen.getByText(/cannot show you a verified form/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add a detail/i })).toBeInTheDocument();
+  });
+});

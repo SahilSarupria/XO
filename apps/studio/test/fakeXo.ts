@@ -12,7 +12,15 @@ export interface FakeCap {
   executionClass?: string;
   reason?: string;
   confidence: number;
+  inputContract?: unknown;
 }
+
+/** Mirrors the flat CapabilityInputSchema the platform publishes (verified live by scripts/live-smoke.mjs). */
+export const CONTRACT = {
+  type: 'object',
+  properties: { claim_amount: { type: 'number' }, loss: { type: 'string' }, reported: { type: 'boolean' } },
+  required: ['claim_amount', 'loss'],
+};
 
 interface Body {
   name?: string;
@@ -42,6 +50,8 @@ export class FakeXo {
   }> = [];
   approvals = new Set<string>();
   executions: FakeExecution[] = [];
+  /** When true, the deterministic capability publishes an input contract, as the platform now does. */
+  publishContract = false;
   caps: FakeCap[] = [
     {
       capabilityId: 'cap_det',
@@ -142,6 +152,7 @@ export class FakeXo {
         compilationId: cid,
         capabilities: this.caps.map((c) => ({
           ...c,
+          ...(this.publishContract && c.capabilityId === 'cap_det' ? { inputContract: CONTRACT } : {}),
           contractId: c.capabilityId,
           provenance: [{ documentPath: 'src', pages: [2] }],
           approved: this.approvals.has(`${cid}:${c.capabilityId}`),

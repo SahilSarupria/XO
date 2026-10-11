@@ -107,7 +107,7 @@ src/styles/tokens.css   design tokens;  app.css = components using only tokens
 
 None of these were implemented. Each is a request for a contract change owned by the platform workstream.
 
-- **G1 Input contract.** No endpoint returns a capability's input schema. Studio can only learn required fields from an input-validation failure message (pre-fills names via a tolerant parse; degrades to none) and offers free-form name/value entry. Proposal: `GET .../capabilities/:id/contract` returning field names/types. Tests: schema round-trip. Also note: every failed attempt persists an execution record. _WP2-B: an authoritative schema already exists (`declaration.execution.inputSchema`); a projection proposal is in `WP2_FINDINGS.md`. Not implemented._
+- **G1 Input contract — resolved for newly compiled documents.** The capability projection now publishes `inputContract` (the same schema execution enforces; absent = no published contract) and Studio shows a guided form from it, falling back to free-form entry otherwise. Older stored compilations need a recompile. Still open: structured validation `issues[]`, and whether to validate before persisting an execution record (every failed attempt currently persists a record). See `WP2_FINDINGS.md`.
 - **G2 Approve non-executable capability.** _Confirmed and fixed in WP2-A_ (approve now refuses non-resolved capabilities; see `WP2_FINDINGS.md`). It was a correctness gap, not an execution bypass.
 - **G3 Same-origin hosting.** Document/ship a supported reverse-proxy or opt-in CORS allowlist.
 - **G4 Human sessions.** API-key-only auth; needs login/session for people (P1.0 identity follow-ups).

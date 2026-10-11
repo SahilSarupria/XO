@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { XoClient } from '../src/platform/client.ts';
-import { suggestedFieldsFromFailure, reviewStateOf } from '../src/domain/review.ts';
+import { buildInputFromContract, suggestedFieldsFromFailure, reviewStateOf } from '../src/domain/review.ts';
 
 const baseUrl = process.env.XO_API_URL ?? 'http://127.0.0.1:4000';
 const apiKey = process.env.XO_API_KEY;
@@ -128,6 +128,38 @@ check(
   `workflows parsed (${wfs.length}); at least one reports why it cannot run`,
   wfs.length > 0 && wfs.some((w) => !w.executable && w.notExecutableReasons.length > 0),
 );
+
+// WP2-B: the platform publishes the authoritative input contract; Studio's guided form drives from it.
+const contract = det.inputContract;
+check(
+  'deterministic capability publishes an input contract (parsed by Studio)',
+  contract && Object.keys(contract.properties).length > 0,
+  JSON.stringify(det),
+);
+check(
+  'capabilities that cannot be carried out publish no contract',
+  caps.filter((c) => c.status !== 'resolved').every((c) => c.inputContract === undefined),
+);
+if (contract) {
+  const sample = { string: 'x', number: '1', boolean: 'true' };
+  const typed = buildInputFromContract(
+    contract,
+    Object.fromEntries(Object.entries(contract.properties).map(([n, d]) => [n, sample[d.type]])),
+  );
+  check('input built from the published contract by Studio is accepted by the real input validation', typed.ok);
+  if (typed.ok) {
+    must(await client.approveCapability(ws.workspaceId, cmp.compilationId, det.capabilityId), 'approve for contract run');
+    const run = must(
+      await client.createExecution(ws.workspaceId, cmp.compilationId, det.capabilityId, typed.input),
+      'contract-driven run returns a record',
+    );
+    check(
+      `contract-driven run is not rejected as invalid input (status ${run.status})`,
+      run.errorCode !== 'XO_RUNTIME_CAPABILITY_INPUT_INVALID',
+      run.errorMessage,
+    );
+  }
+}
 
 const foreign = await client.listSources('ws_00000000000000000000000000000000');
 check("another workspace's id -> not_found (no leak)", !foreign.ok && foreign.problem.kind === 'not_found', JSON.stringify(foreign));
