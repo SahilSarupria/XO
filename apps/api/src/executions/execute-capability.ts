@@ -8,7 +8,7 @@ import {
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
 import { authorizeContractExecution, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
-import { authorizeCapabilityExecution } from '@xo/permissions';
+import { authorizeCapabilityExecution, type PermissionDeclaration } from '@xo/permissions';
 import type { ExecutionAuthorization } from './authorization.js';
 import { declaredPermissionsForNode } from './authorization.js';
 import { ErrorCode } from '@xo/errors';
@@ -144,7 +144,13 @@ function findInputSchema(graph: XoirGraph, contractId: string) {
  * authorization decision could not be established (fail closed).
  */
 export type AuthorizationPreflightOutcome =
-  | { readonly kind: 'authorized'; readonly graphHash: ContentHash; readonly contractId: string }
+  | {
+      readonly kind: 'authorized';
+      readonly graphHash: ContentHash;
+      readonly contractId: string;
+      /** Canonical fingerprint of the authoritative declaration this decision was made on (see {@link declarationFingerprint}). */
+      readonly declarationFingerprint: string;
+    }
   | { readonly kind: 'denied'; readonly errorCode: string; readonly errorMessage: string }
   | { readonly kind: 'error'; readonly errorCode: string; readonly errorMessage: string };
 
@@ -163,10 +169,11 @@ export async function preflightCapabilityAuthorization(
     if (!contractResult.ok) return { kind: 'error', errorCode: contractResult.error.code, errorMessage: contractResult.error.message };
     const contract = contractResult.value;
 
+    const declaration = declaredPermissionsForNode(graph, contract.id);
     const decision = await authorizeContractExecution(contract, {
       permissionManager: authorization.permissionManager,
       subject: authorization.subject,
-      permissionDeclaration: declaredPermissionsForNode(graph, contract.id),
+      permissionDeclaration: declaration,
     });
     if (!decision.allowed) {
       return {
@@ -175,7 +182,12 @@ export async function preflightCapabilityAuthorization(
         errorMessage: `capability "${capabilityId}" was not authorized: ${decision.reason}`,
       };
     }
-    return { kind: 'authorized', graphHash, contractId: contract.id };
+    return {
+      kind: 'authorized',
+      graphHash,
+      contractId: contract.id,
+      declarationFingerprint: declarationFingerprint(contract.id, declaration),
+    };
   } catch (cause) {
     // Never an "allow" on a throw.
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -187,8 +199,26 @@ export async function preflightCapabilityAuthorization(
   }
 }
 
+/**
+ * Canonical, order-independent fingerprint of an authoritative declaration for one capability: its id, kind and the sorted
+ * requirement set (permission + scope + optional). It ties a preflight decision to the EXACT declaration it was made on,
+ * independent of `graph.contentHash()` (which trusts stored node hashes and so cannot see a property edit that left a node's
+ * hash untouched). Unresolved declarations fingerprint to a reserved value so a denial can never be replayed as an allow.
+ */
+export function declarationFingerprint(capabilityId: string, declaration: PermissionDeclaration): string {
+  const body =
+    declaration.kind === 'required'
+      ? declaration.requirements.map((r) => JSON.stringify([String(r.permission), r.scope ?? null, r.optional === true])).sort()
+      : declaration.kind === 'none'
+        ? []
+        : ['unresolved'];
+  return JSON.stringify([capabilityId, declaration.kind, body]);
+}
+
 /** Optional hardening for `executeApprovedCapability` — see `preflightCapabilityAuthorization`. */
 export interface ExecuteApprovedCapabilityOptions {
+  /** The declaration fingerprint a preflight authorized. If the declaration derived from the graph executed here differs, execution is refused. */
+  readonly preflightDeclarationFingerprint?: string;
   /** The graph content hash a preflight authorized. If the graph loaded here has a different content hash, execution is refused (see `preflightCapabilityAuthorization` for what the hash does and does not detect). */
   readonly preflightGraphHash?: ContentHash;
 }
@@ -261,6 +291,20 @@ export async function executeApprovedCapability(
   if (!rebuilt.ok) return rebuilt.outcome as CapabilityExecutionOutcome;
   const { contract, binding } = rebuilt.value;
 
+  // The declaration is derived ONCE here from the graph being executed and used for BOTH the TOCTOU tie and the decision below,
+  // so the declaration that is checked against a preflight is the declaration that is authorized and enforced.
+  const declaration = declaredPermissionsForNode(graph, contract.id);
+  if (
+    options.preflightDeclarationFingerprint !== undefined &&
+    options.preflightDeclarationFingerprint !== declarationFingerprint(contract.id, declaration)
+  ) {
+    return {
+      kind: 'error',
+      errorCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+      errorMessage: 'the capability permission declaration changed between the authorization preflight and execution — refused',
+    };
+  }
+
   const inputSchema = findInputSchema(graph, contract.id);
   if (inputSchema !== undefined) {
     const validation = validateCapabilityInput(inputSchema, input);
@@ -273,7 +317,7 @@ export async function executeApprovedCapability(
     const execResult = await executeResolvedContract(contract, binding, {
       permissionManager: authorization.permissionManager,
       subject: authorization.subject,
-      permissionDeclaration: declaredPermissionsForNode(graph, contract.id),
+      permissionDeclaration: declaration,
       input,
       graphHash: loadedGraphHash,
     });

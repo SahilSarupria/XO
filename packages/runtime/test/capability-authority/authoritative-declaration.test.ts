@@ -13,7 +13,12 @@ import {
   type PolicyRule,
 } from '@xo/permissions';
 import { type CapabilityBinding, type SemanticCapabilityContract } from '@xo/capability-contract';
-import { executeResolvedContract, resolveContractBinding } from '../../src/capability-authority/contract-execution.js';
+import { ErrorCode } from '@xo/errors';
+import {
+  executeResolvedContract,
+  resolveContractBinding,
+  type ExecuteResolvedContractOutcome,
+} from '../../src/capability-authority/contract-execution.js';
 import { RuntimeCapabilityRegistry } from '../../src/capability-authority/runtime-capability-registry.js';
 import { RuntimeCapabilityExecutor } from '../../src/capability-authority/runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from '../../src/capability-authority/capability-binding-registration.js';
@@ -61,6 +66,31 @@ function spiedBinding(c: SemanticCapabilityContract): { binding: CapabilityBindi
   return { binding, calls: () => n };
 }
 
+/**
+ * Proves the denial happened AT THE PROVENANCE CHECK of the authorization boundary — not at some earlier,
+ * unrelated validation (bad subject, registration, binding) that would make the test pass for the wrong reason.
+ */
+function assertDeniedForProvenance(out: ExecuteResolvedContractOutcome): void {
+  assert.equal(out.ok, false);
+  if (out.ok) return;
+  assert.equal(out.stage, 'authorization', 'must be refused at the authorization stage, before registration');
+  assert.equal(out.error.code, ErrorCode.RUNTIME_PERMISSION_DENIED);
+  assert.match(out.error.message, /not resolved from an authoritative source/, 'denied for the wrong reason');
+}
+
+/** Control: the SAME contract/binding/subject/manager/input with a genuinely minted declaration executes — so the denial above is attributable to provenance alone. */
+async function assertControlExecutes(c: SemanticCapabilityContract, binding: CapabilityBinding, calls: () => number): Promise<void> {
+  const before = calls();
+  const out = await executeResolvedContract(c, binding, {
+    subject: testSubject(),
+    permissionManager: denyAll(),
+    permissionDeclaration: resolveAuthoritativeDeclaration([], { capabilityId: c.id, origin: 'persisted-xoir-node' }),
+    input: { file_size: 50 },
+  });
+  assert.equal(out.ok, true, 'control with a minted permission-free declaration should execute');
+  assert.equal(calls(), before + 1);
+}
+
 test('B1 a hand-written permission-free declaration must not be accepted by the shared boundary', async () => {
   const c = contract();
   const { binding, calls } = spiedBinding(c);
@@ -71,8 +101,9 @@ test('B1 a hand-written permission-free declaration must not be accepted by the 
     permissionDeclaration: forged,
     input: { file_size: 50 },
   });
-  assert.equal(out.ok, false, 'a forged permission-free declaration executed the capability');
+  assertDeniedForProvenance(out);
   assert.equal(calls(), 0, 'the handler must not run');
+  await assertControlExecutes(c, binding, calls);
 });
 
 test('B2 a JSON round-tripped declaration is a forgery too', async () => {
@@ -85,8 +116,9 @@ test('B2 a JSON round-tripped declaration is a forgery too', async () => {
     permissionDeclaration: deserialized,
     input: { file_size: 50 },
   });
-  assert.equal(out.ok, false);
+  assertDeniedForProvenance(out);
   assert.equal(calls(), 0);
+  await assertControlExecutes(c, binding, calls);
 });
 
 test('B3 the shared PERMISSION_FREE constant (valid for ANOTHER capability) cannot be replayed for this one', async () => {
@@ -98,8 +130,9 @@ test('B3 the shared PERMISSION_FREE constant (valid for ANOTHER capability) cann
     permissionDeclaration: PERMISSION_FREE,
     input: { file_size: 50 },
   });
-  assert.equal(out.ok, false, 'a permission-free declaration resolved for a different capability was replayed');
+  assertDeniedForProvenance(out);
   assert.equal(calls(), 0);
+  await assertControlExecutes(c, binding, calls);
 });
 
 // ── Shared helpers for the remaining cases ──────────────────────────────
@@ -312,4 +345,79 @@ test('B13: direct lower-level execution — an unknown capability, an unverified
   } as never);
   assert.equal(raw.ok, false);
   assert.equal((await executor.execute({ capabilityId: 'cap:raw', input: {} })).ok, false);
+});
+
+// ── Decision-point provenance reaches EVERY consumer, not only executeResolvedContract ──
+
+function registryWith(capabilityId: string, calls: { n: number }, requiredPermissions: readonly string[] = []): RuntimeCapabilityRegistry {
+  const registry = new RuntimeCapabilityRegistry();
+  const registered = registry.register({
+    declaration: {
+      capabilityId,
+      inputContract: { description: 'in' },
+      outputContract: { description: 'out' },
+      handler: async () => {
+        calls.n++;
+        return { ok: true, value: { done: true } } as never;
+      },
+    } as never,
+    requiredPermissions: requiredPermissions.map((permission) => ({ permission })) as never,
+  });
+  assert.ok(registered.ok, registered.ok ? '' : registered.error.message);
+  return registry;
+}
+
+test('B14: the registry mints its declaration per call, per capability; copies and cross-capability replays do not verify', () => {
+  const calls = { n: 0 };
+  const registry = registryWith('cap-a', calls);
+  registry.register({
+    declaration: {
+      capabilityId: 'cap-b',
+      inputContract: { description: 'in' },
+      outputContract: { description: 'out' },
+      handler: async () => ({ ok: true, value: 1 }) as never,
+    } as never,
+    requiredPermissions: [],
+  });
+  const a = registry.permissionDeclaration('cap-a');
+  assert.equal(a.kind, 'none');
+  assert.equal(isAuthoritativeDeclarationFor(a, 'cap-a'), true);
+  assert.equal(isAuthoritativeDeclarationFor(a, 'cap-b'), false, 'minted for cap-a, cannot verify for cap-b');
+  assert.equal(isAuthoritativeDeclarationFor(JSON.parse(JSON.stringify(a)), 'cap-a'), false, 'JSON clone');
+  assert.equal(isAuthoritativeDeclarationFor({ ...a }, 'cap-a'), false, 'spread copy');
+  assert.notEqual(registry.permissionDeclaration('cap-a'), a, 'fresh object per call — nothing shared to replay');
+  assert.equal(isAuthoritativeDeclarationFor(PERMISSION_FREE, 'cap-a'), false);
+});
+
+test('B15: executor boundary — a registry whose declaration lookup is tampered to return a forged permission-free literal is denied; handler never runs', async () => {
+  const calls = { n: 0 };
+  const registry = registryWith('cap-a', calls, [FILE]); // really requires filesystem.read
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: denyAll(), subject: testSubject() });
+  // Control first: the genuine (minted, `required`) declaration is enforced ⇒ denied by POLICY (no grant), handler 0.
+  const genuine = await executor.execute({ capabilityId: 'cap-a', input: {} });
+  assert.equal(genuine.ok, false);
+  assert.match(!genuine.ok ? genuine.error.message : '', /was not granted/);
+  assert.equal(calls.n, 0);
+
+  // Now forge: replace the lookup with the shared constant / a literal / a JSON clone.
+  for (const forged of [PERMISSION_FREE, { kind: 'none' }, JSON.parse(JSON.stringify(PERMISSION_FREE))]) {
+    (registry as unknown as { permissionDeclaration: (id: string) => unknown }).permissionDeclaration = () => forged;
+    const out = await executor.execute({ capabilityId: 'cap-a', input: {} });
+    assert.equal(out.ok, false, 'a forged permission-free declaration reached the handler');
+    assert.equal(!out.ok && out.error.code, ErrorCode.RUNTIME_PERMISSION_DENIED);
+    assert.match(!out.ok ? out.error.message : '', /not resolved from an authoritative source/, 'denied for the wrong reason');
+    assert.equal(calls.n, 0, 'handler must never run on a forged declaration');
+  }
+});
+
+test('B16: executor boundary — a declaration minted for ANOTHER capability, returned by a tampered registry, is denied', async () => {
+  const calls = { n: 0 };
+  const registry = registryWith('cap-a', calls);
+  const foreign = resolveAuthoritativeDeclaration([], { capabilityId: 'cap-other', origin: 'trusted-host-registration' });
+  (registry as unknown as { permissionDeclaration: (id: string) => unknown }).permissionDeclaration = () => foreign;
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: denyAll(), subject: testSubject() });
+  const out = await executor.execute({ capabilityId: 'cap-a', input: {} });
+  assert.equal(out.ok, false);
+  assert.match(!out.ok ? out.error.message : '', /not resolved from an authoritative source/);
+  assert.equal(calls.n, 0);
 });

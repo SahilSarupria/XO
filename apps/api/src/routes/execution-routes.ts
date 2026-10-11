@@ -143,7 +143,7 @@ export function registerExecutionRoutes(
       capabilityId,
       input,
       { subject: principal, permissionManager },
-      { preflightGraphHash: preflight.graphHash },
+      { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
     );
 
     let completed;

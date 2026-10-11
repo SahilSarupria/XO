@@ -1,5 +1,6 @@
 import { PackageId } from '@xo/types';
 import {
+  attestAuthoritativeDeclaration,
   authorizeCapabilityExecution,
   isAuthorizationSubject,
   PERMISSION_FREE,
@@ -133,7 +134,9 @@ export function createPermissionManagerGate(options: PermissionManagerGateOption
         manager: options.manager,
         subject,
         requester: { packageId: PackageId(`${mountedPackage.name}@${mountedPackage.version}`), capabilityId },
-        declaration,
+        // Composed by THIS host-side gate from the mounted package's own manifest (+ the host registry);
+        // minted for exactly this capability so the decision point's provenance check accepts it.
+        declaration: attestAuthoritativeDeclaration(declaration, { capabilityId, origin: 'installed-package-manifest' }),
       });
       return outcome.allowed ? { allowed: true } : { allowed: false, reason: outcome.reason };
     },

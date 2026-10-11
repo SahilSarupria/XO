@@ -267,6 +267,55 @@ test('A8: TOCTOU — execution refuses a different graph than the one authorized
   });
 });
 
+test('A11: TOCTOU — a declaration edited AFTER the preflight (looser OR stricter) is refused by the declaration-fingerprint tie even though the graph content hash cannot see it', async () => {
+  await countingHandlers(async (evaluations) => {
+    const original = toJson(buildFixtureGraph());
+    const authz = authzFor([grant('alice')]);
+    const preflight = await preflightCapabilityAuthorization(original, IDS.perm, authz);
+    assert.equal(preflight.kind, 'authorized');
+    if (preflight.kind !== 'authorized') return;
+
+    const edit = (requiredPermissions: unknown) => {
+      const copy = JSON.parse(JSON.stringify(original)) as { nodes: { id: string; properties: Record<string, unknown> }[] };
+      copy.nodes.find((n) => n.id === IDS.perm)!.properties['requiredPermissions'] = requiredPermissions;
+      return copy;
+    };
+    const edits: Array<[string, unknown]> = [
+      ['looser: dropped to permission-free', []],
+      ['different permission', ['network.connect']],
+      ['stricter', ['filesystem.read', 'network.connect']],
+      ['removed (unresolved)', undefined],
+    ];
+    for (const [label, value] of edits) {
+      const tampered = edit(value);
+      // Precondition proving this test is about the fingerprint, not the hash: the stored node hashes are untouched.
+      const { fromJson } = await import('@xo/xoir');
+      const reloaded = fromJson(tampered as never);
+      assert.ok(reloaded.ok);
+      assert.equal(String(reloaded.value.contentHash()), String(preflight.graphHash), `${label}: hash tie must be blind to this edit`);
+
+      const refused = await executeApprovedCapability(tampered, IDS.perm, { file_size: 50 }, authz, {
+        preflightGraphHash: preflight.graphHash,
+        preflightDeclarationFingerprint: preflight.declarationFingerprint,
+      });
+      assert.equal(refused.kind, 'error', label);
+      if (refused.kind === 'error') {
+        assert.equal(refused.errorCode, 'XO_RUNTIME_PERMISSION_DENIED', label);
+        assert.match(refused.errorMessage, /declaration changed between/, `${label}: refused for the wrong reason`);
+      }
+      assert.equal(evaluations(), 0, `${label}: handler must not run`);
+    }
+
+    // Control: the unmodified graph with the matching fingerprint still executes exactly once.
+    const ok = await executeApprovedCapability(original, IDS.perm, { file_size: 50 }, authz, {
+      preflightGraphHash: preflight.graphHash,
+      preflightDeclarationFingerprint: preflight.declarationFingerprint,
+    });
+    assert.equal(ok.kind, 'succeeded');
+    assert.equal(evaluations(), 1);
+  });
+});
+
 test('A9: preflight and the execution boundary reach the SAME decision across policies and graph metadata (one shared implementation, no drift)', async () => {
   const base = toJson(buildFixtureGraph());
   const variantGraph = (mutate: (p: Record<string, unknown>) => void) => {

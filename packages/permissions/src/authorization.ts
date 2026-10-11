@@ -344,6 +344,20 @@ export async function authorizeCapabilityExecution(input: AuthorizeCapabilityExe
     if (declaration.kind === 'unresolved') {
       return deny('unresolved-declaration', `capability "${requester.capabilityId}" cannot be authorized: ${declaration.reason}`);
     }
+    // P1.0 M2 — PROVENANCE AT THE DECISION POINT. Every execution path funnels
+    // through this function, so the trust check lives here and not in any one
+    // caller: only a declaration minted (`resolveAuthoritativeDeclaration` /
+    // `attestAuthoritativeDeclaration`) for EXACTLY this capability may grant
+    // anything. A structurally identical literal, a JSON copy, a spread, a cast,
+    // the shared `PERMISSION_FREE` constant, or a declaration minted for another
+    // capability is denied — including a forged `none`, which would otherwise
+    // be an instant "permission-free" pass.
+    if (!isAuthoritativeDeclarationFor(declaration, requester.capabilityId)) {
+      return deny(
+        'unresolved-declaration',
+        `capability "${requester.capabilityId}": the permission declaration was not resolved from an authoritative source for this capability (untrusted, forged or mismatched declarations are never accepted)`,
+      );
+    }
     if (declaration.kind === 'none') return { allowed: true, checked: [] };
     if (declaration.kind !== 'required' || !Array.isArray(declaration.requirements) || declaration.requirements.length === 0) {
       return deny('unresolved-declaration', `capability "${requester.capabilityId}" has an invalid permission declaration`);

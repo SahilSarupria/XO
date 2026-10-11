@@ -438,7 +438,11 @@ export async function tryDeterministicRun(
   const authorization = await authorizeCapabilityExecution({
     manager,
     subject,
-    requester: { packageId: `${source.mountedPackage.name}@${source.mountedPackage.version}` as PackageId, capabilityId },
+    // The identity that will actually execute (and that the declaration was minted for) — the same one `executeResolvedContract` decides on.
+    requester: {
+      packageId: `${source.mountedPackage.name}@${source.mountedPackage.version}` as PackageId,
+      capabilityId: source.contract.id,
+    },
     declaration,
   });
   if (!authorization.allowed) {

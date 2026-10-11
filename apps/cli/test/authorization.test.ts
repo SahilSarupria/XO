@@ -121,3 +121,38 @@ test('workflow pipeline compiles in-process and runs under the trusted local ope
   const r = await runWorkflowPipeline({ source: '/nonexistent/path.txt' } as never);
   assert.equal(r.ok, false); // unreadable source is reported, nothing executed
 });
+
+test('identity: a manifest capability id (`claim_approval`) that differs from its contract id (`claim_contract`) authorizes under the CONTRACT identity (declaration minted for it), never denied by a requester/declaration mismatch', async () => {
+  // Permission-free node: executes with no grant even though manifest id != contract id.
+  await withInstalledBundle(buildAuthoritativeClaimBundle({ contractNodeId: 'claim_contract' }), async (storeDir) => {
+    const r = await runCommand(
+      { capabilityId: 'claim_approval', input: INPUT, storeDir, providerLabel: 'anthropic', json: true },
+      shouldNeverResolve,
+    );
+    assert.equal(r.exitCode, 0, r.lines.join('\n'));
+  });
+  // Default-deny and grant semantics are unchanged with a differing contract id: a declared permission is still denied without a grant, allowed with it.
+  await withInstalledBundle(
+    buildAuthoritativeClaimBundle({ contractNodeId: 'claim_contract', nodeRequiredPermissions: ['filesystem.read'] }),
+    async (storeDir) => {
+      const denied = await runCommand(
+        { capabilityId: 'claim_approval', input: INPUT, storeDir, providerLabel: 'anthropic', json: true },
+        shouldNeverResolve,
+      );
+      assert.notEqual(denied.exitCode, 0);
+      assert.match(denied.lines.join('\n'), /filesystem\.read|not authorized|not granted/i);
+      const allowed = await runCommand(
+        {
+          capabilityId: 'claim_approval',
+          input: INPUT,
+          storeDir,
+          providerLabel: 'anthropic',
+          json: true,
+          grantedPermissionIds: ['filesystem.read'],
+        },
+        shouldNeverResolve,
+      );
+      assert.equal(allowed.exitCode, 0, allowed.lines.join('\n'));
+    },
+  );
+});

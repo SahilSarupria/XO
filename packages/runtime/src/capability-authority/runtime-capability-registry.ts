@@ -1,6 +1,12 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
-import { CapabilityPermissionRegistry, PERMISSION_FREE, unresolvedDeclaration, type PermissionDeclaration } from '@xo/permissions';
+import {
+  attestAuthoritativeDeclaration,
+  CapabilityPermissionRegistry,
+  PERMISSION_FREE,
+  unresolvedDeclaration,
+  type PermissionDeclaration,
+} from '@xo/permissions';
 import type { RuntimeCapabilityDeclaration, RuntimeCapabilityRegistration } from './runtime-capability-declaration.js';
 
 /**
@@ -136,15 +142,20 @@ export class RuntimeCapabilityRegistry {
    * never carried an explicit declaration; never `none` by default.
    */
   permissionDeclaration(capabilityId: string): PermissionDeclaration {
+    // Minted FRESH per call for exactly this capability (origin: the host that
+    // registered it) so the decision point's provenance check accepts it, while
+    // a declaration read from here can never be replayed for another capability.
+    const mint = (resolved: PermissionDeclaration): PermissionDeclaration =>
+      attestAuthoritativeDeclaration(resolved, { capabilityId, origin: 'trusted-host-registration' });
     if (!this.declarations.has(capabilityId))
-      return unresolvedDeclaration(`no Runtime capability declaration registered for id "${capabilityId}"`);
+      return mint(unresolvedDeclaration(`no Runtime capability declaration registered for id "${capabilityId}"`));
     // Requirements win over a later permission-free re-registration: the
     // permission registry merges additively, and re-registering must never
     // LOOSEN an earlier requirement (fail closed to the stricter declaration).
     const requirements = this.permissions.resolve(capabilityId);
-    if (requirements.length > 0) return { kind: 'required', requirements };
-    if (this.permissionFree.has(capabilityId)) return PERMISSION_FREE;
-    return unresolvedDeclaration(`capability "${capabilityId}" has no explicit permission declaration`);
+    if (requirements.length > 0) return mint({ kind: 'required', requirements });
+    if (this.permissionFree.has(capabilityId)) return mint(PERMISSION_FREE);
+    return mint(unresolvedDeclaration(`capability "${capabilityId}" has no explicit permission declaration`));
   }
 
   has(capabilityId: string): boolean {

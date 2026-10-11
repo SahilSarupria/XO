@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PackageId } from '@xo/types';
 import {
+  attestAuthoritativeDeclaration,
   authorizeCapabilityExecution,
   establishAuthenticatedPrincipal,
   establishTrustedExecutionContext,
@@ -25,10 +26,13 @@ function principal(id = 'alice', kind: 'human' | 'service' = 'human', orgId?: st
 }
 const manager = (rules: readonly PolicyRule[] = []) => new PermissionManager({ policy: new RuleBasedPolicy(rules) });
 const requester = { packageId: PackageId('pkg@1.0.0'), capabilityId: 'cap-a' };
+// P1.0 M2: the decision point only honours declarations minted for the exact capability being authorized.
+const mint = (d: PermissionDeclaration, capabilityId = requester.capabilityId): PermissionDeclaration =>
+  attestAuthoritativeDeclaration(d, { capabilityId, origin: 'trusted-host-registration' });
 const required = (...ids: string[]): PermissionDeclaration => {
   const d = resolveDeclaredPermissionIds(ids, 'test');
   assert.equal(d.kind, 'required');
-  return d;
+  return mint(d);
 };
 const allowFor = (principalId: string, permission = Permissions.filesystem.read): PolicyRule => ({
   id: `allow-${principalId}`,
@@ -74,7 +78,12 @@ test('trusted context: only the factory mints a verifiable context; copies/JSON 
 
 // ── authorizeCapabilityExecution: fail-closed matrix ──
 test('deny: no manager (no gate configured)', async () => {
-  const out = await authorizeCapabilityExecution({ manager: undefined, subject: principal(), requester, declaration: PERMISSION_FREE });
+  const out = await authorizeCapabilityExecution({
+    manager: undefined,
+    subject: principal(),
+    requester,
+    declaration: mint(PERMISSION_FREE),
+  });
   assert.deepEqual([out.allowed, !out.allowed && out.code], [false, 'no-policy']);
 });
 test('deny: missing / fabricated / plain-snapshot / string subject', async () => {
@@ -85,7 +94,7 @@ test('deny: missing / fabricated / plain-snapshot / string subject', async () =>
       manager: manager([allowFor('alice')]),
       subject,
       requester,
-      declaration: PERMISSION_FREE,
+      declaration: mint(PERMISSION_FREE),
     });
     assert.deepEqual([out.allowed, !out.allowed && out.code], [false, 'no-subject'], JSON.stringify(subject));
   }
@@ -95,14 +104,14 @@ test('deny: missing requester identity', async () => {
     manager: manager(),
     subject: principal(),
     requester: { packageId: PackageId(''), capabilityId: 'x' },
-    declaration: PERMISSION_FREE,
+    declaration: mint(PERMISSION_FREE),
   });
   assert.equal(!out.allowed && out.code, 'no-requester');
   const out2 = await authorizeCapabilityExecution({
     manager: manager(),
     subject: principal(),
     requester: { packageId: PackageId('p@1') } as never,
-    declaration: PERMISSION_FREE,
+    declaration: mint(PERMISSION_FREE),
   });
   assert.equal(!out2.allowed && out2.code, 'no-requester');
 });
@@ -119,13 +128,18 @@ test('deny: absent or unresolved declaration, even with a matching allow-everyth
   }
 });
 test('allow: explicitly permission-free capability needs a verified subject but no grant', async () => {
-  const out = await authorizeCapabilityExecution({ manager: manager(), subject: principal(), requester, declaration: PERMISSION_FREE });
+  const out = await authorizeCapabilityExecution({
+    manager: manager(),
+    subject: principal(),
+    requester,
+    declaration: mint(PERMISSION_FREE),
+  });
   assert.equal(out.allowed, true);
   const op = await authorizeCapabilityExecution({
     manager: manager(),
     subject: establishTrustedExecutionContext('local-operator'),
     requester,
-    declaration: PERMISSION_FREE,
+    declaration: mint(PERMISSION_FREE),
   });
   assert.equal(op.allowed, true);
 });
@@ -215,10 +229,11 @@ test('deny: wrong resource scope; allow: contained scope', async () => {
     match: { permission: Permissions.filesystem.read, principalId: 'alice', scope: pathScope('/workspace') },
   };
   const m = manager([rule]);
-  const declFor = (path: string): PermissionDeclaration => ({
-    kind: 'required',
-    requirements: [{ permission: Permissions.filesystem.read, scope: pathScope(path) }],
-  });
+  const declFor = (path: string): PermissionDeclaration =>
+    mint({
+      kind: 'required',
+      requirements: [{ permission: Permissions.filesystem.read, scope: pathScope(path) }],
+    });
   const inside = await authorizeCapabilityExecution({
     manager: m,
     subject: principal('alice'),
@@ -317,4 +332,87 @@ test('declarationCoversCopy: may add requirements, may never drop or contradict 
   assert.equal(declarationCoversCopy(none, none, 't').kind, 'none');
   assert.equal(declarationCoversCopy(resolveDeclaredPermissionIds(undefined, 't'), none, 't').kind, 'unresolved');
   assert.equal(declarationCoversCopy(none, resolveDeclaredPermissionIds(undefined, 't'), 't').kind, 'unresolved');
+});
+
+// ── P1.0 M2 remediation (Finding B): provenance enforced AT THE DECISION POINT ──
+// Boundary reached: authorizeCapabilityExecution itself (every execution path funnels through it), with a
+// verified subject, a valid requester, and an allow-everything policy, so the ONLY thing that can deny is provenance.
+const allowEverything: PolicyRule = { id: 'all', effect: 'ALLOW', match: {} };
+const decide = (declaration: unknown, capabilityId = requester.capabilityId) =>
+  authorizeCapabilityExecution({
+    manager: manager([allowEverything]),
+    subject: principal(),
+    requester: { packageId: requester.packageId, capabilityId },
+    declaration: declaration as PermissionDeclaration,
+  });
+
+test('decision point: forged / copied / constant permission-free declarations are denied for provenance, even under allow-everything', async () => {
+  const minted = mint(PERMISSION_FREE);
+  const forgeries: Array<[string, unknown]> = [
+    ['object literal', { kind: 'none' }],
+    ['frozen literal', Object.freeze({ kind: 'none' })],
+    ['shared PERMISSION_FREE constant', PERMISSION_FREE],
+    ['JSON clone of a minted declaration', JSON.parse(JSON.stringify(minted))],
+    ['spread copy of a minted declaration', { ...minted }],
+    ['Object.create(minted) prototype trick', Object.create(minted as object)],
+    ['structuredClone of a minted declaration', structuredClone(minted)],
+    ['cast empty required', { kind: 'required', requirements: [] }],
+  ];
+  for (const [label, d] of forgeries) {
+    const out = await decide(d);
+    assert.deepEqual([label, out.allowed, !out.allowed && out.code], [label, false, 'unresolved-declaration']);
+    assert.match(!out.allowed ? out.reason : '', /authoritative source|invalid permission declaration/, label);
+  }
+  // Control: the genuinely minted one still authorizes the same request (so denials above are about provenance only).
+  assert.equal((await decide(minted)).allowed, true);
+});
+
+test('decision point: forged declaration with FEWER permissions than the authoritative one is denied (cannot downgrade)', async () => {
+  const authoritative = required('filesystem.read', 'network.connect');
+  assert.equal((await decide(authoritative)).allowed, true);
+  const forgedFewer = { kind: 'required', requirements: [{ permission: Permissions.filesystem.read }] };
+  assert.equal((await decide(forgedFewer)).allowed, false);
+  const forgedNone = { kind: 'none' };
+  assert.equal((await decide(forgedNone)).allowed, false);
+});
+
+test('decision point: a declaration minted for capability A cannot authorize capability B (replay), nor an altered identity', async () => {
+  const forA = mint(PERMISSION_FREE, 'cap-a');
+  assert.equal((await decide(forA, 'cap-a')).allowed, true);
+  const replayed = await decide(forA, 'cap-b');
+  assert.deepEqual([replayed.allowed, !replayed.allowed && replayed.code], [false, 'unresolved-declaration']);
+  const prefixed = await decide(forA, 'cap-a ');
+  assert.equal(prefixed.allowed, false);
+  const cased = await decide(forA, 'CAP-A');
+  assert.equal(cased.allowed, false);
+});
+
+test('decision point: minted-but-unresolved declarations stay denied with their own reason (never promoted to permission-free)', async () => {
+  const unresolved = attestAuthoritativeDeclaration(resolveDeclaredPermissionIds(undefined, 'src'), {
+    capabilityId: requester.capabilityId,
+    origin: 'persisted-xoir-node',
+  });
+  const out = await decide(unresolved);
+  assert.deepEqual([out.allowed, !out.allowed && out.code], [false, 'unresolved-declaration']);
+  assert.match(!out.allowed ? out.reason : '', /permission declaration is missing/);
+});
+
+test('decision point: a verified subject is still required with a minted permission-free declaration (no actor ⇒ no execution)', async () => {
+  for (const subject of [undefined, { kind: 'human', id: 'alice' }]) {
+    const out = await authorizeCapabilityExecution({
+      manager: manager([allowEverything]),
+      subject,
+      requester,
+      declaration: mint(PERMISSION_FREE),
+    });
+    assert.deepEqual([out.allowed, !out.allowed && out.code], [false, 'no-subject']);
+  }
+});
+
+test('decision point: minting rejects a missing capability id or an untrusted origin (result can never verify)', async () => {
+  const emptyId = attestAuthoritativeDeclaration(PERMISSION_FREE, { capabilityId: '', origin: 'trusted-host-registration' });
+  assert.equal(emptyId.kind, 'unresolved');
+  const badOrigin = attestAuthoritativeDeclaration(PERMISSION_FREE, { capabilityId: 'cap-a', origin: 'request-body' as never });
+  assert.equal(badOrigin.kind, 'unresolved');
+  assert.equal((await decide(badOrigin)).allowed, false);
 });
