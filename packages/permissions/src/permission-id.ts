@@ -124,4 +124,8 @@ export const Permissions = {
     execute: PermissionId('runtime.execute'),
     workflow: PermissionId('runtime.workflow'),
   },
+  audit: {
+    read: PermissionId('audit.read'),
+    purge: PermissionId('audit.purge'),
+  },
 } as const;

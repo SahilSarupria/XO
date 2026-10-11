@@ -7,6 +7,7 @@ import type { ModelProvider } from '@xo/ai-core';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { establishTrustedExecutionContext } from '@xo/permissions';
+import { openCliAudit } from './cli-audit.js';
 import { tryDeterministicRun } from './deterministic-router.js';
 
 export interface RunOptions {
@@ -115,6 +116,8 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
   // the AI-provider path below, unchanged from before this router
   // existed.
   if (options.capabilityId !== undefined) {
+    const cliAudit = await openCliAudit();
+    if (!cliAudit.ok) return failWith(`audit configuration error: ${cliAudit.message}`);
     const deterministic = await tryDeterministicRun(
       options.capabilityId,
       options.input,
@@ -122,6 +125,7 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
       runtime.context().registry,
       options.grantedPermissionIds ?? [],
       establishTrustedExecutionContext('local-operator'),
+      cliAudit.audit,
     );
     if (deterministic.kind === 'executed') {
       if (options.json) {

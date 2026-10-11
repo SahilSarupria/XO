@@ -20,6 +20,7 @@
     { "path": "../../packages/compiler" },
     { "path": "../../packages/capability-contract" },
     { "path": "../../packages/permissions" },
+    { "path": "../../packages/audit" },
     { "path": "../../packages/workflow-composer" }
   ]
 }

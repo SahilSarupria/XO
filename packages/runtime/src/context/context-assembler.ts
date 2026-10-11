@@ -1,3 +1,4 @@
+import { assertNotAuditData } from '@xo/errors';
 import type { CapabilityDescriptor } from '../capability/capability-descriptor.js';
 import type { MergedKnowledgeGraph } from '../retrieval/knowledge-graph-merge.js';
 import type { RetrievedSlice } from '../retrieval/retrieved-slice.js';
@@ -41,6 +42,9 @@ export interface AssembleContextParams {
  */
 export class ContextAssembler {
   assemble(params: AssembleContextParams): AssembledContext {
+    // P1.0 M4 model exclusion: restricted audit data never becomes model context (system prompt, slices or graph).
+    assertNotAuditData(params.slices, 'model context assembly');
+    assertNotAuditData(params.mergedKnowledgeGraph, 'model context assembly');
     const fragments: string[] = [
       `You are executing the "${params.capability.declaration.name}" capability: ${params.capability.declaration.description}`,
     ];

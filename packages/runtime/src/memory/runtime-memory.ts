@@ -1,4 +1,4 @@
-import { err, ok, type Result } from '@xo/types';
+import { err, isAuditData, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import type { MemoryEntryId } from '../ids.js';
 import type { MemoryRecordStore, VersionedEnvelope } from '../persistence/runtime-store.interface.js';
@@ -72,6 +72,10 @@ export class RuntimeMemory {
   async put(input: MemoryWriteInput, requester?: MemoryPermissionRequester): Promise<Result<VersionedEnvelope<MemoryEntry>, RuntimeError>> {
     const verdict = await this.permissionGate.check('write', input.scope, requester);
     if (!verdict.allowed) return err(permissionDenied('write', input.scope, verdict.reason));
+    // P1.0 M4 model exclusion: restricted audit data is never stored as runtime memory (memory feeds later model context).
+    if (isAuditData(input.value) || isAuditData(input.metadata)) {
+      return err(new RuntimeError(ErrorCode.AUDIT_ACCESS_DENIED, 'restricted audit data may not be written to runtime memory'));
+    }
 
     const id = input.key !== undefined ? deriveMemoryEntryId(input.scope, input.key) : generateMemoryEntryId();
     const nowIso = this.now().toISOString();

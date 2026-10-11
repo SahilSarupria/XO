@@ -164,6 +164,13 @@ export const ErrorCode = {
   PERMISSION_STORE_ERROR: 'XO_PERMISSION_STORE_ERROR',
   PERMISSION_POLICY_INVALID: 'XO_PERMISSION_POLICY_INVALID',
 
+  // Audit (@xo/audit, P1.0 M4) — durable audit evidence. Messages carry no
+  // event content; infrastructure detail stays in `cause`, never on the wire.
+  AUDIT_UNAVAILABLE: 'XO_AUDIT_UNAVAILABLE',
+  AUDIT_EVENT_INVALID: 'XO_AUDIT_EVENT_INVALID',
+  AUDIT_ACCESS_DENIED: 'XO_AUDIT_ACCESS_DENIED',
+  AUDIT_CONFIG_INVALID: 'XO_AUDIT_CONFIG_INVALID',
+
   // Registry (@xo/registry) — PackageRepository/BenchmarkRepository/
   // LicenseRepository/Ledger implementations and the RegistryClient facade
   REGISTRY_PACKAGE_UNVERIFIED: 'XO_REGISTRY_PACKAGE_UNVERIFIED',

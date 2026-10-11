@@ -2,6 +2,7 @@ import type { PackageInstaller } from '@xo/package-sdk';
 import {
   CapabilityRegistry,
   executeResolvedContract,
+  type RuntimeExecutionAudit,
   resolveContractBinding,
   type MountedPackage,
   type PackageRegistry,
@@ -357,6 +358,7 @@ export async function tryDeterministicRun(
   packageRegistry: PackageRegistry,
   grantedPermissionIds: readonly string[],
   subject: AuthorizationSubject,
+  audit?: RuntimeExecutionAudit,
 ): Promise<DeterministicRunOutcome> {
   // P1.0 M2: fail closed BEFORE anything is looked up or evaluated if the caller has no verified subject.
   if (!isAuthorizationSubject(subject))
@@ -459,6 +461,7 @@ export async function tryDeterministicRun(
     subject,
     permissionDeclaration: declaration,
     input: validatedInput,
+    ...(audit !== undefined ? { audit } : {}),
   });
   if (!executed.ok) {
     return executed.stage === 'registration'
