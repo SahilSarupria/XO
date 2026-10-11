@@ -112,9 +112,26 @@ test('M1.1 shape 5 — temporal condition: never minted', async () => {
 // 6. Prerequisite (non-comparison outcome shape) — never minted.
 // ---------------------------------------------------------------------------
 
-test('M1.1 shape 6 — prerequisite rule with an unparseable outcome shape: never minted', async () => {
-  const { minted } = await mintFrom('If the loss type is theft, then a police report must be present before final settlement.');
+test('M1.1 shape 6 — bare prerequisite with no structured condition: never minted', async () => {
+  const { graph, minted } = await mintFrom(
+    'If the claimant is uncooperative, then a police report must be present before final settlement.',
+  );
+  assert.ok(
+    graph.nodes.every((n) => n.structuredCondition === undefined),
+    'sanity: this rule is discovered but its condition is not a structured one',
+  );
   assert.equal(minted.length, 0);
+});
+
+// Categorical Equality Condition milestone: "the loss type is theft" is now a
+// structured (categorical) condition, so this rule IS cleanly executable and
+// mints a dedicated capability. (Previously asserted as never-minted; see the
+// comment on the closed vocabulary in structured-expression-grammar.ts.)
+test('categorical equality condition: mints a dedicated capability', async () => {
+  const { graph, minted } = await mintFrom('If the loss type is theft, then a police report must be present before final settlement.');
+  assert.equal(graph.nodes[0]!.structuredCondition?.type, 'categorical');
+  assert.equal(minted.length, 1);
+  assert.match(minted[0]!.canonicalName, /Police Report Must Be Present/i);
 });
 
 // ---------------------------------------------------------------------------
