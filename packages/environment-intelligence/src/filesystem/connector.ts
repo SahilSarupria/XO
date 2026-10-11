@@ -321,7 +321,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       tree !== undefined && d.node !== undefined ? tree.lstatChild(d.node, name) : this.ops.lstat(`${d.abs}/${name}`);
     const descend = async (d: Dir, name: string, st: BigIntStats): Promise<{ dir: Dir } | { skip: SkipReason }> => {
       if (tree === undefined || d.node === undefined) return { dir: { abs: `${d.abs}/${name}` } };
-      const child = await tree.openChildDir(d.node, name, st);
+      const child = await tree.openChildDir(d.node, name, st, ctx.signal);
       return child.kind === 'dir' ? { dir: { abs: child.node.abs, node: child.node } } : { skip: child.reason };
     };
     const skipLabel = (r: SkipReason): string => (r === 'missing' ? 'unreadable_entry' : r === 'not_a_directory' ? 'entry_changed' : r);
@@ -411,7 +411,17 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       }
       // Subdirectories in sorted order, each fully walked before the next sibling (deterministic preorder).
       for (const sub of subdirs) {
-        const r = await descend(dir, sub.name, sub.st);
+        let r: { dir: Dir } | { skip: SkipReason };
+        try {
+          r = await descend(dir, sub.name, sub.st);
+        } catch (e) {
+          if (e instanceof FdWalkFatal && e.error.code === DiscoveryErrorCode.CANCELLED) {
+            hit.add('cancelled');
+            errors.push(discoveryError(DiscoveryErrorCode.CANCELLED, 'discovery cancelled; results are partial'));
+            return true;
+          }
+          throw e;
+        }
         if ('skip' in r) {
           addCount(skipped, skipLabel(r.skip));
           continue;
@@ -565,7 +575,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       for (const key of permittedKeys) {
         const lexical = validateKeyLexically(key);
         if (!lexical.ok) return lexical;
-        const inside = await tree.verifyKey(lexical.value);
+        const inside = await tree.verifyKey(lexical.value, ctx.signal);
         if (!inside.ok) return inside;
         resolved.push({ key, segments: lexical.value });
       }
@@ -597,8 +607,22 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           addCount(skipped, 'content_type_not_allowed');
           continue;
         }
-        const opened = await tree.openFileForKey(segments);
+        let opened: Awaited<ReturnType<AnchoredTree['openFileForKey']>>;
+        try {
+          opened = await tree.openFileForKey(segments, ctx.signal);
+        } catch (e) {
+          if (e instanceof FdWalkFatal && e.error.code === DiscoveryErrorCode.CANCELLED) {
+            hit.add('cancelled');
+            errors.push(discoveryError(DiscoveryErrorCode.CANCELLED, 'acquisition cancelled; results are partial'));
+            break;
+          }
+          throw e;
+        }
         if (!opened.ok) {
+          if (opened.error.context['reason'] === 'not_regular_file') {
+            addCount(skipped, 'not_regular_file');
+            continue;
+          }
           errors.push(discoveryError(opened.error.code, opened.error.message, { ...opened.error.context, resource: key }));
           continue;
         }
@@ -640,7 +664,11 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           }
           const at = ctx.clock.now().toISOString();
           const steps: TransformationStep[] = [
-            { step: 'fs.fd_walk(open O_NOFOLLOW relative to held descriptor)+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
+            {
+              step: 'fs.fd_walk(lstat regular-file check, open O_NONBLOCK|O_NOFOLLOW relative to held descriptor, fstat regular-file check)+read(bounded)',
+              version: FILESYSTEM_CONNECTOR_VERSION,
+              at,
+            },
             { step: 'derive.sha256+identifier_tokens', version: FILESYSTEM_CONNECTOR_VERSION, at },
           ];
           evidence.push(

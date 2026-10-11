@@ -87,8 +87,49 @@ const fatal = (code: DiscoveryErrorCode, message: string, context: Record<string
 export const errnoCode = (e: unknown): string | null =>
   typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null;
 
+const ABORTED = Symbol('xo.fd-walk.aborted');
+
+/**
+ * Races a pending operation against an abort signal. Resolves/rejects with the operation's own outcome, or rejects
+ * with {@link ABORTED} as soon as the signal fires. The underlying operation is NOT cancelled (libuv cannot cancel an
+ * in-flight open); the caller owns cleaning up whatever it eventually produces.
+ */
+function raceAbort<T>(op: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return op;
+  if (signal.aborted) return Promise.reject(ABORTED);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(ABORTED);
+    signal.addEventListener('abort', onAbort, { once: true });
+    op.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
+const cancelled = (): FdWalkFatal =>
+  fatal(DiscoveryErrorCode.CANCELLED, 'cancelled while opening a resource', { reason: 'open_cancelled' });
+
+/**
+ * Flags for the final component of an acquisition. O_NONBLOCK so opening a FIFO with no writer returns instead of
+ * blocking a worker thread; O_NOCTTY so opening a terminal device cannot make it our controlling terminal;
+ * O_NOFOLLOW so a symlink is never followed. All three are checked for presence: if the platform lacks any of
+ * them, acquisition fails closed rather than opening a special file with weaker flags.
+ */
+export const O_FILE_FLAGS = (): number | undefined =>
+  typeof constants.O_NONBLOCK === 'number' && typeof constants.O_NOFOLLOW === 'number'
+    ? constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW | (typeof constants.O_NOCTTY === 'number' ? constants.O_NOCTTY : 0)
+    : undefined;
+
 /** Per-entry outcomes that skip the entry (reported in `skipped`), never stop the walk. */
-export type SkipReason = 'symlink_not_followed' | 'mount_boundary' | 'entry_changed' | 'unreadable_entry' | 'missing' | 'not_a_directory';
+export type SkipReason =
+  'symlink_not_followed' | 'mount_boundary' | 'entry_changed' | 'unreadable_entry' | 'missing' | 'not_a_directory' | 'not_regular_file';
 
 export function isValidComponent(name: string): boolean {
   return name.length > 0 && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\0');
@@ -241,10 +282,34 @@ export class AnchoredTree {
     return name === undefined ? `${this.ops.procFdDir}/${node.handle.fd}` : `${this.ops.procFdDir}/${node.handle.fd}/${name}`;
   }
 
-  private async openHandle(path: string, flags: number): Promise<FileHandle> {
+  private async openHandle(path: string, flags: number, signal?: AbortSignal): Promise<FileHandle> {
     this.budget.reserve();
-    const h = await this.ops.open(path, flags);
+    // The slot is held for the whole life of the open, including an abandoned one, so stalled opens stay bounded
+    // by the descriptor budget instead of accumulating.
     this.budget.opened();
+    const pending = this.ops.open(path, flags);
+    let h: FileHandle;
+    try {
+      h = await raceAbort(pending, signal);
+    } catch (e) {
+      if (e === ABORTED) {
+        // Abandoned: when (if) the open finishes, close its descriptor and free the slot. Never read from it.
+        pending.then(
+          async (late) => {
+            try {
+              await late.close();
+            } catch {
+              /* nothing useful to do */
+            }
+            this.budget.closed();
+          },
+          () => this.budget.closed(),
+        );
+        throw cancelled();
+      }
+      this.budget.closed();
+      throw e;
+    }
     this.tracked.add(h);
     return h;
   }
@@ -288,7 +353,7 @@ export class AnchoredTree {
   }
 
   /** Opens a child directory relative to a held descriptor. `expected` (the enumeration lstat) must match dev+ino. */
-  async openChildDir(parent: DirNode, name: string, expected?: BigIntStats): Promise<ChildDir> {
+  async openChildDir(parent: DirNode, name: string, expected?: BigIntStats, signal?: AbortSignal): Promise<ChildDir> {
     if (!isValidComponent(name))
       throw fatal(DiscoveryErrorCode.SCOPE_VIOLATION, 'resource is outside the authorized scope', { reason: 'invalid_component' });
     const abs = `${parent.abs}/${name}`;
@@ -301,7 +366,7 @@ export class AnchoredTree {
       });
     let h: FileHandle;
     try {
-      h = await this.openHandle(this.proc(parent, name), flags);
+      h = await this.openHandle(this.proc(parent, name), flags, signal);
     } catch (e) {
       if (e instanceof FdWalkFatal) throw e;
       const code = errnoCode(e);
@@ -346,11 +411,15 @@ export class AnchoredTree {
    * Walks all but the last segment of a resource key, holding at most the current directory and its child.
    * Returns the directory node that contains the final component (the caller must `release` it).
    */
-  private async walkToParent(segments: readonly string[]): Promise<Result<DirNode, DiscoveryError>> {
+  private async walkToParent(segments: readonly string[], signal?: AbortSignal): Promise<Result<DirNode, DiscoveryError>> {
     let cur: DirNode = this.root;
     for (const seg of segments.slice(0, -1)) {
-      const next = await this.openChildDir(cur, seg);
-      await this.release(cur);
+      let next: ChildDir;
+      try {
+        next = await this.openChildDir(cur, seg, undefined, signal);
+      } finally {
+        if (cur !== this.root) await this.closeHandle(cur.handle);
+      }
       if (next.kind === 'skip') return err(keyError(next.reason));
       cur = next.node;
     }
@@ -358,8 +427,8 @@ export class AnchoredTree {
   }
 
   /** Pass 1 of acquisition: verify the whole key resolves beneath the root (no read, no open of the final component). */
-  async verifyKey(segments: readonly string[]): Promise<Result<true, DiscoveryError>> {
-    const parent = await this.walkToParent(segments);
+  async verifyKey(segments: readonly string[], signal?: AbortSignal): Promise<Result<true, DiscoveryError>> {
+    const parent = await this.walkToParent(segments, signal);
     if (!parent.ok) return parent;
     try {
       const last = segments[segments.length - 1] ?? '';
@@ -380,17 +449,38 @@ export class AnchoredTree {
     }
   }
 
-  /** Pass 2 of acquisition: open the final component relative to its held parent. The caller closes the handle with `closeHandle`. */
-  async openFileForKey(segments: readonly string[]): Promise<Result<FileHandle, DiscoveryError>> {
-    const parent = await this.walkToParent(segments);
+  /**
+   * Pass 2 of acquisition: open the final component relative to its held parent. The caller closes the handle with
+   * `closeHandle`. F3: the entry is lstat'ed and must be a regular file BEFORE it is opened (so a FIFO or device is never
+   * opened in the normal case); it is then opened O_NONBLOCK|O_NOCTTY|O_NOFOLLOW (so a swap to a FIFO between the lstat
+   * and the open still cannot block); and the opened descriptor is fstat'ed and must be the same regular file. The
+   * descriptor, not the path, is the authority: a mismatch closes it without a single byte having been read.
+   */
+  async openFileForKey(segments: readonly string[], signal?: AbortSignal): Promise<Result<FileHandle, DiscoveryError>> {
+    const parent = await this.walkToParent(segments, signal);
     if (!parent.ok) return parent;
     try {
       const last = segments[segments.length - 1] ?? '';
       if (!isValidComponent(last)) return err(keyError('unreadable_entry'));
       if (this.nested.has(`${parent.value.abs}/${last}`)) return err(keyError('mount_boundary'));
+      const flags = O_FILE_FLAGS();
+      if (flags === undefined)
+        throw fatal(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'safe file open flags are not available on this host', {
+          reason: 'file_open_flags_unavailable',
+          platform: this.ops.platform,
+        });
+      let pre: BigIntStats;
+      try {
+        pre = await this.lstatChild(parent.value, last);
+      } catch (e) {
+        if (e instanceof FdWalkFatal) throw e;
+        return err(keyError(errnoCode(e) === 'ENOENT' ? 'missing' : 'unreadable_entry'));
+      }
+      if (pre.isSymbolicLink()) return err(keyError('symlink_not_followed'));
+      if (!pre.isFile()) return err(keyError('not_regular_file'));
       let h: FileHandle;
       try {
-        h = await this.openHandle(this.proc(parent.value, last), constants.O_RDONLY | constants.O_NOFOLLOW);
+        h = await this.openHandle(this.proc(parent.value, last), flags, signal);
       } catch (e) {
         if (e instanceof FdWalkFatal) throw e;
         const code = errnoCode(e);
@@ -405,6 +495,10 @@ export class AnchoredTree {
         if (st.dev !== this.rootDev) {
           await this.closeHandle(h);
           return err(keyError('mount_boundary'));
+        }
+        if (!st.isFile()) {
+          await this.closeHandle(h);
+          return err(keyError('not_regular_file'));
         }
       } catch {
         await this.closeHandle(h);
@@ -424,6 +518,8 @@ function keyError(reason: SkipReason): DiscoveryError {
     case 'unreadable_entry':
     case 'not_a_directory':
       return discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { reason });
+    case 'not_regular_file':
+      return discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'resource is not a regular file', { reason });
     default:
       return discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'resource is outside the authorized scope', { reason });
   }
