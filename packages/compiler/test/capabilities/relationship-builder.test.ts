@@ -6,13 +6,27 @@ import type { CandidateCapability } from '../../src/capabilities/extractor-types
 import type { ExperienceUnit } from '../../src/semantic/types.js';
 import { UNKNOWN_SIGNATURE } from '../../src/capabilities/types.js';
 
-function makeUnit(id: string, overrides: Partial<{ readonly parentUnitId: string | undefined; readonly blockIndexRange: readonly [number, number]; readonly documentPath: string; readonly listKind: 'ordered' | 'unordered' | undefined }> = {}): ExperienceUnit {
+function makeUnit(
+  id: string,
+  overrides: Partial<{
+    readonly parentUnitId: string | undefined;
+    readonly blockIndexRange: readonly [number, number];
+    readonly documentPath: string;
+    readonly listKind: 'ordered' | 'unordered' | undefined;
+  }> = {},
+): ExperienceUnit {
   return {
     id: id as ExperienceUnit['id'],
     title: 'Unit',
     semanticType: 'general',
     content: 'Unit content.',
-    provenance: { documentPath: overrides.documentPath ?? 'doc.pdf', pages: [1], sectionPath: [], blockProvenance: [], blockIndexRange: overrides.blockIndexRange ?? [0, 0] },
+    provenance: {
+      documentPath: overrides.documentPath ?? 'doc.pdf',
+      pages: [1],
+      sectionPath: [],
+      blockProvenance: [],
+      blockIndexRange: overrides.blockIndexRange ?? [0, 0],
+    },
     hierarchy: { depth: 0, parentUnitId: overrides.parentUnitId as ExperienceUnit['id'] | undefined, siblingUnitIds: [] },
     confidence: 0.9,
     relationships: [],
@@ -29,7 +43,14 @@ function candidate(overrides: Partial<CandidateCapability>): CandidateCapability
     name: 'X',
     description: '',
     confidence: 0.6,
-    provenance: { experienceUnitId: 'u1', documentPath: 'doc.pdf', pages: [1], sectionPath: [], charOffsetRange: undefined, confidence: 0.6 },
+    provenance: {
+      experienceUnitId: 'u1',
+      documentPath: 'doc.pdf',
+      pages: [1],
+      sectionPath: [],
+      charOffsetRange: undefined,
+      confidence: 0.6,
+    },
     inputs: [],
     outputs: [],
     requiredKnowledgeNodeIds: [],
@@ -43,7 +64,7 @@ function candidate(overrides: Partial<CandidateCapability>): CandidateCapability
   };
 }
 
-test('a verb-derived capability extends the same unit\'s title-derived capability', () => {
+test("a verb-derived capability extends the same unit's title-derived capability", () => {
   const u1 = makeUnit('u1');
   const perUnit: PerUnitCapabilityExtraction[] = [
     {
@@ -81,14 +102,19 @@ test('two non-title capabilities in the same unit complement each other', () => 
   assert.ok(relationships.some((r) => r.type === 'complements'));
 });
 
-test('a capability whose description mentions another capability\'s name gets a depends_on edge, reflected in dependencies', () => {
+test("a capability whose description mentions another capability's name gets a depends_on edge, reflected in dependencies", () => {
   const u1 = makeUnit('u1');
   const perUnit: PerUnitCapabilityExtraction[] = [
     {
       unit: u1,
       extraction: {
         capabilities: [
-          candidate({ localId: 'a', name: 'Send Report', description: 'Requires Draft Report to have been completed first.', sourceUnitId: 'u1' }),
+          candidate({
+            localId: 'a',
+            name: 'Send Report',
+            description: 'Requires Draft Report to have been completed first.',
+            sourceUnitId: 'u1',
+          }),
           candidate({ localId: 'b', name: 'Draft Report', description: 'Produces the report document.', sourceUnitId: 'u1' }),
         ],
         edges: [],
@@ -108,7 +134,13 @@ test('resolves extractor-supplied candidate edges from local ids to final capabi
   const capA = candidate({ localId: 'a', name: 'A', sourceUnitId: 'u1' });
   const capB = candidate({ localId: 'b', name: 'B', sourceUnitId: 'u1' });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [capA, capB], edges: [{ type: 'invokes', fromLocalId: 'a', toLocalId: 'b', confidence: 0.7, provenance: capA.provenance }] } },
+    {
+      unit: u1,
+      extraction: {
+        capabilities: [capA, capB],
+        edges: [{ type: 'invokes', fromLocalId: 'a', toLocalId: 'b', confidence: 0.7, provenance: capA.provenance }],
+      },
+    },
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
@@ -123,7 +155,9 @@ test('resolves extractor-supplied candidate edges from local ids to final capabi
 
 test('never produces a self-loop', () => {
   const u1 = makeUnit('u1');
-  const perUnit: PerUnitCapabilityExtraction[] = [{ unit: u1, extraction: { capabilities: [candidate({ localId: 'title', name: 'Self', sourceUnitId: 'u1' })], edges: [] } }];
+  const perUnit: PerUnitCapabilityExtraction[] = [
+    { unit: u1, extraction: { capabilities: [candidate({ localId: 'title', name: 'Self', sourceUnitId: 'u1' })], edges: [] } },
+  ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
   assert.deepEqual(relationships, []);
@@ -187,7 +221,10 @@ test('cross-unit sequence connects the last capability of one section-mate unit 
   const u1 = makeUnit('u1', { parentUnitId: 'section-1', blockIndexRange: [2, 2] });
   const u2 = makeUnit('u2', { parentUnitId: 'section-1', blockIndexRange: [4, 4] });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] } },
+    {
+      unit: u1,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] },
+    },
     { unit: u2, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Verify Brokerage', sourceUnitId: 'u2' })], edges: [] } },
   ];
   const mergeResult = mergeCapabilities(perUnit);
@@ -224,12 +261,21 @@ test('cross-unit sequence does NOT connect units in different sections (differen
   const u1 = makeUnit('u1', { parentUnitId: 'section-1', blockIndexRange: [2, 2] });
   const u2 = makeUnit('u2', { parentUnitId: 'section-2', blockIndexRange: [4, 4] });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Step In Section One', sourceUnitId: 'u1' })], edges: [] } },
-    { unit: u2, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Step In Section Two', sourceUnitId: 'u2' })], edges: [] } },
+    {
+      unit: u1,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Step In Section One', sourceUnitId: 'u1' })], edges: [] },
+    },
+    {
+      unit: u2,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Step In Section Two', sourceUnitId: 'u2' })], edges: [] },
+    },
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
-  assert.equal(relationships.some((r) => r.type === 'custom:sequence'), false);
+  assert.equal(
+    relationships.some((r) => r.type === 'custom:sequence'),
+    false,
+  );
 });
 
 test('cross-unit sequence does NOT connect units in different documents, even with the same parentUnitId string', () => {
@@ -241,7 +287,10 @@ test('cross-unit sequence does NOT connect units in different documents, even wi
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
-  assert.equal(relationships.some((r) => r.type === 'custom:sequence'), false);
+  assert.equal(
+    relationships.some((r) => r.type === 'custom:sequence'),
+    false,
+  );
 });
 
 test('a unit with only a title capability (no non-title capabilities) does not participate in cross-unit sequencing and is not bridged over', () => {
@@ -258,12 +307,18 @@ test('a unit with only a title capability (no non-title capabilities) does not p
   const seqEdges = relationships.filter((r) => r.type === 'custom:sequence');
   const heading = mergeResult.capabilities.find((c) => c.canonicalName === 'Section Heading')!;
   // The title-only unit's capability never appears as either endpoint of a sequence edge.
-  assert.equal(seqEdges.some((r) => r.fromCapabilityId === heading.id || r.toCapabilityId === heading.id), false);
+  assert.equal(
+    seqEdges.some((r) => r.fromCapabilityId === heading.id || r.toCapabilityId === heading.id),
+    false,
+  );
   // And First Step / Third Step are NOT bridged directly over the skipped unit either —
   // this module only ever connects direct section-mate adjacency, it does not search past a gap.
   const first = mergeResult.capabilities.find((c) => c.canonicalName === 'First Step')!;
   const third = mergeResult.capabilities.find((c) => c.canonicalName === 'Third Step')!;
-  assert.equal(seqEdges.some((r) => r.fromCapabilityId === first.id && r.toCapabilityId === third.id), false);
+  assert.equal(
+    seqEdges.some((r) => r.fromCapabilityId === first.id && r.toCapabilityId === third.id),
+    false,
+  );
 });
 
 test('unrelated capabilities in the same unit still only get sequence/complements — never requires/depends_on merely from adjacency', () => {
@@ -282,7 +337,10 @@ test('unrelated capabilities in the same unit still only get sequence/complement
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
-  assert.equal(relationships.some((r) => r.type === 'requires' || r.type === 'depends_on'), false);
+  assert.equal(
+    relationships.some((r) => r.type === 'requires' || r.type === 'depends_on'),
+    false,
+  );
   assert.ok(relationships.some((r) => r.type === 'custom:sequence'));
 });
 
@@ -291,9 +349,15 @@ test('a whitespace-only unit (a bare bullet-glyph remnant, no real content) is s
   const u2 = makeUnit('u2', { parentUnitId: 'section-1', blockIndexRange: [2, 2] }); // whitespace-only content, no capability
   const u3 = makeUnit('u3', { parentUnitId: 'section-1', blockIndexRange: [3, 3] });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: { ...u1, content: 'Match CRM records vs. Insurer statements.' }, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] } },
+    {
+      unit: { ...u1, content: 'Match CRM records vs. Insurer statements.' },
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] },
+    },
     { unit: { ...u2, content: '  ' }, extraction: { capabilities: [], edges: [] } }, // whitespace-only, no capabilities at all
-    { unit: { ...u3, content: 'Verify Expected Brokerage.' }, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Verify Brokerage', sourceUnitId: 'u3' })], edges: [] } },
+    {
+      unit: { ...u3, content: 'Verify Expected Brokerage.' },
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Verify Brokerage', sourceUnitId: 'u3' })], edges: [] },
+    },
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
@@ -315,19 +379,31 @@ test('P0.9A area E: cross-unit sequence is NOT asserted between two adjacent bul
   const u1 = makeUnit('u1', { parentUnitId: 'section-1', blockIndexRange: [2, 2], listKind: 'unordered' });
   const u2 = makeUnit('u2', { parentUnitId: 'section-1', blockIndexRange: [4, 4], listKind: 'unordered' });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Manage Policy Booking', sourceUnitId: 'u1' })], edges: [] } },
-    { unit: u2, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Manage Data Normalization', sourceUnitId: 'u2' })], edges: [] } },
+    {
+      unit: u1,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Manage Policy Booking', sourceUnitId: 'u1' })], edges: [] },
+    },
+    {
+      unit: u2,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Manage Data Normalization', sourceUnitId: 'u2' })], edges: [] },
+    },
   ];
   const mergeResult = mergeCapabilities(perUnit);
   const { relationships } = buildCapabilityRelationships(perUnit, mergeResult);
-  assert.equal(relationships.some((r) => r.type === 'custom:sequence'), false);
+  assert.equal(
+    relationships.some((r) => r.type === 'custom:sequence'),
+    false,
+  );
 });
 
 test('P0.9A area E: cross-unit sequence IS still asserted when either adjacent sibling is a numbered (ordered) list item', () => {
   const u1 = makeUnit('u1', { parentUnitId: 'section-1', blockIndexRange: [2, 2], listKind: 'ordered' });
   const u2 = makeUnit('u2', { parentUnitId: 'section-1', blockIndexRange: [4, 4], listKind: 'unordered' });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Collect Documents', sourceUnitId: 'u1' })], edges: [] } },
+    {
+      unit: u1,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Collect Documents', sourceUnitId: 'u1' })], edges: [] },
+    },
     { unit: u2, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Check Policy', sourceUnitId: 'u2' })], edges: [] } },
   ];
   const mergeResult = mergeCapabilities(perUnit);
@@ -351,7 +427,10 @@ test('sequence evidence is deterministic across repeated calls with the same inp
   const u1 = makeUnit('u1', { parentUnitId: 'section-1', blockIndexRange: [2, 2] });
   const u2 = makeUnit('u2', { parentUnitId: 'section-1', blockIndexRange: [4, 4] });
   const perUnit: PerUnitCapabilityExtraction[] = [
-    { unit: u1, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] } },
+    {
+      unit: u1,
+      extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Match CRM Records', sourceUnitId: 'u1' })], edges: [] },
+    },
     { unit: u2, extraction: { capabilities: [candidate({ localId: 'verb-0', name: 'Verify Brokerage', sourceUnitId: 'u2' })], edges: [] } },
   ];
   const mergeResult1 = mergeCapabilities(perUnit);

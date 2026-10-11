@@ -10,7 +10,10 @@ export interface TimelineEntry<T> {
  * `limit` is exceeded (same capping behavior as HistoryStack).
  */
 export class Timeline<T> {
-  private constructor(readonly entries: readonly TimelineEntry<T>[], private readonly limit: number) {}
+  private constructor(
+    readonly entries: readonly TimelineEntry<T>[],
+    private readonly limit: number,
+  ) {}
 
   static empty<T>(limit = 1000): Timeline<T> {
     return new Timeline<T>([], limit);

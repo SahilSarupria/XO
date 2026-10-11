@@ -1,12 +1,5 @@
 import type { GraphEdge, GraphMetadata, GraphNode } from '../model/types.js';
-import type {
-  GraphBadge,
-  GraphInspectorData,
-  GraphMetadataEntry,
-  GraphProperty,
-  GraphPropertyGroup,
-  PropertyKind,
-} from './types.js';
+import type { GraphBadge, GraphInspectorData, GraphMetadataEntry, GraphProperty, GraphPropertyGroup, PropertyKind } from './types.js';
 
 function stringifyValue(value: unknown): string {
   if (typeof value === 'string') return value;

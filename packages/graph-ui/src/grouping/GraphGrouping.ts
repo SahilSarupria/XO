@@ -1,4 +1,4 @@
-import { GraphModel } from '../model/GraphModel.js';
+import type { GraphModel } from '../model/GraphModel.js';
 import type { GraphSelection } from '../selection/GraphSelection.js';
 import type { GraphMetadata, GroupId, NodeGroup, NodeId, Point, Rect } from '../model/types.js';
 
@@ -76,7 +76,13 @@ export class GraphGrouping {
   }
 
   /** Turns the current selection into a persisted NodeGroup of the given kind (stored in group.metadata.kind — a plain, additive convention, not a new NodeGroup field). */
-  static fromSelection(model: GraphModel, selection: GraphSelection, groupId: GroupId, label: string, kind: GroupKind = 'selection'): GraphModel {
+  static fromSelection(
+    model: GraphModel,
+    selection: GraphSelection,
+    groupId: GroupId,
+    label: string,
+    kind: GroupKind = 'selection',
+  ): GraphModel {
     const nodeIds = [...selection.state.nodeIds];
     const metadata: GraphMetadata = { kind };
     return model.upsertNodeGroup({ id: groupId, label, nodeIds, metadata });

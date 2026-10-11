@@ -17,7 +17,9 @@ export interface BenchmarkRunOptions {
   readonly itemLimit?: number;
 }
 
-async function readReport(path: string): Promise<{ readonly ok: true; readonly report: BenchmarkReport } | { readonly ok: false; readonly message: string }> {
+async function readReport(
+  path: string,
+): Promise<{ readonly ok: true; readonly report: BenchmarkReport } | { readonly ok: false; readonly message: string }> {
   let raw: unknown;
   try {
     raw = JSON.parse(await readFile(path, 'utf8'));
@@ -64,7 +66,9 @@ export async function benchmarkRunCommand(options: BenchmarkRunOptions): Promise
   if (options.json) {
     lines.push(JSON.stringify(regression !== undefined ? { report, regression } : { report }, null, 2));
   } else {
-    lines.push(formatReport(report, { perCase: !options.summaryOnly, ...(options.itemLimit !== undefined ? { itemLimit: options.itemLimit } : {}) }));
+    lines.push(
+      formatReport(report, { perCase: !options.summaryOnly, ...(options.itemLimit !== undefined ? { itemLimit: options.itemLimit } : {}) }),
+    );
     if (regression !== undefined) lines.push('', formatRegression(regression));
     if (options.outPath !== undefined) lines.push('', `report written to ${options.outPath}`);
   }

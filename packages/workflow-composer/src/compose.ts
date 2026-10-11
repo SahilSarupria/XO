@@ -13,7 +13,10 @@ import { WorkflowCompositionError } from './errors.js';
 const hasher = new Sha256Hasher();
 
 /** Resolves and validates the requested capability scope; defaults to every `capability`-kind node in the graph. */
-function resolveScope(graph: XoirGraph, requested: readonly XoirNodeId[] | undefined): Result<readonly XoirNode[], WorkflowCompositionError> {
+function resolveScope(
+  graph: XoirGraph,
+  requested: readonly XoirNodeId[] | undefined,
+): Result<readonly XoirNode[], WorkflowCompositionError> {
   if (requested === undefined) {
     return ok(graph.allNodes().filter((n) => n.kind === 'capability'));
   }
@@ -21,10 +24,21 @@ function resolveScope(graph: XoirGraph, requested: readonly XoirNodeId[] | undef
   for (const id of requested) {
     const result = graph.getNode(id);
     if (!result.ok) {
-      return err(new WorkflowCompositionError('CAPABILITY_NODE_NOT_FOUND', `Requested capability node "${id}" is not present in the supplied graph`, { id }));
+      return err(
+        new WorkflowCompositionError(
+          'CAPABILITY_NODE_NOT_FOUND',
+          `Requested capability node "${id}" is not present in the supplied graph`,
+          { id },
+        ),
+      );
     }
     if (result.value.kind !== 'capability') {
-      return err(new WorkflowCompositionError('NODE_NOT_A_CAPABILITY', `Node "${id}" is a "${result.value.kind}" node, not a "capability" node`, { id, kind: result.value.kind }));
+      return err(
+        new WorkflowCompositionError('NODE_NOT_A_CAPABILITY', `Node "${id}" is a "${result.value.kind}" node, not a "capability" node`, {
+          id,
+          kind: result.value.kind,
+        }),
+      );
     }
     nodes.push(result.value);
   }
@@ -54,7 +68,10 @@ function getProcessMembershipKeys(graph: XoirGraph, node: XoirNode): readonly st
         keys.add(`process_node:${targetNode.value.id}`);
       }
       for (const pEdge of graph.allEdges()) {
-        if (pEdge.fromId === targetNode.value.id && (pEdge.kind === 'PART_OF' || pEdge.kind === 'REQUIRES' || pEdge.kind === 'DEPENDS_ON')) {
+        if (
+          pEdge.fromId === targetNode.value.id &&
+          (pEdge.kind === 'PART_OF' || pEdge.kind === 'REQUIRES' || pEdge.kind === 'DEPENDS_ON')
+        ) {
           const procNode = graph.getNode(pEdge.toId);
           if (procNode.ok && isProcessOrActionConceptNode(procNode.value)) {
             keys.add(`process_node:${procNode.value.id}`);
@@ -146,7 +163,11 @@ function makeTieBreak(precedenceHint: readonly XoirNodeId[] | undefined): (ids: 
     });
 }
 
-function rationaleFor(capabilityId: XoirNodeId, facts: readonly PrecedenceFact[], ambiguousGroups: readonly (readonly XoirNodeId[])[]): StepPrecedenceRationale {
+function rationaleFor(
+  capabilityId: XoirNodeId,
+  facts: readonly PrecedenceFact[],
+  ambiguousGroups: readonly (readonly XoirNodeId[])[],
+): StepPrecedenceRationale {
   const orderedAfter = facts
     .filter((f) => f.after === capabilityId)
     .map((f) => ({
@@ -181,7 +202,12 @@ function buildDescription(nodesByOrder: readonly XoirNode[], gaps: readonly Work
   return `${base} ${gaps.length} unresolved gap${gaps.length === 1 ? '' : 's'} found — see this workflow's \`gaps\` field before treating the step order as final.`;
 }
 
-function composeOne(graph: XoirGraph, componentIds: readonly XoirNodeId[], nodesById: ReadonlyMap<XoirNodeId, XoirNode>, options: CompositionOptions): CandidateWorkflow {
+function composeOne(
+  graph: XoirGraph,
+  componentIds: readonly XoirNodeId[],
+  nodesById: ReadonlyMap<XoirNodeId, XoirNode>,
+  options: CompositionOptions,
+): CandidateWorkflow {
   const scope = new Set(componentIds);
   const facts = derivePrecedenceFacts(graph, scope);
   const conflictPairs = deriveConflictPairs(graph, scope);
@@ -297,7 +323,10 @@ function composeOne(graph: XoirGraph, componentIds: readonly XoirNodeId[], nodes
  * capability in scope become their own single-step candidate workflow
  * rather than being folded into an unrelated one.
  */
-export function composeWorkflows(graph: XoirGraph, options: CompositionOptions = {}): Result<readonly CandidateWorkflow[], WorkflowCompositionError> {
+export function composeWorkflows(
+  graph: XoirGraph,
+  options: CompositionOptions = {},
+): Result<readonly CandidateWorkflow[], WorkflowCompositionError> {
   const scopeResult = resolveScope(graph, options.capabilityNodeIds);
   if (!scopeResult.ok) return scopeResult;
   const scopedNodes = scopeResult.value;

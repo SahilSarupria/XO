@@ -54,7 +54,9 @@ const OBLIGATION_MARKDOWN =
 // discover 30 capabilities from this exact compiler build: 18
 // deterministic_rule, 11 unresolved, 1 human_in_the_loop — enough to
 // exercise all three execution classes from a single compilation.
-const COMMERCIAL_PROPERTY_PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
+const COMMERCIAL_PROPERTY_PDF = fileURLToPath(
+  new URL('../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url),
+);
 const DETERMINISTIC_CAPABILITY_ID = 'cap_rule_0f731679e7120779542267faaabe10ff'; // "Both Manager Approval And Loss-adjuster Assessment Are Required" — requires { claim_amount: number, loss: string }
 const HITL_CAPABILITY_ID = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522'; // "Review not covered under standard rule"
 
@@ -62,9 +64,19 @@ async function createWorkspace(server: TestServer, extraHeaders?: Readonly<Recor
   return (await server.request('POST', '/workspaces', {}, extraHeaders)).json<WorkspaceRecord>();
 }
 
-async function uploadAndCompile(server: TestServer, workspaceId: string, filename: string, bytes: Buffer, extraHeaders?: Readonly<Record<string, string>>): Promise<{ sourceId: string; compilationId: string }> {
-  const source = (await server.request('POST', `/workspaces/${workspaceId}/sources?filename=${filename}`, bytes, extraHeaders)).json<SourceWire>();
-  const compiled = (await server.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`, undefined, extraHeaders)).json<CompilationWire>();
+async function uploadAndCompile(
+  server: TestServer,
+  workspaceId: string,
+  filename: string,
+  bytes: Buffer,
+  extraHeaders?: Readonly<Record<string, string>>,
+): Promise<{ sourceId: string; compilationId: string }> {
+  const source = (
+    await server.request('POST', `/workspaces/${workspaceId}/sources?filename=${filename}`, bytes, extraHeaders)
+  ).json<SourceWire>();
+  const compiled = (
+    await server.request('POST', `/workspaces/${workspaceId}/sources/${source.sourceId}/compile`, undefined, extraHeaders)
+  ).json<CompilationWire>();
   assert.equal(compiled.status, 'succeeded', 'test fixture setup: expected compilation to succeed');
   return { sourceId: source.sourceId, compilationId: compiled.compilationId };
 }
@@ -94,7 +106,10 @@ test('full customer-value demo: workspace -> upload -> compile -> capabilities -
       console.log(`[P0.5 demo] selected capability "${DETERMINISTIC_CAPABILITY_ID}" is classified: ${deterministic.executionClass}`);
 
       // 5. Approve one capability.
-      const approveRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`);
+      const approveRes = await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`,
+      );
       assert.equal(approveRes.status, 200);
       const approval = approveRes.json<ApprovalWire>();
       assert.equal(approval.capabilityId, DETERMINISTIC_CAPABILITY_ID);
@@ -102,11 +117,19 @@ test('full customer-value demo: workspace -> upload -> compile -> capabilities -
       assert.equal(approval.approverIdentityId, server.identityId);
 
       // 6. Attempt execution before approval for another (unapproved) capability — must be rejected.
-      const rejectedRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: another!.capabilityId, input: {} });
+      const rejectedRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: another!.capabilityId,
+        input: {},
+      });
       assert.equal(rejectedRes.status, 403);
 
       // 7. Execute the approved deterministic capability.
-      const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: DETERMINISTIC_CAPABILITY_ID, input: { claim_amount: 15000, loss: 'fire' } });
+      const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: DETERMINISTIC_CAPABILITY_ID,
+        input: { claim_amount: 15000, loss: 'fire' },
+      });
       assert.equal(execRes.status, 201);
       const execution = execRes.json<ExecutionWire>();
       assert.equal(execution.status, 'succeeded');
@@ -141,8 +164,15 @@ test('HITL capability execution returns an honest waiting_for_human status, neve
       const pdfBytes = await readFile(COMMERCIAL_PROPERTY_PDF);
       const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'policy.pdf', pdfBytes);
 
-      await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${HITL_CAPABILITY_ID}/approve`);
-      const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: HITL_CAPABILITY_ID, input: {} });
+      await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${HITL_CAPABILITY_ID}/approve`,
+      );
+      const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: HITL_CAPABILITY_ID,
+        input: {},
+      });
 
       assert.equal(execRes.status, 201);
       const execution = execRes.json<ExecutionWire>();
@@ -163,10 +193,17 @@ test('input contract validation is enforced: a missing required field is rejecte
       const workspace = await createWorkspace(server);
       const pdfBytes = await readFile(COMMERCIAL_PROPERTY_PDF);
       const { compilationId } = await uploadAndCompile(server, workspace.workspaceId, 'policy.pdf', pdfBytes);
-      await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`);
+      await server.request(
+        'POST',
+        `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${DETERMINISTIC_CAPABILITY_ID}/approve`,
+      );
 
       // Missing required "loss" field.
-      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: DETERMINISTIC_CAPABILITY_ID, input: { claim_amount: 15000 } });
+      const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+        compilationId,
+        capabilityId: DETERMINISTIC_CAPABILITY_ID,
+        input: { claim_amount: 15000 },
+      });
       assert.equal(res.status, 200); // a failed execution is still a normal, successful HTTP response about that failure
       const execution = res.json<ExecutionWire>();
       assert.equal(execution.status, 'failed');
@@ -190,10 +227,17 @@ test('unresolved capability cannot execute: rejected with a structured error, ne
     assert.ok(unresolved, 'test fixture setup: expected an unresolved capability from obligation-language markdown');
 
     // Approve it anyway — approval doesn't require executability; the execution route itself must independently refuse to run it.
-    const approveRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${unresolved!.capabilityId}/approve`);
+    const approveRes = await server.request(
+      'POST',
+      `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities/${unresolved!.capabilityId}/approve`,
+    );
     assert.equal(approveRes.status, 200);
 
-    const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: unresolved!.capabilityId, input: {} });
+    const execRes = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+      compilationId,
+      capabilityId: unresolved!.capabilityId,
+      input: {},
+    });
     assert.equal(execRes.status, 200);
     const execution = execRes.json<ExecutionWire>();
     assert.equal(execution.status, 'failed');
@@ -211,7 +255,11 @@ test('unapproved capability execution is rejected (403) and no execution record 
     const capsRes = await server.request('GET', `/workspaces/${workspace.workspaceId}/compilations/${compilationId}/capabilities`);
     const anyCapability = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!;
 
-    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, { compilationId, capabilityId: anyCapability.capabilityId, input: {} });
+    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/executions`, {
+      compilationId,
+      capabilityId: anyCapability.capabilityId,
+      input: {},
+    });
     assert.equal(res.status, 403);
 
     const listed = await server.request('GET', `/workspaces/${workspace.workspaceId}/executions`);
@@ -236,7 +284,10 @@ test('approval persists after a fresh server instance starts against the same wo
         compilationId = result.compilationId;
         const capsRes = await server1.request('GET', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities`);
         capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
-        const approveRes = await server1.request('POST', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
+        const approveRes = await server1.request(
+          'POST',
+          `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`,
+        );
         assert.equal(approveRes.status, 200);
       } finally {
         await server1.stop();
@@ -245,7 +296,9 @@ test('approval persists after a fresh server instance starts against the same wo
       const server2 = await TestServer.start({ workspaceDataDir: dataDir, workspacesDir }, identityId);
       try {
         const capsRes = await server2.request('GET', `/workspaces/${workspaceId}/compilations/${compilationId}/capabilities`);
-        const capability = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities.find((c) => c.capabilityId === capabilityId);
+        const capability = capsRes
+          .json<{ capabilities: readonly CapabilityWire[] }>()
+          .capabilities.find((c) => c.capabilityId === capabilityId);
         assert.equal(capability?.approved, true);
       } finally {
         await server2.stop();
@@ -290,8 +343,20 @@ test('unknown workspace returns 404 on approval and execution routes', async () 
   const server = await TestServer.start();
   try {
     const unknownId = 'ws_ffffffffffffffffffffffffffffffff';
-    assert.equal((await server.request('POST', `/workspaces/${unknownId}/compilations/cmp_ffffffffffffffffffffffffffffffff/capabilities/cap_x/approve`)).status, 404);
-    assert.equal((await server.request('POST', `/workspaces/${unknownId}/executions`, { compilationId: 'cmp_x', capabilityId: 'cap_x', input: {} })).status, 404);
+    assert.equal(
+      (
+        await server.request(
+          'POST',
+          `/workspaces/${unknownId}/compilations/cmp_ffffffffffffffffffffffffffffffff/capabilities/cap_x/approve`,
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (await server.request('POST', `/workspaces/${unknownId}/executions`, { compilationId: 'cmp_x', capabilityId: 'cap_x', input: {} }))
+        .status,
+      404,
+    );
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/executions`)).status, 404);
     assert.equal((await server.request('GET', `/workspaces/${unknownId}/executions/exe_ffffffffffffffffffffffffffffffff`)).status, 404);
   } finally {
@@ -307,15 +372,34 @@ test('cross-identity workspace access returns 404 on approval and execution rout
     const capsRes = await server.request('GET', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities`);
     const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
     await server.request('POST', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
-    const execution = (await server.request('POST', `/workspaces/${owner.workspaceId}/executions`, { compilationId, capabilityId, input: {} })).json<ExecutionWire>();
+    const execution = (
+      await server.request('POST', `/workspaces/${owner.workspaceId}/executions`, { compilationId, capabilityId, input: {} })
+    ).json<ExecutionWire>();
 
     const other = await server.issueAdditionalIdentity('identity-b');
     const asOther = TestServer.authHeader(other.apiKey);
 
-    assert.equal((await server.request('POST', `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`, undefined, asOther)).status, 404);
-    assert.equal((await server.request('POST', `/workspaces/${owner.workspaceId}/executions`, { compilationId, capabilityId, input: {} }, asOther)).status, 404);
+    assert.equal(
+      (
+        await server.request(
+          'POST',
+          `/workspaces/${owner.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`,
+          undefined,
+          asOther,
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (await server.request('POST', `/workspaces/${owner.workspaceId}/executions`, { compilationId, capabilityId, input: {} }, asOther))
+        .status,
+      404,
+    );
     assert.equal((await server.request('GET', `/workspaces/${owner.workspaceId}/executions`, undefined, asOther)).status, 404);
-    assert.equal((await server.request('GET', `/workspaces/${owner.workspaceId}/executions/${execution.executionId}`, undefined, asOther)).status, 404);
+    assert.equal(
+      (await server.request('GET', `/workspaces/${owner.workspaceId}/executions/${execution.executionId}`, undefined, asOther)).status,
+      404,
+    );
   } finally {
     await server.stop();
   }
@@ -330,10 +414,17 @@ test('cross-workspace compilation/capability access returns 404: a capability fr
     const capsRes = await server.request('GET', `/workspaces/${workspaceA.workspaceId}/compilations/${compilationId}/capabilities`);
     const capabilityId = capsRes.json<{ capabilities: readonly CapabilityWire[] }>().capabilities[0]!.capabilityId;
 
-    const approveThroughB = await server.request('POST', `/workspaces/${workspaceB.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`);
+    const approveThroughB = await server.request(
+      'POST',
+      `/workspaces/${workspaceB.workspaceId}/compilations/${compilationId}/capabilities/${capabilityId}/approve`,
+    );
     assert.equal(approveThroughB.status, 404);
 
-    const execThroughB = await server.request('POST', `/workspaces/${workspaceB.workspaceId}/executions`, { compilationId, capabilityId, input: {} });
+    const execThroughB = await server.request('POST', `/workspaces/${workspaceB.workspaceId}/executions`, {
+      compilationId,
+      capabilityId,
+      input: {},
+    });
     assert.equal(execThroughB.status, 404);
   } finally {
     await server.stop();

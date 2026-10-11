@@ -5,18 +5,28 @@ import { compileXoir } from '../../src/pipeline/compile.js';
 import { extractReasoningGraph } from '../../src/reasoning/reasoning-extractor.js';
 import { computeKnowledgeNodeId } from '../../src/knowledge/node-id.js';
 import { computeCapabilityId } from '../../src/capabilities/capability-id.js';
-import type { KnowledgeGraph, KnowledgeNode, KnowledgeProvenance } from '../../src/knowledge/types.js';
-import type { Capability, CapabilityGraph } from '../../src/capabilities/types.js';
+import type { KnowledgeNode, KnowledgeProvenance } from '../../src/knowledge/types.js';
+import type { Capability } from '../../src/capabilities/types.js';
 import { UNKNOWN_SIGNATURE } from '../../src/capabilities/types.js';
 import type { ExperienceDocument, ExperienceUnit } from '../../src/semantic/types.js';
 
 const now = () => '2026-01-01T00:00:00.000Z';
 
 function unitProvenance(overrides: Partial<KnowledgeProvenance> = {}): KnowledgeProvenance {
-  return { experienceUnitId: 'u1', documentPath: 'doc.pdf', pages: [1], sectionPath: ['Article 1'], charOffsetRange: [0, 5], confidence: 0.9, ...overrides };
+  return {
+    experienceUnitId: 'u1',
+    documentPath: 'doc.pdf',
+    pages: [1],
+    sectionPath: ['Article 1'],
+    charOffsetRange: [0, 5],
+    confidence: 0.9,
+    ...overrides,
+  };
 }
 
-function knowledgeNode(overrides: Partial<KnowledgeNode> & { canonicalLabel: string; semanticType: KnowledgeNode['semanticType'] }): KnowledgeNode {
+function knowledgeNode(
+  overrides: Partial<KnowledgeNode> & { canonicalLabel: string; semanticType: KnowledgeNode['semanticType'] },
+): KnowledgeNode {
   return {
     id: overrides.id ?? computeKnowledgeNodeId(overrides.semanticType, overrides.canonicalLabel),
     semanticType: overrides.semanticType,
@@ -124,7 +134,12 @@ test('determinism: the combined Stage 4 + 5 + 7 pipeline produces an identical c
   const kNode = knowledgeNode({ semanticType: 'organization', canonicalLabel: 'Sign Contract Capability' });
   const cap = capability({ canonicalName: 'Sign Contract', category: 'workflow' });
   const reasoning = await extractReasoningGraph(makeDoc([makeUnit('Before Sign Contract, KYC verification must be completed.')]));
-  const input = { kind: 'combined' as const, knowledge: { nodes: [kNode], edges: [] }, capability: { capabilities: [cap], relationships: [] }, reasoning };
+  const input = {
+    kind: 'combined' as const,
+    knowledge: { nodes: [kNode], edges: [] },
+    capability: { capabilities: [cap], relationships: [] },
+    reasoning,
+  };
 
   const r1 = await compileXoir(input, { now });
   const r2 = await compileXoir(input, { now });
@@ -167,7 +182,9 @@ test('an invalid reasoning-derived XOIR graph (constructed directly, bypassing t
 
 test('a numbered real-world "N.N If A, B." clause becomes an outcome-bearing rule node through full reasoning extraction, not just parseSentence in isolation', async () => {
   const reasoning = await extractReasoningGraph(
-    makeDoc([makeUnit('7.1 If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.')]),
+    makeDoc([
+      makeUnit('7.1 If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.'),
+    ]),
   );
   const ruleNode = reasoning.nodes.find((n) => n.nodeType === 'rule' || n.nodeType === 'decision');
   assert.ok(ruleNode, `expected a rule/decision node; got kinds: ${reasoning.nodes.map((n) => n.nodeType).join(', ')}`);
@@ -178,7 +195,13 @@ test('a numbered real-world "N.N If A, B." clause becomes an outcome-bearing rul
   assert.ok(result.ok);
   if (!result.ok) return;
   const xoirNode = result.value.graph.allNodes().find((n) => n.kind === 'heuristic' || n.kind === 'decision_node');
-  assert.ok(xoirNode, `expected a heuristic/decision_node XOIR node; got kinds: ${result.value.graph.allNodes().map((n) => n.kind).join(', ')}`);
+  assert.ok(
+    xoirNode,
+    `expected a heuristic/decision_node XOIR node; got kinds: ${result.value.graph
+      .allNodes()
+      .map((n) => n.kind)
+      .join(', ')}`,
+  );
   // The whole point: this node now has a real, non-fabricated outcome — pulled straight from
   // the source sentence's own action clause, never invented — so it is structurally eligible
   // for deterministic resolution (whether the comparison grammar can actually parse "greater
@@ -188,8 +211,16 @@ test('a numbered real-world "N.N If A, B." clause becomes an outcome-bearing rul
 });
 
 test('a knowledge-stage constraint and a reasoning-stage prerequisite both link to the same capability without edge-id collision or duplicate rules', async () => {
-  const kNode = knowledgeNode({ semanticType: 'constraint', canonicalLabel: 'Sign Contract requires notarization before execution', provenance: [unitProvenance({ experienceUnitId: 'u-knowledge' })] });
-  const cap = capability({ canonicalName: 'Sign Contract', category: 'workflow', provenance: [unitProvenance({ experienceUnitId: 'u-capability' })] });
+  const kNode = knowledgeNode({
+    semanticType: 'constraint',
+    canonicalLabel: 'Sign Contract requires notarization before execution',
+    provenance: [unitProvenance({ experienceUnitId: 'u-knowledge' })],
+  });
+  const cap = capability({
+    canonicalName: 'Sign Contract',
+    category: 'workflow',
+    provenance: [unitProvenance({ experienceUnitId: 'u-capability' })],
+  });
   const reasoning = await extractReasoningGraph(makeDoc([makeUnit('Before Sign Contract, KYC verification must be completed.')]));
 
   const result = await compileXoir(
@@ -206,7 +237,9 @@ test('a knowledge-stage constraint and a reasoning-stage prerequisite both link 
   // The knowledge-stage constraint (exact-label: its own canonicalLabel contains "Sign Contract")
   // and the reasoning-stage prerequisite constraint each produce their own distinct edge.
   assert.ok(requiresEdges.some((e) => e.fromId === XoirNodeId(kNode.id as unknown as string)));
-  const reasoningConstraintNode = graph.allNodes().find((n) => n.kind === 'constraint' && n.id !== XoirNodeId(kNode.id as unknown as string));
+  const reasoningConstraintNode = graph
+    .allNodes()
+    .find((n) => n.kind === 'constraint' && n.id !== XoirNodeId(kNode.id as unknown as string));
   assert.ok(reasoningConstraintNode, 'expected the reasoning-extracted prerequisite constraint node too');
   assert.ok(requiresEdges.some((e) => e.fromId === reasoningConstraintNode!.id));
 

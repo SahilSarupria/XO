@@ -49,10 +49,25 @@ interface Case {
 
 const CASES: readonly Case[] = [
   // A. Insurance/operations (Aastha)
-  { domain: 'A-insurance', text: 'Identify Actual brokerage (Basic + Incentives).', expectedKnowledgeKind: 'action', expectCapability: true },
+  {
+    domain: 'A-insurance',
+    text: 'Identify Actual brokerage (Basic + Incentives).',
+    expectedKnowledgeKind: 'action',
+    expectCapability: true,
+  },
   { domain: 'A-insurance', text: 'Match CRM records vs. Insurer statements.', expectedKnowledgeKind: 'action', expectCapability: true },
-  { domain: 'A-insurance', text: 'Verify Expected Brokerage vs. Actual Brokerage.', expectedKnowledgeKind: 'action', expectCapability: true },
-  { domain: 'A-insurance', text: 'Reconcile invoice amounts vs. receipt amounts.', expectedKnowledgeKind: 'action', expectCapability: true },
+  {
+    domain: 'A-insurance',
+    text: 'Verify Expected Brokerage vs. Actual Brokerage.',
+    expectedKnowledgeKind: 'action',
+    expectCapability: true,
+  },
+  {
+    domain: 'A-insurance',
+    text: 'Reconcile invoice amounts vs. receipt amounts.',
+    expectedKnowledgeKind: 'action',
+    expectCapability: true,
+  },
   { domain: 'A-insurance', text: 'Validate TDS and GST figures.', expectedKnowledgeKind: 'action', expectCapability: true },
   { domain: 'A-insurance', text: 'Calculate and book TDS for each receipt.', expectedKnowledgeKind: 'action', expectCapability: true },
   { domain: 'A-insurance', text: 'Generate monthly MIS reports.', expectedKnowledgeKind: 'action', expectCapability: true },
@@ -69,7 +84,13 @@ const CASES: readonly Case[] = [
   // correctly gains a capability candidate even though it is *also* still a Stage 7 `rule`
   // node (unchanged, unrelated) — the two analyses are independent and this sentence
   // legitimately satisfies both.
-  { domain: 'B-api', text: 'If the response status is 429, wait and retry.', expectedKnowledgeKind: 'concept', expectCapability: true, expectedReasoningCount: 1 },
+  {
+    domain: 'B-api',
+    text: 'If the response status is 429, wait and retry.',
+    expectedKnowledgeKind: 'concept',
+    expectCapability: true,
+    expectedReasoningCount: 1,
+  },
   // C. Technical procedure/checklist
   { domain: 'C-checklist', text: 'Install the dependency.', expectedKnowledgeKind: 'action', expectCapability: true },
   { domain: 'C-checklist', text: 'Configure the environment.', expectedKnowledgeKind: 'action', expectCapability: true },
@@ -91,7 +112,13 @@ const CASES: readonly Case[] = [
   // actionable), so it correctly produces no capability candidate post-Layer-1A; it did
   // pre-Layer-1A only via the now-closed false-positive path. expectCapability flips true -> false.
   { domain: 'D-handbook', text: 'The process consists of A, B, and C.', expectedKnowledgeKind: 'process', expectCapability: false },
-  { domain: 'D-handbook', text: 'Employees must complete the training within 30 days of hire.', expectedKnowledgeKind: 'concept', expectCapability: false, expectedReasoningCount: 1 },
+  {
+    domain: 'D-handbook',
+    text: 'Employees must complete the training within 30 days of hire.',
+    expectedKnowledgeKind: 'concept',
+    expectCapability: false,
+    expectedReasoningCount: 1,
+  },
 ];
 
 for (const c of CASES) {
@@ -113,6 +140,10 @@ for (const c of CASES) {
     const rResult = await reasoningExtractor.extract(unit);
     assert.ok(rResult.ok);
     if (!rResult.ok) return;
-    assert.equal(rResult.value.nodes.length, c.expectedReasoningCount ?? 0, `reasoning node count regressed for "${c.text}" — category leakage from knowledge into reasoning`);
+    assert.equal(
+      rResult.value.nodes.length,
+      c.expectedReasoningCount ?? 0,
+      `reasoning node count regressed for "${c.text}" — category leakage from knowledge into reasoning`,
+    );
   });
 }

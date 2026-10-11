@@ -41,7 +41,9 @@ export interface AssembleContextParams {
  */
 export class ContextAssembler {
   assemble(params: AssembleContextParams): AssembledContext {
-    const fragments: string[] = [`You are executing the "${params.capability.declaration.name}" capability: ${params.capability.declaration.description}`];
+    const fragments: string[] = [
+      `You are executing the "${params.capability.declaration.name}" capability: ${params.capability.declaration.description}`,
+    ];
 
     for (const slice of params.slices) {
       if (slice.componentKind === 'safety_rules') fragments.push(`Safety rules:\n${slice.content}`);

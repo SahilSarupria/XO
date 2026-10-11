@@ -68,7 +68,11 @@ test('the suite validator rejects duplicate ids, unknown fields (so provenance c
 
   const inline = clone(base);
   inline.cases.find((c) => c.expect.capabilities?.items?.length >= 2)!.expect.capabilities.items[0]!['basis'] = 'explicit';
-  assert.equal(validateSuiteDefinition(inline).ok, false, 'an inline "basis" field is an unknown field: provenance lives in the register, not the suite');
+  assert.equal(
+    validateSuiteDefinition(inline).ok,
+    false,
+    'an inline "basis" field is an unknown field: provenance lives in the register, not the suite',
+  );
 
   const noMatcher = clone(base);
   delete noMatcher.cases.find((c) => c.expect.capabilities?.items?.length >= 2)!.expect.capabilities.items[0]!['name'];
@@ -83,7 +87,11 @@ test('each committed register parses strictly and matches its suite exactly: ful
     const { suite, register } = await load(name);
     assert.deepEqual(auditGroundTruth(suite, register), [], `${name}: register is consistent with the suite`);
     const expectations = suite.cases.reduce((n, c) => n + listExpectations(c).length, 0);
-    assert.equal(register.cases.reduce((n, c) => n + c.entries.length, 0), expectations, `${name}: exactly one entry per expectation`);
+    assert.equal(
+      register.cases.reduce((n, c) => n + c.entries.length, 0),
+      expectations,
+      `${name}: exactly one entry per expectation`,
+    );
   }
 });
 
@@ -96,16 +104,46 @@ test('the strict parser rejects malformed registers (unknown field, bad enum, du
     assert.equal(p.ok, false);
     return p.ok ? '' : p.issues.map((i) => `${i.path}: ${i.message}`).join(' | ');
   };
-  assert.match(bad((r) => (r.cases[0].entries[0].confidence = 0.9)), /unknown field/);
-  assert.match(bad((r) => (r.cases[0].entries[0].identity = 'certain')), /must be one of/);
-  assert.match(bad((r) => r.cases[0].entries.push(clone(r.cases[0].entries[0]))), /duplicate entry/);
-  assert.match(bad((r) => (r.cases[0].entries[0].identity = 'not_established')), /unestablished/);
-  assert.match(bad((r) => (r.cases[0].expectationsFingerprint = 'nope')), /16 lowercase hex/);
-  assert.match(bad((r) => (r.cases[0].entries[0].source = '  ')), /non-empty string/);
-  assert.match(bad((r) => (r.cases[0].world[1].kinds = ['x'])), /only valid for scope "facts"/);
-  assert.match(bad((r) => r.cases.push(clone(r.cases[0]))), /duplicate caseId/);
-  assert.match(bad((r) => r.cases[0].world.push(clone(r.cases[0].world[0]))), /duplicate world scope/);
-  assert.match(bad((r) => (r.cases[0].unestablished[0] = { status: 'nope', topic: 't', note: 'n' })), /must be one of/);
+  assert.match(
+    bad((r) => (r.cases[0].entries[0].confidence = 0.9)),
+    /unknown field/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].entries[0].identity = 'certain')),
+    /must be one of/,
+  );
+  assert.match(
+    bad((r) => r.cases[0].entries.push(clone(r.cases[0].entries[0]))),
+    /duplicate entry/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].entries[0].identity = 'not_established')),
+    /unestablished/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].expectationsFingerprint = 'nope')),
+    /16 lowercase hex/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].entries[0].source = '  ')),
+    /non-empty string/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].world[1].kinds = ['x'])),
+    /only valid for scope "facts"/,
+  );
+  assert.match(
+    bad((r) => r.cases.push(clone(r.cases[0]))),
+    /duplicate caseId/,
+  );
+  assert.match(
+    bad((r) => r.cases[0].world.push(clone(r.cases[0].world[0]))),
+    /duplicate world scope/,
+  );
+  assert.match(
+    bad((r) => (r.cases[0].unestablished[0] = { status: 'nope', topic: 't', note: 'n' })),
+    /must be one of/,
+  );
   assert.equal(parseGroundTruth('nonsense').ok, false);
 });
 
@@ -131,7 +169,9 @@ test('the audit detects a missing entry, an orphan entry, an unlisted case and a
 test('editing ANY golden expectation is impossible to do silently: the fingerprint changes and the audit fails until the register is re-audited', async () => {
   const { suite, register } = await load('vertical-fixtures');
   const edited = clone(suite) as any;
-  edited.cases.find((c: any) => c.caseId === 'multidoc-burglary-claims').expect.capabilities.items[0].name = { contains: 'a weaker matcher' };
+  edited.cases.find((c: any) => c.caseId === 'multidoc-burglary-claims').expect.capabilities.items[0].name = {
+    contains: 'a weaker matcher',
+  };
   const findings = auditGroundTruth(edited, register);
   assert.deepEqual(codes(findings), ['fingerprint_mismatch']);
   assert.match(findings[0]!.message, /CHANGELOG\.md/);
@@ -157,18 +197,35 @@ test('historical expectations are unchanged except the recorded corrections: Ste
   const { suite } = await load('vertical-fixtures');
   const fp = (id: string): string => expectationsFingerprint(suite.cases.find((c) => c.caseId === id)!);
   const movedSincePost3 = suite.cases.filter((c) => expectationsFingerprint(c) !== POST_STEP3[c.caseId]).map((c) => c.caseId);
-  assert.deepEqual(movedSincePost3, ['structured-operation-data-flow', 'openapi-operation-data-flow'], 'only the two Step 4 cases moved after Step 3');
+  assert.deepEqual(
+    movedSincePost3,
+    ['structured-operation-data-flow', 'openapi-operation-data-flow'],
+    'only the two Step 4 cases moved after Step 3',
+  );
   assert.equal(fp('structured-operation-data-flow'), 'b294e8d762ce826c');
-  assert.equal(fp('structured-operation-data-flow'), fp('openapi-operation-data-flow'), 'the two formats still carry identical expectations');
+  assert.equal(
+    fp('structured-operation-data-flow'),
+    fp('openapi-operation-data-flow'),
+    'the two formats still carry identical expectations',
+  );
 
   // Undo exactly the Step 4 producer assertions and the Step 3 fingerprints are reproduced: nothing else in those cases moved.
   const undone = clone(suite) as any;
-  for (const id of ['structured-operation-data-flow', 'openapi-operation-data-flow']) for (const k of undone.cases.find((c: any) => c.caseId === id).expect.capabilities.items) { assert.equal(k.producedBy, 'structured-operation'); delete k.producedBy; }
-  assert.equal(expectationsFingerprint(undone.cases.find((c: any) => c.caseId === 'structured-operation-data-flow')), PRE_STEP3['structured-operation-data-flow']);
+  for (const id of ['structured-operation-data-flow', 'openapi-operation-data-flow'])
+    for (const k of undone.cases.find((c: any) => c.caseId === id).expect.capabilities.items) {
+      assert.equal(k.producedBy, 'structured-operation');
+      delete k.producedBy;
+    }
+  assert.equal(
+    expectationsFingerprint(undone.cases.find((c: any) => c.caseId === 'structured-operation-data-flow')),
+    PRE_STEP3['structured-operation-data-flow'],
+  );
 
   // Undo the Step 3 correction and the pre-Step-3 fingerprint of aastha-operations is reproduced.
   const reverted = clone(suite) as any;
-  const wf = reverted.cases.find((c: any) => c.caseId === 'aastha-operations').expect.workflows.items.find((w: any) => w.id === 'wf-reconciliation-tasks');
+  const wf = reverted.cases
+    .find((c: any) => c.caseId === 'aastha-operations')
+    .expect.workflows.items.find((w: any) => w.id === 'wf-reconciliation-tasks');
   assert.equal(wf.steps[2].contains, 'Reconcile invoice amounts vs receipt amounts');
   wf.steps[2].contains = 'Reconcile invoice amounts vs. receipt amounts';
   assert.equal(expectationsFingerprint(reverted.cases.find((c: any) => c.caseId === 'aastha-operations')), PRE_STEP3['aastha-operations']);
@@ -180,24 +237,23 @@ test('historical expectations are unchanged except the recorded corrections: Ste
 test('spuriousCapabilityAvoidance: all 10 forbidden capability traps are retained, each with a stated reason and an explicit/strongly-evidenced basis', async () => {
   const { suite, register } = await load('vertical-fixtures');
   const traps = suite.cases.flatMap((c) => (c.expect.capabilities?.forbidden ?? []).map((f) => ({ caseId: c.caseId, ...f })));
-  assert.deepEqual(
-    traps.map((t) => `${t.caseId}/${t.id}`).sort(),
-    [
-      'burglary-policy-schedule/x-contact-no-email-id',
-      'burglary-policy-schedule/x-partner-contact-row',
-      'burglary-policy-schedule/x-schedule-action',
-      'commercial-property-policy/x-record-action',
-      'commercial-property-policy/x-review-action',
-      'commercial-property-policy/x-schedule-action',
-      'commercial-property-policy/x-schedule-fragment-higher-deductible',
-      'commercial-property-policy/x-schedule-fragment-must-bear',
-      'commercial-property-policy/x-schedule-fragment-not-excluded',
-      'multidoc-burglary-claims/x-schedule-action',
-    ],
-  );
+  assert.deepEqual(traps.map((t) => `${t.caseId}/${t.id}`).sort(), [
+    'burglary-policy-schedule/x-contact-no-email-id',
+    'burglary-policy-schedule/x-partner-contact-row',
+    'burglary-policy-schedule/x-schedule-action',
+    'commercial-property-policy/x-record-action',
+    'commercial-property-policy/x-review-action',
+    'commercial-property-policy/x-schedule-action',
+    'commercial-property-policy/x-schedule-fragment-higher-deductible',
+    'commercial-property-policy/x-schedule-fragment-must-bear',
+    'commercial-property-policy/x-schedule-fragment-not-excluded',
+    'multidoc-burglary-claims/x-schedule-action',
+  ]);
   for (const t of traps) {
     assert.ok((t.reason ?? '').trim().length > 0, `${t.id} has a reason`);
-    const e = register.cases.find((c) => c.caseId === t.caseId)!.entries.find((x) => x.category === 'forbidden_capability' && x.id === t.id)!;
+    const e = register.cases
+      .find((c) => c.caseId === t.caseId)!
+      .entries.find((x) => x.category === 'forbidden_capability' && x.id === t.id)!;
     assert.ok(e.identity === 'explicit' || e.identity === 'strongly_evidenced', `${t.id}: ${e.identity}`);
   }
 });
@@ -222,10 +278,15 @@ test('open-world cases stay open and closed-world cases stay closed: the declare
     for (const def of suite.cases) {
       const w = declaredWorld(def);
       const want = pinned[def.caseId]!;
-      assert.deepEqual({ facts: w.facts.declared, capabilities: w.capabilities, workflows: w.workflows }, { facts: want.facts, capabilities: want.capabilities, workflows: want.workflows }, def.caseId);
+      assert.deepEqual(
+        { facts: w.facts.declared, capabilities: w.capabilities, workflows: w.workflows },
+        { facts: want.facts, capabilities: want.capabilities, workflows: want.workflows },
+        def.caseId,
+      );
       assert.deepEqual([...w.facts.kinds], want.kinds ?? []);
       // and the register agrees for every scope
-      for (const a of register.cases.find((c) => c.caseId === def.caseId)!.world) assert.equal(a.declared, a.scope === 'facts' ? w.facts.declared : w[a.scope]);
+      for (const a of register.cases.find((c) => c.caseId === def.caseId)!.world)
+        assert.equal(a.declared, a.scope === 'facts' ? w.facts.declared : w[a.scope]);
     }
   }
 });
@@ -258,13 +319,16 @@ test('closed-world declarations are justified or explicitly flagged: exactly two
 test('a forbidden expectation must be evidence-based; ambiguous ground truth is never silently promoted', async () => {
   const { suite, register } = await load('vertical-fixtures');
   const weak = clone(register) as any;
-  weak.cases.find((c: any) => c.caseId === 'commercial-property-policy').entries.find((e: any) => e.id === 'x-record-action').identity = 'derived';
+  weak.cases.find((c: any) => c.caseId === 'commercial-property-policy').entries.find((e: any) => e.id === 'x-record-action').identity =
+    'derived';
   assert.deepEqual(codes(auditGroundTruth(suite, weak)), ['forbidden_without_evidence']);
   const noReason = clone(suite) as any;
   delete noReason.cases.find((c: any) => c.caseId === 'commercial-property-policy').expect.capabilities.forbidden[0].reason;
   assert.ok(codes(auditGroundTruth(noReason, register)).includes('forbidden_without_reason'));
   // the ambiguous expectations are exactly the ones the audit identified, and none of them is forbidden
-  const ambiguous = register.cases.flatMap((c) => c.entries.filter((e) => e.identity === 'ambiguous').map((e) => `${c.caseId}/${e.category}/${e.id}`)).sort();
+  const ambiguous = register.cases
+    .flatMap((c) => c.entries.filter((e) => e.identity === 'ambiguous').map((e) => `${c.caseId}/${e.category}/${e.id}`))
+    .sort();
   assert.deepEqual(ambiguous, [
     'aastha-operations/execution/wf-partner-payouts-escalates',
     'aastha-operations/workflow/wf-partner-payouts',
@@ -285,14 +349,22 @@ test('the committed suites pass the integrity lint (no duplicate matchers, no co
 test('the lint catches the defect class fixed in Step 3: a name matcher with punctuation that document-derived names never contain', async () => {
   const { suite } = await load('vertical-fixtures');
   const reverted = clone(suite) as any;
-  reverted.cases.find((c: any) => c.caseId === 'aastha-operations').expect.workflows.items.find((w: any) => w.id === 'wf-reconciliation-tasks').steps[2].contains = 'Reconcile invoice amounts vs. receipt amounts';
+  reverted.cases
+    .find((c: any) => c.caseId === 'aastha-operations')
+    .expect.workflows.items.find((w: any) => w.id === 'wf-reconciliation-tasks').steps[2].contains =
+    'Reconcile invoice amounts vs. receipt amounts';
   const f = auditExpectationIntegrity(reverted);
-  assert.deepEqual(f.map((x) => x.code), ['name_matcher_punctuation']);
+  assert.deepEqual(
+    f.map((x) => x.code),
+    ['name_matcher_punctuation'],
+  );
   assert.match(f[0]!.message, /wf-reconciliation-tasks|workflow "wf-reconciliation-tasks" step 3/);
 
   // structured / openapi identifiers are verbatim source identifiers and are NOT linted
   const structured = clone(suite) as any;
-  structured.cases.find((c: any) => c.caseId === 'structured-operation-data-flow').expect.capabilities.items[0].name = { equals: 'calculate.brokerage' };
+  structured.cases.find((c: any) => c.caseId === 'structured-operation-data-flow').expect.capabilities.items[0].name = {
+    equals: 'calculate.brokerage',
+  };
   assert.deepEqual(auditExpectationIntegrity(structured), []);
 });
 
@@ -301,17 +373,26 @@ test('the lint catches duplicate expectations and forbidden traps that would sat
   const dup = clone(suite) as any;
   const items = dup.cases.find((c: any) => c.caseId === 'multidoc-burglary-claims').expect.capabilities.items;
   items.push({ ...clone(items[0]), id: 'ob-notify-police-again' });
-  assert.deepEqual(auditExpectationIntegrity(dup).map((x) => x.code), ['duplicate_matcher']);
+  assert.deepEqual(
+    auditExpectationIntegrity(dup).map((x) => x.code),
+    ['duplicate_matcher'],
+  );
 
   const conflict = clone(suite) as any;
   const c = conflict.cases.find((x: any) => x.caseId === 'multidoc-burglary-claims');
   c.expect.capabilities.forbidden.push({ id: 'x-conflict', name: { equals: 'Notify the police immediately' }, reason: 'test' });
-  assert.deepEqual(auditExpectationIntegrity(conflict).map((x) => x.code), ['forbidden_contradicts_expected']);
+  assert.deepEqual(
+    auditExpectationIntegrity(conflict).map((x) => x.code),
+    ['forbidden_contradicts_expected'],
+  );
 
   const factDup = clone(suite) as any;
   const facts = factDup.cases.find((x: any) => x.caseId === 'multidoc-burglary-claims').expect.semantics.facts;
   facts.push({ ...clone(facts[0]), id: 'definition-again' });
-  assert.deepEqual(auditExpectationIntegrity(factDup).map((x) => x.code), ['duplicate_matcher']);
+  assert.deepEqual(
+    auditExpectationIntegrity(factDup).map((x) => x.code),
+    ['duplicate_matcher'],
+  );
 });
 
 // ---- 6. matching against the real pipeline ------------------------------------------------------
@@ -343,7 +424,10 @@ test('a name matcher that can never match cannot be told apart from a genuine mi
   const obs = await observeCase(def, { sourceRoot });
   const names = obs.capabilities.map((c) => c.name);
   assert.ok(names.some((n) => matchesName(n, { contains: 'Reconcile invoice amounts vs receipt amounts' })));
-  assert.ok(!names.some((n) => matchesName(n, { contains: 'Reconcile invoice amounts vs. receipt amounts' })), 'no capability name carries the period');
+  assert.ok(
+    !names.some((n) => matchesName(n, { contains: 'Reconcile invoice amounts vs. receipt amounts' })),
+    'no capability name carries the period',
+  );
 });
 
 // ---- 7. determinism and purity ------------------------------------------------------------------
@@ -354,13 +438,32 @@ test('fingerprints, listings and the strict parser are deterministic and order-i
   assert.equal(expectationsFingerprint(def), expectationsFingerprint(clone(def)));
   const shuffled = clone(def) as any;
   shuffled.expect.capabilities.items.reverse();
-  assert.notEqual(expectationsFingerprint(shuffled), expectationsFingerprint(def), 'list order is part of the golden definition, so reordering is a visible edit');
-  assert.equal(canonicalJson(listExpectations(def)), canonicalJson(listExpectations(shuffled)), 'the listing is sorted, so it never depends on order');
+  assert.notEqual(
+    expectationsFingerprint(shuffled),
+    expectationsFingerprint(def),
+    'list order is part of the golden definition, so reordering is a visible edit',
+  );
+  assert.equal(
+    canonicalJson(listExpectations(def)),
+    canonicalJson(listExpectations(shuffled)),
+    'the listing is sorted, so it never depends on order',
+  );
   assert.equal(canonicalJson(parseGroundTruth(register)), canonicalJson(parseGroundTruth(clone(register))));
 });
 
 test('the register is benchmark ground-truth provenance only: nothing in the evaluation path imports it', async () => {
-  for (const f of ['evaluate', 'metrics', 'report', 'compare', 'attribution', 'observe', 'observation', 'evaluation-model', 'definition', 'match']) {
+  for (const f of [
+    'evaluate',
+    'metrics',
+    'report',
+    'compare',
+    'attribution',
+    'observe',
+    'observation',
+    'evaluation-model',
+    'definition',
+    'match',
+  ]) {
     const src = await readFile(join(PKG, 'src', `${f}.ts`), 'utf8');
     assert.ok(!/ground-truth/.test(src), `${f}.ts must not depend on the register`);
   }

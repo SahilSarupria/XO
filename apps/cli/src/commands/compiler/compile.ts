@@ -61,7 +61,9 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
 
     const lines: string[] = ['Sources:'];
     for (const s of value.sources) {
-      lines.push(`  ${s.sourcePath}  (${s.sourceType})  ${s.semanticExtractionAvailable ? `${s.unitCount} unit(s)` : 'no semantic extraction available'}`);
+      lines.push(
+        `  ${s.sourcePath}  (${s.sourceType})  ${s.semanticExtractionAvailable ? `${s.unitCount} unit(s)` : 'no semantic extraction available'}`,
+      );
     }
     if (collected.unsupported.length > 0) {
       lines.push('', `Ignored ${collected.unsupported.length} unsupported file(s):`);
@@ -74,7 +76,8 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     for (const [kind, count] of kinds) lines.push(`    ${kind.padEnd(20)} ${count}`);
 
     lines.push('', `Validation: ${value.valid ? 'valid' : 'INVALID'}`);
-    for (const issue of value.validation.issues) lines.push(`  [${issue.kind}]${issue.subjectId ? ` (${issue.subjectId})` : ''} ${issue.message}`);
+    for (const issue of value.validation.issues)
+      lines.push(`  [${issue.kind}]${issue.subjectId ? ` (${issue.subjectId})` : ''} ${issue.message}`);
 
     const warnings = value.diagnostics.filter((d) => d.severity !== 'info');
     if (warnings.length > 0) {

@@ -18,10 +18,37 @@ const ref = (documentPath: string) => ({ documentPath }) as unknown as XoirSourc
 
 function graph(): XoirGraph {
   const g = XoirGraph.create(XoirGraphId('g'));
-  g.createAndAddNode({ id: XoirNodeId('capability:evaluate-claim'), kind: 'capability', properties: { name: 'Evaluate Claim', description: 'd', determinism: 'deterministic' }, confidence: 0.7, sourceRefs: [ref('policy.pdf')], now });
-  g.createAndAddNode({ id: XoirNodeId('decision:deny-large'), kind: 'decision_node', properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' }, confidence: 0.9, sourceRefs: [ref('policy.pdf')], now });
-  g.createAndAddEdge({ id: XoirEdgeId('r1'), kind: 'REQUIRES', fromId: XoirNodeId('decision:deny-large'), toId: XoirNodeId('capability:evaluate-claim'), now });
-  g.createAndAddNode({ id: XoirNodeId('capability:other'), kind: 'capability', properties: { name: 'Other', description: 'd', determinism: 'deterministic' }, confidence: 0.7, sourceRefs: [ref('handbook.pdf')], now });
+  g.createAndAddNode({
+    id: XoirNodeId('capability:evaluate-claim'),
+    kind: 'capability',
+    properties: { name: 'Evaluate Claim', description: 'd', determinism: 'deterministic' },
+    confidence: 0.7,
+    sourceRefs: [ref('policy.pdf')],
+    now,
+  });
+  g.createAndAddNode({
+    id: XoirNodeId('decision:deny-large'),
+    kind: 'decision_node',
+    properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim' },
+    confidence: 0.9,
+    sourceRefs: [ref('policy.pdf')],
+    now,
+  });
+  g.createAndAddEdge({
+    id: XoirEdgeId('r1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('decision:deny-large'),
+    toId: XoirNodeId('capability:evaluate-claim'),
+    now,
+  });
+  g.createAndAddNode({
+    id: XoirNodeId('capability:other'),
+    kind: 'capability',
+    properties: { name: 'Other', description: 'd', determinism: 'deterministic' },
+    confidence: 0.7,
+    sourceRefs: [ref('handbook.pdf')],
+    now,
+  });
   return g;
 }
 
@@ -53,25 +80,47 @@ test('an unknown capability id is an error, not a fabricated projection', () => 
 
 test('projectAll is sorted by id; capabilitiesFromSource answers "which capabilities came from this source"', () => {
   const all = projectAllCapabilityProvenance(graph());
-  assert.deepEqual(all.map((c) => c.capabilityId), ['capability:evaluate-claim', 'capability:other']);
-  assert.deepEqual(capabilitiesFromSource(all, 'policy.pdf').map((c) => c.capabilityId), ['capability:evaluate-claim']);
+  assert.deepEqual(
+    all.map((c) => c.capabilityId),
+    ['capability:evaluate-claim', 'capability:other'],
+  );
+  assert.deepEqual(
+    capabilitiesFromSource(all, 'policy.pdf').map((c) => c.capabilityId),
+    ['capability:evaluate-claim'],
+  );
   assert.deepEqual(capabilitiesFromSource(all, 'nothing.pdf'), []);
 });
 
 test('execution provenance: matching execution facts agree on every field', () => {
   const cap = projectCapabilityProvenance(graph(), 'capability:evaluate-claim');
   assert.ok(cap.ok);
-  const e = projectExecutionProvenance({ executionId: 'exec_1', capabilityId: cap.value.capabilityId, contractId: cap.value.contractId, bindingId: cap.value.binding.bindingId!, graphHash: cap.value.graphHash, contractContentHash: cap.value.contractContentHash }, cap.value);
+  const e = projectExecutionProvenance(
+    {
+      executionId: 'exec_1',
+      capabilityId: cap.value.capabilityId,
+      contractId: cap.value.contractId,
+      bindingId: cap.value.binding.bindingId!,
+      graphHash: cap.value.graphHash,
+      contractContentHash: cap.value.contractContentHash,
+    },
+    cap.value,
+  );
   assert.deepEqual(e.agreement, { graphHash: 'match', contractContentHash: 'match', bindingId: 'match', contractId: 'match' });
 });
 
 test('execution provenance: a divergent hash is reported as mismatch; an absent recorded value is unknown (installed-package: no graphHash)', () => {
   const cap = projectCapabilityProvenance(graph(), 'capability:evaluate-claim');
   assert.ok(cap.ok);
-  const diverged = projectExecutionProvenance({ capabilityId: cap.value.capabilityId, graphHash: 'sha256:' + '0'.repeat(64), contractContentHash: cap.value.contractContentHash }, cap.value);
+  const diverged = projectExecutionProvenance(
+    { capabilityId: cap.value.capabilityId, graphHash: 'sha256:' + '0'.repeat(64), contractContentHash: cap.value.contractContentHash },
+    cap.value,
+  );
   assert.equal(diverged.agreement.graphHash, 'mismatch');
   assert.equal(diverged.agreement.contractContentHash, 'match');
-  const installed = projectExecutionProvenance({ capabilityId: cap.value.capabilityId, contractContentHash: cap.value.contractContentHash }, cap.value);
+  const installed = projectExecutionProvenance(
+    { capabilityId: cap.value.capabilityId, contractContentHash: cap.value.contractContentHash },
+    cap.value,
+  );
   assert.equal(installed.agreement.graphHash, 'unknown');
   const noGraphView = projectExecutionProvenance({ capabilityId: 'c', graphHash: 'x' });
   assert.equal(noGraphView.agreement.graphHash, 'unknown');
@@ -81,7 +130,19 @@ test('workflow provenance: steps sorted by order and joined to capability views 
   const g = graph();
   const caps = projectAllCapabilityProvenance(g);
   const cap = caps.find((c) => c.capabilityId === 'capability:evaluate-claim')!;
-  const executions = new Map([['exec_2', { capabilityId: cap.capabilityId, contractId: cap.contractId, bindingId: cap.binding.bindingId!, graphHash: cap.graphHash, contractContentHash: cap.contractContentHash, sourceXoirNodeIds: cap.sourceXoirNodeIds }]]);
+  const executions = new Map([
+    [
+      'exec_2',
+      {
+        capabilityId: cap.capabilityId,
+        contractId: cap.contractId,
+        bindingId: cap.binding.bindingId!,
+        graphHash: cap.graphHash,
+        contractContentHash: cap.contractContentHash,
+        sourceXoirNodeIds: cap.sourceXoirNodeIds,
+      },
+    ],
+  ]);
   const w = projectWorkflowProvenance(
     {
       workflowId: 'wf_1',
@@ -89,12 +150,22 @@ test('workflow provenance: steps sorted by order and joined to capability views 
       graphHash: cap.graphHash,
       steps: [
         { order: 1, capabilityId: 'capability:other' },
-        { order: 0, capabilityId: 'capability:evaluate-claim', contractId: cap.contractId, bindingId: cap.binding.bindingId!, sourceXoirNodeIds: cap.sourceXoirNodeIds, executionId: 'exec_2' },
+        {
+          order: 0,
+          capabilityId: 'capability:evaluate-claim',
+          contractId: cap.contractId,
+          bindingId: cap.binding.bindingId!,
+          sourceXoirNodeIds: cap.sourceXoirNodeIds,
+          executionId: 'exec_2',
+        },
       ],
     },
     { capabilities: caps, executions },
   );
-  assert.deepEqual(w.steps.map((s) => s.order), [0, 1]);
+  assert.deepEqual(
+    w.steps.map((s) => s.order),
+    [0, 1],
+  );
   assert.equal(w.graphHash, cap.graphHash);
   const first = w.steps[0]!;
   assert.equal(first.capability?.contractId, cap.contractId);

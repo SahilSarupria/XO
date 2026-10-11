@@ -30,7 +30,8 @@ export const NodeId = (value: string): NodeId => brand(value);
  * simply has no built-in handler; a caller supplies one via
  * `WorkflowExecutorOptions.customNodeHandlers`.
  */
-export type WorkflowNodeType = 'start' | 'end' | 'capability' | 'decision' | 'parallel' | 'sequence' | 'merge' | 'loop' | 'delay' | 'subworkflow' | `custom:${string}`;
+export type WorkflowNodeType =
+  'start' | 'end' | 'capability' | 'decision' | 'parallel' | 'sequence' | 'merge' | 'loop' | 'delay' | 'subworkflow' | `custom:${string}`;
 
 export type ConditionOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'exists' | 'truthy' | 'falsy';
 

@@ -65,11 +65,16 @@ export function generateUpgradePlan(from: PackageBundle, to: PackageBundle): Upg
       case 'removed': {
         const wasRequired = from.manifest.components[entry.kind]?.required ?? false;
         steps.push({ kind: 'remove_component', componentKind: entry.kind, description: `Remove component "${entry.kind}"` });
-        if (wasRequired) reasons.push(`Component "${entry.kind}" is required by the current version and is not present in the upgrade target`);
+        if (wasRequired)
+          reasons.push(`Component "${entry.kind}" is required by the current version and is not present in the upgrade target`);
         break;
       }
       case 'modified':
-        steps.push({ kind: 'replace_component', componentKind: entry.kind, description: `Replace component "${entry.kind}" (content changed)` });
+        steps.push({
+          kind: 'replace_component',
+          componentKind: entry.kind,
+          description: `Replace component "${entry.kind}" (content changed)`,
+        });
         break;
       case 'unchanged':
         break;

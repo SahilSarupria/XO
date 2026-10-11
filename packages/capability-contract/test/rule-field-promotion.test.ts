@@ -318,7 +318,10 @@ describe('Phase 3.1 — Rule-Field Promotion & Typed Parameters', () => {
     if (!res.ok) return;
     assert.equal(res.value.inputs.length, 1);
     assert.equal(res.value.inputs[0]?.name, 'expected_brokerage');
-    assert.equal(res.value.inputs.find((i) => i.name === 'calculated_amount'), undefined);
+    assert.equal(
+      res.value.inputs.find((i) => i.name === 'calculated_amount'),
+      undefined,
+    );
   });
 
   it('J. does not promote rule outcomes to contract outputs', () => {
@@ -381,7 +384,10 @@ describe('Phase 3.1 — Rule-Field Promotion & Typed Parameters', () => {
     // Only 'status' is promoted, 'incorrect_information' from exception condition is NOT promoted
     assert.equal(res.value.inputs.length, 1);
     assert.equal(res.value.inputs[0]?.name, 'status');
-    assert.equal(res.value.inputs.find((i) => i.name === 'incorrect_information'), undefined);
+    assert.equal(
+      res.value.inputs.find((i) => i.name === 'incorrect_information'),
+      undefined,
+    );
   });
 
   it('L. maintains full compatibility with StructuredComparisonBindingResolver', () => {

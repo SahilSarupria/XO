@@ -1,7 +1,14 @@
 import { AiError, ErrorCode } from '@xo/errors';
 import type { CapabilityId } from '../capability-types.js';
 import type { PromptTemplate } from './prompt-template.js';
-import { entitiesPromptV1, knowledgePromptV1, reasoningPromptV1, capabilitiesPromptV1, decisionGraphPromptV1, constraintsPromptV1 } from './default-prompts.js';
+import {
+  entitiesPromptV1,
+  knowledgePromptV1,
+  reasoningPromptV1,
+  capabilitiesPromptV1,
+  decisionGraphPromptV1,
+  constraintsPromptV1,
+} from './default-prompts.js';
 
 /**
  * Holds every registered prompt version per capability and resolves

@@ -23,9 +23,21 @@ export function validationIssueToDiagnostic(issue: ValidationIssue, context: Pas
     return { severity: 'error', message: issue.message, passName: XOIR_VALIDATION_PASS_NAME, code };
   }
   if (context.graph.hasNode(issue.subjectId as unknown as XoirNodeId)) {
-    return { severity: 'error', message: issue.message, passName: XOIR_VALIDATION_PASS_NAME, code, nodeId: issue.subjectId as unknown as XoirNodeId };
+    return {
+      severity: 'error',
+      message: issue.message,
+      passName: XOIR_VALIDATION_PASS_NAME,
+      code,
+      nodeId: issue.subjectId as unknown as XoirNodeId,
+    };
   }
-  return { severity: 'error', message: issue.message, passName: XOIR_VALIDATION_PASS_NAME, code, edgeId: issue.subjectId as unknown as XoirEdgeId };
+  return {
+    severity: 'error',
+    message: issue.message,
+    passName: XOIR_VALIDATION_PASS_NAME,
+    code,
+    edgeId: issue.subjectId as unknown as XoirEdgeId,
+  };
 }
 
 /**

@@ -1,14 +1,16 @@
 import type { ComponentKind } from '@xo/types';
 import type { BlobStore } from '@xo/storage';
 import { err, ok, type Result } from '@xo/types';
-import { ErrorCode, InstallError, PackageError, StorageError } from '@xo/errors';
+import type { StorageError } from '@xo/errors';
+import { ErrorCode, InstallError, PackageError } from '@xo/errors';
 import { fingerprintManifest } from '../hashing/fingerprint.js';
 import { classifyBump } from '../manifest/semver.js';
 import { PackageValidator } from '../validation/package-validator.js';
 import { componentCollisionProblem, componentPathProblem, confinementProblem, packageSegmentProblem } from '../validation/safe-path.js';
 import { isXoManifest } from '../validation/schema.js';
 import type { InstalledPackageRecord, PackageBundle, ValidationReport } from '../types.js';
-import { Clock, SystemClock } from './clock.js';
+import type { Clock } from './clock.js';
+import { SystemClock } from './clock.js';
 
 const INDEX_KEY = '_index.json';
 
@@ -117,7 +119,15 @@ export class PackageInstaller {
     if (!options.skipValidation) {
       const report = this.validator.validateAll(bundle);
       if (!report.valid) {
-        return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Refusing to install "${name}@${version}": ${report.issues.filter((i) => i.severity === 'error').map((i) => i.message).join('; ')}`));
+        return err(
+          new InstallError(
+            ErrorCode.PACKAGE_VALIDATION_FAILED,
+            `Refusing to install "${name}@${version}": ${report.issues
+              .filter((i) => i.severity === 'error')
+              .map((i) => i.message)
+              .join('; ')}`,
+          ),
+        );
       }
     }
 
@@ -134,7 +144,11 @@ export class PackageInstaller {
     ]);
     const failed = putResults.find((r) => !r.ok);
     if (failed && !failed.ok) {
-      return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Failed to write component(s) for "${name}@${version}"`, { cause: failed.error }));
+      return err(
+        new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Failed to write component(s) for "${name}@${version}"`, {
+          cause: failed.error,
+        }),
+      );
     }
 
     const record: InstalledPackageRecord = {
@@ -205,7 +219,9 @@ export class PackageInstaller {
     }
     const bump = classifyBump(currentVersion, version);
     if (bump === 'invalid' || bump === 'none') {
-      return err(new InstallError(ErrorCode.PACKAGE_UPGRADE_INVALID, `"${version}" is not a valid upgrade from the installed "${currentVersion}"`));
+      return err(
+        new InstallError(ErrorCode.PACKAGE_UPGRADE_INVALID, `"${version}" is not a valid upgrade from the installed "${currentVersion}"`),
+      );
     }
     return this.install(bundle, { ...options, force: true });
   }
@@ -216,7 +232,12 @@ export class PackageInstaller {
     if (unsafeIdentity) return err(unsafeIdentity);
     const has = await this.store.has(recordKey(name, toVersion));
     if (!has) {
-      return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `Cannot roll back "${name}" to "${toVersion}": that version's files are not present (was it uninstalled?)`));
+      return err(
+        new InstallError(
+          ErrorCode.PACKAGE_NOT_INSTALLED,
+          `Cannot roll back "${name}" to "${toVersion}": that version's files are not present (was it uninstalled?)`,
+        ),
+      );
     }
     const index = await this.readIndex();
     await this.writeIndex({ active: { ...index.active, [name]: toVersion } });
@@ -264,7 +285,12 @@ export class PackageInstaller {
       return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, `Installed manifest for "${name}@${version}" is not valid JSON`, { cause }));
     }
     if (!isXoManifest(parsed)) {
-      return err(new PackageError(ErrorCode.PACKAGE_MANIFEST_INVALID, `Installed manifest for "${name}@${version}" does not match the XoManifest shape`));
+      return err(
+        new PackageError(
+          ErrorCode.PACKAGE_MANIFEST_INVALID,
+          `Installed manifest for "${name}@${version}" does not match the XoManifest shape`,
+        ),
+      );
     }
     return ok(parsed);
   }
@@ -321,10 +347,21 @@ export class PackageInstaller {
     for (const [kind, entry] of Object.entries(manifest.components)) {
       const data = await this.store.get(`${packagePrefix(name, version)}/${entry.path}`);
       if (!data.ok) {
-        if (entry.required) issues.push({ severity: 'error', code: 'INSTALLED_COMPONENT_MISSING', message: `"${entry.path}" is missing from the install`, path: entry.path });
+        if (entry.required)
+          issues.push({
+            severity: 'error',
+            code: 'INSTALLED_COMPONENT_MISSING',
+            message: `"${entry.path}" is missing from the install`,
+            path: entry.path,
+          });
         continue;
       }
-      components.push({ kind: kind as PackageBundle['components'][number]['kind'], path: entry.path, data: data.value, required: entry.required });
+      components.push({
+        kind: kind as PackageBundle['components'][number]['kind'],
+        path: entry.path,
+        data: data.value,
+        required: entry.required,
+      });
     }
 
     const bundle: PackageBundle = {

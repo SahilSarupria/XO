@@ -3,15 +3,7 @@ import type { ExecutionPlan } from '../execution/execution-plan.js';
 import type { ExecutionReceipt, ExecutionReceiptPackageRecord } from './execution-receipt.js';
 import { SessionId, type RequestId } from '../ids.js';
 
-export type ExecutionStatus =
-  | 'pending'
-  | 'planned'
-  | 'plan_failed'
-  | 'executing'
-  | 'completed'
-  | 'cancelled'
-  | 'timed_out'
-  | 'failed';
+export type ExecutionStatus = 'pending' | 'planned' | 'plan_failed' | 'executing' | 'completed' | 'cancelled' | 'timed_out' | 'failed';
 
 /**
  * Tracks one request's lifecycle end-to-end: request id, which mounted
@@ -60,14 +52,21 @@ export function withPlan(session: ExecutionSession, plan: ExecutionPlan, now: ()
   const selected = plan.selected;
   return Object.freeze({
     ...session,
-    mountedPackages: selected ? [{ name: selected.capability.packageName, version: selected.capability.packageVersion }] : session.mountedPackages,
+    mountedPackages: selected
+      ? [{ name: selected.capability.packageName, version: selected.capability.packageVersion }]
+      : session.mountedPackages,
     chosenCapabilities: selected ? [selected.capability.declaration.id] : session.chosenCapabilities,
     status: (selected ? 'planned' : 'plan_failed') as ExecutionStatus,
     updatedAt: now().toISOString(),
   });
 }
 
-export function withReceipt(session: ExecutionSession, receipt: ExecutionReceipt, now: () => Date = () => new Date(), options: { readonly degraded?: boolean } = {}): ExecutionSession {
+export function withReceipt(
+  session: ExecutionSession,
+  receipt: ExecutionReceipt,
+  now: () => Date = () => new Date(),
+  options: { readonly degraded?: boolean } = {},
+): ExecutionSession {
   return Object.freeze({
     ...session,
     receipts: [...session.receipts, receipt],

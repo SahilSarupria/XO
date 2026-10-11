@@ -40,6 +40,9 @@ export function inspectBundle(bundle: PackageBundle, hasher: Hasher = new Sha256
 }
 
 /** Resolves compatibility for every host profile the caller supplies, in one call — a convenience over calling `resolveCompatibility` per host when a caller wants the full compatibility-per-family picture the marketplace listing shows (SPECIFICATION.md §2.2: "This XO reaches L3 on Claude, L1 on generic chat models"). */
-export function inspectCompatibilityMatrix(bundle: PackageBundle, hosts: readonly HostProfile[]): ReadonlyMap<string, CompatibilityResolution> {
+export function inspectCompatibilityMatrix(
+  bundle: PackageBundle,
+  hosts: readonly HostProfile[],
+): ReadonlyMap<string, CompatibilityResolution> {
   return new Map(hosts.map((host) => [host.family, resolveCompatibility(bundle.manifest, host)]));
 }

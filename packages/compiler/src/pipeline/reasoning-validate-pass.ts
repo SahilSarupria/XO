@@ -3,7 +3,18 @@ import type { KnownReasoningNodeType } from '../reasoning/types.js';
 
 export const REASONING_VALIDATION_PASS_NAME = 'reasoning-validation';
 
-const KNOWN_REASONING_NODE_TYPES = new Set<KnownReasoningNodeType>(['rule', 'prerequisite', 'prohibition', 'policy', 'decision', 'alternative', 'justification', 'exception', 'escalation', 'risk_threshold']);
+const KNOWN_REASONING_NODE_TYPES = new Set<KnownReasoningNodeType>([
+  'rule',
+  'prerequisite',
+  'prohibition',
+  'policy',
+  'decision',
+  'alternative',
+  'justification',
+  'exception',
+  'escalation',
+  'risk_threshold',
+]);
 
 function isReasoningSourced(node: XoirNode): boolean {
   return typeof node.metadata.subtype === 'string' && KNOWN_REASONING_NODE_TYPES.has(node.metadata.subtype as KnownReasoningNodeType);
@@ -40,32 +51,41 @@ function checkRequiredContent(node: XoirNode, diagnostics: Diagnostic[]): void {
 
   switch (node.kind) {
     case 'decision_node': {
-      if (isBlank(props.question)) report('DECISION_MISSING_REQUIRED_STRUCTURE', `Decision node "${node.id}" (${subtype}) has no meaningful question/condition`);
-      if (isBlank(props.outcome)) report('DECISION_MISSING_REQUIRED_STRUCTURE', `Decision node "${node.id}" (${subtype}) has no meaningful outcome`);
+      if (isBlank(props.question))
+        report('DECISION_MISSING_REQUIRED_STRUCTURE', `Decision node "${node.id}" (${subtype}) has no meaningful question/condition`);
+      if (isBlank(props.outcome))
+        report('DECISION_MISSING_REQUIRED_STRUCTURE', `Decision node "${node.id}" (${subtype}) has no meaningful outcome`);
       return;
     }
     case 'heuristic': {
-      if (isBlank(props.condition)) report('RULE_MISSING_REQUIRED_STRUCTURE', `Rule node "${node.id}" (${subtype}) has no meaningful condition`);
+      if (isBlank(props.condition))
+        report('RULE_MISSING_REQUIRED_STRUCTURE', `Rule node "${node.id}" (${subtype}) has no meaningful condition`);
       if (isBlank(props.action)) report('RULE_MISSING_REQUIRED_STRUCTURE', `Rule node "${node.id}" (${subtype}) has no meaningful action`);
       return;
     }
     case 'constraint': {
-      if (isBlank(props.rule)) report('REASONING_INVALID_STRUCTURE', `Constraint node "${node.id}" (${subtype}) has no meaningful rule text`);
+      if (isBlank(props.rule))
+        report('REASONING_INVALID_STRUCTURE', `Constraint node "${node.id}" (${subtype}) has no meaningful rule text`);
       return;
     }
     case 'escalation_rule': {
-      if (isBlank(props.triggerCondition)) report('REASONING_INVALID_STRUCTURE', `Escalation node "${node.id}" has no meaningful trigger condition`);
-      if (isBlank(props.escalationTarget)) report('REASONING_INVALID_STRUCTURE', `Escalation node "${node.id}" has no meaningful escalation target`);
+      if (isBlank(props.triggerCondition))
+        report('REASONING_INVALID_STRUCTURE', `Escalation node "${node.id}" has no meaningful trigger condition`);
+      if (isBlank(props.escalationTarget))
+        report('REASONING_INVALID_STRUCTURE', `Escalation node "${node.id}" has no meaningful escalation target`);
       return;
     }
     case 'risk_policy': {
       if (isBlank(props.domain)) report('REASONING_INVALID_STRUCTURE', `Risk threshold node "${node.id}" has no meaningful domain/metric`);
-      if (isBlank(props.toleranceLevel)) report('REASONING_INVALID_STRUCTURE', `Risk threshold node "${node.id}" has no meaningful tolerance/threshold description`);
+      if (isBlank(props.toleranceLevel))
+        report('REASONING_INVALID_STRUCTURE', `Risk threshold node "${node.id}" has no meaningful tolerance/threshold description`);
       return;
     }
     case 'reasoning_step': {
-      if (isBlank(props.premise)) report('REASONING_INVALID_STRUCTURE', `Justification node "${node.id}" has no meaningful rationale/premise`);
-      if (isBlank(props.conclusion)) report('REASONING_INVALID_STRUCTURE', `Justification node "${node.id}" has no meaningful outcome/conclusion`);
+      if (isBlank(props.premise))
+        report('REASONING_INVALID_STRUCTURE', `Justification node "${node.id}" has no meaningful rationale/premise`);
+      if (isBlank(props.conclusion))
+        report('REASONING_INVALID_STRUCTURE', `Justification node "${node.id}" has no meaningful outcome/conclusion`);
       return;
     }
     default:
@@ -131,7 +151,16 @@ function checkSelfReference(edge: XoirEdge, diagnostics: Diagnostic[]): void {
   });
 }
 
-const REASONING_RELATIONSHIP_EDGE_KINDS = new Set(['REQUIRES', 'SUPERSEDES', 'ALTERNATIVE_TO', 'SUPPORTS', 'CONTRADICTS', 'TRIGGERED_BY', 'GOVERNS', 'DEPENDS_ON']);
+const REASONING_RELATIONSHIP_EDGE_KINDS = new Set([
+  'REQUIRES',
+  'SUPERSEDES',
+  'ALTERNATIVE_TO',
+  'SUPPORTS',
+  'CONTRADICTS',
+  'TRIGGERED_BY',
+  'GOVERNS',
+  'DEPENDS_ON',
+]);
 
 function byId(a: XoirNodeId | XoirEdgeId, b: XoirNodeId | XoirEdgeId): number {
   return a < b ? -1 : a > b ? 1 : 0;

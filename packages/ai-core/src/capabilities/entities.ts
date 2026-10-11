@@ -1,6 +1,17 @@
 /** Stage 4's target shape: extractEntities(). Legal entities per the compiler frontend's spec — organizations, clauses, laws, jurisdictions, people, contract types, legal concepts, obligations, rights, risks, deadlines. */
 
-export type LegalEntityType = 'organization' | 'person' | 'clause' | 'law' | 'jurisdiction' | 'contract_type' | 'legal_concept' | 'obligation' | 'right' | 'risk' | 'deadline';
+export type LegalEntityType =
+  | 'organization'
+  | 'person'
+  | 'clause'
+  | 'law'
+  | 'jurisdiction'
+  | 'contract_type'
+  | 'legal_concept'
+  | 'obligation'
+  | 'right'
+  | 'risk'
+  | 'deadline';
 
 export interface ExtractedEntity {
   readonly type: LegalEntityType;

@@ -21,11 +21,15 @@ async function main() {
     const incoming = graph.allEdges().filter((e) => e.toId === n.id);
     for (const e of outgoing) {
       const target = graph.allNodes().find((x) => x.id === e.toId);
-      console.log(`  --[${e.kind}]--> (${target?.kind}) ${target?.properties.name ?? target?.properties.summary ?? target?.properties.definition ?? ''}`);
+      console.log(
+        `  --[${e.kind}]--> (${target?.kind}) ${target?.properties.name ?? target?.properties.summary ?? target?.properties.definition ?? ''}`,
+      );
     }
     for (const e of incoming) {
       const source = graph.allNodes().find((x) => x.id === e.fromId);
-      console.log(`  <--[${e.kind}]-- (${source?.kind}) ${source?.properties.name ?? source?.properties.summary ?? source?.properties.definition ?? ''}`);
+      console.log(
+        `  <--[${e.kind}]-- (${source?.kind}) ${source?.properties.name ?? source?.properties.summary ?? source?.properties.definition ?? ''}`,
+      );
     }
     console.log();
   }

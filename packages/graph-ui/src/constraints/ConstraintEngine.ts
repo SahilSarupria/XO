@@ -143,7 +143,9 @@ export class ConstraintEngine {
 
   /** Distributes the given nodes evenly along one axis between their current min and max. */
   static distribute(model: GraphModel, rule: DistributionRule): Map<NodeId, Point> {
-    const withPositions = rule.nodeIds.map((id) => ({ id, p: model.getNode(id)?.position })).filter((e): e is { id: NodeId; p: Point } => !!e.p);
+    const withPositions = rule.nodeIds
+      .map((id) => ({ id, p: model.getNode(id)?.position }))
+      .filter((e): e is { id: NodeId; p: Point } => !!e.p);
     if (withPositions.length < 3) {
       return new Map(withPositions.map((e) => [e.id, e.p]));
     }

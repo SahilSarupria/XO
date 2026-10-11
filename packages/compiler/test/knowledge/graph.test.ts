@@ -1,13 +1,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashKnowledgeGraph, serializeKnowledgeGraph, deserializeKnowledgeGraph, findKnowledgeNode, findEdgesFrom, findEdgesTo } from '../../src/knowledge/graph.js';
+import {
+  hashKnowledgeGraph,
+  serializeKnowledgeGraph,
+  deserializeKnowledgeGraph,
+  findKnowledgeNode,
+  findEdgesFrom,
+  findEdgesTo,
+} from '../../src/knowledge/graph.js';
 import type { KnowledgeGraph, KnowledgeNode, KnowledgeEdge } from '../../src/knowledge/types.js';
 
 function node(id: string, label: string): KnowledgeNode {
-  return { id: id as KnowledgeNode['id'], semanticType: 'concept', canonicalLabel: label, aliases: [], confidence: 0.8, provenance: [], metadata: {} };
+  return {
+    id: id as KnowledgeNode['id'],
+    semanticType: 'concept',
+    canonicalLabel: label,
+    aliases: [],
+    confidence: 0.8,
+    provenance: [],
+    metadata: {},
+  };
 }
 function edge(id: string, from: string, to: string): KnowledgeEdge {
-  return { id, type: 'references', fromNodeId: from as KnowledgeEdge['fromNodeId'], toNodeId: to as KnowledgeEdge['toNodeId'], confidence: 0.7, provenance: [] };
+  return {
+    id,
+    type: 'references',
+    fromNodeId: from as KnowledgeEdge['fromNodeId'],
+    toNodeId: to as KnowledgeEdge['toNodeId'],
+    confidence: 0.7,
+    provenance: [],
+  };
 }
 
 test('hashKnowledgeGraph is deterministic for identical graphs', () => {
@@ -45,7 +67,10 @@ test('serializeKnowledgeGraph output is sorted by id regardless of input order',
   const graph: KnowledgeGraph = { nodes: [node('z', 'Z'), node('a', 'A')], edges: [] };
   const json = serializeKnowledgeGraph(graph);
   const parsed = JSON.parse(json);
-  assert.deepEqual(parsed.nodes.map((n: KnowledgeNode) => n.id), ['a', 'z']);
+  assert.deepEqual(
+    parsed.nodes.map((n: KnowledgeNode) => n.id),
+    ['a', 'z'],
+  );
 });
 
 test('deserializeKnowledgeGraph fails cleanly on malformed JSON', () => {

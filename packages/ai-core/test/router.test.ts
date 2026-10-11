@@ -36,7 +36,9 @@ test('falls back to the next provider when the primary fails every retry', async
     { kind: 'failure', error: new Error('boom') },
   ]);
   const backup = new ScriptableTestProvider('backup', [{ kind: 'success', response: jsonResponse(emptyEntitiesOutput) }]);
-  const policy: ModelSelectionPolicy = { rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }] };
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }],
+  };
   const layer = new AiCapabilityLayer({ providers: [failing, backup], policy, retryOptions: fastRetryOptions });
   const result = await layer.extractEntities(makeRequest());
   assert.ok(result.ok);
@@ -45,9 +47,17 @@ test('falls back to the next provider when the primary fails every retry', async
 });
 
 test('fails with AI_ALL_PROVIDERS_FAILED when every candidate is exhausted', async () => {
-  const p1 = new ScriptableTestProvider('p1', [{ kind: 'failure', error: new Error('e1') }, { kind: 'failure', error: new Error('e1') }]);
-  const p2 = new ScriptableTestProvider('p2', [{ kind: 'failure', error: new Error('e2') }, { kind: 'failure', error: new Error('e2') }]);
-  const policy: ModelSelectionPolicy = { rules: [{ capability: '*', providerOrder: ['p1', 'p2'], modelByProvider: { p1: 'm1', p2: 'm2' } }] };
+  const p1 = new ScriptableTestProvider('p1', [
+    { kind: 'failure', error: new Error('e1') },
+    { kind: 'failure', error: new Error('e1') },
+  ]);
+  const p2 = new ScriptableTestProvider('p2', [
+    { kind: 'failure', error: new Error('e2') },
+    { kind: 'failure', error: new Error('e2') },
+  ]);
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: '*', providerOrder: ['p1', 'p2'], modelByProvider: { p1: 'm1', p2: 'm2' } }],
+  };
   const layer = new AiCapabilityLayer({ providers: [p1, p2], policy, retryOptions: fastRetryOptions });
   const result = await layer.extractEntities(makeRequest());
   assert.equal(result.ok, false);
@@ -56,7 +66,10 @@ test('fails with AI_ALL_PROVIDERS_FAILED when every candidate is exhausted', asy
 
 test('a malformed (non-JSON) provider response triggers a retry, then can still succeed', async () => {
   const provider = new ScriptableTestProvider('providerA', [
-    { kind: 'success', response: { text: 'not json {{{', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'm', finishReason: 'stop' } },
+    {
+      kind: 'success',
+      response: { text: 'not json {{{', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'm', finishReason: 'stop' },
+    },
     { kind: 'success', response: jsonResponse(emptyEntitiesOutput) },
   ]);
   const layer = new AiCapabilityLayer({ providers: [provider], policy: singleProviderPolicy('providerA'), retryOptions: fastRetryOptions });
@@ -88,7 +101,7 @@ test('an identical second call is served from cache without calling the provider
   assert.equal(provider.callLog.length, 1);
 });
 
-test('a different excerpt is not served from another excerpt\'s cache entry', async () => {
+test("a different excerpt is not served from another excerpt's cache entry", async () => {
   const provider = new ScriptableTestProvider('providerA', [
     { kind: 'success', response: jsonResponse(emptyEntitiesOutput) },
     { kind: 'success', response: jsonResponse(emptyEntitiesOutput) },
@@ -100,12 +113,17 @@ test('a different excerpt is not served from another excerpt\'s cache entry', as
 });
 
 test('the circuit breaker opens after repeated failures and skips the provider on the next call', async () => {
-  const failing = new ScriptableTestProvider('primary', Array.from({ length: 10 }, () => ({ kind: 'failure' as const, error: new Error('down') })));
+  const failing = new ScriptableTestProvider(
+    'primary',
+    Array.from({ length: 10 }, () => ({ kind: 'failure' as const, error: new Error('down') })),
+  );
   const backup = new ScriptableTestProvider('backup', [
     { kind: 'success', response: jsonResponse(emptyEntitiesOutput) },
     { kind: 'success', response: jsonResponse(emptyEntitiesOutput) },
   ]);
-  const policy: ModelSelectionPolicy = { rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }] };
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }],
+  };
   const layer = new AiCapabilityLayer({
     providers: [failing, backup],
     policy,
@@ -127,7 +145,9 @@ test('the circuit breaker opens after repeated failures and skips the provider o
 test('rate limiting skips a provider without calling it, falling back to the next candidate', async () => {
   const primary = new ScriptableTestProvider('primary', [{ kind: 'success', response: jsonResponse(emptyEntitiesOutput) }]);
   const backup = new ScriptableTestProvider('backup', [{ kind: 'success', response: jsonResponse(emptyEntitiesOutput) }]);
-  const policy: ModelSelectionPolicy = { rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }] };
+  const policy: ModelSelectionPolicy = {
+    rules: [{ capability: '*', providerOrder: ['primary', 'backup'], modelByProvider: { primary: 'm1', backup: 'm2' } }],
+  };
   const layer = new AiCapabilityLayer({
     providers: [primary, backup],
     policy,
@@ -164,7 +184,11 @@ test('returns AI_NO_ELIGIBLE_PROVIDER when the policy has no matching rule', asy
 
 test('totalCostUsd accumulates after a successful call', async () => {
   const layer = new AiCapabilityLayer({
-    providers: [new ScriptableTestProvider('anthropic', [{ kind: 'success', response: jsonResponse(emptyEntitiesOutput, { inputTokens: 1000, outputTokens: 1000 }, 'claude-sonnet-4-6') }])],
+    providers: [
+      new ScriptableTestProvider('anthropic', [
+        { kind: 'success', response: jsonResponse(emptyEntitiesOutput, { inputTokens: 1000, outputTokens: 1000 }, 'claude-sonnet-4-6') },
+      ]),
+    ],
     policy: { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'claude-sonnet-4-6' } }] },
     retryOptions: fastRetryOptions,
   });
@@ -173,7 +197,7 @@ test('totalCostUsd accumulates after a successful call', async () => {
   assert.ok(layer.totalCostUsd() > 0);
 });
 
-test('describeProviders reports every registered provider\'s capability descriptor', () => {
+test("describeProviders reports every registered provider's capability descriptor", () => {
   const provider = new ScriptableTestProvider('providerA', []);
   const layer = new AiCapabilityLayer({ providers: [provider], policy: singleProviderPolicy('providerA') });
   const descriptors = layer.describeProviders();

@@ -81,7 +81,7 @@ scripts/              Repo tooling
 
 ## Quick start
 
-Requires **Node.js ≥ 20.11** and **npm ≥ 10**.
+Requires **Node.js ≥ 22.15** (zstd via `node:zlib`) and **npm ≥ 10**.
 
 ```bash
 git clone https://github.com/SahilSarupria/XO.git

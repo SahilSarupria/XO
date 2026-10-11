@@ -3,7 +3,19 @@ import type { CapabilityId } from './capability-types.js';
 
 const entityType: JsonSchema = {
   type: 'string',
-  enum: ['organization', 'person', 'clause', 'law', 'jurisdiction', 'contract_type', 'legal_concept', 'obligation', 'right', 'risk', 'deadline'],
+  enum: [
+    'organization',
+    'person',
+    'clause',
+    'law',
+    'jurisdiction',
+    'contract_type',
+    'legal_concept',
+    'obligation',
+    'right',
+    'risk',
+    'deadline',
+  ],
 };
 
 const entitiesOutputSchema: JsonSchema = {
@@ -75,18 +87,30 @@ const reasoningOutputSchema: JsonSchema = {
     },
     tradeoffs: {
       type: 'array',
-      items: { type: 'object', required: ['description', 'favors', 'against'], properties: { description: { type: 'string' }, favors: { type: 'string' }, against: { type: 'string' } } },
+      items: {
+        type: 'object',
+        required: ['description', 'favors', 'against'],
+        properties: { description: { type: 'string' }, favors: { type: 'string' }, against: { type: 'string' } },
+      },
     },
     exceptions: {
       type: 'array',
-      items: { type: 'object', required: ['condition', 'deviation'], properties: { condition: { type: 'string' }, deviation: { type: 'string' } } },
+      items: {
+        type: 'object',
+        required: ['condition', 'deviation'],
+        properties: { condition: { type: 'string' }, deviation: { type: 'string' } },
+      },
     },
     alternativePaths: {
       type: 'array',
       items: {
         type: 'object',
         required: ['description', 'whenApplicable', 'stepIds'],
-        properties: { description: { type: 'string' }, whenApplicable: { type: 'string' }, stepIds: { type: 'array', items: { type: 'string' } } },
+        properties: {
+          description: { type: 'string' },
+          whenApplicable: { type: 'string' },
+          stepIds: { type: 'array', items: { type: 'string' } },
+        },
       },
     },
     failureModes: { type: 'array', items: { type: 'string' } },
@@ -119,19 +143,36 @@ const decisionGraphOutputSchema: JsonSchema = {
   properties: {
     decisions: {
       type: 'array',
-      items: { type: 'object', required: ['id', 'question', 'dependsOnDecisionIds'], properties: { id: { type: 'string' }, question: { type: 'string' }, dependsOnDecisionIds: { type: 'array', items: { type: 'string' } } } },
+      items: {
+        type: 'object',
+        required: ['id', 'question', 'dependsOnDecisionIds'],
+        properties: {
+          id: { type: 'string' },
+          question: { type: 'string' },
+          dependsOnDecisionIds: { type: 'array', items: { type: 'string' } },
+        },
+      },
     },
     branches: {
       type: 'array',
       items: {
         type: 'object',
         required: ['decisionId', 'condition', 'outcome'],
-        properties: { decisionId: { type: 'string' }, condition: { type: 'string' }, outcome: { type: 'string' }, leadsToDecisionId: { type: 'string' } },
+        properties: {
+          decisionId: { type: 'string' },
+          condition: { type: 'string' },
+          outcome: { type: 'string' },
+          leadsToDecisionId: { type: 'string' },
+        },
       },
     },
     escalationPaths: {
       type: 'array',
-      items: { type: 'object', required: ['triggerCondition', 'escalateTo'], properties: { triggerCondition: { type: 'string' }, escalateTo: { type: 'string' } } },
+      items: {
+        type: 'object',
+        required: ['triggerCondition', 'escalateTo'],
+        properties: { triggerCondition: { type: 'string' }, escalateTo: { type: 'string' } },
+      },
     },
     riskThresholds: {
       type: 'array',
@@ -143,7 +184,11 @@ const decisionGraphOutputSchema: JsonSchema = {
     },
     fallbacks: {
       type: 'array',
-      items: { type: 'object', required: ['whenDecisionFails', 'fallbackAction'], properties: { whenDecisionFails: { type: 'string' }, fallbackAction: { type: 'string' } } },
+      items: {
+        type: 'object',
+        required: ['whenDecisionFails', 'fallbackAction'],
+        properties: { whenDecisionFails: { type: 'string' }, fallbackAction: { type: 'string' } },
+      },
     },
   },
 };

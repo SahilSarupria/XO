@@ -210,9 +210,7 @@ function initTabs() {
 }
 
 function updateStatusBar() {
-  document.getElementById('wsIndicator').textContent = state.workspaceId
-    ? `workspace: ${state.workspaceId}`
-    : 'no workspace selected';
+  document.getElementById('wsIndicator').textContent = state.workspaceId ? `workspace: ${state.workspaceId}` : 'no workspace selected';
 }
 
 /* ---------------------------------------------------------------------
@@ -272,30 +270,27 @@ function initWorkspacesTab() {
   async function refreshWorkspaces() {
     const result = await run(out, () => api('GET', '/workspaces'));
     const items = (result && (result.workspaces || result)) || [];
-    renderList(
-      document.getElementById('wsList'),
-      Array.isArray(items) ? items : [],
-      (w) =>
-        listItem({
-          title: w.name || '(unnamed workspace)',
-          sub: w.workspaceId || w.id,
-          pill: state.workspaceId === (w.workspaceId || w.id) ? { cls: 'pill-ok', text: 'selected' } : undefined,
-          actions: [
-            {
-              label: 'Select',
-              onClick: () => {
-                state.workspaceId = w.workspaceId || w.id;
-                persist();
-                updateStatusBar();
-                refreshWorkspaces();
-              },
+    renderList(document.getElementById('wsList'), Array.isArray(items) ? items : [], (w) =>
+      listItem({
+        title: w.name || '(unnamed workspace)',
+        sub: w.workspaceId || w.id,
+        pill: state.workspaceId === (w.workspaceId || w.id) ? { cls: 'pill-ok', text: 'selected' } : undefined,
+        actions: [
+          {
+            label: 'Select',
+            onClick: () => {
+              state.workspaceId = w.workspaceId || w.id;
+              persist();
+              updateStatusBar();
+              refreshWorkspaces();
             },
-            {
-              label: 'GET detail',
-              onClick: () => run(out, () => api('GET', `/workspaces/${w.workspaceId || w.id}`)),
-            },
-          ],
-        }),
+          },
+          {
+            label: 'GET detail',
+            onClick: () => run(out, () => api('GET', `/workspaces/${w.workspaceId || w.id}`)),
+          },
+        ],
+      }),
     );
   }
 }
@@ -335,95 +330,79 @@ function initSourcesTab() {
   async function refreshSources() {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/sources`));
     const items = (result && result.sources) || [];
-    renderList(
-      document.getElementById('sourceList'),
-      items,
-      (s) =>
-        listItem({
-          title: s.filename || s.sourceId || s.id,
-          sub: `${s.sourceId || s.id} · ${s.mediaType || ''} · ${s.size ?? ''} bytes`,
-          actions: [
-            {
-              label: 'Compile',
-              onClick: async () => {
-                await run(out, () => api('POST', `/workspaces/${ws()}/sources/${s.sourceId || s.id}/compile`));
-                refreshCompilations();
-              },
+    renderList(document.getElementById('sourceList'), items, (s) =>
+      listItem({
+        title: s.filename || s.sourceId || s.id,
+        sub: `${s.sourceId || s.id} · ${s.mediaType || ''} · ${s.size ?? ''} bytes`,
+        actions: [
+          {
+            label: 'Compile',
+            onClick: async () => {
+              await run(out, () => api('POST', `/workspaces/${ws()}/sources/${s.sourceId || s.id}/compile`));
+              refreshCompilations();
             },
-            {
-              label: 'Delete',
-              onClick: async () => {
-                await run(out, () => api('DELETE', `/workspaces/${ws()}/sources/${s.sourceId || s.id}`));
-                refreshSources();
-              },
+          },
+          {
+            label: 'Delete',
+            onClick: async () => {
+              await run(out, () => api('DELETE', `/workspaces/${ws()}/sources/${s.sourceId || s.id}`));
+              refreshSources();
             },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 
   async function refreshCompilations() {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/compilations`));
     const items = (result && result.compilations) || [];
-    renderList(
-      document.getElementById('compilationList'),
-      items,
-      (c) =>
-        listItem({
-          title: c.compilationId || c.id,
-          sub: `source: ${c.sourceId || ''}`,
-          pill: statusPill(c.status),
-          actions: [
-            {
-              label: 'View capabilities',
-              onClick: () => {
-                document.getElementById('capCompilationIdInput').value = c.compilationId || c.id;
-                loadCapabilities(c.compilationId || c.id);
-              },
+    renderList(document.getElementById('compilationList'), items, (c) =>
+      listItem({
+        title: c.compilationId || c.id,
+        sub: `source: ${c.sourceId || ''}`,
+        pill: statusPill(c.status),
+        actions: [
+          {
+            label: 'View capabilities',
+            onClick: () => {
+              document.getElementById('capCompilationIdInput').value = c.compilationId || c.id;
+              loadCapabilities(c.compilationId || c.id);
             },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 
   async function loadCapabilities(compilationId) {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/compilations/${compilationId}/capabilities`));
     const items = (result && result.capabilities) || [];
-    renderList(
-      document.getElementById('capFromCompilationList'),
-      items,
-      (cap) =>
-        listItem({
-          title: cap.name || cap.capabilityId || cap.id,
-          sub: `${cap.capabilityId || cap.id} · ${cap.executionClass || ''}`,
-          pill: cap.approved
-            ? { cls: 'pill-ok', text: 'approved' }
-            : { cls: 'pill-warn', text: 'not approved' },
-          actions: [
-            {
-              label: 'Approve',
-              onClick: async () => {
-                await run(
-                  out,
-                  () =>
-                    api(
-                      'POST',
-                      `/workspaces/${ws()}/compilations/${compilationId}/capabilities/${cap.capabilityId || cap.id}/approve`,
-                    ),
-                );
-                loadCapabilities(compilationId);
-              },
+    renderList(document.getElementById('capFromCompilationList'), items, (cap) =>
+      listItem({
+        title: cap.name || cap.capabilityId || cap.id,
+        sub: `${cap.capabilityId || cap.id} · ${cap.executionClass || ''}`,
+        pill: cap.approved ? { cls: 'pill-ok', text: 'approved' } : { cls: 'pill-warn', text: 'not approved' },
+        actions: [
+          {
+            label: 'Approve',
+            onClick: async () => {
+              await run(out, () =>
+                api('POST', `/workspaces/${ws()}/compilations/${compilationId}/capabilities/${cap.capabilityId || cap.id}/approve`),
+              );
+              loadCapabilities(compilationId);
             },
-            {
-              label: 'Run this',
-              onClick: () => {
-                document.getElementById('execCompilationIdInput').value = compilationId;
-                document.getElementById('execCapabilityIdInput').value = cap.capabilityId || cap.id;
-                document.querySelector('.tab[data-tab="capabilities"]').click();
-              },
+          },
+          {
+            label: 'Run this',
+            onClick: () => {
+              document.getElementById('execCompilationIdInput').value = compilationId;
+              document.getElementById('execCapabilityIdInput').value = cap.capabilityId || cap.id;
+              document.querySelector('.tab[data-tab="capabilities"]').click();
             },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 }
@@ -445,9 +424,7 @@ function initExecutionsTab() {
       out.textContent = `Invalid JSON in input: ${e.message}`;
       return;
     }
-    await run(out, () =>
-      api('POST', `/workspaces/${ws()}/executions`, { json: { compilationId, capabilityId, input } }),
-    );
+    await run(out, () => api('POST', `/workspaces/${ws()}/executions`, { json: { compilationId, capabilityId, input } }));
     refreshExecutions();
   });
 
@@ -471,27 +448,24 @@ function initExecutionsTab() {
   async function refreshExecutions() {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/executions`));
     const items = (result && result.executions) || [];
-    renderList(
-      document.getElementById('execList'),
-      items,
-      (e) =>
-        listItem({
-          title: e.executionId || e.id,
-          sub: `capability: ${e.capabilityId || ''} · compilation: ${e.compilationId || ''}`,
-          pill: statusPill(e.status),
-          actions: [
-            {
-              label: 'View',
-              onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/executions/${e.executionId || e.id}`)),
+    renderList(document.getElementById('execList'), items, (e) =>
+      listItem({
+        title: e.executionId || e.id,
+        sub: `capability: ${e.capabilityId || ''} · compilation: ${e.compilationId || ''}`,
+        pill: statusPill(e.status),
+        actions: [
+          {
+            label: 'View',
+            onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/executions/${e.executionId || e.id}`)),
+          },
+          {
+            label: 'Use id ->',
+            onClick: () => {
+              document.getElementById('resolveExecIdInput').value = e.executionId || e.id;
             },
-            {
-              label: 'Use id ->',
-              onClick: () => {
-                document.getElementById('resolveExecIdInput').value = e.executionId || e.id;
-              },
-            },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 }
@@ -523,27 +497,24 @@ function initHumanTasksTab() {
   async function refresh() {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/human-tasks`));
     const items = (result && result.humanTasks) || [];
-    renderList(
-      document.getElementById('htList'),
-      items,
-      (t) =>
-        listItem({
-          title: t.executionId || t.id,
-          sub: `capability: ${t.capabilityId || ''}`,
-          pill: t.humanTask ? statusPill(t.humanTask.status) : statusPill(t.status),
-          actions: [
-            {
-              label: 'View',
-              onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/human-tasks/${t.executionId || t.id}`)),
+    renderList(document.getElementById('htList'), items, (t) =>
+      listItem({
+        title: t.executionId || t.id,
+        sub: `capability: ${t.capabilityId || ''}`,
+        pill: t.humanTask ? statusPill(t.humanTask.status) : statusPill(t.status),
+        actions: [
+          {
+            label: 'View',
+            onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/human-tasks/${t.executionId || t.id}`)),
+          },
+          {
+            label: 'Use id ->',
+            onClick: () => {
+              document.getElementById('htExecIdInput').value = t.executionId || t.id;
             },
-            {
-              label: 'Use id ->',
-              onClick: () => {
-                document.getElementById('htExecIdInput').value = t.executionId || t.id;
-              },
-            },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 }
@@ -603,57 +574,51 @@ function initWorkflowsTab() {
       api('GET', `/workspaces/${ws()}/workflows`, { query: compilationId ? { compilationId } : undefined }),
     );
     const items = (result && result.workflows) || [];
-    renderList(
-      document.getElementById('wfList'),
-      items,
-      (w) =>
-        listItem({
-          title: w.name || w.workflowId,
-          sub: `${w.workflowId} · compilation: ${w.compilationId} · ${w.steps ? w.steps.length : 0} step(s)`,
-          pill: { cls: w.executable ? 'pill-ok' : 'pill-warn', text: w.status },
-          actions: [
-            {
-              label: 'Use ->',
-              onClick: () => {
-                document.getElementById('wfStartCompilationIdInput').value = w.compilationId;
-                document.getElementById('wfStartWorkflowIdInput').value = w.workflowId;
-              },
+    renderList(document.getElementById('wfList'), items, (w) =>
+      listItem({
+        title: w.name || w.workflowId,
+        sub: `${w.workflowId} · compilation: ${w.compilationId} · ${w.steps ? w.steps.length : 0} step(s)`,
+        pill: { cls: w.executable ? 'pill-ok' : 'pill-warn', text: w.status },
+        actions: [
+          {
+            label: 'Use ->',
+            onClick: () => {
+              document.getElementById('wfStartCompilationIdInput').value = w.compilationId;
+              document.getElementById('wfStartWorkflowIdInput').value = w.workflowId;
             },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 
   async function refreshWorkflowExecutions() {
     const result = await run(out, () => api('GET', `/workspaces/${ws()}/workflow-executions`));
     const items = (result && result.workflowExecutions) || [];
-    renderList(
-      document.getElementById('wfxList'),
-      items,
-      (x) =>
-        listItem({
-          title: x.workflowExecutionId,
-          sub: `workflow: ${x.workflowName || x.workflowId || ''}`,
-          pill: statusPill(x.status),
-          actions: [
-            {
-              label: 'View',
-              onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/workflow-executions/${x.workflowExecutionId}`)),
+    renderList(document.getElementById('wfxList'), items, (x) =>
+      listItem({
+        title: x.workflowExecutionId,
+        sub: `workflow: ${x.workflowName || x.workflowId || ''}`,
+        pill: statusPill(x.status),
+        actions: [
+          {
+            label: 'View',
+            onClick: () => run(out, () => api('GET', `/workspaces/${ws()}/workflow-executions/${x.workflowExecutionId}`)),
+          },
+          {
+            label: 'Use id ->',
+            onClick: () => {
+              document.getElementById('wfxResumeIdInput').value = x.workflowExecutionId;
+              if (x.pendingHumanTask && x.pendingHumanTask.executionId) {
+                document.getElementById('wfxExpectedStepInput').value = x.pendingHumanTask.executionId;
+              }
+              if (typeof x.revision === 'number') {
+                document.getElementById('wfxExpectedRevInput').value = String(x.revision);
+              }
             },
-            {
-              label: 'Use id ->',
-              onClick: () => {
-                document.getElementById('wfxResumeIdInput').value = x.workflowExecutionId;
-                if (x.pendingHumanTask && x.pendingHumanTask.executionId) {
-                  document.getElementById('wfxExpectedStepInput').value = x.pendingHumanTask.executionId;
-                }
-                if (typeof x.revision === 'number') {
-                  document.getElementById('wfxExpectedRevInput').value = String(x.revision);
-                }
-              },
-            },
-          ],
-        }),
+          },
+        ],
+      }),
     );
   }
 }
@@ -685,7 +650,11 @@ function initRuntimeTab() {
     if (query) body.query = query;
     if (model) body.model = model;
     if (hostFamily) body.hostFamily = hostFamily;
-    if (hostCapsRaw) body.hostCapabilities = hostCapsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    if (hostCapsRaw)
+      body.hostCapabilities = hostCapsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     if (tokenBudgetRaw) body.tokenBudget = Number(tokenBudgetRaw);
     if (maxTokensRaw) body.maxTokens = Number(maxTokensRaw);
 
@@ -778,9 +747,7 @@ function initRegistryTab() {
       out.textContent = `Invalid JSON in royaltySplit: ${e.message}`;
       return;
     }
-    run(out, () =>
-      api('POST', `/workspaces/${ws()}/registry/licenses`, { json: { packageId, tier, royaltySplit } }),
-    );
+    run(out, () => api('POST', `/workspaces/${ws()}/registry/licenses`, { json: { packageId, tier, royaltySplit } }));
   });
 
   document.getElementById('licGetBtn').addEventListener('click', () => {

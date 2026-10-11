@@ -20,7 +20,12 @@ test('two runs on the same line with a real (table-column-sized) horizontal gap 
 test('a wide (multi-column) horizontal gap also gets exactly one inserted space, not glued and not multiplied', () => {
   // Modeled on "Sr. NoAdd-On NameOpted(Yes / No)Limits (INR)": four
   // table column headers on one line, each separated by a real gap.
-  const runs = [run('Sr. No', 48.5, 796.5), run('Add-On Name', 149.6, 796.5), run('Opted(Yes / No)', 250.7, 796.5), run('Limits (INR)', 351.8, 796.5)];
+  const runs = [
+    run('Sr. No', 48.5, 796.5),
+    run('Add-On Name', 149.6, 796.5),
+    run('Opted(Yes / No)', 250.7, 796.5),
+    run('Limits (INR)', 351.8, 796.5),
+  ];
   const [line] = groupRunsIntoLines(1, runs);
   assert.equal(line!.text, 'Sr. No Add-On Name Opted(Yes / No) Limits (INR)');
 });

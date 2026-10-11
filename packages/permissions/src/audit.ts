@@ -3,7 +3,8 @@ import type { PermissionId } from './permission-id.js';
 import type { PermissionScope } from './scope.js';
 
 /** §17's required event vocabulary, verbatim. */
-export type PermissionAuditEventType = 'permission.requested' | 'permission.allowed' | 'permission.denied' | 'permission.prompted' | 'permission.granted' | 'permission.revoked';
+export type PermissionAuditEventType =
+  'permission.requested' | 'permission.allowed' | 'permission.denied' | 'permission.prompted' | 'permission.granted' | 'permission.revoked';
 
 export interface PermissionAuditEvent {
   readonly type: PermissionAuditEventType;

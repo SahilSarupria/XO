@@ -44,13 +44,13 @@ source-quality data existed). Threaded as an additive optional field:
 installed-package path (no live graph).
 
 **Bug found and fixed along the way:** `lowerCapabilitiesToManifest`
-embeds resolved contracts into capability nodes, which *mutates* the
+embeds resolved contracts into capability nodes, which _mutates_ the
 graph's content — so a `manifest.graphHash` cached before lowering runs
 goes stale relative to the graph's real post-lowering identity (the one
 a receipt is actually built from). Fixed in `capability-lowering.ts` by
 refreshing the cached hash at the end of lowering (only when a manifest
 was already present — never fabricates one), and in both `apps/api`
-call sites by capturing the graph's hash *as loaded*, before that same
+call sites by capturing the graph's hash _as loaded_, before that same
 file's own lowering call can move it. Caught by
 `graph-hash-consistency.test.ts` and the workflow-execution regression
 test before it could reach a shipped receipt.
@@ -173,14 +173,14 @@ execution → graphHash/contractContentHash.
 
 ## Regression summary
 
-| package | baseline | after |
-|---|---|---|
-| capability-contract | 160 / 0 fail | 187 / 0 |
-| compiler | 875 / 1 fail | 889 / 1 (same failure, by name) |
-| runtime | 417 / 0 | 433 / 0 |
-| api | 191 / 0 | 191 / 0 |
-| cli | 262 / 2 fail | 262 / 2 (same 2 failures, by name) |
-| all other packages | unchanged | unchanged |
+| package             | baseline     | after                              |
+| ------------------- | ------------ | ---------------------------------- |
+| capability-contract | 160 / 0 fail | 187 / 0                            |
+| compiler            | 875 / 1 fail | 889 / 1 (same failure, by name)    |
+| runtime             | 417 / 0      | 433 / 0                            |
+| api                 | 191 / 0      | 191 / 0                            |
+| cli                 | 262 / 2 fail | 262 / 2 (same 2 failures, by name) |
+| all other packages  | unchanged    | unchanged                          |
 
 Pre-existing failures, unaffected by this work (identical by name before
 and after): `M1.1 shape 6 — prerequisite rule with an unparseable

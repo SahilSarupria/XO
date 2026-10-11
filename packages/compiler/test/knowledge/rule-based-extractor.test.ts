@@ -22,7 +22,11 @@ function makeUnit(overrides: Partial<ExperienceUnit>): ExperienceUnit {
 const extractor = new RuleBasedKnowledgeExtractor();
 
 test('produces one unit-primary node mapping semanticType to a knowledge node type', async () => {
-  const unit = makeUnit({ semanticType: 'obligation', title: 'Maintain confidentiality', content: 'The Receiving Party shall maintain confidentiality.' });
+  const unit = makeUnit({
+    semanticType: 'obligation',
+    title: 'Maintain confidentiality',
+    content: 'The Receiving Party shall maintain confidentiality.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -33,7 +37,11 @@ test('produces one unit-primary node mapping semanticType to a knowledge node ty
 });
 
 test('a definition unit uses the detected defined term as its primary label', async () => {
-  const unit = makeUnit({ semanticType: 'definition', title: 'Definitions', content: '"Confidential Information" means any non-public data.' });
+  const unit = makeUnit({
+    semanticType: 'definition',
+    title: 'Definitions',
+    content: '"Confidential Information" means any non-public data.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -88,7 +96,10 @@ test('produces no edges (relationship-builder.ts owns that centrally)', async ()
 });
 
 test('every node carries provenance back to the source unit', async () => {
-  const unit = makeUnit({ content: 'Acme Corp appears here.', provenance: { documentPath: 'my-doc.pdf', pages: [3], sectionPath: ['Sec A'], blockProvenance: [], blockIndexRange: [0, 0] } });
+  const unit = makeUnit({
+    content: 'Acme Corp appears here.',
+    provenance: { documentPath: 'my-doc.pdf', pages: [3], sectionPath: ['Sec A'], blockProvenance: [], blockIndexRange: [0, 0] },
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -117,7 +128,11 @@ test('a general-typed unit with bare imperative content becomes an action primar
 });
 
 test('a general-typed unit with explicit process/composition content becomes a process primary node', async () => {
-  const unit = makeUnit({ semanticType: 'general', title: 'The process consists of A, B, and C.', content: 'The process consists of A, B, and C.' });
+  const unit = makeUnit({
+    semanticType: 'general',
+    title: 'The process consists of A, B, and C.',
+    content: 'The process consists of A, B, and C.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -126,7 +141,11 @@ test('a general-typed unit with explicit process/composition content becomes a p
 });
 
 test('a general-typed unit with ordinary descriptive content still falls back to concept (no regression)', async () => {
-  const unit = makeUnit({ semanticType: 'general', title: 'CRM overview', content: 'CRM (SaaS) manages policy booking and customer data.' });
+  const unit = makeUnit({
+    semanticType: 'general',
+    title: 'CRM overview',
+    content: 'CRM (SaaS) manages policy booking and customer data.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -135,7 +154,11 @@ test('a general-typed unit with ordinary descriptive content still falls back to
 });
 
 test('an obligation-typed unit is never reclassified as action, even though its content is imperative-shaped', async () => {
-  const unit = makeUnit({ semanticType: 'obligation', title: 'Training requirement', content: 'Employees must complete the training within 30 days of hire.' });
+  const unit = makeUnit({
+    semanticType: 'obligation',
+    title: 'Training requirement',
+    content: 'Employees must complete the training within 30 days of hire.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -144,7 +167,11 @@ test('an obligation-typed unit is never reclassified as action, even though its 
 });
 
 test('a definition-typed unit is never reclassified as action', async () => {
-  const unit = makeUnit({ semanticType: 'definition', title: 'Definitions', content: '"Confidential Information" means any non-public data disclosed by either party.' });
+  const unit = makeUnit({
+    semanticType: 'definition',
+    title: 'Definitions',
+    content: '"Confidential Information" means any non-public data disclosed by either party.',
+  });
   const result = await extractor.extract(unit);
   assert.ok(result.ok);
   if (!result.ok) return;

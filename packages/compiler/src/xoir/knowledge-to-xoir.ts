@@ -1,13 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
-import {
-  XoirGraph,
-  XoirGraphId,
-  XoirNodeId,
-  XoirEdgeId,
-  type CanonicalXoirNodeKind,
-  type XoirPropertyBag,
-} from '@xo/xoir';
+import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId, type CanonicalXoirNodeKind, type XoirPropertyBag } from '@xo/xoir';
 import type { KnowledgeGraph, KnowledgeNode } from '../knowledge/types.js';
 import { canonicalKindForKnowledgeNodeType } from './node-kind-mapping.js';
 import { xoirEdgeKindForKnowledgeEdgeType } from './edge-mapping.js';

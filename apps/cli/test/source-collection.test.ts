@@ -126,10 +126,7 @@ test('directory: nested subdirectories are walked recursively and relative paths
       'sub/deeper/deepest.txt': 'Deepest shall still apply.',
     });
     const resolved = await resolveSourceArg(dir);
-    assert.deepEqual(
-      resolved.sources.map((s) => s.declaredPath).sort(),
-      ['sub/deeper/deepest.txt', 'sub/nested.txt', 'top.txt'],
-    );
+    assert.deepEqual(resolved.sources.map((s) => s.declaredPath).sort(), ['sub/deeper/deepest.txt', 'sub/nested.txt', 'top.txt']);
     await resolved.cleanup();
   });
 });
@@ -160,10 +157,7 @@ test('directory: mixed supported source types (txt, html, json, csv) are all dis
       'table.csv': 'clause\nThe buyer shall pay within 30 days.',
     });
     const resolved = await resolveSourceArg(dir);
-    assert.deepEqual(
-      resolved.sources.map((s) => s.declaredPath).sort(),
-      ['data.json', 'doc.txt', 'page.html', 'table.csv'],
-    );
+    assert.deepEqual(resolved.sources.map((s) => s.declaredPath).sort(), ['data.json', 'doc.txt', 'page.html', 'table.csv']);
     await resolved.cleanup();
   });
 });
@@ -254,10 +248,7 @@ test('zip: multiple files are extracted and discovered', async () => {
     await writeFile(zipPath, await buildZip({ 'a.txt': 'A shall apply.', 'b.txt': 'B shall apply.' }));
     const resolved = await resolveSourceArg(zipPath);
     assert.equal(resolved.argKind, 'zip');
-    assert.deepEqual(
-      resolved.sources.map((s) => s.declaredPath).sort(),
-      ['a.txt', 'b.txt'],
-    );
+    assert.deepEqual(resolved.sources.map((s) => s.declaredPath).sort(), ['a.txt', 'b.txt']);
     await resolved.cleanup();
   });
 });
@@ -267,10 +258,7 @@ test('zip: nested paths inside the archive are preserved as declaredPath', async
     const zipPath = join(dir, 'docs.zip');
     await writeFile(zipPath, await buildZip({ 'top.txt': 'Top shall apply.', 'nested/deep.txt': 'Deep shall apply.' }));
     const resolved = await resolveSourceArg(zipPath);
-    assert.deepEqual(
-      resolved.sources.map((s) => s.declaredPath).sort(),
-      ['nested/deep.txt', 'top.txt'],
-    );
+    assert.deepEqual(resolved.sources.map((s) => s.declaredPath).sort(), ['nested/deep.txt', 'top.txt']);
     await resolved.cleanup();
   });
 });
@@ -278,7 +266,10 @@ test('zip: nested paths inside the archive are preserved as declaredPath', async
 test('zip: mixed source types inside the archive are all discovered', async () => {
   await withTempDir('xo-collect-zip-', async (dir) => {
     const zipPath = join(dir, 'docs.zip');
-    await writeFile(zipPath, await buildZip({ 'a.txt': 'A shall apply.', 'b.html': '<p>B shall apply.</p>', 'c.json': '{"x": "C shall apply."}' }));
+    await writeFile(
+      zipPath,
+      await buildZip({ 'a.txt': 'A shall apply.', 'b.html': '<p>B shall apply.</p>', 'c.json': '{"x": "C shall apply."}' }),
+    );
     const resolved = await resolveSourceArg(zipPath);
     assert.equal(resolved.sources.length, 3);
     await resolved.cleanup();

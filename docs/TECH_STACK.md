@@ -2,7 +2,7 @@
 
 Every choice below, with the reasoning behind it. Where this module's
 actual sandbox constraints (no package-registry access) forced a
-different *verification* path than the *intended* production path, both
+different _verification_ path than the _intended_ production path, both
 are stated explicitly — see "Sandbox note" callouts.
 
 ## Language & runtime: TypeScript on Node.js
@@ -21,7 +21,7 @@ are stated explicitly — see "Sandbox note" callouts.
 
 Alternative considered: Go for the runtime (for lower memory footprint
 under many concurrent mounted packages) with TypeScript for SDK/CLI only.
-Rejected for *this* module because it would mean designing the
+Rejected for _this_ module because it would mean designing the
 runtime-core interfaces twice (once per language) before any
 implementation exists; revisit once `runtime-core` gets its first real
 implementation and profiling shows Node is the bottleneck.
@@ -57,14 +57,14 @@ Because of the sandbox constraint above, Module 1's actual runtime code
 avoids third-party dependencies wherever a small amount of hand-written
 code covers the need, and documents the production alternative inline:
 
-| Concern | This module ships | Production alternative (swap behind the same interface) |
-|---|---|---|
-| Structured logging | `ConsoleLogger` (JSON to stdout) | `pino` — same `Logger` interface, add a transport |
-| DI container | Hand-rolled `Container` (token + factory, no decorators) | Stays hand-rolled by design — see ADR 0003 |
-| Config validation | Hand-rolled schema DSL | `zod`, if richer validation (unions, refinements) is needed |
-| Tracing/metrics | `ConsoleTracer`/`ConsoleMeter` | OpenTelemetry SDK, same `Tracer`/`Meter` interface |
-| CLI argument parsing | Hand-rolled `parseArgs` | `commander`/`clipanion`, once real subcommands with nested flags exist |
-| Testing | `node:test` | Unchanged — this is a real, not provisional, choice; see below |
+| Concern              | This module ships                                        | Production alternative (swap behind the same interface)                |
+| -------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Structured logging   | `ConsoleLogger` (JSON to stdout)                         | `pino` — same `Logger` interface, add a transport                      |
+| DI container         | Hand-rolled `Container` (token + factory, no decorators) | Stays hand-rolled by design — see ADR 0003                             |
+| Config validation    | Hand-rolled schema DSL                                   | `zod`, if richer validation (unions, refinements) is needed            |
+| Tracing/metrics      | `ConsoleTracer`/`ConsoleMeter`                           | OpenTelemetry SDK, same `Tracer`/`Meter` interface                     |
+| CLI argument parsing | Hand-rolled `parseArgs`                                  | `commander`/`clipanion`, once real subcommands with nested flags exist |
+| Testing              | `node:test`                                              | Unchanged — this is a real, not provisional, choice; see below         |
 
 ## Testing: Node's built-in test runner
 

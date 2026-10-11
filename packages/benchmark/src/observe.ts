@@ -194,14 +194,12 @@ function toObservedCapabilityProvenance(
 /** P0.9C Step 5: execution provenance is descriptive observation data; it is never part of the stage fingerprint (exactly like `producedBy` and `subtype`). */
 function withoutProvenance(e: ObservedExecution): ObservedExecution {
   if (e.kind === 'capability') {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { provenance: _drop, ...rest } = e;
     return rest;
   }
   return {
     ...e,
     steps: e.steps.map((st) => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { provenance: _drop, ...rest } = st;
       return rest;
     }),

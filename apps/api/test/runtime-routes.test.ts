@@ -45,7 +45,10 @@ test('an arbitrary ?store= query parameter on the new workspace-scoped route is 
       const server = await TestServer.start({ workspaceDataDir: dataDir });
       try {
         const workspace = await createWorkspace(server);
-        const res = await server.request('GET', `/workspaces/${workspace.workspaceId}/runtime/context?store=${encodeURIComponent(attackerDir)}`);
+        const res = await server.request(
+          'GET',
+          `/workspaces/${workspace.workspaceId}/runtime/context?store=${encodeURIComponent(attackerDir)}`,
+        );
         assert.equal(res.status, 200);
         // Empty workspace store, not whatever might be sitting in `attackerDir`.
         assert.deepEqual(res.json<{ mountedPackages: readonly unknown[] }>().mountedPackages, []);
@@ -63,7 +66,11 @@ test('GET /workspaces/:workspaceId/runtime/context bootstraps against an empty w
       const workspace = await createWorkspace(server);
       const res = await server.request('GET', `/workspaces/${workspace.workspaceId}/runtime/context`);
       assert.equal(res.status, 200);
-      const body = res.json<{ mountedPackages: readonly unknown[]; capabilities: readonly unknown[]; bootstrapWarnings: readonly unknown[] }>();
+      const body = res.json<{
+        mountedPackages: readonly unknown[];
+        capabilities: readonly unknown[];
+        bootstrapWarnings: readonly unknown[];
+      }>();
       assert.deepEqual(body.mountedPackages, []);
       assert.deepEqual(body.capabilities, []);
       assert.deepEqual(body.bootstrapWarnings, []);
@@ -118,7 +125,10 @@ test('POST /workspaces/:workspaceId/runtime/execute is disabled (501) for every 
         { body: { query: 'anything' } }, // would have been a 400 (missing input) pre-M1
         { body: { input: 'hello' } }, // would have been a 400 (no capabilityId/query) pre-M1
         { body: { input: 'hi', query: 'q' }, headers: { 'x-xo-provider': 'not-a-real-provider' } },
-        { body: { input: 'hi', query: 'q' }, headers: { 'x-xo-provider': 'ollama', 'x-xo-base-url': 'http://127.0.0.1:1', 'x-xo-api-key': 'k' } },
+        {
+          body: { input: 'hi', query: 'q' },
+          headers: { 'x-xo-provider': 'ollama', 'x-xo-base-url': 'http://127.0.0.1:1', 'x-xo-api-key': 'k' },
+        },
       ];
       for (const attempt of attempts) {
         const res = await server.request('POST', url, attempt.body, attempt.headers);
@@ -139,11 +149,22 @@ test('POST /workspaces/:workspaceId/runtime/execute: a different identity still 
     try {
       const owner = await createWorkspace(server);
       const other = await server.issueAdditionalIdentity('identity-b');
-      const foreign = await server.request('POST', `/workspaces/${owner.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, TestServer.authHeader(other.apiKey));
+      const foreign = await server.request(
+        'POST',
+        `/workspaces/${owner.workspaceId}/runtime/execute`,
+        { input: 'hi', query: 'q' },
+        TestServer.authHeader(other.apiKey),
+      );
       assert.equal(foreign.status, 404);
       const unknown = await server.request('POST', `/workspaces/ws_does_not_exist/runtime/execute`, { input: 'hi', query: 'q' });
       assert.equal(unknown.status, 404);
-      const none = await server.request('POST', `/workspaces/${owner.workspaceId}/runtime/execute`, { input: 'hi', query: 'q' }, {}, { skipAuth: true });
+      const none = await server.request(
+        'POST',
+        `/workspaces/${owner.workspaceId}/runtime/execute`,
+        { input: 'hi', query: 'q' },
+        {},
+        { skipAuth: true },
+      );
       assert.equal(none.status, 401);
     } finally {
       await server.stop();
@@ -157,7 +178,12 @@ test('a different identity cannot bootstrap runtime context through a workspace 
     try {
       const owner = await createWorkspace(server);
       const other = await server.issueAdditionalIdentity('identity-b');
-      const res = await server.request('GET', `/workspaces/${owner.workspaceId}/runtime/context`, undefined, TestServer.authHeader(other.apiKey));
+      const res = await server.request(
+        'GET',
+        `/workspaces/${owner.workspaceId}/runtime/context`,
+        undefined,
+        TestServer.authHeader(other.apiKey),
+      );
       assert.equal(res.status, 404);
     } finally {
       await server.stop();

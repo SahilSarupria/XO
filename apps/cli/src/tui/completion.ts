@@ -35,7 +35,10 @@ export interface CompletionContext {
 const MAX_ITEMS = 100;
 
 function defaultListDir(dir: string): { name: string; isDirectory: boolean }[] {
-  return readdirSync(dir, { withFileTypes: true }).map((d) => ({ name: d.name, isDirectory: d.isDirectory() || (d.isSymbolicLink() && safeIsDir(resolve(dir, d.name))) }));
+  return readdirSync(dir, { withFileTypes: true }).map((d) => ({
+    name: d.name,
+    isDirectory: d.isDirectory() || (d.isSymbolicLink() && safeIsDir(resolve(dir, d.name))),
+  }));
 }
 
 function safeIsDir(path: string): boolean {
@@ -67,7 +70,13 @@ function tokenStart(text: string, cursor: number): number {
   return i;
 }
 
-export function completePaths(partial: string, prefix: string, ctx: CompletionContext, from: number, to: number): SuggestionSet | undefined {
+export function completePaths(
+  partial: string,
+  prefix: string,
+  ctx: CompletionContext,
+  from: number,
+  to: number,
+): SuggestionSet | undefined {
   const raw = unescapeSpaces(partial);
   const home = homedir();
   const expanded = raw === '~' ? `${home}${sep}` : raw.startsWith('~/') || raw.startsWith(`~${sep}`) ? home + raw.slice(1) : raw;

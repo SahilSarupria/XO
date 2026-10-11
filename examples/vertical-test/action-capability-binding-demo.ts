@@ -29,7 +29,7 @@ async function main() {
   let hitlCount = 0,
     detCount = 0,
     unresolvedCount = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let firstHitl: any = null;
   for (const c of contracts) {
     const outcome = resolveCapabilityBinding(c, resolvers);

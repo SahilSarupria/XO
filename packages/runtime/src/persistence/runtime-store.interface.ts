@@ -106,10 +106,14 @@ export interface CheckpointRecordStore {
  * unifying shape. Immutable once saved: no method here updates a
  * previously-saved receipt, only reads or (for cleanup) deletes.
  */
-export type PersistedReceipt = { readonly kind: 'execution'; readonly receipt: ExecutionReceipt } | { readonly kind: 'workflow'; readonly receipt: WorkflowReceipt };
+export type PersistedReceipt =
+  { readonly kind: 'execution'; readonly receipt: ExecutionReceipt } | { readonly kind: 'workflow'; readonly receipt: WorkflowReceipt };
 
 export interface ReceiptStore {
-  saveExecutionReceipt(executionId: WorkflowInstanceId | undefined, receipt: ExecutionReceipt): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>>;
+  saveExecutionReceipt(
+    executionId: WorkflowInstanceId | undefined,
+    receipt: ExecutionReceipt,
+  ): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>>;
   saveWorkflowReceipt(receipt: WorkflowReceipt): Promise<Result<VersionedEnvelope<PersistedReceipt>, RuntimeError>>;
   getExecutionReceipt(receiptId: ReceiptId): Promise<Result<VersionedEnvelope<ExecutionReceipt> | undefined, RuntimeError>>;
   getWorkflowReceipt(receiptId: WorkflowReceiptId): Promise<Result<VersionedEnvelope<WorkflowReceipt> | undefined, RuntimeError>>;

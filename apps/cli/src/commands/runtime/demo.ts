@@ -107,7 +107,8 @@ export async function demoCommand(options: DemoOptions): Promise<CommandResult> 
   const result = await runWorkflowPipeline(pipelineOptions);
   if (!result.ok) return failWith(result.message);
 
-  const { compiled, workflow, discoveredWorkflowCount, selectionRationale, dataFlow, prepared, stepResults, engineStatus, runStatus } = result;
+  const { compiled, workflow, discoveredWorkflowCount, selectionRationale, dataFlow, prepared, stepResults, engineStatus, runStatus } =
+    result;
 
   // Zip the composer's per-step evidence/confidence (`workflow.steps`)
   // with the bridge's per-step execution-class/contract/input-output
@@ -171,11 +172,15 @@ export async function demoCommand(options: DemoOptions): Promise<CommandResult> 
   lines.push('Source');
   for (const src of compiled.sources) {
     lines.push(`  file: ${src.sourcePath}  (${src.sourceType})`);
-    lines.push(`  compilation: ${src.semanticExtractionAvailable ? 'extraction ran' : 'no semantic extraction available for this source type'}`);
+    lines.push(
+      `  compilation: ${src.semanticExtractionAvailable ? 'extraction ran' : 'no semantic extraction available for this source type'}`,
+    );
     lines.push(`  trust/degradation status: ${src.qualityState ?? 'n/a (not a document source)'}`);
     lines.push(`  units contributed: ${src.unitCount}`);
   }
-  lines.push(`  nodes: ${compiled.stats.nodeCount}   edges: ${compiled.stats.edgeCount}   capabilities: ${compiled.stats.nodesByKind['capability'] ?? 0}`);
+  lines.push(
+    `  nodes: ${compiled.stats.nodeCount}   edges: ${compiled.stats.edgeCount}   capabilities: ${compiled.stats.nodesByKind['capability'] ?? 0}`,
+  );
   lines.push('');
 
   // --- Understanding --------------------------------------------------
@@ -186,7 +191,10 @@ export async function demoCommand(options: DemoOptions): Promise<CommandResult> 
   if (workflow.processGrouping) lines.push(`  source section: ${workflow.processGrouping.sectionPath.join(' > ')}`);
   lines.push(`  steps (${workflow.steps.length}):`);
   for (const s of workflow.steps) {
-    const evidenceLabel = s.evidence.length > 0 ? s.evidence.map((e) => `${e.documentPath}${e.locator ? `#${e.locator}` : ''}`).join(', ') : '(no per-step provenance recorded)';
+    const evidenceLabel =
+      s.evidence.length > 0
+        ? s.evidence.map((e) => `${e.documentPath}${e.locator ? `#${e.locator}` : ''}`).join(', ')
+        : '(no per-step provenance recorded)';
     lines.push(`    ${s.order + 1}. ${s.capabilityName}   [provenance: ${evidenceLabel}]`);
   }
   if (workflow.gaps.length > 0) {
@@ -206,15 +214,24 @@ export async function demoCommand(options: DemoOptions): Promise<CommandResult> 
     lines.push(`    contractId: ${s.contractId ?? '(none)'}`);
     if (composerStep) {
       lines.push(`    confidence: ${composerStep.confidence.toFixed(2)}`);
-      const evidenceLabel = composerStep.evidence.length > 0 ? composerStep.evidence.map((e) => `${e.documentPath}${e.locator ? `#${e.locator}` : ''}`).join(', ') : '(none recorded)';
+      const evidenceLabel =
+        composerStep.evidence.length > 0
+          ? composerStep.evidence.map((e) => `${e.documentPath}${e.locator ? `#${e.locator}` : ''}`).join(', ')
+          : '(none recorded)';
       lines.push(`    provenance: ${evidenceLabel}`);
     }
     if (s.status === 'unbound') lines.push(`    reason: ${s.reason}`);
     if (s.inputs && s.inputs.length > 0) {
       lines.push('    inputs:');
       for (const p of s.inputs) {
-        const injection = prepared.wiredInjections.find((w) => w.consumerCapabilityId === s.capabilityId && w.inputParameterName === p.name);
-        const status = injection ? `injected (from ${injection.producerCapabilityId}.${injection.outputParameterName})` : input && Object.prototype.hasOwnProperty.call(input, p.runtimeKey) ? 'supplied' : 'MISSING';
+        const injection = prepared.wiredInjections.find(
+          (w) => w.consumerCapabilityId === s.capabilityId && w.inputParameterName === p.name,
+        );
+        const status = injection
+          ? `injected (from ${injection.producerCapabilityId}.${injection.outputParameterName})`
+          : input && Object.prototype.hasOwnProperty.call(input, p.runtimeKey)
+            ? 'supplied'
+            : 'MISSING';
         const nameLabel = p.name === p.runtimeKey ? p.name : `${p.name} [runtime key: ${p.runtimeKey}]`;
         lines.push(`      - ${nameLabel}  type: ${p.semanticType ?? 'unknown'}  derivedFrom: ${p.derivedFrom}  -> ${status}`);
       }
@@ -233,7 +250,9 @@ export async function demoCommand(options: DemoOptions): Promise<CommandResult> 
   // --- Execution --------------------------------------------------------
   lines.push('Execution');
   if (usedDefaultInput) {
-    lines.push(`  (using a synthetic demo trigger payload — NOT extracted from the source document: ${JSON.stringify(scenarioConfig.defaultInput)})`);
+    lines.push(
+      `  (using a synthetic demo trigger payload — NOT extracted from the source document: ${JSON.stringify(scenarioConfig.defaultInput)})`,
+    );
   }
   for (const s of stepResults) {
     const line = describeStepOutput(s.output);

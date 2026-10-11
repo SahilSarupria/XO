@@ -1,4 +1,4 @@
-version: "3.9"
+version: '3.9'
 
 # Module 1 provides no service that talks to these yet — no compiler,
 # runtime, or registry implementation exists. This compose file exists so
@@ -16,11 +16,11 @@ services:
       POSTGRES_PASSWORD: xo_dev_only
       POSTGRES_DB: xo_registry
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - xo_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U xo -d xo_registry"]
+      test: ['CMD-SHELL', 'pg_isready -U xo -d xo_registry']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -28,9 +28,9 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -40,12 +40,12 @@ services:
   # the default `docker compose up` to keep local dev light.
   neo4j:
     image: neo4j:5-community
-    profiles: ["graph"]
+    profiles: ['graph']
     environment:
       NEO4J_AUTH: neo4j/xo_dev_only
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - '7474:7474'
+      - '7687:7687'
     volumes:
       - xo_neo4j_data:/data
 

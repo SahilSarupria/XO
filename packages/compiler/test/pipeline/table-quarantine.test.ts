@@ -14,7 +14,7 @@ import { compileSources } from '../../src/pipeline/compile-sources.js';
 
 const FIXTURE_PATH = new URL('../../../../examples/vertical-test/burglary-policy.pdf', import.meta.url);
 
-test('REAL FIXTURE: burglary-policy.pdf\'s genuine tables are detected and quarantined — fewer concept nodes than an unquarantined compile, capability count unaffected, rest of the document still compiles', async () => {
+test("REAL FIXTURE: burglary-policy.pdf's genuine tables are detected and quarantined — fewer concept nodes than an unquarantined compile, capability count unaffected, rest of the document still compiles", async () => {
   const bytes = new Uint8Array(await readFile(FIXTURE_PATH));
   const result = await compileSources([{ kind: 'pdf', bytes, sourcePath: 'burglary-policy.pdf' }], {});
   assert.ok(result.ok, result.ok ? undefined : JSON.stringify(result.error));
@@ -25,7 +25,10 @@ test('REAL FIXTURE: burglary-policy.pdf\'s genuine tables are detected and quara
   // degrade the rest of the document's extraction.
   const nodes = result.value.graph.allNodes();
   assert.ok(nodes.length > 150, `expected the rest of the document to still compile normally (got ${nodes.length} nodes)`);
-  assert.ok(nodes.some((n) => n.kind === 'capability'), 'expected genuine prose capabilities to still be extracted');
+  assert.ok(
+    nodes.some((n) => n.kind === 'capability'),
+    'expected genuine prose capabilities to still be extracted',
+  );
 
   // No node anywhere in the graph should trace back to a table_row block —
   // this is the actual quarantine guarantee, checked directly rather than

@@ -22,7 +22,10 @@ function makeUnit(): ExperienceUnit {
 }
 
 function makeWorkingAiExtractor(): AiKnowledgeExtractor {
-  const output: KnowledgeExtractionOutput = { items: [{ id: 'i1', type: 'concept', statement: 'Confidential Information', domain: 'legal', confidence: 0.85 }], relationships: [] };
+  const output: KnowledgeExtractionOutput = {
+    items: [{ id: 'i1', type: 'concept', statement: 'Confidential Information', domain: 'legal', confidence: 0.85 }],
+    relationships: [],
+  };
   const provider = new ScriptableTestProvider('anthropic', [{ kind: 'success', response: jsonResponse(output) }]);
   const layer = new AiCapabilityLayer({
     providers: [provider],

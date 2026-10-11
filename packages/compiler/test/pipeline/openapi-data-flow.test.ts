@@ -29,7 +29,9 @@ test('REAL SOURCE FIXTURE: the OpenAPI fixture compiles to authoritative declare
   const composed = composeWorkflows(graph, { now: () => new Date().toISOString() });
   assert.equal(composed.ok, true);
   if (!composed.ok) return;
-  const workflow = composed.value.find((w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'));
+  const workflow = composed.value.find(
+    (w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'),
+  );
   assert.ok(workflow);
 
   const dataFlow = auditWorkflowDataFlow(workflow!, graph);
@@ -65,20 +67,30 @@ test('REAL SOURCE FIXTURE: the OpenAPI-declared "brokerage: number" input type s
   assert.ok(brokerageInput);
   assert.equal(brokerageInput!.semanticType, 'number');
   assert.equal(brokerageInput!.derivedFrom, 'declared');
-  assert.equal(brokerageInput!.description, 'number', 'the flattened string is still parsed as before — inputTypes is additive, not a replacement');
+  assert.equal(
+    brokerageInput!.description,
+    'number',
+    'the flattened string is still parsed as before — inputTypes is additive, not a replacement',
+  );
 
   // B8: workflow-composer's own data-flow audit already reads semanticType for
   // producer/consumer type matching — confirm it now sees a real type, not undefined.
   const composed = composeWorkflows(graph, { now: () => new Date().toISOString() });
   assert.equal(composed.ok, true);
   if (!composed.ok) return;
-  const workflow = composed.value.find((w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'));
+  const workflow = composed.value.find(
+    (w) => w.steps.some((s) => s.capabilityName === 'calculate_brokerage') && w.steps.some((s) => s.capabilityName === 'record_brokerage'),
+  );
   assert.ok(workflow);
   const consumerContract = buildSemanticCapabilityContract(graph, consumer!.id);
   assert.ok(consumerContract.ok);
   if (consumerContract.ok) {
     const inputSemType = consumerContract.value.inputs.find((i) => i.name === 'brokerage')?.semanticType;
-    assert.equal(inputSemType, 'number', 'this is exactly what @xo/workflow-composer/src/data-flow-audit.ts reads for producer/consumer type compatibility');
+    assert.equal(
+      inputSemType,
+      'number',
+      'this is exactly what @xo/workflow-composer/src/data-flow-audit.ts reads for producer/consumer type compatibility',
+    );
   }
 });
 
@@ -89,7 +101,11 @@ test('a prose/PDF-derived capability never receives a fabricated semanticType: i
   if (!result.ok) return;
   const capNodes = result.value.graph.allNodes().filter((n) => n.kind === 'capability');
   for (const n of capNodes) {
-    assert.equal(n.properties.inputTypes, undefined, `expected no inputTypes on a prose-derived capability (${JSON.stringify(n.properties.name)})`);
+    assert.equal(
+      n.properties.inputTypes,
+      undefined,
+      `expected no inputTypes on a prose-derived capability (${JSON.stringify(n.properties.name)})`,
+    );
     const contract = buildSemanticCapabilityContract(result.value.graph, n.id);
     if (contract.ok) {
       for (const input of contract.value.inputs) {

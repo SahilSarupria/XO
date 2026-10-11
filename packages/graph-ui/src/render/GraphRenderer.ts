@@ -1,7 +1,8 @@
 import type { GraphModel } from '../model/GraphModel.js';
-import { GraphViewport, isRectVisible } from '../viewport/GraphViewport.js';
+import type { GraphViewport } from '../viewport/GraphViewport.js';
+import { isRectVisible } from '../viewport/GraphViewport.js';
 import { GraphSelection } from '../selection/GraphSelection.js';
-import { GraphTheme } from '../theme/GraphTheme.js';
+import type { GraphTheme } from '../theme/GraphTheme.js';
 import { GraphExecutionState } from '../execution/GraphExecutionState.js';
 import type { EdgeId, NodeId, Rect, Size } from '../model/types.js';
 import type { GraphRenderAdapter, RenderFrame, RenderableEdge, RenderableNode } from './adapters/GraphRenderAdapter.js';

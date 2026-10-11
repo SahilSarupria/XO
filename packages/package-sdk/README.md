@@ -32,19 +32,19 @@ mechanical move, not a redesign.
 
 ## Module map
 
-| Module | Responsibility |
-|---|---|
-| `manifest/manifest-builder.ts` | Immutable builder: `setIdentity`, `setCompatibility`, `setCapabilities`, `setMetadata`, `addComponent`, `addSignature`, `build()`. Computes every component hash and the manifest's Merkle root itself — a caller can never hand it a mismatched hash. |
-| `manifest/semver.ts` | Semver parse/compare/bump-classification (hand-rolled; see "Known limitations"). |
-| `manifest/compatibility.ts` | Host-capability intersection against `manifest.compatibility` (§2.1 steps 3-5, §2.2 levels). |
-| `manifest/manifest-migration.ts` | A real migration-chain registry; currently zero registered steps because the frozen `XoManifest` type only has one `formatVersion` today. |
-| `hashing/component-hasher.ts`, `hashing/fingerprint.ts` | Component hashing and a manifest "fingerprint" (content hash of everything except signatures — used to recognize identical package content independent of who's signed it). |
-| `signing/package-signer.ts` | `PackageSigner` / `PackageVerifier`, thin wrappers over `@xo/crypto`'s `Ed25519Signer`. |
-| `archive/` | `tar-codec.ts` (dependency-free ustar reader/writer — see "Known limitations"), `zstd-codec.ts` (native `node:zlib` zstd), `package-writer.ts` / `package-reader.ts` (buffer *and* streaming variants). |
-| `validation/` | `schema.ts` (structural `XoManifest`/`XoMetadata`/`CapabilityDeclaration` guards) and `package-validator.ts` (hash, Merkle, required-component, duplicate-path, version, signature, and capability-consistency checks — `validateAll` never short-circuits). |
-| `install/package-installer.ts` | `install` / `uninstall` / `upgrade` / `rollback` / `listInstalled` / `listAllInstalledRecords` / `getManifest` / `verifyInstallation` / `repairInstallation` over an injected `@xo/storage` `BlobStore`. No registry fetch — see below. |
-| `diff/package-differ.ts` | `compareManifests`, `compareComponents`, `comparePackages`, `generateUpgradePlan`. |
-| `inspect/package-inspector.ts` | Read-only summary (`inspectBundle`) and per-host compatibility matrix (`inspectCompatibilityMatrix`) for tools that need to *show* a package. |
+| Module                                                  | Responsibility                                                                                                                                                                                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manifest/manifest-builder.ts`                          | Immutable builder: `setIdentity`, `setCompatibility`, `setCapabilities`, `setMetadata`, `addComponent`, `addSignature`, `build()`. Computes every component hash and the manifest's Merkle root itself — a caller can never hand it a mismatched hash.       |
+| `manifest/semver.ts`                                    | Semver parse/compare/bump-classification (hand-rolled; see "Known limitations").                                                                                                                                                                             |
+| `manifest/compatibility.ts`                             | Host-capability intersection against `manifest.compatibility` (§2.1 steps 3-5, §2.2 levels).                                                                                                                                                                 |
+| `manifest/manifest-migration.ts`                        | A real migration-chain registry; currently zero registered steps because the frozen `XoManifest` type only has one `formatVersion` today.                                                                                                                    |
+| `hashing/component-hasher.ts`, `hashing/fingerprint.ts` | Component hashing and a manifest "fingerprint" (content hash of everything except signatures — used to recognize identical package content independent of who's signed it).                                                                                  |
+| `signing/package-signer.ts`                             | `PackageSigner` / `PackageVerifier`, thin wrappers over `@xo/crypto`'s `Ed25519Signer`.                                                                                                                                                                      |
+| `archive/`                                              | `tar-codec.ts` (dependency-free ustar reader/writer — see "Known limitations"), `zstd-codec.ts` (native `node:zlib` zstd), `package-writer.ts` / `package-reader.ts` (buffer _and_ streaming variants).                                                      |
+| `validation/`                                           | `schema.ts` (structural `XoManifest`/`XoMetadata`/`CapabilityDeclaration` guards) and `package-validator.ts` (hash, Merkle, required-component, duplicate-path, version, signature, and capability-consistency checks — `validateAll` never short-circuits). |
+| `install/package-installer.ts`                          | `install` / `uninstall` / `upgrade` / `rollback` / `listInstalled` / `listAllInstalledRecords` / `getManifest` / `verifyInstallation` / `repairInstallation` over an injected `@xo/storage` `BlobStore`. No registry fetch — see below.                      |
+| `diff/package-differ.ts`                                | `compareManifests`, `compareComponents`, `comparePackages`, `generateUpgradePlan`.                                                                                                                                                                           |
+| `inspect/package-inspector.ts`                          | Read-only summary (`inspectBundle`) and per-host compatibility matrix (`inspectCompatibilityMatrix`) for tools that need to _show_ a package.                                                                                                                |
 
 ## Design choices worth knowing about
 
@@ -109,7 +109,7 @@ mechanical move, not a redesign.
 
 - **No registry integration.** The installer's job is local install-state
   management against a `BlobStore` a caller already has a `PackageBundle`
-  for. Fetching a package *from* a marketplace is explicitly out of scope
+  for. Fetching a package _from_ a marketplace is explicitly out of scope
   per the brief this package was built against ("Support future registry
   integration but DO NOT implement the registry") — `PackageInstaller`'s
   constructor takes only a `BlobStore`, which is the seam a future
@@ -126,7 +126,7 @@ mechanical move, not a redesign.
   compare / classify-bump surface this SDK actually exercises is small and
   stable against semver.org's grammar; pulling in a dependency for it
   seemed like more surface area than value. It does not implement semver
-  *ranges* (`^1.2.3`, `~1.2.3`) — nothing in this SDK currently needs them
+  _ranges_ (`^1.2.3`, `~1.2.3`) — nothing in this SDK currently needs them
   (compatibility resolution is by declared capability, not version range).
   If a future consumer needs range matching, that's an argument for adding
   it here rather than reaching for `node-semver` piecemeal.
@@ -134,7 +134,7 @@ mechanical move, not a redesign.
   `ManifestMigrationRegistry` class is fully implemented and tested with
   synthetic version chains — but there is genuinely only one
   `formatVersion` in the frozen `XoManifest` type as of this writing, so
-  there is nothing real to migrate *from* yet.
+  there is nothing real to migrate _from_ yet.
 - **`Zstd`'s type augmentation should be deleted once `@types/node` catches
   up.** It's a small, contained shim (`src/archive/node-zlib-zstd.d.ts`),
   not a permanent fixture.

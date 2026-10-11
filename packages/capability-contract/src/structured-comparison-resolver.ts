@@ -1,5 +1,13 @@
 import { parseComparisonCondition, evaluateComparison } from './comparison-grammar.js';
-import type { BindingOutcome, BindingResolver, CapabilityBinding, SemanticCapabilityContract, SemanticCapabilityParameter, SemanticCapabilityRule, Result_LikeUnknown } from './types.js';
+import type {
+  BindingOutcome,
+  BindingResolver,
+  CapabilityBinding,
+  SemanticCapabilityContract,
+  SemanticCapabilityParameter,
+  SemanticCapabilityRule,
+  Result_LikeUnknown,
+} from './types.js';
 import type { StructuredCondition } from './structured-expression-grammar.js';
 
 const RESOLVER_NAME = 'structured-comparison-resolver';
@@ -37,7 +45,10 @@ function normalizeForMatch(text: string): string {
  * stop-word-stripped, underscore-joined form (`normalizeToFallbackKey`)
  * becomes the required key — documented, not inferred per-call.
  */
-function resolveFieldKey(fieldPhrase: string, declaredInputs: readonly SemanticCapabilityParameter[]): { readonly key: string; readonly matchedDeclaredInput: boolean } | undefined {
+function resolveFieldKey(
+  fieldPhrase: string,
+  declaredInputs: readonly SemanticCapabilityParameter[],
+): { readonly key: string; readonly matchedDeclaredInput: boolean } | undefined {
   if (declaredInputs.length === 0) {
     return { key: normalizeToFallbackKey(fieldPhrase), matchedDeclaredInput: false };
   }
@@ -65,13 +76,21 @@ function resolveFieldKey(fieldPhrase: string, declaredInputs: readonly SemanticC
 // ---------------------------------------------------------------------------
 
 type CompiledCheck =
-  | { readonly kind: 'comparison'; readonly inputKey: string; readonly operator: '>' | '<' | '>=' | '<=' | '==' | '!='; readonly value: number }
+  | {
+      readonly kind: 'comparison';
+      readonly inputKey: string;
+      readonly operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
+      readonly value: number;
+    }
   | { readonly kind: 'categorical'; readonly inputKey: string; readonly operator: '==' | '!='; readonly value: string }
   | { readonly kind: 'range'; readonly inputKey: string; readonly min: number; readonly max: number }
   | { readonly kind: 'and'; readonly checks: readonly CompiledCheck[] }
   | { readonly kind: 'or'; readonly checks: readonly CompiledCheck[] };
 
-function compileStructuredCondition(condition: StructuredCondition, declaredInputs: readonly SemanticCapabilityParameter[]): { readonly ok: true; readonly check: CompiledCheck } | { readonly ok: false; readonly reason: string } {
+function compileStructuredCondition(
+  condition: StructuredCondition,
+  declaredInputs: readonly SemanticCapabilityParameter[],
+): { readonly ok: true; readonly check: CompiledCheck } | { readonly ok: false; readonly reason: string } {
   if (condition.type === 'and' || condition.type === 'or') {
     const checks: CompiledCheck[] = [];
     for (const operand of condition.operands) {
@@ -109,15 +128,26 @@ function compileStructuredCondition(condition: StructuredCondition, declaredInpu
     //   does not assume that invariant holds forever; it explicitly
     //   refuses rather than silently mis-mapping an unanticipated
     //   relation to a comparison operator.
-    if (condition.amount !== undefined && condition.unit !== undefined && condition.field !== undefined && (condition.relation === 'within' || condition.relation === 'after')) {
+    if (
+      condition.amount !== undefined &&
+      condition.unit !== undefined &&
+      condition.field !== undefined &&
+      (condition.relation === 'within' || condition.relation === 'after')
+    ) {
       const resolvedKey = resolveFieldKey(condition.field, declaredInputs);
       if (!resolvedKey) {
-        return { ok: false, reason: `Structured temporal condition field ("${condition.field}") does not match any declared contract input` };
+        return {
+          ok: false,
+          reason: `Structured temporal condition field ("${condition.field}") does not match any declared contract input`,
+        };
       }
       const operator = condition.relation === 'within' ? '<=' : '>';
       return { ok: true, check: { kind: 'comparison', inputKey: resolvedKey.key, operator, value: condition.amount } };
     }
-    return { ok: false, reason: `A temporal condition ("${condition.relation}"${condition.anchor !== undefined ? ` ${condition.anchor}` : ''}) cannot lower to a deterministic_rule binding — this resolver structures temporal semantics but never evaluates them against a wall clock/reference date, and only lowers a duration-with-field shape (see the module's M1.3 doc comment) to a plain numeric comparison` };
+    return {
+      ok: false,
+      reason: `A temporal condition ("${condition.relation}"${condition.anchor !== undefined ? ` ${condition.anchor}` : ''}) cannot lower to a deterministic_rule binding — this resolver structures temporal semantics but never evaluates them against a wall clock/reference date, and only lowers a duration-with-field shape (see the module's M1.3 doc comment) to a plain numeric comparison`,
+    };
   }
 
   const resolvedKey = resolveFieldKey(condition.field, declaredInputs);
@@ -177,7 +207,16 @@ function isBareConstraint(rule: SemanticCapabilityRule): boolean {
  * exempt from this all-or-nothing rule entirely — it is skipped, not
  * evaluated as a potential failure.
  */
-function compileRules(rules: readonly SemanticCapabilityRule[], declaredInputs: readonly SemanticCapabilityParameter[]): { readonly ok: true; readonly compiled: readonly CompiledRule[]; readonly skippedConstraints: readonly { readonly sourceNodeId: string; readonly condition: string }[] } | { readonly ok: false; readonly reason: string } {
+function compileRules(
+  rules: readonly SemanticCapabilityRule[],
+  declaredInputs: readonly SemanticCapabilityParameter[],
+):
+  | {
+      readonly ok: true;
+      readonly compiled: readonly CompiledRule[];
+      readonly skippedConstraints: readonly { readonly sourceNodeId: string; readonly condition: string }[];
+    }
+  | { readonly ok: false; readonly reason: string } {
   const compiled: CompiledRule[] = [];
   const skippedConstraints: { readonly sourceNodeId: string; readonly condition: string }[] = [];
   for (const rule of rules) {
@@ -186,10 +225,16 @@ function compileRules(rules: readonly SemanticCapabilityRule[], declaredInputs: 
       continue;
     }
     if (rule.exceptionConditions.length > 0) {
-      return { ok: false, reason: `Rule "${rule.sourceNodeId}" has an exception clause ("unless ${rule.exceptionConditions.join('; ')}"), which is outside this resolver's closed single-comparison grammar` };
+      return {
+        ok: false,
+        reason: `Rule "${rule.sourceNodeId}" has an exception clause ("unless ${rule.exceptionConditions.join('; ')}"), which is outside this resolver's closed single-comparison grammar`,
+      };
     }
     if (rule.outcome === undefined || rule.outcome.trim().length === 0) {
-      return { ok: false, reason: `Rule "${rule.sourceNodeId}" (kind "${rule.kind}") has no outcome/action — nothing for a decision table to return` };
+      return {
+        ok: false,
+        reason: `Rule "${rule.sourceNodeId}" (kind "${rule.kind}") has no outcome/action — nothing for a decision table to return`,
+      };
     }
 
     if (rule.structuredCondition !== undefined) {
@@ -206,13 +251,23 @@ function compileRules(rules: readonly SemanticCapabilityRule[], declaredInputs: 
 
     const parsed = parseComparisonCondition(rule.condition);
     if (!parsed) {
-      return { ok: false, reason: `Rule "${rule.sourceNodeId}"'s condition ("${rule.condition}") does not match the closed structured-comparison grammar` };
+      return {
+        ok: false,
+        reason: `Rule "${rule.sourceNodeId}"'s condition ("${rule.condition}") does not match the closed structured-comparison grammar`,
+      };
     }
     const resolvedKey = resolveFieldKey(parsed.fieldPhrase, declaredInputs);
     if (!resolvedKey) {
-      return { ok: false, reason: `Rule "${rule.sourceNodeId}"'s condition field ("${parsed.fieldPhrase}") does not match any declared contract input` };
+      return {
+        ok: false,
+        reason: `Rule "${rule.sourceNodeId}"'s condition field ("${parsed.fieldPhrase}") does not match any declared contract input`,
+      };
     }
-    compiled.push({ sourceNodeId: rule.sourceNodeId, check: { kind: 'comparison', inputKey: resolvedKey.key, operator: parsed.operator, value: parsed.value }, outcome: rule.outcome });
+    compiled.push({
+      sourceNodeId: rule.sourceNodeId,
+      check: { kind: 'comparison', inputKey: resolvedKey.key, operator: parsed.operator, value: parsed.value },
+      outcome: rule.outcome,
+    });
   }
   return { ok: true, compiled, skippedConstraints };
 }
@@ -298,10 +353,16 @@ export class StructuredComparisonBindingResolver implements BindingResolver {
 
   resolve(contract: SemanticCapabilityContract): BindingOutcome | undefined {
     if (contract.determinism === 'non_deterministic') {
-      return { status: 'denied', reason: `Contract "${contract.id}" is explicitly marked non-deterministic by the compiler — a deterministic evaluator would misrepresent it` };
+      return {
+        status: 'denied',
+        reason: `Contract "${contract.id}" is explicitly marked non-deterministic by the compiler — a deterministic evaluator would misrepresent it`,
+      };
     }
     if (contract.rules.length === 0) {
-      return { status: 'unresolved', reason: `Contract "${contract.id}" has no linked decision_node/heuristic/constraint rules — nothing for a deterministic evaluator to check` };
+      return {
+        status: 'unresolved',
+        reason: `Contract "${contract.id}" has no linked decision_node/heuristic/constraint rules — nothing for a deterministic evaluator to check`,
+      };
     }
 
     const result = compileRules(contract.rules, contract.inputs);
@@ -316,7 +377,10 @@ export class StructuredComparisonBindingResolver implements BindingResolver {
       // above: name the skipped constraints so the caller can see this
       // was a real (if unactionable) rule set, not an empty one.
       const names = result.skippedConstraints.map((c) => `"${c.sourceNodeId}"`).join(', ');
-      return { status: 'unresolved', reason: `Contract "${contract.id}" has ${result.skippedConstraints.length} linked constraint rule(s) (${names}) but no decision_node/heuristic rule with an executable outcome — a constraint alone has nothing for a decision table to return` };
+      return {
+        status: 'unresolved',
+        reason: `Contract "${contract.id}" has ${result.skippedConstraints.length} linked constraint rule(s) (${names}) but no decision_node/heuristic rule with an executable outcome — a constraint alone has nothing for a decision table to return`,
+      };
     }
 
     const evaluate = buildEvaluator(result.compiled);

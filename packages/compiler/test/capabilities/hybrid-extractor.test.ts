@@ -24,7 +24,9 @@ function makeUnit(): ExperienceUnit {
 const emptyGraph: KnowledgeGraph = { nodes: [], edges: [] };
 
 function makeWorkingAiExtractor(): AiCapabilityExtractor {
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'AI Detected Capability', description: 'x', evidenceExcerptOffsets: [], confidence: 0.9 }] };
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [{ name: 'AI Detected Capability', description: 'x', evidenceExcerptOffsets: [], confidence: 0.9 }],
+  };
   const provider = new ScriptableTestProvider('anthropic', [{ kind: 'success', response: jsonResponse(output) }]);
   const layer = new AiCapabilityLayer({
     providers: [provider],

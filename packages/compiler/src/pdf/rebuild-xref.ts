@@ -112,7 +112,12 @@ function expandCompressedObjectStreams(buf: Uint8Array, entries: Map<number, Xre
         // object recovered from an earlier ObjStm always wins, matching this
         // file's "later occurrence wins" precedence rule.
         if (!entries.has(objectNumber)) {
-          entries.set(objectNumber, { byteOffset: 0, generation: 0, free: false, compressed: { streamObjectNumber: streamObjNum, indexInStream: i } });
+          entries.set(objectNumber, {
+            byteOffset: 0,
+            generation: 0,
+            free: false,
+            compressed: { streamObjectNumber: streamObjNum, indexInStream: i },
+          });
         }
       }
     } catch {

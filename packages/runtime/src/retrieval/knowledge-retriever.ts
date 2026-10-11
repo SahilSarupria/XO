@@ -37,7 +37,10 @@ export class KnowledgeRetriever {
   }
 
   /** Retrieves every component kind in `componentKinds` for one mounted package. */
-  async retrieveForPackage(mounted: MountedPackage, componentKinds: readonly ComponentKind[]): Promise<Result<readonly RetrievedSlice[], RuntimeError>> {
+  async retrieveForPackage(
+    mounted: MountedPackage,
+    componentKinds: readonly ComponentKind[],
+  ): Promise<Result<readonly RetrievedSlice[], RuntimeError>> {
     const startedAt = this.now().getTime();
     const slices: RetrievedSlice[] = [];
 
@@ -45,14 +48,28 @@ export class KnowledgeRetriever {
       const result = await this.installer.getComponent(mounted.name, mounted.version, kind);
       if (!result.ok) {
         return err(
-          new RuntimeError(ErrorCode.RUNTIME_RETRIEVAL_FAILED, `Failed to retrieve "${kind}" for "${mounted.name}@${mounted.version}": ${result.error.message}`, { cause: result.error }),
+          new RuntimeError(
+            ErrorCode.RUNTIME_RETRIEVAL_FAILED,
+            `Failed to retrieve "${kind}" for "${mounted.name}@${mounted.version}": ${result.error.message}`,
+            { cause: result.error },
+          ),
         );
       }
       const content = new TextDecoder().decode(result.value);
-      slices.push({ packageName: mounted.name, packageVersion: mounted.version, componentKind: kind, content, estimatedTokens: estimateTokens(content) });
+      slices.push({
+        packageName: mounted.name,
+        packageVersion: mounted.version,
+        componentKind: kind,
+        content,
+        estimatedTokens: estimateTokens(content),
+      });
     }
 
-    this.instrumentation?.recordRetrievalLatency(this.now().getTime() - startedAt, { package: mounted.name, version: mounted.version, componentCount: componentKinds.length });
+    this.instrumentation?.recordRetrievalLatency(this.now().getTime() - startedAt, {
+      package: mounted.name,
+      version: mounted.version,
+      componentCount: componentKinds.length,
+    });
     this.logger.debug('retrieved components', { package: mounted.name, version: mounted.version, kinds: componentKinds.join(',') });
     return ok(slices);
   }
@@ -67,7 +84,10 @@ export class KnowledgeRetriever {
    * caught at validation time; seeing it here means something changed
    * out from under an already-mounted package).
    */
-  async retrieveForCandidates(candidates: readonly RankedCandidate[], registry: PackageRegistry): Promise<Result<readonly RetrievedSlice[], RuntimeError>> {
+  async retrieveForCandidates(
+    candidates: readonly RankedCandidate[],
+    registry: PackageRegistry,
+  ): Promise<Result<readonly RetrievedSlice[], RuntimeError>> {
     const all: RetrievedSlice[] = [];
     for (const candidate of candidates) {
       const mounted = registry.get(candidate.capability.packageName, candidate.capability.packageVersion);

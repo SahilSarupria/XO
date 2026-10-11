@@ -63,9 +63,56 @@ import { confidenceFromScore, type XoirConfidence } from '@xo/xoir';
  */
 
 const STOPWORDS = new Set([
-  'a', 'an', 'the', 'of', 'to', 'in', 'on', 'for', 'and', 'or', 'if', 'then', 'that', 'this', 'these', 'those', 'is', 'are',
-  'was', 'were', 'be', 'been', 'being', 'will', 'shall', 'may', 'must', 'not', 'with', 'as', 'by', 'at', 'from', 'it', 'its',
-  'any', 'all', 'no', 'such', 'per', 'within', 'upon', 'under', 'into', 'onto', 'so', 'than', 'also', 'each', 'other',
+  'a',
+  'an',
+  'the',
+  'of',
+  'to',
+  'in',
+  'on',
+  'for',
+  'and',
+  'or',
+  'if',
+  'then',
+  'that',
+  'this',
+  'these',
+  'those',
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  'will',
+  'shall',
+  'may',
+  'must',
+  'not',
+  'with',
+  'as',
+  'by',
+  'at',
+  'from',
+  'it',
+  'its',
+  'any',
+  'all',
+  'no',
+  'such',
+  'per',
+  'within',
+  'upon',
+  'under',
+  'into',
+  'onto',
+  'so',
+  'than',
+  'also',
+  'each',
+  'other',
 ]);
 
 /** Minimum token length to be considered at all — below this, near-every short function word/fragment survives stopword filtering only by accident. Does not apply to purely-numeric tokens (a short but specific number, e.g. `"14"` days or a `"60"`-day window, is still strong, unambiguous domain evidence — see `stem`'s own doc comment on why numbers are never stemmed away either). */
@@ -107,7 +154,8 @@ function splitIntoWords(text: string): readonly string[] {
 function stem(word: string): string {
   if (word.length === 0 || isDigit(word[0]!)) return word;
   if (word.length > 4 && word.endsWith('ies')) return `${word.slice(0, -3)}y`;
-  if (word.length > 5 && (word.endsWith('ches') || word.endsWith('shes') || word.endsWith('sses') || word.endsWith('xes'))) return word.slice(0, -2);
+  if (word.length > 5 && (word.endsWith('ches') || word.endsWith('shes') || word.endsWith('sses') || word.endsWith('xes')))
+    return word.slice(0, -2);
   if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);
   if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
   if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss')) return word.slice(0, -1);
@@ -419,7 +467,11 @@ export function isStrictSectionPathPrefix(prefix: readonly string[], full: reado
  * `same_unit_term_overlap`, its length never affects the returned
  * confidence — see `structuralContainmentConfidence`'s doc comment.
  */
-export function scoreStructuralLink(reasoningText: string, reasoningSectionPath: readonly string[] | undefined, candidate: StructuralLinkCandidate): LinkScore | undefined {
+export function scoreStructuralLink(
+  reasoningText: string,
+  reasoningSectionPath: readonly string[] | undefined,
+  candidate: StructuralLinkCandidate,
+): LinkScore | undefined {
   if (reasoningSectionPath === undefined || reasoningSectionPath.length === 0) return undefined;
   if (candidate.sectionPath.length <= 1) return undefined; // root exclusion — no fallback
   if (!isStrictSectionPathPrefix(candidate.sectionPath, reasoningSectionPath)) return undefined;

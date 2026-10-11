@@ -107,7 +107,9 @@ async function validate(req: ApiRequest): Promise<ApiResponse> {
   const unpacked = unwrapOrThrow(await unpackArchive(bytes));
 
   const publicKeys = body.publicKeys as Record<string, string> | undefined;
-  const validator = new PackageValidator(publicKeys !== undefined && Object.keys(publicKeys).length > 0 ? { resolvePublicKey: (did) => publicKeys[did] } : {});
+  const validator = new PackageValidator(
+    publicKeys !== undefined && Object.keys(publicKeys).length > 0 ? { resolvePublicKey: (did) => publicKeys[did] } : {},
+  );
   const report = validator.validateAll(unpacked);
 
   return json(report.valid ? 200 : 422, report);
@@ -173,7 +175,9 @@ export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceS
     const resolution = unwrapOrThrow(await resolveDependencies(manifest, lookup));
 
     const lockfile = createLockfile(resolution);
-    const putResult = await store.put(lockfileKey(parsed.name, parsed.version), serializeLockfile(lockfile), { contentType: 'application/json' });
+    const putResult = await store.put(lockfileKey(parsed.name, parsed.version), serializeLockfile(lockfile), {
+      contentType: 'application/json',
+    });
     if (!putResult.ok) throw putResult.error;
 
     return json(200, lockfile);

@@ -57,7 +57,9 @@ export class OpenAiProvider implements ModelProvider {
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
         messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
-        response_format: request.responseSchema ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } } : undefined,
+        response_format: request.responseSchema
+          ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } }
+          : undefined,
       }),
     });
 

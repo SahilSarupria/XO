@@ -21,7 +21,7 @@ Two consequences follow directly from that:
 
 1. **`source-graph.ts` defines a new contract, not a duplication of
    anything.** `SourceGraph` is the minimal shape this package needs
-   from *something* that produces real XO data. It is deliberately the
+   from _something_ that produces real XO data. It is deliberately the
    seam a future graph-engine/XOIR is expected to satisfy or be
    adapted into — wiring a real source later means writing an adapter
    that returns a `SourceGraph`, not changing this package.
@@ -75,19 +75,19 @@ Atlas's coordinate space.
 Built directly on `@xo/atlas`'s `AltitudeModel` (`src/altitude.ts`),
 using the eight levels already discussed for the interaction
 philosophy. Not every level implies UI — each level's `description`
-states only what *becomes available to know*, leaving whether/how to
+states only what _becomes available to know_, leaving whether/how to
 render it entirely to the consumer:
 
-| Order | id | What becomes available |
-|---|---|---|
-| 0 | `ecosystem` | Aggregate shape only — communities as clusters. |
-| 1 | `community` | Communities distinguishable; member XOs start to resolve. |
-| 2 | `experience` | An XO's identity, current signal, and relationships. |
-| 3 | `capability` | What the XO can do. |
-| 4 | `workflow` | How it carries out its capabilities. |
-| 5 | `reasoning` | How it currently approaches a task. *No runtime exists yet to populate this with real data.* |
-| 6 | `memory` | What it currently holds in memory. *Same caveat.* |
-| 7 | `execution` | Live, in-progress work. *Requires a runtime this repo doesn't have.* |
+| Order | id           | What becomes available                                                                       |
+| ----- | ------------ | -------------------------------------------------------------------------------------------- |
+| 0     | `ecosystem`  | Aggregate shape only — communities as clusters.                                              |
+| 1     | `community`  | Communities distinguishable; member XOs start to resolve.                                    |
+| 2     | `experience` | An XO's identity, current signal, and relationships.                                         |
+| 3     | `capability` | What the XO can do.                                                                          |
+| 4     | `workflow`   | How it carries out its capabilities.                                                         |
+| 5     | `reasoning`  | How it currently approaches a task. _No runtime exists yet to populate this with real data._ |
+| 6     | `memory`     | What it currently holds in memory. _Same caveat._                                            |
+| 7     | `execution`  | Live, in-progress work. _Requires a runtime this repo doesn't have._                         |
 
 Levels 5–7 are defined so the model is complete and so
 `SemanticZoomRegistry` rules exist for them, but they're explicitly
@@ -115,7 +115,7 @@ deterministic force-directed layout:
    classic force-directed layout: every pair of XOs repels, every
    relationship attracts its two endpoints toward a rest length,
    scaled by that relationship's weight. All forces for a step are
-   computed into a delta map from the *current* positions and applied
+   computed into a delta map from the _current_ positions and applied
    simultaneously at the end of the step — so JS iteration/object-key
    order can never influence the result, only the (already
    deterministic) physics and a fixed, explicit sort by id.
@@ -137,7 +137,7 @@ deterministic force-directed layout:
   edge for them.
 
 Each relationship kind has a default weight (`dependsOn` pulls
-hardest, `communityLink` softest) so different *kinds* of connection
+hardest, `communityLink` softest) so different _kinds_ of connection
 read as different strengths of spatial pull, not just presence/absence
 of a line.
 

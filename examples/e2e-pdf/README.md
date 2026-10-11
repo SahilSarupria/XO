@@ -1,7 +1,7 @@
 # XO Platform — First Real PDF E2E Vertical Harness
 
 A single, isolated, repeatable diagnostic script that pushes a real PDF as
-far as the *current* XO Platform's real public APIs will actually take it,
+far as the _current_ XO Platform's real public APIs will actually take it,
 and reports exactly where it stops. It is a measurement tool, not a demo:
 it does not fabricate, mock, or hand-construct any stage to force a PASS.
 
@@ -70,7 +70,7 @@ which functions are called and why, stage by stage.
 **No Stage 8 orchestrator was written or duplicated.** Stage 8 (still
 in progress in another workstream) is expected to eventually wrap
 "PDF -> XOIR" into one convenience function. Until it exists, this
-harness — as an ordinary *caller* of the compiler package — chains the
+harness — as an ordinary _caller_ of the compiler package — chains the
 existing Stage 1–7 public functions itself, exactly the way any other
 current caller of `@xo/compiler` would have to.
 
@@ -79,16 +79,16 @@ current caller of `@xo/compiler` would have to.
 Written to `examples/e2e-pdf/output/` (not `.gitignore`d, small,
 JSON-only — no binaries):
 
-| File | Contents |
-|---|---|
-| `e2e-report.json` | The full boundary-by-boundary report — the primary artifact |
-| `source.json` | Loaded PDF summary (pages, metadata, per-page text stats) |
-| `compiled-xoir.json` | The full canonical `XoirGraph` JSON (`@xo/xoir#toJson`) |
-| `diagnostics.json` | XOIR pipeline validation/normalization diagnostics + pass runs |
-| `package-inspect.json` | `inspectBundle()` output + validation report + signature check |
-| `registry-result.json` | Publish/search/resolve results + the registry storage limitation |
-| `execution-result.json` | The full `ExecutionResult`, or the reason execution was skipped |
-| `receipt.json` | The `ExecutionReceipt`, only written if an execution actually completed |
+| File                    | Contents                                                                |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `e2e-report.json`       | The full boundary-by-boundary report — the primary artifact             |
+| `source.json`           | Loaded PDF summary (pages, metadata, per-page text stats)               |
+| `compiled-xoir.json`    | The full canonical `XoirGraph` JSON (`@xo/xoir#toJson`)                 |
+| `diagnostics.json`      | XOIR pipeline validation/normalization diagnostics + pass runs          |
+| `package-inspect.json`  | `inspectBundle()` output + validation report + signature check          |
+| `registry-result.json`  | Publish/search/resolve results + the registry storage limitation        |
+| `execution-result.json` | The full `ExecutionResult`, or the reason execution was skipped         |
+| `receipt.json`          | The `ExecutionReceipt`, only written if an execution actually completed |
 
 Temporary package/registry/install/runtime-store state (the actual
 `.xo` file, the local registry's blob store, the install directory, the
@@ -149,7 +149,7 @@ to execute, and `runtime_execution`/`persistence`/`memory` are correctly
 
 The harness's execution/persistence code path itself is not
 theoretical — it was verified against `packages/runtime/test/fixtures.ts`'s
-`buildContractLawyerBundle()` (a package that *does* declare manifest
+`buildContractLawyerBundle()` (a package that _does_ declare manifest
 capabilities) during development of this harness, and completed/persisted
 correctly. It's real, working code; it's simply not reached for this PDF.
 

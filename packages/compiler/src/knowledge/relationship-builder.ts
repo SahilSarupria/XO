@@ -17,7 +17,9 @@ function unitProvenance(unit: ExperienceDocument['units'][number], confidence: n
 }
 
 /** Stage 3's unit-level relationship types map onto knowledge-edge types with the same name where one already exists (`defines`, `supports`, `references`); `extends` (a subsection's idea extending its parent's) becomes `part_of` at the knowledge-graph level, since "this concept is part of that broader concept" is the more natural framing for a graph of ideas rather than of document sections. */
-function mapUnitRelationType(type: ExperienceDocument['relationshipGraph']['relationships'][number]['type']): KnowledgeEdgeType | undefined {
+function mapUnitRelationType(
+  type: ExperienceDocument['relationshipGraph']['relationships'][number]['type'],
+): KnowledgeEdgeType | undefined {
   switch (type) {
     case 'extends':
       return 'part_of';
@@ -49,7 +51,11 @@ function mapUnitRelationType(type: ExperienceDocument['relationshipGraph']['rela
  * didn't resolve to a merged node (e.g. a unit contributed no candidates
  * at all) is silently dropped rather than producing a dangling edge.
  */
-export function buildKnowledgeEdges(experienceDocument: ExperienceDocument, perUnit: readonly PerUnitExtraction[], mergeResult: MergeResult): readonly KnowledgeEdge[] {
+export function buildKnowledgeEdges(
+  experienceDocument: ExperienceDocument,
+  perUnit: readonly PerUnitExtraction[],
+  mergeResult: MergeResult,
+): readonly KnowledgeEdge[] {
   interface EdgeAccumulator {
     readonly type: KnowledgeEdgeType;
     readonly fromNodeId: KnowledgeNodeId;
@@ -60,7 +66,13 @@ export function buildKnowledgeEdges(experienceDocument: ExperienceDocument, perU
   }
   const accumulators = new Map<string, EdgeAccumulator>();
 
-  const pushEdge = (type: KnowledgeEdgeType, fromNodeId: KnowledgeNodeId | undefined, toNodeId: KnowledgeNodeId | undefined, confidence: number, provenance: KnowledgeProvenance): void => {
+  const pushEdge = (
+    type: KnowledgeEdgeType,
+    fromNodeId: KnowledgeNodeId | undefined,
+    toNodeId: KnowledgeNodeId | undefined,
+    confidence: number,
+    provenance: KnowledgeProvenance,
+  ): void => {
     if (fromNodeId === undefined || toNodeId === undefined || fromNodeId === toNodeId) return;
     const dedupeKey = `${type}\u0000${fromNodeId}\u0000${toNodeId}`;
     const existing = accumulators.get(dedupeKey);

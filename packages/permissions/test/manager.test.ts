@@ -4,7 +4,7 @@ import { PackageId } from '@xo/types';
 import { MockClock } from '@xo/testing';
 import { Permissions } from '../src/permission-id.js';
 import { globalScope, hostScope, pathScope } from '../src/scope.js';
-import { RuleBasedPolicy, type PolicyRule } from '../src/policy.js';
+import { RuleBasedPolicy } from '../src/policy.js';
 import { InMemoryPermissionStore } from '../src/store.js';
 import { InMemoryAuditSink } from '../src/audit.js';
 import { PermissionManager } from '../src/manager.js';
@@ -23,7 +23,11 @@ function makeRequest(overrides: Partial<PermissionRequest> = {}): PermissionRequ
 }
 
 function fixedConsentProvider(consent: PermissionConsent): PermissionConsentProvider {
-  return { async requestConsent() { return consent; } };
+  return {
+    async requestConsent() {
+      return consent;
+    },
+  };
 }
 
 test('manager.check: default-deny when no policy rule and no grant exist', async () => {
@@ -74,7 +78,11 @@ test('manager.request: consent granted (once) allows this request but is not per
 test('manager.request: consent granted (persistent) is stored and honored by future check()', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
   const store = new InMemoryPermissionStore();
-  const manager = new PermissionManager({ policy, store, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }) });
+  const manager = new PermissionManager({
+    policy,
+    store,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }),
+  });
 
   const decision = await manager.request(makeRequest({ scope: pathScope('/workspace') }));
   assert.equal(decision.effect, 'allow');
@@ -97,7 +105,8 @@ test('manager.request: consent narrowing a scope is honored, never widened beyon
   assert.deepEqual(decision.grantedScope, pathScope('/workspace/project'));
 });
 
-test('manager.request: consent declined denies deterministically', async () => {  const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
+test('manager.request: consent declined denies deterministically', async () => {
+  const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
   const manager = new PermissionManager({ policy, consentProvider: fixedConsentProvider({ granted: false, reason: 'no thanks' }) });
   const decision = await manager.request(makeRequest());
   assert.equal(decision.effect, 'deny');
@@ -146,8 +155,14 @@ test('manager.revoke: "package" kind revokes every grant for that package only',
   assert.equal(revoked.ok, true);
   if (revoked.ok) assert.equal(revoked.value, 2);
 
-  assert.equal((await manager.check(makeRequest({ permission: Permissions.filesystem.read, requester: { packageId: pkgA } }))).effect, 'deny');
-  assert.equal((await manager.check(makeRequest({ permission: Permissions.filesystem.read, requester: { packageId: pkgB } }))).effect, 'allow');
+  assert.equal(
+    (await manager.check(makeRequest({ permission: Permissions.filesystem.read, requester: { packageId: pkgA } }))).effect,
+    'deny',
+  );
+  assert.equal(
+    (await manager.check(makeRequest({ permission: Permissions.filesystem.read, requester: { packageId: pkgB } }))).effect,
+    'allow',
+  );
 });
 
 test('manager.revoke: "capability" kind revokes only grants attributed to that capability', async () => {
@@ -209,7 +224,11 @@ test('failure behavior: a malformed permission id fails closed to deny, never th
 test('audit: every state transition emits the correct event type', async () => {
   const audit = new InMemoryAuditSink();
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
-  const manager = new PermissionManager({ policy, auditSink: audit, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent' }) });
+  const manager = new PermissionManager({
+    policy,
+    auditSink: audit,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent' }),
+  });
 
   await manager.request(makeRequest());
 
@@ -221,7 +240,10 @@ test('audit: a denied check emits requested + denied', async () => {
   const audit = new InMemoryAuditSink();
   const manager = new PermissionManager({ policy: new RuleBasedPolicy([]), auditSink: audit });
   await manager.check(makeRequest());
-  assert.deepEqual(audit.all().map((e) => e.type), ['permission.requested', 'permission.denied']);
+  assert.deepEqual(
+    audit.all().map((e) => e.type),
+    ['permission.requested', 'permission.denied'],
+  );
 });
 
 test('audit: revocation emits permission.revoked', async () => {
@@ -242,12 +264,35 @@ test('manager uses the injected clock for decision timestamps', async () => {
 
 test('store failure fails closed to deny rather than throwing', async () => {
   const failingStore = {
-    async get() { return { ok: false as const, error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom') }; },
-    async set() { return { ok: false as const, error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom') }; },
-    async delete() { return { ok: false as const, error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom') }; },
-    async list() { return { ok: false as const, error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom') }; },
+    async get() {
+      return {
+        ok: false as const,
+        error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom'),
+      };
+    },
+    async set() {
+      return {
+        ok: false as const,
+        error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom'),
+      };
+    },
+    async delete() {
+      return {
+        ok: false as const,
+        error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom'),
+      };
+    },
+    async list() {
+      return {
+        ok: false as const,
+        error: new (await import('@xo/errors')).PermissionError((await import('@xo/errors')).ErrorCode.PERMISSION_STORE_ERROR, 'boom'),
+      };
+    },
   };
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'allow-all', effect: 'ALLOW', match: {} }]), store: failingStore });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'allow-all', effect: 'ALLOW', match: {} }]),
+    store: failingStore,
+  });
   const decision = await manager.check(makeRequest());
   assert.equal(decision.effect, 'deny');
   assert.equal(decision.policyId, 'system.fail-closed');
@@ -261,7 +306,11 @@ test('store failure fails closed to deny rather than throwing', async () => {
 test('consent scope: exact same scope as requested is valid', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
   const store = new InMemoryPermissionStore();
-  const manager = new PermissionManager({ policy, store, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }) });
+  const manager = new PermissionManager({
+    policy,
+    store,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }),
+  });
   const decision = await manager.request(makeRequest({ scope: pathScope('/workspace') }));
   assert.equal(decision.effect, 'allow');
   assert.deepEqual(decision.grantedScope, pathScope('/workspace'));
@@ -269,7 +318,10 @@ test('consent scope: exact same scope as requested is valid', async () => {
 
 test('consent scope: a narrower child scope is valid (§2 example 1: requested /workspace, consent /workspace/project)', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
-  const manager = new PermissionManager({ policy, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/workspace/project') }) });
+  const manager = new PermissionManager({
+    policy,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/workspace/project') }),
+  });
   const decision = await manager.request(makeRequest({ scope: pathScope('/workspace') }));
   assert.equal(decision.effect, 'allow');
   assert.deepEqual(decision.grantedScope, pathScope('/workspace/project'));
@@ -278,7 +330,11 @@ test('consent scope: a narrower child scope is valid (§2 example 1: requested /
 test('consent scope: a wider parent scope is INVALID and fails closed (§2 example 2: requested /workspace/project, consent /workspace)', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
   const store = new InMemoryPermissionStore();
-  const manager = new PermissionManager({ policy, store, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }) });
+  const manager = new PermissionManager({
+    policy,
+    store,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'persistent', scope: pathScope('/workspace') }),
+  });
   const decision = await manager.request(makeRequest({ scope: pathScope('/workspace/project') }));
   assert.equal(decision.effect, 'deny');
   assert.equal(decision.policyId, 'system.fail-closed');
@@ -287,21 +343,30 @@ test('consent scope: a wider parent scope is INVALID and fails closed (§2 examp
 
 test('consent scope: an unrelated scope (different value, same kind) is INVALID', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
-  const manager = new PermissionManager({ policy, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/etc') }) });
+  const manager = new PermissionManager({
+    policy,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/etc') }),
+  });
   const decision = await manager.request(makeRequest({ scope: pathScope('/workspace') }));
   assert.equal(decision.effect, 'deny');
 });
 
 test('consent scope: an unrelated scope of a DIFFERENT kind is INVALID', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.network.connect } }]);
-  const manager = new PermissionManager({ policy, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: hostScope('api.example.com') }) });
+  const manager = new PermissionManager({
+    policy,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: hostScope('api.example.com') }),
+  });
   const decision = await manager.request(makeRequest({ permission: Permissions.network.connect, scope: pathScope('/workspace') }));
   assert.equal(decision.effect, 'deny');
 });
 
 test('consent scope: an unscoped (global) request accepts any consent-narrowed scope', async () => {
   const policy = new RuleBasedPolicy([{ id: 'prompt-rule', effect: 'PROMPT', match: { permission: Permissions.filesystem.read } }]);
-  const manager = new PermissionManager({ policy, consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/workspace') }) });
+  const manager = new PermissionManager({
+    policy,
+    consentProvider: fixedConsentProvider({ granted: true, lifetime: 'once', scope: pathScope('/workspace') }),
+  });
   const decision = await manager.request(makeRequest()); // no request.scope
   assert.equal(decision.effect, 'allow');
   assert.deepEqual(decision.grantedScope, pathScope('/workspace'));
@@ -351,7 +416,9 @@ test('consent scope: an entirely unrecognized scope shape fails closed', async (
 // ALLOW or NO_MATCH never overrides an existing grant.
 
 test('precedence: stored grant = ALLOW, explicit policy = DENY -> DENIED (policy wins, emergency override)', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'emergency-deny', effect: 'DENY', match: { permission: Permissions.filesystem.read } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'emergency-deny', effect: 'DENY', match: { permission: Permissions.filesystem.read } }]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read });
   const decision = await manager.check(makeRequest());
   assert.equal(decision.effect, 'deny');
@@ -359,7 +426,9 @@ test('precedence: stored grant = ALLOW, explicit policy = DENY -> DENIED (policy
 });
 
 test('precedence: stored grant = ALLOW, explicit policy = ALLOW -> ALLOWED', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'explicit-allow', effect: 'ALLOW', match: { permission: Permissions.filesystem.read } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'explicit-allow', effect: 'ALLOW', match: { permission: Permissions.filesystem.read } }]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read });
   const decision = await manager.check(makeRequest());
   assert.equal(decision.effect, 'allow');
@@ -374,7 +443,9 @@ test('precedence: stored grant = ALLOW, no matching policy rule (NO_MATCH / defa
 });
 
 test('precedence: grant revoked, policy = ALLOW -> still ALLOWED via policy', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'explicit-allow', effect: 'ALLOW', match: { permission: Permissions.filesystem.read } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'explicit-allow', effect: 'ALLOW', match: { permission: Permissions.filesystem.read } }]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read });
   await manager.revoke({ kind: 'package', packageId: pkgA });
   const decision = await manager.check(makeRequest());
@@ -390,14 +461,20 @@ test('precedence: no grant, no policy rule -> default-deny (unchanged baseline)'
 });
 
 test('precedence: an explicit DENY that does NOT match this request does not suppress an unrelated grant', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'deny-network', effect: 'DENY', match: { permission: Permissions.network.connect } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'deny-network', effect: 'DENY', match: { permission: Permissions.network.connect } }]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read });
   const decision = await manager.check(makeRequest({ permission: Permissions.filesystem.read }));
   assert.equal(decision.effect, 'allow');
 });
 
 test('precedence: a scoped policy DENY overrides a broader grant for the same scope, but not a grant outside its scope', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'deny-secrets', effect: 'DENY', match: { permission: Permissions.filesystem.read, scope: pathScope('/workspace/secrets') } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([
+      { id: 'deny-secrets', effect: 'DENY', match: { permission: Permissions.filesystem.read, scope: pathScope('/workspace/secrets') } },
+    ]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read, scope: pathScope('/workspace') });
 
   const secretsRequest = await manager.check(makeRequest({ scope: pathScope('/workspace/secrets') }));
@@ -408,7 +485,9 @@ test('precedence: a scoped policy DENY overrides a broader grant for the same sc
 });
 
 test('precedence: determinism — repeated evaluation of the same (grant, policy) state always yields the same result', async () => {
-  const manager = new PermissionManager({ policy: new RuleBasedPolicy([{ id: 'deny-all', effect: 'DENY', match: { permission: Permissions.filesystem.read } }]) });
+  const manager = new PermissionManager({
+    policy: new RuleBasedPolicy([{ id: 'deny-all', effect: 'DENY', match: { permission: Permissions.filesystem.read } }]),
+  });
   await manager.grant({ packageId: pkgA, permission: Permissions.filesystem.read });
   const first = await manager.check(makeRequest());
   for (let i = 0; i < 10; i += 1) {

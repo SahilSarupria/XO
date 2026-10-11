@@ -28,7 +28,10 @@ test('a document with a small fraction of suspicious tokens is degraded, not blo
 });
 
 test('a document where most tokens are corrupted is blocked, and the blocked diagnostic is an error, not a warning', () => {
-  const report = assessDocumentQuality(doc([paragraph('and8827461093 PlanOpted NameOpted xyz9999999 abc8888888 ContactNoEmail')]), 'corrupted.pdf');
+  const report = assessDocumentQuality(
+    doc([paragraph('and8827461093 PlanOpted NameOpted xyz9999999 abc8888888 ContactNoEmail')]),
+    'corrupted.pdf',
+  );
   assert.equal(report.state, 'blocked');
   const summary = report.diagnostics.find((d) => d.code === 'source-quality/blocked');
   assert.ok(summary);
@@ -46,7 +49,11 @@ test('every diagnostic identifies the source id, so a caller can trace a finding
 
 test('table_row blocks are scanned via their cells, not skipped (a table is a common carrier of concatenation artifacts)', () => {
   const tableDoc: ParsedDocument = {
-    root: { heading: undefined, blocks: [{ kind: 'table_row', cells: ['and8827461093', 'ordinary cell'], provenance: { page: 2, yRange: [0, 10] } }], subsections: [] },
+    root: {
+      heading: undefined,
+      blocks: [{ kind: 'table_row', cells: ['and8827461093', 'ordinary cell'], provenance: { page: 2, yRange: [0, 10] } }],
+      subsections: [],
+    },
     bodyFontSizePt: 10,
   };
   const report = assessDocumentQuality(tableDoc, 'table.pdf');
@@ -59,7 +66,13 @@ test('blocks nested under subsections are included, not just the root section\u2
     root: {
       heading: undefined,
       blocks: [],
-      subsections: [{ heading: { kind: 'heading', level: 1, text: 'Section', provenance: { page: 1, yRange: [0, 10] } }, blocks: [paragraph('and8827461093')], subsections: [] }],
+      subsections: [
+        {
+          heading: { kind: 'heading', level: 1, text: 'Section', provenance: { page: 1, yRange: [0, 10] } },
+          blocks: [paragraph('and8827461093')],
+          subsections: [],
+        },
+      ],
     },
     bodyFontSizePt: 10,
   };

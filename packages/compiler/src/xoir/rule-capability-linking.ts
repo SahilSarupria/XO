@@ -1,5 +1,12 @@
 import { XoirEdgeId, XoirNodeId, confidenceFromScore, type XoirGraph, type XoirPropertyBag } from '@xo/xoir';
-import { isStrictSectionPathPrefix, scoreLink, scoreStructuralLink, significantTokens, type LinkCandidate, type StructuralLinkCandidate } from './semantic-link.js';
+import {
+  isStrictSectionPathPrefix,
+  scoreLink,
+  scoreStructuralLink,
+  significantTokens,
+  type LinkCandidate,
+  type StructuralLinkCandidate,
+} from './semantic-link.js';
 
 /**
  * Shared implementation behind both Stage 7's rule -> capability/concept
@@ -75,7 +82,6 @@ export const RULE_DERIVED_METADATA_KEY = 'xoRuleDerived';
 /** Metadata key carrying the originating rule node's id on a minted capability — see {@link RULE_DERIVED_METADATA_KEY}. */
 export const RULE_DERIVED_SOURCE_NODE_ID_METADATA_KEY = 'xoRuleDerivedSourceNodeId';
 
-
 /** One candidate rule-node source of content-mention linking: the node's own id, the text to score against every referenceable capability/concept label, and the `experienceUnitId` of its first source reference (for the same-unit-term-overlap tier — see `semantic-link.ts`). */
 export interface RuleLinkSource {
   readonly nodeId: string;
@@ -127,7 +133,9 @@ function buildCandidateTermFrequency(referenceable: readonly { readonly candidat
  * unrelated sibling content the way a broad structural-containment
  * search could otherwise expose it to.
  */
-function buildStructuralCapabilityCandidates(target: XoirGraph): readonly { readonly id: ReturnType<typeof XoirNodeId>; readonly candidate: StructuralLinkCandidate }[] {
+function buildStructuralCapabilityCandidates(
+  target: XoirGraph,
+): readonly { readonly id: ReturnType<typeof XoirNodeId>; readonly candidate: StructuralLinkCandidate }[] {
   return target
     .allNodes()
     .filter((n) => n.kind === 'capability')
@@ -187,7 +195,11 @@ function buildStructuralCapabilityCandidates(target: XoirGraph): readonly { read
  * `exact_label`/`same_unit_term_overlap` behavior are entirely
  * unaffected, without any extra conditional logic to keep it that way.
  */
-export function linkRuleSourcesToReferencedNodes(target: XoirGraph, ruleSources: readonly RuleLinkSource[], now: (() => string) | undefined): void {
+export function linkRuleSourcesToReferencedNodes(
+  target: XoirGraph,
+  ruleSources: readonly RuleLinkSource[],
+  now: (() => string) | undefined,
+): void {
   const referenceable = target
     .allNodes()
     .filter((n) => REFERENCEABLE_KINDS.has(n.kind))
@@ -248,9 +260,13 @@ export function linkRuleSourcesToReferencedNodes(target: XoirGraph, ruleSources:
     const reasoningNode = target.getNode(fromId);
     const reasoningSectionPath = reasoningNode.ok ? reasoningNode.value.metadata.sourceRefs[0]?.sectionPath : undefined;
     if (reasoningSectionPath !== undefined && reasoningSectionPath.length > 0) {
-      const structuralAncestors = structuralCapabilityCandidates.filter(({ id, candidate }) => id !== fromId && isStrictSectionPathPrefix(candidate.sectionPath, reasoningSectionPath));
+      const structuralAncestors = structuralCapabilityCandidates.filter(
+        ({ id, candidate }) => id !== fromId && isStrictSectionPathPrefix(candidate.sectionPath, reasoningSectionPath),
+      );
       if (structuralAncestors.length > 0) {
-        const nearest = structuralAncestors.reduce((deepest, candidate) => (candidate.candidate.sectionPath.length > deepest.candidate.sectionPath.length ? candidate : deepest));
+        const nearest = structuralAncestors.reduce((deepest, candidate) =>
+          candidate.candidate.sectionPath.length > deepest.candidate.sectionPath.length ? candidate : deepest,
+        );
         const structuralScore = scoreStructuralLink(source.searchableText, reasoningSectionPath, nearest.candidate);
         if (structuralScore) {
           const edgeId = XoirEdgeId(`req_${source.nodeId}_${nearest.id}`);
@@ -325,4 +341,3 @@ export function linkMintedRuleCapabilities(target: XoirGraph, now: (() => string
     });
   }
 }
-

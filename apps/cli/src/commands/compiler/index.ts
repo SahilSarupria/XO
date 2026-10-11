@@ -59,7 +59,9 @@ export function registerCommands(registry: CommandRegistry): void {
         return 1;
       }
       const domainHint = requireFlag(args.flags, 'domain-hint');
-      return printResult(await capabilitiesCommand({ target, json: args.flags['json'] === true, ...(domainHint !== undefined ? { domainHint } : {}) }));
+      return printResult(
+        await capabilitiesCommand({ target, json: args.flags['json'] === true, ...(domainHint !== undefined ? { domainHint } : {}) }),
+      );
     },
   });
 

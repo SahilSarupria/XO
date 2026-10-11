@@ -15,14 +15,35 @@ import type { ExecutionResult } from '../src/execution/execution-result.js';
 import { ExecutionCancellation } from '../src/cancellation/execution-cancellation.js';
 
 function environment(): ExecutionEnvironment {
-  return { environmentId: EnvironmentId('env_1'), hostProfile: { family: 'claude', capabilities: [] }, createdAt: '2026-01-01T00:00:00.000Z' };
+  return {
+    environmentId: EnvironmentId('env_1'),
+    hostProfile: { family: 'claude', capabilities: [] },
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
 }
 
 function stubExecutionResult(request: ExecutionRequest, content: string): ExecutionResult {
   return {
     executionId: request.requestId as unknown as ExecutionResult['executionId'],
-    session: { sessionId: SessionId('s'), requestId: request.requestId, mountedPackages: [], chosenCapabilities: [], status: 'completed', receipts: [], createdAt: 't', updatedAt: 't' },
-    response: { content, stopReason: 'end_turn', usage: { promptTokens: 1, completionTokens: 1 }, capabilityId: request.capabilityId ?? '', packageName: 'stub_pkg', packageVersion: '1.0.0', degraded: false },
+    session: {
+      sessionId: SessionId('s'),
+      requestId: request.requestId,
+      mountedPackages: [],
+      chosenCapabilities: [],
+      status: 'completed',
+      receipts: [],
+      createdAt: 't',
+      updatedAt: 't',
+    },
+    response: {
+      content,
+      stopReason: 'end_turn',
+      usage: { promptTokens: 1, completionTokens: 1 },
+      capabilityId: request.capabilityId ?? '',
+      packageName: 'stub_pkg',
+      packageVersion: '1.0.0',
+      degraded: false,
+    },
     receipt: {
       receiptId: `r_${request.requestId}` as never,
       requestId: request.requestId,
@@ -57,10 +78,18 @@ class CallCountingRunner {
     const delayMs = this.delayByCapability.get(capabilityId) ?? 0;
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (cancellation.isCancelled) {
-      return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, 'cancelled') };
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, 'cancelled'),
+      };
     }
     if (this.failCapability === capabilityId) {
-      return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, 'stub failure') };
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, 'stub failure'),
+      };
     }
     return stubExecutionResult(request, `${capabilityId}-done`);
   };
@@ -154,13 +183,25 @@ test('retry attempt information (history) survives persistence', async () => {
     graphId: 'persist-retry',
     version: '1.0.0',
     startNodeId: NodeId('flaky'),
-    nodes: [{ id: NodeId('flaky'), type: 'capability', config: { capabilityId: 'flaky', input: 'x' }, retryPolicy: { maxAttempts: 3, backoffMs: 1 } }],
+    nodes: [
+      {
+        id: NodeId('flaky'),
+        type: 'capability',
+        config: { capabilityId: 'flaky', input: 'x' },
+        retryPolicy: { maxAttempts: 3, backoffMs: 1 },
+      },
+    ],
     edges: [],
   };
   let attempt = 0;
   runner.run = (async (request: ExecutionRequest) => {
     attempt += 1;
-    if (attempt < 3) return { executionId: request.requestId as unknown as ExecutionResult['executionId'], session: stubExecutionResult(request, '').session, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, 'transient') };
+    if (attempt < 3)
+      return {
+        executionId: request.requestId as unknown as ExecutionResult['executionId'],
+        session: stubExecutionResult(request, '').session,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, 'transient'),
+      };
     return stubExecutionResult(request, 'ok');
   }) as typeof runner.run;
 
@@ -276,7 +317,11 @@ test('restart simulation: Executor A persists partial progress, is destroyed, Ex
     // process B, where it actually finishes — this is exactly the
     // documented at-least-once semantics, not a bug.
     assert.equal(runner.callCountByCapability.get('a'), 1, 'node a must not be rerun after resume');
-    assert.equal(runner.callCountByCapability.get('b'), 2, 'node b was interrupted before completing in process A, so a retry in process B is expected (at-least-once)');
+    assert.equal(
+      runner.callCountByCapability.get('b'),
+      2,
+      'node b was interrupted before completing in process A, so a retry in process B is expected (at-least-once)',
+    );
     assert.equal(runner.callCountByCapability.get('c'), 1);
   } finally {
     await rm(dir, { recursive: true, force: true });

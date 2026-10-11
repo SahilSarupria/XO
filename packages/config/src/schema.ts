@@ -36,5 +36,11 @@ export type ConfigSchema = Readonly<Record<string, FieldSpec>>;
 
 /** Infers the runtime shape a schema resolves to, for use as `ConfigOf<typeof mySchema>`. */
 export type ConfigOf<S extends ConfigSchema> = {
-  [K in keyof S]: S[K] extends EnumFieldSpec<infer T> ? T : S[K]['type'] extends 'number' ? number : S[K]['type'] extends 'boolean' ? boolean : string;
+  [K in keyof S]: S[K] extends EnumFieldSpec<infer T>
+    ? T
+    : S[K]['type'] extends 'number'
+      ? number
+      : S[K]['type'] extends 'boolean'
+        ? boolean
+        : string;
 };

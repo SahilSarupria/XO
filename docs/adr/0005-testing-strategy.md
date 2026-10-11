@@ -1,9 +1,11 @@
 # ADR 0005: Node's built-in test runner, contract tests for interface-only packages
 
 ## Status
+
 Accepted
 
 ## Context
+
 Every package needs tests. The ecosystem default for a TypeScript
 monorepo is Vitest or Jest — richer matchers, watch mode, snapshot
 testing. Three packages (`compiler-core`, `runtime-core`,
@@ -13,6 +15,7 @@ implementation... no runtime implementation... no registry
 implementation").
 
 ## Decision
+
 - Use `node:test` + `node:assert/strict` for every package. No test
   framework dependency.
 - For the three interface-only packages, write **contract tests**: a
@@ -22,6 +25,7 @@ implementation").
   business logic to the package under test.
 
 ## Alternatives considered
+
 - **Vitest**: nicer DX (watch mode, in-source snapshots), but is a
   dependency this module could not install in the sandbox it was
   built/verified in (see `docs/TECH_STACK.md`'s sandbox note), and
@@ -36,8 +40,9 @@ implementation").
   default).
 
 ## Consequences
+
 - Every package's `test` script is `node --import tsx --test
-  test/**/*.test.ts` — `tsx` is the one test-only dependency, used to run
+test/**/*.test.ts` — `tsx` is the one test-only dependency, used to run
   `.ts` test files directly. In the sandbox this module was built in
   (no registry access), tests were instead run via a globally-installed
   `tsx` (`scripts/sandbox-verify-tests.sh`); a normal `npm install`

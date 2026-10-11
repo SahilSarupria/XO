@@ -12,7 +12,8 @@ import type { CandidateCapability, CapabilityExtractionResult, CapabilityExtract
 function stripPunctuation(word: string): string {
   let start = 0;
   let end = word.length;
-  const isWordChar = (ch: string): boolean => (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch === "'" || ch === '-';
+  const isWordChar = (ch: string): boolean =>
+    (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch === "'" || ch === '-';
   while (start < end && !isWordChar(word[start]!)) start += 1;
   while (end > start && !isWordChar(word[end - 1]!)) end -= 1;
   return word.slice(start, end);
@@ -47,7 +48,31 @@ const MAX_OBJECT_WINDOW_WORDS = 6;
  * a name that's nothing but stop words falls back to "<Verb> Action"
  * (unchanged existing behavior for an empty object-word list).
  */
-const TRAILING_STOP_WORDS = new Set(['a', 'an', 'the', 'to', 'with', 'of', 'in', 'on', 'for', 'is', 'are', 'was', 'were', 'there', 'and', 'or', 'that', 'this', 'which', 'by', 'at', 'from', 'as']);
+const TRAILING_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'to',
+  'with',
+  'of',
+  'in',
+  'on',
+  'for',
+  'is',
+  'are',
+  'was',
+  'were',
+  'there',
+  'and',
+  'or',
+  'that',
+  'this',
+  'which',
+  'by',
+  'at',
+  'from',
+  'as',
+]);
 
 function trimTrailingStopWords(words: readonly string[]): readonly string[] {
   const out = [...words];
@@ -153,7 +178,8 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
     // apply ("the system must be configured" is exactly the same kind of
     // pre-existing-state/warranty statement as "the system is
     // configured", not a workflow step, regardless of the modal).
-    const precededByModalBareBe = i > 1 && stripPunctuation(words[i - 1]!).toLowerCase() === 'be' && MODAL_WORDS.has(stripPunctuation(words[i - 2]!).toLowerCase());
+    const precededByModalBareBe =
+      i > 1 && stripPunctuation(words[i - 1]!).toLowerCase() === 'be' && MODAL_WORDS.has(stripPunctuation(words[i - 2]!).toLowerCase());
     const isPassiveContext = precededByPassiveAux || precededByModalBareBe;
 
     // Passive-voice fallback: "invoices are created" — `clean` itself isn't
@@ -223,7 +249,9 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
       const isSentenceInitialPastTense = i === 0;
 
       const followingWordForEd = i + 1 < words.length ? stripPunctuation(words[i + 1]!).toLowerCase() : undefined;
-      const looksLikeReducedRelativeClause = followingWordForEd !== undefined && ((followingWordForEd.length >= 3 && followingWordForEd.endsWith('ly')) || REDUCED_RELATIVE_PREPOSITIONS.has(followingWordForEd));
+      const looksLikeReducedRelativeClause =
+        followingWordForEd !== undefined &&
+        ((followingWordForEd.length >= 3 && followingWordForEd.endsWith('ly')) || REDUCED_RELATIVE_PREPOSITIONS.has(followingWordForEd));
       if (!looksLikeReducedRelativeClause && !isQuoteAdjacent && !isSentenceInitialPastTense) {
         for (const candidate of deriveEdSuffixBaseVerbCandidates(clean)) {
           const activeCategory = CAPABILITY_VERBS[candidate];
@@ -240,7 +268,9 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
       // context guards below rather than firing on the suffix alone.
       const precedingWord = i > 0 ? stripPunctuation(words[i - 1]!).toLowerCase() : undefined;
       const followingWord = i + 1 < words.length ? stripPunctuation(words[i + 1]!).toLowerCase() : undefined;
-      const looksLikeNounPhrase = (precedingWord !== undefined && DETERMINER_WORDS.has(precedingWord)) || (followingWord !== undefined && AUX_FOLLOWER_WORDS.has(followingWord));
+      const looksLikeNounPhrase =
+        (precedingWord !== undefined && DETERMINER_WORDS.has(precedingWord)) ||
+        (followingWord !== undefined && AUX_FOLLOWER_WORDS.has(followingWord));
       if (!looksLikeNounPhrase && !isQuoteAdjacent) {
         for (const candidate of deriveSSuffixBaseVerbCandidates(clean)) {
           const presentCategory = CAPABILITY_VERBS[candidate];
@@ -254,7 +284,11 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
   return undefined;
 }
 
-function baseProvenance(unit: ExperienceUnit, confidence: number, charOffsetRange: readonly [number, number] | undefined): KnowledgeProvenance {
+function baseProvenance(
+  unit: ExperienceUnit,
+  confidence: number,
+  charOffsetRange: readonly [number, number] | undefined,
+): KnowledgeProvenance {
   return {
     experienceUnitId: unit.id,
     documentPath: unit.provenance.documentPath,
@@ -297,7 +331,11 @@ function isSameUnitActionOrProcessEvidence(node: KnowledgeNode, unit: Experience
 }
 
 /** Finds every knowledge node whose canonical label appears verbatim in `text` (or, failing that, is an `action`/`process` node from the same `ExperienceUnit` — see `isSameUnitActionOrProcessEvidence`), split into concept-typed labels and everything else — the same content-mention technique `../knowledge/relationship-builder.ts` uses. */
-function findMentionedKnowledgeNodes(text: string, unit: ExperienceUnit, knowledgeGraph: KnowledgeGraph): { readonly nodeIds: readonly string[]; readonly conceptLabels: readonly string[] } {
+function findMentionedKnowledgeNodes(
+  text: string,
+  unit: ExperienceUnit,
+  knowledgeGraph: KnowledgeGraph,
+): { readonly nodeIds: readonly string[]; readonly conceptLabels: readonly string[] } {
   const nodeIds: string[] = [];
   const conceptLabels: string[] = [];
   for (const node of knowledgeGraph.nodes) {

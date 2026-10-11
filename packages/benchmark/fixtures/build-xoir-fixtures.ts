@@ -36,24 +36,78 @@ function must<T>(r: { ok: true; value: T } | { ok: false; error: { message: stri
 export function buildRuntimeMechanicsGraph(): XoirGraph {
   const graph = XoirGraph.create(XoirGraphId('bm_runtime_mechanics'));
   const cap = (id: string, name: string, extra: Record<string, unknown> = {}): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(id), kind: 'capability', properties: { name, description: `${name} (benchmark fixture)`, ...extra }, confidence: 0.8, sourceRefs: REF, now: FIXED_NOW }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(id),
+        kind: 'capability',
+        properties: { name, description: `${name} (benchmark fixture)`, ...extra },
+        confidence: 0.8,
+        sourceRefs: REF,
+        now: FIXED_NOW,
+      }),
+    );
   };
   const rule = (capId: string, ruleId: string, question: string, outcome: string): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(ruleId), kind: 'decision_node', properties: { question, outcome }, confidence: 0.8, sourceRefs: REF, now: FIXED_NOW }));
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${capId}_requires_${ruleId}`), kind: 'REQUIRES', fromId: XoirNodeId(capId), toId: XoirNodeId(ruleId), now: FIXED_NOW }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(ruleId),
+        kind: 'decision_node',
+        properties: { question, outcome },
+        confidence: 0.8,
+        sourceRefs: REF,
+        now: FIXED_NOW,
+      }),
+    );
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${capId}_requires_${ruleId}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(capId),
+        toId: XoirNodeId(ruleId),
+        now: FIXED_NOW,
+      }),
+    );
   };
   const action = (capId: string, conceptId: string, text: string): void => {
-    must(graph.createAndAddNode({ id: XoirNodeId(conceptId), kind: 'concept', properties: { name: text, text }, confidence: 0.7, sourceRefs: REF, subtype: 'action', now: FIXED_NOW }));
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${capId}_requires_${conceptId}`), kind: 'REQUIRES', fromId: XoirNodeId(capId), toId: XoirNodeId(conceptId), now: FIXED_NOW }));
+    must(
+      graph.createAndAddNode({
+        id: XoirNodeId(conceptId),
+        kind: 'concept',
+        properties: { name: text, text },
+        confidence: 0.7,
+        sourceRefs: REF,
+        subtype: 'action',
+        now: FIXED_NOW,
+      }),
+    );
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${capId}_requires_${conceptId}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(capId),
+        toId: XoirNodeId(conceptId),
+        now: FIXED_NOW,
+      }),
+    );
   };
   const requires = (consumer: string, producer: string): void => {
-    must(graph.createAndAddEdge({ id: XoirEdgeId(`edge_${consumer}_requires_${producer}`), kind: 'REQUIRES', fromId: XoirNodeId(consumer), toId: XoirNodeId(producer), now: FIXED_NOW }));
+    must(
+      graph.createAndAddEdge({
+        id: XoirEdgeId(`edge_${consumer}_requires_${producer}`),
+        kind: 'REQUIRES',
+        fromId: XoirNodeId(consumer),
+        toId: XoirNodeId(producer),
+        now: FIXED_NOW,
+      }),
+    );
   };
 
   // Workflow 1 — proven data flow: A (deterministic, declares output `matched`) -> B (deterministic, declares input `matched`).
   cap('cap_bm_flow_a', 'Check claim threshold', { outputs: ['matched: Whether the threshold rule matched'] });
   rule('cap_bm_flow_a', 'decision_bm_flow_a', 'the claim amount exceeds 10000', 'flag for payout');
-  cap('cap_bm_flow_b', 'Authorize payout', { inputs: ['matched: Whether the threshold rule matched', 'payout amount: The payout amount to authorize'] });
+  cap('cap_bm_flow_b', 'Authorize payout', {
+    inputs: ['matched: Whether the threshold rule matched', 'payout amount: The payout amount to authorize'],
+  });
   rule('cap_bm_flow_b', 'decision_bm_flow_b', 'the payout amount exceeds 500', 'release payout');
   requires('cap_bm_flow_b', 'cap_bm_flow_a');
 

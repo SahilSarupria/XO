@@ -24,7 +24,7 @@ export type {
   Relationship,
   XOEntity,
   MarketplaceWorld,
-} from './types.js'
+} from './types.js';
 
 export type {
   SourceGraph,
@@ -34,11 +34,11 @@ export type {
   SourceCapability,
   SourceWorkflow,
   SourceCommunity,
-} from './source-graph.js'
+} from './source-graph.js';
 
-export { projectWorld, type ProjectionOptions } from './projection.js'
+export { projectWorld, type ProjectionOptions } from './projection.js';
 
-export { MARKETPLACE_ALTITUDE_LEVELS, createMarketplaceAltitudeModel } from './altitude.js'
+export { MARKETPLACE_ALTITUDE_LEVELS, createMarketplaceAltitudeModel } from './altitude.js';
 
 export {
   buildMarketplaceSemanticZoom,
@@ -46,16 +46,12 @@ export {
   visibleFields,
   type MarketplaceField,
   type MarketplaceEmergence,
-} from './semantic.js'
+} from './semantic.js';
 
-export { MarketplaceNeighborhoods } from './neighborhoods.js'
+export { MarketplaceNeighborhoods } from './neighborhoods.js';
 
-export { MarketplaceIntent, type ResolvedCandidate } from './intent.js'
+export { MarketplaceIntent, type ResolvedCandidate } from './intent.js';
 
-export {
-  MarketplaceWorldSession,
-  type MarketplaceEvent,
-  type MarketplaceEventListener,
-} from './session.js'
+export { MarketplaceWorldSession, type MarketplaceEvent, type MarketplaceEventListener } from './session.js';
 
-export { serializeWorld, deserializeWorld, type SerializedWorld } from './serialization.js'
+export { serializeWorld, deserializeWorld, type SerializedWorld } from './serialization.js';

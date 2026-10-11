@@ -20,7 +20,14 @@ export async function settle(rounds = 4): Promise<void> {
 
 export interface FakeTerminal {
   readonly stdin: PassThrough & { isTTY: boolean; setRawMode: (m: boolean) => unknown; rawMode: boolean };
-  readonly stdout: { isTTY: boolean; columns: number; write(chunk: string): boolean; on(): void; removeListener(): void; getColorDepth(): number };
+  readonly stdout: {
+    isTTY: boolean;
+    columns: number;
+    write(chunk: string): boolean;
+    on(): void;
+    removeListener(): void;
+    getColorDepth(): number;
+  };
   /** Everything written to stdout so far, escape codes included. */
   raw(): string;
   /** Same, with escape codes removed. */

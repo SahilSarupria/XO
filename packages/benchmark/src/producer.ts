@@ -40,7 +40,13 @@ export interface ProducerValueModel {
   readonly exercisedBy: readonly string[];
 }
 
-const TEXT_CASES = ['aastha-operations', 'burglary-policy-schedule', 'commercial-property-policy', 'multidoc-burglary-claims', 'synthetic-claim-rules'] as const;
+const TEXT_CASES = [
+  'aastha-operations',
+  'burglary-policy-schedule',
+  'commercial-property-policy',
+  'multidoc-burglary-claims',
+  'synthetic-claim-rules',
+] as const;
 
 /** Every producer value the repository can assign, derived from the extractors' `.name` fields and the three stamp sites. */
 export const PRODUCER_TAXONOMY: readonly ProducerValueModel[] = [
@@ -49,7 +55,8 @@ export const PRODUCER_TAXONOMY: readonly ProducerValueModel[] = [
     assignedAt: 'knowledge/hybrid-extractor.ts (ruleBased.name) and capabilities/hybrid-extractor.ts (ruleBased.name)',
     receivers: 'concept / fact / constraint nodes (knowledge path) and capability nodes (capability extractor path)',
     stamped: true,
-    independentlyEstablishable: 'Yes when AI is not exercised: it is then the only extractor on the text path, and the creation path is visible from kind + subtype (knowledge) or the absence of the rule-derived marker (capability).',
+    independentlyEstablishable:
+      'Yes when AI is not exercised: it is then the only extractor on the text path, and the creation path is visible from kind + subtype (knowledge) or the absence of the rule-derived marker (capability).',
     exercisedBy: [...TEXT_CASES, 'openapi-operation-data-flow', 'structured-operation-data-flow'].sort(compareStrings),
   },
   {
@@ -57,20 +64,23 @@ export const PRODUCER_TAXONOMY: readonly ProducerValueModel[] = [
     assignedAt: 'capabilities/hybrid-extractor.ts (structuredOperation.name)',
     receivers: 'capability nodes lowered from structured (json/yaml) and OpenAPI sources',
     stamped: true,
-    independentlyEstablishable: 'Yes: the SOURCE FORMAT is a property of the fixture, and only that extractor consumes structured / OpenAPI inputs.',
+    independentlyEstablishable:
+      'Yes: the SOURCE FORMAT is a property of the fixture, and only that extractor consumes structured / OpenAPI inputs.',
     exercisedBy: ['openapi-operation-data-flow', 'structured-operation-data-flow'],
   },
   {
     value: 'ai',
-    assignedAt: 'knowledge/hybrid-extractor.ts and capabilities/hybrid-extractor.ts (aiExtractor.name), only when an AI extractor is configured',
+    assignedAt:
+      'knowledge/hybrid-extractor.ts and capabilities/hybrid-extractor.ts (aiExtractor.name), only when an AI extractor is configured',
     receivers: 'concept / fact / constraint and capability nodes',
     stamped: true,
-    independentlyEstablishable: 'Not in the benchmark: AI is `not_exercised` (P1.5). Any node merging rule-based and AI candidates legitimately carries no producer.',
+    independentlyEstablishable:
+      'Not in the benchmark: AI is `not_exercised` (P1.5). Any node merging rule-based and AI candidates legitimately carries no producer.',
     exercisedBy: [],
   },
   {
     value: 'hybrid',
-    assignedAt: 'never stamped: `hybrid` is the wrapper extractor\'s own name; it stamps its SUB-extractors\' names',
+    assignedAt: "never stamped: `hybrid` is the wrapper extractor's own name; it stamps its SUB-extractors' names",
     receivers: 'none',
     stamped: false,
     independentlyEstablishable: 'A `hybrid` value on a node would itself be a finding.',
@@ -100,23 +110,56 @@ export type ProducerOrigin =
   | 'reasoning_extractor'
   | 'unclassified';
 
-export const PRODUCER_ORIGINS: readonly ProducerOrigin[] = ['knowledge_extractor', 'capability_extractor', 'rule_minted_capability', 'reasoning_extractor', 'unclassified'];
+export const PRODUCER_ORIGINS: readonly ProducerOrigin[] = [
+  'knowledge_extractor',
+  'capability_extractor',
+  'rule_minted_capability',
+  'reasoning_extractor',
+  'unclassified',
+];
 
 /** Origins whose creation path HAS a stamping site: an absent `producedBy` on these is measurable missing attribution. */
 export const STAMPING_ORIGINS: readonly ProducerOrigin[] = ['knowledge_extractor', 'capability_extractor'];
 
 /** compiler `xoir/node-kind-mapping.ts` KNOWLEDGE_NODE_TYPE_TO_CANONICAL_KIND (drift-guarded by test). */
 export const KNOWLEDGE_SUBTYPE_KIND: Readonly<Record<string, string>> = {
-  concept: 'concept', definition: 'concept', entity: 'concept', actor: 'concept', organization: 'concept', product: 'concept', technology: 'concept',
-  metric: 'fact', risk: 'fact', opportunity: 'fact', constraint: 'constraint', obligation: 'constraint', exception: 'constraint', jurisdiction: 'concept',
-  financial_instrument: 'concept', document: 'concept', reference: 'concept', time_period: 'concept', event: 'fact', process: 'concept', action: 'concept',
-  input: 'concept', output: 'concept',
+  concept: 'concept',
+  definition: 'concept',
+  entity: 'concept',
+  actor: 'concept',
+  organization: 'concept',
+  product: 'concept',
+  technology: 'concept',
+  metric: 'fact',
+  risk: 'fact',
+  opportunity: 'fact',
+  constraint: 'constraint',
+  obligation: 'constraint',
+  exception: 'constraint',
+  jurisdiction: 'concept',
+  financial_instrument: 'concept',
+  document: 'concept',
+  reference: 'concept',
+  time_period: 'concept',
+  event: 'fact',
+  process: 'concept',
+  action: 'concept',
+  input: 'concept',
+  output: 'concept',
 };
 
 /** compiler `xoir/reasoning-node-kind-mapping.ts` REASONING_NODE_TYPE_TO_CANONICAL_KIND (drift-guarded by test). */
 export const REASONING_SUBTYPE_KIND: Readonly<Record<string, string>> = {
-  rule: 'heuristic', prerequisite: 'constraint', prohibition: 'constraint', policy: 'constraint', decision: 'decision_node', alternative: 'decision_node',
-  justification: 'reasoning_step', exception: 'heuristic', escalation: 'escalation_rule', risk_threshold: 'risk_policy',
+  rule: 'heuristic',
+  prerequisite: 'constraint',
+  prohibition: 'constraint',
+  policy: 'constraint',
+  decision: 'decision_node',
+  alternative: 'decision_node',
+  justification: 'reasoning_step',
+  exception: 'heuristic',
+  escalation: 'escalation_rule',
+  risk_threshold: 'risk_policy',
 };
 
 /** `capabilities/rule-capability-linking.ts` RULE_DERIVED_METADATA_KEY: written by the minter into the capability's own metadata. */
@@ -157,7 +200,9 @@ export interface ProducerOriginSummary {
 }
 
 /** Attributed / unattributed counts per creation path. Pure; every origin key is present, sorted. */
-export function summarizeProducerAttribution(nodes: readonly Pick<ObservedNode, 'kind' | 'subtype' | 'properties' | 'producedBy'>[]): Readonly<Record<ProducerOrigin, ProducerOriginSummary>> {
+export function summarizeProducerAttribution(
+  nodes: readonly Pick<ObservedNode, 'kind' | 'subtype' | 'properties' | 'producedBy'>[],
+): Readonly<Record<ProducerOrigin, ProducerOriginSummary>> {
   const out = {} as Record<ProducerOrigin, { attributed: number; unattributed: number; producers: Record<string, number> }>;
   for (const o of PRODUCER_ORIGINS) out[o] = { attributed: 0, unattributed: 0, producers: {} };
   for (const n of nodes) {
@@ -168,6 +213,7 @@ export function summarizeProducerAttribution(nodes: readonly Pick<ObservedNode, 
       bucket.producers[n.producedBy] = (bucket.producers[n.producedBy] ?? 0) + 1;
     }
   }
-  for (const o of PRODUCER_ORIGINS) out[o].producers = Object.fromEntries(Object.entries(out[o].producers).sort(([a], [b]) => compareStrings(a, b)));
+  for (const o of PRODUCER_ORIGINS)
+    out[o].producers = Object.fromEntries(Object.entries(out[o].producers).sort(([a], [b]) => compareStrings(a, b)));
   return out;
 }

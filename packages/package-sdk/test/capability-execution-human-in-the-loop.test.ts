@@ -40,7 +40,11 @@ function humanInTheLoopCapability(): CapabilityDeclaration {
     estimatedCost: { currency: 'USD', amount: 0 },
     estimatedLatencyMs: 0,
     confidence: { score: 0.72, basis: 'self_reported' },
-    execution: { mode: 'human_in_the_loop', contractId: 'capability:reconcile-invoice-balance', bindingId: 'binding_capability:reconcile-invoice-balance_action-escalation-resolver' },
+    execution: {
+      mode: 'human_in_the_loop',
+      contractId: 'capability:reconcile-invoice-balance',
+      bindingId: 'binding_capability:reconcile-invoice-balance_action-escalation-resolver',
+    },
   };
 }
 
@@ -56,7 +60,10 @@ test("HITL: a well-formed mode: 'human_in_the_loop' capability installs successf
 test("HITL: mode: 'human_in_the_loop' with no inputSchema is valid (never required for this mode, unlike deterministic_rule's optional-but-common one)", async () => {
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
-    const capability: CapabilityDeclaration = { ...humanInTheLoopCapability(), execution: { mode: 'human_in_the_loop', contractId: 'capability:reconcile-invoice-balance' } };
+    const capability: CapabilityDeclaration = {
+      ...humanInTheLoopCapability(),
+      execution: { mode: 'human_in_the_loop', contractId: 'capability:reconcile-invoice-balance' },
+    };
     const bundle = buildSampleBundle({ capabilities: [capability] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, true);
@@ -83,7 +90,7 @@ test("HITL: mode: 'hybrid' and mode: 'deterministic_rule' validation is complete
   });
 });
 
-test("HITL: an unrecognized execution mode string still fails package validation -- the allowlist is still closed, not opened to arbitrary strings", async () => {
+test('HITL: an unrecognized execution mode string still fails package validation -- the allowlist is still closed, not opened to arbitrary strings', async () => {
   await withTempStore(async (store) => {
     const installer = new PackageInstaller(store);
     const capability = { ...humanInTheLoopCapability(), execution: { mode: 'not_a_real_mode' } } as unknown as CapabilityDeclaration;

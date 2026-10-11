@@ -47,7 +47,7 @@ function baseRequest(): ExecutionRequest {
   };
 }
 
-test('buildReceipt() captures the selected plan candidate\'s package and component hashes', () => {
+test("buildReceipt() captures the selected plan candidate's package and component hashes", () => {
   const registry = PackageRegistry.empty().withMounted(mount());
   const context = buildRuntimeContext(registry);
   const plan = new CapabilityNegotiator().plan(baseRequest(), context);
@@ -91,7 +91,7 @@ test('a receipt is frozen (immutable) and JSON-serializable', () => {
   assert.deepEqual(roundTripped.packagesUsed, receipt.packagesUsed);
 });
 
-test('createSession() starts pending, carries the environment\'s tokenBudget/provider', () => {
+test("createSession() starts pending, carries the environment's tokenBudget/provider", () => {
   const session = createSession(baseRequest(), () => new Date('2026-01-01T00:00:00.000Z'));
   assert.equal(session.status, 'pending');
   assert.equal(session.tokenBudget, 10_000);

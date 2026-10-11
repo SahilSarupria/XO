@@ -41,7 +41,8 @@ export class SettingsStore {
     } catch (cause) {
       return { settings: {}, warning: `ignoring unreadable settings file ${this.path}: ${(cause as Error).message}` };
     }
-    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { settings: {}, warning: `ignoring ${this.path}: expected a JSON object` };
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+      return { settings: {}, warning: `ignoring ${this.path}: expected a JSON object` };
     const obj = raw as Record<string, unknown>;
     const settings: Record<string, string | boolean> = {};
     for (const key of STRING_KEYS) {

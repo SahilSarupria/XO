@@ -5,7 +5,7 @@
   "description": "XO Platform monorepo — Module 1: engineering foundation (no compiler/runtime/registry business logic).",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20.11.0",
+    "node": ">=22.15.0",
     "npm": ">=10.0.0"
   },
   "workspaces": [

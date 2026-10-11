@@ -1,4 +1,13 @@
-import type { CapabilityDeclaration, CompatibilityDeclaration, ComponentEntry, ComponentKind, DependencyDeclaration, ManifestPermissionDeclaration, XoManifest, XoMetadata } from '@xo/types';
+import type {
+  CapabilityDeclaration,
+  CompatibilityDeclaration,
+  ComponentEntry,
+  ComponentKind,
+  DependencyDeclaration,
+  ManifestPermissionDeclaration,
+  XoManifest,
+  XoMetadata,
+} from '@xo/types';
 import { ContentHash, err, ok, type Result } from '@xo/types';
 import { ErrorCode, PackageError } from '@xo/errors';
 import type { Hasher } from '@xo/crypto';
@@ -46,16 +55,24 @@ export class ManifestBuilder {
   ) {}
 
   static create(hasher: Hasher = new Sha256Hasher()): ManifestBuilder {
-    return new ManifestBuilder({
-      components: new Map(),
-      signatures: [],
-      capabilities: [],
-      dependencies: [],
-      permissions: [],
-    }, hasher);
+    return new ManifestBuilder(
+      {
+        components: new Map(),
+        signatures: [],
+        capabilities: [],
+        dependencies: [],
+        permissions: [],
+      },
+      hasher,
+    );
   }
 
-  setIdentity(fields: { readonly formatVersion: string; readonly name: string; readonly version: string; readonly creatorDid: string }): ManifestBuilder {
+  setIdentity(fields: {
+    readonly formatVersion: string;
+    readonly name: string;
+    readonly version: string;
+    readonly creatorDid: string;
+  }): ManifestBuilder {
     return new ManifestBuilder({ ...this.state, ...fields }, this.hasher);
   }
 
@@ -86,7 +103,7 @@ export class ManifestBuilder {
     return new ManifestBuilder({ ...this.state, dependencies }, this.hasher);
   }
 
-    /**
+  /**
    * Declares the permissions this package's capabilities need at runtime
    * (`@xo/permissions`' authorization model — see that package's README).
    * Replaces the entire set on each call, mirroring `setCapabilities`.
@@ -163,7 +180,9 @@ export class ManifestBuilder {
       ...(this.state.dependencies.length > 0 ? { dependencies: this.state.dependencies } : {}),
       ...(this.state.permissions.length > 0 ? { permissions: this.state.permissions } : {}),
       merkleRoot: ContentHash(buildMerkleRoot(leafHashes, this.hasher)),
-      ...(this.state.signatures.length > 0 ? { signatures: this.state.signatures.map(({ signerDid, role, signature }) => ({ signerDid, role, signature })) } : {}),
+      ...(this.state.signatures.length > 0
+        ? { signatures: this.state.signatures.map(({ signerDid, role, signature }) => ({ signerDid, role, signature })) }
+        : {}),
     };
 
     const bundle: PackageBundle = Object.freeze({

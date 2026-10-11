@@ -15,10 +15,11 @@ export function hashComponent(component: ComponentInput, hasher: Hasher = new Sh
 }
 
 /** Hashes every component and returns `[kind, hash]` pairs sorted by component kind, so the result is independent of input order — the same ordering rule {@link ManifestBuilder} uses when it feeds leaves to {@link buildMerkleRoot}. */
-export function hashComponents(components: readonly ComponentInput[], hasher: Hasher = new Sha256Hasher()): readonly (readonly [string, string])[] {
-  return [...components]
-    .sort((a, b) => a.kind.localeCompare(b.kind))
-    .map((c) => [c.kind, hashComponent(c, hasher)] as const);
+export function hashComponents(
+  components: readonly ComponentInput[],
+  hasher: Hasher = new Sha256Hasher(),
+): readonly (readonly [string, string])[] {
+  return [...components].sort((a, b) => a.kind.localeCompare(b.kind)).map((c) => [c.kind, hashComponent(c, hasher)] as const);
 }
 
 export { buildMerkleRoot };

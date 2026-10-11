@@ -117,10 +117,19 @@ export function describeConfiguration(def: BenchmarkCaseDefinition): Configurati
   return {
     evaluationVersion: EVALUATION_VERSION,
     entry,
-    sources: (def.sources ?? []).map((s) => ({ declaredKind: s.kind, path: s.path, ...(s.format !== undefined ? { format: s.format } : {}) })),
+    sources: (def.sources ?? []).map((s) => ({
+      declaredKind: s.kind,
+      path: s.path,
+      ...(s.format !== undefined ? { format: s.format } : {}),
+    })),
     ...(def.xoir !== undefined ? { xoir: def.xoir } : {}),
     compilerOptions: def.domainHint !== undefined ? { domainHint: def.domainHint } : {},
-    paths: { host: 'benchmark_observer', graphOrigin: entry === 'xoir' ? 'serialized_xoir' : 'compiled_sources', graphForm: 'live_graph', executionPaths },
+    paths: {
+      host: 'benchmark_observer',
+      graphOrigin: entry === 'xoir' ? 'serialized_xoir' : 'compiled_sources',
+      graphForm: 'live_graph',
+      executionPaths,
+    },
     ai: 'not_exercised',
   };
 }

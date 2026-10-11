@@ -126,11 +126,19 @@ test('install fails cleanly on a genuine unsatisfiable version conflict between 
     const shared2 = await installer.install(buildTestBundle({ name: 'xo_shared', version: '2.0.0' }));
     assert.ok(shared2.ok);
     const left = await installer.install(
-      buildTestBundle({ name: 'xo_left', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }] }),
+      buildTestBundle({
+        name: 'xo_left',
+        version: '1.0.0',
+        dependencies: [{ name: 'xo_shared', versionRange: '^1.0.0', kind: 'required' }],
+      }),
     );
     assert.ok(left.ok);
     const right = await installer.install(
-      buildTestBundle({ name: 'xo_right', version: '1.0.0', dependencies: [{ name: 'xo_shared', versionRange: '^2.0.0', kind: 'required' }] }),
+      buildTestBundle({
+        name: 'xo_right',
+        version: '1.0.0',
+        dependencies: [{ name: 'xo_shared', versionRange: '^2.0.0', kind: 'required' }],
+      }),
     );
     assert.ok(right.ok);
 

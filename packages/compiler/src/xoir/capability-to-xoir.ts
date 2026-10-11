@@ -1,6 +1,15 @@
 import { err, ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
-import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId, type CapabilityNodeProps, type XoirCostEstimate, type XoirDeterminism, type XoirExecutionMode } from '@xo/xoir';
+import {
+  XoirGraph,
+  XoirGraphId,
+  XoirNodeId,
+  XoirEdgeId,
+  type CapabilityNodeProps,
+  type XoirCostEstimate,
+  type XoirDeterminism,
+  type XoirExecutionMode,
+} from '@xo/xoir';
 import type { Capability, CapabilityGraph, CapabilitySignature } from '../capabilities/types.js';
 import { xoirEdgeKindForCapabilityRelationType } from './edge-mapping.js';
 import { provenanceToSourceRefs, toXoirConfidence } from './provenance.js';

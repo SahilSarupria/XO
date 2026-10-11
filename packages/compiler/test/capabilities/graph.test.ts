@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashCapabilityGraph, serializeCapabilityGraph, deserializeCapabilityGraph, findCapability, findRelationshipsFrom, findRelationshipsTo } from '../../src/capabilities/graph.js';
+import {
+  hashCapabilityGraph,
+  serializeCapabilityGraph,
+  deserializeCapabilityGraph,
+  findCapability,
+  findRelationshipsFrom,
+  findRelationshipsTo,
+} from '../../src/capabilities/graph.js';
 import type { CapabilityGraph, Capability, CapabilityRelationship } from '../../src/capabilities/types.js';
 import { UNKNOWN_SIGNATURE } from '../../src/capabilities/types.js';
 
@@ -26,7 +33,14 @@ function cap(id: string, name: string): Capability {
   };
 }
 function rel(id: string, from: string, to: string): CapabilityRelationship {
-  return { id, type: 'depends_on', fromCapabilityId: from as Capability['id'], toCapabilityId: to as Capability['id'], confidence: 0.6, provenance: [] };
+  return {
+    id,
+    type: 'depends_on',
+    fromCapabilityId: from as Capability['id'],
+    toCapabilityId: to as Capability['id'],
+    confidence: 0.6,
+    provenance: [],
+  };
 }
 
 test('hashCapabilityGraph is deterministic', () => {
@@ -61,7 +75,10 @@ test('serialize then deserialize round-trips with identical hash', () => {
 test('serialized output is sorted by id', () => {
   const graph: CapabilityGraph = { capabilities: [cap('z', 'Z'), cap('a', 'A')], relationships: [] };
   const parsed = JSON.parse(serializeCapabilityGraph(graph));
-  assert.deepEqual(parsed.capabilities.map((c: Capability) => c.id), ['a', 'z']);
+  assert.deepEqual(
+    parsed.capabilities.map((c: Capability) => c.id),
+    ['a', 'z'],
+  );
 });
 
 test('deserializeCapabilityGraph fails cleanly on malformed JSON', () => {

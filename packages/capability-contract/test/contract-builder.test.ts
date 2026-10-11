@@ -8,19 +8,33 @@ function buildGraphWithCapability(): XoirGraph {
   graph.createAndAddNode({
     id: XoirNodeId('capability:claim-evaluation'),
     kind: 'capability',
-    properties: { name: 'Evaluate Claim', description: 'Evaluates a submitted claim against policy rules', category: 'evaluation', determinism: 'deterministic' },
+    properties: {
+      name: 'Evaluate Claim',
+      description: 'Evaluates a submitted claim against policy rules',
+      category: 'evaluation',
+      determinism: 'deterministic',
+    },
   });
   graph.createAndAddNode({
     id: XoirNodeId('decision:deny-large-claim'),
     kind: 'decision_node',
-    properties: { question: 'the claimed loss amount exceeds 10000', outcome: 'deny the claim', rationale: 'Large claims require manual review' },
+    properties: {
+      question: 'the claimed loss amount exceeds 10000',
+      outcome: 'deny the claim',
+      rationale: 'Large claims require manual review',
+    },
   });
   graph.createAndAddNode({
     id: XoirNodeId('knowledge:unrelated'),
     kind: 'knowledge',
     properties: { statement: 'Policies renew annually', domain: 'general' },
   });
-  graph.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'REQUIRES', fromId: XoirNodeId('decision:deny-large-claim'), toId: XoirNodeId('capability:claim-evaluation') });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('decision:deny-large-claim'),
+    toId: XoirNodeId('capability:claim-evaluation'),
+  });
   return graph;
 }
 
@@ -40,7 +54,11 @@ test('builds a contract from a capability node with one linked decision_node', (
 
 test('a capability with no linked rule nodes gets an empty rules array, not an error', () => {
   const graph = XoirGraph.create(XoirGraphId('g2'));
-  graph.createAndAddNode({ id: XoirNodeId('capability:bare'), kind: 'capability', properties: { name: 'Bare', description: 'No linked rules' } });
+  graph.createAndAddNode({
+    id: XoirNodeId('capability:bare'),
+    kind: 'capability',
+    properties: { name: 'Bare', description: 'No linked rules' },
+  });
   const result = buildSemanticCapabilityContract(graph, XoirNodeId('capability:bare'));
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -102,7 +120,12 @@ test('a constraint node reachable only via an OUTGOING REQUIRES edge (capability
   // Deliberately outgoing: capability --REQUIRES--> constraint, exactly the direction
   // capability-to-xoir.ts's requiredKnowledgeNodeIds pass produces — never the incoming
   // direction content-mention linking produces.
-  graph.createAndAddEdge({ id: XoirEdgeId('e-outgoing'), kind: 'REQUIRES', fromId: XoirNodeId('capability:file-claim'), toId: XoirNodeId('constraint:30-day-rule') });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e-outgoing'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('capability:file-claim'),
+    toId: XoirNodeId('constraint:30-day-rule'),
+  });
 
   const result = buildSemanticCapabilityContract(graph, XoirNodeId('capability:file-claim'));
   assert.equal(result.ok, true);
@@ -115,10 +138,28 @@ test('a constraint node reachable only via an OUTGOING REQUIRES edge (capability
 
 test('a rule node reachable via BOTH an incoming and an outgoing REQUIRES edge is counted exactly once, not duplicated', () => {
   const graph = XoirGraph.create(XoirGraphId('g5'));
-  graph.createAndAddNode({ id: XoirNodeId('capability:file-claim'), kind: 'capability', properties: { name: 'File Claim', description: 'Files a claim' } });
-  graph.createAndAddNode({ id: XoirNodeId('constraint:30-day-rule'), kind: 'constraint', properties: { rule: 'Must file within 30 days', severity: 'blocking' } });
-  graph.createAndAddEdge({ id: XoirEdgeId('e-outgoing'), kind: 'REQUIRES', fromId: XoirNodeId('capability:file-claim'), toId: XoirNodeId('constraint:30-day-rule') });
-  graph.createAndAddEdge({ id: XoirEdgeId('e-incoming'), kind: 'REQUIRES', fromId: XoirNodeId('constraint:30-day-rule'), toId: XoirNodeId('capability:file-claim') });
+  graph.createAndAddNode({
+    id: XoirNodeId('capability:file-claim'),
+    kind: 'capability',
+    properties: { name: 'File Claim', description: 'Files a claim' },
+  });
+  graph.createAndAddNode({
+    id: XoirNodeId('constraint:30-day-rule'),
+    kind: 'constraint',
+    properties: { rule: 'Must file within 30 days', severity: 'blocking' },
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e-outgoing'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('capability:file-claim'),
+    toId: XoirNodeId('constraint:30-day-rule'),
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e-incoming'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('constraint:30-day-rule'),
+    toId: XoirNodeId('capability:file-claim'),
+  });
 
   const result = buildSemanticCapabilityContract(graph, XoirNodeId('capability:file-claim'));
   assert.equal(result.ok, true);
@@ -129,11 +170,29 @@ test('a rule node reachable via BOTH an incoming and an outgoing REQUIRES edge i
 
 test('an outgoing REQUIRES edge to a non-rule-kind node (e.g. a concept, or another capability dependency) is not treated as a rule', () => {
   const graph = XoirGraph.create(XoirGraphId('g6'));
-  graph.createAndAddNode({ id: XoirNodeId('capability:file-claim'), kind: 'capability', properties: { name: 'File Claim', description: 'Files a claim' } });
+  graph.createAndAddNode({
+    id: XoirNodeId('capability:file-claim'),
+    kind: 'capability',
+    properties: { name: 'File Claim', description: 'Files a claim' },
+  });
   graph.createAndAddNode({ id: XoirNodeId('concept:policyholder'), kind: 'concept', properties: { definition: 'Policyholder' } });
-  graph.createAndAddNode({ id: XoirNodeId('capability:notify-adjuster'), kind: 'capability', properties: { name: 'Notify Adjuster', description: 'Notifies the adjuster' } });
-  graph.createAndAddEdge({ id: XoirEdgeId('e1'), kind: 'REQUIRES', fromId: XoirNodeId('capability:file-claim'), toId: XoirNodeId('concept:policyholder') });
-  graph.createAndAddEdge({ id: XoirEdgeId('e2'), kind: 'REQUIRES', fromId: XoirNodeId('capability:file-claim'), toId: XoirNodeId('capability:notify-adjuster') });
+  graph.createAndAddNode({
+    id: XoirNodeId('capability:notify-adjuster'),
+    kind: 'capability',
+    properties: { name: 'Notify Adjuster', description: 'Notifies the adjuster' },
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e1'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('capability:file-claim'),
+    toId: XoirNodeId('concept:policyholder'),
+  });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('e2'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('capability:file-claim'),
+    toId: XoirNodeId('capability:notify-adjuster'),
+  });
 
   const result = buildSemanticCapabilityContract(graph, XoirNodeId('capability:file-claim'));
   assert.equal(result.ok, true);

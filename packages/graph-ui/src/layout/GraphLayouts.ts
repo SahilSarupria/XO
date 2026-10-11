@@ -17,15 +17,7 @@ export class GraphLayouts {
   private readonly engines = new Map<string, LayoutEngine>();
 
   constructor() {
-    for (const engine of [
-      hierarchicalLayout,
-      dagLayout,
-      treeLayout,
-      forceDirectedLayout,
-      circularLayout,
-      gridLayout,
-      manualLayout,
-    ]) {
+    for (const engine of [hierarchicalLayout, dagLayout, treeLayout, forceDirectedLayout, circularLayout, gridLayout, manualLayout]) {
       this.engines.set(engine.kind, engine);
     }
   }

@@ -65,7 +65,12 @@ const FIXTURE_PATH = fileURLToPath(new URL('../fixtures/synthetic-property-polic
  * previously-missing last step finally reaching capabilities this
  * fixture already legitimately produced.
  */
-const EXPECTED_GENUINE_CAPABILITY_NAMES = ['Claim Assessment', 'Contact the claims department within 30 days', 'Send a confirmation notice to the policyholder', 'Reject The Claim'];
+const EXPECTED_GENUINE_CAPABILITY_NAMES = [
+  'Claim Assessment',
+  'Contact the claims department within 30 days',
+  'Send a confirmation notice to the policyholder',
+  'Reject The Claim',
+];
 
 /** Every one of these was deliberately planted as PDF/table-extraction-style noise in the fixture (see its own comments); none should ever produce a capability, under any name containing these fragments. */
 const PLANTED_ARTIFACT_FRAGMENTS = ['Region', 'Renewal', 'PlanOpted', 'and8827461093', 'Contact and'];
@@ -106,10 +111,12 @@ test('quality benchmark: rule extraction finds the genuine numeric threshold rul
   const compiled = await compileFixture();
   const lowered = lowerCapabilitiesToManifest(compiled.graph);
   assert.equal(lowered.resolvedCount, 4);
-  assert.deepEqual(
-    lowered.declarations.map((d) => d.name).sort(),
-    ['Claim Assessment', 'Contact the claims department within 30 days', 'Reject The Claim', 'Send a confirmation notice to the policyholder'],
-  );
+  assert.deepEqual(lowered.declarations.map((d) => d.name).sort(), [
+    'Claim Assessment',
+    'Contact the claims department within 30 days',
+    'Reject The Claim',
+    'Send a confirmation notice to the policyholder',
+  ]);
   assert.deepEqual(
     lowered.declarations.map((d) => ({ name: d.name, mode: d.execution?.mode })).sort((a, b) => (a.name < b.name ? -1 : 1)),
     [
@@ -120,7 +127,10 @@ test('quality benchmark: rule extraction finds the genuine numeric threshold rul
     ],
   );
 
-  const unresolved = lowered.outcomes.filter((o) => o.status === 'unresolved').map((o) => o.name).sort();
+  const unresolved = lowered.outcomes
+    .filter((o) => o.status === 'unresolved')
+    .map((o) => o.name)
+    .sort();
   assert.deepEqual(unresolved, [], 'no capability in this fixture remains unresolved now that human_in_the_loop bindings are lowerable');
 });
 
@@ -161,12 +171,18 @@ test('end-to-end: the fixture packages into a valid .xo with all four manifest c
   assert.equal(packaged.value.capabilities.discoveredCount, 4);
   assert.equal(packaged.value.capabilities.resolvedCount, 4);
   assert.equal(packaged.value.manifest.capabilities?.length, 4);
-  assert.deepEqual(
-    packaged.value.manifest.capabilities?.map((c) => c.name).sort(),
-    ['Claim Assessment', 'Contact the claims department within 30 days', 'Reject The Claim', 'Send a confirmation notice to the policyholder'],
-  );
+  assert.deepEqual(packaged.value.manifest.capabilities?.map((c) => c.name).sort(), [
+    'Claim Assessment',
+    'Contact the claims department within 30 days',
+    'Reject The Claim',
+    'Send a confirmation notice to the policyholder',
+  ]);
 
-  const validation = new PackageValidator().validateAll({ manifest: packaged.value.manifest, components: packaged.value.bundle.components, ancillary: packaged.value.bundle.ancillary });
+  const validation = new PackageValidator().validateAll({
+    manifest: packaged.value.manifest,
+    components: packaged.value.bundle.components,
+    ancillary: packaged.value.bundle.ancillary,
+  });
   assert.deepEqual(
     validation.issues.filter((i) => i.severity === 'error'),
     [],

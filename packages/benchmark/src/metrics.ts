@@ -122,7 +122,8 @@ export class MetricBuilder {
   }
 
   build(): MetricResult {
-    const byId = (a: MetricItem, b: MetricItem): number => compareStrings(`${a.caseId ?? ''}|${a.id}|${a.reason}`, `${b.caseId ?? ''}|${b.id}|${b.reason}`);
+    const byId = (a: MetricItem, b: MetricItem): number =>
+      compareStrings(`${a.caseId ?? ''}|${a.id}|${a.reason}`, `${b.caseId ?? ''}|${b.id}|${b.reason}`);
     const breakdownKeys = Object.keys(this.counts).sort(compareStrings);
     return {
       id: this.id,
@@ -141,7 +142,10 @@ export class MetricBuilder {
 }
 
 /** Suite-level aggregate of per-case results of one metric: numerators/denominators are SUMMED (micro-average — a case with more expected items weighs more, exactly as its items count), item lists concatenated with their `caseId`. */
-export function aggregateMetric(id: MetricId, perCase: readonly { readonly caseId: string; readonly metric: MetricResult }[]): MetricResult | undefined {
+export function aggregateMetric(
+  id: MetricId,
+  perCase: readonly { readonly caseId: string; readonly metric: MetricResult }[],
+): MetricResult | undefined {
   const first = perCase[0]?.metric;
   if (first === undefined) return undefined;
   const builder = new MetricBuilder(id, first.stage, first.definition);

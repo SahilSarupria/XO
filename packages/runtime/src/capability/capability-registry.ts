@@ -51,7 +51,10 @@ export class CapabilityRegistry {
     const needle = query.trim().toLowerCase();
     if (needle.length === 0) return [];
     return this.flat.filter(
-      (d) => d.declaration.id.toLowerCase().includes(needle) || d.declaration.name.toLowerCase().includes(needle) || d.declaration.description.toLowerCase().includes(needle),
+      (d) =>
+        d.declaration.id.toLowerCase().includes(needle) ||
+        d.declaration.name.toLowerCase().includes(needle) ||
+        d.declaration.description.toLowerCase().includes(needle),
     );
   }
 

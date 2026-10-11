@@ -40,7 +40,8 @@ export interface SessionCommand {
   run(args: readonly string[], ctx: ReplContext): Promise<void> | void;
 }
 
-const err = (ctx: ReplContext, message: string): void => ctx.print([`${ctx.ui().painter.bold(ctx.ui().error('error:'))} ${ctx.ui().error(message)}`]);
+const err = (ctx: ReplContext, message: string): void =>
+  ctx.print([`${ctx.ui().painter.bold(ctx.ui().error('error:'))} ${ctx.ui().error(message)}`]);
 const info = (ctx: ReplContext, message: string): void => ctx.print([ctx.ui().muted(message)]);
 
 function persist(ctx: ReplContext, patch: Parameters<SettingsStore['save']>[0]): void {
@@ -52,7 +53,11 @@ function setDir(ctx: ReplContext, label: string, key: 'storeDir' | 'registryDir'
   const ui = ctx.ui();
   const current = ctx.session[key];
   if (args.length === 0) {
-    ctx.print([current ? `${label}: ${ui.accent(current)}` : ui.muted(`No ${noun} set. Use /${label === 'store' ? 'store' : 'reg'} <dir> to set one.`)]);
+    ctx.print([
+      current
+        ? `${label}: ${ui.accent(current)}`
+        : ui.muted(`No ${noun} set. Use /${label === 'store' ? 'store' : 'reg'} <dir> to set one.`),
+    ]);
     return;
   }
   if (args[0] === '--clear' || args[0] === 'none') {
@@ -81,7 +86,9 @@ export const SESSION_COMMANDS: readonly SessionCommand[] = [
       const catalog = ctx.catalog();
       if (args[0] !== undefined) {
         const name = args[0].replace(/^\//, '');
-        const entry = catalog.find((e) => e.name === name || (e.source === 'session' && SESSION_COMMANDS.find((c) => c.name === e.name)?.aliases?.includes(name)));
+        const entry = catalog.find(
+          (e) => e.name === name || (e.source === 'session' && SESSION_COMMANDS.find((c) => c.name === e.name)?.aliases?.includes(name)),
+        );
         if (!entry) return err(ctx, `no such command "${name}" — /help lists them all`);
         const shown = entry.source === 'command' ? entry.usage.replace(/^ {0,4}xo /gm, '/').replace(/^ {6,}(?=\S)/gm, '    ') : entry.usage;
         ctx.print(['', ui.painter.bold(ui.primary(`/${entry.name}`)), '', ...shown.split('\n').map((l) => `  ${l}`), '']);
@@ -151,7 +158,14 @@ export const SESSION_COMMANDS: readonly SessionCommand[] = [
         ['settings', ctx.settings.path],
       ];
       const w = Math.max(...rows.map(([k]) => k.length));
-      ctx.print(['', ...renderBox(rows.map(([k, v]) => `${ui.muted(k.padEnd(w))}  ${v}`), { width: Math.min(ctx.width(), 100), title: ui.painter.bold(ui.primary('About xo')), borderColor: (t) => ui.border(t) }), '']);
+      ctx.print([
+        '',
+        ...renderBox(
+          rows.map(([k, v]) => `${ui.muted(k.padEnd(w))}  ${v}`),
+          { width: Math.min(ctx.width(), 100), title: ui.painter.bold(ui.primary('About xo')), borderColor: (t) => ui.border(t) },
+        ),
+        '',
+      ]);
     },
   },
   {
@@ -211,7 +225,10 @@ export const SESSION_COMMANDS: readonly SessionCommand[] = [
         const p = ctx.session.provider ?? 'anthropic';
         const keyEnv = PROVIDER_KEY_ENV[p];
         const state = keyEnv === undefined ? 'no API key needed' : ctx.env[keyEnv] ? `${keyEnv} is set` : `${keyEnv} is not set`;
-        ctx.print([`provider: ${ui.accent(p)}${ctx.session.provider ? '' : ui.muted(' (default)')}  ${ui.muted(`— ${state}`)}`, ui.muted(`available: ${ctx.providers.join(', ')}`)]);
+        ctx.print([
+          `provider: ${ui.accent(p)}${ctx.session.provider ? '' : ui.muted(' (default)')}  ${ui.muted(`— ${state}`)}`,
+          ui.muted(`available: ${ctx.providers.join(', ')}`),
+        ]);
         return;
       }
       if (!ctx.providers.includes(args[0])) return err(ctx, `unknown provider "${args[0]}" — available: ${ctx.providers.join(', ')}`);
@@ -222,14 +239,14 @@ export const SESSION_COMMANDS: readonly SessionCommand[] = [
   },
   {
     name: 'model',
-    description: "Show or set the model id sent to the provider",
+    description: 'Show or set the model id sent to the provider',
     usage: '/model [id | default]',
     args: '[id]',
     completes: 'none',
     run: (args, ctx) => {
       const ui = ctx.ui();
       if (args[0] === undefined) {
-        ctx.print([ctx.session.model ? `model: ${ui.accent(ctx.session.model)}` : ui.muted("model: (provider default)")]);
+        ctx.print([ctx.session.model ? `model: ${ui.accent(ctx.session.model)}` : ui.muted('model: (provider default)')]);
         return;
       }
       if (args[0] === 'default') {
@@ -272,10 +289,20 @@ export const SESSION_COMMANDS: readonly SessionCommand[] = [
       if (ctx.session.stats.size > 0) {
         rows.push('', ui.painter.bold('By command'));
         for (const [name, s] of [...ctx.session.stats.entries()].sort((a, b) => b[1].ms - a[1].ms)) {
-          rows.push(`  ${ui.accent(name.padEnd(14))} ${String(s.count).padStart(3)}×  ${formatDuration(s.ms).padStart(8)}${s.failed > 0 ? ui.error(`  ${s.failed} failed`) : ''}`);
+          rows.push(
+            `  ${ui.accent(name.padEnd(14))} ${String(s.count).padStart(3)}×  ${formatDuration(s.ms).padStart(8)}${s.failed > 0 ? ui.error(`  ${s.failed} failed`) : ''}`,
+          );
         }
       }
-      ctx.print(['', ...renderBox(rows, { width: Math.min(ctx.width(), 72), title: ui.painter.bold(ui.primary('Session stats')), borderColor: (x) => ui.border(x) }), '']);
+      ctx.print([
+        '',
+        ...renderBox(rows, {
+          width: Math.min(ctx.width(), 72),
+          title: ui.painter.bold(ui.primary('Session stats')),
+          borderColor: (x) => ui.border(x),
+        }),
+        '',
+      ]);
     },
   },
   {

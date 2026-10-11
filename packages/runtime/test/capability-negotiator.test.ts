@@ -9,7 +9,12 @@ import type { ExecutionRequest } from '../src/execution/execution-request.js';
 import { contractAnalysisCapability, clauseLookupCapability, contractCompatibility, strictCompatibility } from './fixtures.js';
 import type { CapabilityDeclaration, CompatibilityDeclaration } from '@xo/types';
 
-function mount(name: string, version: string, compatibility: CompatibilityDeclaration, capabilities: readonly CapabilityDeclaration[]): MountedPackage {
+function mount(
+  name: string,
+  version: string,
+  compatibility: CompatibilityDeclaration,
+  capabilities: readonly CapabilityDeclaration[],
+): MountedPackage {
   return Object.freeze({
     mountId: MountId(`${name}@${version}#0`),
     name,
@@ -20,7 +25,11 @@ function mount(name: string, version: string, compatibility: CompatibilityDeclar
       version,
       creatorDid: 'did:xo:test',
       compatibility,
-      components: { knowledge_graph: { path: 'knowledge/graph.json', hash: 'sha256:' + 'a'.repeat(64), required: false }, decision_trees: { path: 'reasoning/decision_trees.json', hash: 'sha256:' + 'b'.repeat(64), required: false }, safety_rules: { path: 'safety/rules.json', hash: 'sha256:' + 'c'.repeat(64), required: true } },
+      components: {
+        knowledge_graph: { path: 'knowledge/graph.json', hash: 'sha256:' + 'a'.repeat(64), required: false },
+        decision_trees: { path: 'reasoning/decision_trees.json', hash: 'sha256:' + 'b'.repeat(64), required: false },
+        safety_rules: { path: 'safety/rules.json', hash: 'sha256:' + 'c'.repeat(64), required: true },
+      },
       capabilities,
     },
     capabilities: capabilities.map((declaration) => ({ declaration, packageName: name, packageVersion: version })),
@@ -71,7 +80,13 @@ test('plan() excludes an L0 candidate whose package declares fallbackPolicy "rej
   const registry = PackageRegistry.empty().withMounted(mount('xo_strict', '1.0.0', strictCompatibility, [contractAnalysisCapability]));
   const context = buildRuntimeContext(registry);
   const host: HostProfile = { family: 'claude', capabilities: ['chat'] }; // missing tool_use + long_context
-  const plan = new CapabilityNegotiator().plan(request({ capabilityId: 'contract_analysis', environment: { environmentId: EnvironmentId('env_1'), hostProfile: host, createdAt: '2026-01-01T00:00:00.000Z' } }), context);
+  const plan = new CapabilityNegotiator().plan(
+    request({
+      capabilityId: 'contract_analysis',
+      environment: { environmentId: EnvironmentId('env_1'), hostProfile: host, createdAt: '2026-01-01T00:00:00.000Z' },
+    }),
+    context,
+  );
   assert.equal(plan.status, 'no_compatible_candidate');
 });
 
@@ -79,7 +94,13 @@ test('plan() keeps an L0 candidate whose package declares fallbackPolicy "degrad
   const registry = PackageRegistry.empty().withMounted(mount('xo_lawyer', '1.0.0', contractCompatibility, [contractAnalysisCapability]));
   const context = buildRuntimeContext(registry);
   const host: HostProfile = { family: 'gemini', capabilities: [] }; // not declared at all -> L0, but contractCompatibility degrades gracefully
-  const plan = new CapabilityNegotiator().plan(request({ capabilityId: 'contract_analysis', environment: { environmentId: EnvironmentId('env_1'), hostProfile: host, createdAt: '2026-01-01T00:00:00.000Z' } }), context);
+  const plan = new CapabilityNegotiator().plan(
+    request({
+      capabilityId: 'contract_analysis',
+      environment: { environmentId: EnvironmentId('env_1'), hostProfile: host, createdAt: '2026-01-01T00:00:00.000Z' },
+    }),
+    context,
+  );
   assert.equal(plan.status, 'planned');
   assert.equal(plan.selected?.compatibility.reachedLevel, 'L0');
 });
@@ -104,8 +125,14 @@ test('plan() does NOT deduplicate two different packages that happen to declare 
 });
 
 test('rank() orders by reached compatibility level first, then confidence, latency, and cost', () => {
-  const highConfidence: typeof contractAnalysisCapability = { ...contractAnalysisCapability, confidence: { score: 0.95, basis: 'expert_review' } };
-  const lowConfidence: typeof contractAnalysisCapability = { ...contractAnalysisCapability, confidence: { score: 0.4, basis: 'self_reported' } };
+  const highConfidence: typeof contractAnalysisCapability = {
+    ...contractAnalysisCapability,
+    confidence: { score: 0.95, basis: 'expert_review' },
+  };
+  const lowConfidence: typeof contractAnalysisCapability = {
+    ...contractAnalysisCapability,
+    confidence: { score: 0.4, basis: 'self_reported' },
+  };
   const registry = PackageRegistry.empty()
     .withMounted(mount('xo_low_conf', '1.0.0', contractCompatibility, [lowConfidence]))
     .withMounted(mount('xo_high_conf', '1.0.0', contractCompatibility, [highConfidence]));

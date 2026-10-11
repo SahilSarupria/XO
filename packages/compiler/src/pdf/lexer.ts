@@ -14,7 +14,8 @@
  * patterns in — this is binary format parsing, not text/entity
  * extraction.
  */
-export type TokenKind = 'number' | 'name' | 'string' | 'hexstring' | 'array_start' | 'array_end' | 'dict_start' | 'dict_end' | 'keyword' | 'eof';
+export type TokenKind =
+  'number' | 'name' | 'string' | 'hexstring' | 'array_start' | 'array_end' | 'dict_start' | 'dict_end' | 'keyword' | 'eof';
 
 export interface Token {
   readonly kind: TokenKind;
@@ -28,7 +29,18 @@ function isWhitespace(byte: number): boolean {
   return byte === 0x00 || byte === 0x09 || byte === 0x0a || byte === 0x0c || byte === 0x0d || byte === 0x20;
 }
 function isDelimiter(byte: number): boolean {
-  return byte === 0x28 || byte === 0x29 || byte === 0x3c || byte === 0x3e || byte === 0x5b || byte === 0x5d || byte === 0x7b || byte === 0x7d || byte === 0x2f || byte === 0x25;
+  return (
+    byte === 0x28 ||
+    byte === 0x29 ||
+    byte === 0x3c ||
+    byte === 0x3e ||
+    byte === 0x5b ||
+    byte === 0x5d ||
+    byte === 0x7b ||
+    byte === 0x7d ||
+    byte === 0x2f ||
+    byte === 0x25
+  );
 }
 function isRegular(byte: number): boolean {
   return !isWhitespace(byte) && !isDelimiter(byte);
@@ -131,14 +143,38 @@ export class Lexer {
         const esc = this.buf[this.pos];
         if (esc === undefined) break;
         switch (esc) {
-          case 0x6e: bytes.push(0x0a); this.pos += 1; break; // \n
-          case 0x72: bytes.push(0x0d); this.pos += 1; break; // \r
-          case 0x74: bytes.push(0x09); this.pos += 1; break; // \t
-          case 0x62: bytes.push(0x08); this.pos += 1; break; // \b
-          case 0x66: bytes.push(0x0c); this.pos += 1; break; // \f
-          case 0x28: bytes.push(0x28); this.pos += 1; break; // \(
-          case 0x29: bytes.push(0x29); this.pos += 1; break; // \)
-          case 0x5c: bytes.push(0x5c); this.pos += 1; break; // \\
+          case 0x6e:
+            bytes.push(0x0a);
+            this.pos += 1;
+            break; // \n
+          case 0x72:
+            bytes.push(0x0d);
+            this.pos += 1;
+            break; // \r
+          case 0x74:
+            bytes.push(0x09);
+            this.pos += 1;
+            break; // \t
+          case 0x62:
+            bytes.push(0x08);
+            this.pos += 1;
+            break; // \b
+          case 0x66:
+            bytes.push(0x0c);
+            this.pos += 1;
+            break; // \f
+          case 0x28:
+            bytes.push(0x28);
+            this.pos += 1;
+            break; // \(
+          case 0x29:
+            bytes.push(0x29);
+            this.pos += 1;
+            break; // \)
+          case 0x5c:
+            bytes.push(0x5c);
+            this.pos += 1;
+            break; // \\
           case 0x0d: // line continuation: \<CR> or \<CR><LF> — emit nothing
             this.pos += 1;
             if (this.buf[this.pos] === 0x0a) this.pos += 1;

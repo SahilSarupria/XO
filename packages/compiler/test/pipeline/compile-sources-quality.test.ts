@@ -67,7 +67,7 @@ test('a fully trusted source compiles normally with no source-quality diagnostic
 // `CompileSourcesResult.sources[]` array a caller might not keep around.
 const DEGRADED_TEXT = `# Mostly Clean\n${Array.from({ length: 20 }, (_, i) => `word${i}`).join(' ')} and8827461093 ${Array.from({ length: 20 }, (_, i) => `word${i}`).join(' ')}`;
 
-test('a degraded source\'s quality assessment is attached to the compiled graph\'s manifest, keyed by the same documentPath its own nodes carry', async () => {
+test("a degraded source's quality assessment is attached to the compiled graph's manifest, keyed by the same documentPath its own nodes carry", async () => {
   const result = await compileSources([{ kind: 'document', text: DEGRADED_TEXT, sourcePath: 'mostly-clean.txt' }], {});
   assert.ok(result.ok, result.ok ? undefined : JSON.stringify(result.error));
   if (!result.ok) return;
@@ -79,7 +79,7 @@ test('a degraded source\'s quality assessment is attached to the compiled graph\
 
   const documentPath = result.value.sources[0]!.sourceId;
   const entry = manifest!.sourceQuality![documentPath];
-  assert.ok(entry, 'expected a sourceQuality entry keyed by the source\'s own sourceId/documentPath');
+  assert.ok(entry, "expected a sourceQuality entry keyed by the source's own sourceId/documentPath");
   assert.equal(entry!.state, 'degraded');
   assert.ok(entry!.suspiciousTokenRatio > 0);
 
@@ -109,7 +109,13 @@ test('manifest.sourceQuality does not affect any node/edge content hash: a trust
   const trustedAgain = await compileSources([{ kind: 'document', text: CLEAN_TEXT, sourcePath: 'clean.txt' }], {});
   assert.ok(trustedAgain.ok);
   if (!trustedAgain.ok) return;
-  const idsA = trusted.value.graph.allNodes().map((n) => n.id).sort();
-  const idsB = trustedAgain.value.graph.allNodes().map((n) => n.id).sort();
+  const idsA = trusted.value.graph
+    .allNodes()
+    .map((n) => n.id)
+    .sort();
+  const idsB = trustedAgain.value.graph
+    .allNodes()
+    .map((n) => n.id)
+    .sort();
   assert.deepEqual(idsA, idsB);
 });

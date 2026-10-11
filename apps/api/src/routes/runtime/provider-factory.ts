@@ -33,7 +33,10 @@ function isSupportedProviderId(value: string): value is SupportedProviderId {
   return (SUPPORTED_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
-export function resolveProvider(req: ApiRequest, env: Readonly<Record<string, string | undefined>> = process.env): Result<ModelProvider, string> {
+export function resolveProvider(
+  req: ApiRequest,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Result<ModelProvider, string> {
   const providerId = header(req, 'x-xo-provider') ?? 'anthropic';
   if (!isSupportedProviderId(providerId)) {
     return err(`unknown provider "${providerId}" (x-xo-provider header) — supported: ${SUPPORTED_PROVIDER_IDS.join(', ')}`);
@@ -48,7 +51,13 @@ export function resolveProvider(req: ApiRequest, env: Readonly<Record<string, st
     case 'anthropic': {
       const apiKey = apiKeyHeader ?? env['ANTHROPIC_API_KEY'];
       if (!apiKey) return err('anthropic provider needs an API key — pass the "x-xo-api-key" header or set ANTHROPIC_API_KEY');
-      return ok(new AnthropicProvider({ apiKey, ...(baseUrlHeader !== undefined ? { baseUrl: baseUrlHeader } : {}), ...(apiVersionHeader !== undefined ? { apiVersion: apiVersionHeader } : {}) }));
+      return ok(
+        new AnthropicProvider({
+          apiKey,
+          ...(baseUrlHeader !== undefined ? { baseUrl: baseUrlHeader } : {}),
+          ...(apiVersionHeader !== undefined ? { apiVersion: apiVersionHeader } : {}),
+        }),
+      );
     }
     case 'openai': {
       const apiKey = apiKeyHeader ?? env['OPENAI_API_KEY'];

@@ -93,7 +93,11 @@ export interface ForbiddenCapability {
 }
 
 export type WorkflowExecutability = 'executable_candidate' | 'not_executable_yet' | 'semantically_invalid';
-export const WORKFLOW_EXECUTABILITIES: readonly WorkflowExecutability[] = ['executable_candidate', 'not_executable_yet', 'semantically_invalid'];
+export const WORKFLOW_EXECUTABILITIES: readonly WorkflowExecutability[] = [
+  'executable_candidate',
+  'not_executable_yet',
+  'semantically_invalid',
+];
 
 export interface DataFlowExpectation {
   readonly producer: NameMatcher;
@@ -117,7 +121,13 @@ export interface WorkflowExpectation {
 }
 
 export type ExpectedCapabilityOutcome = 'succeeded' | 'waiting_for_human' | 'not_executable' | 'invalid_input' | 'error';
-export const EXPECTED_CAPABILITY_OUTCOMES: readonly ExpectedCapabilityOutcome[] = ['succeeded', 'waiting_for_human', 'not_executable', 'invalid_input', 'error'];
+export const EXPECTED_CAPABILITY_OUTCOMES: readonly ExpectedCapabilityOutcome[] = [
+  'succeeded',
+  'waiting_for_human',
+  'not_executable',
+  'invalid_input',
+  'error',
+];
 
 export interface CapabilityExecutionCase {
   readonly id: string;
@@ -133,7 +143,12 @@ export interface CapabilityExecutionCase {
 }
 
 export type ExpectedWorkflowRunStatus = 'completed' | 'waiting_for_human' | 'not_executable_yet' | 'failed';
-export const EXPECTED_WORKFLOW_RUN_STATUSES: readonly ExpectedWorkflowRunStatus[] = ['completed', 'waiting_for_human', 'not_executable_yet', 'failed'];
+export const EXPECTED_WORKFLOW_RUN_STATUSES: readonly ExpectedWorkflowRunStatus[] = [
+  'completed',
+  'waiting_for_human',
+  'not_executable_yet',
+  'failed',
+];
 
 export interface WorkflowExecutionCase {
   readonly id: string;
@@ -142,9 +157,18 @@ export interface WorkflowExecutionCase {
   readonly input?: Readonly<Record<string, unknown>>;
   readonly expect: {
     readonly status: ExpectedWorkflowRunStatus;
-    readonly steps?: readonly { readonly capability: NameMatcher; readonly outputStatus?: string; readonly output?: Readonly<Record<string, unknown>> }[];
+    readonly steps?: readonly {
+      readonly capability: NameMatcher;
+      readonly outputStatus?: string;
+      readonly output?: Readonly<Record<string, unknown>>;
+    }[];
     /** Producer values the RUNTIME must actually have injected into consumer inputs. */
-    readonly injections?: readonly { readonly producer: NameMatcher; readonly output: string; readonly consumer: NameMatcher; readonly input: string }[];
+    readonly injections?: readonly {
+      readonly producer: NameMatcher;
+      readonly output: string;
+      readonly consumer: NameMatcher;
+      readonly input: string;
+    }[];
   };
 }
 
@@ -195,7 +219,8 @@ export interface DefinitionIssue {
   readonly message: string;
 }
 
-export type DefinitionResult = { readonly ok: true; readonly value: BenchmarkSuiteDefinition } | { readonly ok: false; readonly issues: readonly DefinitionIssue[] };
+export type DefinitionResult =
+  { readonly ok: true; readonly value: BenchmarkSuiteDefinition } | { readonly ok: false; readonly issues: readonly DefinitionIssue[] };
 
 class Validator {
   readonly issues: DefinitionIssue[] = [];
@@ -209,7 +234,8 @@ class Validator {
       this.fail(path, 'must be an object');
       return undefined;
     }
-    for (const key of Object.keys(value)) if (!allowed.includes(key)) this.fail(`${path}.${key}`, `unknown field (allowed: ${allowed.join(', ')})`);
+    for (const key of Object.keys(value))
+      if (!allowed.includes(key)) this.fail(`${path}.${key}`, `unknown field (allowed: ${allowed.join(', ')})`);
     return value;
   }
 
@@ -316,10 +342,20 @@ function predicate(v: Validator, value: unknown, path: string): Predicate | unde
     v.fail(`${path}.exists`, 'must be a boolean');
     return undefined;
   }
-  return { path: p, ...(o['equals'] !== undefined ? { equals: o['equals'] } : {}), ...(o['contains'] !== undefined ? { contains: o['contains'] as string } : {}), ...(o['exists'] !== undefined ? { exists: o['exists'] as boolean } : {}) };
+  return {
+    path: p,
+    ...(o['equals'] !== undefined ? { equals: o['equals'] } : {}),
+    ...(o['contains'] !== undefined ? { contains: o['contains'] as string } : {}),
+    ...(o['exists'] !== undefined ? { exists: o['exists'] as boolean } : {}),
+  };
 }
 
-function predicateList(v: Validator, value: unknown, path: string, opts: { optional?: boolean; min?: number } = {}): Predicate[] | undefined {
+function predicateList(
+  v: Validator,
+  value: unknown,
+  path: string,
+  opts: { optional?: boolean; min?: number } = {},
+): Predicate[] | undefined {
   const list = v.arr(value, path, opts);
   if (list === undefined) return undefined;
   const out: Predicate[] = [];
@@ -334,7 +370,11 @@ function evidence(v: Validator, value: unknown, path: string): EvidenceSpec | un
   if (value === undefined) return undefined;
   const o = v.obj(value, path, ['minSourceRefs', 'documentPath', 'pages']);
   if (o === undefined) return undefined;
-  if (o['minSourceRefs'] !== undefined && (typeof o['minSourceRefs'] !== 'number' || !Number.isInteger(o['minSourceRefs']) || o['minSourceRefs'] < 0)) v.fail(`${path}.minSourceRefs`, 'must be a non-negative integer');
+  if (
+    o['minSourceRefs'] !== undefined &&
+    (typeof o['minSourceRefs'] !== 'number' || !Number.isInteger(o['minSourceRefs']) || o['minSourceRefs'] < 0)
+  )
+    v.fail(`${path}.minSourceRefs`, 'must be a non-negative integer');
   const documentPath = v.str(o['documentPath'], `${path}.documentPath`, { optional: true });
   let pages: number[] | undefined;
   if (o['pages'] !== undefined) {
@@ -347,7 +387,11 @@ function evidence(v: Validator, value: unknown, path: string): EvidenceSpec | un
       });
     }
   }
-  return { ...(typeof o['minSourceRefs'] === 'number' ? { minSourceRefs: o['minSourceRefs'] } : {}), ...(documentPath !== undefined ? { documentPath } : {}), ...(pages !== undefined ? { pages } : {}) };
+  return {
+    ...(typeof o['minSourceRefs'] === 'number' ? { minSourceRefs: o['minSourceRefs'] } : {}),
+    ...(documentPath !== undefined ? { documentPath } : {}),
+    ...(pages !== undefined ? { pages } : {}),
+  };
 }
 
 function objectOf(v: Validator, value: unknown, path: string): Record<string, unknown> | undefined {
@@ -372,7 +416,14 @@ function validateFacts(v: Validator, value: unknown, path: string): FactExpectat
     const identify = predicateList(v, o['identify'], `${p}.identify`, { min: 1 });
     const assertions = predicateList(v, o['assert'], `${p}.assert`, { optional: true });
     const ev = evidence(v, o['evidence'], `${p}.evidence`);
-    if (id !== undefined && kind !== undefined && identify !== undefined) out.push({ id, kind, identify, ...(assertions !== undefined ? { assert: assertions } : {}), ...(ev !== undefined ? { evidence: ev } : {}) });
+    if (id !== undefined && kind !== undefined && identify !== undefined)
+      out.push({
+        id,
+        kind,
+        identify,
+        ...(assertions !== undefined ? { assert: assertions } : {}),
+        ...(ev !== undefined ? { evidence: ev } : {}),
+      });
   });
   v.uniqueIds(out, path);
   return out;
@@ -390,7 +441,8 @@ function validateForbiddenFacts(v: Validator, value: unknown, path: string): For
     const kind = v.str(o['kind'], `${p}.kind`);
     const identify = predicateList(v, o['identify'], `${p}.identify`, { min: 1 });
     const reason = v.str(o['reason'], `${p}.reason`, { optional: true });
-    if (id !== undefined && kind !== undefined && identify !== undefined) out.push({ id, kind, identify, ...(reason !== undefined ? { reason } : {}) });
+    if (id !== undefined && kind !== undefined && identify !== undefined)
+      out.push({ id, kind, identify, ...(reason !== undefined ? { reason } : {}) });
   });
   v.uniqueIds(out, path);
   return out;
@@ -415,9 +467,22 @@ function validateCapabilities(v: Validator, value: unknown, path: string): CaseE
     const outputs = v.strList(c['outputs'], `${p}.outputs`, { optional: true });
     const ev = evidence(v, c['evidence'], `${p}.evidence`);
     const producedBy = v.str(c['producedBy'], `${p}.producedBy`, { optional: true });
-    if (resolution !== undefined && executionClass !== undefined && resolution !== 'resolved' && executionClass !== 'not_executable') v.fail(p, `resolution "${resolution}" is incompatible with executionClass "${executionClass}" (only a resolved capability can have an executable class)`);
+    if (resolution !== undefined && executionClass !== undefined && resolution !== 'resolved' && executionClass !== 'not_executable')
+      v.fail(
+        p,
+        `resolution "${resolution}" is incompatible with executionClass "${executionClass}" (only a resolved capability can have an executable class)`,
+      );
     if (id !== undefined && name !== undefined) {
-      items.push({ id, name, ...(resolution !== undefined ? { resolution } : {}), ...(executionClass !== undefined ? { executionClass } : {}), ...(inputs !== undefined ? { inputs } : {}), ...(outputs !== undefined ? { outputs } : {}), ...(ev !== undefined ? { evidence: ev } : {}), ...(producedBy !== undefined ? { producedBy } : {}) });
+      items.push({
+        id,
+        name,
+        ...(resolution !== undefined ? { resolution } : {}),
+        ...(executionClass !== undefined ? { executionClass } : {}),
+        ...(inputs !== undefined ? { inputs } : {}),
+        ...(outputs !== undefined ? { outputs } : {}),
+        ...(ev !== undefined ? { evidence: ev } : {}),
+        ...(producedBy !== undefined ? { producedBy } : {}),
+      });
     }
   });
   v.uniqueIds(items, `${path}.items`);
@@ -459,7 +524,8 @@ function validateWorkflows(v: Validator, value: unknown, path: string): CaseExpe
           if (cls !== undefined) stepClasses!.push(cls);
         });
         if (ordered !== true) v.fail(`${p}.stepClasses`, 'requires "ordered": true (classes are positional)');
-        if (steps !== undefined && stepClasses.length !== steps.length) v.fail(`${p}.stepClasses`, `must have one class per step (${steps.length})`);
+        if (steps !== undefined && stepClasses.length !== steps.length)
+          v.fail(`${p}.stepClasses`, `must have one class per step (${steps.length})`);
       }
     }
     let dataFlow: WorkflowExpectation['dataFlow'];
@@ -477,13 +543,21 @@ function validateWorkflows(v: Validator, value: unknown, path: string): CaseExpe
           const consumer = matcher(v, bo['consumer'], `${bp}.consumer`);
           const input = v.str(bo['input'], `${bp}.input`);
           const status = v.oneOf(bo['status'], `${bp}.status`, ['proven', 'not_proven'] as const);
-          if (producer && output !== undefined && consumer && input !== undefined && status) bindings.push({ producer, output, consumer, input, status });
+          if (producer && output !== undefined && consumer && input !== undefined && status)
+            bindings.push({ producer, output, consumer, input, status });
         });
         dataFlow = { ...(dfClosed !== undefined ? { closedWorld: dfClosed } : {}), bindings };
       }
     }
     if (id !== undefined && steps !== undefined) {
-      items.push({ id, steps, ...(ordered !== undefined ? { ordered } : {}), ...(executability !== undefined ? { executability } : {}), ...(stepClasses !== undefined ? { stepClasses } : {}), ...(dataFlow !== undefined ? { dataFlow } : {}) });
+      items.push({
+        id,
+        steps,
+        ...(ordered !== undefined ? { ordered } : {}),
+        ...(executability !== undefined ? { executability } : {}),
+        ...(stepClasses !== undefined ? { stepClasses } : {}),
+        ...(dataFlow !== undefined ? { dataFlow } : {}),
+      });
     }
   });
   v.uniqueIds(items, `${path}.items`);
@@ -512,7 +586,14 @@ function validateExecution(v: Validator, value: unknown, path: string): Executio
       const outcome = v.oneOf(e['outcome'], `${p}.expect.outcome`, EXPECTED_CAPABILITY_OUTCOMES);
       const output = objectOf(v, e['output'], `${p}.expect.output`);
       const errorCode = v.str(e['errorCode'], `${p}.expect.errorCode`, { optional: true });
-      if (id !== undefined && target !== undefined && outcome !== undefined) out.push({ id, kind, target, ...(input !== undefined ? { input } : {}), expect: { outcome, ...(output !== undefined ? { output } : {}), ...(errorCode !== undefined ? { errorCode } : {}) } });
+      if (id !== undefined && target !== undefined && outcome !== undefined)
+        out.push({
+          id,
+          kind,
+          target,
+          ...(input !== undefined ? { input } : {}),
+          expect: { outcome, ...(output !== undefined ? { output } : {}), ...(errorCode !== undefined ? { errorCode } : {}) },
+        });
     } else if (kind === 'workflow') {
       const o = v.obj(item, p, ['id', 'kind', 'steps', 'input', 'expect']);
       if (o === undefined) return;
@@ -530,7 +611,12 @@ function validateExecution(v: Validator, value: unknown, path: string): Executio
         const capability = matcher(v, so['capability'], `${sp}.capability`);
         const outputStatus = v.str(so['outputStatus'], `${sp}.outputStatus`, { optional: true });
         const output = objectOf(v, so['output'], `${sp}.output`);
-        if (capability) stepExpectations.push({ capability, ...(outputStatus !== undefined ? { outputStatus } : {}), ...(output !== undefined ? { output } : {}) });
+        if (capability)
+          stepExpectations.push({
+            capability,
+            ...(outputStatus !== undefined ? { outputStatus } : {}),
+            ...(output !== undefined ? { output } : {}),
+          });
       });
       const injections: NonNullable<WorkflowExecutionCase['expect']['injections']>[number][] = [];
       v.arr(e['injections'], `${p}.expect.injections`, { optional: true })?.forEach((b, j) => {
@@ -544,7 +630,17 @@ function validateExecution(v: Validator, value: unknown, path: string): Executio
         if (producer && output !== undefined && consumer && inp !== undefined) injections.push({ producer, output, consumer, input: inp });
       });
       if (id !== undefined && steps !== undefined && status !== undefined) {
-        out.push({ id, kind, steps, ...(input !== undefined ? { input } : {}), expect: { status, ...(stepExpectations.length > 0 ? { steps: stepExpectations } : {}), ...(injections.length > 0 ? { injections } : {}) } });
+        out.push({
+          id,
+          kind,
+          steps,
+          ...(input !== undefined ? { input } : {}),
+          expect: {
+            status,
+            ...(stepExpectations.length > 0 ? { steps: stepExpectations } : {}),
+            ...(injections.length > 0 ? { injections } : {}),
+          },
+        });
       }
     }
   });
@@ -575,16 +671,20 @@ function validateCase(v: Validator, value: unknown, path: string): BenchmarkCase
         const sourcePath = v.str(so['path'], `${sp}.path`);
         const format = v.oneOf(so['format'], `${sp}.format`, ['json', 'csv'] as const, { optional: true });
         if (kind === 'structured' && format === undefined) v.fail(`${sp}.format`, 'is required when kind is "structured"');
-        if (kind !== undefined && kind !== 'structured' && so['format'] !== undefined) v.fail(`${sp}.format`, 'is only valid when kind is "structured"');
-        if (sourcePath !== undefined && (sourcePath.startsWith('/') || sourcePath.split('/').includes('..'))) v.fail(`${sp}.path`, 'must be a relative path without ".." segments');
-        if (kind !== undefined && sourcePath !== undefined) sources!.push({ kind, path: sourcePath, ...(format !== undefined ? { format } : {}) });
+        if (kind !== undefined && kind !== 'structured' && so['format'] !== undefined)
+          v.fail(`${sp}.format`, 'is only valid when kind is "structured"');
+        if (sourcePath !== undefined && (sourcePath.startsWith('/') || sourcePath.split('/').includes('..')))
+          v.fail(`${sp}.path`, 'must be a relative path without ".." segments');
+        if (kind !== undefined && sourcePath !== undefined)
+          sources!.push({ kind, path: sourcePath, ...(format !== undefined ? { format } : {}) });
       });
     }
   }
   let xoir: string | undefined;
   if (hasXoir) {
     xoir = v.str(o['xoir'], `${path}.xoir`);
-    if (xoir !== undefined && (xoir.startsWith('/') || xoir.split('/').includes('..'))) v.fail(`${path}.xoir`, 'must be a relative path without ".." segments');
+    if (xoir !== undefined && (xoir.startsWith('/') || xoir.split('/').includes('..')))
+      v.fail(`${path}.xoir`, 'must be a relative path without ".." segments');
   }
 
   let expect: CaseExpectations = {};
@@ -606,17 +706,34 @@ function validateCase(v: Validator, value: unknown, path: string): BenchmarkCase
         const closedWorldKinds = v.strList(s['closedWorldKinds'], `${path}.expect.semantics.closedWorldKinds`, { optional: true });
         const facts = validateFacts(v, s['facts'], `${path}.expect.semantics.facts`);
         const forbidden = validateForbiddenFacts(v, s['forbidden'], `${path}.expect.semantics.forbidden`);
-        semantics = { ...(closedWorldKinds !== undefined ? { closedWorldKinds } : {}), ...(facts !== undefined ? { facts } : {}), ...(forbidden !== undefined ? { forbidden } : {}) };
+        semantics = {
+          ...(closedWorldKinds !== undefined ? { closedWorldKinds } : {}),
+          ...(facts !== undefined ? { facts } : {}),
+          ...(forbidden !== undefined ? { forbidden } : {}),
+        };
       }
     }
     const capabilities = validateCapabilities(v, e['capabilities'], `${path}.expect.capabilities`);
     const workflows = validateWorkflows(v, e['workflows'], `${path}.expect.workflows`);
-    expect = { ...(compile !== undefined ? { compile } : {}), ...(semantics !== undefined ? { semantics } : {}), ...(capabilities !== undefined ? { capabilities } : {}), ...(workflows !== undefined ? { workflows } : {}) };
+    expect = {
+      ...(compile !== undefined ? { compile } : {}),
+      ...(semantics !== undefined ? { semantics } : {}),
+      ...(capabilities !== undefined ? { capabilities } : {}),
+      ...(workflows !== undefined ? { workflows } : {}),
+    };
   }
   const execution = validateExecution(v, o['execution'], `${path}.execution`);
 
   if (caseId === undefined) return undefined;
-  return { caseId, ...(description !== undefined ? { description } : {}), ...(sources !== undefined ? { sources } : {}), ...(xoir !== undefined ? { xoir } : {}), ...(domainHint !== undefined ? { domainHint } : {}), expect, ...(execution !== undefined ? { execution } : {}) };
+  return {
+    caseId,
+    ...(description !== undefined ? { description } : {}),
+    ...(sources !== undefined ? { sources } : {}),
+    ...(xoir !== undefined ? { xoir } : {}),
+    ...(domainHint !== undefined ? { domainHint } : {}),
+    expect,
+    ...(execution !== undefined ? { execution } : {}),
+  };
 }
 
 /**
@@ -646,5 +763,14 @@ export function validateSuiteDefinition(raw: unknown): DefinitionResult {
     seen.add(c.caseId);
   });
   if (v.issues.length > 0 || suiteId === undefined) return { ok: false, issues: v.issues };
-  return { ok: true, value: { schemaVersion: SUITE_SCHEMA_VERSION, suiteId, ...(description !== undefined ? { description } : {}), ...(sourceRoot !== undefined ? { sourceRoot } : {}), cases } };
+  return {
+    ok: true,
+    value: {
+      schemaVersion: SUITE_SCHEMA_VERSION,
+      suiteId,
+      ...(description !== undefined ? { description } : {}),
+      ...(sourceRoot !== undefined ? { sourceRoot } : {}),
+      cases,
+    },
+  };
 }

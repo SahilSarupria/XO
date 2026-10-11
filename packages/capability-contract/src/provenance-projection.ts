@@ -57,7 +57,11 @@ export interface ProjectCapabilityOptions {
   readonly contract?: BuildContractOptions;
 }
 
-export function projectCapabilityProvenance(graph: XoirGraph, capabilityId: string, options: ProjectCapabilityOptions = {}): Result<CapabilityProvenance, CapabilityContractError> {
+export function projectCapabilityProvenance(
+  graph: XoirGraph,
+  capabilityId: string,
+  options: ProjectCapabilityOptions = {},
+): Result<CapabilityProvenance, CapabilityContractError> {
   const built = buildSemanticCapabilityContract(graph, XoirNodeId(capabilityId), options.contract ?? {});
   if (!built.ok) return err(built.error);
   const contract = built.value;
@@ -94,7 +98,10 @@ export function projectAllCapabilityProvenance(graph: XoirGraph, options: Projec
 }
 
 /** Reverse lookup: which capabilities were projected from a given source document (`sourceRefs[].documentPath`). */
-export function capabilitiesFromSource(projections: readonly CapabilityProvenance[], documentPath: string): readonly CapabilityProvenance[] {
+export function capabilitiesFromSource(
+  projections: readonly CapabilityProvenance[],
+  documentPath: string,
+): readonly CapabilityProvenance[] {
   return projections.filter((p) => p.sourceRefs.some((r) => r.documentPath === documentPath));
 }
 
@@ -122,12 +129,22 @@ export interface ExecutionProvenance extends ExecutionFacts {
   /** The live-graph view of the executed capability, when a graph view was supplied. */
   readonly capability?: CapabilityProvenance;
   /** Field-by-field equality between what the execution recorded and the graph view. `'unknown'` = one side is absent (e.g. installed-package executions record no graphHash). */
-  readonly agreement: { readonly graphHash: Agreement; readonly contractContentHash: Agreement; readonly bindingId: Agreement; readonly contractId: Agreement };
+  readonly agreement: {
+    readonly graphHash: Agreement;
+    readonly contractContentHash: Agreement;
+    readonly bindingId: Agreement;
+    readonly contractId: Agreement;
+  };
 }
 
-const compare = (recorded: string | undefined, expected: string | undefined): Agreement => (recorded === undefined || expected === undefined ? 'unknown' : recorded === expected ? 'match' : 'mismatch');
+const compare = (recorded: string | undefined, expected: string | undefined): Agreement =>
+  recorded === undefined || expected === undefined ? 'unknown' : recorded === expected ? 'match' : 'mismatch';
 
-export function projectExecutionProvenance(facts: ExecutionFacts, capability?: CapabilityProvenance, workflow?: { readonly workflowId: string; readonly stepOrder: number }): ExecutionProvenance {
+export function projectExecutionProvenance(
+  facts: ExecutionFacts,
+  capability?: CapabilityProvenance,
+  workflow?: { readonly workflowId: string; readonly stepOrder: number },
+): ExecutionProvenance {
   return {
     ...facts,
     ...(workflow !== undefined ? { workflowId: workflow.workflowId, workflowStepOrder: workflow.stepOrder } : {}),
@@ -192,7 +209,14 @@ export function projectWorkflowProvenance(workflow: WorkflowProvenanceInput, opt
       return {
         ...step,
         ...(capability !== undefined ? { capability } : {}),
-        ...(facts !== undefined ? { execution: projectExecutionProvenance({ ...facts, executionId: step.executionId! }, capability, { workflowId: workflow.workflowId, stepOrder: step.order }) } : {}),
+        ...(facts !== undefined
+          ? {
+              execution: projectExecutionProvenance({ ...facts, executionId: step.executionId! }, capability, {
+                workflowId: workflow.workflowId,
+                stepOrder: step.order,
+              }),
+            }
+          : {}),
       };
     });
   return {

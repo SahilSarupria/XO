@@ -5,7 +5,11 @@ import { PackageRegistry, type MountedPackage } from '../src/registry/mounted-pa
 import { MountId } from '../src/ids.js';
 import { contractAnalysisCapability, clauseLookupCapability, fraudDetectionCapability, contractCompatibility } from './fixtures.js';
 
-function mountWithCapabilities(name: string, version: string, declarations: readonly typeof contractAnalysisCapability[]): MountedPackage {
+function mountWithCapabilities(
+  name: string,
+  version: string,
+  declarations: readonly (typeof contractAnalysisCapability)[],
+): MountedPackage {
   return Object.freeze({
     mountId: MountId(`${name}@${version}#0`),
     name,
@@ -26,7 +30,9 @@ function mountWithCapabilities(name: string, version: string, declarations: read
 }
 
 test('capabilities are read from manifest.capabilities, never inferred from metadata', () => {
-  const registry = CapabilityRegistry.fromPackages([mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, clauseLookupCapability])]);
+  const registry = CapabilityRegistry.fromPackages([
+    mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, clauseLookupCapability]),
+  ]);
   assert.equal(registry.size, 2);
   assert.equal(registry.find('contract_analysis').length, 1);
   assert.equal(registry.find('clause_lookup').length, 1);
@@ -44,10 +50,7 @@ test('find() returns every package offering an exact capability id, across packa
   ]);
   const matches = registry.find('contract_analysis');
   assert.equal(matches.length, 2);
-  assert.deepEqual(
-    matches.map((m) => m.packageName).sort(),
-    ['xo_lawyer_a', 'xo_lawyer_b'],
-  );
+  assert.deepEqual(matches.map((m) => m.packageName).sort(), ['xo_lawyer_a', 'xo_lawyer_b']);
 });
 
 test('find() returns an empty array (never throws) for an unknown capability id', () => {
@@ -56,7 +59,9 @@ test('find() returns an empty array (never throws) for an unknown capability id'
 });
 
 test('search() matches case-insensitively across id, name, and description', () => {
-  const registry = CapabilityRegistry.fromPackages([mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, fraudDetectionCapability])]);
+  const registry = CapabilityRegistry.fromPackages([
+    mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, fraudDetectionCapability]),
+  ]);
   assert.equal(registry.search('CONTRACT').length, 1);
   assert.equal(registry.search('anomalous').length, 1); // matches fraudDetectionCapability's description
   assert.equal(registry.search('nonexistent-term').length, 0);
@@ -69,7 +74,9 @@ test('search() with an empty/whitespace query returns nothing rather than everyt
 });
 
 test('search() is deterministic: repeated calls with the same query return the same order', () => {
-  const registry = CapabilityRegistry.fromPackages([mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, clauseLookupCapability])]);
+  const registry = CapabilityRegistry.fromPackages([
+    mountWithCapabilities('xo_lawyer', '1.0.0', [contractAnalysisCapability, clauseLookupCapability]),
+  ]);
   const first = registry.search('contract').map((d) => d.declaration.id);
   const second = registry.search('contract').map((d) => d.declaration.id);
   assert.deepEqual(first, second);

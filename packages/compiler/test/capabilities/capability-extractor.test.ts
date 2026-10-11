@@ -39,7 +39,10 @@ test('integration: full pipeline (Stage 1-5) produces typed capabilities', async
 });
 
 test('integration: capabilities carry provenance back to the source document', async () => {
-  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (The team shall generate a summary report weekly.) Tj' }] }, 'contract.pdf');
+  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf(
+    { pages: [{ contentOps: '/F1 12 Tf 72 700 Td (The team shall generate a summary report weekly.) Tj' }] },
+    'contract.pdf',
+  );
   const graph = await extractCapabilityGraph(experienceDoc, knowledgeGraph);
   for (const cap of graph.capabilities) {
     for (const prov of cap.provenance) {
@@ -50,7 +53,9 @@ test('integration: capabilities carry provenance back to the source document', a
 });
 
 test('integration: a capability required-knowledge-node links to a Stage 4 knowledge node it mentions', async () => {
-  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send the invoice to Acme Corp within ten days.) Tj' }] });
+  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({
+    pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send the invoice to Acme Corp within ten days.) Tj' }],
+  });
   const graph = await extractCapabilityGraph(experienceDoc, knowledgeGraph);
   const cap = graph.capabilities.find((c) => c.category === 'communication');
   assert.ok(cap);
@@ -58,15 +63,31 @@ test('integration: a capability required-knowledge-node links to a Stage 4 knowl
 });
 
 test('integration: rule-based-only extraction (no aiCore) still produces a correct graph', async () => {
-  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({ pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Contract Review) Tj /F1 12 Tf 0 -40 Td (General provisions apply.) Tj' }] });
+  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({
+    pages: [{ contentOps: '/F1 20 Tf 72 750 Td (Contract Review) Tj /F1 12 Tf 0 -40 Td (General provisions apply.) Tj' }],
+  });
   const graph = await extractCapabilityGraph(experienceDoc, knowledgeGraph);
   assert.ok(graph.capabilities.some((c) => c.category === 'analysis'));
 });
 
 test('integration: with an AI extractor available, AI-derived capabilities appear alongside rule-based ones', async () => {
-  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send a confirmation email to the client.) Tj' }] });
-  const output: AiCapabilityExtractionOutput = { capabilities: [{ name: 'Escalate Unresolved Issues', description: 'Escalates issues that remain unresolved after a set period.', evidenceExcerptOffsets: [], confidence: 0.9 }] };
-  const provider = new ScriptableTestProvider('anthropic', experienceDoc.units.map(() => ({ kind: 'success' as const, response: jsonResponse(output) })));
+  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({
+    pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send a confirmation email to the client.) Tj' }],
+  });
+  const output: AiCapabilityExtractionOutput = {
+    capabilities: [
+      {
+        name: 'Escalate Unresolved Issues',
+        description: 'Escalates issues that remain unresolved after a set period.',
+        evidenceExcerptOffsets: [],
+        confidence: 0.9,
+      },
+    ],
+  };
+  const provider = new ScriptableTestProvider(
+    'anthropic',
+    experienceDoc.units.map(() => ({ kind: 'success' as const, response: jsonResponse(output) })),
+  );
   const aiCore = new AiCapabilityLayer({
     providers: [provider],
     policy: { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'test-model' } }] },
@@ -78,7 +99,9 @@ test('integration: with an AI extractor available, AI-derived capabilities appea
 });
 
 test('integration: an unreachable AI provider degrades gracefully, never throwing', async () => {
-  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({ pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send a notice promptly.) Tj' }] });
+  const { experienceDoc, knowledgeGraph } = await pipelineFromPdf({
+    pages: [{ contentOps: '/F1 12 Tf 72 700 Td (Send a notice promptly.) Tj' }],
+  });
   const aiCore = new AiCapabilityLayer({ providers: [], policy: { rules: [] } });
   const graph = await extractCapabilityGraph(experienceDoc, knowledgeGraph, { aiCore });
   assert.ok(graph.capabilities.length > 0);
@@ -89,8 +112,7 @@ test('determinism: compiling the same document twice produces a byte-for-byte id
     pages: [
       {
         contentOps:
-          '/F1 20 Tf 72 750 Td (Notifications) Tj ' +
-          '/F1 12 Tf 0 -40 Td (Acme Corp shall send a confirmation email upon completion.) Tj',
+          '/F1 20 Tf 72 750 Td (Notifications) Tj ' + '/F1 12 Tf 0 -40 Td (Acme Corp shall send a confirmation email upon completion.) Tj',
       },
     ],
   };

@@ -103,7 +103,8 @@ export interface StructuredTemporalCondition {
   readonly field?: string;
 }
 
-export type StructuredLeafCondition = StructuredNumericComparison | StructuredCategoricalCondition | StructuredRangeCondition | StructuredTemporalCondition;
+export type StructuredLeafCondition =
+  StructuredNumericComparison | StructuredCategoricalCondition | StructuredRangeCondition | StructuredTemporalCondition;
 
 /** All operands must hold. Built only when every operand independently parses — a partially-parseable conjunction is not emitted as a smaller-but-wrong conjunction, see `parseStructuredCondition`. */
 export interface StructuredConjunction {
@@ -358,7 +359,13 @@ function parseComparisonAtom(text: string): StructuredNumericComparison | undefi
   const numeric = parseNumericLiteralWithUnit(valueText);
   if (numeric === undefined) return undefined;
 
-  return { type: 'comparison', field, operator: found.entry.operator, value: numeric.value, ...(numeric.unit !== undefined ? { unit: numeric.unit } : {}) };
+  return {
+    type: 'comparison',
+    field,
+    operator: found.entry.operator,
+    value: numeric.value,
+    ...(numeric.unit !== undefined ? { unit: numeric.unit } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -375,7 +382,8 @@ function parseRangeAtom(text: string): StructuredRangeCondition | undefined {
     const field = stripTrailingCopula(stripTrailingPunct(trimmed.slice(0, betweenIdx)));
     const rest = trimmed.slice(betweenIdx + 'between'.length).trim();
     const andIdx = indexOfPhraseBoundary(rest.toLowerCase(), 'and');
-    if (field.length === 0 || andIdx === -1 || containsTopLevelConnective(field, 'or') || containsTopLevelConnective(field, 'and')) return undefined;
+    if (field.length === 0 || andIdx === -1 || containsTopLevelConnective(field, 'or') || containsTopLevelConnective(field, 'and'))
+      return undefined;
     const minText = rest.slice(0, andIdx).trim();
     const maxText = rest.slice(andIdx + 'and'.length).trim();
     const min = parseNumericLiteralWithUnit(minText);
@@ -390,7 +398,8 @@ function parseRangeAtom(text: string): StructuredRangeCondition | undefined {
     const field = stripTrailingCopula(stripTrailingPunct(trimmed.slice(0, fromIdx)));
     const rest = trimmed.slice(fromIdx + 'from'.length).trim();
     const toIdx = indexOfPhraseBoundary(rest.toLowerCase(), 'to');
-    if (field.length === 0 || toIdx === -1 || containsTopLevelConnective(field, 'or') || containsTopLevelConnective(field, 'and')) return undefined;
+    if (field.length === 0 || toIdx === -1 || containsTopLevelConnective(field, 'or') || containsTopLevelConnective(field, 'and'))
+      return undefined;
     const minText = rest.slice(0, toIdx).trim();
     const maxText = rest.slice(toIdx + 'to'.length).trim();
     const min = parseNumericLiteralWithUnit(minText);

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Runtime Stage 1 needs to expose what a mounted package can *do* —
+Runtime Stage 1 needs to expose what a mounted package can _do_ —
 `contract_analysis`, `fraud_detection`, `radiology`, and so on — as
 structured data a `CapabilityRegistry` can index and a
 `CapabilityNegotiator` can rank. The obvious shortcut was to derive this
@@ -57,7 +57,7 @@ one this stage needed.
 - `@xo/runtime`'s `PackageLoader` reads `manifest.capabilities` directly
   when building a `MountedPackage`'s `CapabilityDescriptor[]`. There is no
   code path anywhere that derives a capability from `metadata.json`.
-- A capability id is only unique *within* the manifest that declares it,
+- A capability id is only unique _within_ the manifest that declares it,
   not globally — `@xo/runtime`'s `CapabilityDescriptor` pairs a
   `CapabilityDeclaration` with the package name/version that offers it
   specifically so two different packages can legitimately declare the

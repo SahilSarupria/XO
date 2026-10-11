@@ -13,7 +13,12 @@ const hasher = new Sha256Hasher();
  * is what this stage's determinism guarantee actually rests on (see
  * `semantic-chunker.test.ts`'s determinism tests).
  */
-export function computeExperienceUnitId(documentPath: string, sectionPath: readonly string[], blockIndexRange: readonly [number, number], content: string): ExperienceUnitId {
+export function computeExperienceUnitId(
+  documentPath: string,
+  sectionPath: readonly string[],
+  blockIndexRange: readonly [number, number],
+  content: string,
+): ExperienceUnitId {
   const canonical = JSON.stringify({ documentPath, sectionPath, blockIndexRange, content });
   return brand(`eu_${hasher.hash(canonical).replace('sha256:', '').slice(0, 32)}`);
 }

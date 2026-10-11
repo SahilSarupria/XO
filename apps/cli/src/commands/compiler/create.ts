@@ -84,7 +84,10 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
     // compile calls below — see this function's doc comment.
     const now = new Date().toISOString();
     const nowFn = () => now;
-    const compileOptions: CompileSourcesOptions = { now: nowFn, ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}) };
+    const compileOptions: CompileSourcesOptions = {
+      now: nowFn,
+      ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
+    };
 
     const compiled = await compileSources(collected.inputs, compileOptions);
     if (!compiled.ok) return failWith(`[${compiled.error.code}] ${compiled.error.message}`);
@@ -102,7 +105,10 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
       domain: options.domain ?? 'unclassified',
       description: options.description ?? `Compiled from ${options.sources.join(', ')} (${collected.discovered.length} source file(s)).`,
       scope: compiled.value.sources.map((s) => `${s.sourcePath} (${s.sourceType}, ${s.unitCount} unit(s))`),
-      limitations: options.domain === undefined ? ['Domain not classified — caller did not supply --domain; do not rely on this field for search/discovery.'] : [],
+      limitations:
+        options.domain === undefined
+          ? ['Domain not classified — caller did not supply --domain; do not rely on this field for search/discovery.']
+          : [],
       tags: options.domain === undefined ? ['auto-generated-metadata'] : [],
     };
 
@@ -176,7 +182,11 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
 
     const lines: string[] = ['Source:', ...options.sources.map((s) => `  ${s}`)];
     if (collected.discovered.length > options.sources.length || options.sources.length > 1) {
-      lines.push('', `Discovered ${collected.discovered.length} source file(s):`, ...collected.discovered.map((d) => `  ${d.declaredPath}`));
+      lines.push(
+        '',
+        `Discovered ${collected.discovered.length} source file(s):`,
+        ...collected.discovered.map((d) => `  ${d.declaredPath}`),
+      );
     }
     if (collected.unsupported.length > 0) {
       lines.push('', `Ignored ${collected.unsupported.length} unsupported file(s):`);
@@ -194,7 +204,9 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
       `  ${discoveredCapabilities} discovered`,
       `  ${resolvedCapabilities} resolved and lowered into manifest.capabilities`,
       ...(discoveredCapabilities > resolvedCapabilities
-        ? [`  ${discoveredCapabilities - resolvedCapabilities} discovered but not resolved (no deterministic binding, or binding unresolved/ambiguous/denied — see "xo capabilities" for per-capability detail)`]
+        ? [
+            `  ${discoveredCapabilities - resolvedCapabilities} discovered but not resolved (no deterministic binding, or binding unresolved/ambiguous/denied — see "xo capabilities" for per-capability detail)`,
+          ]
         : []),
       '',
       'Provenance:',

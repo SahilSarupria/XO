@@ -4,7 +4,7 @@
 # FROM off of, so its Node version and global tooling are the platform's
 # single source of truth (see docs/adr/0002-language-and-runtime.md).
 
-FROM node:20-bookworm-slim AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /workspace
 RUN corepack enable
 

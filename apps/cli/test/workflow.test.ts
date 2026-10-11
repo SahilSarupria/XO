@@ -12,8 +12,19 @@ const OBLIGATION_TEXT =
   'The team shall notify the Client of any delay within 24 hours.\n';
 
 const OPERATION_FIXTURE = [
-  { type: 'operation', name: 'calculate_brokerage', inputs: { premium: { type: 'number' }, rate: { type: 'number' } }, outputs: { brokerage: { type: 'number' } } },
-  { type: 'operation', name: 'record_brokerage', requires: ['calculate_brokerage'], inputs: { brokerage: { type: 'number' } }, outputs: {} },
+  {
+    type: 'operation',
+    name: 'calculate_brokerage',
+    inputs: { premium: { type: 'number' }, rate: { type: 'number' } },
+    outputs: { brokerage: { type: 'number' } },
+  },
+  {
+    type: 'operation',
+    name: 'record_brokerage',
+    requires: ['calculate_brokerage'],
+    inputs: { brokerage: { type: 'number' } },
+    outputs: {},
+  },
 ];
 
 test('no mock/stub execution path: the command module never imports a mock helper', async () => {
@@ -160,7 +171,14 @@ test('a declared input name that differs from its runtime key (e.g. a multi-word
     const path = join(tmp, 'operations.json');
     await writeFile(
       path,
-      JSON.stringify([{ type: 'operation', name: 'calculate_brokerage', inputs: { 'reported loss date': { type: 'number' } }, outputs: { brokerage: { type: 'number' } } }]),
+      JSON.stringify([
+        {
+          type: 'operation',
+          name: 'calculate_brokerage',
+          inputs: { 'reported loss date': { type: 'number' } },
+          outputs: { brokerage: { type: 'number' } },
+        },
+      ]),
       'utf8',
     );
     const result = await workflowCommand({ source: path, json: true });
@@ -172,7 +190,7 @@ test('a declared input name that differs from its runtime key (e.g. a multi-word
   });
 });
 
-test('human-readable output lists each step\'s inputs/outputs with a clear supplied/injected/MISSING label', async () => {
+test("human-readable output lists each step's inputs/outputs with a clear supplied/injected/MISSING label", async () => {
   await withTempDir('xo-workflow-test-', async (tmp) => {
     const path = join(tmp, 'operations.json');
     await writeFile(path, JSON.stringify(OPERATION_FIXTURE), 'utf8');

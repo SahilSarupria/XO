@@ -60,7 +60,12 @@ function buildAasthaFullGraph(): XoirGraph {
 
   // Sequence evidence
   graph.createAndAddEdge({ id: XoirEdgeId('c_v1_s1'), kind: 'COMPLEMENTS', fromId: XoirNodeId('cap_obtain_statement'), toId: capVerify });
-  graph.createAndAddEdge({ id: XoirEdgeId('c_s3_val'), kind: 'COMPLEMENTS', fromId: capVal, toId: XoirNodeId('cap_compare_expected_actual') });
+  graph.createAndAddEdge({
+    id: XoirEdgeId('c_s3_val'),
+    kind: 'COMPLEMENTS',
+    fromId: capVal,
+    toId: XoirNodeId('cap_compare_expected_actual'),
+  });
 
   return graph;
 }

@@ -12,7 +12,14 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { parseStructuredAction, parseStructuredCondition } from '@xo/capability-contract';
-import { ACTION_FIXTURE, CONDITION_FIXTURE, type ActionFixtureCase, type ConditionFixtureCase, type FixtureActionExpected, type FixtureExpected } from './phase2-semantic-fixture.js';
+import {
+  ACTION_FIXTURE,
+  CONDITION_FIXTURE,
+  type ActionFixtureCase,
+  type ConditionFixtureCase,
+  type FixtureActionExpected,
+  type FixtureExpected,
+} from './phase2-semantic-fixture.js';
 
 interface CaseResult {
   readonly id: string;
@@ -32,7 +39,13 @@ function deepEqualSafe(a: unknown, b: unknown): boolean {
   }
 }
 
-function scoreCase(id: string, category: string, text: string, expected: FixtureExpected | FixtureActionExpected, actual: FixtureExpected | FixtureActionExpected): CaseResult {
+function scoreCase(
+  id: string,
+  category: string,
+  text: string,
+  expected: FixtureExpected | FixtureActionExpected,
+  actual: FixtureExpected | FixtureActionExpected,
+): CaseResult {
   const expectedUnresolved = expected === 'unresolved';
   const actualUnresolved = actual === 'unresolved';
 
@@ -127,10 +140,13 @@ async function main() {
   for (const [category, { total, correct }] of Object.entries(report.byCategory)) {
     console.log(`    ${category}: ${correct}/${total}`);
   }
-  const failing = report.cases.filter((c) => c.outcome === 'false_positive' || c.outcome === 'false_negative_missed' || c.outcome === 'false_negative_wrong_structure');
+  const failing = report.cases.filter(
+    (c) => c.outcome === 'false_positive' || c.outcome === 'false_negative_missed' || c.outcome === 'false_negative_wrong_structure',
+  );
   if (failing.length > 0) {
     console.log('  failing cases:');
-    for (const c of failing) console.log(`    [${c.id}] "${c.text}" — ${c.outcome} — expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(c.actual)}`);
+    for (const c of failing)
+      console.log(`    [${c.id}] "${c.text}" — ${c.outcome} — expected ${JSON.stringify(c.expected)}, got ${JSON.stringify(c.actual)}`);
   }
 
   await mkdir('output', { recursive: true });

@@ -55,7 +55,8 @@ export async function atomicWriteJson(path: string, payload: unknown): Promise<v
   await rename(tempPath, path);
 }
 
-export type ReadJsonResult = { readonly kind: 'ok'; readonly payload: unknown } | { readonly kind: 'missing' } | { readonly kind: 'corrupt'; readonly reason: string };
+export type ReadJsonResult =
+  { readonly kind: 'ok'; readonly payload: unknown } | { readonly kind: 'missing' } | { readonly kind: 'corrupt'; readonly reason: string };
 
 /** Reads and verifies a file written by {@link atomicWriteJson}. Distinguishes "never written" (`'missing'`, not an error) from "written but unreadable/tampered/truncated" (`'corrupt'`, a real error a caller should surface) — see `runtime-store.interface.ts`'s doc comments for why that distinction matters. */
 export async function readJsonChecked(path: string): Promise<ReadJsonResult> {
@@ -126,7 +127,10 @@ export class KeyedAsyncLock {
     const run = previous.then(fn, fn);
     // Swallow so a failed operation doesn't permanently wedge this key's
     // queue for whoever runs next.
-    this.queues.set(key, run.catch(() => undefined));
+    this.queues.set(
+      key,
+      run.catch(() => undefined),
+    );
     return run;
   }
 }

@@ -88,8 +88,6 @@ export function classifyBump(from: string, to: string): VersionBump {
   return 'patch';
 }
 
-
-
 /**
  * Semver *range* support — added for `@xo/package-sdk`'s dependency
  * resolver (`resolver/`), which is the first consumer in this codebase
@@ -147,7 +145,7 @@ function expandShorthand(token: string): readonly string[] | null {
   if (tilde?.[1]) {
     const base = parseSemVer(tilde[1]);
     if (!base.ok) return null;
-   return [`>=${base.value.raw}`, `<${base.value.major}.${base.value.minor + 1}.0`];
+    return [`>=${base.value.raw}`, `<${base.value.major}.${base.value.minor + 1}.0`];
   }
   return null;
 }

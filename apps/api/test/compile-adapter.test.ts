@@ -84,7 +84,16 @@ test('propagates a clean error (not a crash) for a dangling edge referencing a n
   const graph = XoirGraph.create(XoirGraphId('dangling-edge'));
   const asJson = {
     ...toJson(graph),
-    edges: [{ id: 'e1', kind: 'requires', fromId: 'does-not-exist-1', toId: 'does-not-exist-2', hash: 'irrelevant', metadata: { confidence: 1, sourceRefs: [], transformationChain: [] } }],
+    edges: [
+      {
+        id: 'e1',
+        kind: 'requires',
+        fromId: 'does-not-exist-1',
+        toId: 'does-not-exist-2',
+        hash: 'irrelevant',
+        metadata: { confidence: 1, sourceRefs: [], transformationChain: [] },
+      },
+    ],
   };
   const result = await compileViaHttp({ kind: 'xoir', graph: asJson });
   assert.equal(result.ok, false);

@@ -19,19 +19,28 @@ test('filter by node type', () => {
 
 test('filter by edge type', () => {
   const filtered = GraphFilters.empty().withEdgeTypes(['link']).apply(sample());
-  assert.deepEqual(filtered.edges.map((e) => e.id), ['e1']);
+  assert.deepEqual(
+    filtered.edges.map((e) => e.id),
+    ['e1'],
+  );
 });
 
 test('filter by label query', () => {
   const filtered = GraphFilters.empty().withLabelQuery('alp').apply(sample());
-  assert.deepEqual(filtered.nodes.map((n) => n.id), ['a']);
+  assert.deepEqual(
+    filtered.nodes.map((n) => n.id),
+    ['a'],
+  );
 });
 
 test('filter by metadata predicate', () => {
   const filtered = GraphFilters.empty()
     .withMetadataPredicate((meta) => meta?.tier === 'gold')
     .apply(sample());
-  assert.deepEqual(filtered.nodes.map((n) => n.id), ['a']);
+  assert.deepEqual(
+    filtered.nodes.map((n) => n.id),
+    ['a'],
+  );
 });
 
 test('hiding a node also drops its edges', () => {

@@ -60,24 +60,23 @@ export function toJson(graph: XoirGraph): XoirGraphJson {
  */
 export function fromJson(raw: XoirGraphJson): Result<XoirGraph, SerializationError> {
   if (!isSchemaVersionSupported(raw.schemaVersion)) {
-    return err(
-      new SerializationError(
-        ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
-        `Unsupported XOIR schemaVersion ${raw.schemaVersion}`,
-      ),
-    );
+    return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Unsupported XOIR schemaVersion ${raw.schemaVersion}`));
   }
   const graph = new XoirGraph(XoirGraphId(raw.id), raw.schemaVersion, raw.manifest);
   for (const node of raw.nodes) {
     const result = graph.addNode(node);
     if (!result.ok) {
-      return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Failed to reconstruct node "${node.id}": ${result.error.message}`));
+      return err(
+        new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Failed to reconstruct node "${node.id}": ${result.error.message}`),
+      );
     }
   }
   for (const edge of raw.edges) {
     const result = graph.addEdge(edge);
     if (!result.ok) {
-      return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Failed to reconstruct edge "${edge.id}": ${result.error.message}`));
+      return err(
+        new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Failed to reconstruct edge "${edge.id}": ${result.error.message}`),
+      );
     }
   }
   return ok(graph);

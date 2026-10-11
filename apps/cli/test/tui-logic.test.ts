@@ -44,7 +44,8 @@ test('stripAtPrefix only strips a leading @ with something after it', () => {
 
 // Verbatim shapes from the real registrars.
 const USAGE_SINGLE = 'xo version                              Print the CLI version';
-const USAGE_MULTI = 'xo init <dir> --name <n> --creator-did <did> [--version <v>] [--format-version <v>]\n                                         Scaffold a new package project';
+const USAGE_MULTI =
+  'xo init <dir> --name <n> --creator-did <did> [--version <v>] [--format-version <v>]\n                                         Scaffold a new package project';
 const USAGE_RUN =
   'xo run <capabilityId> --input "<text>" --store <dir>\n' +
   '      [--provider anthropic|openai|azure-openai|gemini|ollama] [--model <id>]\n' +
@@ -80,7 +81,10 @@ test('buildCatalog merges session commands with registry commands, sorted, witho
   registry.register({ name: 'help', subsystem: 'system', usage: 'xo help  clash', run: () => 0 }); // clashes with a session command
   const catalog = buildCatalog(registry, sessionCatalog());
   const names = catalog.map((e) => e.name);
-  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
+  assert.deepEqual(
+    names,
+    [...names].sort((a, b) => a.localeCompare(b)),
+  );
   assert.equal(names.filter((n) => n === 'help').length, 1);
   assert.equal(catalog.find((e) => e.name === 'help')!.source, 'session');
   const compile = catalog.find((e) => e.name === 'compile')!;
@@ -100,11 +104,25 @@ test('closestMatch suggests by prefix or small edit distance, and stays quiet ot
 
 const catalog: CatalogEntry[] = [
   ...sessionCatalog(),
-  { name: 'compile', description: 'Compile', usage: USAGE_COMPILE, args: '<source>...', completes: 'path', takesArgs: true, source: 'command' },
+  {
+    name: 'compile',
+    description: 'Compile',
+    usage: USAGE_COMPILE,
+    args: '<source>...',
+    completes: 'path',
+    takesArgs: true,
+    source: 'command',
+  },
   { name: 'doctor', description: 'Check env', usage: 'xo doctor   Check env', completes: 'none', takesArgs: false, source: 'command' },
 ];
 const fakeFs = {
-  '/w': [{ name: 'docs', isDirectory: true }, { name: 'notes.txt', isDirectory: false }, { name: 'My File.pdf', isDirectory: false }, { name: '.hidden', isDirectory: false }, { name: 'node_modules', isDirectory: true }],
+  '/w': [
+    { name: 'docs', isDirectory: true },
+    { name: 'notes.txt', isDirectory: false },
+    { name: 'My File.pdf', isDirectory: false },
+    { name: '.hidden', isDirectory: false },
+    { name: 'node_modules', isDirectory: true },
+  ],
   '/w/docs': [{ name: 'a.pdf', isDirectory: false }],
 };
 const ctx: CompletionContext = {
@@ -121,10 +139,18 @@ const ctx: CompletionContext = {
 
 test('completion: slash command names by prefix, with args marked and no-arg commands marked runOnEnter', () => {
   const s = computeSuggestions('/com', 4, ctx)!;
-  assert.deepEqual(s.items.map((i) => i.insert), ['/compile ']);
+  assert.deepEqual(
+    s.items.map((i) => i.insert),
+    ['/compile '],
+  );
   assert.equal(s.from, 0);
   assert.equal(s.to, 4);
-  assert.deepEqual(computeSuggestions('/co', 3, ctx)!.items.map((i) => i.label.split(' ')[0]).sort(), ['/compile', '/copy']);
+  assert.deepEqual(
+    computeSuggestions('/co', 3, ctx)!
+      .items.map((i) => i.label.split(' ')[0])
+      .sort(),
+    ['/compile', '/copy'],
+  );
   const d = computeSuggestions('/do', 3, ctx)!;
   assert.equal(d.items[0]!.insert, '/doctor');
   assert.equal(d.items[0]!.runOnEnter, true);
@@ -137,33 +163,62 @@ test('completion: slash command names by prefix, with args marked and no-arg com
 
 test('completion: paths after a path command; hidden files and node_modules skipped; dirs first; spaces escaped', () => {
   const s = computeSuggestions('/compile ', 9, ctx)!;
-  assert.deepEqual(s.items.map((i) => i.label), ['docs/', 'My File.pdf', 'notes.txt']);
+  assert.deepEqual(
+    s.items.map((i) => i.label),
+    ['docs/', 'My File.pdf', 'notes.txt'],
+  );
   assert.equal(s.items.find((i) => i.label === 'My File.pdf')!.insert, 'My\\ File.pdf ');
   const sub = computeSuggestions('/compile docs/', 14, ctx)!;
-  assert.deepEqual(sub.items.map((i) => i.insert), ['docs/a.pdf ']);
+  assert.deepEqual(
+    sub.items.map((i) => i.insert),
+    ['docs/a.pdf '],
+  );
   assert.equal(computeSuggestions('/compile nothing', 16, ctx), undefined);
   // A leading dot opts in to hidden files.
-  assert.deepEqual(computeSuggestions('/compile .', 10, ctx)!.items.map((i) => i.label), ['.hidden']);
+  assert.deepEqual(
+    computeSuggestions('/compile .', 10, ctx)!.items.map((i) => i.label),
+    ['.hidden'],
+  );
 });
 
 test('completion: @ references complete anywhere, including plain-text prompts', () => {
   const s = computeSuggestions('summarize @no', 13, ctx)!;
-  assert.deepEqual(s.items.map((i) => i.insert), ['@notes.txt ']);
+  assert.deepEqual(
+    s.items.map((i) => i.insert),
+    ['@notes.txt '],
+  );
   assert.equal(s.from, 10);
   assert.equal(computeSuggestions('no at sign here', 15, ctx), undefined);
 });
 
 test('completion: flags from usage, values for /theme, /provider, /help', () => {
-  assert.deepEqual(computeSuggestions('/compile --do', 13, ctx)!.items.map((i) => i.label), ['--domain-hint']);
-  assert.deepEqual(computeSuggestions('/theme dr', 9, ctx)!.items.map((i) => i.label), ['dracula']);
-  assert.deepEqual(computeSuggestions('/provider o', 11, ctx)!.items.map((i) => i.label), ['openai']);
+  assert.deepEqual(
+    computeSuggestions('/compile --do', 13, ctx)!.items.map((i) => i.label),
+    ['--domain-hint'],
+  );
+  assert.deepEqual(
+    computeSuggestions('/theme dr', 9, ctx)!.items.map((i) => i.label),
+    ['dracula'],
+  );
+  assert.deepEqual(
+    computeSuggestions('/provider o', 11, ctx)!.items.map((i) => i.label),
+    ['openai'],
+  );
   assert.ok(computeSuggestions('/help com', 9, ctx)!.items.some((i) => i.label === 'compile'));
   assert.deepEqual(computeSuggestions('/doctor --st', 12, ctx), undefined);
 });
 
 test('completion: nothing inside quotes; path flags complete paths', () => {
   assert.equal(computeSuggestions('/compile "docs/', 15, ctx), undefined);
-  assert.ok(computeSuggestions('/install x.xo --store ', 22, { ...ctx, catalog: [...catalog, { name: 'install', description: '', usage: 'xo install <a> --store <d>', completes: 'path', takesArgs: true, source: 'command' }] }));
+  assert.ok(
+    computeSuggestions('/install x.xo --store ', 22, {
+      ...ctx,
+      catalog: [
+        ...catalog,
+        { name: 'install', description: '', usage: 'xo install <a> --store <d>', completes: 'path', takesArgs: true, source: 'command' },
+      ],
+    }),
+  );
 });
 
 // ------------------------------------------------------ history / settings

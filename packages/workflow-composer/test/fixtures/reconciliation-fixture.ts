@@ -50,7 +50,13 @@ export function buildReconciliationSectionFixtureGraph(): XoirGraph {
   const complements = (fromId: string, toId: string): void => {
     // fromId is the later capability, toId is the immediately preceding one — matches
     // @xo/compiler's capabilities/relationship-builder.ts direction exactly.
-    const result = graph.createAndAddEdge({ id: XoirEdgeId(`complements_${fromId}_${toId}`), kind: 'COMPLEMENTS', fromId: XoirNodeId(fromId), toId: XoirNodeId(toId), now: NOW });
+    const result = graph.createAndAddEdge({
+      id: XoirEdgeId(`complements_${fromId}_${toId}`),
+      kind: 'COMPLEMENTS',
+      fromId: XoirNodeId(fromId),
+      toId: XoirNodeId(toId),
+      now: NOW,
+    });
     if (!result.ok) throw new Error(result.error.message);
   };
   complements('cap_reconcile_records', 'cap_obtain_statement');
@@ -88,7 +94,13 @@ export function buildMixedEvidenceFixtureGraph(): XoirGraph {
   addCap('cap_verify_brokerage', 'Verify Brokerage', sectionA);
   addCap('cap_unrelated_section', 'Unrelated Bookkeeping Step', sectionB);
 
-  const requires = graph.createAndAddEdge({ id: XoirEdgeId('req_verify_map'), kind: 'REQUIRES', fromId: XoirNodeId('cap_verify_brokerage'), toId: XoirNodeId('cap_map_records'), now: NOW });
+  const requires = graph.createAndAddEdge({
+    id: XoirEdgeId('req_verify_map'),
+    kind: 'REQUIRES',
+    fromId: XoirNodeId('cap_verify_brokerage'),
+    toId: XoirNodeId('cap_map_records'),
+    now: NOW,
+  });
   if (!requires.ok) throw new Error(requires.error.message);
 
   return graph;

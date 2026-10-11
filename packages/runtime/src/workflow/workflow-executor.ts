@@ -144,7 +144,11 @@ export class WorkflowExecutor {
     return this.events;
   }
 
-  async run(graph: WorkflowGraph, environment: ExecutionEnvironment, cancellation: ExecutionCancellation = new ExecutionCancellation()): Promise<WorkflowResult> {
+  async run(
+    graph: WorkflowGraph,
+    environment: ExecutionEnvironment,
+    cancellation: ExecutionCancellation = new ExecutionCancellation(),
+  ): Promise<WorkflowResult> {
     const instance: WorkflowInstance = Object.freeze({
       workflowInstanceId: WorkflowInstanceId(`wf_${graph.graphId}_${this.now().getTime()}`),
       graph,
@@ -157,7 +161,11 @@ export class WorkflowExecutor {
     return this.runToCompletion(instance, environment, cancellation, true);
   }
 
-  async resume(checkpoint: WorkflowCheckpoint, environment: ExecutionEnvironment, cancellation: ExecutionCancellation = new ExecutionCancellation()): Promise<WorkflowResult> {
+  async resume(
+    checkpoint: WorkflowCheckpoint,
+    environment: ExecutionEnvironment,
+    cancellation: ExecutionCancellation = new ExecutionCancellation(),
+  ): Promise<WorkflowResult> {
     this.emit('resumed', checkpoint.instance);
     return this.runToCompletion(checkpoint.instance, environment, cancellation, true);
   }
@@ -174,9 +182,15 @@ export class WorkflowExecutor {
    * below uses) rather than requiring a checkpoint to have existed.
    * Fails clearly if neither exists — there is nothing to resume.
    */
-  async resumeFromStore(executionId: WorkflowInstanceId, environment: ExecutionEnvironment, cancellation: ExecutionCancellation = new ExecutionCancellation()): Promise<Result<WorkflowResult, RuntimeError>> {
+  async resumeFromStore(
+    executionId: WorkflowInstanceId,
+    environment: ExecutionEnvironment,
+    cancellation: ExecutionCancellation = new ExecutionCancellation(),
+  ): Promise<Result<WorkflowResult, RuntimeError>> {
     if (!this.store) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, 'resumeFromStore requires a store to be configured on this WorkflowExecutor'));
+      return err(
+        new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, 'resumeFromStore requires a store to be configured on this WorkflowExecutor'),
+      );
     }
 
     const latestCheckpoint = await this.store.checkpoints.latestForExecution(executionId);
@@ -237,7 +251,12 @@ export class WorkflowExecutor {
     return ok(undefined);
   }
 
-  private async runToCompletion(startInstance: WorkflowInstance, environment: ExecutionEnvironment, cancellation: ExecutionCancellation, isTopLevel: boolean): Promise<WorkflowResult> {
+  private async runToCompletion(
+    startInstance: WorkflowInstance,
+    environment: ExecutionEnvironment,
+    cancellation: ExecutionCancellation,
+    isTopLevel: boolean,
+  ): Promise<WorkflowResult> {
     const startedAt = this.now().getTime();
     let instance = Object.freeze({ ...startInstance, status: 'running' as WorkflowInstanceStatus });
     const nodeReceipts: WorkflowNodeReceipt[] = [];
@@ -252,7 +271,15 @@ export class WorkflowExecutor {
         const status: WorkflowInstanceStatus = cancellation.reason === 'timeout' ? 'timed_out' : 'cancelled';
         instance = Object.freeze({ ...instance, status, updatedAt: this.now().toISOString() });
         this.emit('cancelled', instance);
-        return this.terminate(instance, startedAt, new RuntimeError(status === 'timed_out' ? ErrorCode.RUNTIME_EXECUTION_TIMEOUT : ErrorCode.RUNTIME_EXECUTION_CANCELLED, `Workflow ${status}`), isTopLevel);
+        return this.terminate(
+          instance,
+          startedAt,
+          new RuntimeError(
+            status === 'timed_out' ? ErrorCode.RUNTIME_EXECUTION_TIMEOUT : ErrorCode.RUNTIME_EXECUTION_CANCELLED,
+            `Workflow ${status}`,
+          ),
+          isTopLevel,
+        );
       }
 
       const cursor = this.scheduler.computeCursor(instance.graph, instance.state);
@@ -263,7 +290,10 @@ export class WorkflowExecutor {
           return this.terminate(
             instance,
             startedAt,
-            new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Workflow "${instance.graph.graphId}" stalled: ${cursor.waiting.length} node(s) never became reachable (${cursor.waiting.join(', ')})`),
+            new RuntimeError(
+              ErrorCode.RUNTIME_EXECUTION_FAILED,
+              `Workflow "${instance.graph.graphId}" stalled: ${cursor.waiting.length} node(s) never became reachable (${cursor.waiting.join(', ')})`,
+            ),
             isTopLevel,
           );
         }
@@ -274,7 +304,9 @@ export class WorkflowExecutor {
       state = this.applySkips(state, cursor.toSkip, instance.graph);
 
       const context: WorkflowContext = this.buildContext(instance.workflowInstanceId, instance.graph, state, environment, cancellation);
-      const dispatched = await Promise.all(cursor.ready.map((nodeId) => this.dispatchOne(instance.workflowInstanceId, instance.graph, nodeId, context)));
+      const dispatched = await Promise.all(
+        cursor.ready.map((nodeId) => this.dispatchOne(instance.workflowInstanceId, instance.graph, nodeId, context)),
+      );
 
       for (let i = 0; i < cursor.ready.length; i++) {
         const nodeId = cursor.ready[i]!;
@@ -316,14 +348,33 @@ export class WorkflowExecutor {
         const status: WorkflowInstanceStatus = cancellation.reason === 'timeout' ? 'timed_out' : 'cancelled';
         instance = Object.freeze({ ...instance, status, updatedAt: this.now().toISOString() });
         this.emit('cancelled', instance);
-        return this.terminate(instance, startedAt, new RuntimeError(status === 'timed_out' ? ErrorCode.RUNTIME_EXECUTION_TIMEOUT : ErrorCode.RUNTIME_EXECUTION_CANCELLED, `Workflow ${status}`), isTopLevel);
+        return this.terminate(
+          instance,
+          startedAt,
+          new RuntimeError(
+            status === 'timed_out' ? ErrorCode.RUNTIME_EXECUTION_TIMEOUT : ErrorCode.RUNTIME_EXECUTION_CANCELLED,
+            `Workflow ${status}`,
+          ),
+          isTopLevel,
+        );
       }
 
       if (instance.state.failedNodes.length > 0) {
         instance = Object.freeze({ ...instance, status: 'failed' });
         this.emit('failed', instance);
-        const firstFailure = dispatched.find((outcome) => outcome.status === 'failed' && outcome.error?.code !== ErrorCode.RUNTIME_EXECUTION_CANCELLED)?.error;
-        return this.terminate(instance, startedAt, firstFailure ?? new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Workflow "${instance.graph.graphId}" failed: node(s) ${instance.state.failedNodes.join(', ')} exhausted retries`), isTopLevel);
+        const firstFailure = dispatched.find(
+          (outcome) => outcome.status === 'failed' && outcome.error?.code !== ErrorCode.RUNTIME_EXECUTION_CANCELLED,
+        )?.error;
+        return this.terminate(
+          instance,
+          startedAt,
+          firstFailure ??
+            new RuntimeError(
+              ErrorCode.RUNTIME_EXECUTION_FAILED,
+              `Workflow "${instance.graph.graphId}" failed: node(s) ${instance.state.failedNodes.join(', ')} exhausted retries`,
+            ),
+          isTopLevel,
+        );
       }
     }
 
@@ -346,7 +397,16 @@ export class WorkflowExecutor {
     graph: WorkflowGraph,
     outerContext: WorkflowContext,
     initialOutputs: Readonly<Record<string, unknown>>,
-  ): Promise<Result<{ outputs: Readonly<Record<string, unknown>>; nodeReceipts: readonly WorkflowNodeReceipt[]; resourceUsage: NodeHandlerResult['resourceUsage'] }, RuntimeError>> {
+  ): Promise<
+    Result<
+      {
+        outputs: Readonly<Record<string, unknown>>;
+        nodeReceipts: readonly WorkflowNodeReceipt[];
+        resourceUsage: NodeHandlerResult['resourceUsage'];
+      },
+      RuntimeError
+    >
+  > {
     const seeded: WorkflowState = { ...createInitialState(this.now), outputs: initialOutputs };
     const nestedInstance: WorkflowInstance = Object.freeze({
       workflowInstanceId: WorkflowInstanceId(`${outerContext.workflowInstanceId}::${graph.graphId}_${this.now().getTime()}`),
@@ -359,12 +419,18 @@ export class WorkflowExecutor {
 
     const result = await this.runToCompletion(nestedInstance, outerContext.environment, outerContext.cancellation, false);
     if (result.error || !result.receipt) {
-      return err(result.error ?? new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Nested workflow "${graph.graphId}" did not complete`));
+      return err(
+        result.error ?? new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Nested workflow "${graph.graphId}" did not complete`),
+      );
     }
     return ok({
       outputs: result.instance.state.outputs,
       nodeReceipts: result.receipt.nodeReceipts,
-      resourceUsage: { promptTokens: result.receipt.resourceUsage.promptTokens, completionTokens: result.receipt.resourceUsage.completionTokens, estimatedCost: result.receipt.resourceUsage.estimatedCost },
+      resourceUsage: {
+        promptTokens: result.receipt.resourceUsage.promptTokens,
+        completionTokens: result.receipt.resourceUsage.completionTokens,
+        estimatedCost: result.receipt.resourceUsage.estimatedCost,
+      },
     });
   }
 
@@ -381,7 +447,13 @@ export class WorkflowExecutor {
    * so its `memory` is correctly its own `workflow` scope, isolated from
    * the parent's (§16's isolation invariant applies across nesting too).
    */
-  private buildContext(workflowInstanceId: WorkflowInstanceId, graph: WorkflowGraph, state: WorkflowState, environment: ExecutionEnvironment, cancellation: ExecutionCancellation): WorkflowContext {
+  private buildContext(
+    workflowInstanceId: WorkflowInstanceId,
+    graph: WorkflowGraph,
+    state: WorkflowState,
+    environment: ExecutionEnvironment,
+    cancellation: ExecutionCancellation,
+  ): WorkflowContext {
     return {
       workflowInstanceId,
       graph,
@@ -392,16 +464,38 @@ export class WorkflowExecutor {
     };
   }
 
-  private async dispatchOne(workflowInstanceId: WorkflowInstanceId, graph: WorkflowGraph, nodeId: NodeId, context: WorkflowContext): Promise<DispatchOutcome> {
+  private async dispatchOne(
+    workflowInstanceId: WorkflowInstanceId,
+    graph: WorkflowGraph,
+    nodeId: NodeId,
+    context: WorkflowContext,
+  ): Promise<DispatchOutcome> {
     const node = this.scheduler.nodeById(graph, nodeId);
     if (!node) {
       const timestamp = this.now().toISOString();
-      return { status: 'failed', attempts: 0, startedAt: timestamp, completedAt: timestamp, durationMs: 0, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Unknown node "${nodeId}"`) };
+      return {
+        status: 'failed',
+        attempts: 0,
+        startedAt: timestamp,
+        completedAt: timestamp,
+        durationMs: 0,
+        error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Unknown node "${nodeId}"`),
+      };
     }
     const handler = this.handlers.get(node.type) ?? this.customHandlers.get(node.type);
     if (!handler) {
       const timestamp = this.now().toISOString();
-      return { status: 'failed', attempts: 0, startedAt: timestamp, completedAt: timestamp, durationMs: 0, error: new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, `No handler registered for node type "${node.type}" (node "${node.id}")`) };
+      return {
+        status: 'failed',
+        attempts: 0,
+        startedAt: timestamp,
+        completedAt: timestamp,
+        durationMs: 0,
+        error: new RuntimeError(
+          ErrorCode.RUNTIME_INVALID_REQUEST,
+          `No handler registered for node type "${node.type}" (node "${node.id}")`,
+        ),
+      };
     }
 
     this.emitNode('node_started', workflowInstanceId, nodeId);
@@ -411,7 +505,14 @@ export class WorkflowExecutor {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       if (context.cancellation.isCancelled) {
-        return { status: 'failed', attempts: attempt, startedAt: overallStartedAt.toISOString(), completedAt: this.now().toISOString(), durationMs: 0, error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, `Node "${node.id}" cancelled`) };
+        return {
+          status: 'failed',
+          attempts: attempt,
+          startedAt: overallStartedAt.toISOString(),
+          completedAt: this.now().toISOString(),
+          durationMs: 0,
+          error: new RuntimeError(ErrorCode.RUNTIME_EXECUTION_CANCELLED, `Node "${node.id}" cancelled`),
+        };
       }
       const attemptStartedAt = this.now().getTime();
       const outcome = await this.runWithTimeout(handler(node, context), node.timeoutMs, context.cancellation);
@@ -420,7 +521,14 @@ export class WorkflowExecutor {
       if (outcome.ok) {
         this.instrumentation?.recordExecutionOutcome('node_completed', durationMs, { nodeType: node.type, attempts: attempt });
         this.emitNode('node_completed', workflowInstanceId, nodeId, { attempts: attempt });
-        return { status: 'completed', attempts: attempt, startedAt: overallStartedAt.toISOString(), completedAt: this.now().toISOString(), durationMs: this.now().getTime() - overallStartedAt.getTime(), result: outcome.value };
+        return {
+          status: 'completed',
+          attempts: attempt,
+          startedAt: overallStartedAt.toISOString(),
+          completedAt: this.now().toISOString(),
+          durationMs: this.now().getTime() - overallStartedAt.getTime(),
+          result: outcome.value,
+        };
       }
 
       lastError = outcome.error;
@@ -432,10 +540,21 @@ export class WorkflowExecutor {
 
     this.instrumentation?.recordExecutionOutcome('node_failed', 0, { nodeType: node.type, attempts: maxAttempts });
     this.emitNode('node_failed', workflowInstanceId, nodeId, { attempts: maxAttempts, error: lastError?.message });
-    return { status: 'failed', attempts: maxAttempts, startedAt: overallStartedAt.toISOString(), completedAt: this.now().toISOString(), durationMs: 0, ...(lastError ? { error: lastError } : {}) };
+    return {
+      status: 'failed',
+      attempts: maxAttempts,
+      startedAt: overallStartedAt.toISOString(),
+      completedAt: this.now().toISOString(),
+      durationMs: 0,
+      ...(lastError ? { error: lastError } : {}),
+    };
   }
 
-  private async runWithTimeout(promise: Promise<Result<NodeHandlerResult, RuntimeError>>, timeoutMs: number | undefined, cancellation: ExecutionCancellation): Promise<Result<NodeHandlerResult, RuntimeError>> {
+  private async runWithTimeout(
+    promise: Promise<Result<NodeHandlerResult, RuntimeError>>,
+    timeoutMs: number | undefined,
+    cancellation: ExecutionCancellation,
+  ): Promise<Result<NodeHandlerResult, RuntimeError>> {
     // Always races against cancellation, not just when a timeout is set —
     // otherwise a node with no `timeoutMs` (the common case) could run to
     // completion ignoring an in-flight cancel/timeout entirely, which
@@ -471,11 +590,20 @@ export class WorkflowExecutor {
   private applySkips(state: WorkflowState, toSkip: readonly NodeId[], graph: WorkflowGraph): WorkflowState {
     if (toSkip.length === 0) return state;
     const timestamp = this.now().toISOString();
-    const newHistory: WorkflowHistoryEntry[] = toSkip.map((nodeId) => ({ nodeId, status: 'skipped' as const, attempt: 0, startedAt: timestamp, completedAt: timestamp, durationMs: 0 }));
+    const newHistory: WorkflowHistoryEntry[] = toSkip.map((nodeId) => ({
+      nodeId,
+      status: 'skipped' as const,
+      attempt: 0,
+      startedAt: timestamp,
+      completedAt: timestamp,
+      durationMs: 0,
+    }));
     // A skipped node's own outgoing edges are all "taken" in the sense
     // that the skip propagates forward — its successors should see it
     // the same way they'd see any other terminal predecessor.
-    const propagatedEdgeKeys = toSkip.flatMap((nodeId) => this.scheduler.outgoingEdges(graph, nodeId).map((edge) => edgeKey(edge.from, edge.to)));
+    const propagatedEdgeKeys = toSkip.flatMap((nodeId) =>
+      this.scheduler.outgoingEdges(graph, nodeId).map((edge) => edgeKey(edge.from, edge.to)),
+    );
     return Object.freeze({
       ...state,
       skippedNodes: [...state.skippedNodes, ...toSkip],
@@ -497,7 +625,12 @@ export class WorkflowExecutor {
     };
 
     if (outcome.status === 'failed') {
-      return Object.freeze({ ...state, failedNodes: [...state.failedNodes, nodeId], history: [...state.history, historyEntry], updatedAt: this.now().toISOString() });
+      return Object.freeze({
+        ...state,
+        failedNodes: [...state.failedNodes, nodeId],
+        history: [...state.history, historyEntry],
+        updatedAt: this.now().toISOString(),
+      });
     }
 
     const result = outcome.result ?? {};
@@ -532,11 +665,20 @@ export class WorkflowExecutor {
    * returned as a second error) rather than recursing back into
    * `terminate` again — the original error is always what's reported.
    */
-  private async terminate(instance: WorkflowInstance, startedAt: number, error: RuntimeError, isTopLevel: boolean): Promise<WorkflowResult> {
+  private async terminate(
+    instance: WorkflowInstance,
+    startedAt: number,
+    error: RuntimeError,
+    isTopLevel: boolean,
+  ): Promise<WorkflowResult> {
     this.instrumentation?.recordExecutionOutcome(instance.status, this.now().getTime() - startedAt, { graphId: instance.graph.graphId });
     if (isTopLevel && this.store) {
       const persisted = await this.persistExecution(instance);
-      if (!persisted.ok) this.logger.warn('failed to persist terminal execution state', { executionId: instance.workflowInstanceId, error: persisted.error.message });
+      if (!persisted.ok)
+        this.logger.warn('failed to persist terminal execution state', {
+          executionId: instance.workflowInstanceId,
+          error: persisted.error.message,
+        });
     }
     return { workflowInstanceId: instance.workflowInstanceId, instance, error };
   }
@@ -551,7 +693,12 @@ export class WorkflowExecutor {
     });
   }
 
-  private emitNode(type: WorkflowEvent['type'], workflowInstanceId: WorkflowInstanceId, nodeId: NodeId, data?: Readonly<Record<string, unknown>>): void {
+  private emitNode(
+    type: WorkflowEvent['type'],
+    workflowInstanceId: WorkflowInstanceId,
+    nodeId: NodeId,
+    data?: Readonly<Record<string, unknown>>,
+  ): void {
     this.events.emit({
       type,
       workflowInstanceId,

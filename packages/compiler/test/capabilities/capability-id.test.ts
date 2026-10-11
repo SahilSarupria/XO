@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeCapabilityId, computeCapabilityMatchKey, computeCapabilityRelationshipId, normalizeCapabilityName } from '../../src/capabilities/capability-id.js';
+import {
+  computeCapabilityId,
+  computeCapabilityMatchKey,
+  computeCapabilityRelationshipId,
+  normalizeCapabilityName,
+} from '../../src/capabilities/capability-id.js';
 
 test('the worked example: Send Email / Email Sending / Mail Sender all merge to the same id', () => {
   const a = computeCapabilityId('communication', 'Send Email');

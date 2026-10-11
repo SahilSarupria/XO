@@ -23,7 +23,7 @@ import type {
   WorkflowExecutabilityReport,
   WorkflowExecutabilityStatus,
 } from './types.js';
-import { getCapabilityName, getEmbeddedContractId } from './capability-node.js';
+import { getEmbeddedContractId } from './capability-node.js';
 
 // P0.9B Step 2: previously two local consts + a local array; now the one
 // canonical `STANDARD_BINDING_RESOLVERS` (`@xo/capability-contract`).

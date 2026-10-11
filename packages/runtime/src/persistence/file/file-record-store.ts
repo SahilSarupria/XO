@@ -32,7 +32,9 @@ export class FileRecordStore<T> {
     private readonly now: () => Date,
     /** Advances a record stored at an older `version` to the current shape. Only ever called when `storedVersion !== CURRENT_RUNTIME_STORE_VERSION`; see `versioning.ts`. The default throws — with no migrations registered yet (`CURRENT_RUNTIME_STORE_VERSION` is still `1`), *any* other stored version is genuinely unsupported, and silently passing the raw data through as if it matched the current shape would be a real data-integrity risk, not a safe fallback. */
     private readonly migrate: (storedVersion: number, raw: unknown) => T = (storedVersion) => {
-      throw new Error(`No migration registered to advance a persisted record from version ${storedVersion} to ${CURRENT_RUNTIME_STORE_VERSION}`);
+      throw new Error(
+        `No migration registered to advance a persisted record from version ${storedVersion} to ${CURRENT_RUNTIME_STORE_VERSION}`,
+      );
     },
   ) {}
 
@@ -47,7 +49,13 @@ export class FileRecordStore<T> {
         await atomicWriteJson(this.pathFor(id), record);
         return ok({ version: record.version, persistedAt: record.persistedAt, data });
       } catch (cause) {
-        return err(new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Failed to persist record "${id}" to "${this.dir}": ${cause instanceof Error ? cause.message : String(cause)}`, { cause }));
+        return err(
+          new RuntimeError(
+            ErrorCode.RUNTIME_EXECUTION_FAILED,
+            `Failed to persist record "${id}" to "${this.dir}": ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          ),
+        );
       }
     });
   }
@@ -66,7 +74,13 @@ export class FileRecordStore<T> {
       const data = raw.version === CURRENT_RUNTIME_STORE_VERSION ? (raw.data as T) : this.migrate(raw.version, raw.data);
       return ok({ version: CURRENT_RUNTIME_STORE_VERSION, persistedAt: raw.persistedAt, data });
     } catch (cause) {
-      return err(new RuntimeError(ErrorCode.RUNTIME_RETRIEVAL_FAILED, `Failed to migrate record "${id}" from version ${raw.version}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause }));
+      return err(
+        new RuntimeError(
+          ErrorCode.RUNTIME_RETRIEVAL_FAILED,
+          `Failed to migrate record "${id}" from version ${raw.version}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { cause },
+        ),
+      );
     }
   }
 
@@ -87,7 +101,13 @@ export class FileRecordStore<T> {
       try {
         return ok(await deleteFile(this.pathFor(id)));
       } catch (cause) {
-        return err(new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `Failed to delete record "${id}" from "${this.dir}": ${cause instanceof Error ? cause.message : String(cause)}`, { cause }));
+        return err(
+          new RuntimeError(
+            ErrorCode.RUNTIME_EXECUTION_FAILED,
+            `Failed to delete record "${id}" from "${this.dir}": ${cause instanceof Error ? cause.message : String(cause)}`,
+            { cause },
+          ),
+        );
       }
     });
   }

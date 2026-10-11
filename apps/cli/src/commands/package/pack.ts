@@ -14,7 +14,7 @@ const DOCUMENT_COMPILATION_NOT_AVAILABLE = [
   '"xo build" also consumes).',
   '',
   'To go straight from a raw source to a signed, validated .xo, use "xo create <source>"',
-  'instead — it calls @xo/compiler\'s compileSources/packageXoirGraph directly and does not',
+  "instead — it calls @xo/compiler's compileSources/packageXoirGraph directly and does not",
   'require a project directory at all.',
   '',
   'Or, run "xo init <dir>" to scaffold a project directory, then point "xo pack" at it.',
@@ -54,7 +54,14 @@ export async function packCommand(options: PackOptions): Promise<CommandResult> 
   // it here is bookkeeping (recovering the output path build.ts already
   // derived), not a second attempt at packaging logic.
   const configResult = await readProjectConfig(options.dir);
-  if (!configResult.ok) return { ...buildResult, lines: [...buildResult.lines, `warning: built package but could not re-read xo.project.json for the summary: ${configResult.error.message}`] };
+  if (!configResult.ok)
+    return {
+      ...buildResult,
+      lines: [
+        ...buildResult.lines,
+        `warning: built package but could not re-read xo.project.json for the summary: ${configResult.error.message}`,
+      ],
+    };
   const config = configResult.value;
   const outPath = options.out ?? join(options.dir, `${config.name}-${config.version}.xo`);
 
@@ -62,12 +69,24 @@ export async function packCommand(options: PackOptions): Promise<CommandResult> 
   try {
     archiveBytes = new Uint8Array(await readFile(outPath));
   } catch (cause) {
-    return { ...buildResult, lines: [...buildResult.lines, `warning: built package but could not re-read "${outPath}" for the summary: ${(cause as Error).message}`] };
+    return {
+      ...buildResult,
+      lines: [
+        ...buildResult.lines,
+        `warning: built package but could not re-read "${outPath}" for the summary: ${(cause as Error).message}`,
+      ],
+    };
   }
 
   const readResult = await unpackArchive(archiveBytes);
   if (!readResult.ok) {
-    return { ...buildResult, lines: [...buildResult.lines, `warning: built package but could not re-parse "${outPath}" for the summary: ${readResult.error.message}`] };
+    return {
+      ...buildResult,
+      lines: [
+        ...buildResult.lines,
+        `warning: built package but could not re-parse "${outPath}" for the summary: ${readResult.error.message}`,
+      ],
+    };
   }
 
   const { manifest } = readResult.value;

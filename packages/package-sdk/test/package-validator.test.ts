@@ -16,14 +16,17 @@ test('validateAll passes on a freshly-built, unmodified bundle', () => {
 
 test('validateHashes catches a component whose bytes were tampered after hashing', () => {
   const bundle = buildSampleBundle();
-  const tampered = { ...bundle, components: bundle.components.map((c) => (c.kind === 'knowledge_graph' ? { ...c, data: new TextEncoder().encode('tampered!') } : c)) };
+  const tampered = {
+    ...bundle,
+    components: bundle.components.map((c) => (c.kind === 'knowledge_graph' ? { ...c, data: new TextEncoder().encode('tampered!') } : c)),
+  };
   const issues = new PackageValidator().validateHashes(tampered);
   assert.ok(issues.some((i) => i.code === 'HASH_MISMATCH'));
 });
 
 test('validateMerkleRoot catches a manifest whose merkleRoot does not match its component hashes', () => {
   const bundle = buildSampleBundle();
-  const brokenManifest = { ...bundle.manifest, merkleRoot: 'sha256:' + '0'.repeat(64) as typeof bundle.manifest.merkleRoot };
+  const brokenManifest = { ...bundle.manifest, merkleRoot: ('sha256:' + '0'.repeat(64)) as typeof bundle.manifest.merkleRoot };
   const issues = new PackageValidator().validateMerkleRoot({ ...bundle, manifest: brokenManifest });
   assert.ok(issues.some((i) => i.code === 'MERKLE_ROOT_MISMATCH'));
 });
@@ -47,7 +50,10 @@ test('validateNoDuplicatePaths flags two components declaring the same archive p
   const bundle = buildSampleBundle();
   const manifest = {
     ...bundle.manifest,
-    components: { ...bundle.manifest.components, knowledge_graph: { ...bundle.manifest.components.knowledge_graph!, path: bundle.manifest.components.safety_rules!.path } },
+    components: {
+      ...bundle.manifest.components,
+      knowledge_graph: { ...bundle.manifest.components.knowledge_graph!, path: bundle.manifest.components.safety_rules!.path },
+    },
   };
   const issues = new PackageValidator().validateNoDuplicatePaths(manifest);
   assert.ok(issues.some((i) => i.code === 'COMPONENT_DUPLICATE_PATH'));
@@ -67,7 +73,10 @@ test('validateSchema rejects a value missing required manifest fields', () => {
 
 test('isXoManifest rejects a manifest with an unknown component kind', () => {
   const bundle = buildSampleBundle();
-  const bad = { ...bundle.manifest, components: { ...bundle.manifest.components, not_a_real_kind: bundle.manifest.components.safety_rules } };
+  const bad = {
+    ...bundle.manifest,
+    components: { ...bundle.manifest.components, not_a_real_kind: bundle.manifest.components.safety_rules },
+  };
   assert.equal(isXoManifest(bad), false);
 });
 
@@ -103,7 +112,7 @@ test('isXoManifest rejects a dependency missing versionRange', () => {
 
 test('validateDependencies flags a duplicate dependency name', () => {
   const bundle = buildSampleBundle({
-   dependencies: [
+    dependencies: [
       { name: 'xo_core_math', versionRange: '^1.0.0', kind: 'required' },
       { name: 'xo_core_math', versionRange: '^2.0.0', kind: 'optional' },
     ],
@@ -114,7 +123,10 @@ test('validateDependencies flags a duplicate dependency name', () => {
 
 test('validateDependencies flags a package that declares itself as a dependency', () => {
   const bundle = buildSampleBundle({ name: 'xo_self_referential' });
-  const withSelfDep = { ...bundle.manifest, dependencies: [{ name: 'xo_self_referential', versionRange: '^1.0.0', kind: 'required' as const }] };
+  const withSelfDep = {
+    ...bundle.manifest,
+    dependencies: [{ name: 'xo_self_referential', versionRange: '^1.0.0', kind: 'required' as const }],
+  };
   const issues = new PackageValidator().validateDependencies(withSelfDep);
   assert.ok(issues.some((i) => i.code === 'DEPENDENCY_SELF_REFERENCE'));
 });

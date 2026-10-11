@@ -49,10 +49,20 @@ export interface HttpCompileResponse {
 
 function parseInput(body: HttpCompileRequest): Result<PipelineInput, XoError> {
   if (body.kind === 'knowledge' || body.kind === 'capability' || body.kind === 'combined') {
-    return err(new XoError(ErrorCode.UNIMPLEMENTED, `compiling from "${body.kind}" input is not available over this API yet — only "xoir" input is currently supported (see compileAdapter.ts for why)`));
+    return err(
+      new XoError(
+        ErrorCode.UNIMPLEMENTED,
+        `compiling from "${body.kind}" input is not available over this API yet — only "xoir" input is currently supported (see compileAdapter.ts for why)`,
+      ),
+    );
   }
   if (body.kind !== 'xoir') {
-    return err(new XoError(ErrorCode.INVALID_ARGUMENT, '"kind" must be "xoir" ("knowledge"/"capability"/"combined" are recognized but not yet supported over HTTP — see compileAdapter.ts)'));
+    return err(
+      new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        '"kind" must be "xoir" ("knowledge"/"capability"/"combined" are recognized but not yet supported over HTTP — see compileAdapter.ts)',
+      ),
+    );
   }
   if (typeof body.graph !== 'object' || body.graph === null) {
     return err(new XoError(ErrorCode.INVALID_ARGUMENT, '"graph" (a XoirGraphJson object) is required for kind "xoir"'));

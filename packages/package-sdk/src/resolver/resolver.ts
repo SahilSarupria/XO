@@ -27,7 +27,10 @@ export interface DependencyResolution {
  * "what would resolve", exactly like `PackageValidator` only answers
  * "is this bundle valid" without ever installing it.
  */
-export async function resolveDependencies(root: XoManifest, lookup: ManifestLookup): Promise<Result<DependencyResolution, DependencyError>> {
+export async function resolveDependencies(
+  root: XoManifest,
+  lookup: ManifestLookup,
+): Promise<Result<DependencyResolution, DependencyError>> {
   const graphResult = await buildDependencyGraph(root, lookup);
   if (!graphResult.ok) return err(graphResult.error);
 

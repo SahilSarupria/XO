@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { confidenceFromScore, isValidConfidence, scoreOf, UNKNOWN_CONFIDENCE_BASIS_DETAIL, type XoirConfidence } from '../src/confidence.js';
+import {
+  confidenceFromScore,
+  isValidConfidence,
+  scoreOf,
+  UNKNOWN_CONFIDENCE_BASIS_DETAIL,
+  type XoirConfidence,
+} from '../src/confidence.js';
 import { XoirGraph } from '../src/graph.js';
 import { XoirGraphId, XoirNodeId } from '../src/ids.js';
 import { validateGraph } from '../src/validation.js';
@@ -14,7 +20,10 @@ test('confidenceFromScore defaults to conservative "unknown" basis/evidence/corr
   assert.equal(c.evidenceStrength, 'unknown');
   assert.equal(c.corroboration, 0);
   assert.equal(c.calibrated, false);
-  assert.deepEqual({ basis: c.basis, evidenceStrength: c.evidenceStrength, corroboration: c.corroboration, calibrated: c.calibrated }, UNKNOWN_CONFIDENCE_BASIS_DETAIL);
+  assert.deepEqual(
+    { basis: c.basis, evidenceStrength: c.evidenceStrength, corroboration: c.corroboration, calibrated: c.calibrated },
+    UNKNOWN_CONFIDENCE_BASIS_DETAIL,
+  );
 });
 
 test('confidenceFromScore accepts overrides for individual fields', () => {
@@ -53,7 +62,13 @@ test('createNode with only confidenceDetail derives metadata.confidence from con
 
 test('an explicit confidence overrides confidenceDetail.score if both are given (confidence wins, as documented)', () => {
   const detail = confidenceFromScore(0.2);
-  const built = createNode({ id: XoirNodeId('n1'), kind: 'fact', properties: { statement: 's', domain: 'd' }, confidence: 0.9, confidenceDetail: detail });
+  const built = createNode({
+    id: XoirNodeId('n1'),
+    kind: 'fact',
+    properties: { statement: 's', domain: 'd' },
+    confidence: 0.9,
+    confidenceDetail: detail,
+  });
   assert.equal(built.metadata.confidence, 0.9);
   assert.equal(built.metadata.confidenceDetail?.score, 0.2);
 });

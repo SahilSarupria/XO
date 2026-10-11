@@ -117,10 +117,22 @@ export class OpenApiSourceFrontend implements SourceFrontend<OpenApiSourceInput>
     try {
       parsed = JSON.parse(input.text);
     } catch (cause) {
-      return err(new SourceError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `OpenAPI source "${input.sourcePath}" is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(
+          ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+          `OpenAPI source "${input.sourcePath}" is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+          { context: { sourcePath: input.sourcePath } },
+        ),
+      );
     }
     if (!isRecord(parsed) || typeof parsed.openapi !== 'string' || !parsed.openapi.startsWith('3.') || !isRecord(parsed.paths)) {
-      return err(new SourceError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `OpenAPI source "${input.sourcePath}" is missing a recognizable "openapi": "3.x" version field and/or a "paths" object`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(
+          ErrorCode.SERIALIZATION_SCHEMA_MISMATCH,
+          `OpenAPI source "${input.sourcePath}" is missing a recognizable "openapi": "3.x" version field and/or a "paths" object`,
+          { context: { sourcePath: input.sourcePath } },
+        ),
+      );
     }
 
     const operations: { operationId: string; path: string; method: string; operation: JsonRecord }[] = [];
@@ -134,7 +146,13 @@ export class OpenApiSourceFrontend implements SourceFrontend<OpenApiSourceInput>
       }
     }
     if (operations.length === 0) {
-      return err(new SourceError(ErrorCode.PRECONDITION_FAILED, `OpenAPI source "${input.sourcePath}" contains no operation with an explicit "operationId"`, { context: { sourcePath: input.sourcePath } }));
+      return err(
+        new SourceError(
+          ErrorCode.PRECONDITION_FAILED,
+          `OpenAPI source "${input.sourcePath}" contains no operation with an explicit "operationId"`,
+          { context: { sourcePath: input.sourcePath } },
+        ),
+      );
     }
 
     const blocks: DocumentBlock[] = [];

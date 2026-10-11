@@ -1,7 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PackageId } from '@xo/types';
-import { capabilityScope, globalScope, hostScope, packageScope, pathScope, resourceScope, scopeContains, scopeKey, scopeSpecificity } from '../src/scope.js';
+import {
+  capabilityScope,
+  globalScope,
+  hostScope,
+  packageScope,
+  pathScope,
+  resourceScope,
+  scopeContains,
+  scopeKey,
+  scopeSpecificity,
+} from '../src/scope.js';
 
 test('scope: global grants authorize anything, including no scope', () => {
   assert.equal(scopeContains(globalScope(), undefined), true);

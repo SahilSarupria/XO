@@ -63,7 +63,9 @@ export interface HybridExecutionResult {
  * already checks `cancellation.isCancelled` between its own sequential
  * stages).
  */
-export type RaceCancellation = <T>(promise: Promise<T>) => Promise<{ readonly cancelled: false; readonly value: T } | { readonly cancelled: true }>;
+export type RaceCancellation = <T>(
+  promise: Promise<T>,
+) => Promise<{ readonly cancelled: false; readonly value: T } | { readonly cancelled: true }>;
 
 /**
  * `HybridExecutionExecutor.execute`'s result. Mirrors
@@ -74,7 +76,8 @@ export type RaceCancellation = <T>(promise: Promise<T>) => Promise<{ readonly ca
  * `terminate` the same way `run()` already does for its own single
  * `raceCancellation` call.
  */
-export type HybridExecutionOutcome = { readonly cancelled: true } | { readonly cancelled: false; readonly result: Result<HybridExecutionResult, RuntimeError> };
+export type HybridExecutionOutcome =
+  { readonly cancelled: true } | { readonly cancelled: false; readonly result: Result<HybridExecutionResult, RuntimeError> };
 
 export interface HybridExecutionDeps {
   readonly capabilityExecutor: CapabilityExecutor;
@@ -208,9 +211,13 @@ export class HybridExecutionExecutor {
 
     const last = outcomes[outcomes.length - 1];
     /* istanbul ignore next -- callers (ExecutionPipeline.runHybridExecution) reject an empty hybridSteps list before ever constructing this executor's input, so `steps` is always non-empty in practice; defensive only */
-    if (!last) return { cancelled: false, result: err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, 'Hybrid execution declared zero steps')) };
+    if (!last)
+      return { cancelled: false, result: err(new RuntimeError(ErrorCode.RUNTIME_INVALID_REQUEST, 'Hybrid execution declared zero steps')) };
 
-    return { cancelled: false, result: ok({ steps: outcomes, finalOutput: last.output, ...(finalModelResponse ? { finalModelResponse } : {}) }) };
+    return {
+      cancelled: false,
+      result: ok({ steps: outcomes, finalOutput: last.output, ...(finalModelResponse ? { finalModelResponse } : {}) }),
+    };
   }
 
   /**
@@ -221,7 +228,11 @@ export class HybridExecutionExecutor {
    * identical `RUNTIME_CAPABILITY_INPUT_INVALID` shape for a schema
    * failure, identical `contractId ?? capabilityId` fallback.
    */
-  private async runDeterministicStep(step: HybridExecutionStep, resolvedInput: unknown, inputs: HybridExecutionRequestInputs): Promise<Result<unknown, RuntimeError>> {
+  private async runDeterministicStep(
+    step: HybridExecutionStep,
+    resolvedInput: unknown,
+    inputs: HybridExecutionRequestInputs,
+  ): Promise<Result<unknown, RuntimeError>> {
     const structured = this.coerceToRecord(resolvedInput, step.stepId);
     if (!structured.ok) return err(structured.error);
 
@@ -229,7 +240,12 @@ export class HybridExecutionExecutor {
       const validation = validateCapabilityInput(step.inputSchema, structured.value);
       if (!validation.valid) {
         const detail = validation.issues.map((issue) => `${issue.property}: ${issue.message}`).join('; ');
-        return err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID, `Hybrid step "${step.stepId}" (deterministic_rule) input failed its declared input schema: ${detail}`));
+        return err(
+          new RuntimeError(
+            ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID,
+            `Hybrid step "${step.stepId}" (deterministic_rule) input failed its declared input schema: ${detail}`,
+          ),
+        );
       }
     }
 
@@ -249,7 +265,11 @@ export class HybridExecutionExecutor {
   }
 
   /** `{ kind: 'request' }` reads the original invocation's own input (shape depends on `step.strategy`); `{ kind: 'step' }` reads an earlier step's already-recorded output — fails closed (never silently substitutes `undefined`) if the referenced step hasn't run, which given strict declared-order execution only happens for a forward/self reference. */
-  private resolveInput(step: HybridExecutionStep, inputs: HybridExecutionRequestInputs, outputsById: ReadonlyMap<string, unknown>): Result<unknown, RuntimeError> {
+  private resolveInput(
+    step: HybridExecutionStep,
+    inputs: HybridExecutionRequestInputs,
+    outputsById: ReadonlyMap<string, unknown>,
+  ): Result<unknown, RuntimeError> {
     if (step.input.kind === 'request') {
       return ok(step.strategy === 'deterministic_rule' ? inputs.structuredInput : inputs.requestInput);
     }

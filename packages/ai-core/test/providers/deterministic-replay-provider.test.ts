@@ -7,7 +7,12 @@ const request: ProviderRequest = { model: 'replay-1', messages: [{ role: 'user',
 
 test('returns the recorded response for an exact request match', async () => {
   const provider = new DeterministicReplayProvider();
-  provider.record(request, { text: 'canned response', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'replay-1', finishReason: 'stop' });
+  provider.record(request, {
+    text: 'canned response',
+    usage: { inputTokens: 1, outputTokens: 1 },
+    modelUsed: 'replay-1',
+    finishReason: 'stop',
+  });
   const response = await provider.complete(request);
   assert.equal(response.text, 'canned response');
 });

@@ -56,7 +56,9 @@ test('cross-record isolation: no unit\u2019s structuredFields mixes fields from 
 
   // Specifically: "total"'s record fields never appear on a unit that also carries "subtotal"'s or
   // "tax_amount"'s own field_name declaration.
-  const totalRecordUnit = unitsWithFields.find((u) => u.structuredFields!.some((f) => f.fieldName === 'field_name' && f.rawValue === 'total'));
+  const totalRecordUnit = unitsWithFields.find((u) =>
+    u.structuredFields!.some((f) => f.fieldName === 'field_name' && f.rawValue === 'total'),
+  );
   assert.ok(totalRecordUnit);
   const namesOnThatUnit = totalRecordUnit!.structuredFields!.map((f) => f.rawValue);
   assert.ok(!namesOnThatUnit.includes('subtotal'));

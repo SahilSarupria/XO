@@ -1,9 +1,11 @@
 # ADR 0003: Hand-rolled DI container instead of a decorator/reflection-based one
 
 ## Status
+
 Accepted
 
 ## Context
+
 Every package needs a consistent way to wire injectable collaborators
 (`Logger`, `Clock`, `BlobStore`, etc.) without hard-coding a concrete
 implementation inside business logic. The Node/TypeScript ecosystem's
@@ -12,12 +14,14 @@ InversifyJS), which infers constructor dependencies from parameter types
 at runtime.
 
 ## Decision
+
 `packages/di`'s `Container` is a small, explicit `token -> factory`
 registry with singleton/transient scopes and cycle detection — no
 decorators, no `reflect-metadata`, no implicit constructor-parameter
 inference.
 
 ## Alternatives considered
+
 - **tsyringe**: requires `experimentalDecorators` +
   `emitDecoratorMetadata` compiler flags repo-wide, and a runtime
   dependency (`reflect-metadata`) that must be imported exactly once,
@@ -36,6 +40,7 @@ inference.
   scopes for.
 
 ## Consequences
+
 - Registrations are explicit and greppable
   (`container.register(loggerToken, () => new ConsoleLogger())`), at the
   cost of writing that line by hand instead of an `@injectable()`

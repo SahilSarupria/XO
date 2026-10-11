@@ -43,7 +43,11 @@ export async function registryInspectCommand(options: RegistryInspectOptions): P
   if (runs.length === 0) {
     lines.push('', 'No benchmark runs recorded for this package.');
   } else {
-    lines.push('', `Benchmark runs (${runs.length}):`, ...runs.map((r) => `  [${r.challengeable ? 'challengeable' : 'settled'}] ${r.category}: ${r.score}  (run ${r.id}, ${r.runAt})`));
+    lines.push(
+      '',
+      `Benchmark runs (${runs.length}):`,
+      ...runs.map((r) => `  [${r.challengeable ? 'challengeable' : 'settled'}] ${r.category}: ${r.score}  (run ${r.id}, ${r.runAt})`),
+    );
   }
 
   return ok(lines);

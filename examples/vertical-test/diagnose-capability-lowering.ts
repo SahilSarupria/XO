@@ -17,7 +17,11 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { compileSources } from '@xo/compiler';
-import { buildAllSemanticCapabilityContracts, resolveCapabilityBinding, StructuredComparisonBindingResolver } from '@xo/capability-contract';
+import {
+  buildAllSemanticCapabilityContracts,
+  resolveCapabilityBinding,
+  StructuredComparisonBindingResolver,
+} from '@xo/capability-contract';
 import type { XoirNode } from '@xo/xoir';
 
 const PDF_PATH = fileURLToPath(new URL('./Aastha.pdf', import.meta.url));
@@ -39,7 +43,9 @@ async function main(): Promise<void> {
   }
   const { graph, stats } = result.value;
   console.log('nodesByKind:', JSON.stringify(stats.nodesByKind, null, 2));
-  console.log('(note: the CLI\'s "Knowledge: N concept, N fact" and "Reasoning: N node(s)" lines only ever print the \'concept\'/\'fact\'/\'reasoning_step\' keys above — every other kind, including constraint/heuristic/decision_node, is silently omitted from that summary. The full breakdown above is the real picture.)');
+  console.log(
+    "(note: the CLI's \"Knowledge: N concept, N fact\" and \"Reasoning: N node(s)\" lines only ever print the 'concept'/'fact'/'reasoning_step' keys above — every other kind, including constraint/heuristic/decision_node, is silently omitted from that summary. The full breakdown above is the real picture.)",
+  );
 
   console.log();
   console.log('=== Step 2: capability + rule node inventory (direct graph read) ===');
@@ -53,27 +59,35 @@ async function main(): Promise<void> {
   }
 
   console.log();
-  console.log('=== Step 3: REQUIRES edges after Phase 1 linking has run (linking happens inside compileSources -> compileXoir -> convertToXoir, BEFORE this function ever sees the graph) ===');
+  console.log(
+    '=== Step 3: REQUIRES edges after Phase 1 linking has run (linking happens inside compileSources -> compileXoir -> convertToXoir, BEFORE this function ever sees the graph) ===',
+  );
   const requiresEdges = graph.allEdges().filter((e) => e.kind === 'REQUIRES');
   console.log(`Total REQUIRES edges: ${requiresEdges.length}`);
   const nodeById = new Map<string, XoirNode>(allNodes.map((n) => [n.id as unknown as string, n]));
   const capRuleEdges = requiresEdges.filter((e) => {
     const from = nodeById.get(e.fromId as unknown as string);
     const to = nodeById.get(e.toId as unknown as string);
-    return (from?.kind === 'capability' && RULE_KINDS.has(to?.kind ?? '')) || (RULE_KINDS.has(from?.kind ?? '') && to?.kind === 'capability');
+    return (
+      (from?.kind === 'capability' && RULE_KINDS.has(to?.kind ?? '')) || (RULE_KINDS.has(from?.kind ?? '') && to?.kind === 'capability')
+    );
   });
   console.log(`Of those, capability<->rule edges (either direction): ${capRuleEdges.length}`);
   for (const e of capRuleEdges) {
     const from = nodeById.get(e.fromId as unknown as string);
     const to = nodeById.get(e.toId as unknown as string);
-    console.log(`  ${e.id}: ${e.fromId} (${from?.kind}) --REQUIRES--> ${e.toId} (${to?.kind})  [evidence: ${JSON.stringify((e.metadata as { readonly custom?: Record<string, unknown> }).custom ?? {})}]`);
+    console.log(
+      `  ${e.id}: ${e.fromId} (${from?.kind}) --REQUIRES--> ${e.toId} (${to?.kind})  [evidence: ${JSON.stringify((e.metadata as { readonly custom?: Record<string, unknown> }).custom ?? {})}]`,
+    );
   }
   if (capRuleEdges.length === 0) {
     console.log('  (none — this is the single most important number in this report. See the root-cause branches printed at the end.)');
   }
 
   console.log();
-  console.log('=== Step 4: per-capability contract + binding (buildAllSemanticCapabilityContracts + resolveCapabilityBinding — the exact functions capability-lowering.ts calls) ===');
+  console.log(
+    '=== Step 4: per-capability contract + binding (buildAllSemanticCapabilityContracts + resolveCapabilityBinding — the exact functions capability-lowering.ts calls) ===',
+  );
   const resolver = new StructuredComparisonBindingResolver();
   const contractResults = buildAllSemanticCapabilityContracts(graph);
   let anyNonEmptyRules = 0;
@@ -90,9 +104,13 @@ async function main(): Promise<void> {
     console.log(`  - ${contract.id}  "${contract.name}"`);
     console.log(`      contract.rules.length: ${contract.rules.length}`);
     for (const r of contract.rules) {
-      console.log(`        rule ${r.sourceNodeId} (${r.kind}): condition="${r.condition}" outcome=${r.outcome === undefined ? 'undefined' : `"${r.outcome}"`}`);
+      console.log(
+        `        rule ${r.sourceNodeId} (${r.kind}): condition="${r.condition}" outcome=${r.outcome === undefined ? 'undefined' : `"${r.outcome}"`}`,
+      );
     }
-    console.log(`      BindingOutcome: ${outcome.status}${outcome.status !== 'resolved' ? ` — ${(outcome as { readonly reason?: string }).reason ?? ''}` : ` — implementationClass: ${outcome.binding.implementationClass}`}`);
+    console.log(
+      `      BindingOutcome: ${outcome.status}${outcome.status !== 'resolved' ? ` — ${(outcome as { readonly reason?: string }).reason ?? ''}` : ` — implementationClass: ${outcome.binding.implementationClass}`}`,
+    );
   }
 
   console.log();
@@ -103,16 +121,16 @@ async function main(): Promise<void> {
   console.log();
   if (capRuleEdges.length === 0) {
     console.log('ROOT CAUSE (this run): zero capability<->rule REQUIRES edges exist in the compiled graph.');
-    console.log('This means Phase 1 linking produced no edges for THIS document\'s actual extracted content —');
+    console.log("This means Phase 1 linking produced no edges for THIS document's actual extracted content —");
     console.log('either (a) it never ran (check the nodesByKind breakdown above: if constraint/heuristic/decision_node');
     console.log('counts are all 0, there were no rule-node candidates for it to link in the first place — an');
     console.log('EXTRACTION gap, not a linking gap), or (b) rule nodes exist but none scored above the exact-label/');
-    console.log('same-unit-overlap evidence threshold against any capability\'s own name/label text — an EVIDENCE gap.');
+    console.log("same-unit-overlap evidence threshold against any capability's own name/label text — an EVIDENCE gap.");
     console.log('Compare the rule node counts above against the capability inventory to tell these apart.');
   } else if (anyNonEmptyRules === 0) {
     console.log('UNEXPECTED: capability<->rule edges exist but no contract.rules is non-empty — this would mean');
     console.log('buildSemanticCapabilityContract is not seeing edges the graph actually has (a contract-builder bug,');
-    console.log('not a linking bug). Re-check contract-builder.ts\'s direction/edgeKind handling against the printed edges above.');
+    console.log("not a linking bug). Re-check contract-builder.ts's direction/edgeKind handling against the printed edges above.");
   } else if (anyResolved === 0) {
     console.log('EXPECTED-AND-DOCUMENTED CASE: at least one capability now has contract.rules.length > 0 (Phase 1');
     console.log('linking is genuinely active and producing edges), but none resolved to a deterministic binding.');

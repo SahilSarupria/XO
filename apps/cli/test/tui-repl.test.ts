@@ -95,7 +95,10 @@ async function start(dir: string, overrides: Partial<ReplDeps> = {}): Promise<Ha
     home,
     runQuery: async (req) => {
       requests.push(req);
-      return { exitCode: 0, lines: ['Here is **the answer**.', '', '- point one', '', '--- receipt ---', '  tokens: 12 prompt + 3 completion'] };
+      return {
+        exitCode: 0,
+        lines: ['Here is **the answer**.', '', '- point one', '', '--- receipt ---', '  tokens: 12 prompt + 3 completion'],
+      };
     },
     ...overrides,
   });
@@ -186,7 +189,7 @@ test('unknown commands get a did-you-mean hint; quoting errors are reported', as
   });
 });
 
-test('--help after a command shows that command\'s usage without running it', async () => {
+test("--help after a command shows that command's usage without running it", async () => {
   await withTmp(async (dir) => {
     const h = await start(dir);
     await h.submit('/echo --help');
@@ -298,7 +301,13 @@ test('plain text with a store becomes a query: answer rendered, receipt dimmed, 
     await h.submit('/model gpt-x');
     await h.submit('what claims need approval?');
     assert.equal(h.requests.length, 1);
-    assert.deepEqual(h.requests[0], { query: 'what claims need approval?', input: 'what claims need approval?', storeDir: dir, provider: 'openai', model: 'gpt-x' });
+    assert.deepEqual(h.requests[0], {
+      query: 'what claims need approval?',
+      input: 'what claims need approval?',
+      storeDir: dir,
+      provider: 'openai',
+      model: 'gpt-x',
+    });
     const plain = h.term.plain();
     assert.match(plain, /✦ Here is \*\*the answer\*\*\./); // level 0: markdown markers are left as written
     assert.match(plain, /• point one/);

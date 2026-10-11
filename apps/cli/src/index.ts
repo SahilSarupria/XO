@@ -68,10 +68,10 @@ function usage(registry: CommandRegistry): string {
     '                                          (piped stdin is appended: cat claim.txt | xo -p "assess this")',
     '',
     'Global options:',
-    '  -h, --help                              Show this message (or, after a command, that command\'s usage)',
+    "  -h, --help                              Show this message (or, after a command, that command's usage)",
     '  -v, --version                           Print the CLI version',
     '  -m, --model <id>  --provider <id>       Model/provider for -p and session queries',
-    '  -o, --output-format text|json           json is shorthand for a command\'s --json',
+    "  -o, --output-format text|json           json is shorthand for a command's --json",
     '  --no-color                              Disable colors (NO_COLOR and non-terminal output also disable them)',
     '',
     'Exit codes: 0 on success; 1 on any failure, including "verify" reporting',
@@ -172,7 +172,11 @@ async function withHighlightedStdout<T>(level: ColorLevel, fn: () => Promise<T>)
   }
 }
 
-export async function run(argv: readonly string[], logger: Logger = new ConsoleLogger({ level: 'info', name: 'xo-cli' }), options: RunOptions = {}): Promise<number> {
+export async function run(
+  argv: readonly string[],
+  logger: Logger = new ConsoleLogger({ level: 'info', name: 'xo-cli' }),
+  options: RunOptions = {},
+): Promise<number> {
   const registry = buildRegistry();
   const parsed = parseArgs(normalizeShortFlags(argv));
   const term = options.terminal;
@@ -227,7 +231,9 @@ export async function run(argv: readonly string[], logger: Logger = new ConsoleL
     const wantsInteractive = args.flags['prompt-interactive'] !== undefined || (args.flags['help'] !== true && interactiveAvailable);
     if (wantsInteractive) {
       if (!interactiveAvailable || !term) {
-        process.stdout.write('error: the interactive session needs a terminal (stdin and stdout must be TTYs); use `xo <command>` or `xo -p "<text>"` in scripts\n');
+        process.stdout.write(
+          'error: the interactive session needs a terminal (stdin and stdout must be TTYs); use `xo <command>` or `xo -p "<text>"` in scripts\n',
+        );
         return 1;
       }
       const initial = str(args.flags, 'prompt-interactive');
@@ -254,7 +260,10 @@ export async function run(argv: readonly string[], logger: Logger = new ConsoleL
   }
 
   const highlight = colorLevel > 0 && !jsonMode;
-  const printUsage = (text: string): Promise<void> => (highlight ? withHighlightedStdout(colorLevel, async () => void process.stdout.write(`${text}\n`)) : Promise.resolve(void process.stdout.write(`${text}\n`)));
+  const printUsage = (text: string): Promise<void> =>
+    highlight
+      ? withHighlightedStdout(colorLevel, async () => void process.stdout.write(`${text}\n`))
+      : Promise.resolve(void process.stdout.write(`${text}\n`));
 
   if (args.command === undefined || args.flags['help'] === true) {
     const command = args.command !== undefined ? registry.get(args.command) : undefined;
@@ -265,7 +274,10 @@ export async function run(argv: readonly string[], logger: Logger = new ConsoleL
   const command = registry.get(args.command);
   if (!command) {
     logger.error('Unknown command', { command: args.command });
-    const hint = closestMatch(args.command, [...registry.listBySubsystem().values()].flatMap((s) => s.commands.map((c) => c.name)));
+    const hint = closestMatch(
+      args.command,
+      [...registry.listBySubsystem().values()].flatMap((s) => s.commands.map((c) => c.name)),
+    );
     if (hint) process.stdout.write(`Did you mean "${hint}"?\n\n`);
     await printUsage(usage(registry));
     return 1;

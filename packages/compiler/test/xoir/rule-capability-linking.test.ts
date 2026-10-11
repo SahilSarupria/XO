@@ -33,7 +33,10 @@ function requiresEdgesTo(graph: XoirGraph, capabilityId: string): readonly { rea
   return graph
     .allEdges()
     .filter((e) => e.kind === 'REQUIRES' && e.toId === XoirNodeId(capabilityId))
-    .map((e) => ({ fromId: e.fromId, evidenceKind: (e.metadata as { readonly custom?: { readonly evidenceKind?: string } }).custom?.evidenceKind }));
+    .map((e) => ({
+      fromId: e.fromId,
+      evidenceKind: (e.metadata as { readonly custom?: { readonly evidenceKind?: string } }).custom?.evidenceKind,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +54,12 @@ test('a same-unit rule links to a capability via shared vocabulary drawn from th
     'u-section-7',
   );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNode(graph, 'rule_manager_approval', 'If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.', 'u-section-7'),
+    ruleSourceWithNode(
+      graph,
+      'rule_manager_approval',
+      'If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.',
+      'u-section-7',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
@@ -70,9 +78,19 @@ test('a same-unit rule links to a capability via shared vocabulary drawn from th
 // ---------------------------------------------------------------------------
 
 test('an unrelated capability in a different unit does not receive the link, even with shared generic vocabulary', () => {
-  const graph = graphWithCapability('cap_notify', 'Notify the Insurer', 'The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.', 'u-section-4');
+  const graph = graphWithCapability(
+    'cap_notify',
+    'Notify the Insurer',
+    'The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.',
+    'u-section-4',
+  );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNode(graph, 'rule_manager_approval', 'If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.', 'u-section-7'),
+    ruleSourceWithNode(
+      graph,
+      'rule_manager_approval',
+      'If the claim amount is greater than INR 10,000 and all required documents are present, manager approval is required.',
+      'u-section-7',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
@@ -97,8 +115,20 @@ test('existing exact-label linking on the capability name still works unchanged'
 });
 
 test('existing same-unit overlap linking that already worked via the name alone still works when description adds nothing new', () => {
-  const graph = graphWithCapability('cap_assess', 'Assess the claim', 'The Insurer may appoint a loss adjuster to assess the claim.', 'u-section-6');
-  const sources: RuleLinkSource[] = [ruleSourceWithNode(graph, 'rule_reject', 'If any information provided in the claim is materially incorrect, the claim may be rejected.', 'u-section-6')];
+  const graph = graphWithCapability(
+    'cap_assess',
+    'Assess the claim',
+    'The Insurer may appoint a loss adjuster to assess the claim.',
+    'u-section-6',
+  );
+  const sources: RuleLinkSource[] = [
+    ruleSourceWithNode(
+      graph,
+      'rule_reject',
+      'If any information provided in the claim is materially incorrect, the claim may be rejected.',
+      'u-section-6',
+    ),
+  ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
@@ -115,13 +145,16 @@ test('existing same-unit overlap linking that already worked via the name alone 
 
 test('evidence is preserved on the created edge: shared terms are recorded and traceable', () => {
   const graph = graphWithCapability('cap_review', 'Review Action', 'the claim must be referred for coverage review', 'u-section-7');
-  const sources: RuleLinkSource[] = [ruleSourceWithNode(graph, 'rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required', 'u-section-7')];
+  const sources: RuleLinkSource[] = [
+    ruleSourceWithNode(graph, 'rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required', 'u-section-7'),
+  ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   const edge = graph.allEdges().find((e) => e.kind === 'REQUIRES' && e.toId === XoirNodeId('cap_review'))!;
   assert.ok(edge);
-  const custom = (edge.metadata as { readonly custom?: { readonly evidenceKind?: string; readonly sharedTerms?: readonly string[] } }).custom;
+  const custom = (edge.metadata as { readonly custom?: { readonly evidenceKind?: string; readonly sharedTerms?: readonly string[] } })
+    .custom;
   assert.equal(custom?.evidenceKind, 'same_unit_term_overlap');
   assert.ok(custom?.sharedTerms && custom.sharedTerms.includes('claim'));
 });
@@ -136,10 +169,23 @@ test('evidence is preserved on the created edge: shared terms are recorded and t
 test('two plausible same-unit capabilities both receive their own edge rather than one being arbitrarily chosen', () => {
   const graph = graphWithCapability('cap_review', 'Review Action', 'the claim must be referred for coverage review', 'u-section-7');
   const props2: CapabilityNodeProps = { name: 'Settle Action', description: 'a claim may be settled only if the loss is covered' };
-  const added = graph.createAndAddNode({ id: XoirNodeId('cap_settle'), kind: 'capability', properties: props2, sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-section-7' }], now });
+  const added = graph.createAndAddNode({
+    id: XoirNodeId('cap_settle'),
+    kind: 'capability',
+    properties: props2,
+    sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-section-7' }],
+    now,
+  });
   assert.ok(added.ok);
 
-  const sources: RuleLinkSource[] = [ruleSourceWithNode(graph, 'rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required before coverage review or claim is settled', 'u-section-7')];
+  const sources: RuleLinkSource[] = [
+    ruleSourceWithNode(
+      graph,
+      'rule_manager_approval',
+      'the claim amount exceeds INR 10,000, manager approval is required before coverage review or claim is settled',
+      'u-section-7',
+    ),
+  ];
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   assert.equal(requiresEdgesTo(graph, 'cap_review').length, 1);
@@ -161,7 +207,9 @@ test('linking is deterministic across repeated runs on identical input', () => {
     ruleSourceWithNode(g, 'rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required', 'u-section-7');
     return g;
   }
-  const sources: RuleLinkSource[] = [ruleSource('rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required', 'u-section-7')];
+  const sources: RuleLinkSource[] = [
+    ruleSource('rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required', 'u-section-7'),
+  ];
 
   const graph1 = build();
   const graph2 = build();
@@ -211,16 +259,30 @@ test('concept candidates are unaffected: same-unit overlap still uses definition
   // Shares "claim" with a rule elsewhere in the unit only through a hypothetical wider text pool —
   // but concepts have no description field to draw one from, so this must NOT link on "claim" alone;
   // it can only link on tokens actually present in its own definition ("review").
-  const sources: RuleLinkSource[] = [ruleSourceWithNode(graph, 'rule_manager_approval', 'the claim amount exceeds INR 10,000, manager approval is required before coverage review', 'u-section-7')];
+  const sources: RuleLinkSource[] = [
+    ruleSourceWithNode(
+      graph,
+      'rule_manager_approval',
+      'the claim amount exceeds INR 10,000, manager approval is required before coverage review',
+      'u-section-7',
+    ),
+  ];
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   const edges = requiresEdgesTo(graph, 'concept_review');
   assert.equal(edges.length, 1, 'expected the link to still happen, but only via "review" — the definition itself');
   const edge = graph.allEdges().find((e) => e.kind === 'REQUIRES' && e.toId === XoirNodeId('concept_review'))!;
-  assert.equal((edge.metadata as { readonly custom?: { readonly evidenceKind?: string; readonly sharedTerms?: readonly string[] } }).custom?.evidenceKind, 'same_unit_term_overlap');
+  assert.equal(
+    (edge.metadata as { readonly custom?: { readonly evidenceKind?: string; readonly sharedTerms?: readonly string[] } }).custom
+      ?.evidenceKind,
+    'same_unit_term_overlap',
+  );
   const sharedTerms = (edge.metadata as { readonly custom?: { readonly sharedTerms?: readonly string[] } }).custom?.sharedTerms ?? [];
   assert.ok(sharedTerms.includes('review'));
-  assert.ok(!sharedTerms.includes('claim'), 'concept has no description field to widen its vocabulary from, so "claim" must not appear as shared evidence');
+  assert.ok(
+    !sharedTerms.includes('claim'),
+    'concept has no description field to widen its vocabulary from, so "claim" must not appear as shared evidence',
+  );
 });
 
 /**
@@ -256,7 +318,14 @@ function ruleSourceWithNode(graph: XoirGraph, nodeId: string, searchableText: st
 // --- Problem C: structural containment helpers ------------------------------
 
 /** Adds a `capability` node whose `sourceRefs[0]` carries the given `sectionPath` (Problem C's structural-linking signal), on top of an already-existing graph. Distinct unit id per node so nothing accidentally also qualifies for same-unit tiers unless a test wants that. */
-function addCapabilityAtPath(graph: XoirGraph, id: string, name: string, description: string, sectionPath: readonly string[], unitId: string): void {
+function addCapabilityAtPath(
+  graph: XoirGraph,
+  id: string,
+  name: string,
+  description: string,
+  sectionPath: readonly string[],
+  unitId: string,
+): void {
   const props: CapabilityNodeProps = { name, description };
   const result = graph.createAndAddNode({
     id: XoirNodeId(id),
@@ -269,7 +338,13 @@ function addCapabilityAtPath(graph: XoirGraph, id: string, name: string, descrip
 }
 
 /** Like `ruleSourceWithNode`, but the reasoning node's own `sourceRefs[0]` also carries `sectionPath` — required for it to ever be a candidate for structural containment. */
-function ruleSourceWithNodeAtPath(graph: XoirGraph, nodeId: string, searchableText: string, sectionPath: readonly string[], unitId: string): RuleLinkSource {
+function ruleSourceWithNodeAtPath(
+  graph: XoirGraph,
+  nodeId: string,
+  searchableText: string,
+  sectionPath: readonly string[],
+  unitId: string,
+): RuleLinkSource {
   const added = graph.createAndAddNode({
     id: XoirNodeId(nodeId),
     kind: 'decision_node',
@@ -301,7 +376,12 @@ test('a same-unit rule sharing only a clause/section number with a capability do
     'u-section-10',
   );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNode(graph, 'rule_ambiguous', '10. Ambiguous and Semantic Provisions. 10.1 Additional context may be requested where circumstances appear unclear.', 'u-section-10'),
+    ruleSourceWithNode(
+      graph,
+      'rule_ambiguous',
+      '10. Ambiguous and Semantic Provisions. 10.1 Additional context may be requested where circumstances appear unclear.',
+      'u-section-10',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
@@ -317,17 +397,29 @@ test('a same-unit rule sharing a clause number AND real vocabulary with a capabi
     'u-section-3',
   );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNode(graph, 'rule_deductibles', '3. Deductibles and Limits. 3.2 For theft losses, a deductible of INR 50,000 applies to each occurrence.', 'u-section-3'),
+    ruleSourceWithNode(
+      graph,
+      'rule_deductibles',
+      '3. Deductibles and Limits. 3.2 For theft losses, a deductible of INR 50,000 applies to each occurrence.',
+      'u-section-3',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   const edges = requiresEdgesTo(graph, 'cap_schedule');
-  assert.equal(edges.length, 1, 'shared "deductible" alongside the shared digit "3" is sufficient evidence, unlike the numeric-only case above');
+  assert.equal(
+    edges.length,
+    1,
+    'shared "deductible" alongside the shared digit "3" is sufficient evidence, unlike the numeric-only case above',
+  );
   const edge = graph.allEdges().find((e) => e.kind === 'REQUIRES' && e.toId === XoirNodeId('cap_schedule'))!;
   const sharedTerms = (edge.metadata as { readonly custom?: { readonly sharedTerms?: readonly string[] } }).custom?.sharedTerms ?? [];
   assert.ok(sharedTerms.includes('deductible'));
-  assert.ok(sharedTerms.includes('3'), 'the numeric token is still reported as corroborating evidence, only excluded from the sufficiency decision when alone');
+  assert.ok(
+    sharedTerms.includes('3'),
+    'the numeric token is still reported as corroborating evidence, only excluded from the sufficiency decision when alone',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -339,12 +431,26 @@ test('a same-unit rule sharing a clause number AND real vocabulary with a capabi
 // ---------------------------------------------------------------------------
 
 test('a rule sharing only a common word with two different same-unit capabilities does not fan out to either — reproduces the real "claim" fan-out defect directly', () => {
-  const graph = graphWithCapability('cap_assess_claim', 'Assess the claim', 'The reviewer will assess the claim for completeness.', 'u-claims-section');
+  const graph = graphWithCapability(
+    'cap_assess_claim',
+    'Assess the claim',
+    'The reviewer will assess the claim for completeness.',
+    'u-claims-section',
+  );
   // A second capability, same unit, also mentioning "claim" but otherwise
   // textually unrelated — mirrors "Assess the claim" vs. "6. Claims
   // Procedure" both existing in the real fixture's claims section.
-  const secondProps: CapabilityNodeProps = { name: 'Claims Procedure', description: 'The procedure for submitting a claim to the Insurer.' };
-  const secondAdded = graph.createAndAddNode({ id: XoirNodeId('cap_claims_procedure'), kind: 'capability', properties: secondProps, sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-claims-section' }], now });
+  const secondProps: CapabilityNodeProps = {
+    name: 'Claims Procedure',
+    description: 'The procedure for submitting a claim to the Insurer.',
+  };
+  const secondAdded = graph.createAndAddNode({
+    id: XoirNodeId('cap_claims_procedure'),
+    kind: 'capability',
+    properties: secondProps,
+    sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-claims-section' }],
+    now,
+  });
   assert.ok(secondAdded.ok);
 
   const sources: RuleLinkSource[] = [
@@ -353,25 +459,56 @@ test('a rule sharing only a common word with two different same-unit capabilitie
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
-  assert.equal(requiresEdgesTo(graph, 'cap_assess_claim').length, 0, 'sharing only "claim" — a word both candidates contain — must not link to the first candidate');
-  assert.equal(requiresEdgesTo(graph, 'cap_claims_procedure').length, 0, 'nor to the second candidate, for the same reason: the shared word cannot discriminate between them');
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_assess_claim').length,
+    0,
+    'sharing only "claim" — a word both candidates contain — must not link to the first candidate',
+  );
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_claims_procedure').length,
+    0,
+    'nor to the second candidate, for the same reason: the shared word cannot discriminate between them',
+  );
 });
 
 test('once one of two same-unit capabilities has DISTINCTIVE additional vocabulary, the rule correctly links only to it, not the ambiguous one', () => {
-  const graph = graphWithCapability('cap_assess_claim', 'Assess the claim', 'The reviewer will assess the claim for completeness.', 'u-claims-section');
-  const secondProps: CapabilityNodeProps = { name: 'Claims Procedure', description: 'The procedure for submitting a claim application form to the Insurer for settlement.' };
-  const secondAdded = graph.createAndAddNode({ id: XoirNodeId('cap_claims_procedure'), kind: 'capability', properties: secondProps, sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-claims-section' }], now });
+  const graph = graphWithCapability(
+    'cap_assess_claim',
+    'Assess the claim',
+    'The reviewer will assess the claim for completeness.',
+    'u-claims-section',
+  );
+  const secondProps: CapabilityNodeProps = {
+    name: 'Claims Procedure',
+    description: 'The procedure for submitting a claim application form to the Insurer for settlement.',
+  };
+  const secondAdded = graph.createAndAddNode({
+    id: XoirNodeId('cap_claims_procedure'),
+    kind: 'capability',
+    properties: secondProps,
+    sourceRefs: [{ documentPath: 'doc.pdf', experienceUnitId: 'u-claims-section' }],
+    now,
+  });
   assert.ok(secondAdded.ok);
 
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNode(graph, 'rule_submission', 'The claimant must submit a completed claim application form for settlement.', 'u-claims-section'),
+    ruleSourceWithNode(
+      graph,
+      'rule_submission',
+      'The claimant must submit a completed claim application form for settlement.',
+      'u-claims-section',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   assert.equal(requiresEdgesTo(graph, 'cap_assess_claim').length, 0, 'still ambiguous on "claim" alone with respect to this candidate');
   const distinctiveEdges = requiresEdgesTo(graph, 'cap_claims_procedure');
-  assert.equal(distinctiveEdges.length, 1, 'shares "claim" AND "form"/"application"/"settlement" — genuinely more specific, multi-term evidence — so it correctly links');
+  assert.equal(
+    distinctiveEdges.length,
+    1,
+    'shares "claim" AND "form"/"application"/"settlement" — genuinely more specific, multi-term evidence — so it correctly links',
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -380,11 +517,24 @@ test('once one of two same-unit capabilities has DISTINCTIVE additional vocabula
 //     mode the Problem C investigation diagnosed.
 // ---------------------------------------------------------------------------
 
-test('Problem C — a reasoning node nested inside a capability\'s own section links via structural_containment, even in a different unit', () => {
+test("Problem C — a reasoning node nested inside a capability's own section links via structural_containment, even in a different unit", () => {
   const graph = emptyGraph();
-  addCapabilityAtPath(graph, 'cap_create_charge', 'Create a Charge', 'Creates a new charge for the requested amount.', ['Root', 'Create a Charge'], 'u-cap');
+  addCapabilityAtPath(
+    graph,
+    'cap_create_charge',
+    'Create a Charge',
+    'Creates a new charge for the requested amount.',
+    ['Root', 'Create a Charge'],
+    'u-cap',
+  );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNodeAtPath(graph, 'rn_amount_check', 'If the charge amount is below the minimum threshold, reject it.', ['Root', 'Create a Charge', 'Response'], 'u-rule'),
+    ruleSourceWithNodeAtPath(
+      graph,
+      'rn_amount_check',
+      'If the charge amount is below the minimum threshold, reject it.',
+      ['Root', 'Create a Charge', 'Response'],
+      'u-rule',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
@@ -404,41 +554,103 @@ test('Problem C — an unrelated sibling branch does not structurally link merel
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
-  assert.equal(requiresEdgesTo(graph, 'cap_a').length, 0, 'Capability A is not an ancestor of this reasoning node at all — must never link');
-  assert.equal(requiresEdgesTo(graph, 'cap_b').length, 1, 'Capability B genuinely is the governing ancestor, and shares "B"/"request"/"invalid"-adjacent vocabulary');
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_a').length,
+    0,
+    'Capability A is not an ancestor of this reasoning node at all — must never link',
+  );
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_b').length,
+    1,
+    'Capability B genuinely is the governing ancestor, and shares "B"/"request"/"invalid"-adjacent vocabulary',
+  );
 });
 
 test('Problem C — a document-root-level capability never receives a structural link, even to genuinely on-topic content', () => {
   const graph = emptyGraph();
-  addCapabilityAtPath(graph, 'cap_root', 'Payments API Reference', 'Lets you create charges and manage customers.', ['Payments API Reference'], 'u-cap-root');
+  addCapabilityAtPath(
+    graph,
+    'cap_root',
+    'Payments API Reference',
+    'Lets you create charges and manage customers.',
+    ['Payments API Reference'],
+    'u-cap-root',
+  );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNodeAtPath(graph, 'rn_deep_rule', 'If the charge amount is below the minimum, the customer cannot be charged.', ['Payments API Reference', 'Create a Charge', 'Response'], 'u-rule'),
+    ruleSourceWithNodeAtPath(
+      graph,
+      'rn_deep_rule',
+      'If the charge amount is below the minimum, the customer cannot be charged.',
+      ['Payments API Reference', 'Create a Charge', 'Response'],
+      'u-rule',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
-  assert.equal(requiresEdgesTo(graph, 'cap_root').length, 0, 'a document-root-level capability must never structurally govern anything, regardless of topical relevance');
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_root').length,
+    0,
+    'a document-root-level capability must never structurally govern anything, regardless of topical relevance',
+  );
 });
 
 test('Problem C — nearest ancestor wins: a reasoning node under both a parent and a child capability links only to the child', () => {
   const graph = emptyGraph();
-  addCapabilityAtPath(graph, 'cap_parent', 'Parent Capability', 'Handles parent-level requests and charges.', ['Root', 'Parent Capability'], 'u-cap-parent');
-  addCapabilityAtPath(graph, 'cap_child', 'Child Capability', 'Handles child-level charge validation.', ['Root', 'Parent Capability', 'Child Capability'], 'u-cap-child');
+  addCapabilityAtPath(
+    graph,
+    'cap_parent',
+    'Parent Capability',
+    'Handles parent-level requests and charges.',
+    ['Root', 'Parent Capability'],
+    'u-cap-parent',
+  );
+  addCapabilityAtPath(
+    graph,
+    'cap_child',
+    'Child Capability',
+    'Handles child-level charge validation.',
+    ['Root', 'Parent Capability', 'Child Capability'],
+    'u-cap-child',
+  );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNodeAtPath(graph, 'rn_charge_rule', 'If the charge validation fails, reject the request.', ['Root', 'Parent Capability', 'Child Capability', 'Details'], 'u-rule'),
+    ruleSourceWithNodeAtPath(
+      graph,
+      'rn_charge_rule',
+      'If the charge validation fails, reject the request.',
+      ['Root', 'Parent Capability', 'Child Capability', 'Details'],
+      'u-rule',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   assert.equal(requiresEdgesTo(graph, 'cap_child').length, 1, 'the deeper, more specific capability must win');
-  assert.equal(requiresEdgesTo(graph, 'cap_parent').length, 0, 'the farther ancestor must not ALSO receive a link — nearest-only, no fan-out to every ancestor');
+  assert.equal(
+    requiresEdgesTo(graph, 'cap_parent').length,
+    0,
+    'the farther ancestor must not ALSO receive a link — nearest-only, no fan-out to every ancestor',
+  );
 });
 
 test('Problem C — numeric-only corroboration is rejected: a structurally nested reasoning node sharing only a clause number does not link', () => {
   const graph = emptyGraph();
-  addCapabilityAtPath(graph, 'cap_decision_rules', 'Decision Rules', 'Governs how decisions are made for this section.', ['Root', 'Decision Rules'], 'u-cap');
+  addCapabilityAtPath(
+    graph,
+    'cap_decision_rules',
+    'Decision Rules',
+    'Governs how decisions are made for this section.',
+    ['Root', 'Decision Rules'],
+    'u-cap',
+  );
   const sources: RuleLinkSource[] = [
-    ruleSourceWithNodeAtPath(graph, 'rn_subclause', '7.6 Some unrelated sub-clause with no shared vocabulary at all.', ['Root', 'Decision Rules', 'Sub-clause 7.6'], 'u-rule'),
+    ruleSourceWithNodeAtPath(
+      graph,
+      'rn_subclause',
+      '7.6 Some unrelated sub-clause with no shared vocabulary at all.',
+      ['Root', 'Decision Rules', 'Sub-clause 7.6'],
+      'u-rule',
+    ),
   ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
@@ -451,13 +663,26 @@ test('Problem C — existing same-unit semantic evidence behaves identically whe
   // graph must not change the existing same-unit exact_label outcome for
   // an unrelated pair.
   const graph = graphWithCapability('cap_review', 'Review Action', 'Reviews the submitted claim for completeness.', 'u-shared');
-  addCapabilityAtPath(graph, 'cap_unrelated', 'Unrelated Capability', 'Handles something else entirely.', ['Root', 'Unrelated Capability'], 'u-other');
-  const sources: RuleLinkSource[] = [ruleSourceWithNode(graph, 'rn_review', 'Review Action is required when the claim is incomplete.', 'u-shared')];
+  addCapabilityAtPath(
+    graph,
+    'cap_unrelated',
+    'Unrelated Capability',
+    'Handles something else entirely.',
+    ['Root', 'Unrelated Capability'],
+    'u-other',
+  );
+  const sources: RuleLinkSource[] = [
+    ruleSourceWithNode(graph, 'rn_review', 'Review Action is required when the claim is incomplete.', 'u-shared'),
+  ];
 
   linkRuleSourcesToReferencedNodes(graph, sources, now);
 
   const edges = requiresEdgesTo(graph, 'cap_review');
   assert.equal(edges.length, 1);
-  assert.equal(edges[0]!.evidenceKind, 'exact_label', 'the existing same-unit exact_label result must be byte-identical to pre-Problem-C behavior');
+  assert.equal(
+    edges[0]!.evidenceKind,
+    'exact_label',
+    'the existing same-unit exact_label result must be byte-identical to pre-Problem-C behavior',
+  );
   assert.equal(requiresEdgesTo(graph, 'cap_unrelated').length, 0);
 });

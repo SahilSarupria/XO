@@ -137,7 +137,9 @@ function parseXrefStreamSection(buf: Uint8Array, offset: number, seenOffsets: Se
   const sizeValue = dict.entries.get('Size');
   const size = typeof sizeValue === 'number' ? sizeValue : 0;
   const indexValue = dict.entries.get('Index') ?? null;
-  const index: number[] = isArray(indexValue) ? (indexValue.items.filter((n): n is number => typeof n === 'number') as number[]) : [0, size];
+  const index: number[] = isArray(indexValue)
+    ? (indexValue.items.filter((n): n is number => typeof n === 'number') as number[])
+    : [0, size];
 
   const data = decodeStream(indirect.value);
   const recordWidth = w[0] + w[1] + w[2];
@@ -158,7 +160,12 @@ function parseXrefStreamSection(buf: Uint8Array, offset: number, seenOffsets: Se
       if (type === 0) {
         entries.set(objectNumber, { byteOffset: 0, generation: field3, free: true });
       } else if (type === 2) {
-        entries.set(objectNumber, { byteOffset: 0, generation: 0, free: false, compressed: { streamObjectNumber: field2, indexInStream: field3 } });
+        entries.set(objectNumber, {
+          byteOffset: 0,
+          generation: 0,
+          free: false,
+          compressed: { streamObjectNumber: field2, indexInStream: field3 },
+        });
       } else {
         entries.set(objectNumber, { byteOffset: field2, generation: field3, free: false });
       }

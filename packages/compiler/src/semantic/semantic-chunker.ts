@@ -23,7 +23,12 @@ export interface SemanticChunkerOptions {
  * lowers an `ExperienceDocument` (plus Stage 4-9's output) into a real
  * `@xo/xoir` graph.
  */
-export async function chunkDocument(parsed: ParsedDocument, documentPath: string, documentTitle: string | undefined, options: SemanticChunkerOptions = {}): Promise<ExperienceDocument> {
+export async function chunkDocument(
+  parsed: ParsedDocument,
+  documentPath: string,
+  documentTitle: string | undefined,
+  options: SemanticChunkerOptions = {},
+): Promise<ExperienceDocument> {
   const resolver = options.resolver ?? createDefaultBoundaryResolver();
   const { units: draftUnits } = await buildExperienceUnitsForSection(parsed.root, documentPath, [], undefined, resolver);
   const { units, relationshipGraph } = buildRelationships(draftUnits);

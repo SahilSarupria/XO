@@ -100,7 +100,11 @@ test('createManifest carries an optional sourceQuality map, keyed by documentPat
 });
 
 test('manifest.sourceQuality round-trips through serialization and does not affect any node/edge content hash', () => {
-  const manifest = createManifest({ schemaVersion: 1, sourceQuality: { 'src-1': { state: 'trusted', suspiciousTokenRatio: 0 } }, now: () => '2026-01-01T00:00:00.000Z' });
+  const manifest = createManifest({
+    schemaVersion: 1,
+    sourceQuality: { 'src-1': { state: 'trusted', suspiciousTokenRatio: 0 } },
+    now: () => '2026-01-01T00:00:00.000Z',
+  });
   const graph = XoirGraph.create(XoirGraphId('g1'), 1, manifest);
   const node = graph.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' } });
   assert.ok(node.ok);

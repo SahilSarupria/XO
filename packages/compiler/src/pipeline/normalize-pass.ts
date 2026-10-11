@@ -31,7 +31,9 @@ function byCanonicalOrder(a: string, b: string): number {
  * README section on why this doesn't count as "information loss."
  */
 function canonicalizeNode(node: XoirNode): XoirNode {
-  const sortedRefs = [...node.metadata.sourceRefs].sort((a, b) => byCanonicalOrder(canonicalStringify(a as unknown as XoirValue), canonicalStringify(b as unknown as XoirValue)));
+  const sortedRefs = [...node.metadata.sourceRefs].sort((a, b) =>
+    byCanonicalOrder(canonicalStringify(a as unknown as XoirValue), canonicalStringify(b as unknown as XoirValue)),
+  );
   const alreadyCanonical = sortedRefs.every((ref, i) => ref === node.metadata.sourceRefs[i]);
   if (alreadyCanonical) return node;
   const { hash: _oldHash, ...rest } = node;
@@ -40,7 +42,9 @@ function canonicalizeNode(node: XoirNode): XoirNode {
 }
 
 function canonicalizeEdge(edge: XoirEdge): XoirEdge {
-  const sortedRefs = [...edge.metadata.sourceRefs].sort((a, b) => byCanonicalOrder(canonicalStringify(a as unknown as XoirValue), canonicalStringify(b as unknown as XoirValue)));
+  const sortedRefs = [...edge.metadata.sourceRefs].sort((a, b) =>
+    byCanonicalOrder(canonicalStringify(a as unknown as XoirValue), canonicalStringify(b as unknown as XoirValue)),
+  );
   const alreadyCanonical = sortedRefs.every((ref, i) => ref === edge.metadata.sourceRefs[i]);
   if (alreadyCanonical) return edge;
   const { hash: _oldHash, ...rest } = edge;
@@ -152,7 +156,9 @@ export function createXoirNormalizationPass(): Pass {
 
       const rawEdges = [...context.graph.allEdges()].sort((a, b) => byCanonicalOrder(a.id, b.id));
       const canonicalizedEdges = rawEdges.map(canonicalizeEdge);
-      const collapsedEdges = collapseEquivalentEdges(canonicalizedEdges, diagnostics).slice().sort((a, b) => byCanonicalOrder(a.id, b.id));
+      const collapsedEdges = collapseEquivalentEdges(canonicalizedEdges, diagnostics)
+        .slice()
+        .sort((a, b) => byCanonicalOrder(a.id, b.id));
 
       const normalized = new XoirGraph(context.graph.id, context.graph.schemaVersion, context.graph.manifest);
       for (const node of canonicalNodes) {

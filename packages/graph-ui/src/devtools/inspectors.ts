@@ -42,7 +42,12 @@ export interface InteractionInspectorSnapshot {
   readonly focus: FocusState;
 }
 
-export function inspectInteraction(drag: DragState, resize: ResizeState, hover: HoverState, focus: FocusState): InteractionInspectorSnapshot {
+export function inspectInteraction(
+  drag: DragState,
+  resize: ResizeState,
+  hover: HoverState,
+  focus: FocusState,
+): InteractionInspectorSnapshot {
   return { drag, resize, hover, focus };
 }
 
@@ -67,7 +72,10 @@ export interface LayoutInspectorSnapshot {
   readonly lastComputed?: { readonly kind: LayoutKind | string; readonly options?: GraphLayoutOptions; readonly ms: number };
 }
 
-export function inspectLayout(availableKinds: readonly string[], lastComputed?: LayoutInspectorSnapshot['lastComputed']): LayoutInspectorSnapshot {
+export function inspectLayout(
+  availableKinds: readonly string[],
+  lastComputed?: LayoutInspectorSnapshot['lastComputed'],
+): LayoutInspectorSnapshot {
   return lastComputed !== undefined ? { availableKinds, lastComputed } : { availableKinds };
 }
 
@@ -88,7 +96,11 @@ export interface PerformanceInspectorSnapshot {
   readonly recommendations: readonly string[];
 }
 
-export function inspectPerformance(model: GraphModel, frame: Pick<RenderFrame, 'nodes' | 'edges'>, activeLayoutKind?: string): PerformanceInspectorSnapshot {
+export function inspectPerformance(
+  model: GraphModel,
+  frame: Pick<RenderFrame, 'nodes' | 'edges'>,
+  activeLayoutKind?: string,
+): PerformanceInspectorSnapshot {
   const renderCost = GraphDiagnostics.estimateRenderCost(frame);
   const memory = GraphDiagnostics.estimateMemory(model);
   const recommendations = GraphDiagnostics.recommendations({

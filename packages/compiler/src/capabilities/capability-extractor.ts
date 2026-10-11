@@ -35,17 +35,27 @@ export interface CapabilityExtractionOptions {
  * caveat about a live AI provider's own sampling behavior not being this
  * stage's to guarantee.
  */
-export async function extractCapabilityGraph(experienceDocument: ExperienceDocument, knowledgeGraph: KnowledgeGraph, options: CapabilityExtractionOptions = {}): Promise<CapabilityGraph> {
+export async function extractCapabilityGraph(
+  experienceDocument: ExperienceDocument,
+  knowledgeGraph: KnowledgeGraph,
+  options: CapabilityExtractionOptions = {},
+): Promise<CapabilityGraph> {
   const extractor =
     options.extractor ??
-    new HybridCapabilityExtractor(options.aiCore ? new AiCapabilityExtractor(options.aiCore, options.domainHint) : undefined, options.logger);
+    new HybridCapabilityExtractor(
+      options.aiCore ? new AiCapabilityExtractor(options.aiCore, options.domainHint) : undefined,
+      options.logger,
+    );
 
   const perUnit: PerUnitCapabilityExtraction[] = [];
   for (const unit of experienceDocument.units) {
     const result = await extractor.extract(unit, knowledgeGraph);
     const extraction = result.ok ? result.value : { capabilities: [], edges: [] };
     if (!result.ok) {
-      options.logger?.warn('Capability extraction failed for a unit; it contributes no capabilities', { unitId: unit.id, error: result.error.message });
+      options.logger?.warn('Capability extraction failed for a unit; it contributes no capabilities', {
+        unitId: unit.id,
+        error: result.error.message,
+      });
     }
     perUnit.push({ unit, extraction });
   }

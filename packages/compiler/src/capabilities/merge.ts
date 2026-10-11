@@ -41,14 +41,28 @@ function mergeSignatures(signatures: readonly CapabilitySignature[]): Capability
     outputs: dedupeInputsOutputs(signatures.flatMap((s) => s.outputs)),
     sideEffects: dedupeStrings(signatures.flatMap((s) => s.sideEffects)),
     requiredResources: dedupeStrings(signatures.flatMap((s) => s.requiredResources)),
-    determinism: firstKnown(signatures.map((s) => s.determinism), 'unknown'),
-    idempotent: firstKnown(signatures.map((s) => s.idempotent), 'unknown'),
-    executionMode: firstKnown(signatures.map((s) => s.executionMode), 'unknown'),
-    estimatedCost: firstKnown(signatures.map((s) => s.estimatedCost), 'unknown'),
+    determinism: firstKnown(
+      signatures.map((s) => s.determinism),
+      'unknown',
+    ),
+    idempotent: firstKnown(
+      signatures.map((s) => s.idempotent),
+      'unknown',
+    ),
+    executionMode: firstKnown(
+      signatures.map((s) => s.executionMode),
+      'unknown',
+    ),
+    estimatedCost: firstKnown(
+      signatures.map((s) => s.estimatedCost),
+      'unknown',
+    ),
   };
 }
 
-function dedupeInputsOutputs(params: readonly { readonly name: string; readonly description: string }[]): readonly { readonly name: string; readonly description: string }[] {
+function dedupeInputsOutputs(
+  params: readonly { readonly name: string; readonly description: string }[],
+): readonly { readonly name: string; readonly description: string }[] {
   const seen = new Set<string>();
   const result: { readonly name: string; readonly description: string }[] = [];
   for (const p of params) {
@@ -111,7 +125,9 @@ export function mergeCapabilities(perUnit: readonly PerUnitCapabilityExtraction[
     const description = candidates.map((c) => c.description).find((d) => d.length > 0) ?? '';
     const inputs = dedupeStrings(candidates.flatMap((c) => c.inputs));
     const outputs = dedupeStrings(candidates.flatMap((c) => c.outputs));
-    const requiredKnowledgeNodeIds = dedupeStrings(candidates.flatMap((c) => c.requiredKnowledgeNodeIds)) as readonly Capability['requiredKnowledgeNodeIds'][number][];
+    const requiredKnowledgeNodeIds = dedupeStrings(
+      candidates.flatMap((c) => c.requiredKnowledgeNodeIds),
+    ) as readonly Capability['requiredKnowledgeNodeIds'][number][];
     const relatedConcepts = dedupeStrings(candidates.flatMap((c) => c.relatedConcepts));
     const invocationHints = dedupeStrings(candidates.flatMap((c) => c.invocationHints));
     const examples = dedupeStrings(candidates.flatMap((c) => c.examples));
@@ -133,7 +149,9 @@ export function mergeCapabilities(perUnit: readonly PerUnitCapabilityExtraction[
         inputTypesByKey.get(key)!.add(value);
       }
     }
-    const inputTypeEntries = [...inputTypesByKey.entries()].filter(([, values]) => values.size === 1).map(([key, values]) => [key, [...values][0]!] as const);
+    const inputTypeEntries = [...inputTypesByKey.entries()]
+      .filter(([, values]) => values.size === 1)
+      .map(([key, values]) => [key, [...values][0]!] as const);
     const inputTypes = inputTypeEntries.length > 0 ? Object.fromEntries(inputTypeEntries) : undefined;
 
     const id = computeCapabilityId(category, canonicalName);

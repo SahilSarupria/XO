@@ -37,16 +37,25 @@ export function resolveCapabilityBinding(contract: SemanticCapabilityContract, r
   const resolved = outcomes.filter((o) => o.outcome.status === 'resolved');
   if (resolved.length === 1) return resolved[0]!.outcome;
   if (resolved.length > 1) {
-    return { status: 'ambiguous', reason: `${resolved.length} resolvers (${resolved.map((o) => o.resolverName).join(', ')}) each produced a "resolved" binding for contract "${contract.id}" with no configured tiebreak`, candidateCount: resolved.length };
+    return {
+      status: 'ambiguous',
+      reason: `${resolved.length} resolvers (${resolved.map((o) => o.resolverName).join(', ')}) each produced a "resolved" binding for contract "${contract.id}" with no configured tiebreak`,
+      candidateCount: resolved.length,
+    };
   }
 
   const denied = outcomes.find((o) => o.outcome.status === 'denied');
   if (denied) return denied.outcome;
 
-  const unresolvedReasons = outcomes.filter((o) => o.outcome.status === 'unresolved').map((o) => `${o.resolverName}: ${(o.outcome as { readonly reason: string }).reason}`);
+  const unresolvedReasons = outcomes
+    .filter((o) => o.outcome.status === 'unresolved')
+    .map((o) => `${o.resolverName}: ${(o.outcome as { readonly reason: string }).reason}`);
   if (unresolvedReasons.length > 0) {
     return { status: 'unresolved', reason: unresolvedReasons.join(' | ') };
   }
 
-  return { status: 'unresolved', reason: `No configured resolver (tried: ${tried.join(', ')}) had an opinion about contract "${contract.id}"` };
+  return {
+    status: 'unresolved',
+    reason: `No configured resolver (tried: ${tried.join(', ')}) had an opinion about contract "${contract.id}"`,
+  };
 }

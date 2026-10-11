@@ -16,7 +16,9 @@ import { scopeKey } from './memory-types.js';
  * section).
  */
 export function deriveMemoryEntryId(scope: MemoryScope, key: string): MemoryEntryId {
-  const digest = createHash('sha256').update(`${scopeKey(scope)}::${key}`, 'utf8').digest('hex');
+  const digest = createHash('sha256')
+    .update(`${scopeKey(scope)}::${key}`, 'utf8')
+    .digest('hex');
   return MemoryEntryId(`mem_${digest.slice(0, 32)}`);
 }
 

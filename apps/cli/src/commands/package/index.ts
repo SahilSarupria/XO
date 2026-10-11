@@ -25,7 +25,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'init',
     subsystem: SUBSYSTEM,
-    usage: 'xo init <dir> --name <name> --creator-did <did> [--version <v>] [--format-version <v>]\n                                         Scaffold a new package project',
+    usage:
+      'xo init <dir> --name <name> --creator-did <did> [--version <v>] [--format-version <v>]\n                                         Scaffold a new package project',
     run: async (args) => {
       const dir = args.positionals[0];
       const name = requireFlag(args.flags, 'name');
@@ -51,7 +52,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'build',
     subsystem: SUBSYSTEM,
-    usage: 'xo build <dir> [--out <file.xo>] [--sign] [--signer-did <did>] [--key-out <prefix>]\n                                         Build, (optionally) sign, validate, and pack a project',
+    usage:
+      'xo build <dir> [--out <file.xo>] [--sign] [--signer-did <did>] [--key-out <prefix>]\n                                         Build, (optionally) sign, validate, and pack a project',
     run: async (args) => {
       const dir = args.positionals[0];
       const out = requireFlag(args.flags, 'out');
@@ -76,7 +78,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'pack',
     subsystem: SUBSYSTEM,
-    usage: 'xo pack <path> [--out <file.xo>] [--sign] [--signer-did <did>] [--key-out <prefix>]\n                                         Build a signed .xo package and print a name/version/fingerprint/component summary',
+    usage:
+      'xo pack <path> [--out <file.xo>] [--sign] [--signer-did <did>] [--key-out <prefix>]\n                                         Build a signed .xo package and print a name/version/fingerprint/component summary',
     run: async (args) => {
       const dir = args.positionals[0];
       const out = requireFlag(args.flags, 'out');
@@ -103,8 +106,8 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo inspect <archive.xo>                  Print a human-readable summary of a package\n' +
-      '    xo inspect <name>@<version> --store <dir>  Print an installed package\'s dependencies and xo.lock freshness',
-     run: async (args) => {
+      "    xo inspect <name>@<version> --store <dir>  Print an installed package's dependencies and xo.lock freshness",
+    run: async (args) => {
       const target = args.positionals[0];
       const storeDir = requireFlag(args.flags, 'store');
       if (!target) {
@@ -125,7 +128,8 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'verify',
     subsystem: SUBSYSTEM,
-    usage: 'xo verify <archive.xo> [--pubkey <did>=<path/to/key.pem>]...\n                                         Validate schema, hashes, Merkle root, and signatures',
+    usage:
+      'xo verify <archive.xo> [--pubkey <did>=<path/to/key.pem>]...\n                                         Validate schema, hashes, Merkle root, and signatures',
     run: async (args) => {
       const archivePath = args.positionals[0];
       if (!archivePath) {
@@ -142,9 +146,9 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo install <archive.xo> --store <dir> [--force] [--skip-resolution]\n' +
       '                                         Install a package into a local store, resolving and locking\n' +
-      '                                         its declared dependencies (against what\'s already in --store)\n' +
+      "                                         its declared dependencies (against what's already in --store)\n" +
       '                                         unless --skip-resolution is given',
-     run: async (args) => {
+    run: async (args) => {
       const archivePath = args.positionals[0];
       const storeDir = requireFlag(args.flags, 'store');
       if (!archivePath || !storeDir) {
@@ -165,23 +169,23 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'lock',
     subsystem: SUBSYSTEM,
-    usage: 'xo lock <name>@<version> --store <dir>    Re-resolve and (over)write an installed package\'s xo.lock',
+    usage: "xo lock <name>@<version> --store <dir>    Re-resolve and (over)write an installed package's xo.lock",
     run: async (args) => {
       const nameAtVersion = args.positionals[0];
       const storeDir = requireFlag(args.flags, 'store');
       if (!nameAtVersion || !storeDir) {
         process.stdout.write('xo lock <name>@<version> --store <dir>\n');
-         return 1;
-       }
+        return 1;
+      }
       return printResult(await lockCommand({ nameAtVersion, storeDir }));
-     },
-   });
-        
+    },
+  });
 
   registry.register({
     name: 'uninstall',
     subsystem: SUBSYSTEM,
-    usage: 'xo uninstall <name>@<version> --store <dir>\n                                         Remove an installed package from a local store',
+    usage:
+      'xo uninstall <name>@<version> --store <dir>\n                                         Remove an installed package from a local store',
     run: async (args) => {
       const nameAtVersion = args.positionals[0];
       const storeDir = requireFlag(args.flags, 'store');
@@ -210,7 +214,7 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'fingerprint',
     subsystem: SUBSYSTEM,
-    usage: 'xo fingerprint <archive.xo>              Print a package\'s content fingerprint',
+    usage: "xo fingerprint <archive.xo>              Print a package's content fingerprint",
     run: async (args) => {
       const archivePath = args.positionals[0];
       if (!archivePath) {
