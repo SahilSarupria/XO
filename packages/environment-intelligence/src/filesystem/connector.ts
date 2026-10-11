@@ -1,5 +1,3 @@
-import { constants } from 'node:fs';
-import { lstat, open, readdir } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { err, ok, type Result } from '@xo/types';
@@ -28,8 +26,19 @@ import {
   type FilesystemLimits,
   type FilesystemScope,
 } from './config.js';
+import type { BigIntStats } from 'node:fs';
+import {
+  AnchoredTree,
+  FdWalkFatal,
+  NODE_FS_OPS,
+  errnoCode,
+  type DirNode,
+  type FsOps,
+  type InternalConnectorOptions,
+  type SkipReason,
+} from './fd-walk.js';
 import { extractIdentifiers, isSafeName } from './sanitize.js';
-import { resolveInside, resolveRoot, validateKeyLexically, validateRootLexically } from './scope-guard.js';
+import { resolveRoot, validateKeyLexically, validateRootLexically } from './scope-guard.js';
 
 export const FILESYSTEM_CONNECTOR_ID = ConnectorId('xo.connector.local-filesystem');
 export const FILESYSTEM_CONNECTOR_VERSION = '0.1.0';
@@ -72,10 +81,12 @@ const DESCRIPTOR: ConnectorDescriptor = {
     ],
     limitations: [
       'POSIX paths only; behaviour on Windows is untested',
-      'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component before opening a file',
+      'On Linux, discovery and content acquisition walk the tree through held directory descriptors (/proc/self/fd) and refuse mount and device boundaries; if that cannot be established, acquisition fails closed and Linux discovery fails closed',
+      'On other platforms discovery uses the earlier path-based walk and is labelled path_based_unhardened in its evidence; content acquisition is unavailable there',
+      'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component',
       'Files whose names contain control or bidirectional-format characters are skipped',
       'Credential-like names (.env, *.pem, id_rsa, ...) and secret-store directories are excluded and only counted',
-      'Concurrent directory mutation can race path checks and reads (TOCTOU); this local-filesystem prototype is not a defense against a hostile process with write access inside the approved root',
+      'Descriptor anchoring is NOT openat2(RESOLVE_BENEATH) and does not give complete race-free containment: the root or an ancestor swapped before the root is opened, an entry swapped between lstat and open (it stays beneath its held parent), a held directory renamed out of the root, and a mount created after the mountinfo snapshot remain possible for a hostile process with write access to the approved tree',
       'Passive: performs no writes, no network access, and executes nothing it reads',
     ],
   },
@@ -126,6 +137,15 @@ interface FileMeta {
 
 export class LocalFilesystemConnector implements Connector<FilesystemScope> {
   readonly descriptor: ConnectorDescriptor = DESCRIPTOR;
+
+  private readonly ops: FsOps;
+  private readonly fdBudget: number | undefined;
+
+  /** @param internal Not part of the public contract: a test seam and tuning knobs (see `fd-walk.ts`). */
+  constructor(internal?: InternalConnectorOptions) {
+    this.ops = internal?.fsOps ?? NODE_FS_OPS;
+    this.fdBudget = internal?.fdBudget;
+  }
 
   private async authorize(
     ctx: ConnectorContext,
@@ -261,7 +281,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const root = await this.authorizeRoot(ctx, 'validate_connection', PERMISSION_LIST, request.scope.root);
     if (!root.ok) return root;
     try {
-      await readdir(root.value.realRoot);
+      await this.ops.readdir(root.value.realRoot);
     } catch (e) {
       const errno = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null;
       return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'approved root is not readable', { errno }));
@@ -290,50 +310,63 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     let visited = 0;
     let directories = 0;
 
-    const stack: { abs: string; rel: string; depth: number }[] = [{ abs: realRoot, rel: '', depth: 0 }];
-    walk: while (stack.length > 0) {
-      const dir = stack.pop();
-      if (dir === undefined) break;
+    // D1: on Linux the walk is descriptor-anchored (F1) and FAILS CLOSED if that cannot be established. On other
+    // platforms the previous path-based walk is kept and is explicitly labelled unhardened in the evidence.
+    const hardened = this.ops.platform === 'linux';
+    const traversal = hardened ? 'fd_anchored' : 'path_based_unhardened';
+    let tree: AnchoredTree | undefined;
+    type Dir = { readonly abs: string; readonly node?: DirNode };
+    const list = (d: Dir): Promise<string[]> => (tree !== undefined && d.node !== undefined ? tree.list(d.node) : this.ops.readdir(d.abs));
+    const lstatEntry = (d: Dir, name: string) =>
+      tree !== undefined && d.node !== undefined ? tree.lstatChild(d.node, name) : this.ops.lstat(`${d.abs}/${name}`);
+    const descend = async (d: Dir, name: string, st: BigIntStats): Promise<{ dir: Dir } | { skip: SkipReason }> => {
+      if (tree === undefined || d.node === undefined) return { dir: { abs: `${d.abs}/${name}` } };
+      const child = await tree.openChildDir(d.node, name, st);
+      return child.kind === 'dir' ? { dir: { abs: child.node.abs, node: child.node } } : { skip: child.reason };
+    };
+    const skipLabel = (r: SkipReason): string => (r === 'missing' ? 'unreadable_entry' : r === 'not_a_directory' ? 'entry_changed' : r);
+
+    /** Returns true when a limit or cancellation stopped the whole walk. */
+    const walkDir = async (dir: Dir, rel: string, depth: number): Promise<boolean> => {
       let names: string[];
       try {
-        names = (await readdir(dir.abs)).sort();
+        names = (await list(dir)).sort();
       } catch (e) {
+        if (e instanceof FdWalkFatal) throw e;
         addCount(skipped, 'unreadable_directory');
-        if (dir.rel === '')
-          return err(
-            discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'approved root is not readable', {
-              errno: typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null,
-            }),
+        if (rel === '')
+          throw new FdWalkFatal(
+            discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'approved root is not readable', { errno: errnoCode(e) }),
           );
-        continue;
+        return false;
       }
       directories += 1;
-      const subdirs: { abs: string; rel: string; depth: number }[] = [];
+      const subdirs: { name: string; rel: string; st: BigIntStats }[] = [];
       for (const name of names) {
         if (ctx.signal?.aborted) {
           hit.add('cancelled');
           errors.push(discoveryError(DiscoveryErrorCode.CANCELLED, 'discovery cancelled; results are partial'));
-          break walk;
+          return true;
         }
         if (elapsed(ctx, startMs) > limits.timeBudgetMs) {
           hit.add('time_budget');
-          break walk;
+          return true;
         }
         if (visited >= limits.maxEntries) {
           hit.add('max_entries');
-          break walk;
+          return true;
         }
         visited += 1;
         if (!isSafeName(name, limits.maxNameLength)) {
           addCount(skipped, 'unsafe_name');
           continue;
         }
-        const abs = `${dir.abs}/${name}`;
-        const rel = dir.rel === '' ? name : `${dir.rel}/${name}`;
-        let st;
+        const entryRel = rel === '' ? name : `${rel}/${name}`;
+        let st: BigIntStats;
         try {
-          st = await lstat(abs);
-        } catch {
+          st = await lstatEntry(dir, name);
+        } catch (e) {
+          if (e instanceof FdWalkFatal) throw e;
           addCount(skipped, 'unreadable_entry');
           continue;
         }
@@ -346,16 +379,21 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
             addCount(skipped, 'excluded_directory');
             continue;
           }
-          if (dir.depth + 1 > limits.maxDepth) {
+          if (depth + 1 > limits.maxDepth) {
             hit.add('max_depth');
             addCount(skipped, 'depth_limit');
             continue;
           }
-          subdirs.push({ abs, rel, depth: dir.depth + 1 });
+          subdirs.push({ name, rel: entryRel, st });
           continue;
         }
         if (!st.isFile()) {
           addCount(skipped, 'not_regular_file');
+          continue;
+        }
+        // Mount/device boundary applies to file entries too: their metadata must not describe another filesystem.
+        if (tree !== undefined && (tree.isOtherDevice(st) || tree.isNestedMount(`${dir.abs}/${name}`))) {
+          addCount(skipped, 'mount_boundary');
           continue;
         }
         if (isSensitiveName(name, extraExcluded)) {
@@ -363,24 +401,47 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           continue;
         }
         files.push({
-          key: rel,
+          key: entryRel,
           name,
           extension: extname(name).toLowerCase(),
-          sizeBytes: st.size,
+          sizeBytes: Number(st.size),
           modifiedAt: st.mtime.toISOString(),
-          depth: dir.depth,
+          depth,
         });
       }
-      // Reverse so the stack pops directories in sorted order (deterministic traversal).
-      for (let i = subdirs.length - 1; i >= 0; i -= 1) {
-        const d = subdirs[i];
-        if (d !== undefined) stack.push(d);
+      // Subdirectories in sorted order, each fully walked before the next sibling (deterministic preorder).
+      for (const sub of subdirs) {
+        const r = await descend(dir, sub.name, sub.st);
+        if ('skip' in r) {
+          addCount(skipped, skipLabel(r.skip));
+          continue;
+        }
+        try {
+          if (await walkDir(r.dir, sub.rel, depth + 1)) return true;
+        } finally {
+          if (tree !== undefined && r.dir.node !== undefined) await tree.release(r.dir.node);
+        }
       }
+      return false;
+    };
+
+    try {
+      if (hardened) tree = await AnchoredTree.open(this.ops, realRoot, this.fdBudget);
+      await walkDir(tree !== undefined ? { abs: realRoot, node: tree.root } : { abs: realRoot }, '', 0);
+    } catch (e) {
+      if (e instanceof FdWalkFatal) return err(e.error);
+      return err(internalError(e, 'discovery walk'));
+    } finally {
+      await tree?.close();
     }
 
     files.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     const steps = (at: string): TransformationStep[] => [
-      { step: 'fs.readdir+lstat', version: FILESYSTEM_CONNECTOR_VERSION, at },
+      {
+        step: hardened ? 'fs.fd_walk(readdir+lstat+fstat,O_NOFOLLOW,mount_checks)' : 'fs.readdir+lstat(path_based_unhardened)',
+        version: FILESYSTEM_CONNECTOR_VERSION,
+        at,
+      },
       { step: 'normalize.resource_inventory', version: FILESYSTEM_CONNECTOR_VERSION, at },
     ];
     const at = ctx.clock.now().toISOString();
@@ -417,7 +478,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         'metadata',
         source,
         '',
-        { fileCount: files.length, directoryCount: directories, totalBytes, extensionHistogram: histogram },
+        { fileCount: files.length, directoryCount: directories, totalBytes, extensionHistogram: histogram, traversal },
         'metadata',
         this.provenance(source, '', 'discover', PERMISSION_LIST, auth.value, ctx, steps(at)),
       ),
@@ -489,121 +550,137 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         }),
       );
     }
-    // Step 3 - only now touch the filesystem for the keys. Fail closed: EVERY key is verified before ANY file is read.
-    const resolved: { key: string; abs: string }[] = [];
-    for (const key of permittedKeys) {
-      const inside = await resolveInside(realRoot, key);
-      if (!inside.ok) return inside;
-      resolved.push({ key, abs: inside.value });
+    // Step 3 - only now touch the filesystem. Hardened content acquisition REQUIRES descriptor-anchored traversal
+    // (F1): if /proc/self/fd, mountinfo or the anchor cannot be established it fails closed - there is no
+    // path-based fallback. Fail closed also means EVERY key is verified before ANY file is read.
+    let tree: AnchoredTree;
+    try {
+      tree = await AnchoredTree.open(this.ops, realRoot, this.fdBudget);
+    } catch (e) {
+      if (e instanceof FdWalkFatal) return err(e.error);
+      return err(internalError(e, 'acquisition anchor'));
     }
+    try {
+      const resolved: { key: string; segments: readonly string[] }[] = [];
+      for (const key of permittedKeys) {
+        const lexical = validateKeyLexically(key);
+        if (!lexical.ok) return lexical;
+        const inside = await tree.verifyKey(lexical.value);
+        if (!inside.ok) return inside;
+        resolved.push({ key, segments: lexical.value });
+      }
 
-    const startMs = ctx.clock.now().getTime();
-    const skipped = new Map<string, number>();
-    if (excludedCount > 0) skipped.set('excluded_directory', excludedCount);
-    const hit = new Set<string>();
-    const errors: DiscoveryError[] = [];
-    const evidence: Evidence[] = [];
-    let visited = 0;
-    for (const { key, abs } of resolved) {
-      if (ctx.signal?.aborted) {
-        hit.add('cancelled');
-        errors.push(discoveryError(DiscoveryErrorCode.CANCELLED, 'acquisition cancelled; results are partial'));
-        break;
-      }
-      if (elapsed(ctx, startMs) > limits.timeBudgetMs) {
-        hit.add('time_budget');
-        break;
-      }
-      visited += 1;
-      const name = key.split('/').pop() ?? key;
-      if (isSensitiveName(name, extraExcludedForContent)) {
-        addCount(skipped, 'excluded_sensitive_name');
-        continue;
-      }
-      if (!CONTENT_EXTENSIONS.has(extname(key).toLowerCase())) {
-        addCount(skipped, 'content_type_not_allowed');
-        continue;
-      }
-      let handle;
-      try {
-        handle = await open(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
-      } catch (e) {
-        const errno = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null;
-        errors.push(discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource could not be opened', { errno, resource: key }));
-        continue;
-      }
-      try {
-        const st = await handle.stat();
-        if (!st.isFile()) {
-          addCount(skipped, 'not_regular_file');
+      const startMs = ctx.clock.now().getTime();
+      const skipped = new Map<string, number>();
+      if (excludedCount > 0) skipped.set('excluded_directory', excludedCount);
+      const hit = new Set<string>();
+      const errors: DiscoveryError[] = [];
+      const evidence: Evidence[] = [];
+      let visited = 0;
+      for (const { key, segments } of resolved) {
+        if (ctx.signal?.aborted) {
+          hit.add('cancelled');
+          errors.push(discoveryError(DiscoveryErrorCode.CANCELLED, 'acquisition cancelled; results are partial'));
+          break;
+        }
+        if (elapsed(ctx, startMs) > limits.timeBudgetMs) {
+          hit.add('time_budget');
+          break;
+        }
+        visited += 1;
+        const name = key.split('/').pop() ?? key;
+        if (isSensitiveName(name, extraExcludedForContent)) {
+          addCount(skipped, 'excluded_sensitive_name');
           continue;
         }
-        const toRead = Math.min(st.size, limits.maxContentBytes);
-        const buffer = Buffer.alloc(toRead);
-        const { bytesRead } = toRead > 0 ? await handle.read(buffer, 0, toRead, 0) : { bytesRead: 0 };
-        const bytes = buffer.subarray(0, bytesRead);
-        const truncated = st.size > bytesRead;
-        const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-        let encoding: 'utf8' | 'binary_or_invalid' = 'utf8';
-        let identifiers: readonly string[] = [];
-        let identifiersTruncated = false;
-        if (bytes.includes(0)) {
-          encoding = 'binary_or_invalid';
-        } else {
-          try {
-            const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-            const found = extractIdentifiers(text);
-            identifiers = found.identifiers;
-            identifiersTruncated = found.truncated;
-          } catch {
-            encoding = 'binary_or_invalid';
+        if (!CONTENT_EXTENSIONS.has(extname(key).toLowerCase())) {
+          addCount(skipped, 'content_type_not_allowed');
+          continue;
+        }
+        const opened = await tree.openFileForKey(segments);
+        if (!opened.ok) {
+          errors.push(discoveryError(opened.error.code, opened.error.message, { ...opened.error.context, resource: key }));
+          continue;
+        }
+        const handle = opened.value;
+        try {
+          const st = await handle.stat();
+          if (!st.isFile()) {
+            addCount(skipped, 'not_regular_file');
+            continue;
           }
-        }
-        if (encoding === 'binary_or_invalid') {
-          errors.push(
-            discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'content is not valid UTF-8 text; digest recorded, no tokens extracted', {
-              reason: 'invalid_utf8_or_binary',
-              resource: key,
-            }),
+          const toRead = Math.min(st.size, limits.maxContentBytes);
+          const buffer = Buffer.alloc(toRead);
+          const { bytesRead } = toRead > 0 ? await handle.read(buffer, 0, toRead, 0) : { bytesRead: 0 };
+          const bytes = buffer.subarray(0, bytesRead);
+          const truncated = st.size > bytesRead;
+          const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+          let encoding: 'utf8' | 'binary_or_invalid' = 'utf8';
+          let identifiers: readonly string[] = [];
+          let identifiersTruncated = false;
+          if (bytes.includes(0)) {
+            encoding = 'binary_or_invalid';
+          } else {
+            try {
+              const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+              const found = extractIdentifiers(text);
+              identifiers = found.identifiers;
+              identifiersTruncated = found.truncated;
+            } catch {
+              encoding = 'binary_or_invalid';
+            }
+          }
+          if (encoding === 'binary_or_invalid') {
+            errors.push(
+              discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'content is not valid UTF-8 text; digest recorded, no tokens extracted', {
+                reason: 'invalid_utf8_or_binary',
+                resource: key,
+              }),
+            );
+          }
+          const at = ctx.clock.now().toISOString();
+          const steps: TransformationStep[] = [
+            { step: 'fs.fd_walk(open O_NOFOLLOW relative to held descriptor)+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
+            { step: 'derive.sha256+identifier_tokens', version: FILESYSTEM_CONNECTOR_VERSION, at },
+          ];
+          evidence.push(
+            this.makeEvidence(
+              'document_content',
+              source,
+              key,
+              {
+                digest,
+                digestCoversWholeFile: !truncated,
+                byteLength: bytesRead,
+                fileSizeBytes: st.size,
+                truncated,
+                encoding,
+                identifiers: [...identifiers],
+                identifiersTruncated,
+              },
+              'derived_from_content',
+              this.provenance(source, key, 'acquire_content', PERMISSION_READ, auth.value, ctx, steps),
+            ),
           );
+        } catch (e) {
+          errors.push(internalError(e, 'content read'));
+        } finally {
+          await tree.closeHandle(handle);
         }
-        const at = ctx.clock.now().toISOString();
-        const steps: TransformationStep[] = [
-          { step: 'fs.open(O_NOFOLLOW)+read(bounded)', version: FILESYSTEM_CONNECTOR_VERSION, at },
-          { step: 'derive.sha256+identifier_tokens', version: FILESYSTEM_CONNECTOR_VERSION, at },
-        ];
-        evidence.push(
-          this.makeEvidence(
-            'document_content',
-            source,
-            key,
-            {
-              digest,
-              digestCoversWholeFile: !truncated,
-              byteLength: bytesRead,
-              fileSizeBytes: st.size,
-              truncated,
-              encoding,
-              identifiers: [...identifiers],
-              identifiersTruncated,
-            },
-            'derived_from_content',
-            this.provenance(source, key, 'acquire_content', PERMISSION_READ, auth.value, ctx, steps),
-          ),
-        );
-      } catch (e) {
-        errors.push(internalError(e, 'content read'));
-      } finally {
-        await handle.close();
       }
+      const partial = hit.size > 0 || errors.length > 0;
+      return ok({
+        status: partial ? 'partial' : 'complete',
+        evidence,
+        skipped: toSkipped(skipped),
+        limits: { hit: [...hit].sort(), entriesVisited: visited, elapsedMs: elapsed(ctx, startMs) },
+        errors,
+      });
+    } catch (e) {
+      if (e instanceof FdWalkFatal) return err(e.error);
+      return err(internalError(e, 'content acquisition'));
+    } finally {
+      await tree.close();
     }
-    const partial = hit.size > 0 || errors.length > 0;
-    return ok({
-      status: partial ? 'partial' : 'complete',
-      evidence,
-      skipped: toSkipped(skipped),
-      limits: { hit: [...hit].sort(), entriesVisited: visited, elapsedMs: elapsed(ctx, startMs) },
-      errors,
-    });
   }
 }
