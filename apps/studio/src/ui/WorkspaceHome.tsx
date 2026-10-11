@@ -10,8 +10,18 @@ export function WorkspaceHome() {
   const [selected, setSelected] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
 
-  if (state.phase === 'loading') return <main className="page"><Spinner label="Loading your workspaces" /></main>;
-  if (state.phase === 'error') return <main className="page"><ProblemNotice problem={state.problem} onRetry={reload} /></main>;
+  if (state.phase === 'loading')
+    return (
+      <main className="page">
+        <Spinner label="Loading your workspaces" />
+      </main>
+    );
+  if (state.phase === 'error')
+    return (
+      <main className="page">
+        <ProblemNotice problem={state.problem} onRetry={reload} />
+      </main>
+    );
 
   const workspaces = state.value;
   const active = workspaces.find((w) => w.workspaceId === selected) ?? (creating ? undefined : workspaces[0]);
@@ -73,10 +83,23 @@ function CreateWorkspace(props: { first: boolean; onCreated: (workspaceId: strin
 
   return (
     <div className="stack">
-      {props.first ? <EmptyState title="Start with a workspace">A workspace holds one body of organisational context — for example, a team&rsquo;s claims rules or a department&rsquo;s procedures.</EmptyState> : <h2>New workspace</h2>}
+      {props.first ? (
+        <EmptyState title="Start with a workspace">
+          A workspace holds one body of organisational context — for example, a team&rsquo;s claims rules or a department&rsquo;s
+          procedures.
+        </EmptyState>
+      ) : (
+        <h2>New workspace</h2>
+      )}
       <form onSubmit={(e) => void submit(e)} className="stack">
         <label htmlFor="ws-name">Workspace name</label>
-        <input id="ws-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Commercial property claims" maxLength={120} />
+        <input
+          id="ws-name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Commercial property claims"
+          maxLength={120}
+        />
         {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
         <div className="row">
           <Button type="submit" variant="primary" disabled={busy || name.trim().length === 0}>

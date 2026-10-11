@@ -54,7 +54,16 @@ describe('XoClient', () => {
   });
 
   it('treats a 200 with an unknown capability status as malformed (no invented states)', async () => {
-    const bad = { capabilityId: 'c', contractId: 'c', name: 'n', description: 'd', status: 'validated', confidence: 1, provenance: [], approved: false };
+    const bad = {
+      capabilityId: 'c',
+      contractId: 'c',
+      name: 'n',
+      description: 'd',
+      status: 'validated',
+      confidence: 1,
+      provenance: [],
+      approved: false,
+    };
     const f = fakeFetch({ 'GET /workspaces/ws_1/compilations/cmp_1/capabilities': () => ({ body: { capabilities: [bad] } }) });
     const r = await new XoClient({ apiKey: 'k', fetch: f.fetch }).getCapabilities('ws_1', 'cmp_1');
     expect(r).toMatchObject({ ok: false, problem: { kind: 'malformed' } });
@@ -67,7 +76,9 @@ describe('XoClient', () => {
   });
 
   it('never sends identity in the body: execution requests carry only compilation, capability and input', async () => {
-    const f = fakeFetch({ 'POST /workspaces/ws_1/executions': () => ({ status: 403, body: { error: { code: 'XO_RUNTIME_PERMISSION_DENIED', message: 'no' } } }) });
+    const f = fakeFetch({
+      'POST /workspaces/ws_1/executions': () => ({ status: 403, body: { error: { code: 'XO_RUNTIME_PERMISSION_DENIED', message: 'no' } } }),
+    });
     const r = await new XoClient({ apiKey: 'k', fetch: f.fetch }).createExecution('ws_1', 'cmp_1', 'cap_a', { claim: 1 });
     expect(f.calls[0]?.body).toEqual({ compilationId: 'cmp_1', capabilityId: 'cap_a', input: { claim: 1 } });
     expect(r).toMatchObject({ ok: false, problem: { kind: 'forbidden' } });

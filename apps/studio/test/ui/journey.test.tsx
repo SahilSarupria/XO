@@ -39,7 +39,13 @@ describe('connecting', () => {
 
   it('reports an unreachable service honestly', async () => {
     const user = userEvent.setup();
-    render(<App fetchImpl={async () => { throw new TypeError('Failed to fetch'); }} />);
+    render(
+      <App
+        fetchImpl={async () => {
+          throw new TypeError('Failed to fetch');
+        }}
+      />,
+    );
     await user.type(screen.getByLabelText(/access key/i), 'k');
     await user.click(screen.getByRole('button', { name: /connect/i }));
     expect(await screen.findByText(/cannot reach xo/i)).toBeInTheDocument();
@@ -70,11 +76,17 @@ describe('golden path: context → analyse → review → approve → run', () =
     await user.click(within(det).getByRole('button', { name: /^approve$/i }));
     expect(api.calls.some((c) => c.path.endsWith('/approve'))).toBe(false);
     await user.click(within(det).getByRole('button', { name: /confirm approval/i }));
-    await waitFor(() => expect(within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByText('Approval recorded')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByText('Approval recorded'),
+      ).toBeInTheDocument(),
+    );
     expect(api.calls.filter((c) => c.path.endsWith('/approve'))).toHaveLength(1);
 
     // run with no details: the platform rejects the input and Studio says so — it is NOT shown as success
-    await user.click(within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByRole('button', { name: /run…/i }));
+    await user.click(
+      within(screen.getByRole('heading', { name: 'Record before payment' }).closest('li')!).getByRole('button', { name: /run…/i }),
+    );
     await user.click(screen.getByRole('button', { name: /^run$/i }));
     const outcome = await screen.findByText('Did not complete');
     expect(outcome).toBeInTheDocument();
@@ -195,7 +207,10 @@ describe('Builder Mode', () => {
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
 
-    const actionsBefore = screen.getAllByRole('button').map((b) => b.textContent).filter((t) => /approve|run/i.test(t ?? ''));
+    const actionsBefore = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+      .filter((t) => /approve|run/i.test(t ?? ''));
     const callsBefore = api.calls.length;
     expect(screen.queryByText('cap_det')).not.toBeInTheDocument();
 
@@ -204,7 +219,10 @@ describe('Builder Mode', () => {
     expect(screen.getAllByText(/structured-comparison-resolver/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Processes' })).toBeInTheDocument();
 
-    const actionsAfter = screen.getAllByRole('button').map((b) => b.textContent).filter((t) => /approve|run/i.test(t ?? ''));
+    const actionsAfter = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+      .filter((t) => /approve|run/i.test(t ?? ''));
     expect(actionsAfter).toEqual(actionsBefore); // no extra authority
     expect(api.calls.length).toBe(callsBefore); // switching mode issues no requests
   });
@@ -219,7 +237,6 @@ describe('Builder Mode', () => {
     expect(screen.queryByRole('button', { name: /start|execute|run/i })).not.toBeInTheDocument();
   });
 });
-
 
 describe('WP2: truthful semantics', () => {
   async function toApprovedCard(api: FakeXo) {

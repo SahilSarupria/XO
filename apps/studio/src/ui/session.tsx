@@ -38,10 +38,21 @@ export function useModeIfAny(): Mode {
   return useContext(SessionContext)?.mode ?? 'user';
 }
 
-export function SessionProvider(props: { apiKey: string; fetchImpl?: FetchLike; baseUrl?: string; onSignOut: () => void; children: ReactNode }) {
+export function SessionProvider(props: {
+  apiKey: string;
+  fetchImpl?: FetchLike;
+  baseUrl?: string;
+  onSignOut: () => void;
+  children: ReactNode;
+}) {
   const [mode, setModeState] = useState<Mode>(readMode);
   const client = useMemo(
-    () => new XoClient({ apiKey: props.apiKey, ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}), ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}) }),
+    () =>
+      new XoClient({
+        apiKey: props.apiKey,
+        ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}),
+        ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+      }),
     [props.apiKey, props.fetchImpl, props.baseUrl],
   );
   const value = useMemo<SessionValue>(

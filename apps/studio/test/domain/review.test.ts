@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { PLATFORM_CODE, canApprove, canRun, coerceFieldValue, describeExecution, describeProblem, latestExecutionByCapability, nextStep, reviewStateOf, suggestedFieldsFromFailure, summarize } from '../../src/domain/review';
+import {
+  PLATFORM_CODE,
+  canApprove,
+  canRun,
+  coerceFieldValue,
+  describeExecution,
+  describeProblem,
+  latestExecutionByCapability,
+  nextStep,
+  reviewStateOf,
+  suggestedFieldsFromFailure,
+  summarize,
+} from '../../src/domain/review';
 import { cap, exec } from '../fixtures';
 
 describe('reviewStateOf', () => {
@@ -42,12 +54,18 @@ describe('executions', () => {
   });
   it('a paused human task is a warning, a resolved one is neutral, success is success', () => {
     expect(describeExecution(exec({ status: 'waiting_for_human', humanTask: { status: 'pending' } })).tone).toBe('warning');
-    expect(describeExecution(exec({ status: 'waiting_for_human', humanTask: { status: 'resolved', decision: 'approve' } })).tone).toBe('neutral');
+    expect(describeExecution(exec({ status: 'waiting_for_human', humanTask: { status: 'resolved', decision: 'approve' } })).tone).toBe(
+      'neutral',
+    );
     expect(describeExecution(exec({ status: 'succeeded' })).tone).toBe('success');
   });
   it('picks the latest execution per capability within one compilation only', () => {
     const m = latestExecutionByCapability(
-      [exec({ executionId: 'old', requestedAt: '2026-10-10T09:00:00Z' }), exec({ executionId: 'new', requestedAt: '2026-10-10T11:00:00Z' }), exec({ executionId: 'other', compilationId: 'cmp_2', requestedAt: '2026-10-10T12:00:00Z' })],
+      [
+        exec({ executionId: 'old', requestedAt: '2026-10-10T09:00:00Z' }),
+        exec({ executionId: 'new', requestedAt: '2026-10-10T11:00:00Z' }),
+        exec({ executionId: 'other', compilationId: 'cmp_2', requestedAt: '2026-10-10T12:00:00Z' }),
+      ],
       'cmp_1',
     );
     expect(m.get('cap_a')?.executionId).toBe('new');
@@ -56,12 +74,28 @@ describe('executions', () => {
 
 describe('suggestedFieldsFromFailure', () => {
   it('extracts required field names from the platform validation message', () => {
-    const e = exec({ status: 'failed', errorCode: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID', errorMessage: 'input validation failed: claim: missing required property; lossadjuster_assessment: missing required property' });
+    const e = exec({
+      status: 'failed',
+      errorCode: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID',
+      errorMessage: 'input validation failed: claim: missing required property; lossadjuster_assessment: missing required property',
+    });
     expect(suggestedFieldsFromFailure(e)).toEqual(['claim', 'lossadjuster_assessment']);
   });
   it('gives no suggestions for other failures or unfamiliar messages', () => {
-    expect(suggestedFieldsFromFailure(exec({ status: 'failed', errorCode: 'XO_BINDING_UNRESOLVED', errorMessage: 'x: missing required property' }))).toEqual([]);
-    expect(suggestedFieldsFromFailure(exec({ status: 'failed', errorCode: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID', errorMessage: 'input validation failed: something else entirely' }))).toEqual([]);
+    expect(
+      suggestedFieldsFromFailure(
+        exec({ status: 'failed', errorCode: 'XO_BINDING_UNRESOLVED', errorMessage: 'x: missing required property' }),
+      ),
+    ).toEqual([]);
+    expect(
+      suggestedFieldsFromFailure(
+        exec({
+          status: 'failed',
+          errorCode: 'XO_RUNTIME_CAPABILITY_INPUT_INVALID',
+          errorMessage: 'input validation failed: something else entirely',
+        }),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -77,7 +111,16 @@ describe('coerceFieldValue', () => {
 
 describe('describeProblem', () => {
   it('every problem kind yields a title and a next step', () => {
-    for (const kind of ['unauthenticated', 'forbidden', 'not_found', 'rejected', 'unavailable', 'server', 'network', 'malformed'] as const) {
+    for (const kind of [
+      'unauthenticated',
+      'forbidden',
+      'not_found',
+      'rejected',
+      'unavailable',
+      'server',
+      'network',
+      'malformed',
+    ] as const) {
       const v = describeProblem({ kind, message: 'm' });
       expect(v.title.length).toBeGreaterThan(0);
       expect(v.next.length).toBeGreaterThan(0);
@@ -92,9 +135,30 @@ describe('nextStep', () => {
   it('walks the journey from real facts', () => {
     expect(nextStep({ sources: 0, succeededCompilations: 0, summary: undefined, executions: 0 }).step).toBe('context');
     expect(nextStep({ sources: 1, succeededCompilations: 0, summary: undefined, executions: 0 }).step).toBe('analyze');
-    expect(nextStep({ sources: 1, succeededCompilations: 1, summary: { total: 3, needsAttention: 1, readyForReview: 2, approved: 0 }, executions: 0 }).step).toBe('review');
-    expect(nextStep({ sources: 1, succeededCompilations: 1, summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 }, executions: 0 }).step).toBe('run');
-    expect(nextStep({ sources: 1, succeededCompilations: 1, summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 }, executions: 2 }).step).toBe('done');
+    expect(
+      nextStep({
+        sources: 1,
+        succeededCompilations: 1,
+        summary: { total: 3, needsAttention: 1, readyForReview: 2, approved: 0 },
+        executions: 0,
+      }).step,
+    ).toBe('review');
+    expect(
+      nextStep({
+        sources: 1,
+        succeededCompilations: 1,
+        summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 },
+        executions: 0,
+      }).step,
+    ).toBe('run');
+    expect(
+      nextStep({
+        sources: 1,
+        succeededCompilations: 1,
+        summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 },
+        executions: 2,
+      }).step,
+    ).toBe('done');
   });
 });
 
@@ -102,7 +166,12 @@ describe('WP2-D error semantics', () => {
   it('binding codes get specific wording regardless of HTTP class, and say nothing was recorded or run', () => {
     for (const code of [PLATFORM_CODE.BINDING_UNRESOLVED, PLATFORM_CODE.BINDING_AMBIGUOUS, PLATFORM_CODE.BINDING_DENIED]) {
       for (const status of [403, 422]) {
-        const v = describeProblem({ kind: status === 403 ? 'forbidden' : 'rejected', status, code, message: 'internal resolver detail should not appear' });
+        const v = describeProblem({
+          kind: status === 403 ? 'forbidden' : 'rejected',
+          status,
+          code,
+          message: 'internal resolver detail should not appear',
+        });
         expect(v.title).toMatch(/cannot carry this rule out yet/i);
         expect(v.body).toMatch(/nothing was recorded or run/i);
         expect(v.body).not.toMatch(/internal resolver detail/);
@@ -126,8 +195,12 @@ describe('WP2-D error semantics', () => {
     }
   });
   it('failed executions carry guidance only for codes the platform defines', () => {
-    expect(describeExecution(exec({ status: 'failed', errorCode: PLATFORM_CODE.BINDING_UNRESOLVED, errorMessage: 'm' })).hint).toMatch(/nothing ran/i);
-    expect(describeExecution(exec({ status: 'failed', errorCode: PLATFORM_CODE.INPUT_INVALID, errorMessage: 'm' })).hint).toMatch(/nothing ran/i);
+    expect(describeExecution(exec({ status: 'failed', errorCode: PLATFORM_CODE.BINDING_UNRESOLVED, errorMessage: 'm' })).hint).toMatch(
+      /nothing ran/i,
+    );
+    expect(describeExecution(exec({ status: 'failed', errorCode: PLATFORM_CODE.INPUT_INVALID, errorMessage: 'm' })).hint).toMatch(
+      /nothing ran/i,
+    );
     expect(describeExecution(exec({ status: 'failed', errorCode: 'XO_SOMETHING_ELSE', errorMessage: 'm' })).hint).toBeUndefined();
     expect(describeExecution(exec({ status: 'succeeded' })).hint).toBeUndefined();
   });

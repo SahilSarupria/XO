@@ -22,7 +22,12 @@ export function App(props: AppProps) {
 
   if (apiKey === null) return <ConnectScreen {...props} onConnected={setApiKey} />;
   return (
-    <SessionProvider apiKey={apiKey} onSignOut={signOut} {...(props.fetchImpl !== undefined ? { fetchImpl: props.fetchImpl } : {})} {...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {})}>
+    <SessionProvider
+      apiKey={apiKey}
+      onSignOut={signOut}
+      {...(props.fetchImpl !== undefined ? { fetchImpl: props.fetchImpl } : {})}
+      {...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {})}
+    >
       <Shell />
     </SessionProvider>
   );
@@ -40,7 +45,11 @@ function ConnectScreen(props: AppProps & { onConnected: (key: string) => void })
     setBusy(true);
     setProblem(undefined);
     // Verification is a real authenticated call; there is no local "looks valid" shortcut.
-    const probe = new XoClient({ apiKey: trimmed, ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}), ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}) });
+    const probe = new XoClient({
+      apiKey: trimmed,
+      ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}),
+      ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+    });
     const r = await probe.listWorkspaces();
     setBusy(false);
     if (r.ok) props.onConnected(trimmed);
@@ -55,10 +64,21 @@ function ConnectScreen(props: AppProps & { onConnected: (key: string) => void })
           XO Studio
         </p>
         <h1>Turn your organisation&rsquo;s documents into rules you can trust.</h1>
-        <p className="lede">Upload what you already have. XO finds the rules inside, shows you the evidence, and only acts on what you approve.</p>
+        <p className="lede">
+          Upload what you already have. XO finds the rules inside, shows you the evidence, and only acts on what you approve.
+        </p>
         <form onSubmit={(e) => void submit(e)} className="stack">
           <label htmlFor="api-key">Access key</label>
-          <input id="api-key" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(e) => setKey(e.target.value)} placeholder="xoak_…" aria-describedby="key-help" />
+          <input
+            id="api-key"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="xoak_…"
+            aria-describedby="key-help"
+          />
           <p id="key-help" className="muted small">
             Provided by your XO administrator. It is kept in this tab only and is forgotten when you close it or sign out.
           </p>

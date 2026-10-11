@@ -25,21 +25,33 @@ export const exec = (over: Partial<Execution> = {}): Execution => ({
 });
 
 /** Builds a fake fetch from route handlers keyed "METHOD /path". Records every call. */
-export interface Call { method: string; url: string; headers: Record<string, string>; body: unknown }
+export interface Call {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
 export function fakeFetch(routes: Record<string, (call: Call) => { status?: number; body?: unknown; raw?: string } | 'network-error'>) {
   const calls: Call[] = [];
   const fn = async (input: string, init?: RequestInit): Promise<Response> => {
     const method = init?.method ?? 'GET';
     const path = input.replace(/^\/api/, '');
     let body: unknown = init?.body;
-    if (typeof body === 'string') { try { body = JSON.parse(body); } catch { /* keep raw */ } }
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        /* keep raw */
+      }
+    }
     const call: Call = { method, url: path, headers: (init?.headers ?? {}) as Record<string, string>, body };
     calls.push(call);
     const key = Object.keys(routes).find((k) => {
       const [m, p] = k.split(' ');
       return m === method && (p === path || (p?.endsWith('*') === true && path.startsWith(p.slice(0, -1))));
     });
-    if (key === undefined) return new Response(JSON.stringify({ error: { code: 'XO_NOT_FOUND', message: `no route ${method} ${path}` } }), { status: 404 });
+    if (key === undefined)
+      return new Response(JSON.stringify({ error: { code: 'XO_NOT_FOUND', message: `no route ${method} ${path}` } }), { status: 404 });
     const r = routes[key]!(call);
     if (r === 'network-error') throw new TypeError('Failed to fetch');
     return new Response(r.raw ?? (r.body === undefined ? '' : JSON.stringify(r.body)), { status: r.status ?? 200 });

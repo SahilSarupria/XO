@@ -23,13 +23,19 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   const executions = useLoad(() => client.listExecutions(ws), [client, ws]);
 
   const succeeded: Compilation[] = useMemo(
-    () => (compilations.state.phase === 'ready' ? compilations.state.value.filter((c) => c.status === 'succeeded').sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : []),
+    () =>
+      compilations.state.phase === 'ready'
+        ? compilations.state.value.filter((c) => c.status === 'succeeded').sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        : [],
     [compilations.state],
   );
   const activeCompilation = succeeded.find((c) => c.compilationId === pickedCompilation) ?? succeeded[0];
 
   const caps = useLoad(
-    () => (activeCompilation === undefined ? Promise.resolve({ ok: true as const, value: [] }) : client.getCapabilities(ws, activeCompilation.compilationId)),
+    () =>
+      activeCompilation === undefined
+        ? Promise.resolve({ ok: true as const, value: [] })
+        : client.getCapabilities(ws, activeCompilation.compilationId),
     [client, ws, activeCompilation?.compilationId],
   );
 
@@ -114,8 +120,18 @@ export function WorkspaceView(props: { workspace: Workspace }) {
         />
       ) : null}
       {view === 'activity' ? (
-        executions.state.phase === 'loading' ? <Spinner label="Loading activity" /> : executions.state.phase === 'error' ? <ProblemNotice problem={executions.state.problem} onRetry={executions.reload} /> : (
-          <ActivitySection workspaceId={ws} executions={executions.state.value} caps={caps.state.phase === 'ready' ? caps.state.value : []} activeCompilationId={activeCompilation?.compilationId} onChanged={refreshAll} />
+        executions.state.phase === 'loading' ? (
+          <Spinner label="Loading activity" />
+        ) : executions.state.phase === 'error' ? (
+          <ProblemNotice problem={executions.state.problem} onRetry={executions.reload} />
+        ) : (
+          <ActivitySection
+            workspaceId={ws}
+            executions={executions.state.value}
+            caps={caps.state.phase === 'ready' ? caps.state.value : []}
+            activeCompilationId={activeCompilation?.compilationId}
+            onChanged={refreshAll}
+          />
         )
       ) : null}
       {view === 'processes' && mode === 'builder' ? <ProcessesSection workspaceId={ws} /> : null}
@@ -128,7 +144,11 @@ function TabButton(props: { current: View; id: View; onSelect: (v: View) => void
   return (
     <button type="button" className="tab" aria-current={active ? 'page' : undefined} onClick={() => props.onSelect(props.id)}>
       {props.children}
-      {props.count !== undefined && props.count > 0 ? <span className="tab-count" aria-label={`${props.count} ready for review`}>{props.count}</span> : null}
+      {props.count !== undefined && props.count > 0 ? (
+        <span className="tab-count" aria-label={`${props.count} ready for review`}>
+          {props.count}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -157,7 +177,14 @@ function GoalNote(props: { workspaceId: string }) {
   return (
     <div className="goal">
       <label htmlFor="goal">What are you trying to achieve?</label>
-      <input id="goal" value={goal} onChange={(e) => save(e.target.value)} placeholder="e.g. Check late-notification claims against policy section 4" maxLength={200} aria-describedby="goal-help" />
+      <input
+        id="goal"
+        value={goal}
+        onChange={(e) => save(e.target.value)}
+        placeholder="e.g. Check late-notification claims against policy section 4"
+        maxLength={200}
+        aria-describedby="goal-help"
+      />
       <p id="goal-help" className="muted small">
         A note for you and your team. Saved in this browser only — XO does not receive it yet.
       </p>

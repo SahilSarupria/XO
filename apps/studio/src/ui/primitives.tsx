@@ -55,7 +55,10 @@ export function ProblemNotice(props: { problem: ApiProblem; onRetry?: () => void
   );
 }
 
-export type LoadState<T> = { readonly phase: 'loading' } | { readonly phase: 'ready'; readonly value: T } | { readonly phase: 'error'; readonly problem: ApiProblem };
+export type LoadState<T> =
+  | { readonly phase: 'loading' }
+  | { readonly phase: 'ready'; readonly value: T }
+  | { readonly phase: 'error'; readonly problem: ApiProblem };
 
 /** Loads on mount and whenever `deps` change; `reload` refetches without flashing back to loading. */
 export function useLoad<T>(fn: () => Promise<Result<T>>, deps: readonly unknown[]): { state: LoadState<T>; reload: () => void } {

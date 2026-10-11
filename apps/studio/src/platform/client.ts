@@ -67,7 +67,20 @@ export interface XoClientOptions {
 }
 
 /** Extensions the API accepts at upload (apps/api/src/sources/source.ts SUPPORTED_EXTENSIONS). */
-export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = ['.pdf', '.html', '.htm', '.json', '.csv', '.txt', '.md', '.png', '.jpg', '.jpeg', '.gif', '.webp'];
+export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = [
+  '.pdf',
+  '.html',
+  '.htm',
+  '.json',
+  '.csv',
+  '.txt',
+  '.md',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+];
 
 export class XoClient {
   private readonly baseUrl: string;
@@ -80,13 +93,22 @@ export class XoClient {
     this.doFetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
   }
 
-  private async call<T>(method: string, path: string, parse: (body: unknown) => T, init?: { body?: BodyInit; contentType?: string }): Promise<Result<T>> {
+  private async call<T>(
+    method: string,
+    path: string,
+    parse: (body: unknown) => T,
+    init?: { body?: BodyInit; contentType?: string },
+  ): Promise<Result<T>> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' };
     if (init?.contentType !== undefined) headers['Content-Type'] = init.contentType;
 
     let response: Response;
     try {
-      response = await this.doFetch(`${this.baseUrl}${path}`, { method, headers, ...(init?.body !== undefined ? { body: init.body } : {}) });
+      response = await this.doFetch(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        ...(init?.body !== undefined ? { body: init.body } : {}),
+      });
     } catch {
       return fail({ kind: 'network', message: 'Could not reach the XO service.' });
     }
@@ -113,7 +135,11 @@ export class XoClient {
       return ok(parse(body));
     } catch (cause) {
       const detail = cause instanceof WireParseError ? cause.message : 'unreadable response';
-      return fail({ kind: 'malformed', status: response.status, message: `The XO service returned a response Studio could not trust (${detail}).` });
+      return fail({
+        kind: 'malformed',
+        status: response.status,
+        message: `The XO service returned a response Studio could not trust (${detail}).`,
+      });
     }
   }
 
@@ -161,13 +187,23 @@ export class XoClient {
     });
   }
   createExecution(ws: string, compilationId: string, capabilityId: string, input: Record<string, unknown>): Promise<Result<Execution>> {
-    return this.call('POST', `/workspaces/${enc(ws)}/executions`, (b) => parseExecution(b), this.json({ compilationId, capabilityId, input }));
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/executions`,
+      (b) => parseExecution(b),
+      this.json({ compilationId, capabilityId, input }),
+    );
   }
   listExecutions(ws: string): Promise<Result<Execution[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/executions`, parseExecutionList);
   }
   resolveHumanTask(ws: string, executionId: string, decision: 'approve' | 'reject'): Promise<Result<Execution>> {
-    return this.call('POST', `/workspaces/${enc(ws)}/executions/${enc(executionId)}/resolve`, (b) => parseExecution(b), this.json({ decision }));
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/executions/${enc(executionId)}/resolve`,
+      (b) => parseExecution(b),
+      this.json({ decision }),
+    );
   }
 
   // ---- workflows (read-only in this milestone)

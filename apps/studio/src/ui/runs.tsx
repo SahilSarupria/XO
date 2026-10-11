@@ -31,7 +31,9 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
       <p>
         <Badge tone={view.tone}>{view.label}</Badge> <span className="muted small">{formatWhen(e.completedAt ?? e.requestedAt)}</span>
       </p>
-      {view.detail !== undefined ? <p className={view.tone === 'danger' ? 'outcome-detail danger-text' : 'outcome-detail'}>{view.detail}</p> : null}
+      {view.detail !== undefined ? (
+        <p className={view.tone === 'danger' ? 'outcome-detail danger-text' : 'outcome-detail'}>{view.detail}</p>
+      ) : null}
       {view.hint !== undefined ? <p className="outcome-detail muted">{view.hint}</p> : null}
       {pending ? (
         <div className="decision">
@@ -77,7 +79,13 @@ interface Row {
  * so inputs are free-form name/value pairs, pre-filled with any field names the platform
  * itself reported as missing on an earlier attempt.
  */
-export function RunPanel(props: { workspaceId: string; compilationId: string; capabilityId: string; lastExecution: Execution | undefined; onRan: () => void }) {
+export function RunPanel(props: {
+  workspaceId: string;
+  compilationId: string;
+  capabilityId: string;
+  lastExecution: Execution | undefined;
+  onRan: () => void;
+}) {
   const { client } = useSession();
   const suggested = props.lastExecution !== undefined ? suggestedFieldsFromFailure(props.lastExecution) : [];
   const [rows, setRows] = useState<Row[]>(() => suggested.map((name, i) => ({ id: i, name, value: '', origin: 'inferred' as const })));
@@ -105,14 +113,27 @@ export function RunPanel(props: { workspaceId: string; compilationId: string; ca
       <h4>Run this rule</h4>
       <p className="muted small">This really runs the rule through XO and records the attempt.</p>
       <p className="notice notice-info small">
-        XO does not publish the list of details this rule needs, so Studio cannot show you a verified form. {suggested.length > 0 ? 'The names below were taken from XO\u2019s last error message for this rule. They are hints, not a checked schema, and may be incomplete.' : 'Add the details you know it needs; XO will check them and say what is missing.'} Numbers and true/false are sent as numbers and booleans; put text in quotes (for example &quot;42&quot;) to send it as text.
+        XO does not publish the list of details this rule needs, so Studio cannot show you a verified form.{' '}
+        {suggested.length > 0
+          ? 'The names below were taken from XO\u2019s last error message for this rule. They are hints, not a checked schema, and may be incomplete.'
+          : 'Add the details you know it needs; XO will check them and say what is missing.'}{' '}
+        Numbers and true/false are sent as numbers and booleans; put text in quotes (for example &quot;42&quot;) to send it as text.
       </p>
       {rows.map((r) => (
         <div className="row field-row" key={r.id}>
           <input aria-label="Detail name" value={r.name} onChange={(e) => update(r.id, { name: e.target.value })} placeholder="name" />
           {r.origin === 'inferred' ? <Badge tone="neutral">hint from XO&rsquo;s last error</Badge> : null}
-          <input aria-label={`Value for ${r.name || 'detail'}`} value={r.value} onChange={(e) => update(r.id, { value: e.target.value })} placeholder="value" />
-          <Button variant="quiet" aria-label={`Remove ${r.name || 'detail'}`} onClick={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}>
+          <input
+            aria-label={`Value for ${r.name || 'detail'}`}
+            value={r.value}
+            onChange={(e) => update(r.id, { value: e.target.value })}
+            placeholder="value"
+          />
+          <Button
+            variant="quiet"
+            aria-label={`Remove ${r.name || 'detail'}`}
+            onClick={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
+          >
             Remove
           </Button>
         </div>

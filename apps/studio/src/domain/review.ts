@@ -45,7 +45,8 @@ export const REVIEW_STATE_LABEL: Record<ReviewState, string> = {
 export const REVIEW_STATE_EXPLANATION: Record<ReviewState, string> = {
   needs_attention: 'XO found this rule in your document, but does not yet have enough detail to carry it out on its own.',
   ready_for_review: 'XO can carry this out. Check that it matches what your document says, then approve it.',
-  approved: 'An approval is recorded for this rule. It is not a guarantee that a run will succeed: XO still checks the details you provide when you run it.',
+  approved:
+    'An approval is recorded for this rule. It is not a guarantee that a run will succeed: XO still checks the details you provide when you run it.',
 };
 
 export function executionClassLabel(executionClass: string | undefined): string | undefined {
@@ -118,7 +119,11 @@ export function describeExecution(e: Execution): OutcomeView {
     case 'waiting_for_human':
       return e.humanTask?.status === 'resolved'
         ? { label: 'Decision recorded', tone: 'neutral' }
-        : { label: 'Waiting for a person to decide', tone: 'warning', detail: 'XO paused here on purpose. A person needs to approve or reject.' };
+        : {
+            label: 'Waiting for a person to decide',
+            tone: 'warning',
+            detail: 'XO paused here on purpose. A person needs to approve or reject.',
+          };
     case 'rejected':
       return { label: 'Rejected by a person', tone: 'neutral' };
     case 'running':
@@ -176,27 +181,59 @@ export interface ProblemView {
 export function describeProblem(p: ApiProblem): ProblemView {
   // A platform code that says exactly why is more useful than the generic wording for its HTTP class.
   if (isBindingCode(p.code)) {
-    return { title: 'XO cannot carry this rule out yet', body: 'The rule was found in your document, but XO does not have enough detail to act on it, so nothing was recorded or run.', next: 'Add a clearer or more complete document and analyse it again.' };
+    return {
+      title: 'XO cannot carry this rule out yet',
+      body: 'The rule was found in your document, but XO does not have enough detail to act on it, so nothing was recorded or run.',
+      next: 'Add a clearer or more complete document and analyse it again.',
+    };
   }
   switch (p.kind) {
     case 'unauthenticated':
-      return { title: 'Your access key was not accepted', body: 'XO could not confirm who you are, so nothing was done.', next: 'Check the key and try again, or ask your administrator for a new one.' };
+      return {
+        title: 'Your access key was not accepted',
+        body: 'XO could not confirm who you are, so nothing was done.',
+        next: 'Check the key and try again, or ask your administrator for a new one.',
+      };
     case 'forbidden':
       // 403 covers more than one cause (e.g. the rule is not approved, or the account is not allowed). Studio does not guess which.
-      return { title: 'XO refused this action', body: 'XO understood the request but did not allow it. Either the rule is not approved or your account is not permitted to do this. Nothing was run.', next: 'Refresh and check the rule shows an approval; otherwise ask an administrator for access.' };
+      return {
+        title: 'XO refused this action',
+        body: 'XO understood the request but did not allow it. Either the rule is not approved or your account is not permitted to do this. Nothing was run.',
+        next: 'Refresh and check the rule shows an approval; otherwise ask an administrator for access.',
+      };
     case 'not_found':
       // The platform answers 404 for things you cannot access as well as things that do not exist, on purpose. Studio does not say which.
-      return { title: 'XO could not find that for you', body: 'It does not exist, or you do not have access to it. XO does not say which.', next: 'Go back and choose something from your workspace.' };
+      return {
+        title: 'XO could not find that for you',
+        body: 'It does not exist, or you do not have access to it. XO does not say which.',
+        next: 'Go back and choose something from your workspace.',
+      };
     case 'rejected':
       return { title: 'XO did not accept this request', body: p.message, next: 'Adjust what you sent and try again.' };
     case 'unavailable':
-      return { title: 'This is not available yet', body: 'XO deliberately does not offer this action right now. Nothing was attempted.', next: 'This will appear once the platform supports it.' };
+      return {
+        title: 'This is not available yet',
+        body: 'XO deliberately does not offer this action right now. Nothing was attempted.',
+        next: 'This will appear once the platform supports it.',
+      };
     case 'server':
-      return { title: 'XO ran into a problem', body: 'The service failed while handling your request. Your data was not changed unless shown otherwise.', next: 'Try again in a moment. If it keeps happening, contact your administrator.' };
+      return {
+        title: 'XO ran into a problem',
+        body: 'The service failed while handling your request. Your data was not changed unless shown otherwise.',
+        next: 'Try again in a moment. If it keeps happening, contact your administrator.',
+      };
     case 'network':
-      return { title: 'Cannot reach XO', body: 'Studio could not connect to the XO service.', next: 'Check that the service is running and your connection is working.' };
+      return {
+        title: 'Cannot reach XO',
+        body: 'Studio could not connect to the XO service.',
+        next: 'Check that the service is running and your connection is working.',
+      };
     case 'malformed':
-      return { title: 'XO sent something Studio could not trust', body: 'The response did not match what Studio expects, so it was not shown.', next: 'Try again. If it keeps happening, the service and Studio may be out of step — contact your administrator.' };
+      return {
+        title: 'XO sent something Studio could not trust',
+        body: 'The response did not match what Studio expects, so it was not shown.',
+        next: 'Try again. If it keeps happening, the service and Studio may be out of step — contact your administrator.',
+      };
   }
 }
 
@@ -207,11 +244,32 @@ export interface Progress {
 }
 
 /** The single most useful next step, derived from real workspace facts. */
-export function nextStep(args: { sources: number; succeededCompilations: number; summary: ReviewSummary | undefined; executions: number }): Progress {
-  if (args.sources === 0) return { step: 'context', headline: 'Add your first document', hint: 'Upload a policy, procedure or rulebook. XO reads it and finds the rules inside.' };
-  if (args.succeededCompilations === 0) return { step: 'analyze', headline: 'Analyse your document', hint: 'XO will read it and list the rules it finds, with the evidence for each.' };
+export function nextStep(args: {
+  sources: number;
+  succeededCompilations: number;
+  summary: ReviewSummary | undefined;
+  executions: number;
+}): Progress {
+  if (args.sources === 0)
+    return {
+      step: 'context',
+      headline: 'Add your first document',
+      hint: 'Upload a policy, procedure or rulebook. XO reads it and finds the rules inside.',
+    };
+  if (args.succeededCompilations === 0)
+    return {
+      step: 'analyze',
+      headline: 'Analyse your document',
+      hint: 'XO will read it and list the rules it finds, with the evidence for each.',
+    };
   const s = args.summary;
-  if (s !== undefined && s.approved === 0) return { step: 'review', headline: 'Review what XO found', hint: 'Approve the rules that match your document. Nothing runs without your approval.' };
-  if (args.executions === 0) return { step: 'run', headline: 'Try an approved rule', hint: 'Run one approved rule to see exactly what XO does with it.' };
+  if (s !== undefined && s.approved === 0)
+    return {
+      step: 'review',
+      headline: 'Review what XO found',
+      hint: 'Approve the rules that match your document. Nothing runs without your approval.',
+    };
+  if (args.executions === 0)
+    return { step: 'run', headline: 'Try an approved rule', hint: 'Run one approved rule to see exactly what XO does with it.' };
   return { step: 'done', headline: 'Keep going', hint: 'Review more rules, add more documents, or check your run history.' };
 }
