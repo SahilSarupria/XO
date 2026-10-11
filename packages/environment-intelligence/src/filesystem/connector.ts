@@ -84,6 +84,7 @@ const DESCRIPTOR: ConnectorDescriptor = {
       'On Linux, discovery and content acquisition walk the tree through held directory descriptors (/proc/self/fd) and refuse mount and device boundaries; if that cannot be established, acquisition fails closed and Linux discovery fails closed',
       'On other platforms discovery uses the earlier path-based walk and is labelled path_based_unhardened (traversal and hardened:false) in its evidence; content acquisition is refused there and never falls back to a path-based read',
       'Ordinary symlinks are skipped; acquisition rejects symlinks in every path component',
+      'Regular files with more than one hard link are skipped (hard_linked_file) in discovery and acquisition: their other links may lie outside the approved tree and link count cannot show where; a link added after the final check can still race',
       'Files whose names contain control or bidirectional-format characters are skipped',
       'Credential-like names (.env, *.pem, id_rsa, ...) and secret-store directories are excluded and only counted',
       'Descriptor anchoring is NOT openat2(RESOLVE_BENEATH) and does not give complete race-free containment: the root or an ancestor swapped before the root is opened, an entry swapped between lstat and open (it stays beneath its held parent), a held directory renamed out of the root, and a mount created after the mountinfo snapshot remain possible for a hostile process with write access to the approved tree',
@@ -391,6 +392,12 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           addCount(skipped, 'not_regular_file');
           continue;
         }
+        // F5: a regular file with more than one hard link may be reachable (and writable) through paths outside the
+        // approved tree, so it is neither inventoried nor acquirable. Counted only; no path, count or inode is reported.
+        if (st.nlink > 1n) {
+          addCount(skipped, 'hard_linked_file');
+          continue;
+        }
         // Mount/device boundary applies to file entries too: their metadata must not describe another filesystem.
         if (tree !== undefined && (tree.isOtherDevice(st) || tree.isNestedMount(`${dir.abs}/${name}`))) {
           addCount(skipped, 'mount_boundary');
@@ -619,8 +626,9 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           throw e;
         }
         if (!opened.ok) {
-          if (opened.error.context['reason'] === 'not_regular_file') {
-            addCount(skipped, 'not_regular_file');
+          const why = opened.error.context['reason'];
+          if (why === 'not_regular_file' || why === 'hard_linked_file' || why === 'entry_changed') {
+            addCount(skipped, why);
             continue;
           }
           errors.push(discoveryError(opened.error.code, opened.error.message, { ...opened.error.context, resource: key }));
@@ -633,10 +641,18 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
             addCount(skipped, 'not_regular_file');
             continue;
           }
+          const beforeRead = await handle.stat({ bigint: true });
           const toRead = Math.min(st.size, limits.maxContentBytes);
           const buffer = Buffer.alloc(toRead);
           const { bytesRead } = toRead > 0 ? await handle.read(buffer, 0, toRead, 0) : { bytesRead: 0 };
           const bytes = buffer.subarray(0, bytesRead);
+          // F5: re-check identity and link count on the SAME descriptor after the read; a link added (or the inode
+          // replaced) while we were reading means the boundary no longer holds, so the content is discarded.
+          const post = await handle.stat({ bigint: true });
+          if (post.nlink > 1n || post.ino !== beforeRead.ino || post.dev !== beforeRead.dev) {
+            addCount(skipped, post.nlink > 1n ? 'hard_linked_file' : 'entry_changed');
+            continue;
+          }
           const truncated = st.size > bytesRead;
           const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
           let encoding: 'utf8' | 'binary_or_invalid' = 'utf8';

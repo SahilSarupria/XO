@@ -129,7 +129,14 @@ export const O_FILE_FLAGS = (): number | undefined =>
 
 /** Per-entry outcomes that skip the entry (reported in `skipped`), never stop the walk. */
 export type SkipReason =
-  'symlink_not_followed' | 'mount_boundary' | 'entry_changed' | 'unreadable_entry' | 'missing' | 'not_a_directory' | 'not_regular_file';
+  | 'symlink_not_followed'
+  | 'mount_boundary'
+  | 'entry_changed'
+  | 'unreadable_entry'
+  | 'missing'
+  | 'not_a_directory'
+  | 'not_regular_file'
+  | 'hard_linked_file';
 
 export function isValidComponent(name: string): boolean {
   return name.length > 0 && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\0');
@@ -487,6 +494,7 @@ export class AnchoredTree {
       }
       if (pre.isSymbolicLink()) return err(keyError('symlink_not_followed'));
       if (!pre.isFile()) return err(keyError('not_regular_file'));
+      if (pre.nlink > 1n) return err(keyError('hard_linked_file'));
       let h: FileHandle;
       try {
         h = await this.openHandle(this.proc(parent.value, last), flags, signal);
@@ -509,6 +517,16 @@ export class AnchoredTree {
           await this.closeHandle(h);
           return err(keyError('not_regular_file'));
         }
+        // F5: the descriptor, not the earlier lstat, decides. A link added since the lstat, or a different inode
+        // swapped in, is rejected before any byte is read.
+        if (st.nlink > 1n) {
+          await this.closeHandle(h);
+          return err(keyError('hard_linked_file'));
+        }
+        if (st.ino !== pre.ino || st.dev !== pre.dev) {
+          await this.closeHandle(h);
+          return err(keyError('entry_changed'));
+        }
       } catch {
         await this.closeHandle(h);
         return err(keyError('unreadable_entry'));
@@ -529,6 +547,10 @@ function keyError(reason: SkipReason): DiscoveryError {
       return discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'resource could not be inspected', { reason });
     case 'not_regular_file':
       return discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'resource is not a regular file', { reason });
+    case 'hard_linked_file':
+      return discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'resource has multiple hard links and is not acquired', { reason });
+    case 'entry_changed':
+      return discoveryError(DiscoveryErrorCode.SOURCE_UNAVAILABLE, 'resource changed while being opened', { reason });
     default:
       return discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'resource is outside the authorized scope', { reason });
   }
