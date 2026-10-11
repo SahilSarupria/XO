@@ -107,21 +107,21 @@ test('create against a source with real decision-rule content (the vertical-test
     assert.equal(result.exitCode, 0, result.lines.join('\n'));
     const parsed = JSON.parse(result.lines[0]!);
 
-    // Pinned to the known-current real-compiler values (23 discovered /
-    // 15 resolved) — if the compiler's own extraction quality
+    // Pinned to the known-current real-compiler values (33 discovered /
+    // 20 resolved) — if the compiler's own extraction quality
     // legitimately changes these, this assertion needs updating
     // alongside it; that is not a CLI regression by itself. What this
     // test actually guards is that `create.ts` reports whatever the
     // Packager's real LowerCapabilitiesResult says, never a hardcoded 0.
-    assert.equal(parsed.discoveredCapabilities, 23);
-    assert.equal(parsed.resolvedCapabilities, 15);
-    assert.equal(parsed.loweredCapabilities, 15);
+    assert.equal(parsed.discoveredCapabilities, 33);
+    assert.equal(parsed.resolvedCapabilities, 20);
+    assert.equal(parsed.loweredCapabilities, 20);
     assert.ok(parsed.resolvedCapabilities > 0, 'must prove the positive case, not just 0-resolved');
     assert.ok(
       parsed.resolvedCapabilities < parsed.discoveredCapabilities,
       'must also prove some discovered capabilities remain unresolved',
     );
-    assert.equal(parsed.capabilityOutcomes.length, 23);
+    assert.equal(parsed.capabilityOutcomes.length, 33);
 
     // And the manifest actually on disk must agree with what was
     // printed — the CLI must never report a number it didn't actually
@@ -129,7 +129,7 @@ test('create against a source with real decision-rule content (the vertical-test
     const bytes = await readFile(outPath);
     const unpacked = await unpackArchive(new Uint8Array(bytes));
     assert.ok(unpacked.ok);
-    if (unpacked.ok) assert.equal(unpacked.value.manifest.capabilities?.length ?? 0, 15);
+    if (unpacked.ok) assert.equal(unpacked.value.manifest.capabilities?.length ?? 0, 20);
   });
 });
 
