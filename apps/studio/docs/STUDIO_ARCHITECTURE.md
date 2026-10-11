@@ -120,3 +120,27 @@ None of these were implemented. Each is a request for a contract change owned by
 - `.tsx` files are not covered by the root ESLint config (it matches `*.ts` only). Studio relies on strict `tsc` and tests for `.tsx`. Not changed, to avoid touching shared config.
 - Visual QA in a real browser was not performed in this environment; verified instead: production build, dev server, proxy, and DOM-level tests. Contrast ratios were chosen to meet WCAG AA but not measured with a tool.
 - The golden path was verified against the real PDF fixture only (one domain), consistent with the repo's existing source-independence caveat.
+
+---
+
+## Home / Work / Tasks (workflow start, discover, resume)
+
+**Navigation:** Home · Work · Tasks · Activity · Setup (Setup holds the former Context and Review as _Documents_ and _Rules_). Builder Mode adds a read-only _Processes_ tab with technical detail. Nothing in the shell names an industry; process and step names come from the user's own documents.
+
+**Where the logic lives**
+
+- `src/platform/wire.ts`, `client.ts` — `WorkflowRun` parser; `startWorkflow`, `listWorkflowRuns`, `getWorkflowRun`, `resumeWorkflowRun`; `ApiProblem` now carries `reason` and `denials` from the platform's `error.context`.
+- `src/domain/work.ts` — pure derivations: display-only name tidying, active-run lookup, start readiness (advisory), 403/409 wording, run state wording.
+- `src/ui/HomeSection.tsx`, `WorkSection.tsx`, `TasksSection.tsx`, `RunCard.tsx` — screens. `ActivitySection.tsx` now lists process runs and hides step executions that already belong to a run.
+
+**Start.** Studio re-reads the platform's runs immediately before a start and refuses to start if an active run for the same process and analysis exists. The button is locked while a request is in flight. After a network/5xx failure Studio does not resend; it re-reads runs and reports whether a run now exists.
+
+**Resume.** A decision is sent with `expectedStepExecutionId` and `expectedRevision` taken from a run record fetched immediately beforehand. If the fetched run is no longer waiting at the step the person was shown, nothing is sent. A 409 is shown as "This process has changed", the run is refreshed, and the person chooses again. After a failure with no response Studio never resends. After a successful decision the buttons are held for a moment so one double click cannot decide the next step.
+
+**Known limits (do not remove without changing the platform)**
+
+1. **Duplicate-start protection is a browser-side guard, not exactly-once.** `POST /workflows/:id/executions` has no idempotency key. Two tabs, two people, a refresh mid-request, or a client outside Studio can still create two runs. A backend idempotency key is the real fix and is out of scope here.
+2. There is no list-of-runs filter on the API; Studio fetches all runs in the workspace and filters in the browser.
+3. `interrupted` runs are displayed as such; the platform's recovery resume is not offered in Studio.
+4. Approval of a step's rule is per capability; Studio shows which steps lack approval, but the server remains the authority (403 on start).
+5. Decisions carry no free-text payload; the API's optional `data` field is not used.

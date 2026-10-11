@@ -254,7 +254,7 @@ export function nextStep(args: {
     return {
       step: 'context',
       headline: 'Add your first document',
-      hint: 'Upload a policy, procedure or rulebook. XO reads it and finds the rules inside.',
+      hint: 'Upload a procedure, guideline or rulebook. XO reads it and finds the rules inside.',
     };
   if (args.succeededCompilations === 0)
     return {

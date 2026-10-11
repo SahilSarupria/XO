@@ -36,6 +36,14 @@ interface FakeExecution {
   [k: string]: unknown;
 }
 
+/** A Set whose `has` can be forced true, so a test can say "everything is approved" without clicking through Review. */
+class ApprovalSet extends Set<string> {
+  all = false;
+  override has(v: string): boolean {
+    return this.all || super.has(v);
+  }
+}
+
 export class FakeXo {
   validKey = 'xoak_good';
   workspaces: Array<{ workspaceId: string; name: string; createdAt: string }> = [];
@@ -48,7 +56,7 @@ export class FakeXo {
     errorMessage?: string;
     errorCode?: string;
   }> = [];
-  approvals = new Set<string>();
+  approvals = new ApprovalSet();
   executions: FakeExecution[] = [];
   /** When true, the deterministic capability publishes an input contract, as the platform now does. */
   publishContract = false;
@@ -80,12 +88,52 @@ export class FakeXo {
   ];
   /** Simulates a stale view: the server refuses an approval Studio's view thought was allowed. */
   approveRefusal = false;
+  /** Workflow runs, in the platform's real record shape (see scripts/live-smoke.mjs). */
+  workflowRuns: Array<Record<string, any>> = [];
+  workflowExecutable = true;
+  /** 'ok' | throw before the server sees it | throw AFTER the server created the run (an ambiguous failure). */
+  startBehavior: 'ok' | 'network_before' | 'network_after_create' = 'ok';
+  resumeBehavior: 'ok' | 'network_before' | 'network_after_apply' = 'ok';
+  /** Overrides the revision the next resume is compared against, simulating another client having moved the run on. */
+  /** Simulates another client changing the run between Studio's read and its resume (a stale revision). */
+  bumpRevisionBeforeResume = false;
+  private rn = 0;
   failNextCompile: { errorMessage: string; errorCode: string } | undefined;
   executeBehavior: 'invalid_input' | 'binding_unresolved' | 'succeed' | 'waiting_for_human' | 'unavailable' | 'forbidden' = 'invalid_input';
   calls: Array<{ method: string; path: string; body?: unknown }> = [];
   private n = 0;
   private id(p: string) {
     return `${p}_${(++this.n).toString(16).padStart(32, '0')}`;
+  }
+
+  /** Applies a decision to a run the way the platform does, and also lets a test simulate ANOTHER client deciding. */
+  applyDecision(run: Record<string, any>, decision: 'approve' | 'reject') {
+    const i = run.currentStepIndex as number;
+    run.revision += 1;
+    run.updatedAt = new Date().toISOString();
+    if (decision === 'reject') {
+      run.steps[i].status = 'rejected';
+      run.status = 'rejected';
+      run.currentStepIndex = null;
+      delete run.currentStepExecutionId;
+      delete run.pendingHumanTask;
+      return;
+    }
+    run.steps[i].status = 'succeeded';
+    run.completedStepExecutionIds.push(run.steps[i].executionId);
+    if (i + 1 >= run.steps.length) {
+      run.status = 'succeeded';
+      run.currentStepIndex = null;
+      delete run.currentStepExecutionId;
+      delete run.pendingHumanTask;
+      return;
+    }
+    const exe = `exe_s${i + 1}_${run.workflowExecutionId}`;
+    run.steps[i + 1].status = 'waiting_for_human';
+    run.steps[i + 1].executionId = exe;
+    run.currentStepIndex = i + 1;
+    run.currentStepExecutionId = exe;
+    run.pendingHumanTask = { stepIndex: i + 1, executionId: exe };
   }
 
   fetch = async (input: string, init?: RequestInit): Promise<Response> => {
@@ -109,6 +157,119 @@ export class FakeXo {
     if (headers['Authorization'] !== `Bearer ${this.validKey}`) return err(401, 'XO_AUTH_KEY_INVALID', 'invalid API key');
 
     let m: RegExpMatchArray | null;
+
+    // ---- workflows (real route/response shapes; checked live by scripts/live-smoke.mjs)
+    if (method === 'GET' && path.endsWith('/workflows')) {
+      const latest = this.compilations[this.compilations.length - 1];
+      if (latest === undefined) return reply(200, { workflows: [] });
+      return reply(200, {
+        workflows: [
+          {
+            workflowId: 'wf_1',
+            compilationId: latest.compilationId,
+            sourceId: latest.sourceId,
+            name: 'Record before payment → Review not covered',
+            description: 'Candidate workflow deterministically composed from 2 discovered capabilities.',
+            status: 'executable_candidate',
+            executable: this.workflowExecutable,
+            notExecutableReasons: this.workflowExecutable ? [] : ['ambiguous step order'],
+            blockers: [],
+            requiresHumanDecision: false,
+            confidence: 0.45,
+            gaps: [],
+            steps: ['cap_det', 'cap_hitl'].map((id, order) => ({
+              order,
+              stepId: `${id}#${order}`,
+              capabilityId: id,
+              name: this.caps.find((c) => c.capabilityId === id)!.name,
+              description: this.caps.find((c) => c.capabilityId === id)!.description,
+            })),
+          },
+        ],
+      });
+    }
+    if (method === 'GET' && path.endsWith('/workflow-executions')) return reply(200, { workflowExecutions: this.workflowRuns });
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/workflow-executions\/([^/]+)$/))) {
+      const run = this.workflowRuns.find((r) => r.workflowExecutionId === m![1]);
+      return run ? reply(200, run) : err(404, 'XO_NOT_FOUND', `workflow execution "${m[1]}" was not found`);
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/([^/]+)\/workflows\/([^/]+)\/executions$/))) {
+      if (this.startBehavior === 'network_before') throw new TypeError('Failed to fetch');
+      const denials = ['cap_det', 'cap_hitl']
+        .filter((id) => !this.approvals.has(`${body.compilationId}:${id}`))
+        .map((id) => `capability "${id}" is not approved for execution in workspace "${m![1]}"`);
+      if (denials.length > 0)
+        return reply(403, { error: { code: 'XO_RUNTIME_PERMISSION_DENIED', message: denials[0], context: { denials } } });
+      const now = new Date().toISOString();
+      const run = {
+        workflowExecutionId: `wfx_${(++this.rn).toString(16).padStart(8, '0')}`,
+        workspaceId: m[1],
+        identityId: 'sally',
+        initiator: { kind: 'human', id: 'sally' },
+        compilationId: body.compilationId,
+        workflowId: m[2],
+        workflowName: 'Record before payment → Review not covered',
+        revision: 3,
+        status: 'waiting_for_human',
+        input: {},
+        steps: [
+          {
+            stepId: 'cap_det#0',
+            order: 0,
+            capabilityId: 'cap_det',
+            capabilityName: 'Record before payment',
+            status: 'waiting_for_human',
+            executionId: `exe_s0_${this.rn}`,
+          },
+          { stepId: 'cap_hitl#1', order: 1, capabilityId: 'cap_hitl', capabilityName: 'Review not covered', status: 'pending' },
+        ],
+        currentStepIndex: 0,
+        currentStepExecutionId: `exe_s0_${this.rn}`,
+        pendingHumanTask: { stepIndex: 0, executionId: `exe_s0_${this.rn}` },
+        completedStepExecutionIds: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.workflowRuns.push(run);
+      if (this.startBehavior === 'network_after_create') throw new TypeError('Failed to fetch');
+      return reply(201, run);
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/workflow-executions\/([^/]+)\/resume$/))) {
+      if (this.resumeBehavior === 'network_before') throw new TypeError('Failed to fetch');
+      const run = this.workflowRuns.find((r) => r.workflowExecutionId === m![1]);
+      if (!run) return err(404, 'XO_NOT_FOUND', 'no such workflow execution');
+      if (this.bumpRevisionBeforeResume) run.revision += 1;
+      const b = body as unknown as { decision?: string; expectedStepExecutionId?: string; expectedRevision?: number };
+      if (b.decision !== 'approve' && b.decision !== 'reject')
+        return err(400, 'XO_INVALID_ARGUMENT', '"decision" must be one of: approve, reject');
+      if (b.expectedStepExecutionId === undefined)
+        return reply(400, {
+          error: {
+            code: 'XO_INVALID_ARGUMENT',
+            message: 'expectedStepExecutionId is required',
+            context: { reason: 'expected_step_execution_id_required' },
+          },
+        });
+      if (run.status !== 'waiting_for_human')
+        return reply(409, {
+          error: {
+            code: 'XO_RUNTIME_SESSION_INVALID_STATE',
+            message: 'not resumable',
+            context: { reason: run.status === 'succeeded' || run.status === 'rejected' ? 'terminal' : 'not_resumable' },
+          },
+        });
+      if (b.expectedStepExecutionId !== run.currentStepExecutionId)
+        return reply(409, {
+          error: { code: 'XO_RUNTIME_SESSION_INVALID_STATE', message: 'stale step', context: { reason: 'stale_step_execution' } },
+        });
+      if (b.expectedRevision !== undefined && b.expectedRevision !== run.revision)
+        return reply(409, {
+          error: { code: 'XO_RUNTIME_SESSION_INVALID_STATE', message: 'stale revision', context: { reason: 'stale_revision' } },
+        });
+      this.applyDecision(run, b.decision);
+      if (this.resumeBehavior === 'network_after_apply') throw new TypeError('Failed to fetch');
+      return reply(200, run);
+    }
     if (method === 'GET' && path === '/workspaces') return reply(200, { workspaces: this.workspaces });
     if (method === 'POST' && path === '/workspaces') {
       const w = { workspaceId: this.id('ws'), name: body.name ?? '', createdAt: new Date().toISOString() };
@@ -209,25 +370,6 @@ export class FakeXo {
       e.status = body.decision === 'approve' ? 'succeeded' : 'rejected';
       return reply(200, e);
     }
-    if (method === 'GET' && path.endsWith('/workflows'))
-      return reply(200, {
-        workflows: [
-          {
-            workflowId: 'wf_1',
-            compilationId: 'c',
-            name: 'Review not covered',
-            description: 'd',
-            status: 'executable_candidate',
-            executable: true,
-            notExecutableReasons: [],
-            blockers: [],
-            requiresHumanDecision: false,
-            confidence: 0.45,
-            gaps: [],
-            steps: [{}],
-          },
-        ],
-      });
     return err(404, 'XO_NOT_FOUND', `no route ${method} ${path}`);
   };
 }

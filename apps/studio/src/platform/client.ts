@@ -7,6 +7,8 @@ import {
   parseSource,
   parseSourceList,
   parseWorkflowList,
+  parseWorkflowRun,
+  parseWorkflowRunList,
   parseWorkspace,
   parseWorkspaceList,
   tryParseErrorBody,
@@ -16,6 +18,7 @@ import {
   type Execution,
   type Source,
   type Workflow,
+  type WorkflowRun,
   type Workspace,
 } from './wire';
 
@@ -40,6 +43,10 @@ export interface ApiProblem {
   readonly status?: number;
   /** Platform error code (e.g. XO_RUNTIME_PERMISSION_DENIED), when the body carried one. */
   readonly code?: string;
+  /** Platform-supplied reason (e.g. `stale_revision`, `stale_step_execution`), when the error body carried one. */
+  readonly reason?: string;
+  /** One platform sentence per refused capability on a permission denial. */
+  readonly denials?: readonly string[];
   readonly message: string;
 }
 
@@ -127,6 +134,8 @@ export class XoClient {
         kind: classifyStatus(response.status),
         status: response.status,
         ...(err !== undefined ? { code: err.code } : {}),
+        ...(err?.reason !== undefined ? { reason: err.reason } : {}),
+        ...(err?.denials !== undefined ? { denials: err.denials } : {}),
         message: err?.message ?? `The XO service responded with status ${response.status}.`,
       });
     }
@@ -206,9 +215,40 @@ export class XoClient {
     );
   }
 
-  // ---- workflows (read-only in this milestone)
+  // ---- workflows
   listWorkflows(ws: string): Promise<Result<Workflow[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflows`, parseWorkflowList);
+  }
+  /**
+   * Starts a NEW run. The platform has no idempotency key: two calls make two runs. Callers must check
+   * for an existing active run first and must not retry this call blindly after a network failure.
+   */
+  startWorkflow(ws: string, workflowId: string, compilationId: string): Promise<Result<WorkflowRun>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflows/${enc(workflowId)}/executions`,
+      (b) => parseWorkflowRun(b),
+      this.json({ compilationId }),
+    );
+  }
+  listWorkflowRuns(ws: string): Promise<Result<WorkflowRun[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions`, parseWorkflowRunList);
+  }
+  getWorkflowRun(ws: string, workflowExecutionId: string): Promise<Result<WorkflowRun>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}`, (b) => parseWorkflowRun(b));
+  }
+  /** `expectedStepExecutionId` and `expectedRevision` come from the authoritative run record, never from a cached guess. */
+  resumeWorkflowRun(
+    ws: string,
+    workflowExecutionId: string,
+    args: { decision: 'approve' | 'reject'; expectedStepExecutionId: string; expectedRevision: number },
+  ): Promise<Result<WorkflowRun>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}/resume`,
+      (b) => parseWorkflowRun(b),
+      this.json(args),
+    );
   }
 }
 

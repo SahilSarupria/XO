@@ -607,3 +607,52 @@ details summary {
 .field [aria-invalid='true'] {
   border-color: var(--danger);
 }
+
+/* ---- Home / Work / Tasks ------------------------------------------------ */
+.steps {
+  list-style: none;
+  margin: var(--s-3) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+  counter-reset: step;
+}
+.step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  counter-increment: step;
+}
+.step::before {
+  content: counter(step);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  min-width: 1.2rem;
+}
+.step[aria-current='step'] {
+  border-color: var(--warning);
+  background: var(--warning-wash);
+}
+.step-name {
+  flex: 1 1 14rem;
+}
+.subhead {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  margin: var(--s-5) 0 var(--s-3);
+}
+.segmented {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+.segmented .tab[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-strong);
+}

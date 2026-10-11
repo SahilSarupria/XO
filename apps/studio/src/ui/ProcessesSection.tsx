@@ -11,7 +11,11 @@ export function ProcessesSection(props: { workspaceId: string }) {
   const { state, reload } = useLoad(() => client.listWorkflows(props.workspaceId), [client, props.workspaceId]);
 
   return (
-    <Section id="processes-h" title="Processes" lede="Candidate workflows XO composed from what it found. Read-only for now.">
+    <Section
+      id="processes-h"
+      title="Processes"
+      lede="Technical view of the processes XO composed from what it found. Start them from Work."
+    >
       {state.phase === 'loading' ? <Spinner label="Loading processes" /> : null}
       {state.phase === 'error' ? <ProblemNotice problem={state.problem} onRetry={reload} /> : null}
       {state.phase === 'ready' && state.value.length === 0 ? (
@@ -48,10 +52,6 @@ export function ProcessesSection(props: { workspaceId: string }) {
           ))}
         </ul>
       ) : null}
-      <p className="muted small">
-        Starting a process from Studio is a later work package. Executing a workflow needs its own review of step-by-step approval and
-        resume behaviour.
-      </p>
     </Section>
   );
 }

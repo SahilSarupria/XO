@@ -16,6 +16,7 @@ async function createWorkspaceAndUpload(user: ReturnType<typeof userEvent.setup>
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Claims Ops' });
+  await user.click(screen.getByRole('button', { name: /^setup/i }));
   const input = document.getElementById('file-upload') as HTMLInputElement;
   await user.upload(input, new File(['%PDF'], filename, { type: 'application/pdf' }));
 }
@@ -59,7 +60,6 @@ describe('golden path: context → analyse → review → approve → run', () =
     await createWorkspaceAndUpload(user);
 
     expect(await screen.findByText('policy.pdf')).toBeInTheDocument();
-    expect(screen.getByText('Analyse your document')).toBeInTheDocument(); // next-step guidance is derived from real state
     await user.click(screen.getByRole('button', { name: /^analyse$/i }));
 
     // lands in Review with the real clause text as evidence
@@ -172,6 +172,7 @@ describe('honest handling of things that cannot proceed', () => {
     await user.type(await screen.findByLabelText(/workspace name/i), 'W');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
     await screen.findByRole('heading', { name: 'W' });
+    await user.click(screen.getByRole('button', { name: /^setup/i }));
     const input = document.getElementById('file-upload') as HTMLInputElement;
     // userEvent honours `accept`, so bypass it to exercise our own check
     const u2 = userEvent.setup({ applyAccept: false });
@@ -231,6 +232,8 @@ describe('Builder Mode', () => {
     const api = new FakeXo();
     const user = await connect(api);
     await createWorkspaceAndUpload(user);
+    await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
+    await screen.findByText(/settlement amount must be recorded/i);
     await user.click(await screen.findByRole('button', { name: 'Builder' }));
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();

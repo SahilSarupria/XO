@@ -305,8 +305,16 @@ export interface Workflow {
   readonly notExecutableReasons: readonly string[];
   readonly gapCount: number;
   readonly stepCount: number;
+  readonly steps: readonly WorkflowStepSummary[];
   readonly requiresHumanDecision: boolean;
   readonly confidence: number;
+}
+/** One step of a workflow as the platform composed it (`order` is the platform's own sequence). */
+export interface WorkflowStepSummary {
+  readonly order: number;
+  readonly capabilityId: string;
+  readonly name: string;
+  readonly description: string;
 }
 export function parseWorkflowList(v: unknown): Workflow[] {
   return arr(obj(v, 'body')['workflows'], 'workflows').map((w, i) => {
@@ -322,6 +330,16 @@ export function parseWorkflowList(v: unknown): Workflow[] {
       notExecutableReasons: strArr(o['notExecutableReasons'], `${p}.notExecutableReasons`),
       gapCount: arr(o['gaps'], `${p}.gaps`).length,
       stepCount: arr(o['steps'], `${p}.steps`).length,
+      steps: arr(o['steps'], `${p}.steps`).map((st, j) => {
+        const sp = `${p}.steps[${j}]`;
+        const so = obj(st, sp);
+        return {
+          order: num(so['order'], `${sp}.order`),
+          capabilityId: str(so['capabilityId'], `${sp}.capabilityId`),
+          name: str(so['name'], `${sp}.name`),
+          description: typeof so['description'] === 'string' ? so['description'] : '',
+        };
+      }),
       requiresHumanDecision: bool(o['requiresHumanDecision'], `${p}.requiresHumanDecision`),
       confidence: num(o['confidence'], `${p}.confidence`),
     };
@@ -332,6 +350,10 @@ export function parseWorkflowList(v: unknown): Workflow[] {
 export interface ApiErrorBody {
   readonly code: string;
   readonly message: string;
+  /** `error.context.reason` when the platform supplies one (e.g. a workflow concurrency conflict). */
+  readonly reason?: string;
+  /** `error.context.denials` on a permission denial: one platform sentence per refused capability. */
+  readonly denials?: readonly string[];
 }
 /** Lenient on purpose: an unreadable error body must never mask the HTTP status. */
 export function tryParseErrorBody(v: unknown): ApiErrorBody | undefined {
@@ -340,5 +362,122 @@ export function tryParseErrorBody(v: unknown): ApiErrorBody | undefined {
   if (typeof e !== 'object' || e === null) return undefined;
   const code = (e as Json)['code'];
   const message = (e as Json)['message'];
-  return typeof code === 'string' && typeof message === 'string' ? { code, message } : undefined;
+  if (typeof code !== 'string' || typeof message !== 'string') return undefined;
+  const ctx = (e as Json)['context'];
+  let reason: string | undefined;
+  let denials: string[] | undefined;
+  if (typeof ctx === 'object' && ctx !== null && !Array.isArray(ctx)) {
+    const r = (ctx as Json)['reason'];
+    if (typeof r === 'string') reason = r;
+    const d = (ctx as Json)['denials'];
+    if (Array.isArray(d) && d.every((x) => typeof x === 'string')) denials = d as string[];
+  }
+  return { code, message, ...(reason !== undefined ? { reason } : {}), ...(denials !== undefined ? { denials } : {}) };
+}
+
+// ------------------------------------------------------- workflow executions
+export type WorkflowRunStatus = 'created' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'interrupted';
+export type WorkflowStepStatus =
+  'pending' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'skipped' | 'interrupted';
+const RUN_STATUSES = new Set(['created', 'running', 'waiting_for_human', 'succeeded', 'failed', 'rejected', 'interrupted']);
+const STEP_STATUSES = new Set(['pending', 'running', 'waiting_for_human', 'succeeded', 'failed', 'rejected', 'skipped', 'interrupted']);
+
+export interface WorkflowRunStep {
+  readonly stepId: string;
+  readonly order: number;
+  readonly capabilityId: string;
+  readonly capabilityName: string;
+  readonly status: WorkflowStepStatus;
+  readonly executionId?: string;
+  readonly errorMessage?: string;
+}
+export interface WorkflowRun {
+  readonly workflowExecutionId: string;
+  readonly compilationId: string;
+  readonly workflowId: string;
+  readonly workflowName: string;
+  /** The platform's concurrency counter. Sent back as `expectedRevision` when resuming. */
+  readonly revision: number;
+  readonly status: WorkflowRunStatus;
+  readonly steps: readonly WorkflowRunStep[];
+  /** null once the run is terminal. */
+  readonly currentStepIndex: number | null;
+  /** The step execution a resume must name (`expectedStepExecutionId`). */
+  readonly currentStepExecutionId?: string;
+  readonly pendingHumanTask?: { readonly stepIndex: number; readonly executionId: string };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly completedAt?: string;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+  readonly initiator?: { readonly kind: string; readonly id: string };
+  /** The platform's full record, kept only for Builder Mode's technical view. */
+  readonly raw: unknown;
+}
+export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): WorkflowRun {
+  const o = obj(v, path);
+  const status = str(o['status'], `${path}.status`);
+  if (!RUN_STATUSES.has(status)) throw new WireParseError(`${path}.status`, 'known workflow status');
+  const steps = arr(o['steps'], `${path}.steps`).map((st, i) => {
+    const sp = `${path}.steps[${i}]`;
+    const so = obj(st, sp);
+    const ss = str(so['status'], `${sp}.status`);
+    if (!STEP_STATUSES.has(ss)) throw new WireParseError(`${sp}.status`, 'known step status');
+    const executionId = optStr(so['executionId'], `${sp}.executionId`);
+    let errorMessage: string | undefined;
+    if (typeof so['error'] === 'object' && so['error'] !== null) {
+      const m = (so['error'] as Json)['message'];
+      if (typeof m === 'string') errorMessage = m;
+    }
+    return {
+      stepId: str(so['stepId'], `${sp}.stepId`),
+      order: num(so['order'], `${sp}.order`),
+      capabilityId: str(so['capabilityId'], `${sp}.capabilityId`),
+      capabilityName: str(so['capabilityName'], `${sp}.capabilityName`),
+      status: ss as WorkflowStepStatus,
+      ...(executionId !== undefined ? { executionId } : {}),
+      ...(errorMessage !== undefined ? { errorMessage } : {}),
+    };
+  });
+  const cur = o['currentStepIndex'];
+  const currentStepIndex = cur === null || cur === undefined ? null : num(cur, `${path}.currentStepIndex`);
+  let pendingHumanTask: WorkflowRun['pendingHumanTask'];
+  if (o['pendingHumanTask'] !== undefined) {
+    const p = obj(o['pendingHumanTask'], `${path}.pendingHumanTask`);
+    pendingHumanTask = {
+      stepIndex: num(p['stepIndex'], `${path}.pendingHumanTask.stepIndex`),
+      executionId: str(p['executionId'], `${path}.pendingHumanTask.executionId`),
+    };
+  }
+  let initiator: WorkflowRun['initiator'];
+  if (o['initiator'] !== undefined) {
+    const i = obj(o['initiator'], `${path}.initiator`);
+    initiator = { kind: str(i['kind'], `${path}.initiator.kind`), id: str(i['id'], `${path}.initiator.id`) };
+  }
+  const currentStepExecutionId = optStr(o['currentStepExecutionId'], `${path}.currentStepExecutionId`);
+  const completedAt = optStr(o['completedAt'], `${path}.completedAt`);
+  const errorCode = optStr(o['errorCode'], `${path}.errorCode`);
+  const errorMessage = optStr(o['errorMessage'], `${path}.errorMessage`);
+  return {
+    workflowExecutionId: str(o['workflowExecutionId'], `${path}.workflowExecutionId`),
+    compilationId: str(o['compilationId'], `${path}.compilationId`),
+    workflowId: str(o['workflowId'], `${path}.workflowId`),
+    workflowName: str(o['workflowName'], `${path}.workflowName`),
+    revision: num(o['revision'], `${path}.revision`),
+    status: status as WorkflowRunStatus,
+    steps,
+    currentStepIndex,
+    ...(currentStepExecutionId !== undefined ? { currentStepExecutionId } : {}),
+    ...(pendingHumanTask !== undefined ? { pendingHumanTask } : {}),
+    createdAt: str(o['createdAt'], `${path}.createdAt`),
+    updatedAt: str(o['updatedAt'], `${path}.updatedAt`),
+    ...(completedAt !== undefined ? { completedAt } : {}),
+    ...(errorCode !== undefined ? { errorCode } : {}),
+    ...(errorMessage !== undefined ? { errorMessage } : {}),
+    ...(initiator !== undefined ? { initiator } : {}),
+    raw: v,
+  };
+}
+export function parseWorkflowRunList(v: unknown): WorkflowRun[] {
+  return arr(obj(v, 'body')['workflowExecutions'], 'workflowExecutions').map((r, i) => parseWorkflowRun(r, `workflowExecutions[${i}]`));
 }

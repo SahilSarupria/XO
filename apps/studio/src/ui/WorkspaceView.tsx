@@ -1,26 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { nextStep, summarize } from '../domain/review';
+import { standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
 import { ActivitySection } from './ActivitySection';
 import { ContextSection } from './ContextSection';
+import { HomeSection } from './HomeSection';
+import { TasksSection } from './TasksSection';
+import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
 import { ProblemNotice, Spinner, useLoad } from './primitives';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 
-type View = 'context' | 'review' | 'activity' | 'processes';
+type View = 'home' | 'work' | 'tasks' | 'activity' | 'setup' | 'processes';
+type SetupView = 'documents' | 'rules';
 
 const GOAL_KEY = (ws: string) => `xo-studio:goal:${ws}`;
 
 export function WorkspaceView(props: { workspace: Workspace }) {
   const { client, mode } = useSession();
   const ws = props.workspace.workspaceId;
-  const [view, setView] = useState<View>('context');
+  const [view, setView] = useState<View>('home');
+  const [setupView, setSetupView] = useState<SetupView>('documents');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
 
   const sources = useLoad(() => client.listSources(ws), [client, ws]);
   const compilations = useLoad(() => client.listCompilations(ws), [client, ws]);
   const executions = useLoad(() => client.listExecutions(ws), [client, ws]);
+  const workflows = useLoad(() => client.listWorkflows(ws), [client, ws]);
+  const runs = useLoad(() => client.listWorkflowRuns(ws), [client, ws]);
 
   const succeeded: Compilation[] = useMemo(
     () =>
@@ -40,13 +48,15 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   );
 
   useEffect(() => {
-    if (mode === 'user' && view === 'processes') setView('context');
+    if (mode === 'user' && view === 'processes') setView('home');
   }, [mode, view]);
 
   function refreshAll() {
     sources.reload();
     compilations.reload();
     executions.reload();
+    workflows.reload();
+    runs.reload();
     caps.reload();
   }
 
@@ -58,32 +68,38 @@ export function WorkspaceView(props: { workspace: Workspace }) {
     executions: executions.state.phase === 'ready' ? executions.state.value.length : 0,
   });
 
-  const firstError = [sources.state, compilations.state].find((s) => s.phase === 'error');
+  const runList = runs.state.phase === 'ready' ? runs.state.value : [];
+  const execList = executions.state.phase === 'ready' ? executions.state.value : [];
+  const workflowList = workflows.state.phase === 'ready' ? workflows.state.value : [];
+  const capList = caps.state.phase === 'ready' ? caps.state.value : undefined;
+  const standalonePending = standaloneExecutions(execList, runList).filter(
+    (e) => e.status === 'waiting_for_human' && e.humanTask?.status === 'pending',
+  ).length;
+  const taskCount = runList.filter((r) => r.status === 'waiting_for_human').length + standalonePending;
+
+  const firstError = [sources.state, compilations.state, workflows.state, runs.state].find((s) => s.phase === 'error');
 
   return (
     <main className="page">
       <header className="page-head">
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
-        <GoalNote workspaceId={ws} />
       </header>
 
-      <div className="next-step" aria-live="polite">
-        <span className="next-step-label">Next</span>
-        <div>
-          <strong>{step.headline}</strong>
-          <span className="muted"> — {step.hint}</span>
-        </div>
-      </div>
-
       <nav className="tabs" aria-label="Workspace sections">
-        <TabButton current={view} id="context" onSelect={setView}>
-          Context
+        <TabButton current={view} id="home" onSelect={setView}>
+          Home
         </TabButton>
-        <TabButton current={view} id="review" onSelect={setView} count={summary?.readyForReview}>
-          Review
+        <TabButton current={view} id="work" onSelect={setView}>
+          Work
+        </TabButton>
+        <TabButton current={view} id="tasks" onSelect={setView} count={taskCount} countLabel="waiting for a decision">
+          Tasks
         </TabButton>
         <TabButton current={view} id="activity" onSelect={setView}>
           Activity
+        </TabButton>
+        <TabButton current={view} id="setup" onSelect={setView} count={summary?.readyForReview} countLabel="ready for review">
+          Setup
         </TabButton>
         {mode === 'builder' ? (
           <TabButton current={view} id="processes" onSelect={setView}>
@@ -94,30 +110,38 @@ export function WorkspaceView(props: { workspace: Workspace }) {
 
       {firstError?.phase === 'error' ? <ProblemNotice problem={firstError.problem} onRetry={refreshAll} /> : null}
 
-      {view === 'context' ? (
-        <ContextSection
-          workspaceId={ws}
-          sources={sources.state}
-          compilations={compilations.state.phase === 'ready' ? compilations.state.value : []}
-          onChanged={refreshAll}
-          onAnalysed={(c) => {
-            setPickedCompilation(c.compilationId);
-            refreshAll();
-            setView('review');
-          }}
+      {view === 'home' ? (
+        <HomeSection
+          compilation={activeCompilation}
+          workflows={workflowList}
+          caps={capList}
+          runs={runList}
+          standalonePending={standalonePending}
+          next={step}
+          goToWork={() => setView('work')}
+          goToTasks={() => setView('tasks')}
+          goToActivity={() => setView('activity')}
+          goToSetup={() => setView('setup')}
         />
       ) : null}
-      {view === 'review' ? (
-        <ReviewSection
+      {view === 'work' ? (
+        <WorkSection
           workspaceId={ws}
           compilation={activeCompilation}
-          compilations={succeeded}
-          onPickCompilation={setPickedCompilation}
-          caps={caps.state}
-          executions={executions.state.phase === 'ready' ? executions.state.value : []}
+          workflows={workflowList}
+          caps={capList}
+          runs={runList}
           onChanged={refreshAll}
-          goToContext={() => setView('context')}
+          goToSetup={() => {
+            setSetupView('rules');
+            setView('setup');
+          }}
+          goToTasks={() => setView('tasks')}
+          goToActivity={() => setView('activity')}
         />
+      ) : null}
+      {view === 'tasks' ? (
+        <TasksSection workspaceId={ws} runs={runList} executions={execList} caps={capList ?? []} onChanged={refreshAll} />
       ) : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
@@ -128,24 +152,74 @@ export function WorkspaceView(props: { workspace: Workspace }) {
           <ActivitySection
             workspaceId={ws}
             executions={executions.state.value}
-            caps={caps.state.phase === 'ready' ? caps.state.value : []}
+            runs={runList}
+            caps={capList ?? []}
             activeCompilationId={activeCompilation?.compilationId}
             onChanged={refreshAll}
           />
         )
+      ) : null}
+      {view === 'setup' ? (
+        <>
+          <GoalNote workspaceId={ws} />
+          <div className="segmented" role="group" aria-label="Setup sections">
+            <button type="button" className="tab" aria-pressed={setupView === 'documents'} onClick={() => setSetupView('documents')}>
+              Documents
+            </button>
+            <button type="button" className="tab" aria-pressed={setupView === 'rules'} onClick={() => setSetupView('rules')}>
+              Rules
+              {summary !== undefined && summary.readyForReview > 0 ? (
+                <span className="tab-count" aria-label={`${summary.readyForReview} ready for review`}>
+                  {summary.readyForReview}
+                </span>
+              ) : null}
+            </button>
+          </div>
+          {setupView === 'documents' ? (
+            <ContextSection
+              workspaceId={ws}
+              sources={sources.state}
+              compilations={compilations.state.phase === 'ready' ? compilations.state.value : []}
+              onChanged={refreshAll}
+              onAnalysed={(c) => {
+                setPickedCompilation(c.compilationId);
+                refreshAll();
+                setSetupView('rules');
+              }}
+            />
+          ) : (
+            <ReviewSection
+              workspaceId={ws}
+              compilation={activeCompilation}
+              compilations={succeeded}
+              onPickCompilation={setPickedCompilation}
+              caps={caps.state}
+              executions={execList}
+              onChanged={refreshAll}
+              goToContext={() => setSetupView('documents')}
+            />
+          )}
+        </>
       ) : null}
       {view === 'processes' && mode === 'builder' ? <ProcessesSection workspaceId={ws} /> : null}
     </main>
   );
 }
 
-function TabButton(props: { current: View; id: View; onSelect: (v: View) => void; count?: number | undefined; children: string }) {
+function TabButton(props: {
+  current: View;
+  id: View;
+  onSelect: (v: View) => void;
+  count?: number | undefined;
+  countLabel?: string;
+  children: string;
+}) {
   const active = props.current === props.id;
   return (
     <button type="button" className="tab" aria-current={active ? 'page' : undefined} onClick={() => props.onSelect(props.id)}>
       {props.children}
       {props.count !== undefined && props.count > 0 ? (
-        <span className="tab-count" aria-label={`${props.count} ready for review`}>
+        <span className="tab-count" aria-label={`${props.count} ${props.countLabel ?? ''}`.trim()}>
           {props.count}
         </span>
       ) : null}
@@ -181,7 +255,7 @@ function GoalNote(props: { workspaceId: string }) {
         id="goal"
         value={goal}
         onChange={(e) => save(e.target.value)}
-        placeholder="e.g. Check late-notification claims against policy section 4"
+        placeholder="e.g. Check every new request against our approval rules"
         maxLength={200}
         aria-describedby="goal-help"
       />
