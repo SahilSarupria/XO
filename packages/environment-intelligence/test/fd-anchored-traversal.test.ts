@@ -60,6 +60,13 @@ function opsWith(hooks: Hooks, base: Partial<FsOps> = {}): { ops: FsOps; opened:
       await hooks.afterReaddir?.(p, r);
       return r;
     },
+    async readdirLimited(p, limit) {
+      calls.push(`readdir ${p}`);
+      await first();
+      const r = await NODE_FS_OPS.readdirLimited(p, limit);
+      await hooks.afterReaddir?.(p, r.names);
+      return r;
+    },
     async lstat(p) {
       calls.push(`lstat ${p}`);
       await first();

@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
-import { lstat, open, readFile, readdir, readlink } from 'node:fs/promises';
+import { lstat, open, opendir, readFile, readdir, readlink } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { err, ok, type Result } from '@xo/types';
 import { DiscoveryErrorCode, discoveryError, type DiscoveryError } from '../errors.js';
@@ -17,6 +17,12 @@ import { DiscoveryErrorCode, discoveryError, type DiscoveryError } from '../erro
 export interface FsOps {
   open(path: string, flags: number): Promise<FileHandle>;
   readdir(path: string): Promise<string[]>;
+  /**
+   * F4: streaming, bounded directory enumeration. Collects at most `limit` names in filesystem order and reports
+   * whether at least one MORE entry exists (it is read, counted as the limit+1th, and NOT retained). Never buffers
+   * the whole directory.
+   */
+  readdirLimited(path: string, limit: number): Promise<{ readonly names: string[]; readonly truncated: boolean }>;
   lstat(path: string): Promise<BigIntStats>;
   readlink(path: string): Promise<string>;
   readText(path: string): Promise<string>;
@@ -28,6 +34,27 @@ export interface FsOps {
 export const NODE_FS_OPS: FsOps = Object.freeze({
   open: (path: string, flags: number) => open(path, flags),
   readdir: (path: string) => readdir(path),
+  readdirLimited: async (path: string, limit: number) => {
+    const names: string[] = [];
+    let truncated = false;
+    const dir = await opendir(path, { bufferSize: 32 });
+    try {
+      for await (const entry of dir) {
+        if (names.length >= limit) {
+          truncated = true;
+          break;
+        }
+        names.push(entry.name);
+      }
+    } finally {
+      try {
+        await dir.close();
+      } catch {
+        /* already closed by the iterator */
+      }
+    }
+    return { names, truncated };
+  },
   lstat: (path: string) => lstat(path, { bigint: true }),
   readlink: (path: string) => readlink(path),
   readText: (path: string) => readFile(path, 'utf8'),
@@ -350,8 +377,8 @@ export class AnchoredTree {
   }
 
   /** Entry names of a held directory, via its descriptor. */
-  async list(node: DirNode): Promise<string[]> {
-    return this.ops.readdir(this.proc(node));
+  async list(node: DirNode, limit: number): Promise<{ readonly names: string[]; readonly truncated: boolean }> {
+    return this.ops.readdirLimited(this.proc(node), limit);
   }
 
   async lstatChild(node: DirNode, name: string): Promise<BigIntStats> {

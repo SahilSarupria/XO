@@ -282,7 +282,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const root = await this.authorizeRoot(ctx, 'validate_connection', PERMISSION_LIST, request.scope.root);
     if (!root.ok) return root;
     try {
-      await this.ops.readdir(root.value.realRoot);
+      await this.ops.readdirLimited(root.value.realRoot, 0);
     } catch (e) {
       const errno = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code: unknown }).code) : null;
       return err(discoveryError(DiscoveryErrorCode.CONNECTION_FAILED, 'approved root is not readable', { errno }));
@@ -309,6 +309,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const errors: DiscoveryError[] = [];
     const files: FileMeta[] = [];
     let visited = 0;
+    let filesystemOrderUsed = false;
     let directories = 0;
 
     // D1: on Linux the walk is descriptor-anchored (F1) and FAILS CLOSED if that cannot be established. On other
@@ -317,7 +318,10 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     const traversal = hardened ? 'fd_anchored' : 'path_based_unhardened';
     let tree: AnchoredTree | undefined;
     type Dir = { readonly abs: string; readonly node?: DirNode };
-    const list = (d: Dir): Promise<string[]> => (tree !== undefined && d.node !== undefined ? tree.list(d.node) : this.ops.readdir(d.abs));
+    // F4: never more than the remaining global entry budget is collected per directory (plus a one-entry
+    // truncation probe that is not retained). Sorting applies only to that bounded set.
+    const list = (d: Dir, limit: number): Promise<{ readonly names: string[]; readonly truncated: boolean }> =>
+      tree !== undefined && d.node !== undefined ? tree.list(d.node, limit) : this.ops.readdirLimited(d.abs, limit);
     const lstatEntry = (d: Dir, name: string) =>
       tree !== undefined && d.node !== undefined ? tree.lstatChild(d.node, name) : this.ops.lstat(`${d.abs}/${name}`);
     const descend = async (d: Dir, name: string, st: BigIntStats): Promise<{ dir: Dir } | { skip: SkipReason }> => {
@@ -330,8 +334,11 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     /** Returns true when a limit or cancellation stopped the whole walk. */
     const walkDir = async (dir: Dir, rel: string, depth: number): Promise<boolean> => {
       let names: string[];
+      let truncatedListing = false;
       try {
-        names = (await list(dir)).sort();
+        const listing = await list(dir, Math.max(0, limits.maxEntries - visited));
+        names = listing.names.sort();
+        truncatedListing = listing.truncated;
       } catch (e) {
         if (e instanceof FdWalkFatal) throw e;
         addCount(skipped, 'unreadable_directory');
@@ -415,6 +422,12 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           modifiedAt: st.mtime.toISOString(),
           depth,
         });
+      }
+      if (truncatedListing) {
+        // More entries exist than the remaining budget: the old code would have hit the cap on the next entry.
+        hit.add('max_entries');
+        filesystemOrderUsed = true;
+        return true;
       }
       // Subdirectories in sorted order, each fully walked before the next sibling (deterministic preorder).
       for (const sub of subdirs) {
@@ -502,7 +515,12 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     );
 
     const contentFingerprint = stableDigest(files.map((f) => `${f.key}|${f.sizeBytes}|${f.modifiedAt}`));
-    const limitsReport: LimitReport = { hit: [...hit].sort(), entriesVisited: visited, elapsedMs: elapsed(ctx, startMs) };
+    const limitsReport: LimitReport = {
+      hit: [...hit].sort(),
+      entriesVisited: visited,
+      elapsedMs: elapsed(ctx, startMs),
+      ...(filesystemOrderUsed ? { filesystemOrderUsed: true as const } : {}),
+    };
     const partial = hit.size > 0 || errors.length > 0;
     return ok({
       status: partial ? 'partial' : 'complete',

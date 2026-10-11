@@ -93,6 +93,11 @@ export interface LimitReport {
   readonly hit: readonly string[];
   readonly entriesVisited: number;
   readonly elapsedMs: number;
+  /**
+   * Present (true) only when enumeration was truncated: the entries seen are the first ones in filesystem order, not
+   * the lexically first, so which entries were included is NOT deterministic across runs for this result.
+   */
+  readonly filesystemOrderUsed?: true;
 }
 
 export type OutcomeStatus = 'complete' | 'partial';
