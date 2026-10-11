@@ -1,6 +1,7 @@
 import type { PackageId } from '@xo/types';
 import type { PermissionId } from './permission-id.js';
 import type { PermissionScope } from './scope.js';
+import type { Principal } from './principal.js';
 
 /** Which package (and, optionally, which of its capabilities) is asking. */
 export interface PermissionRequester {
@@ -33,5 +34,16 @@ export interface PermissionRequest {
   readonly scope?: PermissionScope;
   readonly reason?: string;
   readonly requester: PermissionRequester;
+  /**
+   * P1.0 M2 — the authenticated initiator on whose behalf `requester` is
+   * acting, as a plain attribution snapshot. DISTINCT from `requester`
+   * (which package/capability is asking). It is set only by
+   * `authorizeCapabilityExecution`, which derives it from a verified
+   * `AuthenticatedPrincipal`; a policy rule that names a principal never
+   * matches a request that has none (fail closed). Absent for a
+   * `TrustedExecutionContext` (e.g. the local CLI operator), which is not a
+   * principal.
+   */
+  readonly principal?: Principal;
   readonly context?: PermissionContext;
 }

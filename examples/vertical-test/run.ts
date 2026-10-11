@@ -51,7 +51,10 @@ import {
 } from '@xo/package-sdk';
 import { Ed25519Signer } from '@xo/crypto';
 import { LocalFsBlobStore } from '@xo/storage';
-import { PermissionManager, RuleBasedPolicy, Permissions } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, RuleBasedPolicy, Permissions } from '@xo/permissions';
+
+/** P1.0 M2: this example is a local, operator-run script — its subject is the (non-principal) trusted local-operator context. */
+const EXAMPLE_SUBJECT = establishTrustedExecutionContext('local-operator');
 import {
   RuntimeCapabilityRegistry,
   RuntimeCapabilityExecutor,
@@ -333,6 +336,7 @@ async function main(): Promise<void> {
   const preRegisterExecutor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: EXAMPLE_SUBJECT,
   });
   const preRegisterAttempt = await preRegisterExecutor.execute({
     capabilityId: contractFromPackage.id,
@@ -367,6 +371,7 @@ async function main(): Promise<void> {
   const denyingExecutor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: EXAMPLE_SUBJECT,
   }); // default-deny
   const deniedResult = await denyingExecutor.execute({ capabilityId: contractFromPackage.id, input: { claim_assessment_amount: 15000 } });
   record(
@@ -384,6 +389,7 @@ async function main(): Promise<void> {
     permissionManager: new PermissionManager({
       policy: new RuleBasedPolicy([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
     }),
+    subject: EXAMPLE_SUBJECT,
   });
   const requestId = RequestId('req_vertical_test_1');
   const planId = PlanId('plan_vertical_test_1');

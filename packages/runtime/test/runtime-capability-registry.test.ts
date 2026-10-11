@@ -17,7 +17,7 @@ function declaration(overrides: Partial<RuntimeCapabilityDeclaration> = {}): Run
 test('register + resolve: a validly declared capability round-trips exactly', () => {
   const registry = new RuntimeCapabilityRegistry();
   const decl = declaration();
-  const registered = registry.register({ declaration: decl });
+  const registered = registry.register({ declaration: decl, requiredPermissions: [] });
   assert.ok(registered.ok);
 
   const resolved = registry.resolve('echo');
@@ -34,7 +34,7 @@ test('resolve: unknown capability id fails closed with RUNTIME_CAPABILITY_NOT_FO
 
 test('register: empty capabilityId is rejected and never stored', () => {
   const registry = new RuntimeCapabilityRegistry();
-  const result = registry.register({ declaration: declaration({ capabilityId: '  ' }) });
+  const result = registry.register({ declaration: declaration({ capabilityId: '  ' }), requiredPermissions: [] });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_RUNTIME_CAPABILITY_DECLARATION_INVALID');
   assert.equal(registry.size, 0);
@@ -42,7 +42,7 @@ test('register: empty capabilityId is rejected and never stored', () => {
 
 test('register: non-function handler is rejected (malformed declaration fails closed)', () => {
   const registry = new RuntimeCapabilityRegistry();
-  const result = registry.register({ declaration: declaration({ handler: 'not-a-function' as never }) });
+  const result = registry.register({ declaration: declaration({ handler: 'not-a-function' as never }), requiredPermissions: [] });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_RUNTIME_CAPABILITY_DECLARATION_INVALID');
   assert.equal(registry.has('echo'), false);
@@ -50,17 +50,20 @@ test('register: non-function handler is rejected (malformed declaration fails cl
 
 test('register: missing input/output contract description is rejected', () => {
   const registry = new RuntimeCapabilityRegistry();
-  const missingInput = registry.register({ declaration: declaration({ inputContract: { description: '' } }) });
+  const missingInput = registry.register({ declaration: declaration({ inputContract: { description: '' } }), requiredPermissions: [] });
   assert.equal(missingInput.ok, false);
-  const missingOutput = registry.register({ declaration: declaration({ outputContract: { description: '   ' } }) });
+  const missingOutput = registry.register({
+    declaration: declaration({ outputContract: { description: '   ' } }),
+    requiredPermissions: [],
+  });
   assert.equal(missingOutput.ok, false);
 });
 
 test('register: re-registering the same id overwrites the prior declaration', () => {
   const registry = new RuntimeCapabilityRegistry();
-  registry.register({ declaration: declaration() });
+  registry.register({ declaration: declaration(), requiredPermissions: [] });
   const v2 = declaration({ version: '2.0.0' });
-  registry.register({ declaration: v2 });
+  registry.register({ declaration: v2, requiredPermissions: [] });
 
   const resolved = registry.resolve('echo');
   assert.ok(resolved.ok);
@@ -70,7 +73,7 @@ test('register: re-registering the same id overwrites the prior declaration', ()
 
 test('register: capability ids are stable/deterministic across repeated lookups', () => {
   const registry = new RuntimeCapabilityRegistry();
-  registry.register({ declaration: declaration({ capabilityId: 'stable-id' }) });
+  registry.register({ declaration: declaration({ capabilityId: 'stable-id' }), requiredPermissions: [] });
   const first = registry.resolve('stable-id');
   const second = registry.resolve('stable-id');
   assert.ok(first.ok && second.ok);
@@ -80,8 +83,8 @@ test('register: capability ids are stable/deterministic across repeated lookups'
 test('registeredCapabilities/has/size reflect registered state accurately', () => {
   const registry = new RuntimeCapabilityRegistry();
   assert.equal(registry.size, 0);
-  registry.register({ declaration: declaration({ capabilityId: 'a' }) });
-  registry.register({ declaration: declaration({ capabilityId: 'b' }) });
+  registry.register({ declaration: declaration({ capabilityId: 'a' }), requiredPermissions: [] });
+  registry.register({ declaration: declaration({ capabilityId: 'b' }), requiredPermissions: [] });
   assert.equal(registry.size, 2);
   assert.deepEqual([...registry.registeredCapabilities()].sort(), ['a', 'b']);
   assert.equal(registry.has('a'), true);
@@ -99,7 +102,7 @@ test('this registry has no dependency on any package/manifest type — structura
   // in packager-boundary.test.ts.
   const registry = new RuntimeCapabilityRegistry();
   assert.equal(registry.has('send_email'), false);
-  registry.register({ declaration: declaration({ capabilityId: 'send_email' }) });
+  registry.register({ declaration: declaration({ capabilityId: 'send_email' }), requiredPermissions: [] });
   assert.equal(registry.has('send_email'), true);
   // Presence here is purely a function of an explicit register() call —
   // there is no other way for an entry to appear.

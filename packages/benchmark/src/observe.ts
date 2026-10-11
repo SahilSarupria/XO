@@ -31,7 +31,10 @@ import {
   type PrepareCandidateWorkflowResult,
   type RuntimeCapabilityExecutionRequest,
 } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, resolveAuthoritativeDeclaration, RuleBasedPolicy } from '@xo/permissions';
+
+/** Offline evaluation harness subject (P1.0 M2). Not an identity; matches no principal-scoped rule; the policy remains deny-by-default. */
+const HARNESS_SUBJECT = establishTrustedExecutionContext('evaluation-harness');
 import type { BenchmarkCaseDefinition, CapabilityExecutionCase, SourceSpec, WorkflowExecutionCase } from './definition.js';
 import { compareStrings, fingerprintOf, isPlainObject } from './json.js';
 import { matchesName, perfectAssignment } from './match.js';
@@ -359,6 +362,12 @@ async function observePaths(
         try {
           const result = await executeResolvedContract(contract, outcome.binding, {
             permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+            subject: HARNESS_SUBJECT,
+            permissionDeclaration: resolveAuthoritativeDeclaration(contract.requiredPermissions, {
+              capabilityId: contract.id,
+              origin: 'trusted-host-registration', // evaluation harness acting as the host; self-attested from the contract it evaluates
+              source: `contract ${contract.id}`,
+            }),
             input,
           }); // no graphHash: there is no live graph on this path
           if (!result.ok) {
@@ -763,6 +772,12 @@ async function runCapabilityRequest(
 
   const result = await executeResolvedContract(contract.value, bindingOutcome.binding, {
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: HARNESS_SUBJECT,
+    permissionDeclaration: resolveAuthoritativeDeclaration(contract.value.requiredPermissions, {
+      capabilityId: contract.value.id,
+      origin: 'trusted-host-registration', // evaluation harness acting as the host; self-attested from the contract it evaluates
+      source: `contract ${contract.value.id}`,
+    }),
     input,
     graphHash: ContentHash(graph.contentHash()),
   });
@@ -840,7 +855,11 @@ async function runWorkflowRequest(
         }
       : prepared.graph;
 
-  const real = new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  const real = new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: HARNESS_SUBJECT,
+  });
   const recorder = new InputRecordingExecutor(real);
   // `makeCapabilityAuthorityNodeHandler` types its parameter as the concrete class (private members make a structurally identical object non-assignable); it only ever calls `.execute`. One cast — composition rather than a subclass.
   const handler = makeCapabilityAuthorityNodeHandler(recorder as unknown as RuntimeCapabilityExecutor);

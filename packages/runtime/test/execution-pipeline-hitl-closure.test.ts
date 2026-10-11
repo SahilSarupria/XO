@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration } from '@xo/types';
 import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
@@ -86,7 +87,11 @@ function buildCapabilityAuthorityExecutorWithHitlBinding(): RuntimeCapabilityExe
   const registerResult = registerResolvedCapabilityBinding(registry, contract, outcome.binding);
   assert.equal(registerResult.ok, true);
 
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  return new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
 }
 
 function reconcileRequest(): ExecutionRequest {
@@ -114,6 +119,7 @@ test('HITL pipeline (1): a human_in_the_loop capability executes via the capabil
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutorWithHitlBinding(),
     });
 
@@ -140,7 +146,9 @@ test('HITL pipeline (2): a human_in_the_loop capability is denied, not silently 
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute(reconcileRequest());
 
@@ -162,6 +170,7 @@ test('HITL pipeline (3): simulate: true refuses a human_in_the_loop capability r
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutorWithHitlBinding(),
     });
 
@@ -234,13 +243,17 @@ test('HITL pipeline (4): a deterministic_rule capability in the SAME package is 
     const capabilityAuthorityExecutor = new RuntimeCapabilityExecutor({
       registry: authorityRegistry,
       permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+      subject: testSubject(),
     });
 
     const bundle = buildContractLawyerBundle({ capabilities: [claimEvaluation, reconcileInvoiceCapability] });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { capabilityAuthorityExecutor });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      capabilityAuthorityExecutor,
+    });
 
     const detResult = await engine.execute({
       requestId: RequestId('req_claim_2'),

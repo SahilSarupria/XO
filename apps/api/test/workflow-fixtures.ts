@@ -71,7 +71,7 @@ export function buildFixtureGraph(): XoirGraph {
       graph.createAndAddNode({
         id: XoirNodeId(id),
         kind: 'capability',
-        properties: { name, description: `${name} (P0.8 test fixture)`, ...extra },
+        properties: { name, description: `${name} (P0.8 test fixture)`, requiredPermissions: [], ...extra },
         confidence: 0.8,
         sourceRefs: REF,
       }),
@@ -191,6 +191,8 @@ export function buildFixtureGraph(): XoirGraph {
 export async function storeFixtureCompilation(
   workspace: WorkspaceRecord,
   dataRootDir: string,
+  /** M2 remediation: optionally persist a hand-mutated graph JSON (e.g. malformed `requiredPermissions`) instead of the pristine fixture. */
+  graphJsonOverride?: ReturnType<typeof toJson>,
 ): Promise<{ readonly compilationId: string }> {
   const store = new FsCompilationStore(workspaceCompilationsStore(workspace, { dataRootDir }));
   const created = await store.create(workspace.workspaceId, workspace.identityId, {
@@ -212,7 +214,7 @@ export async function storeFixtureCompilation(
     capabilities,
     discoveredCount: capabilities.length,
     resolvedCount: capabilities.length,
-    graph: toJson(graph),
+    graph: graphJsonOverride ?? toJson(graph),
   });
   if (!done.ok) throw done.error;
   return { compilationId: created.value.compilationId };

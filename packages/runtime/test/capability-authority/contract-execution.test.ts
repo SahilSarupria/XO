@@ -1,7 +1,8 @@
 import { test } from 'node:test';
+import { testSubject, declaredFrom } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ContentHash } from '@xo/types';
-import { PermissionManager, RuleBasedPolicy, Permissions, type PolicyRule } from '@xo/permissions';
+import { PermissionManager, RuleBasedPolicy, Permissions, resolveAuthoritativeDeclaration, type PolicyRule } from '@xo/permissions';
 import {
   StructuredComparisonBindingResolver,
   ActionEscalationBindingResolver,
@@ -74,6 +75,8 @@ test('executeResolvedContract: LIVE GRAPH path — executes and reports graphHas
   const c = contract();
   const graphHash = ContentHash(`sha256:${'e'.repeat(64)}`);
   const outcome = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
     permissionManager: manager([]),
     input: { claimed_loss_amount: 15000 },
     graphHash,
@@ -90,30 +93,47 @@ test('executeResolvedContract: LIVE GRAPH path — executes and reports graphHas
 
 test('executeResolvedContract: INSTALLED PACKAGE path — no graphHash is invented, contractContentHash is still present', async () => {
   const c = contract();
-  const outcome = await executeResolvedContract(c, bound(c), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 } });
+  const outcome = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
   assert.equal(outcome.ok, true);
   if (!outcome.ok) return;
   assert.equal(outcome.value.graphHash, undefined);
   assert.equal(outcome.value.contractContentHash, computeContractContentHash(c));
 });
 
-test('executeResolvedContract: an invalid required-permission string fails at the "registration" stage', async () => {
+test('executeResolvedContract: an invalid required-permission string is denied at the "authorization" stage, before registration', async () => {
   const c = contract({ requiredPermissions: ['NOT A VALID PERMISSION ID'] });
-  const outcome = await executeResolvedContract(c, bound(c), { permissionManager: manager([]), input: {} });
+  const outcome = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([]),
+    input: {},
+  });
   assert.equal(outcome.ok, false);
   if (outcome.ok) return;
-  assert.equal(outcome.stage, 'registration');
-  assert.equal(outcome.error.code, 'XO_RUNTIME_CAPABILITY_DECLARATION_INVALID');
+  assert.equal(outcome.stage, 'authorization');
+  assert.equal(outcome.error.code, 'XO_RUNTIME_PERMISSION_DENIED');
 });
 
 test('executeResolvedContract: the CALLER\'s permission policy decides — denied without the grant (stage "execution"), allowed with it', async () => {
   const c = contract({ requiredPermissions: ['runtime.execute'] });
-  const denied = await executeResolvedContract(c, bound(c), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 } });
+  const denied = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
   assert.equal(denied.ok, false);
   if (denied.ok) return;
   assert.equal(denied.stage, 'execution');
 
   const allowed = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
     permissionManager: manager([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
     input: { claimed_loss_amount: 15000 },
   });
@@ -122,11 +142,18 @@ test('executeResolvedContract: the CALLER\'s permission policy decides — denie
 
 test('executeResolvedContract: each call uses a fresh registry — nothing registered by an earlier call is reachable', async () => {
   const c = contract();
-  const first = await executeResolvedContract(c, bound(c), { permissionManager: manager([]), input: { claimed_loss_amount: 15000 } });
+  const first = await executeResolvedContract(c, bound(c), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
   assert.equal(first.ok, true);
   // A different contract id executes independently; the first registration does not leak into it.
   const other = contract({ id: 'capability:other', sourceXoirNodeIds: ['capability:other'] });
   const second = await executeResolvedContract(other, bound(other), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(other),
     permissionManager: manager([]),
     input: { claimed_loss_amount: 15000 },
   });
@@ -173,6 +200,8 @@ test('Step 6 e2e (live graph path): the executed result agrees with the graph pr
   assert.ok(built.ok);
   const binding = bound(built.value);
   const outcome = await executeResolvedContract(built.value, binding, {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(built.value),
     permissionManager: manager([]),
     input: { claimed_loss_amount: 15000 },
     graphHash: ContentHash(g.contentHash()),
@@ -191,6 +220,8 @@ test('Step 6 e2e (installed-package path): contract/binding agree; graphHash is 
   // The installed path only ever sees the embedded contract as JSON.
   const embedded = JSON.parse(JSON.stringify(built.value)) as typeof built.value;
   const outcome = await executeResolvedContract(embedded, bound(embedded), {
+    subject: testSubject(),
+    permissionDeclaration: declaredFrom(embedded),
     permissionManager: manager([]),
     input: { claimed_loss_amount: 15000 },
   });
@@ -201,4 +232,136 @@ test('Step 6 e2e (installed-package path): contract/binding agree; graphHash is 
   assert.equal(p.agreement.graphHash, 'unknown');
   assert.equal(p.agreement.contractContentHash, 'match');
   assert.equal(p.agreement.bindingId, 'match');
+});
+
+// ── P1.0 M2: authorization denials happen before any registration/handler side effect ──
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
+
+function countingBinding(c: ReturnType<typeof contract>) {
+  const b = bound(c);
+  let calls = 0;
+  const original = b.evaluate!;
+  return {
+    binding: {
+      ...b,
+      evaluate: (i: unknown) => {
+        calls += 1;
+        return original(i as never);
+      },
+    } as typeof b,
+    calls: () => calls,
+  };
+}
+const alice = () => {
+  const r = establishAuthenticatedPrincipal({ kind: 'human', id: 'alice' });
+  if (!r.ok) throw r.error;
+  return r.value;
+};
+
+test('M2: unresolved (missing) permission declaration is denied and the handler never runs', async () => {
+  const c = contract();
+  const cb = countingBinding(c);
+  const outcome = await executeResolvedContract(c, cb.binding, {
+    subject: alice(),
+    // authoritatively MISSING (minted unresolved for this contract): denied for the right reason, not for lack of provenance
+    permissionDeclaration: resolveAuthoritativeDeclaration(undefined, {
+      capabilityId: c.id,
+      origin: 'persisted-xoir-node',
+      source: 'node',
+    }),
+    permissionManager: manager([]),
+    input: { claimed_loss_amount: 15000 },
+  });
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.equal(outcome.stage, 'authorization');
+  assert.equal(cb.calls(), 0);
+});
+
+test('M2: declaration that conflicts with the contract copy is denied (never the more permissive one)', async () => {
+  const c = contract({ requiredPermissions: ['runtime.execute'] });
+  const cb = countingBinding(c);
+  const outcome = await executeResolvedContract(c, cb.binding, {
+    subject: alice(),
+    // authoritatively permission-free (minted for THIS contract) but the contract copy demands runtime.execute
+    permissionDeclaration: resolveAuthoritativeDeclaration([], { capabilityId: c.id, origin: 'trusted-host-registration' }),
+    permissionManager: manager([{ id: 'a', effect: 'ALLOW', match: {} }]),
+    input: { claimed_loss_amount: 15000 },
+  });
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.equal(outcome.stage, 'authorization');
+  assert.match(outcome.error.message, /conflicting/);
+  assert.equal(cb.calls(), 0);
+});
+
+test('M2: missing / fabricated subject is denied before the handler runs', async () => {
+  const c = contract();
+  for (const subject of [undefined, { kind: 'human', id: 'alice' }, { ...alice() }, 'alice']) {
+    const cb = countingBinding(c);
+    const outcome = await executeResolvedContract(c, cb.binding, {
+      subject: subject as never,
+      permissionDeclaration: declaredFrom(c),
+      permissionManager: manager([{ id: 'a', effect: 'ALLOW', match: {} }]),
+      input: { claimed_loss_amount: 15000 },
+    });
+    assert.equal(outcome.ok, false, JSON.stringify(subject));
+    if (outcome.ok) return;
+    assert.equal(outcome.stage, 'authorization');
+    assert.equal(cb.calls(), 0);
+  }
+});
+
+test('M2: missing permission manager is denied (no gate configured), handler never runs', async () => {
+  const c = contract();
+  const cb = countingBinding(c);
+  const outcome = await executeResolvedContract(c, cb.binding, {
+    subject: alice(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: undefined as never,
+    input: { claimed_loss_amount: 15000 },
+  });
+  assert.equal(outcome.ok, false);
+  if (outcome.ok) return;
+  assert.equal(outcome.stage, 'authorization');
+  assert.equal(cb.calls(), 0);
+});
+
+test('M2: authenticated principal + explicit permission-free declaration executes; a principal-scoped grant authorizes only that principal', async () => {
+  const free = contract();
+  assert.equal(
+    (
+      await executeResolvedContract(free, bound(free), {
+        subject: alice(),
+        permissionDeclaration: declaredFrom(free),
+        permissionManager: manager([]),
+        input: { claimed_loss_amount: 15000 },
+      })
+    ).ok,
+    true,
+  );
+
+  const c = contract({ requiredPermissions: ['runtime.execute'] });
+  const rule = { id: 'g', effect: 'ALLOW' as const, match: { permission: Permissions.runtime.execute, principalId: 'alice' } };
+  const mine = await executeResolvedContract(c, bound(c), {
+    subject: alice(),
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([rule]),
+    input: { claimed_loss_amount: 15000 },
+  });
+  assert.equal(mine.ok, true);
+  const bobR = establishAuthenticatedPrincipal({ kind: 'human', id: 'bob' });
+  if (!bobR.ok) throw bobR.error;
+  const cb = countingBinding(c);
+  const theirs = await executeResolvedContract(c, cb.binding, {
+    subject: bobR.value,
+    permissionDeclaration: declaredFrom(c),
+    permissionManager: manager([rule]),
+    input: { claimed_loss_amount: 15000 },
+  });
+  assert.equal(theirs.ok, false);
+  if (theirs.ok) return;
+  assert.equal(theirs.stage, 'execution');
+  assert.equal(theirs.error.code, 'XO_RUNTIME_PERMISSION_DENIED');
+  assert.equal(cb.calls(), 0);
 });

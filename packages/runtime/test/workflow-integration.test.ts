@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ExecutionEngine } from '../src/engine/execution-engine.js';
 import { NodeId, type WorkflowGraph } from '../src/workflow/workflow-graph.js';
@@ -20,7 +21,9 @@ test('a "capability" workflow node genuinely executes through Stage 2\'s Executi
       finishReason: 'stop',
     });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'contract_review_wf',
@@ -64,7 +67,9 @@ test('multiple capability nodes in one workflow each get their own real Stage 2 
     registry = await mountBundle(installer, fraud, registry);
 
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'two_capability_wf',
@@ -102,7 +107,9 @@ test('a request without workflowGraph is completely unaffected by Stage 3 (ordin
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const request: ExecutionRequest = {
       requestId: RequestId('plain_req'),
       capabilityId: 'contract_analysis',
@@ -130,7 +137,9 @@ test('a workflow whose capability node references an unplanned/unmounted capabil
       return PackageRegistry.empty();
     })();
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const graph: WorkflowGraph = {
       graphId: 'missing_capability_wf',

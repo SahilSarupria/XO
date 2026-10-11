@@ -18,7 +18,14 @@ import {
   type PrepareCandidateWorkflowResult,
   type CandidateWorkflowRunStatus,
 } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import {
+  establishTrustedExecutionContext,
+  PermissionManager,
+  reconcilePermissionDeclarations,
+  resolveDeclaredPermissionIds,
+  RuleBasedPolicy,
+} from '@xo/permissions';
+import { XoirNodeId } from '@xo/xoir';
 import { collectSources } from '../compiler/source-collection.js';
 
 /**
@@ -116,9 +123,30 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
         }
       : prepared.graph;
 
+    // P1.0 M2: the local operator is the (non-principal) trusted subject; the policy stays deny-by-default
+    // and there is no --grant on this command, so any capability that declares a permission is denied.
+    // Every step's authoritative declaration (the node's persisted `requiredPermissions`) must resolve
+    // and agree with the registered contract copy BEFORE anything runs; otherwise nothing is executed.
+    for (const step of prepared.steps) {
+      // Only steps actually bound into the registry can execute; unbound steps never run (and have no registry entry).
+      if (step.contractId === undefined || !registry.has(step.contractId)) continue;
+      const node = graph.getNode(XoirNodeId(step.contractId));
+      const declared = resolveDeclaredPermissionIds(
+        node.ok ? (node.value.properties as Readonly<Record<string, unknown>> | undefined)?.['requiredPermissions'] : undefined,
+        `capability node "${step.contractId}" requiredPermissions`,
+      );
+      const reconciled = reconcilePermissionDeclarations(
+        declared,
+        registry.permissionDeclaration(step.contractId),
+        `capability "${step.contractId}"`,
+      );
+      if (reconciled.kind === 'unresolved')
+        return { ok: false, message: `workflow not executed — authorization denied: ${reconciled.reason}` };
+    }
     const executor = new RuntimeCapabilityExecutor({
       registry,
       permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+      subject: establishTrustedExecutionContext('local-operator'),
     });
     const workflowExecutor = new WorkflowExecutor(
       async () => {

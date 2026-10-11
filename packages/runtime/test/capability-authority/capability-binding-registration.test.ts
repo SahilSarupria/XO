@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ContentHash } from '@xo/types';
 import { computeContractContentHash } from '@xo/capability-contract';
@@ -54,7 +55,7 @@ test('a resolved deterministic_rule binding registers and executes end-to-end wi
   assert.equal(registerResult.ok, true);
   assert.equal(registry.has('capability:claim-evaluation'), true);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -66,7 +67,7 @@ test('discovery does not imply execution authority: an unregistered binding is n
   resolvedBinding(contract); // resolved, but never registered
 
   const registry = new RuntimeCapabilityRegistry();
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, false);
   if (result.ok) return;
@@ -80,7 +81,7 @@ test('contract-declared required permissions are enforced: denied without the pe
   const registry = new RuntimeCapabilityRegistry();
   registerResolvedCapabilityBinding(registry, contract, binding);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) }); // default-deny
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() }); // default-deny
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, false);
   if (result.ok) return;
@@ -99,6 +100,7 @@ test('contract-declared required permissions are enforced: succeeds once the per
     permissionManager: managerWithRules([
       { id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } },
     ]),
+    subject: testSubject(),
   });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
@@ -139,7 +141,7 @@ test('host-level additionalRequiredPermissions are enforced in addition to contr
     additionalRequiredPermissions: [{ permission: Permissions.runtime.execute }],
   });
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, false);
   if (result.ok) return;
@@ -158,7 +160,7 @@ test('P0.9B: graphHash, when supplied at registration, is echoed all the way thr
   });
   assert.equal(registerResult.ok, true);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -173,7 +175,7 @@ test('P0.9B: graphHash is absent on the executor result when registration did no
   const registerResult = registerResolvedCapabilityBinding(registry, contract, binding, {});
   assert.equal(registerResult.ok, true);
 
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -189,7 +191,7 @@ test('P0.9B: contractContentHash is recomputed from the contract and echoed to t
   for (const options of [{ graphHash: ContentHash(`sha256:${'c'.repeat(64)}`) }, {}]) {
     const registry = new RuntimeCapabilityRegistry();
     assert.equal(registerResolvedCapabilityBinding(registry, contract, resolvedBinding(contract), options).ok, true);
-    const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+    const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
     const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
     assert.equal(result.ok, true);
     if (!result.ok) return;
@@ -201,7 +203,7 @@ test('P0.9B: a stale/tampered stored contract.contentHash is never trusted — t
   const contract = { ...claimEvaluationContract(), contentHash: `sha256:${'0'.repeat(64)}` };
   const registry = new RuntimeCapabilityRegistry();
   assert.equal(registerResolvedCapabilityBinding(registry, contract, resolvedBinding(contract), {}).ok, true);
-  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]) });
+  const executor = new RuntimeCapabilityExecutor({ registry, permissionManager: managerWithRules([]), subject: testSubject() });
   const result = await executor.execute({ capabilityId: 'capability:claim-evaluation', input: { claimed_loss_amount: 15000 } });
   assert.equal(result.ok, true);
   if (!result.ok) return;

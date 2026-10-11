@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration, HybridExecutionStep } from '@xo/types';
 import { ok, err } from '@xo/types';
@@ -90,7 +91,11 @@ function buildCapabilityAuthorityExecutor(): RuntimeCapabilityExecutor {
   const registerResult = registerResolvedCapabilityBinding(registry, contract, outcome.binding);
   assert.equal(registerResult.ok, true);
 
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  return new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
 }
 
 function claimRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequest {
@@ -183,6 +188,7 @@ test('R6-retry: a model-strategy failure classified retryable succeeds on a late
     provider.failNextCallsWith = { error: new Error('transient provider error'), count: 2 };
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 },
     });
     const result = await engine.execute(modelRequest());
@@ -204,6 +210,7 @@ test('R6-retry: maxAttempts is respected — retry stops and reports RUNTIME_RET
     provider.failNextCallsWith = { error: new Error('permanently down'), count: 100 };
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1 },
     });
     const result = await engine.execute(modelRequest());
@@ -222,7 +229,9 @@ test('R6-retry: default behavior (no retry option configured) is unchanged — e
     const provider = new ScriptedModelProvider();
     provider.failNextWith = new Error('single failure');
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const result = await engine.execute(modelRequest());
 
     assert.equal(provider.requests.length, 1, 'no retry option configured — behavior identical to every pre-R6 caller');
@@ -261,9 +270,11 @@ test('R6-retry: a deterministic_rule failure is NEVER retried, regardless of con
     const authority = new RuntimeCapabilityExecutor({
       registry: authorityRegistry,
       permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+      subject: testSubject(),
     });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority,
       retry: { maxAttempts: 5, initialDelayMs: 1, maxDelayMs: 1 },
     });
@@ -295,6 +306,7 @@ test('R6-retry: hybrid execution is never retried in this pass, even for an all-
     provider.failNextCallsWith = { error: new Error('transient'), count: 1 };
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       retry: { maxAttempts: 5, initialDelayMs: 1, maxDelayMs: 1 },
     });
     const result = await engine.execute(hybridRequest());
@@ -319,6 +331,7 @@ test('R6-timeout: a timeout firing during retry backoff terminates immediately a
     provider.failNextCallsWith = { error: new Error('transient'), count: 100 };
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       defaultTimeoutMs: 20,
       retry: { maxAttempts: 50, initialDelayMs: 200, maxDelayMs: 200 },
     });
@@ -338,6 +351,7 @@ test('R6-cancellation: an explicit cancel during retry backoff terminates as can
     provider.failNextCallsWith = { error: new Error('transient'), count: 100 };
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       retry: { maxAttempts: 50, initialDelayMs: 200, maxDelayMs: 200 },
     });
     const executionId = deriveExecutionId(modelRequest().requestId);
@@ -359,7 +373,9 @@ test('R6-simulation: a model-strategy capability under simulate:true never calls
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const result = await engine.execute(modelRequest({ simulate: true }));
 
     assert.equal(provider.requests.length, 0, 'the live provider must never be called during simulation');
@@ -380,6 +396,7 @@ test('R6-simulation: a deterministic_rule capability under simulate:true refuses
     const authority = buildCapabilityAuthorityExecutor();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority,
     });
     const result = await engine.execute(claimRequest({ simulate: true }));
@@ -402,7 +419,9 @@ test('R6-simulation: an all-model hybrid capability under simulate:true is fully
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const result = await engine.execute(hybridRequest({ simulate: true }));
 
     assert.equal(provider.requests.length, 0, 'no live provider call for any hybrid step during simulation');
@@ -446,9 +465,11 @@ test('R6-simulation: a hybrid capability with ANY deterministic_rule step refuse
       permissionManager: new PermissionManager({
         policy: new RuleBasedPolicy([{ id: 'allow-all', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
       }),
+      subject: testSubject(),
     });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority,
     });
     const result = await engine.execute(hybridRequest({ simulate: true }));
@@ -466,8 +487,11 @@ test('R6-simulation: simulation is refused for streaming execution rather than s
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const streaming = engine.executeStreaming(modelRequest({ simulate: true }));
+
     for await (const _event of streaming.events) {
       /* drain — expected to yield nothing */
     }
@@ -488,7 +512,9 @@ test('R6-idempotency: a second concurrent execute() call with the same requestId
     const provider = new ScriptedModelProvider();
     provider.delayMs = 50;
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const request = modelRequest();
     const firstPromise = engine.execute(request);
     await new Promise((resolve) => setTimeout(resolve, 5)); // let the first call register in-flight
@@ -512,7 +538,9 @@ test('R6-idempotency: after the first execution completes, the SAME requestId ca
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const request = modelRequest();
     const first = await engine.execute(request);
     const second = await engine.execute(request);
@@ -534,6 +562,7 @@ test('R6-replay: replaying a deterministic_rule execution returns the recorded o
     const authority = buildCapabilityAuthorityExecutor();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority,
     });
     const original = await engine.execute(claimRequest());
@@ -562,6 +591,7 @@ test('R6-replay: replaying a deterministic_rule execution whose receipt has no r
     const provider = new ScriptedModelProvider();
     const authority = buildCapabilityAuthorityExecutor();
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority,
     });
     const original = await engine.execute(claimRequest());
@@ -587,7 +617,9 @@ test('R6-replay: replaying a model-strategy execution re-invokes a real provider
       finishReason: 'stop',
     });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const original = await engine.execute(modelRequest());
     assert.equal(provider.requests.length, 1);
 
@@ -616,7 +648,9 @@ test('R6-replay: replaying a model-strategy execution without an explicit enviro
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const original = await engine.execute(modelRequest());
 
     const replayed = await replayExecution(engine, original.receipt!);
@@ -632,7 +666,9 @@ test('R6-replay: hybrid replay is refused (deferred) rather than reconstructed u
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const original = await engine.execute(hybridRequest());
     assert.notEqual(original.receipt, undefined);
 
@@ -651,7 +687,9 @@ test('R6-collision: negotiationCandidates on the receipt reflects every candidat
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const result = await engine.execute(modelRequest());
 
     assert.equal(result.session.status, 'completed');
@@ -669,7 +707,9 @@ test('R6-provenance: a successful non-simulated, non-retried execution reports a
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
     const request = modelRequest();
     const result = await engine.execute(request);
 

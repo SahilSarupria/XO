@@ -85,7 +85,15 @@ import {
 import { Ed25519Signer } from '@xo/crypto';
 import { LocalFsBlobStore } from '@xo/storage';
 import { RegistryClient } from '@xo/registry';
-import { Runtime, ExecutionEngine, FileRuntimeStore, RequestId, EnvironmentId, type ExecutionRequest } from '@xo/runtime';
+import {
+  Runtime,
+  ExecutionEngine,
+  allowAllPermissionGate,
+  FileRuntimeStore,
+  RequestId,
+  EnvironmentId,
+  type ExecutionRequest,
+} from '@xo/runtime';
 import { ScriptableTestProvider, jsonResponse } from '@xo/ai-core';
 
 // ---------------------------------------------------------------------
@@ -746,7 +754,10 @@ async function main(): Promise<void> {
   const provider = new ScriptableTestProvider('e2e-harness-scripted-provider', [
     { kind: 'success', response: jsonResponse({ summary: 'Scripted deterministic test response — no live model call.' }) },
   ]);
-  const engine = new ExecutionEngine(() => runtime.context(), installer, provider);
+  const engine = new ExecutionEngine(() => runtime.context(), installer, provider, {
+    permissionGate:
+      allowAllPermissionGate /* explicit opt-out: scripted-provider harness, no real authority at stake (P1.0 M2 default is deny) */,
+  });
   const request: ExecutionRequest = {
     requestId: RequestId('req_e2e_pdf_1'),
     capabilityId: chosen.declaration.id,

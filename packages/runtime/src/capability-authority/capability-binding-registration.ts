@@ -98,6 +98,14 @@ function wrapEvaluatorAsHandler(binding: CapabilityBinding): RuntimeCapabilityHa
  * warns against, just inverted (weakening gating instead of granting it).
  */
 function parseRequiredPermissions(raw: readonly string[]): Result<readonly PermissionRequirement[], RuntimeError> {
+  if (!Array.isArray(raw)) {
+    return err(
+      new RuntimeError(
+        ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
+        'Contract requiredPermissions must be an array (use [] to declare a permission-free capability)',
+      ),
+    );
+  }
   const requirements: PermissionRequirement[] = [];
   for (const value of raw) {
     const parsed = parsePermissionId(value);
@@ -182,6 +190,6 @@ export function registerResolvedCapabilityBinding(
       // information-boundary paths have one), never read from `contract.contentHash`.
       contractContentHash: computeContractContentHash(contract),
     },
-    ...(requiredPermissions.length > 0 ? { requiredPermissions } : {}),
+    requiredPermissions, // always explicit (P1.0 M2): `[]` = declared permission-free
   });
 }

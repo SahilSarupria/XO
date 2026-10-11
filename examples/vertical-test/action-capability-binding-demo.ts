@@ -3,7 +3,7 @@ import { compileSources } from '@xo/compiler';
 import { buildSemanticCapabilityContract } from '@xo/capability-contract';
 import { ActionEscalationBindingResolver, StructuredComparisonBindingResolver, resolveCapabilityBinding } from '@xo/capability-contract';
 import { RuntimeCapabilityRegistry, RuntimeCapabilityExecutor, registerResolvedCapabilityBinding } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishTrustedExecutionContext, PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 
 async function main() {
   const bytes = new Uint8Array(await readFile(new URL('./Aastha.pdf', import.meta.url)));
@@ -29,6 +29,7 @@ async function main() {
   let hitlCount = 0,
     detCount = 0,
     unresolvedCount = 0;
+
   let firstHitl: any = null;
   for (const c of contracts) {
     const outcome = resolveCapabilityBinding(c, resolvers);
@@ -65,6 +66,7 @@ async function main() {
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: establishTrustedExecutionContext('local-operator'),
   });
   const execResult = await executor.execute({
     capabilityId: firstHitl.contract.id,

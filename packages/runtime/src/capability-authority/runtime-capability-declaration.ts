@@ -101,5 +101,12 @@ export interface RuntimeCapabilityDeclaration {
 /** Convenience bundle for `RuntimeCapabilityRegistry.register`'s permission-registration side effect — see that method. Not stored on `RuntimeCapabilityDeclaration` itself, for the reason given in this file's top doc comment. */
 export interface RuntimeCapabilityRegistration {
   readonly declaration: RuntimeCapabilityDeclaration;
-  readonly requiredPermissions?: readonly PermissionRequirement[];
+  /**
+   * P1.0 M2 — REQUIRED. The capability's explicit permission declaration.
+   * `[]` is the one and only representation of "permission-free"; omitting
+   * the field (or supplying a non-array) is rejected at registration, so a
+   * capability can never become executable with its requirements merely
+   * unstated.
+   */
+  readonly requiredPermissions: readonly PermissionRequirement[];
 }

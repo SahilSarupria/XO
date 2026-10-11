@@ -1,4 +1,4 @@
-import type { HostCapability, ModelFamily } from '@xo/types';
+import type { HostCapability, ModelFamily, Result } from '@xo/types';
 import { PackageInstaller } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import { EnvironmentId, ExecutionEngine, RequestId, Runtime } from '@xo/runtime';
@@ -6,8 +6,8 @@ import type { ExecutionRequest } from '@xo/runtime';
 import type { ModelProvider } from '@xo/ai-core';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
+import { establishTrustedExecutionContext } from '@xo/permissions';
 import { tryDeterministicRun } from './deterministic-router.js';
-import type { Result } from '@xo/types';
 
 export interface RunOptions {
   readonly capabilityId?: string;
@@ -121,6 +121,7 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
       installer,
       runtime.context().registry,
       options.grantedPermissionIds ?? [],
+      establishTrustedExecutionContext('local-operator'),
     );
     if (deterministic.kind === 'executed') {
       if (options.json) {

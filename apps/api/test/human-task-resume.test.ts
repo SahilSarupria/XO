@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { RuntimeCapabilityRegistry, RuntimeCapabilityExecutor, registerResolvedCapabilityBinding } from '@xo/runtime';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { establishAuthenticatedPrincipal, PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 import type { SemanticCapabilityContract, CapabilityBinding } from '@xo/capability-contract';
 import { TestServer } from './test-helpers.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
@@ -142,6 +142,12 @@ test('duplicate concurrent resolve requests cannot both execute the continuation
 // resolver list or any compiler/capability-contract internal.
 // ---------------------------------------------------------------------
 
+function fixtureSubject() {
+  const r = establishAuthenticatedPrincipal({ kind: 'human', id: 'fixture-resolver' });
+  if (!r.ok) throw r.error;
+  return r.value;
+}
+
 function buildTestFixture(): { readonly contract: SemanticCapabilityContract; readonly binding: CapabilityBinding } {
   const contract: SemanticCapabilityContract = {
     id: 'cap_test_resume_fixture',
@@ -188,6 +194,7 @@ test('mechanism-level: the generic resume machinery produces a genuinely differe
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: fixtureSubject(),
   });
 
   // Original execution: escalates, exactly like the production fixture.
@@ -220,6 +227,7 @@ test('mechanism-level: required permissions are genuinely re-checked (fail-close
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: fixtureSubject(),
   });
   const result = await executor.execute({
     capabilityId: contractRequiringPermission.id,

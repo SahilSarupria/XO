@@ -17,6 +17,7 @@ import { buildRuntimeContext } from '../src/runtime-context.js';
 import { RequestId, EnvironmentId } from '../src/ids.js';
 import type { ExecutionRequest } from '../src/execution/execution-request.js';
 import { createPermissionManagerGate } from '../src/permissions/permission-manager-gate.js';
+import { testSubject, explicitNoneRegistry } from './authz-helpers.js';
 import { buildContractLawyerBundle, buildFraudDetectorBundle, withTempInstaller, mountBundle, ScriptedModelProvider } from './fixtures.js';
 
 function baseRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequest {
@@ -48,7 +49,7 @@ function fixedConsent(consent: PermissionConsent): PermissionConsentProvider {
 // Section 5 - permissionless vs. privileged-but-unregistered capabilities
 // ===========================================================================
 
-test('sec5: a capability with no manifest permission declaration executes freely (legitimately permissionless)', async () => {
+test('sec5: a capability explicitly declared permission-free (registry []) executes without a grant', async () => {
   await withTempInstaller(async (installer) => {
     const bundle = buildContractLawyerBundle(); // no `permissions` field at all
     await installer.install(bundle);
@@ -57,7 +58,11 @@ test('sec5: a capability with no manifest permission declaration executes freely
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
-    const gate = createPermissionManagerGate({ manager }); // no registry either - pure manifest resolution
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    }); // no registry either - pure manifest resolution
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     const result = await engine.execute(baseRequest({ capabilityId: 'clause_lookup' }));
@@ -79,7 +84,11 @@ test('sec5: a capability with a declared permission requires it - no grant means
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
     // Deliberately no CapabilityPermissionRegistry, no `.register()` call
     // anywhere - the manifest declaration alone is what's enforced.
-    const gate = createPermissionManagerGate({ manager });
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     const result = await engine.execute(baseRequest({ capabilityId: 'contract_analysis' }));
@@ -128,7 +137,11 @@ test('sec5: granting the declared permission allows the previously-denied capabi
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
-    const gate = createPermissionManagerGate({ manager });
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     await manager.grant({
@@ -162,7 +175,11 @@ test('sec6: an auxiliary capability requiring an ungranted permission blocks the
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
-    const gate = createPermissionManagerGate({ manager });
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     const result = await engine.execute(baseRequest({ capabilityId: 'clause_lookup', auxiliaryCapabilityIds: ['fraud_detection'] }));
@@ -188,7 +205,11 @@ test('sec6: an auxiliary capability with its OWN granted permission is allowed, 
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
-    const gate = createPermissionManagerGate({ manager });
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     await manager.grant({
@@ -212,7 +233,11 @@ test('sec6: an auxiliary capability id that does not resolve to any mounted pack
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
-    const gate = createPermissionManagerGate({ manager });
+    const gate = createPermissionManagerGate({
+      manager,
+      subject: testSubject(),
+      registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+    });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { permissionGate: gate });
 
     const result = await engine.execute(baseRequest({ capabilityId: 'clause_lookup', auxiliaryCapabilityIds: ['does_not_exist'] }));
@@ -236,7 +261,11 @@ test('sec8 case A: manifest requires filesystem.read, no grant -> DENIED, compon
     provider.setResponse({ text: 'ok', usage: { inputTokens: 10, outputTokens: 5 }, modelUsed: 'test-model', finishReason: 'stop' });
     const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
 
     const result = await engine.execute(baseRequest());
@@ -259,7 +288,11 @@ test('sec8 case B: valid grant for the correct scope -> ALLOWED, component execu
     const packageId = PackageId(`${bundle.manifest.name}@${bundle.manifest.version}`);
     await manager.grant({ packageId, permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
 
     const result = await engine.execute(baseRequest());
@@ -281,7 +314,11 @@ test('sec8 case C: grant scoped to /workspace/project does not authorize a manif
     const packageId = PackageId(`${bundle.manifest.name}@${bundle.manifest.version}`);
     await manager.grant({ packageId, permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
 
     const result = await engine.execute(baseRequest());
@@ -303,7 +340,11 @@ test('sec8 case D: revoke is reflected in actual Runtime execution - allowed, th
     const packageId = PackageId(`${bundle.manifest.name}@${bundle.manifest.version}`);
     await manager.grant({ packageId, permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') });
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
 
     const allowed = await engine.execute(baseRequest({ requestId: RequestId('req_before_revoke') }));
@@ -345,7 +386,11 @@ test('sec8 case E: consent narrowing - requested /workspace, consent narrows to 
     assert.deepEqual(consentDecision.grantedScope, pathScope('/workspace/project'));
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
     const result = await engine.execute(baseRequest());
     assert.equal(result.session.status, 'completed');
@@ -380,7 +425,11 @@ test('sec8 case F: consent widening attempt - requested /workspace/project, cons
     assert.equal(store.size(), 0);
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
     const result = await engine.execute(baseRequest());
     assert.equal(result.session.status, 'failed');
@@ -404,7 +453,11 @@ test('sec8 case G: an explicit policy DENY overrides a stored ALLOW grant -> DEN
     await manager.grant({ packageId, permission: Permissions.filesystem.read, scope: pathScope('/workspace/project') });
 
     const engineBefore = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager }),
+      permissionGate: createPermissionManagerGate({
+        manager,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
     const before = await engineBefore.execute(baseRequest({ requestId: RequestId('req_before_policy') }));
     assert.equal(before.session.status, 'completed');
@@ -418,7 +471,11 @@ test('sec8 case G: an explicit policy DENY overrides a stored ALLOW grant -> DEN
     });
 
     const engineAfter = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
-      permissionGate: createPermissionManagerGate({ manager: managerWithEmergencyDeny }),
+      permissionGate: createPermissionManagerGate({
+        manager: managerWithEmergencyDeny,
+        subject: testSubject(),
+        registry: explicitNoneRegistry('contract_analysis', 'clause_lookup', 'fraud_detection'),
+      }),
     });
     const after = await engineAfter.execute(baseRequest({ requestId: RequestId('req_after_policy') }));
     assert.equal(after.session.status, 'failed');

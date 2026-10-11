@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
@@ -170,6 +171,7 @@ test('a step with a real structured comparison rule resolves to deterministic_ru
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const workflowExecutor = new WorkflowExecutor(
     async () => {
@@ -212,6 +214,7 @@ test('end-to-end: a real HITL workflow executes through WorkflowExecutor and pro
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const workflowExecutor = new WorkflowExecutor(
     async () => {
@@ -467,6 +470,7 @@ test('end-to-end: a real value produced by Step A becomes the authoritative inpu
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const workflowExecutor = new WorkflowExecutor(
     async () => {

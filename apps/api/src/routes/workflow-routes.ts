@@ -4,6 +4,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
+import type { PermissionManager } from '@xo/permissions';
 import {
   requirePrincipal,
   requireOwnedWorkspace,
@@ -87,11 +88,17 @@ function boundedPlainObject(value: unknown, field: string, maxBytes: number): Re
   return value as Record<string, unknown>;
 }
 
-export function registerWorkflowRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerWorkflowRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  permissionManager: PermissionManager,
+): void {
   function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal): WorkflowRunnerContext {
     return {
       workspace,
       principal,
+      permissionManager,
       compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
       approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
       executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),

@@ -13,16 +13,23 @@ import {
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
 import {
-  PermissionManager,
-  RuleBasedPolicy,
-  Permissions,
+  authorizeCapabilityExecution,
+  isAuthorizationSubject,
   parsePermissionId,
+  Permissions,
+  PERMISSION_FREE,
+  PermissionManager,
+  attestAuthoritativeDeclaration,
+  resolveDeclaredPermissionIds,
   resolveManifestCapabilityPermissions,
+  RuleBasedPolicy,
+  unresolvedDeclaration,
+  type AuthorizationSubject,
+  type PermissionDeclaration,
   type PermissionRequirement,
+  type PolicyRule,
 } from '@xo/permissions';
-import type { CapabilityExecutionDeclaration } from '@xo/types';
-import type { PolicyRule } from '@xo/permissions';
-import type { PackageId } from '@xo/types';
+import type { CapabilityExecutionDeclaration, PackageId } from '@xo/types';
 
 /**
  * `xo run <capabilityId>` must NOT resolve an AI provider merely because
@@ -89,6 +96,8 @@ interface ExecutionSource {
   readonly declaredExecution: CapabilityExecutionDeclaration | undefined;
   readonly confidence: number;
   readonly mountedPackage: MountedPackage;
+  /** P1.0 M2 — the capability node's own persisted `requiredPermissions` property, exactly as stored in the package's knowledge_graph (`undefined` if the property is absent). The authoritative permission declaration; never a CLI flag. */
+  readonly declaredRequiredPermissions: unknown;
 }
 
 /**
@@ -108,7 +117,17 @@ async function fetchContract(
   contractId: string,
   installer: PackageInstaller,
   mountedPackages: readonly MountedPackage[],
-): Promise<Result<{ readonly contract: SemanticCapabilityContract; readonly mountedPackage: MountedPackage } | undefined, string>> {
+): Promise<
+  Result<
+    | {
+        readonly contract: SemanticCapabilityContract;
+        readonly mountedPackage: MountedPackage;
+        readonly declaredRequiredPermissions: unknown;
+      }
+    | undefined,
+    string
+  >
+> {
   for (const mounted of mountedPackages) {
     const component = await installer.getComponent(mounted.name, mounted.version, 'knowledge_graph');
     if (!component.ok) continue; // no knowledge_graph component for this package — not an error, just nothing to find here
@@ -131,7 +150,10 @@ async function fetchContract(
     const extracted = extractContractFromPropertyBag(node.properties);
     if (!extracted.ok) continue; // present but no embedded contract on this node — not this capability's source
 
-    return { ok: true, value: { contract: extracted.value, mountedPackage: mounted } };
+    return {
+      ok: true,
+      value: { contract: extracted.value, mountedPackage: mounted, declaredRequiredPermissions: node.properties['requiredPermissions'] },
+    };
   }
   return { ok: true, value: undefined };
 }
@@ -198,6 +220,7 @@ async function resolveExecutionSource(
         declaredExecution: execution,
         confidence: descriptor.declaration.confidence.score,
         mountedPackage: fetched.value.mountedPackage,
+        declaredRequiredPermissions: fetched.value.declaredRequiredPermissions,
       },
     };
   }
@@ -215,6 +238,7 @@ async function resolveExecutionSource(
       declaredExecution: undefined,
       confidence: descriptor?.declaration.confidence.score ?? fetched.value.contract.confidence,
       mountedPackage: fetched.value.mountedPackage,
+      declaredRequiredPermissions: fetched.value.declaredRequiredPermissions,
     },
   };
 }
@@ -261,6 +285,54 @@ function parseStructuredInput(raw: string): Record<string, unknown> | undefined 
  * closed — never "permission exists so it's fine," matching R3's
  * requirement 6.
  */
+/**
+ * P1.0 M2 — the authoritative permission declaration for one installed
+ * capability. Sources, none of them a CLI flag:
+ *
+ *  1. the capability node's own persisted `requiredPermissions` property in
+ *     the package's knowledge_graph — REQUIRED to be present (`[]` is the
+ *     explicit permission-free declaration; absent/malformed => `unresolved`);
+ *  2. the manifest's `permissions[]` entries naming this capability, and
+ *  3. its `execution.requiredPermissionIds`, if declared — both ADDITIVE
+ *     (they can only make the capability stricter), and both denied if
+ *     malformed.
+ */
+function buildPermissionDeclaration(source: ExecutionSource, capabilityId: string): PermissionDeclaration {
+  const label = `"${source.mountedPackage.name}@${source.mountedPackage.version}" capability "${capabilityId}"`;
+  const base = resolveDeclaredPermissionIds(source.declaredRequiredPermissions, `${label} requiredPermissions`);
+  if (base.kind === 'unresolved') return base;
+
+  const manifestResolution = resolveManifestCapabilityPermissions(source.mountedPackage.manifest);
+  if (!manifestResolution.ok)
+    return unresolvedDeclaration(`${label}: malformed permission declaration(s) in the manifest: ${manifestResolution.error.join('; ')}`);
+
+  const requirements: PermissionRequirement[] = [
+    ...(base.kind === 'required' ? base.requirements : []),
+    ...(manifestResolution.value.get(capabilityId) ?? []),
+  ];
+
+  if (source.declaredExecution?.requiredPermissionIds !== undefined) {
+    const exec = resolveDeclaredPermissionIds(source.declaredExecution.requiredPermissionIds, `${label} execution.requiredPermissionIds`);
+    if (exec.kind === 'unresolved') return exec;
+    if (exec.kind === 'required') requirements.push(...exec.requirements);
+  }
+
+  const seen = new Set<string>();
+  const unique = requirements.filter((r) => {
+    const key = `${r.permission}|${JSON.stringify(r.scope ?? null)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.length === 0 ? PERMISSION_FREE : { kind: 'required', requirements: unique };
+}
+
+/**
+ * `--grant` flags are local OPERATOR POLICY (an `ALLOW` rule per permission
+ * for this one invocation) — they are not identity and not proof of any
+ * principal. Subject = a `TrustedExecutionContext` minted by the CLI command
+ * entry; a request/manifest/flag cannot create one.
+ */
 function buildPermissionManager(grantedPermissionIds: readonly string[]): Result<PermissionManager, string> {
   const grantRules: PolicyRule[] = [];
   for (const [i, raw] of grantedPermissionIds.entries()) {
@@ -269,53 +341,6 @@ function buildPermissionManager(grantedPermissionIds: readonly string[]): Result
     grantRules.push({ id: `cli-grant-${i}`, effect: 'ALLOW', match: { permission: parsed.value.id } });
   }
   return { ok: true, value: new PermissionManager({ policy: new RuleBasedPolicy(grantRules) }) };
-}
-
-async function checkAuthorization(
-  source: ExecutionSource,
-  capabilityId: string,
-  manager: PermissionManager,
-): Promise<{ readonly allowed: true } | { readonly allowed: false; readonly reason: string }> {
-  const manifestResolution = resolveManifestCapabilityPermissions(source.mountedPackage.manifest);
-  if (!manifestResolution.ok) {
-    return {
-      allowed: false,
-      reason: `"${source.mountedPackage.name}@${source.mountedPackage.version}" has malformed permission declaration(s) in its manifest, so capability "${capabilityId}" cannot be authorized: ${manifestResolution.error.join('; ')}`,
-    };
-  }
-  const manifestRequirements = manifestResolution.value.get(capabilityId) ?? [];
-
-  const executionRequirements: PermissionRequirement[] = [];
-  for (const raw of source.declaredExecution?.requiredPermissionIds ?? []) {
-    const parsed = parsePermissionId(raw);
-    if (!parsed.ok)
-      return {
-        allowed: false,
-        reason: `Capability "${capabilityId}"'s authoritative execution declaration names a malformed required permission "${raw}": ${parsed.error}`,
-      };
-    executionRequirements.push({ permission: parsed.value.id });
-  }
-  const requirements = [...manifestRequirements, ...executionRequirements];
-
-  if (requirements.length === 0) return { allowed: true }; // no declared requirement anywhere — permissionless, per this manifest's own default-deny-unless-declared model (see ManifestBuilder.setPermissions' doc comment), not an oversight this router papers over.
-
-  const packageId = `${source.mountedPackage.name}@${source.mountedPackage.version}` as PackageId;
-
-  for (const requirement of requirements) {
-    const decision = await manager.check({
-      permission: requirement.permission,
-      ...(requirement.scope !== undefined ? { scope: requirement.scope } : {}),
-      requester: { packageId, capabilityId },
-    });
-    if (decision.effect !== 'allow') {
-      if (requirement.optional) continue;
-      return {
-        allowed: false,
-        reason: `Permission "${requirement.permission}" required by capability "${capabilityId}" was not granted (${decision.reason}) — pass --grant ${requirement.permission} to authorize this run`,
-      };
-    }
-  }
-  return { allowed: true };
 }
 
 /**
@@ -330,8 +355,12 @@ export async function tryDeterministicRun(
   rawInput: string,
   installer: PackageInstaller,
   packageRegistry: PackageRegistry,
-  grantedPermissionIds: readonly string[] = [],
+  grantedPermissionIds: readonly string[],
+  subject: AuthorizationSubject,
 ): Promise<DeterministicRunOutcome> {
+  // P1.0 M2: fail closed BEFORE anything is looked up or evaluated if the caller has no verified subject.
+  if (!isAuthorizationSubject(subject))
+    return { kind: 'not_authorized', reason: 'no verified trusted execution context — deterministic execution is denied' };
   const found = await resolveExecutionSource(capabilityId, installer, packageRegistry);
   if (!found.ok) return { kind: 'error', message: found.error };
   if (found.value === undefined)
@@ -401,22 +430,36 @@ export async function tryDeterministicRun(
   if (!managerResult.ok) return { kind: 'error', message: managerResult.error };
   const manager = managerResult.value;
 
-  const authorization = await checkAuthorization(source, capabilityId, manager);
-  if (!authorization.allowed) return { kind: 'not_authorized', reason: authorization.reason };
+  // Minted for exactly this contract from the installed package's own metadata (never from --grant/--input/flags).
+  const declaration = attestAuthoritativeDeclaration(buildPermissionDeclaration(source, capabilityId), {
+    capabilityId: source.contract.id,
+    origin: 'installed-package-manifest',
+  });
+  const authorization = await authorizeCapabilityExecution({
+    manager,
+    subject,
+    // The identity that will actually execute (and that the declaration was minted for) — the same one `executeResolvedContract` decides on.
+    requester: {
+      packageId: `${source.mountedPackage.name}@${source.mountedPackage.version}` as PackageId,
+      capabilityId: source.contract.id,
+    },
+    declaration,
+  });
+  if (!authorization.allowed) {
+    const hint =
+      authorization.code === 'permission-denied' && authorization.permission !== undefined
+        ? ` — pass --grant ${authorization.permission} to authorize this run`
+        : '';
+    return { kind: 'not_authorized', reason: `${authorization.reason}${hint}` };
+  }
 
-  // Reuses the SAME manager just used for the R3 pre-check above — see
-  // `buildPermissionManager`'s doc comment for why this is not an
-  // always-ALLOW stub: any contract-level `requiredPermissions`
-  // (`SemanticCapabilityContract`, auto-derived by
-  // `registerResolvedCapabilityBinding` inside `executeResolvedContract`)
-  // that this file's own R3 pre-check didn't separately enumerate is
-  // still genuinely checked there, not bypassed.
-  //
-  // INSTALLED PACKAGE information-boundary path: `source.contract` came
-  // from the mounted package's embedded contract
-  // (`extractContractFromPropertyBag`, the intentional package-boundary
-  // adapter), so there is no live `XoirGraph` and no `graphHash` is passed.
-  const executed = await executeResolvedContract(source.contract, binding.binding, { permissionManager: manager, input: validatedInput });
+  // The SAME declaration, subject and manager are re-applied inside `executeResolvedContract` (defense in depth).
+  const executed = await executeResolvedContract(source.contract, binding.binding, {
+    permissionManager: manager,
+    subject,
+    permissionDeclaration: declaration,
+    input: validatedInput,
+  });
   if (!executed.ok) {
     return executed.stage === 'registration'
       ? { kind: 'error', message: `Failed to register resolved binding: ${executed.error.message}` }

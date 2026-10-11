@@ -16,7 +16,8 @@ import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import { isApproved } from '../approvals/approval.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
-import { executeApprovedCapability } from '../executions/execute-capability.js';
+import type { PermissionManager } from '@xo/permissions';
+import { executeApprovedCapability, preflightCapabilityAuthorization } from '../executions/execute-capability.js';
 import type { ExecutionRecord } from '../executions/execution.js';
 
 /**
@@ -50,7 +51,12 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-export function registerExecutionRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerExecutionRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  permissionManager: PermissionManager,
+): void {
   async function createExecution(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
 
@@ -108,15 +114,37 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     const graphFound = await compilationStore.getCompiledGraph(compilationId);
     if (!graphFound.ok) throw graphFound.error;
 
+    const principal = requirePrincipal(req);
+
+    // 6b. P1.0 M2 — AUTHORIZE BEFORE ANY SIDE EFFECT. The decision is made here, against the authoritative
+    // declaration on the STORED graph and the server-side policy, BEFORE `ExecutionStore.create`. A denied
+    // (or undecidable) attempt is rejected with no persistent record, no handler call and no state change, so
+    // an authenticated-but-unauthorized caller cannot grow the store. This preflight is NOT the security
+    // boundary: `executeApprovedCapability` below re-authorizes at the execution boundary, tied to the same
+    // graph (`preflightGraphHash`).
+    const preflight = await preflightCapabilityAuthorization(graphFound.value, capabilityId, { subject: principal, permissionManager });
+    if (preflight.kind !== 'authorized') {
+      throw new XoError(
+        preflight.kind === 'denied' ? ErrorCode.RUNTIME_PERMISSION_DENIED : (preflight.errorCode as ErrorCode),
+        preflight.errorMessage,
+      );
+    }
+
     const executionStore = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const created = await executionStore.create(workspace.workspaceId, requirePrincipal(req), { compilationId, capabilityId, input });
+    const created = await executionStore.create(workspace.workspaceId, principal, { compilationId, capabilityId, input });
     if (!created.ok) throw created.error;
 
     // 5 (input validation) + 7 (invoke) both happen inside
     // `executeApprovedCapability` — see its own doc comment for exactly
     // why input-schema validation has to happen after binding
     // resolution, not before, in this particular call sequence.
-    const outcome = await executeApprovedCapability(graphFound.value, capabilityId, input);
+    const outcome = await executeApprovedCapability(
+      graphFound.value,
+      capabilityId,
+      input,
+      { subject: principal, permissionManager },
+      { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
+    );
 
     let completed;
     switch (outcome.kind) {
@@ -162,12 +190,12 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     }
     if (!completed.ok) throw completed.error;
 
-    // A failed/unresolved/invalid-input execution is still a real,
+    // A failed/unresolved/invalid-input execution of an AUTHORIZED caller is still a real,
     // structured, successfully-persisted API response ABOUT that
     // outcome — never a bare 4xx/5xx that discards the execution record
     // itself. Only genuinely exceptional conditions (unowned workspace,
-    // unknown compilation/capability, not approved) short-circuit before
-    // an `ExecutionRecord` is ever created.
+    // unknown compilation/capability, not approved, NOT AUTHORIZED —
+    // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
     return json(completed.value.status === 'failed' ? 200 : 201, toWireRecord(completed.value));
   }
 

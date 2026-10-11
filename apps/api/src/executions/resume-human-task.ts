@@ -2,6 +2,7 @@ import { ErrorCode } from '@xo/errors';
 import type { CompilationStore } from '../compilations/compilation.js';
 import type { HumanTaskDecision, HumanTaskResumeOutcome } from './execution.js';
 import { resumeCapabilityExecution } from './execute-capability.js';
+import type { ExecutionAuthorization } from './authorization.js';
 
 /**
  * P0.7's real resume implementation, and the direct answer to P0.6's
@@ -87,6 +88,7 @@ export async function attemptResume(
   originalInput: unknown,
   decision: HumanTaskDecision,
   decisionData: Readonly<Record<string, unknown>> | undefined,
+  authorization: ExecutionAuthorization,
 ): Promise<HumanTaskResumeOutcome> {
   const graphFound = await compilationStore.getCompiledGraph(compilationId);
   if (!graphFound.ok) {
@@ -97,7 +99,7 @@ export async function attemptResume(
     };
   }
 
-  const outcome = await resumeCapabilityExecution(graphFound.value, capabilityId, originalInput, decision, decisionData);
+  const outcome = await resumeCapabilityExecution(graphFound.value, capabilityId, originalInput, decision, decisionData, authorization);
   switch (outcome.kind) {
     case 'succeeded':
       return { kind: 'succeeded', output: outcome.output };

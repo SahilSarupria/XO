@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { compileSources } from '@xo/compiler';
 import { composeWorkflows } from '@xo/workflow-composer';
@@ -87,6 +88,7 @@ test("REAL SOURCE FIXTURE end-to-end: a value computed by a real compiled struct
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
 
   // Capture the exact argument RuntimeCapabilityExecutor.execute()

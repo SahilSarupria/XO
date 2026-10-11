@@ -16,6 +16,7 @@ import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
+import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 
 export interface ServerDeps {
   readonly logger?: Logger;
@@ -39,6 +40,14 @@ export interface ServerDeps {
   readonly workspacesDir?: string;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
+  /**
+   * P1.0 M2 — the server-side authorization policy (operator-supplied
+   * `@xo/permissions` rules, optionally matching `principalId`/`principalKind`).
+   * Default: `RuleBasedPolicy([])` — deny everything that declares a permission.
+   * Capabilities that explicitly declare no permissions still require an
+   * authenticated principal. There is no client-side input to this policy.
+   */
+  readonly permissionPolicy?: PermissionPolicy;
 }
 
 function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
@@ -77,7 +86,11 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
   const router = new Router();
   router.use(createApiKeyAuth(apiKeyStore));
-  registerRoutes(router, { workspaceStore, workspaceDataConfig });
+  registerRoutes(router, {
+    workspaceStore,
+    workspaceDataConfig,
+    permissionManager: new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) }),
+  });
   return router;
 }
 

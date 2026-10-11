@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration, CapabilityExecutionMode } from '@xo/types';
 import { ExecutionEngine } from '../src/engine/execution-engine.js';
@@ -79,7 +80,9 @@ test('R4: an unsupported execution.mode fails closed with RUNTIME_UNSUPPORTED_EX
     // own code — so asserting the exact code below also proves the
     // deterministic path was never reached, without needing a spy on
     // `RuntimeCapabilityExecutor`.
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute(unsupportedModeRequest());
 

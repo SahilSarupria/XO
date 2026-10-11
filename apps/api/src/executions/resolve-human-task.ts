@@ -1,5 +1,5 @@
 import type { NotFoundError, XoError } from '@xo/errors';
-import { assertAuthenticatedPrincipal, toPrincipalSnapshot, type AuthenticatedPrincipal } from '@xo/permissions';
+import { assertAuthenticatedPrincipal, toPrincipalSnapshot, type AuthenticatedPrincipal, type PermissionManager } from '@xo/permissions';
 import type { CompilationStore } from '../compilations/compilation.js';
 import type { ExecutionRecord, ExecutionStore, HumanTaskDecision } from './execution.js';
 import { withExecutionLock } from './execution-lock.js';
@@ -32,6 +32,7 @@ export async function resolveHumanTaskExecution(
   decision: HumanTaskDecision,
   data: Readonly<Record<string, unknown>> | undefined,
   resolver: AuthenticatedPrincipal,
+  permissionManager: PermissionManager,
 ): Promise<ResolveHumanTaskOutcome> {
   assertAuthenticatedPrincipal(resolver); // fail closed: a resumed task is never resolved by a fabricated or deserialized identity
   return withExecutionLock(executionId, async (): Promise<ResolveHumanTaskOutcome> => {
@@ -50,6 +51,7 @@ export async function resolveHumanTaskExecution(
       preCheck.value.input,
       decision,
       data,
+      { subject: resolver, permissionManager },
     );
 
     const resolved = await executionStore.resolveHumanTask(executionId, {

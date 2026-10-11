@@ -1,10 +1,11 @@
 import { err, ok, type Result } from '@xo/types';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
+import { declaredPermissionsForNode } from '../executions/authorization.js';
 import type { CapabilityInputSchema } from '@xo/types';
 import { ErrorCode, NotFoundError, RuntimeError, XoError } from '@xo/errors';
 import { lowerCapabilitiesToManifest } from '@xo/compiler';
 import { validateCapabilityInput } from '@xo/capability-contract';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { authorizeCapabilityExecution, reconcilePermissionDeclarations, type PermissionManager } from '@xo/permissions';
 import type { XoirGraph } from '@xo/xoir';
 import {
   EnvironmentId,
@@ -107,6 +108,8 @@ export interface WorkflowRunnerContext {
   readonly workspace: WorkspaceRecord;
   /** P1.0 M1 — the authenticated principal driving this call (start, resume, or HITL resolution). Step executions are initiated by it; it never defaults and is never replaced by a worker. */
   readonly principal: AuthenticatedPrincipal;
+  /** P1.0 M2 — the server-side policy decision point (deny-by-default). Never derived from a request. */
+  readonly permissionManager: PermissionManager;
   readonly compilationStore: CompilationStore;
   readonly approvalStore: ApprovalStore;
   readonly executionStore: ExecutionStore;
@@ -216,8 +219,8 @@ async function loadWorkflowRuntime(
  * approved in this workspace (P0.5's `ApprovalStore`, re-read every time —
  * never cached), and (2) every non-optional permission requirement the
  * step's contract registered must resolve to `allow` under the SAME
- * `PermissionManager` + empty `RuleBasedPolicy` pattern P0.5/P0.7 use
- * (empty policy => deny). `RuntimeCapabilityExecutor.execute` then checks
+ * server-side `PermissionManager` (default policy: deny) and the
+ * authenticated principal as subject (P1.0 M2). `RuntimeCapabilityExecutor.execute` then checks
  * (2) again itself; this pre-check exists so a denial is reported BEFORE
  * any execution record or state is created at start time.
  */
@@ -235,26 +238,31 @@ async function authorizeStep(
       message: `capability "${step.capabilityId}" is not approved for execution in workspace "${ctx.workspace.workspaceId}"`,
     };
   }
-  if (step.contractId !== undefined) {
-    for (const requirement of runtime.resolved.registry.permissions.resolve(step.contractId)) {
-      const decision = await permissionManager.check({
-        permission: requirement.permission,
-        ...(requirement.scope !== undefined ? { scope: requirement.scope } : {}),
-        requester: { packageId: NATIVE_CAPABILITY_REQUESTER, capabilityId: step.contractId },
-      });
-      if (decision.effect !== 'allow' && requirement.optional !== true) {
-        return {
-          code: ErrorCode.RUNTIME_PERMISSION_DENIED,
-          message: `permission "${requirement.permission}" required by capability "${step.capabilityId}" was not granted: ${decision.reason}`,
-        };
-      }
-    }
+  // P1.0 M2: a step with NO contract id cannot be matched to a declaration — deny, never skip the check.
+  if (step.contractId === undefined) {
+    return {
+      code: ErrorCode.RUNTIME_PERMISSION_DENIED,
+      message: `capability "${step.capabilityId}" has no resolvable contract, so its permission requirements cannot be determined`,
+    };
   }
+  // The authoritative declaration is the capability node's persisted `requiredPermissions`; the registry's copy (from the contract) must agree.
+  const declaration = reconcilePermissionDeclarations(
+    declaredPermissionsForNode(runtime.graph, step.contractId),
+    runtime.resolved.registry.permissionDeclaration(step.contractId),
+    `capability "${step.capabilityId}"`,
+  );
+  const outcome = await authorizeCapabilityExecution({
+    manager: permissionManager,
+    subject: ctx.principal,
+    requester: { packageId: NATIVE_CAPABILITY_REQUESTER, capabilityId: step.contractId },
+    declaration,
+  });
+  if (!outcome.allowed)
+    return {
+      code: ErrorCode.RUNTIME_PERMISSION_DENIED,
+      message: `capability "${step.capabilityId}" was not authorized: ${outcome.reason}`,
+    };
   return undefined;
-}
-
-function newPermissionManager(): PermissionManager {
-  return new PermissionManager({ policy: new RuleBasedPolicy([]) });
 }
 
 // ---------------------------------------------------------------------------
@@ -519,7 +527,7 @@ function seedOutputs(runtime: WorkflowRuntime, record: WorkflowExecutionRecord, 
 
 async function driveWorkflow(ctx: WorkflowRunnerContext, holder: RecordHolder, runtime: WorkflowRuntime): Promise<void> {
   const prepared = runtime.resolved.prepared;
-  const permissionManager = newPermissionManager();
+  const permissionManager = ctx.permissionManager;
 
   // The persisted step list must still be exactly the workflow the compilation composes — fail closed otherwise.
   const rec0 = holder.current;
@@ -586,7 +594,7 @@ async function driveWorkflow(ctx: WorkflowRunnerContext, holder: RecordHolder, r
     }
 
     const graph = buildSegmentGraph(runtime, record, startIndex, endIndex);
-    const inner = new RuntimeCapabilityExecutor({ registry: runtime.resolved.registry, permissionManager });
+    const inner = new RuntimeCapabilityExecutor({ registry: runtime.resolved.registry, permissionManager, subject: ctx.principal });
     const recorder = new RecordingStepExecutor(ctx, runtime, inner, permissionManager, holder, stepsByContractId);
     // The wrapper is handed to the existing, unmodified `makeCapabilityAuthorityNodeHandler`, which only ever calls `.execute({capabilityId, input})`. That function's parameter is typed as the concrete class, whose private members make a structurally identical object non-assignable; the single cast below is the entire cost of composing instead of subclassing.
     const handler = makeCapabilityAuthorityNodeHandler(recorder as unknown as RuntimeCapabilityExecutor);
@@ -695,7 +703,7 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
   if (!runtime.resolved.executable) throw workflowNotExecutableError(request.workflowId, request.compilationId, runtime.resolved);
 
   // Authorization preflight for EVERY step, before anything is persisted.
-  const preflightManager = newPermissionManager();
+  const preflightManager = ctx.permissionManager;
   const denials: string[] = [];
   for (const step of runtime.resolved.prepared.steps) {
     const denial = await authorizeStep(ctx, runtime, preflightManager, { capabilityId: step.capabilityId, contractId: step.contractId });
@@ -873,6 +881,7 @@ export async function resumeWorkflowExecution(
           request.decision,
           request.data,
           ctx.principal,
+          ctx.permissionManager,
         );
         switch (outcome.kind) {
           case 'not_found':

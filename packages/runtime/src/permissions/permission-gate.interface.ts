@@ -15,9 +15,12 @@ import type { ExecutionRequest } from '../execution/execution-request.js';
  * dependency, so importing its `XoManifest` type here doesn't compromise
  * that independence.)
  *
- * The default, {@link allowAllPermissionGate}, is a no-op — every
- * existing `ExecutionPipeline` behavior is unchanged unless a host
- * explicitly supplies a real gate via `ExecutionPipelineOptions.permissionGate`.
+ * P1.0 M2 — the default is now DENY: an `ExecutionPipeline` built without
+ * a `permissionGate` uses {@link denyAllPermissionGate}, so the absence of
+ * a gate can never produce allow-all execution. {@link allowAllPermissionGate}
+ * still exists as an EXPLICIT, deliberately-named opt-out for tests and
+ * trusted embedders that have decided to run ungated; it is never selected
+ * implicitly, and nothing in `apps/api` or `apps/cli` uses it.
  */
 export interface PermissionGateVerdict {
   readonly allowed: boolean;
@@ -38,8 +41,23 @@ export interface PermissionGate {
   ): Promise<PermissionGateVerdict>;
 }
 
+/** Explicit opt-out. NEVER a default. Granting every capability every permission is only appropriate for tests and fully-trusted embedders that chose to run ungated. */
 export const allowAllPermissionGate: PermissionGate = {
   async check(): Promise<PermissionGateVerdict> {
     return { allowed: true };
   },
 };
+
+/** The default gate (P1.0 M2): refuses everything, with a reason that names the missing configuration. */
+export const denyAllPermissionGate: PermissionGate = {
+  async check(_mountedPackage, capabilityId): Promise<PermissionGateVerdict> {
+    return {
+      allowed: false,
+      reason: `no permission gate is configured, so capability "${capabilityId}" is denied by default (supply an authorizing gate, e.g. createPermissionManagerGate)`,
+    };
+  },
+};
+
+export function isPermissionGate(value: unknown): value is PermissionGate {
+  return typeof value === 'object' && value !== null && typeof (value as { check?: unknown }).check === 'function';
+}

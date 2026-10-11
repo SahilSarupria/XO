@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ok } from '@xo/types';
 import { ErrorCode } from '@xo/errors';
@@ -103,6 +104,7 @@ test('the same capability id, explicitly registered in RuntimeCapabilityRegistry
         outputContract: { description: 'delivery confirmation id' },
         handler: async (input) => ok(input),
       },
+      requiredPermissions: [],
     });
 
     // Explicitly registering "send_email" as a Runtime capability does not
@@ -134,7 +136,7 @@ test('end-to-end: explicit Runtime declaration + granted permission -> real exec
   const manager = new PermissionManager({
     policy: new RuleBasedPolicy([{ id: 'allow-network', effect: 'ALLOW', match: { permission: Permissions.network.connect } }]),
   });
-  const executor = new RuntimeCapabilityExecutor({ registry: runtimeCapabilities, permissionManager: manager });
+  const executor = new RuntimeCapabilityExecutor({ registry: runtimeCapabilities, permissionManager: manager, subject: testSubject() });
 
   const result = await executor.execute({
     capabilityId: 'send_email',
@@ -161,7 +163,7 @@ test('the inverse of the above: same explicit declaration, permission NOT grante
   });
 
   const manager = new PermissionManager({ policy: new RuleBasedPolicy([]) }); // default-deny
-  const executor = new RuntimeCapabilityExecutor({ registry: runtimeCapabilities, permissionManager: manager });
+  const executor = new RuntimeCapabilityExecutor({ registry: runtimeCapabilities, permissionManager: manager, subject: testSubject() });
 
   const result = await executor.execute({ capabilityId: 'send_email', input: {} });
   assert.equal(result.ok, false);

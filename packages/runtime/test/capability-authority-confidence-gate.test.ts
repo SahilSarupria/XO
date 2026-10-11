@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { ok } from '@xo/types';
 import type { CapabilityDeclaration, CapabilityInputSchema, HybridExecutionStep } from '@xo/types';
@@ -109,11 +110,13 @@ function buildCapabilityAuthorityExecutor(): { readonly executor: RuntimeCapabil
         return originalHandler(input);
       },
     },
+    requiredPermissions: [],
   });
 
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   return {
     executor,
@@ -154,6 +157,7 @@ test('M1.4: a deterministic_rule capability below the configured minConfidence i
     const authority = buildCapabilityAuthorityExecutor();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority.executor,
       minConfidence: 0.8,
     });
@@ -176,6 +180,7 @@ test('M1.4: a deterministic_rule capability at the configured minConfidence exec
     const authority = buildCapabilityAuthorityExecutor();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority.executor,
       minConfidence: 0.8,
     });
@@ -198,6 +203,7 @@ test('M1.4: a deterministic_rule capability above the configured minConfidence e
     const authority = buildCapabilityAuthorityExecutor();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: authority.executor,
       minConfidence: 0.8,
     });
@@ -266,7 +272,7 @@ function buildDeterministicAuthority(onHandlerCalled: () => void): RuntimeCapabi
   const manager = new PermissionManager({
     policy: new RuleBasedPolicy([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
   });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 test('M1.4: a hybrid capability below the configured minConfidence is denied before any step executes', async () => {
@@ -290,6 +296,7 @@ test('M1.4: a hybrid capability below the configured minConfidence is denied bef
     let detHandlerCalled = false;
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(() => {
         detHandlerCalled = true;
       }),
@@ -327,7 +334,7 @@ function buildDirectAuthority(options: { readonly denyPermission?: boolean; read
       options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }],
     ),
   });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 test('M1.4: a direct RuntimeCapabilityExecutor call below the configured minConfidence is denied without any ExecutionPipeline involved', async () => {

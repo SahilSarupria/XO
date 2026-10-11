@@ -25,6 +25,15 @@ export interface PolicyRuleMatch {
   readonly capabilityId?: string;
   /** Matched against `request.context?.environment`. */
   readonly environment?: string;
+  /**
+   * P1.0 M2 — matches only a request whose authenticated initiating
+   * principal has exactly this id. A request with no principal never
+   * matches a rule that sets this. A rule that omits it applies to any
+   * (authenticated) initiator — it is the policy author's explicit choice.
+   */
+  readonly principalId?: string;
+  /** P1.0 M2 — as `principalId`, for the principal's kind (`human` / `service`). */
+  readonly principalKind?: 'human' | 'service';
 }
 
 export interface PolicyRule {
@@ -57,6 +66,8 @@ function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
   if (m.packageId !== undefined && m.packageId !== request.requester.packageId) return false;
   if (m.capabilityId !== undefined && m.capabilityId !== request.requester.capabilityId) return false;
   if (m.environment !== undefined && m.environment !== request.context?.environment) return false;
+  if (m.principalId !== undefined && m.principalId !== request.principal?.id) return false;
+  if (m.principalKind !== undefined && m.principalKind !== request.principal?.kind) return false;
   if (m.scope !== undefined && !scopeContains(m.scope, request.scope)) return false;
   return true;
 }
@@ -71,6 +82,8 @@ function ruleSpecificity(rule: PolicyRule): number {
   if (m.packageId !== undefined) score += 8;
   if (m.capabilityId !== undefined) score += 8;
   if (m.environment !== undefined) score += 4;
+  if (m.principalId !== undefined) score += 8;
+  else if (m.principalKind !== undefined) score += 4;
   if (m.scope !== undefined) score += scopeSpecificity(m.scope);
   return score;
 }

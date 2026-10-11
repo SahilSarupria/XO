@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import { err, ok } from '@xo/types';
 import type { CapabilityDeclaration, CapabilityInputSchema, HybridExecutionStep } from '@xo/types';
@@ -95,7 +96,7 @@ function buildDeterministicAuthority(
       options.denyPermission ? [] : [{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }],
     ),
   });
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager });
+  return new RuntimeCapabilityExecutor({ registry, permissionManager: manager, subject: testSubject() });
 }
 
 // --- C: deterministic_rule -> model ----------------------------------------
@@ -124,6 +125,7 @@ test('R5-C: deterministic_rule -> model: the deterministic step runs first, its 
     });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(),
     });
     const result = await engine.execute(hybridRequest());
@@ -170,6 +172,7 @@ test('R5-D: model -> deterministic_rule: the model step runs first, its output i
 
     let receivedInput: unknown;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           receivedInput = input;
@@ -210,6 +213,7 @@ test('R5-E: first-step failure: the deterministic step fails, the model step is 
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async () => err(new RuntimeError(ErrorCode.RUNTIME_CAPABILITY_HANDLER_UNAVAILABLE, 'deliberate step-1 failure')),
       }),
@@ -244,6 +248,7 @@ test('R5-F: later-step failure: the deterministic step succeeds, the model step 
     provider.failNextWith = new Error('provider unavailable');
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(),
     });
     const result = await engine.execute(hybridRequest());
@@ -276,6 +281,7 @@ test("R5-G: authorization failure: the deterministic step's permission check is 
 
     let handlerCalled = false;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           handlerCalled = true;
@@ -314,6 +320,7 @@ test('R5-H: R2 validation: the deterministic step receives invalid structured in
 
     let handlerCalled = false;
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority({
         handler: async (input) => {
           handlerCalled = true;
@@ -352,6 +359,7 @@ test('R5-L: cancelling an in-flight hybrid invocation during its model step stop
     provider.delayMs = 200; // gives the test time to cancel while the model step is still in flight
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(),
     });
     const request = hybridRequest();
@@ -405,6 +413,7 @@ test('R5-J: an existing WorkflowExecutor "capability" node can invoke a hybrid c
     });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildDeterministicAuthority(),
     });
 

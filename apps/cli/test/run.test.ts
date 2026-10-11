@@ -337,8 +337,8 @@ test('R3: the same permission-requiring capability succeeds once explicitly gran
   });
 });
 
-test("R3: a capability with no declared permission requirement at all remains permissionless (not silently denied) — matches the manifest's own default-deny-unless-declared model", async () => {
-  const bundle = buildAuthoritativeClaimBundle(); // no .permissions option → no manifest permissions[] declared
+test('R3 (P1.0 M2): a capability that EXPLICITLY declares no permissions (node requiredPermissions: []) is permission-free; an ABSENT declaration is denied (see authorization.test.ts)', async () => {
+  const bundle = buildAuthoritativeClaimBundle(); // node declares requiredPermissions: []; no manifest permissions[]
   await withInstalledBundle(bundle, async (storeDir) => {
     const result = await runCommand(
       { capabilityId: 'claim_approval', input: JSON.stringify({ claim_amount: 15000 }), storeDir, providerLabel: 'anthropic', json: true },

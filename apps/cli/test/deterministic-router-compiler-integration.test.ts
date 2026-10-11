@@ -49,7 +49,12 @@ function buildResolvableClaimGraph(): { readonly graph: XoirGraph; readonly capa
   graph.createAndAddNode({
     id: XoirNodeId(capabilityId),
     kind: 'capability',
-    properties: { name: 'Evaluate Claim', description: 'Evaluates a submitted claim against policy rules.', determinism: 'deterministic' },
+    properties: {
+      name: 'Evaluate Claim',
+      description: 'Evaluates a submitted claim against policy rules.',
+      determinism: 'deterministic',
+      requiredPermissions: [],
+    },
     confidence: 0.7,
     now,
   });

@@ -98,6 +98,7 @@ export function buildDeterministicClaimBundle(): PackageBundle {
         id: 'claim_approval',
         kind: 'capability',
         properties: {
+          requiredPermissions: [], // P1.0 M2: explicit permission-free declaration (absent => denied)
           semanticCapabilityContract: {
             id: 'claim_approval',
             name: 'Claim Approval',
@@ -182,6 +183,10 @@ export interface AuthoritativeClaimBundleOptions {
   readonly permissions?: readonly ManifestPermissionDeclaration[];
   /** `execution.requiredPermissionIds` — defaults to none. */
   readonly executionRequiredPermissionIds?: readonly string[];
+  /** P1.0 M2 — the capability node's own `requiredPermissions` property. Default `[]` (explicit permission-free); `'omit'` leaves it absent; anything else is stored verbatim (for malformed-declaration tests). */
+  readonly nodeRequiredPermissions?: unknown;
+  /** The CONTRACT / graph-node id (`execution.contractId`). Defaults to `claim_approval` (== the manifest capability id); a different value exercises the manifest-id != contract-id case. */
+  readonly contractNodeId?: string;
 }
 
 /**
@@ -201,11 +206,14 @@ export function buildAuthoritativeClaimBundle(options: AuthoritativeClaimBundleO
   const knowledgeGraph = {
     nodes: [
       {
-        id: 'claim_approval',
+        id: options.contractNodeId ?? 'claim_approval',
         kind: 'capability',
         properties: {
+          ...(options.nodeRequiredPermissions === 'omit'
+            ? {}
+            : { requiredPermissions: options.nodeRequiredPermissions === undefined ? [] : options.nodeRequiredPermissions }), // P1.0 M2: explicit declaration (absent => denied)
           semanticCapabilityContract: {
-            id: 'claim_approval',
+            id: options.contractNodeId ?? 'claim_approval',
             name: 'Claim Approval',
             description: 'Denies a claim when the claim amount exceeds the threshold.',
             inputs: [],
@@ -224,7 +232,7 @@ export function buildAuthoritativeClaimBundle(options: AuthoritativeClaimBundleO
             ],
             confidence: 0.95,
             sourceRefs: [],
-            sourceXoirNodeIds: ['claim_approval', 'claim_approval_rule_1'],
+            sourceXoirNodeIds: [options.contractNodeId ?? 'claim_approval', 'claim_approval_rule_1'],
           },
         },
       },
@@ -234,7 +242,7 @@ export function buildAuthoritativeClaimBundle(options: AuthoritativeClaimBundleO
 
   const execution: CapabilityExecutionDeclaration = {
     mode: 'deterministic_rule',
-    contractId: 'claim_approval',
+    contractId: options.contractNodeId ?? 'claim_approval',
     ...(options.inputSchema !== null ? { inputSchema: options.inputSchema ?? claimApprovalInputSchema } : {}),
     ...(options.executionRequiredPermissionIds !== undefined ? { requiredPermissionIds: options.executionRequiredPermissionIds } : {}),
   };

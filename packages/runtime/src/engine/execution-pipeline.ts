@@ -25,7 +25,12 @@ import { PromptAssembler } from '../prompt/prompt-assembler.js';
 import { ResponseAssembler, type StructuredResponse } from '../response/response-assembler.js';
 import type { RuntimeInstrumentation } from '../observability/instrumentation.js';
 import { SafetyPipeline } from '../safety/safety-pipeline.js';
-import { allowAllPermissionGate, type PermissionGate } from '../permissions/permission-gate.interface.js';
+import {
+  denyAllPermissionGate,
+  isPermissionGate,
+  type PermissionGate,
+  type PermissionGateVerdict,
+} from '../permissions/permission-gate.interface.js';
 import { buildExecutionReceipt, buildCapabilityAuthorityReceipt } from '../session/execution-receipt.js';
 import type { RuntimeCapabilityExecutor } from '../capability-authority/runtime-capability-executor.js';
 import type { SessionManager } from '../session/session-manager.js';
@@ -41,6 +46,7 @@ import {
 import type { RuntimeContext } from '../runtime-context.js';
 import type { StreamingResponse } from '../streaming/streaming-response.js';
 import { WorkflowExecutor, type WorkflowExecutorOptions } from '../workflow/workflow-executor.js';
+import type { WorkflowGraph } from '../workflow/workflow-graph.js';
 import { ExecutionRetryPolicy, sleepRaced, type ExecutionRetryOptions } from '../execution/execution-retry-policy.js';
 import {
   buildSimulatedProviderResponse,
@@ -50,7 +56,6 @@ import {
   SimulatingCapabilityExecutor,
 } from '../execution/simulation-gate.js';
 import { deriveAttemptId } from './execution-attempt-id.js';
-import type { WorkflowGraph } from '../workflow/workflow-graph.js';
 
 const DEFAULT_TOKEN_BUDGET = 8000;
 
@@ -219,7 +224,8 @@ export class ExecutionPipeline {
     this.memoryManager = options.memoryManager ?? new MemoryManager();
     this.budgetManager = options.budgetManager ?? new BudgetManager();
     this.safetyPipeline = options.safetyPipeline ?? new SafetyPipeline();
-    this.permissionGate = options.permissionGate ?? allowAllPermissionGate;
+    // P1.0 M2: absent (or malformed) gate ⇒ deny, never allow-all.
+    this.permissionGate = isPermissionGate(options.permissionGate) ? options.permissionGate : denyAllPermissionGate;
     this.contextAssembler = options.contextAssembler ?? new ContextAssembler();
     this.promptAssembler = options.promptAssembler ?? new PromptAssembler();
     this.responseAssembler = options.responseAssembler ?? new ResponseAssembler();
@@ -604,7 +610,7 @@ export class ExecutionPipeline {
     // is retrieved — there is no path through this pipeline that reaches
     // `retriever.retrieveForPackage` or `capabilityExecutor` without a
     // gate check first, primary or auxiliary alike.
-    const permissionVerdict = await this.permissionGate.check(mounted, selected.declaration.id, request);
+    const permissionVerdict = await this.checkPermissionGate(mounted, selected.declaration.id, request);
     if (!permissionVerdict.allowed) {
       return {
         ok: false,
@@ -706,7 +712,7 @@ export class ExecutionPipeline {
       // auxiliary denial fails the whole request rather than silently
       // dropping that one source, so a caller never gets a response
       // assembled from a partially-authorized context without knowing it.
-      const auxiliaryVerdict = await this.permissionGate.check(auxiliaryMounted, auxiliaryDescriptor.declaration.id, request);
+      const auxiliaryVerdict = await this.checkPermissionGate(auxiliaryMounted, auxiliaryDescriptor.declaration.id, request);
       if (!auxiliaryVerdict.allowed) {
         return {
           ok: false,
@@ -1155,6 +1161,29 @@ export class ExecutionPipeline {
     await runHook(hook, args, (error) =>
       this.logger.warn('execution hook threw', { executionId, error: error instanceof Error ? error.message : String(error) }),
     );
+  }
+
+  /**
+   * P1.0 M2 — the one place the pipeline consults its gate. A gate that
+   * throws, rejects, or returns anything but an explicit `{ allowed: true }`
+   * is a denial (fail closed), so a buggy or hostile gate cannot turn an
+   * error into an allow.
+   */
+  private async checkPermissionGate(
+    mounted: Parameters<PermissionGate['check']>[0],
+    capabilityId: string,
+    request: ExecutionRequest,
+  ): Promise<PermissionGateVerdict> {
+    try {
+      const verdict = await this.permissionGate.check(mounted, capabilityId, request);
+      if (verdict !== null && typeof verdict === 'object' && verdict.allowed === true) return verdict;
+      return { allowed: false, reason: verdict?.reason ?? `capability "${capabilityId}" was not authorized` };
+    } catch (cause) {
+      return {
+        allowed: false,
+        reason: `authorization for capability "${capabilityId}" could not be evaluated (${cause instanceof Error ? cause.message : String(cause)}) — denied`,
+      };
+    }
   }
 
   /**

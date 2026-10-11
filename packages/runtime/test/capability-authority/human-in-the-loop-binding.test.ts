@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { PermissionManager, RuleBasedPolicy, Permissions } from '@xo/permissions';
 import {
@@ -74,6 +75,7 @@ test('end-to-end: an action-grounded capability executes through RuntimeCapabili
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const result = await executor.execute({ capabilityId: contract.id, input: { invoiceId: 'INV-42' } });
 
@@ -100,6 +102,7 @@ test('M1.4: a human_in_the_loop capability below the configured minConfidence is
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const result = await executor.execute({ capabilityId: contract.id, input: {}, confidenceScore: 0.5, minConfidence: 0.8 });
 
@@ -117,6 +120,7 @@ test('M1.4: a human_in_the_loop capability at/above the configured minConfidence
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const result = await executor.execute({ capabilityId: contract.id, input: {}, confidenceScore: 0.9, minConfidence: 0.8 });
 
@@ -134,6 +138,7 @@ test('authorization: a required permission is enforced for a human_in_the_loop b
   const denyingExecutor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const denied = await denyingExecutor.execute({ capabilityId: contract.id, input: {} });
   assert.equal(denied.ok, false);
@@ -144,6 +149,7 @@ test('authorization: a required permission is enforced for a human_in_the_loop b
     permissionManager: new PermissionManager({
       policy: new RuleBasedPolicy([{ id: 'allow-runtime-execute', effect: 'ALLOW', match: { permission: Permissions.runtime.execute } }]),
     }),
+    subject: testSubject(),
   });
   const allowed = await allowingExecutor.execute({ capabilityId: contract.id, input: {} });
   assert.equal(allowed.ok, true);
@@ -159,6 +165,7 @@ test('safety boundary: a resolved-but-never-registered human_in_the_loop binding
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const result = await executor.execute({ capabilityId: contract.id, input: {} });
   assert.equal(result.ok, false);

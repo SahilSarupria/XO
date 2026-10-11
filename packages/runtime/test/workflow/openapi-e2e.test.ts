@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { testSubject } from '../authz-helpers.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { compileSources } from '@xo/compiler';
@@ -65,6 +66,7 @@ test("REAL SOURCE FIXTURE (OpenAPI) end-to-end: a value computed by a real compi
   const executor = new RuntimeCapabilityExecutor({
     registry,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
   });
   const capturedConsumerInputs: Record<string, unknown>[] = [];
   const originalExecute = executor.execute.bind(executor);

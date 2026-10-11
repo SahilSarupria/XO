@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { allowAllPermissionGate, testSubject } from './authz-helpers.js';
 import assert from 'node:assert/strict';
 import type { CapabilityDeclaration } from '@xo/types';
 import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
@@ -81,7 +82,11 @@ function buildCapabilityAuthorityExecutor(): RuntimeCapabilityExecutor {
   const registerResult = registerResolvedCapabilityBinding(registry, contract, outcome.binding);
   assert.equal(registerResult.ok, true);
 
-  return new RuntimeCapabilityExecutor({ registry, permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }) });
+  return new RuntimeCapabilityExecutor({
+    registry,
+    permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+    subject: testSubject(),
+  });
 }
 
 function claimRequest(overrides: Partial<ExecutionRequest> = {}): ExecutionRequest {
@@ -112,6 +117,7 @@ test('R1: a deterministic_rule capability executes via the capability authority,
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -136,7 +142,9 @@ test('R1: a deterministic_rule capability is denied, not silently run as model m
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute(claimRequest());
 
@@ -159,6 +167,7 @@ test('R1: a model-mode (execution absent) capability is completely unaffected â€
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -191,6 +200,7 @@ test('R2: invalid structuredInput is rejected before the deterministic binding e
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -211,6 +221,7 @@ test('R2: a wrong-typed structuredInput property is rejected before execution', 
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -229,6 +240,7 @@ test('R2: valid structuredInput matching the schema executes successfully', asyn
     const provider = new ScriptedModelProvider();
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
@@ -248,7 +260,10 @@ test('R3: a capability below the configured minConfidence is denied before autho
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { minConfidence: 0.9 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      minConfidence: 0.9,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_1'),
@@ -278,7 +293,10 @@ test('R3: a capability at or above the configured minConfidence executes normall
     const provider = new ScriptedModelProvider();
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, { minConfidence: 0.8 });
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+      minConfidence: 0.8,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_2'),
@@ -307,7 +325,9 @@ test("R3: with no minConfidence configured, a low-confidence capability still ex
     const provider = new ScriptedModelProvider();
     provider.setResponse({ text: 'ok', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'test-model', finishReason: 'stop' });
 
-    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider);
+    const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
+      permissionGate: allowAllPermissionGate,
+    });
 
     const result = await engine.execute({
       requestId: RequestId('req_conf_3'),
