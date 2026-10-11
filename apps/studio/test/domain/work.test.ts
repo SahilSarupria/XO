@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  describeRecoveryProblem,
   describeResumeProblem,
+  recoverableRuns,
   describeRun,
   describeStartProblem,
   findActiveRun,
@@ -205,5 +207,33 @@ describe('wire: workflow runs and error context', () => {
     });
     expect(tryParseErrorBody({ error: { code: 'C', message: 'M', context: { denials: ['a'] } } })?.denials).toEqual(['a']);
     expect(tryParseErrorBody({ error: { code: 'C', message: 'M', context: 'weird' } })).toEqual({ code: 'C', message: 'M' });
+  });
+});
+
+describe('recovery', () => {
+  it('lists only interrupted runs as recoverable (failed and completed are not)', () => {
+    const rs = [
+      run({ workflowExecutionId: 'a', status: 'interrupted' }),
+      run({ workflowExecutionId: 'b', status: 'failed' }),
+      run({ workflowExecutionId: 'c', status: 'succeeded' }),
+      run({ workflowExecutionId: 'd' }),
+    ];
+    expect(recoverableRuns(rs).map((r) => r.workflowExecutionId)).toEqual(['a']);
+  });
+  it('explains a 409 as "not continued again", never as a decision problem', () => {
+    const v = describeRecoveryProblem({ kind: 'rejected', status: 409, reason: 'stale_revision', message: 'm' })!;
+    expect(v.kind).toBe('conflict');
+    expect(v.body).toMatch(/not continued again/i);
+    expect(v.body).not.toMatch(/decision/i);
+  });
+  it('leaves 403, 5xx and network to the generic handler', () => {
+    expect(describeRecoveryProblem({ kind: 'forbidden', status: 403, message: 'm' })).toBeUndefined();
+    expect(describeRecoveryProblem({ kind: 'network', message: 'm' })).toBeUndefined();
+  });
+  it('describes an interrupted run honestly and points to Tasks', () => {
+    const v = describeRun(run({ status: 'interrupted', currentStepIndex: 1 }));
+    expect(v.label).toBe('Interrupted');
+    expect(v.summary).toMatch(/step 2 of 2/i);
+    expect(v.summary).toMatch(/continue it from Tasks/i);
   });
 });

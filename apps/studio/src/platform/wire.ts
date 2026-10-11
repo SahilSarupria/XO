@@ -389,6 +389,8 @@ export interface WorkflowRunStep {
   readonly capabilityName: string;
   readonly status: WorkflowStepStatus;
   readonly executionId?: string;
+  /** Earlier attempts of this step that were interrupted and replaced by a recovery; kept by the platform for audit. */
+  readonly supersededExecutionIds?: readonly string[];
   readonly errorMessage?: string;
 }
 export interface WorkflowRun {
@@ -424,6 +426,9 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
     const ss = str(so['status'], `${sp}.status`);
     if (!STEP_STATUSES.has(ss)) throw new WireParseError(`${sp}.status`, 'known step status');
     const executionId = optStr(so['executionId'], `${sp}.executionId`);
+    const superseded = Array.isArray(so['supersededExecutionIds'])
+      ? (so['supersededExecutionIds'] as unknown[]).filter((x): x is string => typeof x === 'string')
+      : undefined;
     let errorMessage: string | undefined;
     if (typeof so['error'] === 'object' && so['error'] !== null) {
       const m = (so['error'] as Json)['message'];
@@ -436,6 +441,7 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
       capabilityName: str(so['capabilityName'], `${sp}.capabilityName`),
       status: ss as WorkflowStepStatus,
       ...(executionId !== undefined ? { executionId } : {}),
+      ...(superseded !== undefined && superseded.length > 0 ? { supersededExecutionIds: superseded } : {}),
       ...(errorMessage !== undefined ? { errorMessage } : {}),
     };
   });

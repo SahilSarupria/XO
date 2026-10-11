@@ -106,6 +106,28 @@ export class FakeXo {
     return `${p}_${(++this.n).toString(16).padStart(32, '0')}`;
   }
 
+  /** What the platform persists when the driving process is lost mid-step (`withInterrupted`). */
+  interruptRun(run: Record<string, any>) {
+    const i = run.currentStepIndex as number;
+    run.status = 'interrupted';
+    run.steps[i].status = 'interrupted';
+    run.revision += 1;
+    delete run.pendingHumanTask;
+    delete run.currentStepExecutionId;
+  }
+
+  /** The platform's recovery: the interrupted step re-runs under a NEW execution id; the old one is kept. */
+  recoverRun(run: Record<string, any>) {
+    const i = run.currentStepIndex as number;
+    const old = run.steps[i].executionId as string | undefined;
+    const exe = `exe_re${run.revision}_${run.workflowExecutionId}`;
+    run.steps[i] = { ...run.steps[i], status: 'waiting_for_human', executionId: exe, ...(old ? { supersededExecutionIds: [old] } : {}) };
+    run.status = 'waiting_for_human';
+    run.revision += 3;
+    run.currentStepExecutionId = exe;
+    run.pendingHumanTask = { stepIndex: i, executionId: exe };
+  }
+
   /** Applies a decision to a run the way the platform does, and also lets a test simulate ANOTHER client deciding. */
   applyDecision(run: Record<string, any>, decision: 'approve' | 'reject') {
     const i = run.currentStepIndex as number;
@@ -239,7 +261,30 @@ export class FakeXo {
       const run = this.workflowRuns.find((r) => r.workflowExecutionId === m![1]);
       if (!run) return err(404, 'XO_NOT_FOUND', 'no such workflow execution');
       if (this.bumpRevisionBeforeResume) run.revision += 1;
-      const b = body as unknown as { decision?: string; expectedStepExecutionId?: string; expectedRevision?: number };
+      const b = body as unknown as {
+        decision?: string;
+        data?: Record<string, unknown>;
+        expectedStepExecutionId?: string;
+        expectedRevision?: number;
+      };
+      if (run.status === 'interrupted') {
+        // mirrors the platform: recovery takes NO decision/data/step id; only the revision is checked
+        if (b.decision !== undefined || b.data !== undefined)
+          return reply(400, {
+            error: {
+              code: 'XO_INVALID_ARGUMENT',
+              message: 'do not supply decision/data when resuming an interrupted workflow',
+              context: { reason: 'no_pending_human_task' },
+            },
+          });
+        if (b.expectedRevision !== undefined && b.expectedRevision !== run.revision)
+          return reply(409, {
+            error: { code: 'XO_RUNTIME_SESSION_INVALID_STATE', message: 'stale revision', context: { reason: 'stale_revision' } },
+          });
+        this.recoverRun(run);
+        if (this.resumeBehavior === 'network_after_apply') throw new TypeError('Failed to fetch');
+        return reply(200, run);
+      }
       if (b.decision !== 'approve' && b.decision !== 'reject')
         return err(400, 'XO_INVALID_ARGUMENT', '"decision" must be one of: approve, reject');
       if (b.expectedStepExecutionId === undefined)

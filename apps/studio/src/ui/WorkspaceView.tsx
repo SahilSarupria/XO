@@ -75,7 +75,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   const standalonePending = standaloneExecutions(execList, runList).filter(
     (e) => e.status === 'waiting_for_human' && e.humanTask?.status === 'pending',
   ).length;
-  const taskCount = runList.filter((r) => r.status === 'waiting_for_human').length + standalonePending;
+  const taskCount = runList.filter((r) => r.status === 'waiting_for_human' || r.status === 'interrupted').length + standalonePending;
 
   const firstError = [sources.state, compilations.state, workflows.state, runs.state].find((s) => s.phase === 'error');
 
@@ -92,7 +92,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
         <TabButton current={view} id="work" onSelect={setView}>
           Work
         </TabButton>
-        <TabButton current={view} id="tasks" onSelect={setView} count={taskCount} countLabel="waiting for a decision">
+        <TabButton current={view} id="tasks" onSelect={setView} count={taskCount} countLabel="need attention">
           Tasks
         </TabButton>
         <TabButton current={view} id="activity" onSelect={setView}>

@@ -194,8 +194,11 @@ function WorkflowCard(props: {
         <div className="decision">
           <p>{runView.summary}</p>
           <div className="row">
-            <Button variant="primary" onClick={active.status === 'waiting_for_human' ? props.goToTasks : props.goToActivity}>
-              {active.status === 'waiting_for_human' ? 'Continue in Tasks' : 'See progress'}
+            <Button
+              variant="primary"
+              onClick={active.status === 'waiting_for_human' || active.status === 'interrupted' ? props.goToTasks : props.goToActivity}
+            >
+              {active.status === 'waiting_for_human' || active.status === 'interrupted' ? 'Continue in Tasks' : 'See progress'}
             </Button>
           </div>
         </div>

@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { currentStep, describeResumeProblem, pendingTasks, standaloneExecutions, tidyName, type WorkProblemView } from '../domain/work';
+import {
+  currentStep,
+  describeResumeProblem,
+  pendingTasks,
+  recoverableRuns,
+  standaloneExecutions,
+  tidyName,
+  type WorkProblemView,
+} from '../domain/work';
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { EmptyState, formatWhen, ProblemNotice, Section } from './primitives';
 import { Button } from './primitives';
+import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
 import { useSession } from './session';
@@ -21,6 +30,7 @@ export function TasksSection(props: {
   onChanged: () => void;
 }) {
   const tasks = pendingTasks(props.runs);
+  const interrupted = recoverableRuns(props.runs);
   const single = useMemo(
     () =>
       standaloneExecutions(props.executions, props.runs).filter(
@@ -32,14 +42,16 @@ export function TasksSection(props: {
   // A run that has just been decided to its end stops being "waiting" and would vanish from this list.
   // Keep what the platform returned so the person sees the outcome of what they just did.
   const [finished, setFinished] = useState<WorkflowRun[]>([]);
+  const [banner, setBanner] = useState<string | undefined>();
 
   return (
-    <Section
-      id="tasks-h"
-      title="Tasks"
-      lede="Decisions that are waiting for a person. XO pauses at these on purpose and continues once you decide."
-    >
-      {tasks.length === 0 && single.length === 0 ? (
+    <Section id="tasks-h" title="Tasks" lede="Decisions waiting for a person, and processes that stopped and can be continued.">
+      {banner !== undefined ? (
+        <p className="notice notice-warning" role="alert">
+          {banner}
+        </p>
+      ) : null}
+      {tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
         <EmptyState title="Nothing is waiting for you">When a process needs a decision, it will appear here.</EmptyState>
       ) : null}
       <ul className="list">
@@ -51,6 +63,11 @@ export function TasksSection(props: {
               onChanged={props.onChanged}
               onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
             />
+          </li>
+        ))}
+        {interrupted.map((r) => (
+          <li key={r.workflowExecutionId} className="card">
+            <RecoveryCard workspaceId={props.workspaceId} run={r} onChanged={props.onChanged} onInfo={setBanner} />
           </li>
         ))}
         {single.map((e) => (

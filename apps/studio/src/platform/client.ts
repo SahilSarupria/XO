@@ -237,6 +237,19 @@ export class XoClient {
   getWorkflowRun(ws: string, workflowExecutionId: string): Promise<Result<WorkflowRun>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}`, (b) => parseWorkflowRun(b));
   }
+  /**
+   * Recovery of an `interrupted` run: the platform's own resume with NO decision. The platform re-runs the
+   * interrupted step as a new attempt under a new execution id and keeps the earlier one on record.
+   * `expectedRevision` must come from a freshly fetched run; a stale value is a 409 and nothing happens.
+   */
+  recoverWorkflowRun(ws: string, workflowExecutionId: string, args: { expectedRevision: number }): Promise<Result<WorkflowRun>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}/resume`,
+      (b) => parseWorkflowRun(b),
+      this.json(args),
+    );
+  }
   /** `expectedStepExecutionId` and `expectedRevision` come from the authoritative run record, never from a cached guess. */
   resumeWorkflowRun(
     ws: string,

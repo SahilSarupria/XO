@@ -91,13 +91,40 @@ export function describeRun(run: WorkflowRun): RunView {
       return {
         label: 'Interrupted',
         tone: 'warning',
-        summary:
-          'The service stopped while this was running. The platform records it as interrupted; its recovery path is not offered in Studio yet.',
+        summary: `The service stopped while step ${(run.currentStepIndex ?? 0) + 1} of ${total}${cur !== undefined ? ` (${tidyName(cur.capabilityName)})` : ''} was running. ${done} of ${total} steps had finished. You can continue it from Tasks.`,
       };
     case 'created':
     case 'running':
       return { label: 'Running', tone: 'neutral', summary: `${done} of ${total} steps finished.` };
   }
+}
+
+/** Interrupted runs: the platform supports continuing these with its own resume operation. */
+export function recoverableRuns(runs: readonly WorkflowRun[]): WorkflowRun[] {
+  return runs.filter((r) => r.status === 'interrupted').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** A refused continue, in words. 409 means the run changed; nothing was re-run. */
+export function describeRecoveryProblem(p: ApiProblem): WorkProblemView | undefined {
+  if (p.status === 409) {
+    const why =
+      p.reason === 'stale_revision'
+        ? 'Someone else, or another window, changed this process after you opened it.'
+        : p.reason === 'terminal'
+          ? 'This process has already finished.'
+          : p.reason === 'in_flight'
+            ? 'XO is already working on this process.'
+            : 'This process changed after you opened it.';
+    return {
+      kind: 'conflict',
+      title: 'This process has changed',
+      body: `${why} It was not continued again. The latest state is shown below.`,
+      items: [],
+    };
+  }
+  if (p.status === 400)
+    return { kind: 'bad_request', title: 'XO could not continue this process', body: `${p.message} Nothing changed.`, items: [] };
+  return undefined;
 }
 
 /** Runs that need a person right now. Only what the platform marks as waiting, with the identifiers a resume needs. */

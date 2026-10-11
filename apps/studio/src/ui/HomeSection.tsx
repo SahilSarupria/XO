@@ -1,7 +1,7 @@
 import type { Progress } from '../domain/review';
 import { findActiveRun, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
-import { describeRun, pendingTasks, isActiveRun } from '../domain/work';
+import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
 import { runTitle } from './RunCard';
 import { Badge, Button, Section } from './primitives';
 
@@ -24,7 +24,8 @@ export function HomeSection(props: {
 }) {
   const waiting = pendingTasks(props.runs);
   const waitingCount = waiting.length + props.standalonePending;
-  const inProgress = props.runs.filter((r) => isActiveRun(r) && r.status !== 'waiting_for_human');
+  const interrupted = recoverableRuns(props.runs);
+  const inProgress = props.runs.filter((r) => isActiveRun(r) && r.status !== 'waiting_for_human' && r.status !== 'interrupted');
   const here = props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId);
   const ready = here.filter(
     (w) => startReadiness(w, props.caps).canStart && findActiveRun(props.runs, w.workflowId, w.compilationId) === undefined,
@@ -35,7 +36,7 @@ export function HomeSection(props: {
       startReadiness(w, props.caps).needApproval.length > 0 &&
       findActiveRun(props.runs, w.workflowId, w.compilationId) === undefined,
   );
-  const anything = waitingCount > 0 || inProgress.length > 0 || ready.length > 0 || blockedOnApproval.length > 0;
+  const anything = waitingCount > 0 || interrupted.length > 0 || inProgress.length > 0 || ready.length > 0 || blockedOnApproval.length > 0;
 
   return (
     <Section id="home-h" title="Home" lede="What needs you, what is under way, and what you can start.">
@@ -56,6 +57,29 @@ export function HomeSection(props: {
             <div className="row">
               <Button variant="primary" onClick={props.goToTasks}>
                 {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {interrupted.length > 0 ? (
+        <div className="card">
+          <div className="card-main">
+            <div className="row between">
+              <h3>Stopped — can be continued</h3>
+              <Badge tone="warning">{interrupted.length}</Badge>
+            </div>
+            <ul className="plain">
+              {interrupted.slice(0, 3).map((r) => (
+                <li key={r.workflowExecutionId} className="small">
+                  {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="row">
+              <Button variant="primary" onClick={props.goToTasks}>
+                Review in Tasks
               </Button>
             </div>
           </div>
