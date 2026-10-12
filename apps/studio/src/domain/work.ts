@@ -223,6 +223,14 @@ export function describeStartProblem(p: ApiProblem, w: Pick<Workflow, 'steps'>):
       items: [],
     };
   }
+  if (p.status === 409 && (p.reason === 'idempotency_key_expired' || p.reason === 'idempotency_key_reused')) {
+    return {
+      kind: 'conflict',
+      title: 'XO did not start this',
+      body: 'This start request could not be matched to the earlier attempt, so nothing was created. Start it again; Studio will use a new request.',
+      items: [],
+    };
+  }
   return undefined;
 }
 
@@ -309,4 +317,11 @@ export function recordedNotes(executions: readonly Execution[]): Map<string, Rec
     }
   }
   return out;
+}
+
+/** A fresh key for ONE start intent (8-128 chars of A-Za-z0-9_.:- as the platform requires). Reused only to retry that same intent. */
+export function newIdempotencyKey(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  const id = c?.randomUUID !== undefined ? c.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  return `xo-start-${id}`;
 }

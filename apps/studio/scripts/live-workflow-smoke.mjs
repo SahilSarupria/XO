@@ -96,4 +96,16 @@ const stillThere = must(await c.getWorkflowRun(ws, run.workflowExecutionId), 'ge
 check('the refused note changed nothing', stillThere.revision === next.revision);
 const replay = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision });
 check('replaying the old decision is refused, not applied twice', !replay.ok && replay.problem.status === 409, JSON.stringify(replay));
+// --- idempotent start (API: Idempotency-Key): a keyed start of the same process, retried
+const KEY = `xo-smoke-${Date.now()}`;
+const k1 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, KEY), 'keyed start');
+const k2 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, KEY), 'same-key retry');
+check('same key returns the ORIGINAL run, not a new one', k1.workflowExecutionId === k2.workflowExecutionId, `${k1.workflowExecutionId} vs ${k2.workflowExecutionId}`);
+const k3 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, `${KEY}-b`), 'different key');
+check('a different key is a different run', k3.workflowExecutionId !== k1.workflowExecutionId);
+const allRuns = must(await c.listWorkflowRuns(ws), 'list runs after keyed starts');
+check('one run per key (the unkeyed run above + 2 keyed)', allRuns.length === 3, String(allRuns.length));
+const execBefore = must(await c.listExecutions(ws), 'executions').length;
+must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, KEY), 'retry once more');
+check('a replay executes no step again', must(await c.listExecutions(ws), 'executions').length === execBefore);
 done();

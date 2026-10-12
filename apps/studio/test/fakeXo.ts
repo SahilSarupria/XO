@@ -103,12 +103,18 @@ export class FakeXo {
   /** Overrides the revision the next resume is compared against, simulating another client having moved the run on. */
   /** Simulates another client changing the run between Studio's read and its resume (a stale revision). */
   bumpRevisionBeforeResume = false;
+  /** A lagging read: the runs list does not yet show runs that exist (lets a test exercise the key rather than the pre-check). */
+  hideRunsFromList = false;
+  /** The platform refuses the next start with its approval denial even though the screen showed everything approved. */
+  denyNextStart = false;
   /** The platform refuses the decision data (e.g. a capability's own decision-data schema). */
   rejectDecisionData = false;
   private rn = 0;
   failNextCompile: { errorMessage: string; errorCode: string } | undefined;
   executeBehavior: 'invalid_input' | 'binding_unresolved' | 'succeed' | 'waiting_for_human' | 'unavailable' | 'forbidden' = 'invalid_input';
-  calls: Array<{ method: string; path: string; body?: unknown }> = [];
+  calls: Array<{ method: string; path: string; body?: unknown; headers?: Record<string, string> }> = [];
+  /** Idempotency-Key -> run id, as the platform derives it (per request equality). */
+  private startKeys = new Map<string, { runId: string; compilationId: string; workflowId: string }>();
   private n = 0;
   private id(p: string) {
     return `${p}_${(++this.n).toString(16).padStart(32, '0')}`;
@@ -195,7 +201,7 @@ export class FakeXo {
         /* raw */
       }
     }
-    this.calls.push({ method, path: path.split('?')[0]!, ...(typeof raw === 'string' ? { body } : {}) });
+    this.calls.push({ method, path: path.split('?')[0]!, ...(typeof raw === 'string' ? { body } : {}), headers });
 
     const reply = (status: number, data?: unknown) => new Response(data === undefined ? '' : JSON.stringify(data), { status });
     const err = (status: number, code: string, message: string) => reply(status, { error: { code, message } });
@@ -234,16 +240,35 @@ export class FakeXo {
         ],
       });
     }
-    if (method === 'GET' && path.endsWith('/workflow-executions')) return reply(200, { workflowExecutions: this.workflowRuns });
+    if (method === 'GET' && path.endsWith('/workflow-executions'))
+      return reply(200, { workflowExecutions: this.hideRunsFromList ? [] : this.workflowRuns });
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/workflow-executions\/([^/]+)$/))) {
       const run = this.workflowRuns.find((r) => r.workflowExecutionId === m![1]);
       return run ? reply(200, run) : err(404, 'XO_NOT_FOUND', `workflow execution "${m[1]}" was not found`);
     }
     if (method === 'POST' && (m = path.match(/^\/workspaces\/([^/]+)\/workflows\/([^/]+)\/executions$/))) {
-      if (this.startBehavior === 'network_before') throw new TypeError('Failed to fetch');
+      if (this.startBehavior === 'network_before') {
+        // a retry (same key) may succeed once the failure clears; the test flips startBehavior back
+        throw new TypeError('Failed to fetch');
+      }
+      const idemKey = headers['Idempotency-Key'];
+      if (idemKey !== undefined) {
+        const seen = this.startKeys.get(idemKey);
+        if (seen !== undefined) {
+          if (seen.compilationId !== body.compilationId || seen.workflowId !== m[2])
+            return reply(409, {
+              error: { code: 'XO_RUNTIME_SESSION_INVALID_STATE', message: 'key reused', context: { reason: 'idempotency_key_reused' } },
+            });
+          return reply(
+            200,
+            this.workflowRuns.find((r) => r.workflowExecutionId === seen.runId),
+          );
+        }
+      }
       const denials = ['cap_det', 'cap_hitl']
-        .filter((id) => !this.approvals.has(`${body.compilationId}:${id}`))
+        .filter((id) => this.denyNextStart || !this.approvals.has(`${body.compilationId}:${id}`))
         .map((id) => `capability "${id}" is not approved for execution in workspace "${m![1]}"`);
+      if (denials.length > 0) this.denyNextStart = false;
       if (denials.length > 0)
         return reply(403, { error: { code: 'XO_RUNTIME_PERMISSION_DENIED', message: denials[0], context: { denials } } });
       const now = new Date().toISOString();
@@ -277,6 +302,8 @@ export class FakeXo {
         updatedAt: now,
       };
       this.workflowRuns.push(run);
+      if (idemKey !== undefined)
+        this.startKeys.set(idemKey, { runId: run.workflowExecutionId, compilationId: body.compilationId, workflowId: m[2]! });
       if (this.startBehavior === 'network_after_create') throw new TypeError('Failed to fetch');
       return reply(201, run);
     }

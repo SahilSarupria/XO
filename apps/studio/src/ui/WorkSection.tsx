@@ -4,6 +4,7 @@ import {
   describeStartProblem,
   findActiveRun,
   humanStepCount,
+  newIdempotencyKey,
   startReadiness,
   tidyName,
   workflowTitle,
@@ -88,6 +89,9 @@ function WorkflowCard(props: {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | undefined>();
   const inFlight = useRef(false);
+  // One key per start INTENT. It is reused only to retry after an unclear failure, so the platform can hand back
+  // the original run instead of creating a second; it is dropped as soon as the outcome is known.
+  const intentKey = useRef<string | undefined>(undefined);
 
   const active = findActiveRun(props.runs, w.workflowId, w.compilationId);
   const ready = useMemo(() => startReadiness(w, props.caps), [w, props.caps]);
@@ -111,8 +115,10 @@ function WorkflowCard(props: {
         props.onChanged();
         return;
       }
-      const r = await client.startWorkflow(props.workspaceId, w.workflowId, w.compilationId);
+      intentKey.current ??= newIdempotencyKey();
+      const r = await client.startWorkflow(props.workspaceId, w.workflowId, w.compilationId, intentKey.current);
       if (r.ok) {
+        intentKey.current = undefined;
         props.onChanged();
         if (r.value.status === 'waiting_for_human') props.goToTasks();
         else props.goToActivity();
@@ -120,6 +126,7 @@ function WorkflowCard(props: {
       }
       const known = describeStartProblem(r.problem, w);
       if (known !== undefined) {
+        intentKey.current = undefined; // a definite refusal: nothing was created, the next start is a new intent
         setNotice({ view: known });
         props.onChanged();
       } else if (r.problem.kind === 'network' || r.problem.kind === 'server' || r.problem.kind === 'malformed') {
@@ -132,7 +139,7 @@ function WorkflowCard(props: {
             ? 'XO did not confirm whether this started, and Studio could not check. Look in Activity before starting again.'
             : found !== undefined
               ? 'The process did start. XO\u2019s records show it in progress.'
-              : 'XO did not confirm whether this started. Studio checked and found no run yet. If you start again and one appears later, there may be two.',
+              : 'XO did not confirm whether this started. Studio checked and found no run yet. You can try again: the retry carries the same request key, so XO will hand back the original run if the first attempt did arrive instead of creating a second.',
         });
       } else {
         setNotice({ problem: r.problem });

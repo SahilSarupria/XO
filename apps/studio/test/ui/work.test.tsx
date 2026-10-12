@@ -177,7 +177,7 @@ describe('Work: starting', () => {
     await goTo(user, 'Work');
     await user.click(await screen.findByRole('button', { name: /start this process/i }));
     expect(await screen.findByText(/did not confirm whether this started/i)).toBeInTheDocument();
-    expect(screen.getByText(/may be two/i)).toBeInTheDocument();
+    expect(screen.getByText(/carries the same request key/i)).toBeInTheDocument();
     expect(posts(api, '/workflows/wf_1/executions')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /start this process/i })).toBeEnabled(); // offered again only after checking
   });
@@ -301,5 +301,71 @@ describe('Tasks and Activity', () => {
     await goTo(user, 'Builder');
     expect((await screen.findAllByText(/wfx_/)).length).toBeGreaterThan(0);
     expect(api.calls.length).toBe(before);
+  });
+});
+
+describe('Work: request key for starts', () => {
+  const keyOf = (c: { headers?: Record<string, string> }) => c.headers?.['Idempotency-Key'];
+  const startCalls = (api: FakeXo) => posts(api, '/workflows/wf_1/executions');
+
+  it("every start carries an Idempotency-Key in the platform's accepted shape", async () => {
+    const api = new FakeXo();
+    api.approvals.all = true;
+    const user = await analysed(api);
+    await goTo(user, 'Work');
+    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await screen.findByRole('button', { name: /approve this step/i });
+    const key = keyOf(startCalls(api)[0]!);
+    expect(key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
+  });
+
+  it('a retry after an unclear failure reuses the SAME key, and only one run results', async () => {
+    const api = new FakeXo();
+    api.approvals.all = true;
+    api.startBehavior = 'network_before';
+    const user = await analysed(api);
+    await goTo(user, 'Work');
+    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await screen.findByText(/did not confirm whether this started/i);
+    api.startBehavior = 'ok';
+    await user.click(screen.getByRole('button', { name: /start this process/i }));
+    await screen.findByRole('button', { name: /approve this step/i });
+    const calls = startCalls(api);
+    expect(calls).toHaveLength(2);
+    expect(keyOf(calls[1]!)).toBe(keyOf(calls[0]!));
+    expect(api.workflowRuns).toHaveLength(1);
+  });
+
+  it('when the first attempt DID arrive but the read is lagging, the same key gets the original run back — no duplicate', async () => {
+    const api = new FakeXo();
+    api.approvals.all = true;
+    api.startBehavior = 'network_after_create'; // created, response lost
+    api.hideRunsFromList = true; // and the follow-up read does not show it yet
+    const user = await analysed(api);
+    await goTo(user, 'Work');
+    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await screen.findByText(/found no run yet/i);
+    expect(api.workflowRuns).toHaveLength(1);
+    api.startBehavior = 'ok';
+    await user.click(screen.getByRole('button', { name: /start this process/i }));
+    await waitFor(() => expect(startCalls(api)).toHaveLength(2));
+    expect(keyOf(startCalls(api)[1]!)).toBe(keyOf(startCalls(api)[0]!));
+    expect(api.workflowRuns).toHaveLength(1); // the platform answered the retry with the original run
+  });
+
+  it('after a definite refusal the next start is a new intent with a new key', async () => {
+    const api = new FakeXo();
+    api.approvals.all = true;
+    const user = await analysed(api);
+    await goTo(user, 'Work');
+    const start = await screen.findByRole('button', { name: /start this process/i });
+    api.denyNextStart = true;
+    await user.click(start);
+    await screen.findByText('Some steps need approval first');
+    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await screen.findByRole('button', { name: /approve this step/i });
+    const [a, b] = startCalls(api);
+    expect(keyOf(a!)).toBeDefined();
+    expect(keyOf(b!)).not.toBe(keyOf(a!));
   });
 });

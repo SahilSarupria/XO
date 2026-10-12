@@ -104,10 +104,11 @@ export class XoClient {
     method: string,
     path: string,
     parse: (body: unknown) => T,
-    init?: { body?: BodyInit; contentType?: string },
+    init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>> },
   ): Promise<Result<T>> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' };
     if (init?.contentType !== undefined) headers['Content-Type'] = init.contentType;
+    if (init?.headers !== undefined) Object.assign(headers, init.headers);
 
     let response: Response;
     try {
@@ -220,16 +221,16 @@ export class XoClient {
     return this.call('GET', `/workspaces/${enc(ws)}/workflows`, parseWorkflowList);
   }
   /**
-   * Starts a NEW run. The platform has no idempotency key: two calls make two runs. Callers must check
-   * for an existing active run first and must not retry this call blindly after a network failure.
+   * Starts a run. Without `idempotencyKey` two calls make two runs. With one, a retry of the SAME request
+   * (same workflow, analysis and key) returns the original run; reusing the key for a different request is a 409.
+   * Callers still check for an active run first, and only reuse a key for a retry of the same intent.
    */
-  startWorkflow(ws: string, workflowId: string, compilationId: string): Promise<Result<WorkflowRun>> {
-    return this.call(
-      'POST',
-      `/workspaces/${enc(ws)}/workflows/${enc(workflowId)}/executions`,
-      (b) => parseWorkflowRun(b),
-      this.json({ compilationId }),
-    );
+  startWorkflow(ws: string, workflowId: string, compilationId: string, idempotencyKey?: string): Promise<Result<WorkflowRun>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflows/${enc(workflowId)}/executions`, (b) => parseWorkflowRun(b), {
+      ...this.json({ compilationId }),
+      // With a key, the platform returns the ORIGINAL run for a retry of the same request instead of creating another.
+      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    });
   }
   listWorkflowRuns(ws: string): Promise<Result<WorkflowRun[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions`, parseWorkflowRunList);
