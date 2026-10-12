@@ -188,7 +188,14 @@ export class WorkflowConflictError extends XoError {
 }
 
 export type WorkflowConflictReason =
-  'stale_revision' | 'stale_step_execution' | 'step_execution_id_required' | 'not_resumable' | 'terminal' | 'in_flight';
+  | 'stale_revision'
+  | 'stale_step_execution'
+  | 'step_execution_id_required'
+  | 'not_resumable'
+  | 'terminal'
+  | 'in_flight'
+  | 'idempotency_key_reused'
+  | 'idempotency_key_expired';
 
 export class StaleWorkflowRevisionError extends WorkflowConflictError {
   constructor(

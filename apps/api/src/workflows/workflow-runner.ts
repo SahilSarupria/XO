@@ -29,6 +29,7 @@ import { isApproved } from '../approvals/approval.js';
 import type { ExecutionOutcomeInput, ExecutionRecord, ExecutionStore, HumanTaskDecision } from '../executions/execution.js';
 import { withExecutionLock } from '../executions/execution-lock.js';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
+import { assertLegitimateReplay, idempotentWorkflowExecutionId } from './workflow-idempotency.js';
 import { mintWorkflowExecutionId } from './fs-workflow-execution-store.js';
 import {
   TERMINAL_WORKFLOW_STATUSES,
@@ -684,9 +685,24 @@ export interface StartWorkflowRequest {
   readonly compilationId: string;
   readonly workflowId: string;
   readonly input: Readonly<Record<string, unknown>>;
+  /** Validated `Idempotency-Key` header value (see workflow-idempotency.ts). Absent => every call creates a new run. */
+  readonly idempotencyKey?: string;
+}
+
+export interface StartWorkflowResult {
+  readonly record: WorkflowExecutionRecord;
+  /** True when the key matched an existing run and no new run was created. */
+  readonly replayed: boolean;
 }
 
 export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request: StartWorkflowRequest): Promise<WorkflowExecutionRecord> {
+  return (await startWorkflowExecutionDetailed(ctx, request)).record;
+}
+
+export async function startWorkflowExecutionDetailed(
+  ctx: WorkflowRunnerContext,
+  request: StartWorkflowRequest,
+): Promise<StartWorkflowResult> {
   const loaded = await loadWorkflowRuntime(ctx, request.compilationId, request.workflowId);
   if (!loaded.ok) throw loaded.error;
   const runtime = loaded.value;
@@ -709,10 +725,13 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
       context: { issues: problems },
     });
 
-  const workflowExecutionId = mintWorkflowExecutionId();
-  activeDrives.add(workflowExecutionId);
-  try {
-    const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
+  const keyed = request.idempotencyKey !== undefined;
+  const workflowExecutionId = keyed
+    ? idempotentWorkflowExecutionId(ctx.workspace.workspaceId, ctx.principal.id, request.idempotencyKey!)
+    : mintWorkflowExecutionId();
+
+  const createRecord = () =>
+    ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
       workflowExecutionId,
       compilationId: request.compilationId,
       workflowId: request.workflowId,
@@ -731,12 +750,43 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
       // reports (see `WorkflowRuntime.graphHash`).
       graphHash: runtime.graphHash,
     });
-    if (!created.ok) throw created.error;
-    const holder = new RecordHolder(ctx.workflowStore, created.value);
+
+  // Only the call that CREATES the run marks it as driven (and later unmarks it). A replay must never touch that marker:
+  // the original call may still be driving, and clearing it would let a stale-run check mark a live run interrupted.
+  let owns = false;
+  try {
+    let record: WorkflowExecutionRecord;
+    if (!keyed) {
+      owns = true;
+      activeDrives.add(workflowExecutionId);
+      const created = await createRecord();
+      if (!created.ok) throw created.error;
+      record = created.value;
+    } else {
+      // Lookup-and-create under the platform's per-id lock: concurrent same-key requests in this process serialize here.
+      const outcome = await withExecutionLock(workflowExecutionId, async () => {
+        const existing = await ctx.workflowStore.get(workflowExecutionId);
+        if (existing.ok) {
+          assertLegitimateReplay(existing.value, request);
+          return { replayed: true as const, record: existing.value };
+        }
+        owns = true;
+        activeDrives.add(workflowExecutionId);
+        const created = await createRecord();
+        if (!created.ok) throw created.error;
+        return { replayed: false as const, record: created.value };
+      });
+      if (outcome.replayed) {
+        // No new run: do NOT drive it, and do not let this call's bookkeeping stop an original drive that is still active.
+        return { record: outcome.record, replayed: true };
+      }
+      record = outcome.record;
+    }
+    const holder = new RecordHolder(ctx.workflowStore, record);
     await withExecutionLock(workflowExecutionId, () => driveWorkflow(ctx, holder, runtime));
-    return holder.current;
+    return { record: holder.current, replayed: false };
   } finally {
-    activeDrives.delete(workflowExecutionId);
+    if (owns) activeDrives.delete(workflowExecutionId);
   }
 }
 

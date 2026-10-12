@@ -21,11 +21,12 @@ import { isApproved } from '../approvals/approval.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
 import { composeCompilationWorkflows, resolveWorkflow, buildWorkflowView, type WorkflowView } from '../workflows/workflow-catalog.js';
+import { IDEMPOTENCY_KEY_HEADER, parseIdempotencyKey } from '../workflows/workflow-idempotency.js';
 import {
   getWorkflowExecution,
   listWorkflowExecutions,
   resumeWorkflowExecution,
-  startWorkflowExecution,
+  startWorkflowExecutionDetailed,
   toWorkflowExecutionView,
   type ResumeWorkflowRequest,
   type WorkflowRunnerContext,
@@ -150,7 +151,15 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const input = body['input'] === undefined ? {} : boundedPlainObject(body['input'], 'input', MAX_WORKFLOW_INPUT_BYTES);
 
     const ctx = runnerContext(workspace, requirePrincipal(req));
-    const record = await startWorkflowExecution(ctx, { compilationId: body['compilationId'], workflowId, input });
+    const idempotencyKey = parseIdempotencyKey(req.headers[IDEMPOTENCY_KEY_HEADER]);
+    const { record, replayed } = await startWorkflowExecutionDetailed(ctx, {
+      compilationId: body['compilationId'],
+      workflowId,
+      input,
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+    });
+    // A replay created nothing, so it is never a 201. The header lets a client tell a replay from a first response.
+    if (replayed) return json(200, await toWorkflowExecutionView(ctx, record), { 'idempotent-replayed': 'true' });
     // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
     return json(record.status === 'failed' ? 200 : 201, await toWorkflowExecutionView(ctx, record));
   }
