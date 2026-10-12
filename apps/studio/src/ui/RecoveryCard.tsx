@@ -1,13 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { currentStep, describeRecoveryProblem, tidyName, type WorkProblemView } from '../domain/work';
-import type { ApiProblem } from '../platform/client';
+import { useEffect, useState } from 'react';
+import { currentStep, describeRecoveryProblem, isAmbiguousFailure, tidyName } from '../domain/work';
 import type { WorkflowRun } from '../platform/wire';
-import { Button, ProblemNotice } from './primitives';
+import { ActionNoticeView, Confirmation, useGuardedAction, type ActionNotice } from './actions';
+import { Button } from './primitives';
 import { RunSummary, runTitle } from './RunCard';
 import { useSession } from './session';
-
-const SETTLE_MS = 700;
-type Notice = { readonly view: WorkProblemView } | { readonly problem: ApiProblem };
 
 /**
  * Continue an interrupted process. This is the platform's own resume operation (no decision, only the
@@ -24,10 +21,9 @@ export function RecoveryCard(props: {
 }) {
   const { client } = useSession();
   const [run, setRun] = useState(props.run);
-  const [notice, setNotice] = useState<Notice | undefined>();
-  const [busy, setBusy] = useState(false);
-  const [settling, setSettling] = useState(false);
-  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<ActionNotice | undefined>();
+  const [confirmed, setConfirmed] = useState<string | undefined>();
+  const { run: guard, busy, settling } = useGuardedAction();
 
   useEffect(() => {
     if (props.run.revision > run.revision) setRun(props.run);
@@ -35,7 +31,6 @@ export function RecoveryCard(props: {
   }, [props.run]);
 
   const step = currentStep(run);
-  const interrupted = run.status === 'interrupted';
 
   async function refresh(): Promise<WorkflowRun | undefined> {
     const r = await client.getWorkflowRun(props.workspaceId, run.workflowExecutionId);
@@ -47,38 +42,35 @@ export function RecoveryCard(props: {
     return undefined;
   }
 
-  async function recover() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setNotice(undefined);
-    try {
+  function recover() {
+    void guard(async () => {
+      setNotice(undefined);
+      setConfirmed(undefined);
       const fresh = await client.getWorkflowRun(props.workspaceId, run.workflowExecutionId);
       if (!fresh.ok) {
         setNotice({ problem: fresh.problem });
-        return;
+        return undefined;
       }
       const f = fresh.value;
       setRun(f);
       if (f.status !== 'interrupted') {
         props.onInfo('A process was no longer interrupted, so nothing was continued. Its current state is shown in Tasks.');
         props.onChanged();
-        return;
+        return undefined;
       }
       const r = await client.recoverWorkflowRun(props.workspaceId, f.workflowExecutionId, { expectedRevision: f.revision });
       if (r.ok) {
         setRun(r.value);
-        setSettling(true);
-        setTimeout(() => setSettling(false), SETTLE_MS);
+        setConfirmed('Process continued.');
         props.onChanged();
-        return;
+        return { settle: true };
       }
       const known = describeRecoveryProblem(r.problem);
       if (known !== undefined) {
         setNotice({ view: known });
         await refresh();
         props.onChanged();
-      } else if (r.problem.kind === 'network' || r.problem.kind === 'server' || r.problem.kind === 'malformed') {
+      } else if (isAmbiguousFailure(r.problem)) {
         const after = await refresh();
         props.onInfo(
           after !== undefined && after.revision !== f.revision
@@ -89,16 +81,14 @@ export function RecoveryCard(props: {
       } else {
         setNotice({ problem: r.problem });
       }
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
+      return undefined;
+    });
   }
 
   return (
     <div className="card-main">
       <h3>{runTitle(run)}</h3>
-      {interrupted ? (
+      {run.status === 'interrupted' ? (
         <div className="decision">
           <p>
             <strong>
@@ -114,19 +104,14 @@ export function RecoveryCard(props: {
             so check first if it does.
           </p>
           <div className="row">
-            <Button variant="primary" disabled={busy || settling} onClick={() => void recover()}>
+            <Button variant="primary" pending={busy || settling} onClick={recover}>
               {busy ? 'Continuing…' : 'Continue this process'}
             </Button>
           </div>
         </div>
       ) : null}
-      {notice !== undefined && 'view' in notice ? (
-        <div className="notice notice-warning" role="alert">
-          <strong>{notice.view.title}</strong>
-          <p>{notice.view.body}</p>
-        </div>
-      ) : null}
-      {notice !== undefined && 'problem' in notice ? <ProblemNotice problem={notice.problem} /> : null}
+      <Confirmation message={confirmed} />
+      <ActionNoticeView notice={notice} />
       <RunSummary run={run} />
     </div>
   );

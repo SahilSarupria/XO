@@ -213,7 +213,7 @@ describe('Tasks: deciding', () => {
     const user = await withWaitingRun(api);
     await user.click(screen.getByRole('button', { name: /approve this step/i }));
     await screen.findAllByText(/step 2 of 2/i);
-    await waitFor(() => expect(screen.getByRole('button', { name: /reject and stop/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /reject and stop/i })).not.toHaveAttribute('aria-disabled', 'true'));
     await user.click(screen.getByRole('button', { name: /reject and stop/i }));
     expect(await screen.findAllByText('Stopped by a person')).not.toHaveLength(0);
     expect(screen.queryByText('Completed')).not.toBeInTheDocument();

@@ -3,9 +3,24 @@ import type { ApiProblem, Result } from '../platform/client';
 import { describeProblem, type OutcomeTone } from '../domain/review';
 import { useModeIfAny } from './session';
 
-export function Button(props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'quiet' | 'danger' }) {
-  const { variant = 'secondary', className = '', ...rest } = props;
-  return <button type="button" {...rest} className={`btn btn-${variant} ${className}`.trim()} />;
+/**
+ * `pending` is for an action that is in flight or just landed: the button is announced as unavailable
+ * (`aria-disabled`) and ignores clicks, but stays focusable so keyboard and screen-reader users do not lose
+ * their place. Use `disabled` only for something that genuinely cannot be done.
+ */
+export function Button(
+  props: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'quiet' | 'danger'; pending?: boolean },
+) {
+  const { variant = 'secondary', className = '', pending = false, onClick, ...rest } = props;
+  return (
+    <button
+      type="button"
+      {...rest}
+      {...(pending ? { 'aria-disabled': true } : {})}
+      onClick={pending ? undefined : onClick}
+      className={`btn btn-${variant} ${className}`.trim()}
+    />
+  );
 }
 
 export function Badge(props: { tone: OutcomeTone | 'accent'; children: ReactNode }) {
@@ -58,23 +73,39 @@ export function ProblemNotice(props: { problem: ApiProblem; onRetry?: () => void
 export type LoadState<T> =
   | { readonly phase: 'loading' }
   | { readonly phase: 'ready'; readonly value: T }
-  | { readonly phase: 'error'; readonly problem: ApiProblem };
+  /** `stale` is the last good value, kept when a REFRESH fails so the screen does not go blank. */
+  | { readonly phase: 'error'; readonly problem: ApiProblem; readonly stale?: T };
 
-/** Loads on mount and whenever `deps` change; `reload` refetches without flashing back to loading. */
+/** The value to render: fresh, or the last good one after a failed refresh. Undefined only if nothing ever loaded. */
+export function loadedValue<T>(state: LoadState<T>): T | undefined {
+  return state.phase === 'ready' ? state.value : state.phase === 'error' ? state.stale : undefined;
+}
+
+/**
+ * Loads on mount and whenever `deps` change. `reload` refetches the SAME inputs without flashing back to loading and,
+ * if that refresh fails, keeps the last good value as `stale`. A change of `deps` means different inputs, so nothing
+ * from the previous inputs is kept: a value loaded for another analysis must never stand in for this one.
+ */
 export function useLoad<T>(fn: () => Promise<Result<T>>, deps: readonly unknown[]): { state: LoadState<T>; reload: () => void } {
   const [state, setState] = useState<LoadState<T>>({ phase: 'loading' });
   const [tick, setTick] = useState(0);
   const fnRef = useRef(fn);
   fnRef.current = fn;
-  const first = useRef(true);
+  const prevDeps = useRef<readonly unknown[] | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
-    if (first.current) first.current = false;
-    else setState((s) => (s.phase === 'ready' ? s : { phase: 'loading' }));
+    const previous = prevDeps.current;
+    prevDeps.current = deps;
+    const inputsChanged = previous !== undefined && (previous.length !== deps.length || previous.some((d, i) => !Object.is(d, deps[i])));
+    if (inputsChanged) setState({ phase: 'loading' });
     void fnRef.current().then((r) => {
       if (cancelled) return;
-      setState(r.ok ? { phase: 'ready', value: r.value } : { phase: 'error', problem: r.problem });
+      setState((prev) => {
+        if (r.ok) return { phase: 'ready', value: r.value };
+        const stale = loadedValue(prev);
+        return { phase: 'error', problem: r.problem, ...(stale !== undefined ? { stale } : {}) };
+      });
     });
     return () => {
       cancelled = true;

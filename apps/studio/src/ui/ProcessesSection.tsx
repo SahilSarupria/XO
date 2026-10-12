@@ -1,14 +1,15 @@
-import { Badge, EmptyState, ProblemNotice, Section, Spinner, useLoad } from './primitives';
-import { useSession } from './session';
+import type { Workflow } from '../platform/wire';
+import { Badge, EmptyState, loadedValue, ProblemNotice, Section, Spinner, type LoadState } from './primitives';
 
 /**
  * Builder Mode, read-only. Workflows are composed by the platform from discovered capabilities.
  * Studio shows what the platform says about each one — including why it cannot run — and does
  * not offer to start them in this milestone.
  */
-export function ProcessesSection(props: { workspaceId: string }) {
-  const { client } = useSession();
-  const { state, reload } = useLoad(() => client.listWorkflows(props.workspaceId), [client, props.workspaceId]);
+export function ProcessesSection(props: { state: LoadState<Workflow[]>; reload: () => void }) {
+  // The parent already loads the workflows; this view renders that same state instead of asking the platform again.
+  const { state, reload } = props;
+  const shown = loadedValue(state);
 
   return (
     <Section
@@ -17,13 +18,13 @@ export function ProcessesSection(props: { workspaceId: string }) {
       lede="Technical view of the processes XO composed from what it found. Start them from Work."
     >
       {state.phase === 'loading' ? <Spinner label="Loading processes" /> : null}
-      {state.phase === 'error' ? <ProblemNotice problem={state.problem} onRetry={reload} /> : null}
-      {state.phase === 'ready' && state.value.length === 0 ? (
+      {state.phase === 'error' && state.stale === undefined ? <ProblemNotice problem={state.problem} onRetry={reload} /> : null}
+      {shown !== undefined && shown.length === 0 ? (
         <EmptyState title="No processes yet">Analyse a document to see candidate workflows.</EmptyState>
       ) : null}
-      {state.phase === 'ready' ? (
+      {shown !== undefined ? (
         <ul className="list">
-          {state.value.map((w) => (
+          {shown.map((w) => (
             <li key={w.workflowId} className="card">
               <div className="card-main">
                 <div className="row between">

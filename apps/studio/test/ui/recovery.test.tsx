@@ -106,7 +106,9 @@ describe('continuing an interrupted process', () => {
     expect(api.workflowRuns[0]!.status).toBe('interrupted');
     // choosing again works against the refreshed revision
     api.bumpRevisionBeforeResume = false;
-    await waitFor(() => expect(screen.getByRole('button', { name: /continue this process/i })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /continue this process/i })).not.toHaveAttribute('aria-disabled', 'true'),
+    );
     await user.click(screen.getByRole('button', { name: /continue this process/i }));
     await screen.findByRole('button', { name: /approve this step/i });
   });

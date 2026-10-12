@@ -8,7 +8,7 @@ import { HomeSection } from './HomeSection';
 import { TasksSection } from './TasksSection';
 import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
-import { ProblemNotice, Spinner, useLoad } from './primitives';
+import { ProblemNotice, Spinner, useLoad, loadedValue } from './primitives';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 
@@ -60,25 +60,30 @@ export function WorkspaceView(props: { workspace: Workspace }) {
     caps.reload();
   }
 
-  const summary = caps.state.phase === 'ready' ? summarize(caps.state.value) : undefined;
+  // Render the fresh value, or the last good one after a failed refresh. A failure is never turned into "empty".
+  const capList = loadedValue(caps.state);
+  const summary = capList !== undefined ? summarize(capList) : undefined;
+  const runList = loadedValue(runs.state) ?? [];
+  const execList = loadedValue(executions.state) ?? [];
+  const workflowList = loadedValue(workflows.state) ?? [];
   const step = nextStep({
-    sources: sources.state.phase === 'ready' ? sources.state.value.length : 0,
+    sources: loadedValue(sources.state)?.length ?? 0,
     succeededCompilations: succeeded.length,
     summary,
-    executions: executions.state.phase === 'ready' ? executions.state.value.length : 0,
+    executions: execList.length,
   });
-
-  const runList = runs.state.phase === 'ready' ? runs.state.value : [];
-  const execList = executions.state.phase === 'ready' ? executions.state.value : [];
-  const workflowList = workflows.state.phase === 'ready' ? workflows.state.value : [];
-  const capList = caps.state.phase === 'ready' ? caps.state.value : undefined;
   const notes = recordedNotes(execList);
   const standalonePending = standaloneExecutions(execList, runList).filter(
     (e) => e.status === 'waiting_for_human' && e.humanTask?.status === 'pending',
   ).length;
   const taskCount = runList.filter((r) => r.status === 'waiting_for_human' || r.status === 'interrupted').length + standalonePending;
 
-  const firstError = [sources.state, compilations.state, workflows.state, runs.state].find((s) => s.phase === 'error');
+  const firstError = [sources.state, compilations.state, workflows.state, runs.state, executions.state, caps.state].find(
+    (s) => s.phase === 'error',
+  );
+  // Emptiness may only be claimed when the lists it depends on actually loaded.
+  const decisionsUnknown = runs.state.phase === 'error' || executions.state.phase === 'error';
+  const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
   return (
     <main className="page">
@@ -109,7 +114,12 @@ export function WorkspaceView(props: { workspace: Workspace }) {
         ) : null}
       </nav>
 
-      {firstError?.phase === 'error' ? <ProblemNotice problem={firstError.problem} onRetry={refreshAll} /> : null}
+      {firstError?.phase === 'error' ? (
+        <>
+          <ProblemNotice problem={firstError.problem} onRetry={refreshAll} />
+          {firstError.stale !== undefined ? <p className="muted small">Showing what was loaded earlier.</p> : null}
+        </>
+      ) : null}
 
       {view === 'home' ? (
         <HomeSection
@@ -119,6 +129,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
           runs={runList}
           standalonePending={standalonePending}
           next={step}
+          incomplete={decisionsUnknown}
           goToWork={() => setView('work')}
           goToTasks={() => setView('tasks')}
           goToActivity={() => setView('activity')}
@@ -131,6 +142,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
           compilation={activeCompilation}
           workflows={workflowList}
           caps={capList}
+          capsFailed={capsFailed}
           runs={runList}
           onChanged={refreshAll}
           goToSetup={() => {
@@ -142,17 +154,23 @@ export function WorkspaceView(props: { workspace: Workspace }) {
         />
       ) : null}
       {view === 'tasks' ? (
-        <TasksSection workspaceId={ws} runs={runList} executions={execList} caps={capList ?? []} notes={notes} onChanged={refreshAll} />
+        <TasksSection
+          workspaceId={ws}
+          runs={runList}
+          executions={execList}
+          caps={capList ?? []}
+          notes={notes}
+          incomplete={decisionsUnknown}
+          onChanged={refreshAll}
+        />
       ) : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
           <Spinner label="Loading activity" />
-        ) : executions.state.phase === 'error' ? (
-          <ProblemNotice problem={executions.state.problem} onRetry={executions.reload} />
-        ) : (
+        ) : executions.state.phase === 'error' && executions.state.stale === undefined ? null : (
           <ActivitySection
             workspaceId={ws}
-            executions={executions.state.value}
+            executions={execList}
             runs={runList}
             notes={notes}
             caps={capList ?? []}
@@ -203,7 +221,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
           )}
         </>
       ) : null}
-      {view === 'processes' && mode === 'builder' ? <ProcessesSection workspaceId={ws} /> : null}
+      {view === 'processes' && mode === 'builder' ? <ProcessesSection state={workflows.state} reload={workflows.reload} /> : null}
     </main>
   );
 }

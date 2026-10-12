@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   currentStep,
   describeResumeProblem,
+  isAmbiguousFailure,
   normalizeNote,
   pendingTasks,
   recoverableRuns,
   standaloneExecutions,
   tidyName,
   type RecordedNote,
-  type WorkProblemView,
 } from '../domain/work';
-import type { ApiProblem } from '../platform/client';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
-import { EmptyState, formatWhen, ProblemNotice, Section } from './primitives';
-import { Button } from './primitives';
+import { ActionNoticeView, Confirmation, useGuardedAction, type ActionNotice } from './actions';
+import { Button, EmptyState, formatWhen, Section } from './primitives';
 import { NoteField } from './NoteField';
 import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
@@ -31,6 +30,8 @@ export function TasksSection(props: {
   executions: readonly Execution[];
   caps: readonly Capability[];
   notes: ReadonlyMap<string, RecordedNote>;
+  /** The runs or executions list failed to load: do not claim that nothing is waiting. */
+  incomplete: boolean;
   onChanged: () => void;
 }) {
   const tasks = pendingTasks(props.runs);
@@ -55,7 +56,7 @@ export function TasksSection(props: {
           {banner}
         </p>
       ) : null}
-      {tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
+      {!props.incomplete && tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
         <EmptyState title="Nothing is waiting for you">When a process needs a decision, it will appear here.</EmptyState>
       ) : null}
       <ul className="list">
@@ -106,14 +107,6 @@ export function TasksSection(props: {
   );
 }
 
-const SETTLE_MS = 700;
-
-type Notice = { readonly view: WorkProblemView } | { readonly info: string } | { readonly problem: ApiProblem };
-
-function isAmbiguous(p: ApiProblem): boolean {
-  return p.kind === 'network' || p.kind === 'server' || p.kind === 'malformed';
-}
-
 export function DecisionCard(props: {
   workspaceId: string;
   run: WorkflowRun;
@@ -123,15 +116,11 @@ export function DecisionCard(props: {
 }) {
   const { client } = useSession();
   const [run, setRun] = useState(props.run);
-  const [notice, setNotice] = useState<Notice | undefined>();
-  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<ActionNotice | undefined>();
+  const [confirmed, setConfirmed] = useState<string | undefined>();
   // Kept through a conflict or an unclear failure so nothing the person typed is lost; cleared only once the platform accepted the decision.
   const [noteText, setNoteText] = useState('');
-  // After a decision lands, the same buttons would instantly mean a different step. Hold them briefly so one
-  // physical double click can never decide two steps.
-  const [settling, setSettling] = useState(false);
-  // A ref, not state: two clicks in the same tick must not both pass the check.
-  const inFlight = useRef(false);
+  const { run: guard, busy, settling } = useGuardedAction();
 
   useEffect(() => {
     if (props.run.revision > run.revision) setRun(props.run);
@@ -151,22 +140,20 @@ export function DecisionCard(props: {
     return undefined;
   }
 
-  async function decide(decision: 'approve' | 'reject') {
-    if (inFlight.current) return;
+  function decide(decision: 'approve' | 'reject') {
     const n = normalizeNote(noteText);
     if (n.error !== undefined) {
       setNotice({ info: n.error });
       return;
     }
-    inFlight.current = true;
-    setBusy(true);
-    setNotice(undefined);
-    try {
+    void guard(async () => {
+      setNotice(undefined);
+      setConfirmed(undefined);
       // 1. Authoritative state first. Never act on a copy the person may have been looking at for a while.
       const fresh = await client.getWorkflowRun(props.workspaceId, run.workflowExecutionId);
       if (!fresh.ok) {
         setNotice({ problem: fresh.problem });
-        return;
+        return undefined;
       }
       const f = fresh.value;
       setRun(f);
@@ -182,7 +169,7 @@ export function DecisionCard(props: {
               : 'This process is no longer waiting for a decision, so yours was not sent.',
         });
         props.onChanged();
-        return;
+        return undefined;
       }
       // 2. Send the decision with the identifiers from that fresh record.
       const r = await client.resumeWorkflowRun(props.workspaceId, f.workflowExecutionId, {
@@ -194,11 +181,10 @@ export function DecisionCard(props: {
       if (r.ok) {
         setRun(r.value);
         setNoteText('');
+        setConfirmed('Decision recorded.');
         if (r.value.status !== 'waiting_for_human') props.onFinished?.(r.value);
-        setSettling(true);
-        setTimeout(() => setSettling(false), SETTLE_MS);
         props.onChanged();
-        return;
+        return { settle: true };
       }
       // 3. Failure. Never resend. Re-read the truth and say what is known.
       const known = describeResumeProblem(r.problem);
@@ -206,7 +192,7 @@ export function DecisionCard(props: {
         setNotice({ view: known });
         await refresh();
         props.onChanged();
-      } else if (isAmbiguous(r.problem)) {
+      } else if (isAmbiguousFailure(r.problem)) {
         const after = await refresh();
         setNotice({
           info:
@@ -218,12 +204,11 @@ export function DecisionCard(props: {
       } else {
         setNotice({ problem: r.problem });
       }
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
+      return undefined;
+    });
   }
 
+  const pending = busy || settling;
   return (
     <div className="card-main">
       <h3>{runTitle(run)}</h3>
@@ -239,27 +224,17 @@ export function DecisionCard(props: {
           </p>
           <NoteField value={noteText} onChange={setNoteText} disabled={busy} />
           <div className="row">
-            <Button variant="primary" disabled={busy || settling} onClick={() => void decide('approve')}>
+            <Button variant="primary" pending={pending} onClick={() => decide('approve')}>
               Approve this step
             </Button>
-            <Button variant="danger" disabled={busy || settling} onClick={() => void decide('reject')}>
+            <Button variant="danger" pending={pending} onClick={() => decide('reject')}>
               Reject and stop
             </Button>
           </div>
         </div>
       ) : null}
-      {notice !== undefined && 'view' in notice ? (
-        <div className="notice notice-warning" role="alert">
-          <strong>{notice.view.title}</strong>
-          <p>{notice.view.body}</p>
-        </div>
-      ) : null}
-      {notice !== undefined && 'info' in notice ? (
-        <p className="notice notice-warning" role="alert">
-          {notice.info}
-        </p>
-      ) : null}
-      {notice !== undefined && 'problem' in notice ? <ProblemNotice problem={notice.problem} /> : null}
+      <Confirmation message={confirmed} />
+      <ActionNoticeView notice={notice} />
       <RunSummary run={run} {...(props.notes !== undefined ? { notes: props.notes } : {})} />
     </div>
   );

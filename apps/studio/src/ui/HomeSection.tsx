@@ -17,6 +17,8 @@ export function HomeSection(props: {
   runs: readonly WorkflowRun[];
   standalonePending: number;
   next: Progress;
+  /** Runs/workflows failed to load: do not present an empty Home as "nothing to do". */
+  incomplete: boolean;
   goToWork: () => void;
   goToTasks: () => void;
   goToActivity: () => void;
@@ -147,7 +149,7 @@ export function HomeSection(props: {
         </div>
       ) : null}
 
-      {!anything ? (
+      {!anything && !props.incomplete ? (
         <div className="next-step" aria-live="polite">
           <span className="next-step-label">Next</span>
           <div>

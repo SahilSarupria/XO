@@ -4,15 +4,15 @@ import {
   describeStartProblem,
   findActiveRun,
   humanStepCount,
+  isAmbiguousFailure,
   newIdempotencyKey,
   startReadiness,
   tidyName,
   workflowTitle,
-  type WorkProblemView,
 } from '../domain/work';
-import type { ApiProblem } from '../platform/client';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
-import { Badge, Button, EmptyState, ProblemNotice, Section } from './primitives';
+import { ActionNoticeView, useGuardedAction, type ActionNotice } from './actions';
+import { Badge, Button, EmptyState, Section } from './primitives';
 import { useSession } from './session';
 
 /**
@@ -29,6 +29,8 @@ export function WorkSection(props: {
   compilation: Compilation | undefined;
   workflows: readonly Workflow[];
   caps: readonly Capability[] | undefined;
+  /** The capability list failed to load, so approvals cannot be checked. Distinct from "still loading". */
+  capsFailed: boolean;
   runs: readonly WorkflowRun[];
   onChanged: () => void;
   goToSetup: () => void;
@@ -58,6 +60,7 @@ export function WorkSection(props: {
                 workspaceId={props.workspaceId}
                 workflow={w}
                 caps={props.caps}
+                capsFailed={props.capsFailed}
                 runs={props.runs}
                 onChanged={props.onChanged}
                 goToSetup={props.goToSetup}
@@ -72,12 +75,11 @@ export function WorkSection(props: {
   );
 }
 
-type Notice = { readonly view: WorkProblemView } | { readonly info: string } | { readonly problem: ApiProblem };
-
 function WorkflowCard(props: {
   workspaceId: string;
   workflow: Workflow;
   caps: readonly Capability[] | undefined;
+  capsFailed: boolean;
   runs: readonly WorkflowRun[];
   onChanged: () => void;
   goToSetup: () => void;
@@ -86,9 +88,8 @@ function WorkflowCard(props: {
 }) {
   const { client, mode } = useSession();
   const w = props.workflow;
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<Notice | undefined>();
-  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<ActionNotice | undefined>();
+  const { run: guard, busy } = useGuardedAction();
   // One key per start INTENT. It is reused only to retry after an unclear failure, so the platform can hand back
   // the original run instead of creating a second; it is dropped as soon as the outcome is known.
   const intentKey = useRef<string | undefined>(undefined);
@@ -97,12 +98,9 @@ function WorkflowCard(props: {
   const ready = useMemo(() => startReadiness(w, props.caps), [w, props.caps]);
   const human = humanStepCount(w, props.caps);
 
-  async function start() {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setNotice(undefined);
-    try {
+  function start() {
+    void guard(async () => {
+      setNotice(undefined);
       // Re-read the platform's runs right before starting; the list on screen may be stale.
       const before = await client.listWorkflowRuns(props.workspaceId);
       if (!before.ok) {
@@ -129,7 +127,7 @@ function WorkflowCard(props: {
         intentKey.current = undefined; // a definite refusal: nothing was created, the next start is a new intent
         setNotice({ view: known });
         props.onChanged();
-      } else if (r.problem.kind === 'network' || r.problem.kind === 'server' || r.problem.kind === 'malformed') {
+      } else if (isAmbiguousFailure(r.problem)) {
         // The request may or may not have reached the platform. Ask it, rather than guessing or resending.
         const after = await client.listWorkflowRuns(props.workspaceId);
         const found = after.ok ? findActiveRun(after.value, w.workflowId, w.compilationId) : undefined;
@@ -144,10 +142,7 @@ function WorkflowCard(props: {
       } else {
         setNotice({ problem: r.problem });
       }
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
+    });
   }
 
   const runView = active === undefined ? undefined : describeRun(active);
@@ -162,11 +157,13 @@ function WorkflowCard(props: {
           <Badge tone={ready.canStart ? 'success' : 'warning'}>
             {!w.executable
               ? 'Cannot run yet'
-              : ready.needApproval.length > 0
-                ? 'Needs approval'
-                : ready.canStart
-                  ? 'Ready to start'
-                  : 'Checking…'}
+              : props.capsFailed && props.caps === undefined
+                ? 'Unavailable'
+                : ready.needApproval.length > 0
+                  ? 'Needs approval'
+                  : ready.canStart
+                    ? 'Ready to start'
+                    : 'Checking…'}
           </Badge>
         )}
       </div>
@@ -229,7 +226,9 @@ function WorkflowCard(props: {
 
       {active === undefined && !ready.canStart && ready.reason !== undefined ? (
         <p id={`why-${w.workflowId}`} className="muted small">
-          {ready.reason}
+          {props.capsFailed && props.caps === undefined
+            ? 'XO could not check approvals just now, so this cannot be started. Use Try again above.'
+            : ready.reason}
         </p>
       ) : null}
       {active === undefined && ready.needApproval.length > 0 ? (
@@ -240,30 +239,16 @@ function WorkflowCard(props: {
         </ul>
       ) : null}
 
-      {notice !== undefined && 'view' in notice ? (
-        <div className="notice notice-warning" role="alert">
-          <strong>{notice.view.title}</strong>
-          <p>{notice.view.body}</p>
-          {notice.view.items.length > 0 ? (
-            <ul className="plain">
-              {notice.view.items.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
-          ) : null}
-          {notice.view.kind === 'needs_approval' ? (
+      <ActionNoticeView
+        notice={notice}
+        action={
+          notice !== undefined && 'view' in notice && notice.view.kind === 'needs_approval' ? (
             <Button variant="secondary" onClick={props.goToSetup}>
               Review rules in Setup
             </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {notice !== undefined && 'info' in notice ? (
-        <p className="notice notice-warning" role="alert">
-          {notice.info}
-        </p>
-      ) : null}
-      {notice !== undefined && 'problem' in notice ? <ProblemNotice problem={notice.problem} /> : null}
+          ) : undefined
+        }
+      />
 
       {mode === 'builder' ? (
         <details>

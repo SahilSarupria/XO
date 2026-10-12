@@ -105,6 +105,8 @@ export class FakeXo {
   bumpRevisionBeforeResume = false;
   /** A lagging read: the runs list does not yet show runs that exist (lets a test exercise the key rather than the pre-check). */
   hideRunsFromList = false;
+  /** Path suffixes that answer 500 while present (a transient platform failure on one list). */
+  failing = new Set<string>();
   /** The platform refuses the next start with its approval denial even though the screen showed everything approved. */
   denyNextStart = false;
   /** The platform refuses the decision data (e.g. a capability's own decision-data schema). */
@@ -209,6 +211,8 @@ export class FakeXo {
     if (headers['Authorization'] !== `Bearer ${this.validKey}`) return err(401, 'XO_AUTH_KEY_INVALID', 'invalid API key');
 
     let m: RegExpMatchArray | null;
+    if (method === 'GET' && [...this.failing].some((suffix) => path.endsWith(suffix)))
+      return err(500, 'XO_INTERNAL', 'temporarily unavailable');
 
     // ---- workflows (real route/response shapes; checked live by scripts/live-smoke.mjs)
     if (method === 'GET' && path.endsWith('/workflows')) {

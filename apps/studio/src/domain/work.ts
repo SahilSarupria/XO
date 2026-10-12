@@ -325,3 +325,8 @@ export function newIdempotencyKey(): string {
   const id = c?.randomUUID !== undefined ? c.randomUUID() : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   return `xo-start-${id}`;
 }
+
+/** A failure where the platform may or may not have received the request. Such outcomes are never retried automatically. */
+export function isAmbiguousFailure(p: ApiProblem): boolean {
+  return p.kind === 'network' || p.kind === 'server' || p.kind === 'malformed';
+}
