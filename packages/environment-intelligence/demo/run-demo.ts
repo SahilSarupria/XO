@@ -12,6 +12,7 @@ import { cp, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
 import {
   ConnectorRegistry,
   DevelopmentOperatorAuthorization,
@@ -29,6 +30,10 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const clock: Clock = { now: () => new Date() };
+// M2.1: every protected operation needs an AUTHENTICATED principal. A real deployment receives one from its
+// authentication boundary; this demo mints a clearly-labelled development operator the way that boundary would.
+const demoOperator = establishAuthenticatedPrincipal({ kind: 'human', id: 'demo-operator' });
+if (!demoOperator.ok) throw new Error('demo principal could not be established');
 
 async function run(title: string, root: string, origin: ModelOrigin): Promise<void> {
   console.log(`\n=== ${title} ===`);
@@ -38,6 +43,7 @@ async function run(title: string, root: string, origin: ModelOrigin): Promise<vo
   const scope: FilesystemScope = { kind: 'filesystem_root', root, limits: { maxDepth: 4, maxEntries: 500 } };
   const ctx = {
     clock,
+    principal: demoOperator.value,
     authorization: new DevelopmentOperatorAuthorization([
       { permission: 'filesystem.list', path: root },
       { permission: 'filesystem.read', path: root },

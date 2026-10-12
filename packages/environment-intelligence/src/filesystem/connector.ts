@@ -245,7 +245,8 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
         permission,
         authority: allow.authority,
         decisionReason: allow.decision.reason,
-        ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
+        // The gate-verified snapshot, not whatever happens to sit on the context.
+        principal: allow.principal,
       },
       transformationChain: steps,
     };

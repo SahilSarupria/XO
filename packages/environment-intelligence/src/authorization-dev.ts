@@ -1,6 +1,7 @@
 import { relative, isAbsolute, resolve, sep } from 'node:path';
+import { isAuthenticatedPrincipal, pathScope, toPrincipalSnapshot } from '@xo/permissions';
 import type { AuthorizationDecision, AuthorizationPort, AuthorizationRequest } from './authorization.js';
-import { mintDevelopmentDecision } from './trusted-decision.js';
+import { mintBoundDevelopmentDecision, mintDevelopmentDecision } from './trusted-decision.js';
 
 /** One explicit local grant: this permission, for paths at or below `path`. */
 export interface DevelopmentGrant {
@@ -22,6 +23,11 @@ export interface DevelopmentGrant {
  * authorization gate lands; it must be replaced by (not extended into) the
  * `@xo/permissions`-backed port. It deliberately has no wildcards, no
  * roles, no persistence and no escalation.
+ *
+ * M2.1: even this development port requires an AUTHENTICATED principal (an
+ * operator's code-level allow-list is not an identity), and its allow is bound
+ * to the request it answered and to the granted subtree, exactly like the
+ * platform adapter's, so the same enforcement-point checks apply to it.
  */
 export class DevelopmentOperatorAuthorization implements AuthorizationPort {
   private readonly grants: readonly DevelopmentGrant[];
@@ -31,6 +37,10 @@ export class DevelopmentOperatorAuthorization implements AuthorizationPort {
   }
 
   async decide(request: AuthorizationRequest): Promise<AuthorizationDecision> {
+    if (!isAuthenticatedPrincipal(request.principal)) {
+      return mintDevelopmentDecision('deny', 'an authenticated principal is required');
+    }
+    const principal = toPrincipalSnapshot(request.principal);
     if (request.scope.kind !== 'path') {
       return mintDevelopmentDecision('deny', 'only path-scoped requests can be granted by the development operator allow-list');
     }
@@ -43,9 +53,17 @@ export class DevelopmentOperatorAuthorization implements AuthorizationPort {
       const rel = relative(grant.path, wanted);
       const inside = rel === '' || (!rel.startsWith('..' + sep) && rel !== '..' && !isAbsolute(rel));
       if (inside) {
-        return mintDevelopmentDecision(
+        return mintBoundDevelopmentDecision(
           'allow',
           `operator allow-list grants ${grant.permission} under the declared path (development only, not platform-verified)`,
+          {
+            principal,
+            connectorId: request.connectorId,
+            operation: request.operation,
+            permission: request.permission,
+            requestedScope: request.scope,
+            grantedScope: pathScope(grant.path),
+          },
         );
       }
     }

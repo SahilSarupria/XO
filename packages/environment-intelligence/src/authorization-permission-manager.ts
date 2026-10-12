@@ -1,7 +1,17 @@
-import { PermissionManager, isAuthenticatedPrincipal, isPermissionScope, parsePermissionId, scopeContains } from '@xo/permissions';
+import {
+  PermissionManager,
+  isAuthenticatedPrincipal,
+  isPermissionScope,
+  parsePermissionId,
+  scopeContains,
+  toPrincipalSnapshot,
+} from '@xo/permissions';
 import { PackageId } from '@xo/types';
 import type { AuthorizationDecision, AuthorizationPort, AuthorizationRequest } from './authorization.js';
-import { mintPlatformDecision } from './trusted-decision.js';
+import { mintPlatformDecision, type DecisionBinding } from './trusted-decision.js';
+
+/** Policy ids are recorded in provenance and audit, so only a short, log-safe identifier is carried; anything else is dropped, never echoed. */
+const SAFE_POLICY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 
 /**
  * The requester LABEL this package presents to `PermissionManager`. It is a
@@ -33,9 +43,17 @@ export const ENVIRONMENT_INTELLIGENCE_REQUESTER = PackageId('xo.environment-inte
  * duck-typed stand-in cannot be wired in by accident. A subclass can still be,
  * which is the same in-process limitation as the principal marker.
  *
+ * M2.1 binding: every decision this adapter mints is bound to the exact
+ * request it answered (principal snapshot, connector, operation, permission,
+ * requested scope) and, for an allow, to the scope the manager actually
+ * granted. The enforcement point (`requireAuthorization`) re-checks the
+ * binding and that the granted scope contains the requested one, and spends the
+ * decision, so it cannot be replayed for another request.
+ *
  * Auditing: decisions are recorded by the manager's own `PermissionAuditSink`
  * (package-keyed, synchronous, no principal). This adapter adds NO audit
- * mechanism; durable, principal-aware audit is the unmade P1.0 M4 decision.
+ * mechanism; EI's own principal-aware audit is the M2.2 audit port
+ * (`audit.ts`), persisted by P1.0 M4.
  */
 export class PermissionManagerAuthorization implements AuthorizationPort {
   private readonly manager: PermissionManager;
@@ -55,6 +73,15 @@ export class PermissionManagerAuthorization implements AuthorizationPort {
     if (!permission.ok) return deny('the requested permission id is not valid');
     if (!isPermissionScope(request.scope)) return deny('the requested scope is not valid');
 
+    const bind = (extra: Pick<DecisionBinding, 'grantedScope' | 'policyId' | 'lifetime'> = {}): DecisionBinding => ({
+      principal: toPrincipalSnapshot(request.principal as Parameters<typeof toPrincipalSnapshot>[0]),
+      connectorId: request.connectorId,
+      operation: request.operation,
+      permission: request.permission,
+      requestedScope: request.scope,
+      ...extra,
+    });
+
     const decision = await this.manager.check({
       permission: permission.value.id,
       scope: request.scope,
@@ -66,9 +93,17 @@ export class PermissionManagerAuthorization implements AuthorizationPort {
       if (decision.grantedScope === undefined || !scopeContains(decision.grantedScope, request.scope)) {
         return deny('the granted scope does not contain the requested scope');
       }
-      return mintPlatformDecision('allow', decision.reason);
+      return mintPlatformDecision(
+        'allow',
+        decision.reason,
+        bind({
+          grantedScope: decision.grantedScope,
+          ...(decision.policyId !== undefined && SAFE_POLICY_ID.test(decision.policyId) ? { policyId: decision.policyId } : {}),
+          ...(decision.lifetime !== undefined ? { lifetime: decision.lifetime } : {}),
+        }),
+      );
     }
-    if (decision.effect === 'deny') return mintPlatformDecision('deny', decision.reason);
-    return mintPlatformDecision('prompt', decision.reason);
+    if (decision.effect === 'deny') return mintPlatformDecision('deny', decision.reason, bind());
+    return mintPlatformDecision('prompt', decision.reason, bind());
   }
 }

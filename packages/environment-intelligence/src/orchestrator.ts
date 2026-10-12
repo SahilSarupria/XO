@@ -15,7 +15,7 @@ import type { EnvironmentInventory } from './inventory.js';
 import { type SourceRecord } from './inventory.js';
 import { ConnectorId, type SourceId } from './ids.js';
 import { resourceScope } from '@xo/permissions';
-import { requireAuthorization } from './authorization-gate.js';
+import { requireAuthenticatedPrincipal, requireAuthorization } from './authorization-gate.js';
 import { planConnection, type ConnectionPlan, type ConnectorRegistry } from './registry.js';
 import type { SourceEvent } from './source-state.js';
 
@@ -38,6 +38,7 @@ export interface DiscoveryRun {
 function eventFor(error: DiscoveryError): SourceEvent | undefined {
   switch (error.code) {
     case DiscoveryErrorCode.AUTHORIZATION_REQUIRED:
+    case DiscoveryErrorCode.UNAUTHENTICATED:
       return 'authorization_required';
     case DiscoveryErrorCode.AUTHORIZATION_DENIED:
       return 'authorization_denied';
@@ -87,6 +88,10 @@ export async function discoverSource<TScope extends DiscoveryScopeBase>(
   request: DiscoveryRequest<TScope>,
   ctx: ConnectorContext,
 ): Promise<Result<DiscoveryRun, DiscoveryError>> {
+  // M2.1: identity first. An unauthenticated caller gets the same answer whatever it asked about (no registry,
+  // inventory or filesystem lookup happens), and a discovered/detected source never stands in for a principal.
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
   const connector = deps.registry.findFor(request.sourceType)[0] as Connector<TScope> | undefined;
   if (connector === undefined) {
     return err(
@@ -201,6 +206,8 @@ export async function registerDeclaredSources(
   sources: readonly DetectedSource[],
   ctx: ConnectorContext,
 ): Promise<Result<readonly SourceRecord[], DiscoveryError>> {
+  const who = requireAuthenticatedPrincipal(ctx.principal, DECLARE_SOURCES_PERMISSION);
+  if (!who.ok) return who;
   if (sources.length > MAX_DECLARED_SOURCES_PER_CALL) {
     return err(
       discoveryError(DiscoveryErrorCode.LIMIT_EXCEEDED, `at most ${MAX_DECLARED_SOURCES_PER_CALL} sources can be declared per call`, {
@@ -245,12 +252,20 @@ export async function registerDeclaredSources(
  * connector asks the authorization gate for a read permission distinct from
  * the listing permission. A denial here does not alter the source's base
  * lifecycle (listing still succeeded); it is returned to the caller.
+ *
+ * M2.1: a source that was detected, listed and validated is only a CANDIDATE.
+ * `axes.authorization === 'granted'` records that LISTING was authorized; it
+ * never stands in for the read decision, which the connector requests again,
+ * for `filesystem.read`, bound to this caller and this scope.
  */
 export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
   deps: DiscoveryDeps,
   request: AcquisitionRequest & { readonly scope: TScope },
   ctx: ConnectorContext,
 ): Promise<Result<AcquisitionOutcome, DiscoveryError>> {
+  // M2.1: identity before any inventory lookup, so an unauthenticated caller cannot learn which sources exist.
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
   const record = deps.inventory.get(request.sourceId);
   if (record === undefined || record.connectorId === undefined) {
     return err(discoveryError(DiscoveryErrorCode.INVALID_TRANSITION, 'source is not in the inventory or has no matched connector', {}));

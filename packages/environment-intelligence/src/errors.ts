@@ -17,6 +17,8 @@ export const DiscoveryErrorCode = {
   SCOPE_VIOLATION: 'EI_SCOPE_VIOLATION',
   /** Scope itself is unusable (not absolute, is a filesystem root, missing, not a directory). */
   INVALID_SCOPE: 'EI_INVALID_SCOPE',
+  /** The caller is not an authenticated principal (missing, invalid, forged or structurally copied identity). Nothing was consulted, probed or read. */
+  UNAUTHENTICATED: 'EI_UNAUTHENTICATED',
   /** No authorization decision permits this yet (nothing was read). */
   AUTHORIZATION_REQUIRED: 'EI_AUTHORIZATION_REQUIRED',
   /** Authorization was explicitly refused (nothing was read). */

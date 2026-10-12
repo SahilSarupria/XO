@@ -59,6 +59,14 @@ export interface ConnectorContext {
   readonly authorization: AuthorizationPort;
   /** Cooperative cancellation. Connectors check it between units of work and return partial results. */
   readonly signal?: AbortSignal;
+  /**
+   * The caller. Protected operations (M2.1) require this to be the exact
+   * `AuthenticatedPrincipal` minted by `establishAuthenticatedPrincipal` at a
+   * trusted authentication boundary; the type is `Principal` only so a plain
+   * shape can be passed and REJECTED at runtime. Missing, plain, copied or
+   * deserialized principals fail closed with `EI_UNAUTHENTICATED`. It is never
+   * read from request fields, environment variables or discovery results.
+   */
   readonly principal?: Principal;
 }
 

@@ -19,7 +19,7 @@ import {
   type DetectedSource,
   type FilesystemScope,
 } from '../src/index.js';
-import { allowRoot, ctxFor, failClosed, makeDeps, put, withSandbox } from './helpers.js';
+import { TEST_PRINCIPAL, allowRoot, ctxFor, failClosed, makeDeps, put, withSandbox } from './helpers.js';
 
 const scopeOf = (root: string, extra: Partial<FilesystemScope> = {}): FilesystemScope => ({ kind: 'filesystem_root', root, ...extra });
 const request = (root: string, extra: Partial<FilesystemScope> = {}) => ({
@@ -342,6 +342,7 @@ test('the time budget is enforced against the injected clock', async () => {
     const run = await discoverSource(makeDeps(), request(root, { limits: { timeBudgetMs: 4000 } }), {
       clock: ticking,
       authorization: allowRoot(root),
+      principal: TEST_PRINCIPAL,
     });
     assert.ok(run.ok);
     if (!run.ok) return;

@@ -115,7 +115,8 @@ test('an unauthenticated principal is denied under a policy that allows an authe
       const deps = makeDeps();
       const run = await discoverSource(deps, req(root), attack);
       assert.equal(run.ok, false);
-      if (!run.ok) assert.equal(run.error.code, DiscoveryErrorCode.AUTHORIZATION_DENIED);
+      // M2.1: identity is checked before the port/manager is consulted, so the code is the precise one (not a policy denial).
+      if (!run.ok) assert.equal(run.error.code, DiscoveryErrorCode.UNAUTHENTICATED);
       assert.equal(deps.inventory.list().length, 0);
     }
     assert.ok((await discoverSource(makeDeps(), req(root), ctx)).ok, 'positive control: authenticated principal, same policy');

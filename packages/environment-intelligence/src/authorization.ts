@@ -7,12 +7,16 @@ import type { ConnectorId } from './ids.js';
  * touches a source asks this port first, and nothing is read until it
  * answers `allow`.
  *
- * DEPENDENCY ON P1.0 (Enterprise Trust, authorization gate milestone):
- * the authoritative implementation of this port is the platform's
- * `@xo/permissions` `PermissionManager` + policy + audit, wired by P1.0.
- * That gate does not exist for this use yet (its requester model is
- * package/capability-shaped, not connector-shaped). This package therefore
- * ONLY defines the port and the vocabulary; it does not evaluate policy.
+ * The authoritative implementation of this port is the platform's
+ * `@xo/permissions` `PermissionManager` (rules + grants + revocation), reached
+ * through `PermissionManagerAuthorization`. Its requester model is
+ * package/capability-shaped, not connector-shaped, so on `main` policy still
+ * cannot match on the principal (open P1.0 contract). This package therefore
+ * does not evaluate policy; the enforcement point (`authorization-gate.ts`)
+ * adds the M2.1 preconditions that do not depend on that contract: an
+ * authenticated principal, an unambiguous scope, a decision minted by a
+ * trusted constructor, bound to THIS request, spent once, and whose granted
+ * scope contains the requested scope.
  *
  * `permission` uses the platform's `domain.action` vocabulary
  * (`filesystem.list`, `filesystem.read`) and `scope` reuses the platform's
@@ -25,6 +29,7 @@ export interface AuthorizationRequest {
   readonly operation: ConnectorOperation | 'declare_sources';
   readonly permission: string;
   readonly scope: PermissionScope;
+  /** The authenticated caller. Required at runtime by the enforcement point; optional in the type only so a missing/plain one is rejected, not mistyped. */
   readonly principal?: Principal;
   readonly reason: string;
 }

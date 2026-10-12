@@ -283,8 +283,13 @@ test('caller-supplied declarations, principal claims and an authority string can
     try {
       for (const [entryName, run] of entryPoints) {
         spy.watch([root]);
-        const ctx = { ...ctxFor(failClosed()), principal: { kind: 'human', id: 'ceo@victim.example' } } as ReturnType<typeof ctxFor>;
-        const r = await run(declared, ctx);
+        // A caller-claimed principal is not an authenticated one (M2.1): rejected for identity, before any gate or probe.
+        const spoofed = { ...ctxFor(failClosed()), principal: { kind: 'human', id: 'ceo@victim.example' } } as ReturnType<typeof ctxFor>;
+        const rSpoof = await run(declared, spoofed);
+        assert.equal(rSpoof.ok, false, entryName);
+        assert.equal(rSpoof.error?.code, DiscoveryErrorCode.UNAUTHENTICATED, entryName);
+        // Control: a genuinely authenticated caller reaches the gate, which (fail-closed) still answers `required`.
+        const r = await run(declared, ctxFor(failClosed()));
         assert.equal(r.ok, false, entryName);
         assert.equal(r.error?.code, DiscoveryErrorCode.AUTHORIZATION_REQUIRED, entryName);
         assert.equal(spy.calls.length, 0, `${entryName}: still no probing`);

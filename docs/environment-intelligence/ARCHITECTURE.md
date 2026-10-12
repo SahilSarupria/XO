@@ -61,6 +61,14 @@ Authorization: `FailClosedAuthorization` is the default (denies, authority `none
 
 P1.0 dependencies (not built here): **M2 authorization gate** implementing `AuthorizationPort`; **M4 audit** consuming provenance access records; retention/purge honouring `purgeRequired`; a connector-shaped requester `Principal`; mapping `filesystem.list` / `filesystem.read` into the permission vocabulary **[proposal]**.
 
+### 8.1 M2.1 — Authorization boundary **[implemented, tested]**
+
+Detection, validation, discovery and authorization stay separate operations; a detected, declared or listed source is only a _candidate_ and never confers access to its contents (`filesystem.list` authorization recorded on the inventory does not stand in for the `filesystem.read` decision, which is requested again per operation).
+
+The single enforcement point (`requireAuthorization`) applies, in order: (1) **identity** — the caller must be the exact `AuthenticatedPrincipal` minted by `@xo/permissions`; plain, copied, deserialized, environment-derived or discovery-derived principals fail with `EI_UNAUTHENTICATED` before the port, inventory or filesystem is touched; (2) **request shape** — malformed permission ids and ambiguous/global/non-path scopes are refused; (3) **decision** — only a decision minted by a trusted constructor is honoured; deny, prompt, malformed, forged, cloned or throwing/unavailable ports fail closed; (4) **binding** — a minted decision is bound to the request it answered (principal, connector, operation, permission, scope), is single-use, and its granted scope must contain the requested scope.
+
+Limits: the guarantees are in-process (as with the P1.0 M1 principal marker). On `main`, `PermissionManager` policy still matches the requester package label, not the principal, so the principal is a precondition and provenance input, not a policy dimension; binding principal to requester remains the open P1.0 contract. The public `mintDevelopmentDecision` stays unbound and reusable for compatibility (development authority only).
+
 ## 9. Milestone vs future work
 
 In: contracts, inventory/state machine, one local filesystem adapter, evidence model, environment model with relationships, candidate processes, explainer, tests, demo. Out: any remote/SaaS connector, credentials handling, incremental sync/health, LLM interpretation, XOIR projection, opportunity scoring, persistence, UI.
