@@ -81,6 +81,12 @@ import type { ExecutionAuthorization } from './authorization.js';
  * tested as a live scenario — see the `getCompiledGraph` failure branch
  * below.
  */
+/**
+ * Decides, from the exact graph about to be resumed, whether the capability's approval still holds. Returns a denial message, or
+ * `undefined` when approved. Required (not optional) so a caller cannot forget it.
+ */
+export type ResumeApprovalGate = (compiledGraphJson: unknown) => Promise<string | undefined>;
+
 export async function attemptResume(
   compilationStore: CompilationStore,
   compilationId: string,
@@ -89,6 +95,7 @@ export async function attemptResume(
   decision: HumanTaskDecision,
   decisionData: Readonly<Record<string, unknown>> | undefined,
   authorization: ExecutionAuthorization,
+  approvalGate: ResumeApprovalGate,
 ): Promise<HumanTaskResumeOutcome> {
   const graphFound = await compilationStore.getCompiledGraph(compilationId);
   if (!graphFound.ok) {
@@ -97,6 +104,13 @@ export async function attemptResume(
       errorCode: ErrorCode.HITL_RESUME_UNSUPPORTED,
       errorMessage: `could not resume: the compiled graph for compilation "${compilationId}" is no longer available (${graphFound.error.message})`,
     };
+  }
+
+  // P1.0 M3: the capability's approval must still hold for the CURRENT state of the graph being resumed. A capability changed
+  // since it was approved (or whose approval is missing/legacy/foreign) is not resumed — and neither decision is applied to it.
+  const approvalDenial = await approvalGate(graphFound.value);
+  if (approvalDenial !== undefined) {
+    return { kind: 'failed', errorCode: ErrorCode.RUNTIME_PERMISSION_DENIED, errorMessage: approvalDenial };
   }
 
   const outcome = await resumeCapabilityExecution(graphFound.value, capabilityId, originalInput, decision, decisionData, authorization);

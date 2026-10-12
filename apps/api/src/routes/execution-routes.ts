@@ -13,7 +13,8 @@ import {
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { isApproved } from '../approvals/approval.js';
+import { deriveCapabilityApprovalStateFromJson } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import type { PermissionManager } from '@xo/permissions';
 import { executeApprovedCapability, preflightCapabilityAuthorization } from '../executions/execute-capability.js';
@@ -120,25 +121,27 @@ export function registerExecutionRoutes(
       ...(safeId(compilationId) !== undefined ? { metadata: { compilationId } } : {}),
     } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
 
-    // 4. Verify the capability is approved.
-    const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
-    const approval = await approvalStore.get(compilationId, capabilityId);
-    if (!approval.ok) throw approval.error;
-    if (!isApproved(approval.value)) {
-      await audit.tryRecord({ ...baseDraft, type: 'execution.denied', outcome: 'denied', reasonCode: ErrorCode.RUNTIME_PERMISSION_DENIED });
-      throw new XoError(
-        ErrorCode.RUNTIME_PERMISSION_DENIED,
-        `capability "${capabilityId}" is not approved for execution in workspace "${workspace.workspaceId}"`,
-      );
-    }
-
-    // 6. Resolve the authoritative runtime declaration from the STORED
-    // compilation result (never a fresh recompile, never a client-
-    // supplied declaration) — the compiled graph this compilation
-    // persisted (P0.5 addition to P0.4's result, see
+    // 6. Resolve the authoritative runtime declaration from the STORED compilation result (never a fresh recompile, never a
+    // client-supplied declaration) — the compiled graph this compilation persisted (P0.5 addition to P0.4's result, see
     // `compilations/compilation.ts`).
     const graphFound = await compilationStore.getCompiledGraph(compilationId);
     if (!graphFound.ok) throw graphFound.error;
+
+    // 4. Verify the capability is approved FOR ITS CURRENT STATE (P1.0 M3). The state is derived here from the very graph that
+    // is about to execute (the same in-memory value handed to the preflight and `executeApprovedCapability` below), so an
+    // approval granted for an earlier or different version of the capability — or a legacy/unbound/unattributed/foreign record —
+    // is refused at the enforcement point, before any execution record, handler call or side effect.
+    const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
+    const verdict = await verifyApproval(
+      approvalStore,
+      { workspaceId: workspace.workspaceId, compilationId, capabilityId },
+      deriveCapabilityApprovalStateFromJson(graphFound.value, capabilityId, compilationFound.value.sourceDigestSha256),
+    );
+    if (!verdict.ok) throw verdict.error;
+    if (!verdict.value.approved) {
+      await audit.tryRecord({ ...baseDraft, type: 'execution.denied', outcome: 'denied', reasonCode: verdict.value.reasonCode });
+      throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, verdict.value.message);
+    }
 
     // 6b. P1.0 M2 — AUTHORIZE BEFORE ANY SIDE EFFECT. The decision is made here, against the authoritative
     // declaration on the STORED graph and the server-side policy, BEFORE `ExecutionStore.create`. A denied

@@ -26,7 +26,8 @@ import {
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { CompilationRecord, CompilationStore } from '../compilations/compilation.js';
 import type { ApprovalStore } from '../approvals/approval.js';
-import { isApproved } from '../approvals/approval.js';
+import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
 import type { ExecutionOutcomeInput, ExecutionRecord, ExecutionStore, HumanTaskDecision } from '../executions/execution.js';
 import { withExecutionLock } from '../executions/execution-lock.js';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
@@ -230,13 +231,16 @@ async function authorizeStep(
   permissionManager: PermissionManager,
   step: { readonly capabilityId: string; readonly contractId: string | undefined },
 ): Promise<{ readonly code: string; readonly message: string } | undefined> {
-  const approval = await ctx.approvalStore.get(runtime.compilation.compilationId, step.capabilityId);
-  if (!approval.ok) return { code: approval.error.code, message: approval.error.message };
-  if (!isApproved(approval.value)) {
-    return {
-      code: ErrorCode.RUNTIME_PERMISSION_DENIED,
-      message: `capability "${step.capabilityId}" is not approved for execution in workspace "${ctx.workspace.workspaceId}"`,
-    };
+  // P1.0 M3: approved FOR THE CURRENT STATE of this capability in the graph this workflow will actually run (`runtime.graph`,
+  // re-derived from the stored compilation on every start and continuation) — not merely "a record exists".
+  const verdict = await verifyApproval(
+    ctx.approvalStore,
+    { workspaceId: ctx.workspace.workspaceId, compilationId: runtime.compilation.compilationId, capabilityId: step.capabilityId },
+    deriveCapabilityApprovalState(runtime.graph, step.capabilityId, runtime.compilation.sourceDigestSha256),
+  );
+  if (!verdict.ok) return { code: verdict.error.code, message: verdict.error.message };
+  if (!verdict.value.approved) {
+    return { code: ErrorCode.RUNTIME_PERMISSION_DENIED, message: verdict.value.message };
   }
   // P1.0 M2: a step with NO contract id cannot be matched to a declaration — deny, never skip the check.
   if (step.contractId === undefined) {
@@ -882,6 +886,7 @@ export async function resumeWorkflowExecution(
           request.data,
           ctx.principal,
           ctx.permissionManager,
+          { store: ctx.approvalStore, workspaceId: ctx.workspace.workspaceId },
         );
         switch (outcome.kind) {
           case 'not_found':

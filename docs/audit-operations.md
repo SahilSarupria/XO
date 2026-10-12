@@ -85,3 +85,4 @@ capability catalogues (derived metadata, no raw documents or run data).
 - Local CLI runs are unaudited unless `XO_AUDIT_*` is set (the operator is a trusted local context, not a principal).
 - Legal retention periods are an operator/legal decision; none is supplied.
 - `execution.started` precedes record creation, so it carries no `executionId`; join via `correlationId`.
+- Approvals (P1.0 M3): `approval.attempted` is a durable precondition (no approval is stored without it), then `approval.granted`; refusals are `approval.denied`. A stale/legacy/foreign approval met at execution is `execution.denied` with reasonCode `APPROVAL_STALE` / `APPROVAL_LEGACY_UNBOUND` / `APPROVAL_MALFORMED` / `APPROVAL_TARGET_MISMATCH` / `APPROVAL_ATTRIBUTION_INVALID` / `APPROVAL_STATE_UNAVAILABLE` (a plain missing approval keeps `XO_RUNTIME_PERMISSION_DENIED`).

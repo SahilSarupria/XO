@@ -7,11 +7,13 @@ import {
   requirePrincipal,
   workspaceExecutionsStore,
   workspaceCompilationsStore,
+  workspaceApprovalsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
+import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import type { PermissionManager } from '@xo/permissions';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
 import type { ExecutionRecord, HumanTaskDecision } from '../executions/execution.js';
@@ -170,7 +172,10 @@ export function registerHumanTaskRoutes(
     // The lock + pre-check + `attemptResume` + store-write sequence lives
     // in `executions/resolve-human-task.ts` (extracted in P0.8 so the
     // workflow resume route reuses it verbatim) — see that file's doc comment.
-    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver, permissionManager);
+    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver, permissionManager, {
+      store: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
+      workspaceId: workspace.workspaceId,
+    });
 
     switch (outcome.kind) {
       case 'not_found':

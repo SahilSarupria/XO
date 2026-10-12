@@ -28,6 +28,9 @@ export const AUDIT_EVENT_TYPES = [
   'humantask.denied',
   'humantask.resolved',
   'humantask.failed',
+  'approval.attempted',
+  'approval.granted',
+  'approval.denied',
   'audit.read',
   'audit.purged',
 ] as const;

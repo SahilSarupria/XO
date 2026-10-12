@@ -17,7 +17,8 @@ import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { isApproved } from '../approvals/approval.js';
+import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
 import { composeCompilationWorkflows, resolveWorkflow, buildWorkflowView, type WorkflowView } from '../workflows/workflow-catalog.js';
@@ -205,8 +206,13 @@ export function registerWorkflowRoutes(
         const resolved = resolveWorkflow(composed.value.graph, workflow);
         const approved = new Set<string>();
         for (const step of workflow.steps) {
-          const approval = await ctx.approvalStore.get(compilation.compilationId, step.capabilityId);
-          if (approval.ok && isApproved(approval.value)) approved.add(step.capabilityId);
+          // Same verdict the runner enforces (P1.0 M3): a stale/legacy/foreign approval is not shown as approved.
+          const verdict = await verifyApproval(
+            ctx.approvalStore,
+            { workspaceId: ctx.workspace.workspaceId, compilationId: compilation.compilationId, capabilityId: step.capabilityId },
+            deriveCapabilityApprovalState(composed.value.graph, step.capabilityId, compilation.sourceDigestSha256),
+          );
+          if (verdict.ok && verdict.value.approved) approved.add(step.capabilityId);
         }
         workflows.push(buildWorkflowView(compilation.compilationId, compilation.sourceId, resolved, approved));
       }

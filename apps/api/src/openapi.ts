@@ -469,7 +469,7 @@ export const openApiDocument = {
       post: {
         summary: 'Approve a discovered capability for execution',
         description:
-          'Records that the authenticated identity approved this exact capability from this exact compilation, in this workspace. Only approved capabilities may be executed via POST .../executions. No review comments, multi-reviewer quorum, or un-approve endpoint in this milestone.',
+          'Records that the authenticated principal (never a request field) approved this capability, from this compilation, in this workspace, IN ITS CURRENT MATERIAL STATE: the server derives and stores a binding over the capability contract content (including its rules), its permission declaration, its resolved binding and the compilation source digest (P1.0 M3). The request body is ignored. The approval is honoured only while that state is unchanged; a materially changed capability is refused (403 at execution, workflow start and human-task resume) until it is approved again. Approvals recorded before M3 carry no binding and are refused until re-approved. 400 if the capability has no derivable state. No review comments, multi-reviewer quorum, or un-approve endpoint.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
@@ -477,7 +477,9 @@ export const openApiDocument = {
         ],
         responses: {
           '200': { description: 'ApprovalRecord' },
+          '400': { description: 'The compilation did not succeed, or the capability has no derivable approvable state' },
           '404': { description: 'Unknown compilation/capability, or workspace not owned by the caller' },
+          '503': { description: 'Durable audit evidence for the approval could not be recorded; no approval was created' },
         },
       },
     },

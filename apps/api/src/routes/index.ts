@@ -41,7 +41,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerCompilerRoutes(router);
   registerWorkspaceRoutes(router, deps.workspaceStore);
   registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
-  registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);

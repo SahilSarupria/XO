@@ -238,6 +238,17 @@ accidentally public:
 Every other route in the table above requires `Authorization: Bearer
 <key>`.
 
+### Approval integrity (P1.0 M3)
+
+`POST .../capabilities/:capabilityId/approve` records an **attributed, bound** approval (`approvals/<compilation>/<capability>.json`, schema v2):
+
+- **Attributed.** `approver` is a snapshot of the authenticated principal (M1). The body is ignored; nothing in the request can name an approver, a binding or a target version.
+- **Bound.** The server derives the capability's material state from the persisted compiled graph and stores it: the contract content hash (which covers its rules), the permission-declaration fingerprint (M2), the resolved binding (class, resolver, id) and the compilation's source digest.
+- **Enforced where it is used, not in the UI.** The execution route, workflow start/continuation (every step), human-task resume (approve and reject), and the capability/workflow projections all call the same `verifyApproval`, deriving the *current* state from the graph about to be used. Missing, legacy (pre-M3, unbound), malformed, wrongly-targeted, inconsistently-attributed or stale approvals are refused (403) with a precise reason in the audit trail (`APPROVAL_STALE`, `APPROVAL_LEGACY_UNBOUND`, ...). `GET .../capabilities` shows `approved` plus `approvalStatus` and can never say `true` for what the boundary refuses.
+- **Material change.** Changing a rule, the permission declaration, the resolved implementation or the source digest makes the approval stale; approve again to bind the new state. Changes to *other* capabilities do not affect it.
+- **Audit (M4).** `approval.attempted` (durable precondition: if it cannot be recorded, no approval is created), `approval.granted`, `approval.denied`. Only a short digest prefix is recorded.
+- **Migration.** Approvals recorded before M3 have no binding and are **not** honoured; re-approve them. (Same fail-closed trade-off as M1's unbound API keys.)
+
 ### Principal and key binding (P1.0 M1)
 
 Authentication now resolves an authenticated **principal**

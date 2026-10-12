@@ -32,3 +32,15 @@ Role/permission model, org membership, SSO/IdP, key rotation/expiry/scopes, auth
 ## D. Proposed for review (NOT implemented, NOT approved)
 
 **Key-migration helper.** An operator command such as `manage-keys.ts bind <identityId> --kind human|service [--org <orgId>]` that attaches a principal binding to an _existing_ unbound key record so callers need not receive new keys. Open questions for review: (a) it asserts a kind for a credential whose holder the tool cannot verify (the operator is vouching); (b) it should require an explicit per-identity confirmation and refuse to touch revoked keys; (c) whether re-issuing (current documented path) is preferable because it forces key rotation. Until approved, the only supported path is revoke-then-reissue with an explicit `--kind`.
+
+## E. M3 implementation details established by inspecting the repository (NOT user decisions)
+
+Chosen by the implementer; reviewable and reversible. They do not change A, and they decide none of C's remaining items (role/permission model, org membership).
+
+| #   | Detail | Basis |
+| --- | ------ | ----- |
+| M3a | The approval record (`apps/api/src/approvals`) gains `schemaVersion: 2`, an `approver` principal snapshot (from `req.principal`) and a server-derived `binding`. No parallel approval store or API is introduced. | The existing P0.5 record and `ApprovalStore` were the only approval lifecycle found. |
+| M3b | "Material state" = contract content hash (rules included) + permission-declaration fingerprint + resolved binding (class/resolver/id), plus the compilation source digest bound separately. Confidence, provenance pointers and unrelated capabilities are excluded. | Reuses `computeContractContentHash`, `declarationFingerprint` (M2) and `resolveContractBinding`; the same functions the execution boundary uses. |
+| M3c | Pre-M3 approvals have no binding and are refused until re-approved. No automatic upgrade. | Upgrading would bind an old human act to a state they never saw. Same fail-closed trade-off as M1 I5. |
+| M3d | Who may approve is unchanged: the authenticated owner of the workspace (the P0.5/P0.7 documented boundary). No `approval.grant` permission or approver role was invented. | M2 authorizes capability execution only; an approver role/permission model is a C item the owner has not decided. |
+| M3e | A capability with an unresolved binding or declaration can still be approved (existing behaviour); the approval records that state, so resolving it later is a material change. | Preserves M2/binding execution-time refusal while preventing silent carry-over. |
