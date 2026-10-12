@@ -2,9 +2,9 @@
  * F2 - behavior through the REAL `@xo/permissions` PermissionManager (rules, grants, revocation, audit sink),
  * not a test gate. Every denial test is paired with a positive control under the same policy/principal.
  *
- * Known limitation pinned by a test below: on `main`, grants and rules match on the requester PACKAGE LABEL
- * (`xo.environment-intelligence`), not on the principal, so the principal is a precondition and provenance
- * input only. Binding principal to requester is unresolved (P1.0).
+ * C0.2: the verified principal is forwarded as `PermissionRequest.principal`, so a principal-scoped rule
+ * (`principalId`) matches only the authenticated principal it names. Stored GRANTS remain package-keyed
+ * (`PermissionGrant` has no principal), so a grant to the label still applies to every caller (D2/C0.3 scope).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,12 +19,16 @@ import {
   PermissionManager,
   RuleBasedPolicy,
   establishAuthenticatedPrincipal,
+  isAuthenticatedPrincipal,
   pathScope,
+  type PermissionPolicy,
+  type PermissionRequest,
   type PolicyRule,
 } from '@xo/permissions';
 import {
   InMemoryAuditRecorder,
   DiscoveryErrorCode,
+  LocalFilesystemConnector,
   ENVIRONMENT_INTELLIGENCE_REQUESTER,
   PermissionManagerAuthorization,
   SourceId,
@@ -32,6 +36,7 @@ import {
   discoverSource,
   registerDeclaredSources,
   stableId,
+  type AuthorizationRequest,
   type ConnectorContext,
   type FilesystemScope,
 } from '../src/index.js';
@@ -196,18 +201,156 @@ test('the adapter refuses a duck-typed stand-in for PermissionManager', () => {
   assert.throws(() => new PermissionManagerAuthorization(fake), TypeError);
 });
 
-test('LIMITATION: grants match the package label, not the principal - two principals get the same decision', async () => {
+/** A rule that allows `permission` under `root` only for the principal with this id (P1.0 M2 `principalId` matching). */
+const principalRule = (principalId: string, permission: PermissionId, path: string): PolicyRule => ({
+  id: `allow-${permission}-for-${principalId}`,
+  effect: 'ALLOW',
+  match: { permission, packageId: ENVIRONMENT_INTELLIGENCE_REQUESTER, principalId, scope: pathScope(path) },
+});
+
+const mint = (input: { kind: 'human' | 'service'; id: string; orgId?: string }) => {
+  const minted = establishAuthenticatedPrincipal(input);
+  assert.ok(minted.ok);
+  return minted.value;
+};
+
+/** Wraps a policy, recording every `PermissionRequest` the manager actually evaluates (what the policy SEES). */
+function recording(inner: PermissionPolicy): PermissionPolicy & { readonly seen: PermissionRequest[] } {
+  const seen: PermissionRequest[] = [];
+  return {
+    seen,
+    evaluate(request) {
+      seen.push(request);
+      return inner.evaluate(request);
+    },
+  };
+}
+
+const adapterRequest = (root: string, principal: unknown): AuthorizationRequest => ({
+  connectorId: ConnectorId('xo.test-connector'),
+  operation: 'discover',
+  permission: 'filesystem.list',
+  scope: pathScope(root),
+  principal: principal as AuthorizationRequest['principal'],
+  reason: 'c0.2 test',
+});
+
+test('principal-scoped rule: the named principal is allowed; another principal under the same label is denied with no side effects', async () => {
   await withSandbox(async ({ root }) => {
     await put(join(root, 'a.txt'), 'x');
-    const { ctx } = setup([allowRule(LIST, root)]);
-    const other = establishAuthenticatedPrincipal({ kind: 'service', id: 'someone-else' });
-    assert.ok(other.ok);
-    const asOther = { ...ctx, ...(other.ok ? { principal: other.value } : {}) };
-    assert.ok((await discoverSource(makeDeps(), req(root), ctx)).ok);
-    assert.ok(
-      (await discoverSource(makeDeps(), req(root), asOther)).ok,
-      'documents the gap: the principal cannot restrict what the label may do',
+    const { ctx, audit } = setup([principalRule('operator-1', LIST, root)]);
+
+    const deps = makeDeps();
+    const asA = await discoverSource(deps, req(root), ctx);
+    assert.ok(asA.ok, 'positive control: the principal the rule names is authorized');
+    assert.equal(deps.inventory.list().length, 1);
+    const allowedBefore = audit.ofType('permission.allowed').length;
+    assert.ok(allowedBefore >= 1);
+
+    const lookalikes = [
+      mint({ kind: 'service', id: 'someone-else' }),
+      mint({ kind: 'human', id: 'someone-else', orgId: 'operator-1' }), // an org label naming A confers nothing
+      mint({ kind: 'human', id: 'operator-10' }), // id match is exact, not a prefix
+    ];
+    for (const other of lookalikes) {
+      const bDeps = makeDeps();
+      const deniedBefore = audit.ofType('permission.denied').length;
+      const statSpy = mock.method(fsp, 'realpath');
+      syncBuiltinESMExports();
+      try {
+        const asB = await discoverSource(bDeps, req(root), { ...ctx, principal: other });
+        assert.ok(!asB.ok && asB.error.code === DiscoveryErrorCode.AUTHORIZATION_DENIED, `${other.id} must not use ${'operator-1'}'s rule`);
+        assert.equal(statSpy.mock.callCount(), 0, 'a denied principal caused no filesystem probe');
+      } finally {
+        statSpy.mock.restore();
+        syncBuiltinESMExports();
+      }
+      assert.equal(bDeps.inventory.list().length, 0, 'a denied principal leaves no inventory record');
+      assert.equal(audit.ofType('permission.denied').length, deniedBefore + 1, 'the denial is recorded by the existing manager audit sink');
+    }
+    assert.equal(audit.ofType('permission.allowed').length, allowedBefore, 'no further allow was recorded');
+  });
+});
+
+test('the policy sees the verified principal snapshot, never a caller-supplied identity', async () => {
+  await withSandbox(async ({ root }) => {
+    const policy = recording(new RuleBasedPolicy([principalRule('operator-1', LIST, root)]));
+    const manager = new PermissionManager({ policy, auditSink: new InMemoryAuditSink(), clock: new MockClock() });
+    const port = new PermissionManagerAuthorization(manager);
+
+    const b = mint({ kind: 'service', id: 'someone-else', orgId: 'org-of-operator-1' });
+    // Everything a caller might smuggle in beside the authenticated principal.
+    const spoofed = {
+      ...adapterRequest(root, b),
+      principalId: 'operator-1',
+      requester: { packageId: 'xo.environment-intelligence', principal: { kind: 'human', id: 'operator-1' } },
+      context: { principal: { kind: 'human', id: 'operator-1' }, environment: 'trusted' },
+    } as unknown as AuthorizationRequest;
+    const decision = await port.decide(spoofed);
+    assert.equal(decision.effect, 'deny', "operator-1's rule does not apply to the authenticated principal");
+    assert.equal(policy.seen.length, 1);
+    const seen = policy.seen[0] as PermissionRequest;
+    assert.deepEqual(seen.principal, { kind: 'service', id: 'someone-else', orgId: 'org-of-operator-1' });
+    assert.equal(
+      isAuthenticatedPrincipal(seen.principal),
+      false,
+      'the policy gets a plain attribution snapshot, not the authenticated object',
     );
+    assert.equal(seen.context, undefined, 'no caller-supplied context reaches the policy');
+
+    const a = mint({ kind: 'human', id: 'operator-1' });
+    assert.equal((await port.decide(adapterRequest(root, a))).effect, 'allow', 'positive control: the named principal is allowed');
+    assert.deepEqual((policy.seen[1] as PermissionRequest).principal, { kind: 'human', id: 'operator-1' });
+  });
+});
+
+test('a missing or merely look-alike principal cannot match a principal-scoped rule, and never reaches the manager', async () => {
+  await withSandbox(async ({ root }) => {
+    const policy = recording(new RuleBasedPolicy([principalRule('operator-1', LIST, root)]));
+    const manager = new PermissionManager({ policy, auditSink: new InMemoryAuditSink(), clock: new MockClock() });
+    const port = new PermissionManagerAuthorization(manager);
+    const a = mint({ kind: 'human', id: 'operator-1' });
+
+    const notAuthenticated: ReadonlyArray<readonly [string, unknown]> = [
+      ['missing', undefined],
+      ['plain object with the rule-matching id', { kind: 'human', id: 'operator-1' }],
+      ['spread copy of the authenticated principal', { ...a }],
+      ['JSON round trip of the authenticated principal', JSON.parse(JSON.stringify(a))],
+    ];
+    for (const [name, principal] of notAuthenticated) {
+      const decision = await port.decide(adapterRequest(root, principal));
+      assert.equal(decision.effect, 'deny', name);
+    }
+    assert.equal(policy.seen.length, 0, 'none of them reached policy evaluation');
+    assert.equal((await port.decide(adapterRequest(root, a))).effect, 'allow', 'positive control: the genuinely authenticated principal');
+    assert.equal(policy.seen.length, 1);
+  });
+});
+
+test("cross-principal replay: operator-1's genuine allow cannot be spent by another principal", async () => {
+  await withSandbox(async ({ root }) => {
+    await put(join(root, 'a.txt'), 'x');
+    const { ctx, manager } = setup([principalRule('operator-1', LIST, root)]);
+    const port = new PermissionManagerAuthorization(manager);
+    const connector = new LocalFilesystemConnector();
+
+    // Observe the exact request the connector makes for operator-1, then obtain a fresh, unspent, genuine allow for it.
+    const asked: AuthorizationRequest[] = [];
+    const observing = { decide: (r: AuthorizationRequest) => (asked.push(r), port.decide(r)) };
+    assert.ok((await connector.discover(req(root), { ...ctx, authorization: observing })).ok);
+    const original = asked[0] as AuthorizationRequest;
+    const stolen = await port.decide(original);
+    assert.equal(stolen.effect, 'allow');
+
+    const b = mint({ kind: 'service', id: 'someone-else' });
+    const replayed = await connector.discover(req(root), { ...ctx, principal: b, authorization: { decide: async () => stolen } });
+    assert.ok(!replayed.ok && replayed.error.code === DiscoveryErrorCode.AUTHORIZATION_DENIED);
+    if (!replayed.ok)
+      assert.equal(
+        replayed.error.context['reason'],
+        'decision_binding_mismatch',
+        'refused because the decision is bound to another principal',
+      );
   });
 });
 

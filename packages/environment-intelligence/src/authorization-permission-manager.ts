@@ -15,13 +15,14 @@ const SAFE_POLICY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 
 /**
  * The requester LABEL this package presents to `PermissionManager`. It is a
- * package-id label, NOT an identity: on `main`, policy rules and stored grants
- * match on the requester `packageId`, so any grant to this label applies to
- * every caller that reaches this adapter. That is why the adapter ALSO
- * requires an `AuthenticatedPrincipal` (a precondition, and recorded in
- * provenance) - but on `main` policy cannot yet match on the principal, so who
- * the caller is cannot restrict what the label may do. Binding principal to
- * requester is the open connector-shaped-requester contract (P1.0).
+ * package-id label, NOT an identity: policy rules and stored grants match on
+ * the requester `packageId`, so a rule or grant naming only this label applies
+ * to every caller that reaches this adapter. Who the caller is travels
+ * separately, as `PermissionRequest.principal` (C0.2): the adapter forwards the
+ * verified principal so a principal-scoped policy rule (`principalId` /
+ * `principalKind`, P1.0 M2) can restrict what the label may do for a given
+ * caller. Stored grants are still package-keyed and do not match on the
+ * principal (see `PermissionManagerAuthorization`).
  */
 export const ENVIRONMENT_INTELLIGENCE_REQUESTER = PackageId('xo.environment-intelligence');
 
@@ -29,6 +30,16 @@ export const ENVIRONMENT_INTELLIGENCE_REQUESTER = PackageId('xo.environment-inte
  * The platform authorization boundary: the only producer of `platform`
  * authority. It asks a REAL `PermissionManager` (rules + grants + the
  * manager's own audit sink) and mints a trusted decision from the answer.
+ *
+ * Principal wiring (C0.2): the `AuthenticatedPrincipal` the enforcement point
+ * already verified is reduced to a plain attribution snapshot
+ * (`toPrincipalSnapshot`) and set as `PermissionRequest.principal`, exactly as
+ * the platform's `authorizeCapabilityExecution` does. The principal is read ONLY
+ * from the verified `request.principal`; nothing else on the request (and no
+ * `orgId` label) is consulted to choose the identity the policy sees, and no
+ * caller-supplied `context` is forwarded. A principal-scoped rule therefore
+ * matches only the authenticated principal it names; a request with no
+ * authenticated principal never reaches the manager.
  *
  * Fails closed, returning a denial, when: the caller is not an
  * `AuthenticatedPrincipal` (minted by `establishAuthenticatedPrincipal`;
@@ -68,13 +79,15 @@ export class PermissionManagerAuthorization implements AuthorizationPort {
   async decide(request: AuthorizationRequest): Promise<AuthorizationDecision> {
     const deny = (reason: string): AuthorizationDecision => mintPlatformDecision('deny', reason);
 
-    if (!isAuthenticatedPrincipal(request.principal)) return deny('an authenticated principal is required');
+    const authenticatedPrincipal: unknown = request.principal;
+    if (!isAuthenticatedPrincipal(authenticatedPrincipal)) return deny('an authenticated principal is required');
+    const principal = toPrincipalSnapshot(authenticatedPrincipal);
     const permission = parsePermissionId(request.permission);
     if (!permission.ok) return deny('the requested permission id is not valid');
     if (!isPermissionScope(request.scope)) return deny('the requested scope is not valid');
 
     const bind = (extra: Pick<DecisionBinding, 'grantedScope' | 'policyId' | 'lifetime'> = {}): DecisionBinding => ({
-      principal: toPrincipalSnapshot(request.principal as Parameters<typeof toPrincipalSnapshot>[0]),
+      principal,
       connectorId: request.connectorId,
       operation: request.operation,
       permission: request.permission,
@@ -86,6 +99,7 @@ export class PermissionManagerAuthorization implements AuthorizationPort {
       permission: permission.value.id,
       scope: request.scope,
       requester: { packageId: ENVIRONMENT_INTELLIGENCE_REQUESTER, capabilityId: request.connectorId },
+      principal,
       reason: request.reason,
     });
 

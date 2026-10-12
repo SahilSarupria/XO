@@ -10,10 +10,10 @@ import type { ConnectorId } from './ids.js';
  * The authoritative implementation of this port is the platform's
  * `@xo/permissions` `PermissionManager` (rules + grants + revocation), reached
  * through `PermissionManagerAuthorization`. Its requester model is
- * package/capability-shaped, not connector-shaped, so on `main` policy still
- * cannot match on the principal (open P1.0 contract). This package therefore
- * does not evaluate policy; the enforcement point (`authorization-gate.ts`)
- * adds the M2.1 preconditions that do not depend on that contract: an
+ * package/capability-shaped, not connector-shaped; the adapter forwards the
+ * authenticated principal as `PermissionRequest.principal` (C0.2), so
+ * principal-scoped policy rules apply. This package does not evaluate policy;
+ * the enforcement point (`authorization-gate.ts`) adds the M2.1 preconditions: an
  * authenticated principal, an unambiguous scope, a decision minted by a
  * trusted constructor, bound to THIS request, spent once, and whose granted
  * scope contains the requested scope.
