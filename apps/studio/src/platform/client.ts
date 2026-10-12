@@ -206,12 +206,12 @@ export class XoClient {
   listExecutions(ws: string): Promise<Result<Execution[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/executions`, parseExecutionList);
   }
-  resolveHumanTask(ws: string, executionId: string, decision: 'approve' | 'reject'): Promise<Result<Execution>> {
+  resolveHumanTask(ws: string, executionId: string, decision: 'approve' | 'reject', note?: string): Promise<Result<Execution>> {
     return this.call(
       'POST',
       `/workspaces/${enc(ws)}/executions/${enc(executionId)}/resolve`,
       (b) => parseExecution(b),
-      this.json({ decision }),
+      this.json({ decision, ...(note !== undefined ? { data: { note } } : {}) }),
     );
   }
 
@@ -254,13 +254,19 @@ export class XoClient {
   resumeWorkflowRun(
     ws: string,
     workflowExecutionId: string,
-    args: { decision: 'approve' | 'reject'; expectedStepExecutionId: string; expectedRevision: number },
+    args: { decision: 'approve' | 'reject'; expectedStepExecutionId: string; expectedRevision: number; note?: string },
   ): Promise<Result<WorkflowRun>> {
     return this.call(
       'POST',
       `/workspaces/${enc(ws)}/workflow-executions/${enc(workflowExecutionId)}/resume`,
       (b) => parseWorkflowRun(b),
-      this.json(args),
+      this.json({
+        decision: args.decision,
+        expectedStepExecutionId: args.expectedStepExecutionId,
+        expectedRevision: args.expectedRevision,
+        // The platform stores `data` on the step's human task. The note travels as `data.note` and nothing else.
+        ...(args.note !== undefined ? { data: { note: args.note } } : {}),
+      }),
     );
   }
 }

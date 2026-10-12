@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   describeRecoveryProblem,
+  normalizeNote,
+  NOTE_MAX_CHARS,
+  recordedNotes,
   describeResumeProblem,
   recoverableRuns,
   describeRun,
@@ -15,6 +18,7 @@ import {
 } from '../../src/domain/work';
 import type { ApiProblem } from '../../src/platform/client';
 import {
+  parseExecution,
   parseWorkflowRun,
   tryParseErrorBody,
   WireParseError,
@@ -235,5 +239,40 @@ describe('recovery', () => {
     expect(v.label).toBe('Interrupted');
     expect(v.summary).toMatch(/step 2 of 2/i);
     expect(v.summary).toMatch(/continue it from Tasks/i);
+  });
+});
+
+describe('decision notes', () => {
+  it('trims, treats blank as no note, and rejects (never truncates) an over-long one', () => {
+    expect(normalizeNote('  hi  ')).toEqual({ note: 'hi' });
+    expect(normalizeNote('   ')).toEqual({});
+    expect(normalizeNote('x'.repeat(NOTE_MAX_CHARS)).note).toHaveLength(NOTE_MAX_CHARS);
+    expect(normalizeNote('x'.repeat(NOTE_MAX_CHARS + 1)).error).toMatch(/500/);
+    expect(normalizeNote('x'.repeat(NOTE_MAX_CHARS + 1).concat('')).note).toBeUndefined();
+  });
+  it('reads a recorded note, resolver and time from the platform record only', () => {
+    const e = parseExecution({
+      executionId: 'e1',
+      compilationId: 'c',
+      capabilityId: 'k',
+      status: 'succeeded',
+      requestedAt: 't',
+      input: {},
+      humanTask: {
+        status: 'resolved',
+        decision: 'approve',
+        decisionData: { note: 'ok', other: 1 },
+        resolverIdentityId: 'sally',
+        resolvedAt: '2026-10-11T10:00:00Z',
+      },
+    });
+    expect(recordedNotes([e]).get('e1')).toEqual({ note: 'ok', by: 'sally', at: '2026-10-11T10:00:00Z' });
+  });
+  it('ignores non-string notes and pending tasks', () => {
+    const base = { executionId: 'e2', compilationId: 'c', capabilityId: 'k', status: 'waiting_for_human', requestedAt: 't', input: {} };
+    expect(recordedNotes([parseExecution({ ...base, humanTask: { status: 'pending' } })]).size).toBe(0);
+    expect(
+      recordedNotes([parseExecution({ ...base, status: 'succeeded', humanTask: { status: 'resolved', decisionData: { note: 5 } } })]).size,
+    ).toBe(0);
   });
 });

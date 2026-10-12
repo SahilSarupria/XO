@@ -656,3 +656,31 @@ details summary {
   color: var(--text);
   border-color: var(--border-strong);
 }
+
+.note summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.note textarea {
+  display: block;
+  width: 100%;
+  margin-top: var(--s-2);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  resize: vertical;
+}
+.note textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.recorded-note {
+  margin: var(--s-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}

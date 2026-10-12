@@ -82,9 +82,18 @@ check('a wrong revision is a 409', !staleRev.ok && staleRev.problem.status === 4
 const unchanged = must(await c.getWorkflowRun(ws, run.workflowExecutionId), 'get run');
 check('refused resumes changed nothing', unchanged.revision === run.revision && unchanged.currentStepIndex === 0);
 
-const next = must(await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision }), 'resume');
+const NOTE = 'Checked against the statement';
+const next = must(await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision, note: NOTE }), 'resume with a note');
 check('approval advances to the next step', next.currentStepIndex === 1 || next.status === 'succeeded', `${next.status} ${next.currentStepIndex}`);
 check('revision moved forward', next.revision > run.revision);
+const after = must(await c.listExecutions(ws), 'list executions after decision');
+const stepExec = after.find((e) => e.executionId === run.currentStepExecutionId);
+check('the platform persisted the note on the step it was attached to', stepExec?.humanTask?.decisionNote === NOTE, JSON.stringify(stepExec?.humanTask));
+check('the platform recorded who resolved it', typeof stepExec?.humanTask?.resolverId === 'string');
+const tooLong = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: next.currentStepExecutionId ?? 'x', expectedRevision: next.revision, note: 'y'.repeat(9000) });
+check('the platform refuses an oversized note with a 400 and applies nothing', !tooLong.ok && tooLong.problem.status === 400, JSON.stringify(tooLong));
+const stillThere = must(await c.getWorkflowRun(ws, run.workflowExecutionId), 'get run after refused note');
+check('the refused note changed nothing', stillThere.revision === next.revision);
 const replay = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision });
 check('replaying the old decision is refused, not applied twice', !replay.ok && replay.problem.status === 409, JSON.stringify(replay));
 done();

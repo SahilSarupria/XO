@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { normalizeNote } from '../domain/work';
+import { NoteField } from './NoteField';
 import { buildInputFromContract, coerceFieldValue, describeExecution, suggestedFieldsFromFailure } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
 import type { Execution, InputContract } from '../platform/wire';
@@ -16,13 +18,20 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
   const [deciding, setDeciding] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | undefined>();
 
+  // Kept if the platform refuses, cleared once it accepts.
+  const [noteText, setNoteText] = useState('');
+  const noteCheck = normalizeNote(noteText);
+
   async function decide(decision: 'approve' | 'reject') {
+    if (noteCheck.error !== undefined) return;
     setDeciding(true);
     setProblem(undefined);
-    const r = await client.resolveHumanTask(props.workspaceId, e.executionId, decision);
+    const r = await client.resolveHumanTask(props.workspaceId, e.executionId, decision, noteCheck.note);
     setDeciding(false);
-    if (r.ok) props.onChanged();
-    else setProblem(r.problem);
+    if (r.ok) {
+      setNoteText('');
+      props.onChanged();
+    } else setProblem(r.problem);
   }
 
   const pending = e.status === 'waiting_for_human' && e.humanTask?.status === 'pending';
@@ -38,17 +47,23 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
       {pending ? (
         <div className="decision">
           <p>This step needs a person. Choose what should happen:</p>
+          <NoteField value={noteText} onChange={setNoteText} disabled={deciding} />
           <div className="row">
-            <Button variant="primary" disabled={deciding} onClick={() => void decide('approve')}>
+            <Button variant="primary" disabled={deciding || noteCheck.error !== undefined} onClick={() => void decide('approve')}>
               Approve this step
             </Button>
-            <Button variant="danger" disabled={deciding} onClick={() => void decide('reject')}>
+            <Button variant="danger" disabled={deciding || noteCheck.error !== undefined} onClick={() => void decide('reject')}>
               Reject this step
             </Button>
           </div>
         </div>
       ) : null}
       {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+      {e.humanTask?.status === 'resolved' && e.humanTask.decisionNote !== undefined ? (
+        <p className="recorded-note">
+          Note{e.humanTask.resolverId !== undefined ? ` from ${e.humanTask.resolverId}` : ''}: {e.humanTask.decisionNote}
+        </p>
+      ) : null}
       {e.status === 'succeeded' && e.output !== undefined ? (
         <details>
           <summary>Result</summary>

@@ -1,4 +1,4 @@
-import { describeRun, runStepsTitle, stepStatusLabel, tidyName } from '../domain/work';
+import { describeRun, runStepsTitle, stepStatusLabel, tidyName, type RecordedNote } from '../domain/work';
 import type { WorkflowRun, WorkflowRunStep } from '../platform/wire';
 import { Badge, formatWhen } from './primitives';
 import { useSession } from './session';
@@ -23,7 +23,7 @@ export function runTitle(run: WorkflowRun): string {
 }
 
 /** Where a run stands: overall state first, then each step. Technical identifiers only in Builder Mode. */
-export function RunSummary(props: { run: WorkflowRun }) {
+export function RunSummary(props: { run: WorkflowRun; notes?: ReadonlyMap<string, RecordedNote> }) {
   const { mode } = useSession();
   const r = props.run;
   const v = describeRun(r);
@@ -39,6 +39,12 @@ export function RunSummary(props: { run: WorkflowRun }) {
             <span className="step-name">{tidyName(s.capabilityName)}</span>
             <Badge tone={STEP_TONE[s.status]}>{stepStatusLabel(s.status)}</Badge>
             {s.errorMessage !== undefined ? <span className="danger-text small"> {s.errorMessage}</span> : null}
+            {s.executionId !== undefined && props.notes?.get(s.executionId) !== undefined ? (
+              <p className="recorded-note step-note">
+                Note{props.notes.get(s.executionId)?.by !== undefined ? ` from ${props.notes.get(s.executionId)?.by}` : ''}:{' '}
+                {props.notes.get(s.executionId)?.note}
+              </p>
+            ) : null}
           </li>
         ))}
       </ol>

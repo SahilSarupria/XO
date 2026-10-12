@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { standaloneExecutions, tidyName } from '../domain/work';
+import { standaloneExecutions, tidyName, type RecordedNote } from '../domain/work';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { EmptyState, formatWhen, Section } from './primitives';
 import { RunSummary, runTitle } from './RunCard';
@@ -11,6 +11,7 @@ export function ActivitySection(props: {
   workspaceId: string;
   executions: Execution[];
   runs: readonly WorkflowRun[];
+  notes: ReadonlyMap<string, RecordedNote>;
   caps: Capability[];
   activeCompilationId: string | undefined;
   onChanged: () => void;
@@ -42,7 +43,7 @@ export function ActivitySection(props: {
               <li key={r.workflowExecutionId} className="card">
                 <div className="card-main">
                   <h3>{runTitle(r)}</h3>
-                  <RunSummary run={r} />
+                  <RunSummary run={r} notes={props.notes} />
                 </div>
               </li>
             ))}

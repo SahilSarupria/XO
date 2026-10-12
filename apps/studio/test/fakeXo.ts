@@ -32,7 +32,13 @@ interface Body {
 interface FakeExecution {
   executionId: string;
   status: string;
-  humanTask?: { status: string; decision?: string };
+  humanTask?: {
+    status: string;
+    decision?: string;
+    decisionData?: Record<string, unknown>;
+    resolverIdentityId?: string;
+    resolvedAt?: string;
+  };
   [k: string]: unknown;
 }
 
@@ -97,6 +103,8 @@ export class FakeXo {
   /** Overrides the revision the next resume is compared against, simulating another client having moved the run on. */
   /** Simulates another client changing the run between Studio's read and its resume (a stale revision). */
   bumpRevisionBeforeResume = false;
+  /** The platform refuses the decision data (e.g. a capability's own decision-data schema). */
+  rejectDecisionData = false;
   private rn = 0;
   failNextCompile: { errorMessage: string; errorCode: string } | undefined;
   executeBehavior: 'invalid_input' | 'binding_unresolved' | 'succeed' | 'waiting_for_human' | 'unavailable' | 'forbidden' = 'invalid_input';
@@ -129,8 +137,24 @@ export class FakeXo {
   }
 
   /** Applies a decision to a run the way the platform does, and also lets a test simulate ANOTHER client deciding. */
-  applyDecision(run: Record<string, any>, decision: 'approve' | 'reject') {
+  applyDecision(run: Record<string, any>, decision: 'approve' | 'reject', data?: Record<string, unknown>) {
     const i = run.currentStepIndex as number;
+    // The platform stores the decision (and any data) on the step's human-task execution, and lists that execution.
+    this.executions.push({
+      executionId: run.steps[i].executionId,
+      compilationId: run.compilationId,
+      capabilityId: run.steps[i].capabilityId,
+      status: decision === 'approve' ? 'succeeded' : 'rejected',
+      requestedAt: new Date().toISOString(),
+      input: {},
+      humanTask: {
+        status: 'resolved',
+        decision,
+        ...(data !== undefined ? { decisionData: data } : {}),
+        resolverIdentityId: 'sally',
+        resolvedAt: new Date().toISOString(),
+      },
+    });
     run.revision += 1;
     run.updatedAt = new Date().toISOString();
     if (decision === 'reject') {
@@ -311,7 +335,11 @@ export class FakeXo {
         return reply(409, {
           error: { code: 'XO_RUNTIME_SESSION_INVALID_STATE', message: 'stale revision', context: { reason: 'stale_revision' } },
         });
-      this.applyDecision(run, b.decision);
+      if (b.data !== undefined && this.rejectDecisionData)
+        return err(400, 'XO_INVALID_ARGUMENT', "decision data does not match this capability's schema");
+      if (b.data !== undefined && JSON.stringify(b.data).length > 8192)
+        return err(400, 'XO_INVALID_ARGUMENT', '"data" must be at most 8192 bytes serialized');
+      this.applyDecision(run, b.decision, b.data);
       if (this.resumeBehavior === 'network_after_apply') throw new TypeError('Failed to fetch');
       return reply(200, run);
     }
@@ -411,7 +439,16 @@ export class FakeXo {
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/executions\/([^/]+)\/resolve$/))) {
       const e = this.executions.find((x) => x.executionId === m![1]);
       if (!e) return err(404, 'XO_NOT_FOUND', 'no such execution');
-      e.humanTask = { status: 'resolved', decision: body.decision };
+      const sd = (body as unknown as { data?: Record<string, unknown> }).data;
+      if (sd !== undefined && JSON.stringify(sd).length > 8192)
+        return err(400, 'XO_INVALID_ARGUMENT', '"data" must be at most 8192 bytes serialized');
+      e.humanTask = {
+        status: 'resolved',
+        decision: body.decision,
+        ...(sd !== undefined ? { decisionData: sd } : {}),
+        resolverIdentityId: 'sally',
+        resolvedAt: new Date().toISOString(),
+      };
       e.status = body.decision === 'approve' ? 'succeeded' : 'rejected';
       return reply(200, e);
     }

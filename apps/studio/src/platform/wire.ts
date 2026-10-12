@@ -230,6 +230,10 @@ export type ExecutionStatus = 'succeeded' | 'failed' | 'waiting_for_human' | 're
 export interface HumanTask {
   readonly status: 'pending' | 'resolved';
   readonly decision?: 'approve' | 'reject';
+  /** The optional note the resolver attached (`decisionData.note`), exactly as the platform stored it. */
+  readonly decisionNote?: string;
+  readonly resolverId?: string;
+  readonly resolvedAt?: string;
 }
 export interface Execution {
   readonly executionId: string;
@@ -261,7 +265,20 @@ export function parseExecution(v: unknown, path = 'execution'): Execution {
     if (decision !== undefined && decision !== 'approve' && decision !== 'reject') {
       throw new WireParseError(`${path}.humanTask.decision`, 'approve|reject');
     }
-    humanTask = { status: hs, ...(decision !== undefined ? { decision } : {}) };
+    let decisionNote: string | undefined;
+    if (typeof h['decisionData'] === 'object' && h['decisionData'] !== null) {
+      const n = (h['decisionData'] as Json)['note'];
+      if (typeof n === 'string') decisionNote = n;
+    }
+    const resolverId = optStr(h['resolverIdentityId'], `${path}.humanTask.resolverIdentityId`);
+    const resolvedAt = optStr(h['resolvedAt'], `${path}.humanTask.resolvedAt`);
+    humanTask = {
+      status: hs,
+      ...(decision !== undefined ? { decision } : {}),
+      ...(decisionNote !== undefined ? { decisionNote } : {}),
+      ...(resolverId !== undefined ? { resolverId } : {}),
+      ...(resolvedAt !== undefined ? { resolvedAt } : {}),
+    };
   }
   let initiator: Execution['initiator'];
   if (o['initiator'] !== undefined) {

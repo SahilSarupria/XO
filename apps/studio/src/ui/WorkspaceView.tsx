@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { nextStep, summarize } from '../domain/review';
-import { standaloneExecutions } from '../domain/work';
+import { recordedNotes, standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
 import { ActivitySection } from './ActivitySection';
 import { ContextSection } from './ContextSection';
@@ -72,6 +72,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   const execList = executions.state.phase === 'ready' ? executions.state.value : [];
   const workflowList = workflows.state.phase === 'ready' ? workflows.state.value : [];
   const capList = caps.state.phase === 'ready' ? caps.state.value : undefined;
+  const notes = recordedNotes(execList);
   const standalonePending = standaloneExecutions(execList, runList).filter(
     (e) => e.status === 'waiting_for_human' && e.humanTask?.status === 'pending',
   ).length;
@@ -141,7 +142,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
         />
       ) : null}
       {view === 'tasks' ? (
-        <TasksSection workspaceId={ws} runs={runList} executions={execList} caps={capList ?? []} onChanged={refreshAll} />
+        <TasksSection workspaceId={ws} runs={runList} executions={execList} caps={capList ?? []} notes={notes} onChanged={refreshAll} />
       ) : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
@@ -153,6 +154,7 @@ export function WorkspaceView(props: { workspace: Workspace }) {
             workspaceId={ws}
             executions={executions.state.value}
             runs={runList}
+            notes={notes}
             caps={capList ?? []}
             activeCompilationId={activeCompilation?.compilationId}
             onChanged={refreshAll}

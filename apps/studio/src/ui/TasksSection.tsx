@@ -2,16 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   currentStep,
   describeResumeProblem,
+  normalizeNote,
   pendingTasks,
   recoverableRuns,
   standaloneExecutions,
   tidyName,
+  type RecordedNote,
   type WorkProblemView,
 } from '../domain/work';
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { EmptyState, formatWhen, ProblemNotice, Section } from './primitives';
 import { Button } from './primitives';
+import { NoteField } from './NoteField';
 import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
@@ -27,6 +30,7 @@ export function TasksSection(props: {
   runs: readonly WorkflowRun[];
   executions: readonly Execution[];
   caps: readonly Capability[];
+  notes: ReadonlyMap<string, RecordedNote>;
   onChanged: () => void;
 }) {
   const tasks = pendingTasks(props.runs);
@@ -60,6 +64,7 @@ export function TasksSection(props: {
             <DecisionCard
               workspaceId={props.workspaceId}
               run={r}
+              notes={props.notes}
               onChanged={props.onChanged}
               onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
             />
@@ -90,7 +95,7 @@ export function TasksSection(props: {
                 <li key={r.workflowExecutionId} className="card">
                   <div className="card-main">
                     <h3>{runTitle(r)}</h3>
-                    <RunSummary run={r} />
+                    <RunSummary run={r} notes={props.notes} />
                   </div>
                 </li>
               ))}
@@ -112,6 +117,7 @@ function isAmbiguous(p: ApiProblem): boolean {
 export function DecisionCard(props: {
   workspaceId: string;
   run: WorkflowRun;
+  notes?: ReadonlyMap<string, RecordedNote>;
   onChanged: () => void;
   onFinished?: (run: WorkflowRun) => void;
 }) {
@@ -119,6 +125,8 @@ export function DecisionCard(props: {
   const [run, setRun] = useState(props.run);
   const [notice, setNotice] = useState<Notice | undefined>();
   const [busy, setBusy] = useState(false);
+  // Kept through a conflict or an unclear failure so nothing the person typed is lost; cleared only once the platform accepted the decision.
+  const [noteText, setNoteText] = useState('');
   // After a decision lands, the same buttons would instantly mean a different step. Hold them briefly so one
   // physical double click can never decide two steps.
   const [settling, setSettling] = useState(false);
@@ -145,6 +153,11 @@ export function DecisionCard(props: {
 
   async function decide(decision: 'approve' | 'reject') {
     if (inFlight.current) return;
+    const n = normalizeNote(noteText);
+    if (n.error !== undefined) {
+      setNotice({ info: n.error });
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setNotice(undefined);
@@ -176,9 +189,11 @@ export function DecisionCard(props: {
         decision,
         expectedStepExecutionId: f.currentStepExecutionId!,
         expectedRevision: f.revision,
+        ...(n.note !== undefined ? { note: n.note } : {}),
       });
       if (r.ok) {
         setRun(r.value);
+        setNoteText('');
         if (r.value.status !== 'waiting_for_human') props.onFinished?.(r.value);
         setSettling(true);
         setTimeout(() => setSettling(false), SETTLE_MS);
@@ -222,6 +237,7 @@ export function DecisionCard(props: {
           <p className="muted small">
             A person needs to decide whether this step is done correctly. Approving lets the process continue; rejecting stops it.
           </p>
+          <NoteField value={noteText} onChange={setNoteText} disabled={busy} />
           <div className="row">
             <Button variant="primary" disabled={busy || settling} onClick={() => void decide('approve')}>
               Approve this step
@@ -244,7 +260,7 @@ export function DecisionCard(props: {
         </p>
       ) : null}
       {notice !== undefined && 'problem' in notice ? <ProblemNotice problem={notice.problem} /> : null}
-      <RunSummary run={run} />
+      <RunSummary run={run} {...(props.notes !== undefined ? { notes: props.notes } : {})} />
     </div>
   );
 }

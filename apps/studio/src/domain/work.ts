@@ -277,3 +277,36 @@ export function stepStatusLabel(s: WorkflowRunStep['status']): string {
       return 'Interrupted';
   }
 }
+
+/** The most a note may hold. The platform allows 8 KB of decision data; this keeps a note a note. */
+export const NOTE_MAX_CHARS = 500;
+
+/** Trims; an empty or whitespace-only note is no note. Never truncates silently: too long is a validation error. */
+export function normalizeNote(raw: string): { readonly note?: string; readonly error?: string } {
+  const t = raw.trim();
+  if (t.length === 0) return {};
+  if (t.length > NOTE_MAX_CHARS) return { error: `Keep the note to ${NOTE_MAX_CHARS} characters or fewer (it is ${t.length}).` };
+  return { note: t };
+}
+
+export interface RecordedNote {
+  readonly note: string;
+  readonly by?: string;
+  readonly at?: string;
+}
+
+/** Notes the platform has recorded, keyed by the step execution they were attached to. Only what the platform returned. */
+export function recordedNotes(executions: readonly Execution[]): Map<string, RecordedNote> {
+  const out = new Map<string, RecordedNote>();
+  for (const e of executions) {
+    const h = e.humanTask;
+    if (h?.status === 'resolved' && h.decisionNote !== undefined && h.decisionNote.length > 0) {
+      out.set(e.executionId, {
+        note: h.decisionNote,
+        ...(h.resolverId !== undefined ? { by: h.resolverId } : {}),
+        ...(h.resolvedAt !== undefined ? { at: h.resolvedAt } : {}),
+      });
+    }
+  }
+  return out;
+}
