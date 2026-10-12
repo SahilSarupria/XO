@@ -6,6 +6,7 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import { requireOwnedWorkspace, workspaceSourcesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
+import { auditedRead, type AuditService } from '../audit/audit-service.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { SUPPORTED_EXTENSIONS, inferMediaType, type SourceRecord } from '../sources/source.js';
 
@@ -49,7 +50,12 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerSourceRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  audit: AuditService,
+): void {
   async function upload(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
 
@@ -111,22 +117,27 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
   }
 
   async function getSourceContent(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
-    const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
-
-    const record = unwrapOrThrow(await store.get(sourceId));
-    const content = unwrapOrThrow(await store.getContent(sourceId));
-
-    return {
-      status: 200,
-      body: Buffer.from(content),
-      headers: {
-        'content-type': record.mediaType,
-        'content-disposition': `attachment; filename="${record.originalFilename.replace(/"/g, '')}"`,
+    // P1.0 M4 — raw user documents: the most sensitive read surface. Owner check -> durable access.attempted -> read.
+    return auditedRead(
+      req,
+      { audit, workspaceStore },
+      { action: 'read.source-content', kind: 'source', idParam: 'sourceId' },
+      async (workspace) => {
+        const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
+        const record = unwrapOrThrow(await store.get(sourceId));
+        const content = unwrapOrThrow(await store.getContent(sourceId));
+        return {
+          status: 200,
+          body: Buffer.from(content),
+          headers: {
+            'content-type': record.mediaType,
+            'content-disposition': `attachment; filename="${record.originalFilename.replace(/"/g, '')}"`,
+          },
+        };
       },
-    };
+    );
   }
 
   async function deleteSource(req: ApiRequest): Promise<ApiResponse> {

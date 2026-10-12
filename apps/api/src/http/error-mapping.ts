@@ -47,6 +47,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.STORAGE_OBJECT_NOT_FOUND]: 404,
   [ErrorCode.STORAGE_WRITE_FAILED]: 502,
 
+  // Audit (P1.0 M4) — a required audit write that cannot be confirmed means the
+  // operation was refused (503: retry later); denial is 403; invalid event / bad
+  // config are server-side defects.
+  [ErrorCode.AUDIT_UNAVAILABLE]: 503,
+  [ErrorCode.AUDIT_EVENT_INVALID]: 500,
+  [ErrorCode.AUDIT_ACCESS_DENIED]: 403,
+  [ErrorCode.AUDIT_CONFIG_INVALID]: 500,
+
   // Dependency injection — never a caller-facing failure mode, always a bug
   [ErrorCode.DI_TOKEN_NOT_REGISTERED]: 500,
   [ErrorCode.DI_CIRCULAR_DEPENDENCY]: 500,

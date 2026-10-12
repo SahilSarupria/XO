@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { Result } from '@xo/types';
-import { ErrorCode, XoError } from '@xo/errors';
+import { AuditError, ErrorCode, XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
 import { LocalFsBlobStore } from '@xo/storage';
 import type { ApiRequest, ApiResponse } from './http/types.js';
@@ -17,6 +17,8 @@ import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import { registerRoutes } from './routes/index.js';
 import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
+import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
+import { AuditService } from './audit/audit-service.js';
 
 export interface ServerDeps {
   readonly logger?: Logger;
@@ -48,6 +50,14 @@ export interface ServerDeps {
    * authenticated principal. There is no client-side input to this policy.
    */
   readonly permissionPolicy?: PermissionPolicy;
+  /**
+   * P1.0 M4 — the durable audit sink. REQUIRED when `NODE_ENV=production` (startup fails without it: no silent
+   * unaudited or volatile operation in production). When omitted outside production, an explicit volatile
+   * `NonProductionAuditSink` is used and a warning is logged.
+   */
+  readonly auditSink?: AuditSink;
+  /** Principal kinds that may even be considered for `audit.read`/`audit.purge` (default `['service']`; the policy still decides). */
+  readonly auditAccessKinds?: readonly ('human' | 'service')[];
 }
 
 function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
@@ -86,11 +96,20 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
   const router = new Router();
   router.use(createApiKeyAuth(apiKeyStore));
-  registerRoutes(router, {
-    workspaceStore,
-    workspaceDataConfig,
-    permissionManager: new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) }),
+  const permissionManager = new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) });
+  if (deps.auditSink === undefined && process.env['NODE_ENV'] === 'production') {
+    throw new AuditError(ErrorCode.AUDIT_CONFIG_INVALID, 'a durable audit sink is required in production (see XO_AUDIT_* configuration)');
+  }
+  const auditSink = deps.auditSink ?? new NonProductionAuditSink();
+  if (auditSink.mode === 'non-production') {
+    deps.logger?.warn('AUDIT IS RUNNING IN NON-PRODUCTION MODE: audit events are volatile (process memory only) and are NOT durable');
+  }
+  const audit = new AuditService(auditSink, (info) => deps.logger?.error(`audit write failed (${info.phase}): ${info.code}`));
+  const auditAccess = new AuditAccessController({
+    permissionManager,
+    ...(deps.auditAccessKinds !== undefined ? { allowedPrincipalKinds: deps.auditAccessKinds } : {}),
   });
+  registerRoutes(router, { workspaceStore, workspaceDataConfig, permissionManager, audit, auditSink, auditAccess });
   return router;
 }
 

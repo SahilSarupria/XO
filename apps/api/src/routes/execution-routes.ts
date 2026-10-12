@@ -5,7 +5,6 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
   requirePrincipal,
-  requireOwnedWorkspace,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
   workspaceExecutionsStore,
@@ -19,6 +18,15 @@ import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import type { PermissionManager } from '@xo/permissions';
 import { executeApprovedCapability, preflightCapabilityAuthorization } from '../executions/execute-capability.js';
 import type { ExecutionRecord } from '../executions/execution.js';
+import { actorFromPrincipal, type AuditEventDraft, type AuditEventType } from '@xo/audit';
+import {
+  type AuditService,
+  auditedOwnedWorkspace,
+  auditedRead,
+  finalizationNotice,
+  newCorrelationId,
+  safeId,
+} from '../audit/audit-service.js';
 
 /**
  * `POST /workspaces/:workspaceId/executions` — the one route in this
@@ -56,9 +64,13 @@ export function registerExecutionRoutes(
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
+  audit: AuditService,
 ): void {
+  const auditCtx = { audit, workspaceStore };
+
   async function createExecution(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'execute.capability', correlationId });
 
     const bodyResult = await req.json<CreateExecutionBody>();
     if (!bodyResult.ok) throw bodyResult.error;
@@ -95,11 +107,25 @@ export function registerExecutionRoutes(
     const capability = capsFound.value.find((c) => c.capabilityId === capabilityId);
     if (capability === undefined) throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
 
+    const principal = requirePrincipal(req);
+    const actor = actorFromPrincipal(principal);
+    const capabilityTarget = safeId(capabilityId);
+    const baseDraft = {
+      action: 'execute.capability',
+      actor,
+      correlationId,
+      ...(capabilityTarget !== undefined
+        ? { target: { kind: 'capability' as const, id: capabilityTarget, workspaceId: workspace.workspaceId } }
+        : { target: { kind: 'workspace' as const, id: workspace.workspaceId } }),
+      ...(safeId(compilationId) !== undefined ? { metadata: { compilationId } } : {}),
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+
     // 4. Verify the capability is approved.
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
     const approval = await approvalStore.get(compilationId, capabilityId);
     if (!approval.ok) throw approval.error;
     if (!isApproved(approval.value)) {
+      await audit.tryRecord({ ...baseDraft, type: 'execution.denied', outcome: 'denied', reasonCode: ErrorCode.RUNTIME_PERMISSION_DENIED });
       throw new XoError(
         ErrorCode.RUNTIME_PERMISSION_DENIED,
         `capability "${capabilityId}" is not approved for execution in workspace "${workspace.workspaceId}"`,
@@ -114,8 +140,6 @@ export function registerExecutionRoutes(
     const graphFound = await compilationStore.getCompiledGraph(compilationId);
     if (!graphFound.ok) throw graphFound.error;
 
-    const principal = requirePrincipal(req);
-
     // 6b. P1.0 M2 — AUTHORIZE BEFORE ANY SIDE EFFECT. The decision is made here, against the authoritative
     // declaration on the STORED graph and the server-side policy, BEFORE `ExecutionStore.create`. A denied
     // (or undecidable) attempt is rejected with no persistent record, no handler call and no state change, so
@@ -124,11 +148,23 @@ export function registerExecutionRoutes(
     // graph (`preflightGraphHash`).
     const preflight = await preflightCapabilityAuthorization(graphFound.value, capabilityId, { subject: principal, permissionManager });
     if (preflight.kind !== 'authorized') {
+      // P1.0 M4 — record the denial (best effort: the denial is enforced whether or not the record could be written).
+      await audit.tryRecord({
+        ...baseDraft,
+        type: preflight.kind === 'denied' ? 'execution.denied' : 'authorization.denied',
+        outcome: preflight.kind === 'denied' ? 'denied' : 'failed',
+        reasonCode: preflight.kind === 'denied' ? ErrorCode.RUNTIME_PERMISSION_DENIED : String(preflight.errorCode),
+      });
       throw new XoError(
         preflight.kind === 'denied' ? ErrorCode.RUNTIME_PERMISSION_DENIED : (preflight.errorCode as ErrorCode),
         preflight.errorMessage,
       );
     }
+
+    // P1.0 M4 — PRECONDITION: authorized, so durably record that execution is being started BEFORE any record is
+    // created or the capability runs. If this cannot be confirmed the whole operation is refused (AUDIT_UNAVAILABLE,
+    // 503): no execution record, no handler call, no side effect.
+    await audit.requireDurable({ ...baseDraft, type: 'execution.started', outcome: 'started' });
 
     const executionStore = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
     const created = await executionStore.create(workspace.workspaceId, principal, { compilationId, capabilityId, input });
@@ -138,13 +174,29 @@ export function registerExecutionRoutes(
     // `executeApprovedCapability` — see its own doc comment for exactly
     // why input-schema validation has to happen after binding
     // resolution, not before, in this particular call sequence.
-    const outcome = await executeApprovedCapability(
-      graphFound.value,
-      capabilityId,
-      input,
-      { subject: principal, permissionManager },
-      { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
-    );
+    let outcome;
+    try {
+      outcome = await executeApprovedCapability(
+        graphFound.value,
+        capabilityId,
+        input,
+        { subject: principal, permissionManager },
+        { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
+      );
+    } catch (cause) {
+      // An unexpected throw after the start record: say so (best effort), then surface the original error unchanged.
+      await audit.finalize(
+        {
+          ...baseDraft,
+          type: 'execution.failed',
+          outcome: 'failed',
+          reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
+          executionId: created.value.executionId,
+        },
+        { correlationId, executionId: created.value.executionId },
+      );
+      throw cause;
+    }
 
     let completed;
     switch (outcome.kind) {
@@ -188,7 +240,42 @@ export function registerExecutionRoutes(
         });
         break;
     }
-    if (!completed.ok) throw completed.error;
+    if (!completed.ok) {
+      // The capability already ran but its result could not be persisted — record that truthfully, then surface the error.
+      await audit.finalize(
+        {
+          ...baseDraft,
+          type: 'execution.failed',
+          outcome: 'failed',
+          reasonCode: completed.error.code,
+          executionId: created.value.executionId,
+        },
+        { correlationId, executionId: created.value.executionId },
+      );
+      throw completed.error;
+    }
+    // P1.0 M4 — COMPLETION evidence. The operation has ALREADY happened; if this write fails we report the real
+    // outcome plus a sanitized `auditFinalization` notice (correlation + execution id) and NEVER retry the side effect.
+    const finalType: AuditEventType =
+      completed.value.status === 'succeeded'
+        ? 'execution.completed'
+        : completed.value.status === 'waiting_for_human'
+          ? 'execution.waiting_for_human'
+          : 'execution.failed';
+    const finalization = await audit.finalize(
+      {
+        ...baseDraft,
+        type: finalType,
+        outcome: completed.value.status === 'failed' ? 'failed' : 'completed',
+        executionId: completed.value.executionId,
+        ...(completed.value.status === 'failed' &&
+        completed.value.errorCode !== undefined &&
+        safeId(completed.value.errorCode) !== undefined
+          ? { reasonCode: completed.value.errorCode }
+          : {}),
+      },
+      { correlationId, executionId: completed.value.executionId },
+    );
 
     // A failed/unresolved/invalid-input execution of an AUTHORIZED caller is still a real,
     // structured, successfully-persisted API response ABOUT that
@@ -196,25 +283,28 @@ export function registerExecutionRoutes(
     // itself. Only genuinely exceptional conditions (unowned workspace,
     // unknown compilation/capability, not approved, NOT AUTHORIZED —
     // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
-    return json(completed.value.status === 'failed' ? 200 : 201, toWireRecord(completed.value));
+    return json(completed.value.status === 'failed' ? 200 : 201, { ...toWireRecord(completed.value), ...finalizationNotice(finalization) });
   }
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const listed = await store.list();
-    if (!listed.ok) throw listed.error;
-    return json(200, { executions: listed.value.map(toWireRecord) });
+    // P1.0 M4 — protected read: owner check -> durable `access.attempted` -> only then read.
+    return auditedRead(req, auditCtx, { action: 'list.executions', kind: 'execution' }, async (workspace) => {
+      const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
+      const listed = await store.list();
+      if (!listed.ok) throw listed.error;
+      return json(200, { executions: listed.value.map(toWireRecord) });
+    });
   }
 
   async function getExecution(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const executionId = req.params['executionId'];
     if (executionId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing execution id');
-    const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const found = await store.get(executionId);
-    if (!found.ok) throw found.error;
-    return json(200, toWireRecord(found.value));
+    return auditedRead(req, auditCtx, { action: 'get.execution', kind: 'execution', idParam: 'executionId' }, async (workspace) => {
+      const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
+      const found = await store.get(executionId);
+      if (!found.ok) throw found.error;
+      return json(200, toWireRecord(found.value));
+    });
   }
 
   router.post('/workspaces/:workspaceId/executions', guarded(createExecution));

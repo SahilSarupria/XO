@@ -25,6 +25,7 @@ import { RuntimeCapabilityRegistry } from './runtime-capability-registry.js';
 import {
   NATIVE_CAPABILITY_REQUESTER,
   RuntimeCapabilityExecutor,
+  type RuntimeExecutionAudit,
   type RuntimeCapabilityExecutionResult,
 } from './runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from './capability-binding-registration.js';
@@ -115,6 +116,8 @@ export interface ExecuteResolvedContractRequest {
   /** Forwarded to `RuntimeCapabilityExecutor.execute` for permission-check audit attribution; does not change what is checked. */
   readonly requesterPackageId?: string;
   readonly context?: PermissionContext;
+  /** P1.0 M4 — forwarded to the executor; see `RuntimeExecutionAudit`. */
+  readonly audit?: RuntimeExecutionAudit;
 }
 
 /**
@@ -212,7 +215,12 @@ export async function executeResolvedContract(
 
   let executor: RuntimeCapabilityExecutor;
   try {
-    executor = new RuntimeCapabilityExecutor({ registry, permissionManager: request.permissionManager, subject: request.subject });
+    executor = new RuntimeCapabilityExecutor({
+      registry,
+      permissionManager: request.permissionManager,
+      subject: request.subject,
+      ...(request.audit !== undefined ? { audit: request.audit } : {}),
+    });
   } catch (cause) {
     // Missing/unverifiable subject or policy ⇒ denial, never a fail-open fallback.
     return {
