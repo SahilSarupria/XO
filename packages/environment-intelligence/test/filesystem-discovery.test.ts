@@ -7,6 +7,7 @@ import { MockClock } from '@xo/testing';
 import {
   DevelopmentOperatorAuthorization,
   DiscoveryErrorCode,
+  InMemoryAuditRecorder,
   discoverSource,
   planConnection,
   registerDeclaredSources,
@@ -343,6 +344,7 @@ test('the time budget is enforced against the injected clock', async () => {
       clock: ticking,
       authorization: allowRoot(root),
       principal: TEST_PRINCIPAL,
+      audit: new InMemoryAuditRecorder(),
     });
     assert.ok(run.ok);
     if (!run.ok) return;

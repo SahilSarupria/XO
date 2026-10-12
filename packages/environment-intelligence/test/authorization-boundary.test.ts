@@ -32,6 +32,7 @@ import * as pkg from '../src/index.js';
 import {
   DiscoveryErrorCode,
   ENVIRONMENT_INTELLIGENCE_REQUESTER,
+  InMemoryAuditRecorder,
   LocalFilesystemConnector,
   PermissionManagerAuthorization,
   SourceId,
@@ -245,7 +246,12 @@ function platform(rules: readonly PolicyRule[], manager?: PermissionManager) {
   const clock = new MockClock();
   const audit = new InMemoryAuditSink();
   const m = manager ?? new PermissionManager({ policy: new RuleBasedPolicy(rules), auditSink: audit, clock });
-  const ctx: ConnectorContext = { clock, authorization: new PermissionManagerAuthorization(m), principal: TEST_PRINCIPAL };
+  const ctx: ConnectorContext = {
+    clock,
+    authorization: new PermissionManagerAuthorization(m),
+    principal: TEST_PRINCIPAL,
+    audit: new InMemoryAuditRecorder(),
+  };
   return { ctx, audit };
 }
 

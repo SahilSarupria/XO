@@ -134,6 +134,15 @@ export class EnvironmentInventory {
     return ok(updated);
   }
 
+  /** M2.2: records that the holders of a revoked source's evidence confirmed its purge, clearing `purgeRequired`. Never removes history. */
+  markPurged(sourceId: SourceId, at: string): SourceRecord | undefined {
+    const record = this.records.get(sourceId);
+    if (record === undefined) return undefined;
+    const updated: SourceRecord = Object.freeze({ ...record, purgeRequired: false, lastSeenAt: at });
+    this.records.set(sourceId, updated);
+    return updated;
+  }
+
   get(sourceId: SourceId): SourceRecord | undefined {
     return this.records.get(sourceId);
   }

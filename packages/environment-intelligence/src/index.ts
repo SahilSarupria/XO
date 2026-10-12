@@ -1,12 +1,16 @@
 export * from './ids.js';
 export * from './errors.js';
 export * from './epistemic.js';
+export * from './audit.js';
+export type { AuditOptions } from './audited-operation.js';
 export * from './authorization.js';
 export * from './authorization-dev.js';
 export * from './authorization-permission-manager.js';
 export { authorityOf, mintDevelopmentDecision } from './trusted-decision.js';
 export type { TrustedAllow } from './authorization-gate.js';
 export * from './evidence.js';
+export * from './evidence-ledger.js';
+export * from './evidence-lifecycle.js';
 export * from './connector.js';
 export * from './source-state.js';
 export * from './inventory.js';

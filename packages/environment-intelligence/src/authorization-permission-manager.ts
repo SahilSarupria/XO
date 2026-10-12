@@ -10,7 +10,7 @@ import { PackageId } from '@xo/types';
 import type { AuthorizationDecision, AuthorizationPort, AuthorizationRequest } from './authorization.js';
 import { mintPlatformDecision, type DecisionBinding } from './trusted-decision.js';
 
-/** Policy ids are recorded in provenance and audit, so only a short, log-safe identifier is carried; anything else is dropped, never echoed. */
+/** Policy ids are recorded in provenance and audit, so only a short identifier is carried; anything else is dropped, never echoed. (The audit layer additionally digests any id that is not in its stricter, slash-free alphabet.) */
 const SAFE_POLICY_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
 
 /**

@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
 import {
+  InMemoryAuditRecorder,
   ConnectorRegistry,
   DevelopmentOperatorAuthorization,
   EnvironmentInventory,
@@ -44,6 +45,8 @@ async function run(title: string, root: string, origin: ModelOrigin): Promise<vo
   const ctx = {
     clock,
     principal: demoOperator.value,
+    // M2.2: protected evidence operations are refused without a recorder. In-memory = DEMO ONLY (non-durable).
+    audit: new InMemoryAuditRecorder(),
     authorization: new DevelopmentOperatorAuthorization([
       { permission: 'filesystem.list', path: root },
       { permission: 'filesystem.read', path: root },

@@ -7,7 +7,9 @@ import {
   ConnectorRegistry,
   DevelopmentOperatorAuthorization,
   EnvironmentInventory,
+  EvidenceLedger,
   FailClosedAuthorization,
+  InMemoryAuditRecorder,
   LocalFilesystemConnector,
   type AuthorizationPort,
   type ConnectorContext,
@@ -57,7 +59,15 @@ export const TEST_PRINCIPAL = authenticated();
 
 /** M2.1: every protected operation needs an authenticated principal, so the shared helper supplies one by default. */
 export function ctxFor(authorization: AuthorizationPort, clock: MockClock = new MockClock(), signal?: AbortSignal): ConnectorContext {
-  return { clock, authorization, principal: TEST_PRINCIPAL, ...(signal !== undefined ? { signal } : {}) };
+  return {
+    clock,
+    authorization,
+    principal: TEST_PRINCIPAL,
+    // M2.2: protected evidence operations need an audit recorder. Non-durable and TEST-ONLY; never a package default.
+    audit: new InMemoryAuditRecorder(() => clock.now()),
+    ledger: new EvidenceLedger(),
+    ...(signal !== undefined ? { signal } : {}),
+  };
 }
 
 export function allowRoot(root: string, permissions: readonly string[] = ['filesystem.list']): AuthorizationPort {

@@ -23,6 +23,7 @@ import {
   type PolicyRule,
 } from '@xo/permissions';
 import {
+  InMemoryAuditRecorder,
   DiscoveryErrorCode,
   ENVIRONMENT_INTELLIGENCE_REQUESTER,
   PermissionManagerAuthorization,
@@ -59,6 +60,7 @@ function setup(rules: readonly PolicyRule[] = []) {
   const ctx: ConnectorContext = {
     clock,
     authorization: new PermissionManagerAuthorization(manager),
+    audit: new InMemoryAuditRecorder(),
     ...(principal.ok ? { principal: principal.value } : {}),
   };
   return { audit, manager, ctx, clock };

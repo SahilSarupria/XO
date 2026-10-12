@@ -39,6 +39,10 @@ export const DiscoveryErrorCode = {
   CANCELLED: 'EI_CANCELLED',
   /** An illegal source-state transition was attempted. */
   INVALID_TRANSITION: 'EI_INVALID_TRANSITION',
+  /** Protected evidence access needs an accepted audit record and one could not be accepted (none configured, rejected, unconfirmed). Nothing was read or released. */
+  AUDIT_UNAVAILABLE: 'EI_AUDIT_UNAVAILABLE',
+  /** Evidence was acquired but its completion audit was not accepted: it was quarantined and NOT released. */
+  EVIDENCE_QUARANTINED: 'EI_EVIDENCE_QUARANTINED',
   /** Unexpected internal failure (wrapped, never leaked raw). */
   INTERNAL: 'EI_INTERNAL',
 } as const;

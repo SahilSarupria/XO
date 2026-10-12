@@ -69,6 +69,19 @@ The single enforcement point (`requireAuthorization`) applies, in order: (1) **i
 
 Limits: the guarantees are in-process (as with the P1.0 M1 principal marker). On `main`, `PermissionManager` policy still matches the requester package label, not the principal, so the principal is a precondition and provenance input, not a policy dimension; binding principal to requester remains the open P1.0 contract. The public `mintDevelopmentDecision` stays unbound and reusable for compatibility (development authority only).
 
+### 8.2 M2.2 — Audit semantics and fail-closed evidence lifecycle **[implemented, tested]**
+
+Protected evidence operations (`discover`, `acquire_content`, `revoke_evidence`, `purge_evidence`) follow `authorize → ATTEMPT accepted → read → COMPLETION accepted → release`. The audit port (`AuditRecorder.record`) is the only dependency; "accepted" means `record()` resolved with a receipt naming that exact event. A rejection, throw, timeout, malformed receipt or mismatched receipt is _not accepted_.
+
+- **Write-ahead:** no read or listing happens until the attempt is accepted; with no recorder configured the operation is refused (`EI_AUDIT_UNAVAILABLE`). There is no no-op default.
+- **Completion and quarantine:** the outcome (`completed`/`failed`/`cancelled`) is recorded after the work, retried under the same idempotency key, and not tied to the caller's abort signal. If evidence was acquired but the completion is not accepted, it is withheld (`EI_EVIDENCE_QUARANTINED`; the ledger keeps opaque ids only, never payloads) and a `quarantined` record is attempted. A success is never reported without its completion record.
+- **Outcomes:** `attempted`, `denied`, `failed`, `cancelled`, `completed`, `quarantined`, `revoked`, `purged`, each valid only in its phase (`attempt` / `terminal` / `standalone`). Denials of authenticated callers are audited; unauthenticated callers are not (no verified identity to attribute).
+- **Data minimization:** the event schema is closed and content-free (ids from a slash-free alphabet, scope and key digests, error _codes_, counts). Unknown fields are rejected, so content, secrets and paths cannot be recorded.
+- **Revocation/purge:** authenticated, authorized (provisionally `data.write`/`data.delete`), write-ahead audited. Revoking makes evidence ineligible before any holder is asked to delete; audit history is never erased. `EvidenceLedger` + `buildEnvironmentModel({ eligibility })` keep revoked/purged/quarantined/unreleased evidence out of model input.
+- **Async:** every audit write is awaited in sequence; nothing is detached. A late acceptance after a timeout cannot release evidence.
+
+Limits: `detect` and `validate_connection` are metadata-only existence probes and are not write-ahead audited (their denials are). The ledger is in-memory; a restart loses eligibility state (P1.0 M4 persists the audit, not the ledger). A revoked source must be re-authorized before it can be read again.
+
 ## 9. Milestone vs future work
 
 In: contracts, inventory/state machine, one local filesystem adapter, evidence model, environment model with relationships, candidate processes, explainer, tests, demo. Out: any remote/SaaS connector, credentials handling, incremental sync/health, LLM interpretation, XOIR projection, opportunity scoring, persistence, UI.
