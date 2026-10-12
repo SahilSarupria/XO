@@ -5,7 +5,14 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { XoClient } from '../src/platform/client.ts';
-import { describeResumeProblem, describeStartProblem, findActiveRun, pendingTasks, startReadiness, standaloneExecutions } from '../src/domain/work.ts';
+import {
+  describeResumeProblem,
+  describeStartProblem,
+  findActiveRun,
+  pendingTasks,
+  startReadiness,
+  standaloneExecutions,
+} from '../src/domain/work.ts';
 
 const baseUrl = process.env.XO_API_URL ?? 'http://127.0.0.1:4000';
 const apiKey = process.env.XO_API_KEY;
@@ -54,7 +61,11 @@ const denied = await c.startWorkflow(ws, wf.workflowId, wf.compilationId);
 check('server refuses an unapproved start with 403', !denied.ok && denied.problem.status === 403, JSON.stringify(denied));
 if (!denied.ok) {
   const v = describeStartProblem(denied.problem, wf);
-  check('403 carries per-step denials Studio can name', v?.kind === 'needs_approval' && v.items.length === wf.steps.length, JSON.stringify(v));
+  check(
+    '403 carries per-step denials Studio can name',
+    v?.kind === 'needs_approval' && v.items.length === wf.steps.length,
+    JSON.stringify(v),
+  );
 }
 
 for (const s of wf.steps) must(await c.approveCapability(ws, wf.compilationId, s.capabilityId), `approve ${s.name.slice(0, 30)}`);
@@ -65,42 +76,100 @@ const none = must(await c.listWorkflowRuns(ws), 'list runs (none yet)');
 check('no active run before starting', findActiveRun(none, wf.workflowId, wf.compilationId) === undefined);
 
 const run = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId), 'start');
-check('run is waiting for a decision at step 1', run.status === 'waiting_for_human' && run.currentStepIndex === 0, `${run.status} ${run.currentStepIndex}`);
+check(
+  'run is waiting for a decision at step 1',
+  run.status === 'waiting_for_human' && run.currentStepIndex === 0,
+  `${run.status} ${run.currentStepIndex}`,
+);
 check('run exposes the ids a resume needs', typeof run.currentStepExecutionId === 'string' && Number.isInteger(run.revision));
 
 const listed = must(await c.listWorkflowRuns(ws), 'list runs');
-check('active run is discoverable for this process', findActiveRun(listed, wf.workflowId, wf.compilationId)?.workflowExecutionId === run.workflowExecutionId);
-check('run appears as a pending task', pendingTasks(listed).some((r) => r.workflowExecutionId === run.workflowExecutionId));
+check(
+  'active run is discoverable for this process',
+  findActiveRun(listed, wf.workflowId, wf.compilationId)?.workflowExecutionId === run.workflowExecutionId,
+);
+check(
+  'run appears as a pending task',
+  pendingTasks(listed).some((r) => r.workflowExecutionId === run.workflowExecutionId),
+);
 const execs = must(await c.listExecutions(ws), 'list executions');
-check('its step execution is set aside from standalone history', !standaloneExecutions(execs, listed).some((e) => e.executionId === run.currentStepExecutionId));
+check(
+  'its step execution is set aside from standalone history',
+  !standaloneExecutions(execs, listed).some((e) => e.executionId === run.currentStepExecutionId),
+);
 
-const stale = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: 'exe_not_current', expectedRevision: run.revision });
-check('a wrong step id is a 409 with a platform reason', !stale.ok && stale.problem.status === 409 && typeof stale.problem.reason === 'string', JSON.stringify(stale));
+const stale = await c.resumeWorkflowRun(ws, run.workflowExecutionId, {
+  decision: 'approve',
+  expectedStepExecutionId: 'exe_not_current',
+  expectedRevision: run.revision,
+});
+check(
+  'a wrong step id is a 409 with a platform reason',
+  !stale.ok && stale.problem.status === 409 && typeof stale.problem.reason === 'string',
+  JSON.stringify(stale),
+);
 if (!stale.ok) check('409 is explained as a recoverable change', describeResumeProblem(stale.problem)?.kind === 'conflict');
-const staleRev = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision + 5 });
+const staleRev = await c.resumeWorkflowRun(ws, run.workflowExecutionId, {
+  decision: 'approve',
+  expectedStepExecutionId: run.currentStepExecutionId,
+  expectedRevision: run.revision + 5,
+});
 check('a wrong revision is a 409', !staleRev.ok && staleRev.problem.status === 409, JSON.stringify(staleRev));
 const unchanged = must(await c.getWorkflowRun(ws, run.workflowExecutionId), 'get run');
 check('refused resumes changed nothing', unchanged.revision === run.revision && unchanged.currentStepIndex === 0);
 
 const NOTE = 'Checked against the statement';
-const next = must(await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision, note: NOTE }), 'resume with a note');
-check('approval advances to the next step', next.currentStepIndex === 1 || next.status === 'succeeded', `${next.status} ${next.currentStepIndex}`);
+const next = must(
+  await c.resumeWorkflowRun(ws, run.workflowExecutionId, {
+    decision: 'approve',
+    expectedStepExecutionId: run.currentStepExecutionId,
+    expectedRevision: run.revision,
+    note: NOTE,
+  }),
+  'resume with a note',
+);
+check(
+  'approval advances to the next step',
+  next.currentStepIndex === 1 || next.status === 'succeeded',
+  `${next.status} ${next.currentStepIndex}`,
+);
 check('revision moved forward', next.revision > run.revision);
 const after = must(await c.listExecutions(ws), 'list executions after decision');
 const stepExec = after.find((e) => e.executionId === run.currentStepExecutionId);
-check('the platform persisted the note on the step it was attached to', stepExec?.humanTask?.decisionNote === NOTE, JSON.stringify(stepExec?.humanTask));
+check(
+  'the platform persisted the note on the step it was attached to',
+  stepExec?.humanTask?.decisionNote === NOTE,
+  JSON.stringify(stepExec?.humanTask),
+);
 check('the platform recorded who resolved it', typeof stepExec?.humanTask?.resolverId === 'string');
-const tooLong = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: next.currentStepExecutionId ?? 'x', expectedRevision: next.revision, note: 'y'.repeat(9000) });
-check('the platform refuses an oversized note with a 400 and applies nothing', !tooLong.ok && tooLong.problem.status === 400, JSON.stringify(tooLong));
+const tooLong = await c.resumeWorkflowRun(ws, run.workflowExecutionId, {
+  decision: 'approve',
+  expectedStepExecutionId: next.currentStepExecutionId ?? 'x',
+  expectedRevision: next.revision,
+  note: 'y'.repeat(9000),
+});
+check(
+  'the platform refuses an oversized note with a 400 and applies nothing',
+  !tooLong.ok && tooLong.problem.status === 400,
+  JSON.stringify(tooLong),
+);
 const stillThere = must(await c.getWorkflowRun(ws, run.workflowExecutionId), 'get run after refused note');
 check('the refused note changed nothing', stillThere.revision === next.revision);
-const replay = await c.resumeWorkflowRun(ws, run.workflowExecutionId, { decision: 'approve', expectedStepExecutionId: run.currentStepExecutionId, expectedRevision: run.revision });
+const replay = await c.resumeWorkflowRun(ws, run.workflowExecutionId, {
+  decision: 'approve',
+  expectedStepExecutionId: run.currentStepExecutionId,
+  expectedRevision: run.revision,
+});
 check('replaying the old decision is refused, not applied twice', !replay.ok && replay.problem.status === 409, JSON.stringify(replay));
 // --- idempotent start (API: Idempotency-Key): a keyed start of the same process, retried
 const KEY = `xo-smoke-${Date.now()}`;
 const k1 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, KEY), 'keyed start');
 const k2 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, KEY), 'same-key retry');
-check('same key returns the ORIGINAL run, not a new one', k1.workflowExecutionId === k2.workflowExecutionId, `${k1.workflowExecutionId} vs ${k2.workflowExecutionId}`);
+check(
+  'same key returns the ORIGINAL run, not a new one',
+  k1.workflowExecutionId === k2.workflowExecutionId,
+  `${k1.workflowExecutionId} vs ${k2.workflowExecutionId}`,
+);
 const k3 = must(await c.startWorkflow(ws, wf.workflowId, wf.compilationId, `${KEY}-b`), 'different key');
 check('a different key is a different run', k3.workflowExecutionId !== k1.workflowExecutionId);
 const allRuns = must(await c.listWorkflowRuns(ws), 'list runs after keyed starts');
