@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
+import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 
 type U = ReturnType<typeof userEvent.setup>;
@@ -11,7 +12,7 @@ const go = (user: U, name: RegExp | string) => user.click(screen.getByRole('butt
 async function withWaitingRun(api: FakeXo): Promise<U> {
   api.approvals.all = true;
   const user = userEvent.setup();
-  render(<App fetchImpl={api.fetch} />);
+  render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
   await user.click(screen.getByRole('button', { name: /connect/i }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
@@ -62,7 +63,7 @@ describe('optional decision notes', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     const u2 = userEvent.setup();
-    render(<App fetchImpl={api.fetch} />);
+    render(withShell(<App fetchImpl={api.fetch} />));
     await u2.type(screen.getByLabelText(/access key/i), api.validKey);
     await u2.click(screen.getByRole('button', { name: /connect/i }));
     await screen.findByRole('heading', { name: 'Ops' });

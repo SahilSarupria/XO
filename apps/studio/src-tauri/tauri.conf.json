@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "XO Studio",
+  "version": "0.1.0",
+  "identifier": "dev.xo.studio",
+  "build": {
+    "frontendDist": "../dist-desktop",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "npm run dev:desktop",
+    "beforeBuildCommand": "npm run build:desktop"
+  },
+  "app": {
+    "windows": [
+      { "label": "main", "title": "XO Studio", "width": 1200, "height": 800, "minWidth": 900, "minHeight": 600, "resizable": true }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": { "active": true, "targets": "all", "icon": [] }
+}

@@ -1,0 +1,20 @@
+# UNVERIFIED: never compiled. Run `cargo check` in this directory.
+[package]
+name = "xo-studio-desktop"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "xo_studio_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-http = "2"
+keyring = "3"
+serde = { version = "1", features = ["derive"] }
+url = "2"

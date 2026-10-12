@@ -1,8 +1,9 @@
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { XoClient, type ApiProblem, type FetchLike } from '../platform/client';
 import { Button, ProblemNotice, Spinner } from './primitives';
 import { SessionProvider, useSession } from './session';
 import { WorkspaceHome } from './WorkspaceHome';
+import { useShell } from '../shell/services';
 
 export interface AppProps {
   /** Test seam: lets tests inject a fake transport. Production uses the browser's fetch. */
@@ -11,16 +12,70 @@ export interface AppProps {
 }
 
 /**
- * The key lives in this component's memory only. It is never written to
- * localStorage/sessionStorage/cookies, and it is dropped on sign-out or reload.
- * That is a deliberate limit of API-key auth (see STUDIO_ARCHITECTURE.md §7): a
- * durable human login needs a backend session mechanism that does not exist yet.
+ * The credential is held in this component's memory and, only when the shell reports
+ * `persistentCredentials`, in the shell's credential store (an OS keychain on desktop).
+ * The web shell never persists it: not in localStorage, sessionStorage or cookies. It is
+ * dropped on sign-out. That is a deliberate limit of access-key sign-in (a development
+ * mechanism; see docs/studio/AUTH_DECISION.md).
  */
 export function App(props: AppProps) {
+  const shell = useShell();
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const signOut = useCallback(() => setApiKey(null), []);
+  const [restoring, setRestoring] = useState(shell.capabilities.persistentCredentials);
+  const [restoreProblem, setRestoreProblem] = useState<ApiProblem | undefined>();
 
-  if (apiKey === null) return <ConnectScreen {...props} onConnected={setApiKey} />;
+  // Restore a stored credential (desktop only). It is verified with a real call; a stale
+  // or revoked credential is cleared and the sign-in form is shown with the reason.
+  useEffect(() => {
+    if (!shell.capabilities.persistentCredentials) return;
+    let live = true;
+    void (async () => {
+      try {
+        const stored = await shell.credentials.load();
+        if (stored === null) return;
+        const probe = new XoClient({
+          apiKey: stored,
+          ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}),
+          ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+        });
+        const r = await probe.listWorkspaces();
+        if (!live) return;
+        if (r.ok) setApiKey(stored);
+        else {
+          setRestoreProblem(r.problem);
+          // Only discard the credential when the server rejected it, never on a network blip.
+          if (r.problem.kind !== 'network') await shell.credentials.clear();
+        }
+      } catch {
+        // Credential store unavailable: fall through to manual sign-in.
+      } finally {
+        if (live) setRestoring(false);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [shell, props.fetchImpl, props.baseUrl]);
+
+  const signOut = useCallback(() => {
+    setApiKey(null);
+    void shell.credentials.clear().catch(() => undefined);
+  }, [shell]);
+
+  const connected = useCallback(
+    (key: string) => {
+      setApiKey(key);
+      if (shell.capabilities.persistentCredentials) void shell.credentials.save(key).catch(() => undefined);
+    },
+    [shell],
+  );
+
+  if (restoring) return <Spinner label="Reconnecting to XO" />;
+  if (apiKey === null) {
+    return (
+      <ConnectScreen {...props} onConnected={connected} {...(restoreProblem !== undefined ? { initialProblem: restoreProblem } : {})} />
+    );
+  }
   return (
     <SessionProvider
       apiKey={apiKey}
@@ -33,10 +88,11 @@ export function App(props: AppProps) {
   );
 }
 
-function ConnectScreen(props: AppProps & { onConnected: (key: string) => void }) {
+function ConnectScreen(props: AppProps & { onConnected: (key: string) => void; initialProblem?: ApiProblem }) {
+  const shell = useShell();
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<ApiProblem | undefined>();
+  const [problem, setProblem] = useState<ApiProblem | undefined>(props.initialProblem);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -80,7 +136,10 @@ function ConnectScreen(props: AppProps & { onConnected: (key: string) => void })
             aria-describedby="key-help"
           />
           <p id="key-help" className="muted small">
-            Provided by your XO administrator. It is kept in this tab only and is forgotten when you close it or sign out.
+            Provided by your XO administrator (development sign-in).{' '}
+            {shell.capabilities.persistentCredentials
+              ? 'It is stored in this device\u2019s secure credential store until you sign out.'
+              : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
           </p>
           {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
           <Button type="submit" variant="primary" disabled={busy || key.trim().length === 0}>

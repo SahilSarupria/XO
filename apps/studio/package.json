@@ -2,7 +2,7 @@
   "name": "@xo/studio",
   "version": "0.1.0",
   "private": true,
-  "description": "XO Studio — the customer-facing interface for XO. Business-first (User Mode) with Builder Mode as a deeper layer of the same product. Talks to @xo/api over HTTP only.",
+  "description": "XO Studio \u2014 the customer-facing interface for XO. Business-first (User Mode) with Builder Mode as a deeper layer of the same product. Talks to @xo/api over HTTP only.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -11,7 +11,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:live": "node scripts/live-smoke.mjs",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "dev:desktop": "vite --config vite.desktop.config.ts",
+    "build:desktop": "vite build --config vite.desktop.config.ts",
+    "serve:prod": "node deploy/serve.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
+import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 
 type U = ReturnType<typeof userEvent.setup>;
@@ -10,7 +11,7 @@ const gets = (api: FakeXo, suffix: string) => api.calls.filter((c) => c.method =
 
 async function connect(api: FakeXo): Promise<U> {
   const user = userEvent.setup();
-  render(<App fetchImpl={api.fetch} />);
+  render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
   await user.click(screen.getByRole('button', { name: /connect/i }));
   return user;

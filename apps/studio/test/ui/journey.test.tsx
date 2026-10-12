@@ -2,11 +2,12 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
+import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 
 async function connect(api: FakeXo, key = api.validKey) {
   const user = userEvent.setup();
-  render(<App fetchImpl={api.fetch} />);
+  render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), key);
   await user.click(screen.getByRole('button', { name: /connect/i }));
   return user;
@@ -41,11 +42,13 @@ describe('connecting', () => {
   it('reports an unreachable service honestly', async () => {
     const user = userEvent.setup();
     render(
-      <App
-        fetchImpl={async () => {
-          throw new TypeError('Failed to fetch');
-        }}
-      />,
+      withShell(
+        <App
+          fetchImpl={async () => {
+            throw new TypeError('Failed to fetch');
+          }}
+        />,
+      ),
     );
     await user.type(screen.getByLabelText(/access key/i), 'k');
     await user.click(screen.getByRole('button', { name: /connect/i }));
