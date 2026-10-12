@@ -1,6 +1,9 @@
 import type { PermissionScope, Principal } from '@xo/permissions';
 import type { Result } from '@xo/types';
+import type { AuditOptions } from './audited-operation.js';
+import type { AuditRecorder } from './audit.js';
 import type { AuthorizationPort } from './authorization.js';
+import type { EvidenceLedger } from './evidence-ledger.js';
 import type { DiscoveryError } from './errors.js';
 import type { Evidence, EvidenceKind } from './evidence.js';
 import type { ConnectorId, SourceId } from './ids.js';
@@ -59,7 +62,25 @@ export interface ConnectorContext {
   readonly authorization: AuthorizationPort;
   /** Cooperative cancellation. Connectors check it between units of work and return partial results. */
   readonly signal?: AbortSignal;
+  /**
+   * The caller. Protected operations (M2.1) require this to be the exact
+   * `AuthenticatedPrincipal` minted by `establishAuthenticatedPrincipal` at a
+   * trusted authentication boundary; the type is `Principal` only so a plain
+   * shape can be passed and REJECTED at runtime. Missing, plain, copied or
+   * deserialized principals fail closed with `EI_UNAUTHENTICATED`. It is never
+   * read from request fields, environment variables or discovery results.
+   */
   readonly principal?: Principal;
+  /**
+   * M2.2: where protected evidence operations record their write-ahead attempt and completion. REQUIRED for any
+   * operation that reads or releases evidence: with none configured those operations are refused
+   * (`EI_AUDIT_UNAVAILABLE`); there is no no-op default and no fallback to unaudited release.
+   */
+  readonly audit?: AuditRecorder;
+  /** M2.2: tracks released / quarantined / revoked / purged evidence so ineligible evidence is not selected again. Optional. */
+  readonly ledger?: EvidenceLedger;
+  /** M2.2: timeout / retry / operation-id tuning for audit writes. Optional. */
+  readonly auditOptions?: AuditOptions;
 }
 
 /** A system/location that was found to exist. Existence only — says nothing about permission to read it. */
@@ -93,6 +114,11 @@ export interface LimitReport {
   readonly hit: readonly string[];
   readonly entriesVisited: number;
   readonly elapsedMs: number;
+  /**
+   * Present (true) only when enumeration was truncated: the entries seen are the first ones in filesystem order, not
+   * the lexically first, so which entries were included is NOT deterministic across runs for this result.
+   */
+  readonly filesystemOrderUsed?: true;
 }
 
 export type OutcomeStatus = 'complete' | 'partial';

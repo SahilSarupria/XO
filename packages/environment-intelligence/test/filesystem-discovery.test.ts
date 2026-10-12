@@ -5,19 +5,22 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { MockClock } from '@xo/testing';
 import {
+  DevelopmentOperatorAuthorization,
   DiscoveryErrorCode,
+  InMemoryAuditRecorder,
   discoverSource,
   planConnection,
   registerDeclaredSources,
   SourceId,
   ConnectorId,
   stableId,
+  mintDevelopmentDecision,
   type AuthorizationPort,
   type AuthorizationRequest,
   type DetectedSource,
   type FilesystemScope,
 } from '../src/index.js';
-import { allowRoot, ctxFor, failClosed, makeDeps, put, withSandbox } from './helpers.js';
+import { TEST_PRINCIPAL, allowRoot, ctxFor, failClosed, makeDeps, put, withSandbox } from './helpers.js';
 
 const scopeOf = (root: string, extra: Partial<FilesystemScope> = {}): FilesystemScope => ({ kind: 'filesystem_root', root, ...extra });
 const request = (root: string, extra: Partial<FilesystemScope> = {}) => ({
@@ -80,41 +83,37 @@ test('every evidence record preserves provenance, and no absolute host path leak
   });
 });
 
-test('fail-closed by default: without an authorization decision the source is found but nothing is read', async () => {
+test('fail-closed by default: without an authorization decision nothing is recorded and nothing is read', async () => {
   await withSandbox(async ({ root }) => {
     await put(join(root, 'secret-plan.txt'), 'x');
     const deps = makeDeps();
     const run = await discoverSource(deps, request(root), ctxFor(failClosed()));
-    assert.ok(run.ok);
-    if (!run.ok) return;
-    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
-    assert.equal(run.value.record.status, 'authorization_required');
-    assert.equal(run.value.evidence.length, 0);
-    assert.equal(run.value.outcome, undefined);
+    assert.equal(run.ok, false, 'a denied first-contact request returns err, not a run');
+    if (!run.ok) assert.equal(run.error.code, DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
+    assert.equal(deps.inventory.list().length, 0, 'no inventory record is created before authorization');
   });
 });
 
-test('an explicit denial is reported as inaccessible and reads nothing', async () => {
+test('an explicit denial is reported as denied, reads nothing and creates no record', async () => {
   await withSandbox(async ({ root }) => {
     await put(join(root, 'a.txt'), 'x');
-    const deny: AuthorizationPort = { decide: async () => ({ effect: 'deny', authority: 'platform', reason: 'policy says no' }) };
-    const run = await discoverSource(makeDeps(), request(root), ctxFor(deny));
-    assert.ok(run.ok);
-    if (!run.ok) return;
-    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.AUTHORIZATION_DENIED);
-    assert.equal(run.value.record.status, 'unsupported_or_inaccessible');
-    assert.equal(run.value.evidence.length, 0);
+    const deny: AuthorizationPort = { decide: async () => ({ effect: 'deny', reason: 'policy says no' }) };
+    const deps = makeDeps();
+    const run = await discoverSource(deps, request(root), ctxFor(deny));
+    assert.equal(run.ok, false);
+    if (!run.ok) assert.equal(run.error.code, DiscoveryErrorCode.AUTHORIZATION_DENIED);
+    assert.equal(deps.inventory.list().length, 0);
   });
 });
 
 test('an "allow" that names no authority is not accepted as authorization', async () => {
   await withSandbox(async ({ root }) => {
-    const sloppy: AuthorizationPort = { decide: async () => ({ effect: 'allow', authority: 'none', reason: 'trust me' }) };
-    const run = await discoverSource(makeDeps(), request(root), ctxFor(sloppy));
-    assert.ok(run.ok);
-    if (!run.ok) return;
-    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
-    assert.equal(run.value.evidence.length, 0);
+    const sloppy: AuthorizationPort = { decide: async () => ({ effect: 'allow', reason: 'trust me (unminted allow)' }) };
+    const deps = makeDeps();
+    const run = await discoverSource(deps, request(root), ctxFor(sloppy));
+    assert.equal(run.ok, false);
+    if (!run.ok) assert.equal(run.error.code, DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
+    assert.equal(deps.inventory.list().length, 0);
   });
 });
 
@@ -122,9 +121,9 @@ test('a grant for a different permission or a different path does not authorize 
   await withSandbox(async ({ root, outside }) => {
     await put(join(root, 'a.txt'), 'x');
     const wrongPermission = await discoverSource(makeDeps(), request(root), ctxFor(allowRoot(root, ['filesystem.read'])));
-    assert.ok(wrongPermission.ok && wrongPermission.value.stoppedBecause?.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
+    assert.ok(!wrongPermission.ok && wrongPermission.error.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
     const wrongPath = await discoverSource(makeDeps(), request(root), ctxFor(allowRoot(outside)));
-    assert.ok(wrongPath.ok && wrongPath.value.stoppedBecause?.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
+    assert.ok(!wrongPath.ok && wrongPath.error.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED);
   });
 });
 
@@ -135,12 +134,14 @@ test('a throwing authorization gate fails closed without leaking its message', a
         throw new Error('database password is hunter2 at /etc/secret');
       },
     };
-    const run = await discoverSource(makeDeps(), request(root), ctxFor(boom));
-    assert.ok(run.ok);
-    if (!run.ok) return;
-    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.INTERNAL);
-    assert.equal(run.value.evidence.length, 0);
-    assert.equal(JSON.stringify(run.value.stoppedBecause).includes('hunter2'), false);
+    const deps = makeDeps();
+    const run = await discoverSource(deps, request(root), ctxFor(boom));
+    assert.equal(run.ok, false);
+    if (!run.ok) {
+      assert.equal(run.error.code, DiscoveryErrorCode.INTERNAL);
+      assert.equal(JSON.stringify(run.error).includes('hunter2'), false);
+    }
+    assert.equal(deps.inventory.list().length, 0);
   });
 });
 
@@ -159,7 +160,10 @@ test('unsupported source type: no connector, honest state, nothing invented', as
     detectedAt: '2026-10-10T00:00:00.000Z',
     fingerprint: 'declared',
   };
-  const [rec] = registerDeclaredSources(deps, [declared], '2026-10-10T00:00:00.000Z');
+  const allowDeclare: AuthorizationPort = { decide: async () => mintDevelopmentDecision('allow', 'test: declare sources') };
+  const declaredRun = await registerDeclaredSources(deps, [declared], ctxFor(allowDeclare));
+  assert.ok(declaredRun.ok);
+  const rec = declaredRun.ok ? declaredRun.value[0] : undefined;
   assert.equal(rec?.status, 'unsupported_or_inaccessible');
   const plan = planConnection(declared, deps.registry);
   assert.equal(plan.outcome, 'no_connector');
@@ -179,7 +183,8 @@ test('the filesystem connector rejects a source type it does not support', async
 test('connection planning reports what is required without doing any of it', async () => {
   await withSandbox(async ({ root }) => {
     const deps = makeDeps();
-    const run = await discoverSource(deps, request(root), ctxFor(failClosed()));
+    // Planning is only reachable after the first-contact authorization (F12), so authorize listing here.
+    const run = await discoverSource(deps, request(root), ctxFor(allowRoot(root)));
     assert.ok(run.ok);
     if (!run.ok) return;
     const plan = run.value.plan;
@@ -195,10 +200,17 @@ test('connection planning reports what is required without doing any of it', asy
 });
 
 test('invalid approved roots are rejected with stable structured errors', async () => {
-  await withSandbox(async ({ root, base }) => {
+  await withSandbox(async ({ base }) => {
     await put(join(base, 'a-file.txt'), 'x');
     const deps = makeDeps();
-    const ctx = ctxFor(allowRoot(root));
+    // Cases that depend on what the path IS (a file, missing, the home directory) are only observable
+    // to a caller who is authorized for that path (F12); string-shape cases need no authorization.
+    const ctx = ctxFor(
+      new DevelopmentOperatorAuthorization([
+        { permission: 'filesystem.list', path: base },
+        { permission: 'filesystem.list', path: homedir() },
+      ]),
+    );
     const cases: [string, string][] = [
       ['relative/path', DiscoveryErrorCode.INVALID_SCOPE],
       ['/', DiscoveryErrorCode.INVALID_SCOPE],
@@ -223,11 +235,13 @@ test('invalid approved roots are rejected with stable structured errors', async 
 test('a connection that fails after detection moves the source to failed_or_unavailable', async () => {
   await withSandbox(async ({ root }) => {
     await put(join(root, 'a.txt'), 'x');
-    // The gate is consulted inside validateConnection; vanishing the root at that moment simulates a mid-flight failure.
+    // The gate is consulted for validate_connection after detection succeeded; vanishing the root at that
+    // moment simulates a mid-flight failure. Authorization now precedes path resolution (F12), so the
+    // vanished root surfaces as SOURCE_UNAVAILABLE rather than a failed readdir.
     const vanishing: AuthorizationPort = {
       decide: async (req: AuthorizationRequest) => {
-        await rm(root, { recursive: true, force: true });
-        return { effect: 'allow', authority: 'development_unverified', reason: `test allow ${req.operation}` };
+        if (req.operation === 'validate_connection') await rm(root, { recursive: true, force: true });
+        return mintDevelopmentDecision('allow', `test allow ${req.operation}`);
       },
     };
     const deps = makeDeps();
@@ -235,9 +249,9 @@ test('a connection that fails after detection moves the source to failed_or_unav
     assert.ok(run.ok);
     if (!run.ok) return;
     assert.equal(run.value.record.status, 'failed_or_unavailable');
-    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.CONNECTION_FAILED);
+    assert.equal(run.value.stoppedBecause?.code, DiscoveryErrorCode.SOURCE_UNAVAILABLE);
     assert.equal(run.value.stoppedBecause?.retryable, true);
-    assert.equal(run.value.record.lastError?.code, DiscoveryErrorCode.CONNECTION_FAILED);
+    assert.equal(run.value.record.lastError?.code, DiscoveryErrorCode.SOURCE_UNAVAILABLE);
     assert.equal(run.value.evidence.length, 0);
   });
 });
@@ -329,6 +343,8 @@ test('the time budget is enforced against the injected clock', async () => {
     const run = await discoverSource(makeDeps(), request(root, { limits: { timeBudgetMs: 4000 } }), {
       clock: ticking,
       authorization: allowRoot(root),
+      principal: TEST_PRINCIPAL,
+      audit: new InMemoryAuditRecorder(),
     });
     assert.ok(run.ok);
     if (!run.ok) return;
@@ -354,7 +370,7 @@ test('cancellation: an already-aborted signal reads nothing; a mid-walk abort re
     const aborting: AuthorizationPort = {
       decide: async (req) => {
         if (req.operation === 'discover') mid.abort();
-        return { effect: 'allow', authority: 'development_unverified', reason: 'test' };
+        return mintDevelopmentDecision('allow', 'test');
       },
     };
     const run = await discoverSource(makeDeps(), request(root), ctxFor(aborting, new MockClock(), mid.signal));

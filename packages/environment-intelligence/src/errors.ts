@@ -17,6 +17,8 @@ export const DiscoveryErrorCode = {
   SCOPE_VIOLATION: 'EI_SCOPE_VIOLATION',
   /** Scope itself is unusable (not absolute, is a filesystem root, missing, not a directory). */
   INVALID_SCOPE: 'EI_INVALID_SCOPE',
+  /** The caller is not an authenticated principal (missing, invalid, forged or structurally copied identity). Nothing was consulted, probed or read. */
+  UNAUTHENTICATED: 'EI_UNAUTHENTICATED',
   /** No authorization decision permits this yet (nothing was read). */
   AUTHORIZATION_REQUIRED: 'EI_AUTHORIZATION_REQUIRED',
   /** Authorization was explicitly refused (nothing was read). */
@@ -37,6 +39,10 @@ export const DiscoveryErrorCode = {
   CANCELLED: 'EI_CANCELLED',
   /** An illegal source-state transition was attempted. */
   INVALID_TRANSITION: 'EI_INVALID_TRANSITION',
+  /** Protected evidence access needs an accepted audit record and one could not be accepted (none configured, rejected, unconfirmed). Nothing was read or released. */
+  AUDIT_UNAVAILABLE: 'EI_AUDIT_UNAVAILABLE',
+  /** Evidence was acquired but its completion audit was not accepted: it was quarantined and NOT released. */
+  EVIDENCE_QUARANTINED: 'EI_EVIDENCE_QUARANTINED',
   /** Unexpected internal failure (wrapped, never leaked raw). */
   INTERNAL: 'EI_INTERNAL',
 } as const;

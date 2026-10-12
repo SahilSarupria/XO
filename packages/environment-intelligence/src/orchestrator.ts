@@ -13,7 +13,9 @@ import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError 
 import type { Evidence } from './evidence.js';
 import type { EnvironmentInventory } from './inventory.js';
 import { type SourceRecord } from './inventory.js';
-import type { SourceId } from './ids.js';
+import { ConnectorId, type SourceId } from './ids.js';
+import { resourceScope } from '@xo/permissions';
+import { requireAuthenticatedPrincipal, requireAuthorization } from './authorization-gate.js';
 import { planConnection, type ConnectionPlan, type ConnectorRegistry } from './registry.js';
 import type { SourceEvent } from './source-state.js';
 
@@ -36,6 +38,7 @@ export interface DiscoveryRun {
 function eventFor(error: DiscoveryError): SourceEvent | undefined {
   switch (error.code) {
     case DiscoveryErrorCode.AUTHORIZATION_REQUIRED:
+    case DiscoveryErrorCode.UNAUTHENTICATED:
       return 'authorization_required';
     case DiscoveryErrorCode.AUTHORIZATION_DENIED:
       return 'authorization_denied';
@@ -62,20 +65,33 @@ function applyOrFail(
 /**
  * Drives one source through detect -> match -> plan -> validate ->
  * discover, recording each step as its own state transition. Nothing here
- * decides authorization (the connector asks the gate); nothing is read
- * before the gate allows it; and the source is registered in the inventory
- * BEFORE anything is authorized, so "found but not yet permitted" is a
- * visible, honest state rather than an absence.
+ * decides authorization (the connector asks the gate, separately for each
+ * operation; decisions are never cached or reused).
  *
- * `Result.err` means no source could even be established (unsupported type,
- * invalid scope, nonexistent root). `ok` with `stoppedBecause` means the
- * source IS in the inventory and the run stopped at the named gate.
+ * ORDERING (F12): the connector's `detectSource` authorizes the caller's
+ * requested scope BEFORE it touches the filesystem, and this function creates
+ * an inventory record only AFTER `detectSource` succeeds. A first-contact
+ * request that is denied, unauthenticated, or malformed therefore returns
+ * `Result.err` with NO inventory record, no evidence, and no probing of the
+ * requested path. This covers `discoverSource` only: `registerDeclaredSources`
+ * is a different entry point, gated separately (see its doc comment).
+ *
+ * `Result.err` means no source was established (unsupported type, invalid
+ * scope, denied or unauthenticated, nonexistent root after authorization).
+ * `ok` with `stoppedBecause` means the source was authorized to be detected
+ * and IS in the inventory, and a LATER gate (validate/discover) stopped the
+ * run. Denial auditing depends on the separately designed M2.2 audit port and
+ * is not implemented here.
  */
 export async function discoverSource<TScope extends DiscoveryScopeBase>(
   deps: DiscoveryDeps,
   request: DiscoveryRequest<TScope>,
   ctx: ConnectorContext,
 ): Promise<Result<DiscoveryRun, DiscoveryError>> {
+  // M2.1: identity first. An unauthenticated caller gets the same answer whatever it asked about (no registry,
+  // inventory or filesystem lookup happens), and a discovered/detected source never stands in for a principal.
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
   const connector = deps.registry.findFor(request.sourceType)[0] as Connector<TScope> | undefined;
   if (connector === undefined) {
     return err(
@@ -155,14 +171,69 @@ export async function discoverSource<TScope extends DiscoveryScopeBase>(
   return ok({ record, plan, outcome, evidence: outcome.evidence });
 }
 
+/** Provisional bound on one declaration call (pure check, before any authorization or record). */
+export const MAX_DECLARED_SOURCES_PER_CALL = 500;
+
+/**
+ * The authorization the declaration path asks for. PROVISIONAL: `data.write`
+ * on the resource `environment-intelligence/inventory` reuses the existing
+ * closed permission vocabulary (adding a permission id is a P1.0 owner
+ * decision). Declaring a system writes to the inventory; it is not a read of
+ * the declared system. Needs P1.0 owner confirmation.
+ */
+export const DECLARE_SOURCES_PERMISSION = 'data.write';
+export const DECLARE_SOURCES_RESOURCE = 'environment-intelligence/inventory';
+const DECLARE_SOURCES_CONNECTOR = ConnectorId('xo.environment-intelligence');
+
 /**
  * Registers sources that were declared rather than detected by a connector
  * (an administrator-provided application inventory, a future cloud API
  * listing). They enter the inventory as `detected`, are matched against
- * the registry, and — if no connector exists — are honestly marked
+ * the registry, and - if no connector exists - are honestly marked
  * `unsupported_or_inaccessible`. Declaring a system grants nothing.
+ *
+ * AUTHORIZATION (F2/M2.1): inventory writes are gated. After a pure size
+ * bound, ONE decision is requested for the whole call through the same
+ * enforcement point as the connectors (`requireAuthorization`), so a
+ * caller-forged decision is not honoured. Records are created only after an
+ * allow; a denial returns `err` and creates nothing. A declaration that would replace a record established by a
+ * different connector or source type is refused for the whole call. The timestamp comes from
+ * the injected clock, not the caller. The caller-supplied `DetectedSource`
+ * values are data, never proof of permission.
  */
-export function registerDeclaredSources(deps: DiscoveryDeps, sources: readonly DetectedSource[], at: string): readonly SourceRecord[] {
+export async function registerDeclaredSources(
+  deps: DiscoveryDeps,
+  sources: readonly DetectedSource[],
+  ctx: ConnectorContext,
+): Promise<Result<readonly SourceRecord[], DiscoveryError>> {
+  const who = requireAuthenticatedPrincipal(ctx.principal, DECLARE_SOURCES_PERMISSION);
+  if (!who.ok) return who;
+  if (sources.length > MAX_DECLARED_SOURCES_PER_CALL) {
+    return err(
+      discoveryError(DiscoveryErrorCode.LIMIT_EXCEEDED, `at most ${MAX_DECLARED_SOURCES_PER_CALL} sources can be declared per call`, {
+        limit: MAX_DECLARED_SOURCES_PER_CALL,
+      }),
+    );
+  }
+  const gate = await requireAuthorization(ctx.authorization, {
+    connectorId: DECLARE_SOURCES_CONNECTOR,
+    operation: 'declare_sources',
+    permission: DECLARE_SOURCES_PERMISSION,
+    scope: resourceScope(DECLARE_SOURCES_RESOURCE),
+    ...(ctx.principal !== undefined ? { principal: ctx.principal } : {}),
+    reason: 'register administrator-declared sources in the environment inventory',
+  });
+  if (!gate.ok) return gate;
+  // Integrity: a declaration may repeat-observe its OWN earlier declaration, but never replace a record that a
+  // different connector or source type established (`observe` overwrites the stored source). Checked for the whole
+  // call before anything is written, so a conflicting call is atomic: it writes nothing.
+  for (const source of sources) {
+    const existing = deps.inventory.get(source.sourceId);
+    if (existing !== undefined && (existing.source.detectedBy !== source.detectedBy || existing.source.sourceType !== source.sourceType)) {
+      return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'a declared source conflicts with an existing inventory record', {}));
+    }
+  }
+  const at = ctx.clock.now().toISOString();
   const records: SourceRecord[] = [];
   for (const source of sources) {
     deps.inventory.observe(source, at);
@@ -173,7 +244,7 @@ export function registerDeclaredSources(deps: DiscoveryDeps, sources: readonly D
         : deps.inventory.apply(source.sourceId, 'connector_matched', at, { connectorId: connector.descriptor.id });
     if (applied.ok) records.push(applied.value);
   }
-  return records;
+  return ok(records);
 }
 
 /**
@@ -181,12 +252,20 @@ export function registerDeclaredSources(deps: DiscoveryDeps, sources: readonly D
  * connector asks the authorization gate for a read permission distinct from
  * the listing permission. A denial here does not alter the source's base
  * lifecycle (listing still succeeded); it is returned to the caller.
+ *
+ * M2.1: a source that was detected, listed and validated is only a CANDIDATE.
+ * `axes.authorization === 'granted'` records that LISTING was authorized; it
+ * never stands in for the read decision, which the connector requests again,
+ * for `filesystem.read`, bound to this caller and this scope.
  */
 export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
   deps: DiscoveryDeps,
   request: AcquisitionRequest & { readonly scope: TScope },
   ctx: ConnectorContext,
 ): Promise<Result<AcquisitionOutcome, DiscoveryError>> {
+  // M2.1: identity before any inventory lookup, so an unauthenticated caller cannot learn which sources exist.
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
   const record = deps.inventory.get(request.sourceId);
   if (record === undefined || record.connectorId === undefined) {
     return err(discoveryError(DiscoveryErrorCode.INVALID_TRANSITION, 'source is not in the inventory or has no matched connector', {}));
