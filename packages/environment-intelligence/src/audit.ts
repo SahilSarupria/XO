@@ -115,6 +115,8 @@ export const AuditErrorCode = {
   CORRUPT: 'AUDIT_CORRUPT',
   /** Another writer holds the log. */
   LOCKED: 'AUDIT_LOCKED',
+  /** The backend was configured inconsistently (e.g. integrity key vs. the log's recorded mode, retention shorter than evidence retention). */
+  INVALID_CONFIG: 'AUDIT_INVALID_CONFIG',
 } as const;
 export type AuditErrorCode = (typeof AuditErrorCode)[keyof typeof AuditErrorCode];
 

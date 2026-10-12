@@ -14,7 +14,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
 import {
-  InMemoryAuditRecorder,
+  FileAuditLog,
+  verifyAuditLog,
   ConnectorRegistry,
   DevelopmentOperatorAuthorization,
   EnvironmentInventory,
@@ -38,35 +39,55 @@ if (!demoOperator.ok) throw new Error('demo principal could not be established')
 
 async function run(title: string, root: string, origin: ModelOrigin): Promise<void> {
   console.log(`\n=== ${title} ===`);
-  const registry = new ConnectorRegistry();
-  registry.register(new LocalFilesystemConnector());
-  const deps = { registry, inventory: new EnvironmentInventory() };
-  const scope: FilesystemScope = { kind: 'filesystem_root', root, limits: { maxDepth: 4, maxEntries: 500 } };
-  const ctx = {
-    clock,
-    principal: demoOperator.value,
-    // M2.2: protected evidence operations are refused without a recorder. In-memory = DEMO ONLY (non-durable).
-    audit: new InMemoryAuditRecorder(),
-    authorization: new DevelopmentOperatorAuthorization([
-      { permission: 'filesystem.list', path: root },
-      { permission: 'filesystem.read', path: root },
-    ]),
-  };
-  const d = await discoverSource(deps, { sourceType: 'local_filesystem', scope }, ctx);
-  if (!d.ok) return void console.log('discovery refused:', d.error.code, d.error.message);
-  const evidence: Evidence[] = [...d.value.evidence];
-  const keys = evidence.filter((e) => e.kind === 'resource_inventory' && e.payload['contentAcquirable'] === true).map((e) => e.resourceKey);
-  const a = await acquireSourceContent(
-    deps,
-    { sourceId: d.value.record.source.sourceId, kind: 'document_content', resourceKeys: keys, scope },
-    ctx,
-  );
-  if (a.ok) evidence.push(...a.value.evidence);
-  else console.log('acquisition refused:', a.error.code);
-  console.log('inventory states:', JSON.stringify(deps.inventory.countsByStatus()));
-  console.log('evidence records:', evidence.length);
-  const model = buildEnvironmentModel({ origin, generatedAt: clock.now().toISOString(), inventory: deps.inventory, evidence });
-  console.log(explainEnvironment(model));
+  // M4: protected evidence operations are audited write-ahead into a DURABLE append-only log (demo: a temp dir).
+  const auditDir = await mkdtemp(join(tmpdir(), 'xo-ei-audit-'));
+  const opened = await FileAuditLog.open({ dir: auditDir });
+  if (!opened.ok) {
+    await rm(auditDir, { recursive: true, force: true });
+    return void console.log('audit log unavailable; refusing to run unaudited:', opened.error.code);
+  }
+  const auditLog = opened.value;
+  try {
+    const registry = new ConnectorRegistry();
+    registry.register(new LocalFilesystemConnector());
+    const deps = { registry, inventory: new EnvironmentInventory() };
+    const scope: FilesystemScope = { kind: 'filesystem_root', root, limits: { maxDepth: 4, maxEntries: 500 } };
+    const ctx = {
+      clock,
+      principal: demoOperator.value,
+      // M2.2: protected evidence operations are refused without a recorder. In-memory = DEMO ONLY (non-durable).
+      audit: auditLog,
+      authorization: new DevelopmentOperatorAuthorization([
+        { permission: 'filesystem.list', path: root },
+        { permission: 'filesystem.read', path: root },
+      ]),
+    };
+    const d = await discoverSource(deps, { sourceType: 'local_filesystem', scope }, ctx);
+    if (!d.ok) return void console.log('discovery refused:', d.error.code, d.error.message);
+    const evidence: Evidence[] = [...d.value.evidence];
+    const keys = evidence
+      .filter((e) => e.kind === 'resource_inventory' && e.payload['contentAcquirable'] === true)
+      .map((e) => e.resourceKey);
+    const a = await acquireSourceContent(
+      deps,
+      { sourceId: d.value.record.source.sourceId, kind: 'document_content', resourceKeys: keys, scope },
+      ctx,
+    );
+    if (a.ok) evidence.push(...a.value.evidence);
+    else console.log('acquisition refused:', a.error.code);
+    console.log('inventory states:', JSON.stringify(deps.inventory.countsByStatus()));
+    console.log('evidence records:', evidence.length);
+    const model = buildEnvironmentModel({ origin, generatedAt: clock.now().toISOString(), inventory: deps.inventory, evidence });
+    console.log(explainEnvironment(model));
+  } finally {
+    await auditLog.close();
+    const report = await verifyAuditLog(auditDir);
+    if (report.ok)
+      console.log(
+        `audit log: ${report.value.events} events, verified=${report.value.ok}, open attempts=${report.value.openAttempts.length}`,
+      );
+    await rm(auditDir, { recursive: true, force: true });
+  }
 }
 
 const real = await realpath(join(here, '..', 'src'));

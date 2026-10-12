@@ -2,6 +2,7 @@ export * from './ids.js';
 export * from './errors.js';
 export * from './epistemic.js';
 export * from './audit.js';
+export * from './audit-log-file.js';
 export type { AuditOptions } from './audited-operation.js';
 export * from './authorization.js';
 export * from './authorization-dev.js';

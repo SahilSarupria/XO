@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.json",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "node --import tsx --test test/acquisition-exclusion.test.ts test/audit-lifecycle.test.ts test/authorization-boundary.test.ts test/bounded-enumeration.test.ts test/content-acquisition.test.ts test/environment-model.test.ts test/fd-anchored-traversal.test.ts test/filesystem-discovery.test.ts test/hard-links.test.ts test/permission-manager-authorization.test.ts test/platform-enforcement.test.ts test/preauthorization.test.ts test/source-state.test.ts test/special-files.test.ts test/trusted-authority.test.ts",
+    "test": "node --import tsx --test test/acquisition-exclusion.test.ts test/audit-lifecycle.test.ts test/audit-persistence.test.ts test/authorization-boundary.test.ts test/bounded-enumeration.test.ts test/content-acquisition.test.ts test/environment-model.test.ts test/fd-anchored-traversal.test.ts test/filesystem-discovery.test.ts test/hard-links.test.ts test/permission-manager-authorization.test.ts test/platform-enforcement.test.ts test/preauthorization.test.ts test/source-state.test.ts test/special-files.test.ts test/trusted-authority.test.ts",
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test",
     "demo": "node --import tsx demo/run-demo.ts"
   },

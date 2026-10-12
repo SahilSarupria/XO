@@ -82,6 +82,21 @@ Protected evidence operations (`discover`, `acquire_content`, `revoke_evidence`,
 
 Limits: `detect` and `validate_connection` are metadata-only existence probes and are not write-ahead audited (their denials are). The ledger is in-memory; a restart loses eligibility state (P1.0 M4 persists the audit, not the ledger). A revoked source must be re-authorized before it can be read again.
 
+### 8.3 P1.0 M4 — Durable audit persistence **[implemented, tested]**
+
+`FileAuditLog` implements the M2.2 `AuditRecorder` behind the same interface (EI does not depend on it). No existing repository store fit (the repo's persistence is JSON-file-per-record with atomic rename, no append-only log, no fsync discipline, no database dependency), so this is the smallest durable backend: one append-only JSON Lines file, one writer, `node:fs` and `node:crypto` only, no new dependencies.
+
+- **Durability:** a record is acknowledged only after its complete line was written and `fsync` returned. A failed or short write, or a failed fsync, is _not accepted_ and poisons the instance until reopen. Events survive restart (tested with a clean reopen and a real `SIGKILL` of a writer).
+- **Identity and order:** `eventId`, strictly +1 `sequence`, `recordedAt`, event type/outcome; principal snapshot, permission decision metadata, requested/granted scope references, counts and evidence ids per M2.2's closed schema, re-validated by the backend.
+- **Integrity:** each record commits to the previous record's hash (SHA-256, or HMAC-SHA-256 with an integrity key). `verifyAuditLog` and `open` detect modification, deletion, reordering and corruption of non-tail records, and `open` refuses to append to a log that fails verification.
+- **What this does NOT guarantee (not tamper-proof):** without a key, anyone who can rewrite the file can recompute the chain; with a key, the key holder can. Dropping the newest records at a record boundary is undetectable from the file alone and is detected only against an external checkpoint (`checkpoint()` / `expectedHead`). A compromised host or a filesystem that lies about fsync defeats it. These limits are asserted in tests, not just stated.
+- **Recovery and idempotency:** an incomplete final line (never acknowledged) is truncated on open and noted by a `recovery` record; any complete line that fails verification is `AUDIT_CORRUPT` and is never auto-repaired. Retries with the same idempotency key return the original receipt (timestamps are ignored in the comparison, so a later retry still matches); the same key with different content is `AUDIT_CONFLICT`; a terminal event requires an accepted attempt and an operation has one terminal event. An attempt with no terminal event is reported by `openAttempts()` / `verifyAuditLog`.
+- **Concurrency:** one writer owns the log via an exclusive lock file (pid + host). Appends are serialized, so the chain is linear. A second opener gets `AUDIT_LOCKED`; a lock left by a dead process on the same host is taken over; any other lock is never stolen. Multi-host/network-filesystem writers are unsupported.
+- **Retention:** the log has no delete, compaction or age-based expiry; history is retained indefinitely, so audit retention is at least as long as any evidence retention. `assertRetentionAligned` and the `evidenceRetentionMs` option reject a finite audit retention shorter than evidence retention.
+- **Errors:** structured `AuditError` (code, retryable, errno), never a path, payload or message text. There is no fallback to a no-op or in-memory recorder; `InMemoryAuditRecorder` is test/demo only and never a default.
+
+Deferred: segment rotation and checkpointed startup (the whole log is read at open, bounded by `maxLogBytes`), key rotation, persistence of the `EvidenceLedger`, and signed checkpoints/external anchoring (only the hook exists).
+
 ## 9. Milestone vs future work
 
 In: contracts, inventory/state machine, one local filesystem adapter, evidence model, environment model with relationships, candidate processes, explainer, tests, demo. Out: any remote/SaaS connector, credentials handling, incremental sync/health, LLM interpretation, XOIR projection, opportunity scoring, persistence, UI.
