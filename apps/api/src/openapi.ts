@@ -212,7 +212,7 @@ export const openApiDocument = {
       post: {
         summary: 'Validate an uploaded .xo archive (read-only; mirrors `xo verify`)',
         description:
-          "Unlike the CLI's --pubkey did=path (a local file path), publicKeys here are PEM text supplied inline in the JSON body — a server has no local filesystem of the remote caller's to read a path from. See package-routes.ts.",
+          "Verifies against the server's operator-configured package trust policy (XO_PACKAGE_TRUST_POLICY) only. Caller-supplied public keys are rejected with 400: a key supplied with the request cannot establish trust. The response includes a `trust` verdict.",
         requestBody: {
           required: true,
           content: {
@@ -222,7 +222,6 @@ export const openApiDocument = {
                 required: ['archiveBase64'],
                 properties: {
                   archiveBase64: { type: 'string', description: 'base64-encoded .xo archive bytes' },
-                  publicKeys: { type: 'object', additionalProperties: { type: 'string' }, description: '{ [creatorDid]: pemPublicKey }' },
                 },
               },
             },
@@ -336,7 +335,14 @@ export const openApiDocument = {
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'workflowId', in: 'path', required: true, schema: { type: 'string' } },
-          { name: 'Idempotency-Key', in: 'header', required: false, description: 'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.', schema: { type: 'string' } },
+          {
+            name: 'Idempotency-Key',
+            in: 'header',
+            required: false,
+            description:
+              'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.',
+            schema: { type: 'string' },
+          },
         ],
         requestBody: {
           required: true,
@@ -490,7 +496,14 @@ export const openApiDocument = {
         description:
           'Body: { compilationId, capabilityId, input }. No client-supplied runtime declaration, execution class, or identity is ever accepted — the declaration is always re-derived server-side from the stored, compiled graph. Execution is synchronous: the response always reports a finished outcome. status "succeeded": the real deterministic (or other resolved) result. status "waiting_for_human": an honest human-in-the-loop escalation — this milestone does not implement HITL resume; the execution record is terminal. status "failed": rejected before running (not approved, unresolved/ambiguous/denied binding, invalid input) or a genuine runtime failure — always a structured errorCode/errorMessage, never a fabricated success. Permission gate: RuleBasedPolicy([]) (deny-by-default for any capability that declares required permissions; today\'s compiled capabilities typically declare none) — never an unrestricted allow-all gate.',
         parameters: [
-          { name: 'Idempotency-Key', in: 'header', required: false, description: 'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.', schema: { type: 'string' } },
+          {
+            name: 'Idempotency-Key',
+            in: 'header',
+            required: false,
+            description:
+              'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.',
+            schema: { type: 'string' },
+          },
         ],
         requestBody: {
           required: true,

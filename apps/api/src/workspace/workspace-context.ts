@@ -1,3 +1,4 @@
+import { PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -17,6 +18,13 @@ import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
  */
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
+  /** P1.0 M5 — operator-controlled package trust policy, resolved once at startup (`XO_PACKAGE_TRUST_POLICY`). Absent is treated as the explicit `unenforced` policy. Never derived from request data. */
+  readonly packageTrustPolicy?: PackageTrustPolicy;
+}
+
+/** Validator carrying the operator trust policy — the only way API routes verify packages. */
+export function workspacePackageValidator(config: WorkspaceDataConfig): PackageValidator {
+  return new PackageValidator({ trustPolicy: config.packageTrustPolicy ?? PackageTrustPolicy.unenforced() });
 }
 
 /**

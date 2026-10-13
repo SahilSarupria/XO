@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { PackageValidator, unpackArchive } from '@xo/package-sdk';
+import { PackageValidator, unpackArchive, type PackageTrustPolicy } from '@xo/package-sdk';
+import { resolveTrustValidator } from '../../package-trust.js';
 import type { ValidationIssue } from '@xo/package-sdk';
 import type { CommandResult } from '../../command-result.js';
 import { failWith } from '../../command-result.js';
@@ -8,6 +9,8 @@ export interface VerifyOptions {
   readonly archivePath: string;
   /** Each entry is `"<signerDid>=<path/to/public-key.pem>"`, as passed via repeated `--pubkey` flags. Without at least one matching entry, a signed manifest's signatures are reported as unverified (a warning), not failed — see `PackageValidator.validateSignatures`. */
   readonly pubkeySpecs?: readonly string[];
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. Ignored when `--pubkey` entries are given (legacy, operator-supplied key files). */
+  readonly trustPolicy?: PackageTrustPolicy;
 }
 
 /**
@@ -77,16 +80,18 @@ export async function verifyCommand(options: VerifyOptions): Promise<CommandResu
   const readResult = await unpackArchive(bytes);
   if (!readResult.ok) return failWith(readResult.error.message);
 
-  // Only pass a resolver when the caller actually supplied --pubkey
-  // entries. PackageValidator treats "no resolver at all" as "signatures
-  // present but unverifiable — warn, don't fail" (SIGNATURES_UNVERIFIED),
-  // vs. "resolver present but this DID isn't in it" as a hard
-  // verification failure. An empty --pubkey list should behave like "I
-  // didn't ask for signature verification", not like "I asked and it
-  // failed" — so the resolver is omitted entirely rather than passed as
-  // a function that always returns undefined.
-  const validator = new PackageValidator(publicKeys.size > 0 ? { resolvePublicKey: (did) => publicKeys.get(did) } : {});
+  // `--pubkey` (legacy): operator-supplied local key files, verified without any trust requirements. Otherwise the operator trust policy
+  // (XO_PACKAGE_TRUST_POLICY) applies in full: required signature, trusted keys, publisher binding, revocation.
+  let validator: PackageValidator;
+  if (publicKeys.size > 0) {
+    validator = new PackageValidator({ resolvePublicKey: (did) => publicKeys.get(did) });
+  } else {
+    const trust = resolveTrustValidator(options.trustPolicy);
+    if (!trust.ok) return failWith(trust.message);
+    validator = trust.validator;
+  }
   const report = validator.validateAll(readResult.value);
+  const verdict = validator.evaluateTrust(readResult.value.manifest);
 
   const lines = [
     ...checklistLines(report.issues),
@@ -94,6 +99,7 @@ export async function verifyCommand(options: VerifyOptions): Promise<CommandResu
     ...report.issues.map(
       (issue) => `[${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}${issue.path ? ` (${issue.path})` : ''}`,
     ),
+    `TRUST: ${verdict.status}${verdict.signers.length > 0 ? ` (${verdict.signers.map((x) => `${x.signerDid}/${x.role}`).join(', ')})` : ''}`,
     report.valid ? 'VALID' : 'INVALID',
   ];
 

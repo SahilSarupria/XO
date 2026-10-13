@@ -1,6 +1,5 @@
 import {
   PackageInstaller,
-  PackageValidator,
   createLockfile,
   resolveDependencies,
   serializeLockfile,
@@ -13,7 +12,12 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspacePackagesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  workspacePackageValidator,
+  workspacePackagesStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -83,36 +87,34 @@ interface ValidateBody {
   readonly publicKeys?: unknown;
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (typeof value !== 'object' || value === null) return false;
-  return Object.values(value).every((v) => typeof v === 'string');
-}
+function validateWith(dataConfig: WorkspaceDataConfig): (req: ApiRequest) => Promise<ApiResponse> {
+  return async (req) => {
+    const body = unwrapOrThrow(await req.json<ValidateBody>());
+    if (typeof body.archiveBase64 !== 'string' || body.archiveBase64.length === 0) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"archiveBase64" (base64-encoded .xo archive) is required');
+    }
+    // P1.0 M5: a caller-supplied key can never establish trust (it would let the package's own author vouch for it).
+    if (body.publicKeys !== undefined) {
+      throw new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        '"publicKeys" is no longer accepted: trust is established only by the operator-configured trust policy (XO_PACKAGE_TRUST_POLICY), never by request data',
+      );
+    }
 
-async function validate(req: ApiRequest): Promise<ApiResponse> {
-  const body = unwrapOrThrow(await req.json<ValidateBody>());
-  if (typeof body.archiveBase64 !== 'string' || body.archiveBase64.length === 0) {
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"archiveBase64" (base64-encoded .xo archive) is required');
-  }
-  if (body.publicKeys !== undefined && !isStringRecord(body.publicKeys)) {
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"publicKeys", if present, must be an object of { [did]: pemString }');
-  }
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(Buffer.from(body.archiveBase64, 'base64'));
+    } catch (cause) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"archiveBase64" is not valid base64', { cause });
+    }
 
-  let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(Buffer.from(body.archiveBase64, 'base64'));
-  } catch (cause) {
-    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"archiveBase64" is not valid base64', { cause });
-  }
+    const unpacked = unwrapOrThrow(await unpackArchive(bytes));
+    const validator = workspacePackageValidator(dataConfig);
+    const report = validator.validateAll(unpacked);
+    const trust = validator.evaluateTrust(unpacked.manifest);
 
-  const unpacked = unwrapOrThrow(await unpackArchive(bytes));
-
-  const publicKeys = body.publicKeys as Record<string, string> | undefined;
-  const validator = new PackageValidator(
-    publicKeys !== undefined && Object.keys(publicKeys).length > 0 ? { resolvePublicKey: (did) => publicKeys[did] } : {},
-  );
-  const report = validator.validateAll(unpacked);
-
-  return json(report.valid ? 200 : 422, report);
+    return json(report.valid ? 200 : 422, { ...report, trust });
+  };
 }
 
 interface ResolveBody {
@@ -138,7 +140,7 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
 
 export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   // Not workspace-scoped — see the doc comment at the top of this file.
-  router.post('/packages/validate', guarded(validate));
+  router.post('/packages/validate', guarded(validateWith(dataConfig)));
 
   /** Dry-run of what `lock` (below) would write — resolves and returns the result, writes nothing. */
   async function resolve(req: ApiRequest): Promise<ApiResponse> {

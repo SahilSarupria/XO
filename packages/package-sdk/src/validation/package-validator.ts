@@ -4,6 +4,8 @@ import { Sha256Hasher, buildMerkleRoot } from '@xo/crypto';
 import { hashComponent } from '../hashing/component-hasher.js';
 import { isValidSemVer, isValidSemVerRange } from '../manifest/semver.js';
 import { PackageVerifier } from '../signing/package-signer.js';
+import { PackageTrustPolicy } from '../trust/trust-policy.js';
+import { evaluatePackageTrust, type TrustVerdict } from '../trust/verify-trust.js';
 import { componentCollisionProblem, componentPathProblem, packageSegmentProblem } from './safe-path.js';
 import { isXoManifest, isXoMetadata } from './schema.js';
 import type { PackageBundle, ValidationIssue, ValidationReport } from '../types.js';
@@ -13,6 +15,12 @@ export interface PackageValidatorOptions {
   readonly verifier?: PackageVerifier;
   /** Resolves a signer DID to its public key PEM, for manifest.signatures (which carry no key of their own). Signature validation is skipped (not failed) when omitted, since a bundle that hasn't been signed yet is still a valid *unsigned* package. */
   readonly resolvePublicKey?: (signerDid: string) => string | undefined;
+  /**
+   * Operator-controlled trust policy (P1.0 M5). When present, signatures are verified against its keys only and its requirements (required signature, roles, publisher binding, revocation) are enforced. Mutually exclusive with `resolvePublicKey`. When neither is given the validator is `unenforced`: it verifies nothing and never reports a package as trusted.
+   */
+  readonly trustPolicy?: PackageTrustPolicy;
+  /** Clock for key validity windows; injectable for tests. */
+  readonly now?: () => Date;
 }
 
 function issue(severity: ValidationIssue['severity'], code: string, message: string, path?: string): ValidationIssue {
@@ -32,8 +40,15 @@ export class PackageValidator {
   private readonly hasher: Hasher;
   private readonly verifier: PackageVerifier;
   private readonly resolvePublicKey?: (signerDid: string) => string | undefined;
+  readonly trustPolicy: PackageTrustPolicy;
+  private readonly now: () => Date;
 
   constructor(options: PackageValidatorOptions = {}) {
+    if (options.trustPolicy !== undefined && options.resolvePublicKey !== undefined) {
+      throw new TypeError('PackageValidator: trustPolicy and resolvePublicKey are mutually exclusive');
+    }
+    this.trustPolicy = options.trustPolicy ?? PackageTrustPolicy.unenforced();
+    this.now = options.now ?? (() => new Date());
     this.hasher = options.hasher ?? new Sha256Hasher();
     this.verifier = options.verifier ?? new PackageVerifier();
     if (options.resolvePublicKey) this.resolvePublicKey = options.resolvePublicKey;
@@ -280,17 +295,27 @@ export class PackageValidator {
     return [];
   }
 
+  /** Evaluates the manifest against this validator's trust policy. `unenforced` verdicts verify nothing. */
+  evaluateTrust(manifest: XoManifest): TrustVerdict {
+    return evaluatePackageTrust(manifest, this.trustPolicy, this.now());
+  }
+
   validateSignatures(manifest: XoManifest): readonly ValidationIssue[] {
+    if (this.trustPolicy.mode === 'enforce') {
+      const verdict = this.evaluateTrust(manifest);
+      return verdict.failures.map((f) => issue('error', f.code, f.message, 'signatures/signatures.json'));
+    }
     if (!manifest.signatures || manifest.signatures.length === 0) return [];
     if (!this.resolvePublicKey) {
       return [
         issue(
           'warning',
           'SIGNATURES_UNVERIFIED',
-          'Manifest carries signatures but no public-key resolver was supplied — skipping cryptographic verification',
+          'Manifest carries signatures but no trust policy or public-key resolver was supplied — signatures were NOT verified and the package is not trusted',
         ),
       ];
     }
+    // Legacy code-supplied resolver (constructor argument, never package data). Prefer `trustPolicy`.
     const result = this.verifier.verifyAll(manifest, [], this.resolvePublicKey);
     return result.ok ? [] : [issue('error', 'SIGNATURE_INVALID', result.error.message, 'signatures/signatures.json')];
   }

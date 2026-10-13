@@ -6,7 +6,12 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  workspacePackageValidator,
+  workspaceRegistryStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -35,7 +40,7 @@ function unwrapOrThrow<T>(result: { ok: true; value: T } | { ok: false; error: X
 
 async function client(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): Promise<RegistryClient> {
   const workspace = await requireOwnedWorkspace(req, workspaceStore);
-  return new RegistryClient(workspaceRegistryStore(workspace, dataConfig));
+  return new RegistryClient(workspaceRegistryStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) });
 }
 
 interface RecordBenchmarkBody {

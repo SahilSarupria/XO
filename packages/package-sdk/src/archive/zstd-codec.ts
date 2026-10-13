@@ -1,6 +1,7 @@
 import type { Readable, Transform } from 'node:stream';
 import { createZstdCompress, createZstdDecompress, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
 import { err, ok, type Result } from '@xo/types';
+import { MAX_DECOMPRESSED_ARCHIVE_BYTES } from './tar-codec.js';
 import { ErrorCode, PackageError } from '@xo/errors';
 
 /**
@@ -19,9 +20,9 @@ export function zstdCompress(data: Uint8Array): Uint8Array {
   return new Uint8Array(zstdCompressSync(data));
 }
 
-export function zstdDecompress(data: Uint8Array): Result<Uint8Array, PackageError> {
+export function zstdDecompress(data: Uint8Array, maxBytes: number = MAX_DECOMPRESSED_ARCHIVE_BYTES): Result<Uint8Array, PackageError> {
   try {
-    return ok(new Uint8Array(zstdDecompressSync(data)));
+    return ok(new Uint8Array(zstdDecompressSync(data, { maxOutputLength: maxBytes })));
   } catch (cause) {
     return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, 'Failed to decompress package: not valid zstd data', { cause }));
   }

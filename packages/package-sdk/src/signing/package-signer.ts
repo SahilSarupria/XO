@@ -34,8 +34,15 @@ export class PackageSigner {
 export class PackageVerifier {
   constructor(private readonly verifier: Verifier = new Ed25519Signer()) {}
 
+  /**
+   * Cryptographic check only, against the key the entry itself carries. That key is self-asserted by whoever built the package, so a `true` here proves nothing about trust — use `PackageTrustPolicy` / `evaluatePackageTrust` for that. Malformed keys/signatures return `false` rather than throwing.
+   */
   verifyOne(manifest: XoManifest, entry: SignatureEntry): boolean {
-    return this.verifier.verify(signableManifestBytes(manifest), entry.signature, entry.publicKeyPem);
+    try {
+      return this.verifier.verify(signableManifestBytes(manifest), entry.signature, entry.publicKeyPem);
+    } catch {
+      return false;
+    }
   }
 
   /** Verifies every signature attached to the manifest itself (`manifest.signatures`, which carry no public key — callers must resolve `signerDid` -> public key themselves via `resolvePublicKey`) plus any out-of-band {@link SignatureEntry} list supplied directly (which do carry their own key). */
@@ -52,7 +59,12 @@ export class PackageVerifier {
         failures.push(`No public key available to verify signature from "${sig.signerDid}"`);
         continue;
       }
-      const valid = this.verifier.verify(signableManifestBytes(manifest), sig.signature, publicKeyPem);
+      let valid = false;
+      try {
+        valid = this.verifier.verify(signableManifestBytes(manifest), sig.signature, publicKeyPem);
+      } catch {
+        valid = false;
+      }
       if (!valid) failures.push(`Signature from "${sig.signerDid}" (${sig.role}) does not verify`);
     }
 

@@ -77,6 +77,14 @@ export interface InstalledPackageRecord {
   readonly version: string;
   readonly installedAt: string;
   readonly manifestHash: string;
+  /** Digest of the full manifest including signatures (P1.0 M5). Absent on records written before M5. */
+  readonly manifestDigest?: string;
+  /** Trust verdict at admission time (P1.0 M5). Informational only — mount re-evaluates trust under the current policy. Absent on pre-M5 records. */
+  readonly trust?: {
+    readonly status: 'trusted' | 'untrusted' | 'unsigned' | 'unenforced';
+    readonly policyId: string;
+    readonly signers: readonly { readonly signerDid: string; readonly role: string; readonly keyId: string }[];
+  };
   readonly componentPaths: readonly string[];
 }
 

@@ -1,3 +1,4 @@
+import { loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { Result } from '@xo/types';
 import { AuditError, ErrorCode, XoError } from '@xo/errors';
@@ -22,6 +23,8 @@ import { AuditService } from './audit/audit-service.js';
 
 export interface ServerDeps {
   readonly logger?: Logger;
+  /** P1.0 M5 — injected operator trust policy (tests/embedders). Defaults to `loadOperatorTrustPolicy()`. */
+  readonly packageTrustPolicy?: PackageTrustPolicy;
   /**
    * Injected directly when a caller already has one (e.g.
    * `test-helpers.ts`'s `TestServer`, which provisions a temp-dir-backed
@@ -93,7 +96,22 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const apiKeyStore = deps.apiKeyStore ?? new FsApiKeyStore(new LocalFsBlobStore(deps.apiKeysDir ?? loadConfig().apiKeysDir));
   const workspaceStore =
     deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));
-  const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
+  // P1.0 M5: the trust policy is operator configuration. A configured-but-broken policy aborts startup (fail closed) instead of silently downgrading.
+  let packageTrustPolicy = deps.packageTrustPolicy;
+  if (packageTrustPolicy === undefined) {
+    const loaded = loadOperatorTrustPolicy();
+    if (!loaded.ok) throw loaded.error;
+    packageTrustPolicy = loaded.value;
+  }
+  if (packageTrustPolicy.mode !== 'enforce') {
+    deps.logger?.warn(
+      'PACKAGE TRUST IS NOT ENFORCED: package signatures are not verified and no package is reported trusted (set XO_PACKAGE_TRUST_POLICY to enforce)',
+    );
+  }
+  const workspaceDataConfig: WorkspaceDataConfig = {
+    dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
+    packageTrustPolicy,
+  };
   const router = new Router();
   router.use(createApiKeyAuth(apiKeyStore));
   const permissionManager = new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) });

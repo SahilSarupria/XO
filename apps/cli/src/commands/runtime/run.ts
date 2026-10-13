@@ -1,5 +1,6 @@
 import type { HostCapability, ModelFamily, Result } from '@xo/types';
-import { PackageInstaller } from '@xo/package-sdk';
+import { PackageInstaller, type PackageTrustPolicy } from '@xo/package-sdk';
+import { resolveTrustValidator } from '../../package-trust.js';
 import { LocalFsBlobStore } from '@xo/storage';
 import { EnvironmentId, ExecutionEngine, RequestId, Runtime } from '@xo/runtime';
 import type { ExecutionRequest } from '@xo/runtime';
@@ -25,6 +26,8 @@ export interface RunOptions {
   readonly maxTokens?: number;
   readonly json?: boolean;
   readonly now?: () => Date;
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. */
+  readonly trustPolicy?: PackageTrustPolicy;
   /** R3's CLI-level permission grant boundary — `xo run ... --grant <permissionId>` (repeatable). Only consulted by the deterministic path; the AI-provider path's own authorization is unchanged (see the R1–R3 report's "did not weaken the AI provider path" note). */
   readonly grantedPermissionIds?: readonly string[];
 }
@@ -58,7 +61,9 @@ export const AI_EXECUTION_DISABLED_MESSAGE =
 export async function runCommand(options: RunOptions, resolveProvider: () => Result<ModelProvider, string>): Promise<CommandResult> {
   const now = options.now ?? (() => new Date());
 
-  const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir));
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
+  const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir), { validator: trust.validator });
   const runtime = new Runtime(installer, options.now !== undefined ? { now: options.now } : {});
   const bootstrap = await runtime.bootstrap();
   const bootstrapWarnings = bootstrap.failures.map(

@@ -1,5 +1,13 @@
 import { readFile } from 'node:fs/promises';
-import { createLockfile, PackageInstaller, resolveDependencies, serializeLockfile, unpackArchive } from '@xo/package-sdk';
+import { resolveTrustValidator } from '../../package-trust.js';
+import {
+  createLockfile,
+  PackageInstaller,
+  type PackageTrustPolicy,
+  resolveDependencies,
+  serializeLockfile,
+  unpackArchive,
+} from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
@@ -8,6 +16,8 @@ import { buildLocalStoreLookup, lockfileKey } from './dependency-lookup.js';
 export interface InstallOptions {
   readonly archivePath: string;
   readonly storeDir: string;
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. */
+  readonly trustPolicy?: PackageTrustPolicy;
   readonly force?: boolean;
   /** Installs only the one archive, with no dependency resolution or lockfile write at all — for the case where someone is deliberately installing a dependency itself before its dependents (which would otherwise be an unresolvable "not found in store" failure on its own dependents' next install/lock). */
   readonly skipResolution?: boolean;
@@ -48,8 +58,10 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
   const readResult = await unpackArchive(bytes);
   if (!readResult.ok) return failWith(`[${readResult.error.code}] ${readResult.error.message}`);
 
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
   const store = new LocalFsBlobStore(options.storeDir);
-  const installer = new PackageInstaller(store);
+  const installer = new PackageInstaller(store, { validator: trust.validator });
   const installOptions = options.force !== undefined ? { force: options.force } : {};
 
   const dependencies = readResult.value.manifest.dependencies ?? [];
