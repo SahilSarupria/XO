@@ -19,3 +19,11 @@
 - Keychain behaviour per OS (Windows Credential Manager, macOS Keychain, Linux Secret Service availability).
 - Real sign-in: pending the owner's decision in `AUTH_DECISION.md`.
 - A browser-driven run of the built web bundle (the live smoke exercises Studio's client and parsers from Node, not the bundle in a browser).
+
+## Hardening added with the auth foundation
+
+- **Native surface** (all unverified Rust, validated by a static checker): credential load/save/clear, `shell_config`, `login_begin`/`login_await` (one-shot loopback listener, strict method/path/Host match, 5 min bound), `open_system_browser` (https or loopback http only). No fs/shell/process/opener/dialog permissions. `node scripts/check-tauri-config.mjs` enforces this and is covered by tests that try to add each forbidden grant.
+- **Network egress**: the webview CSP has no remote `connect-src`. API and identity-provider calls go through the native HTTP plugin and its capability allow-list. The committed default grants none; `http-dev` (loopback only) is enabled only by `tauri.dev.conf.json`; a release must enable `http-deploy`, which the owner creates with real origins, so a release cannot be built without an explicit allow-list (`npm run check:tauri:release` fails until then).
+- **No loosened CSP for dev**: `tauri dev` serves the built bundle under the release CSP (no HMR) rather than adding `unsafe-inline`.
+- **Credential lifecycle**: a stored credential is deleted only on permanent rejection (server 401 for a dev key, `invalid_grant` for a refresh token), never on network failure, and a credential for a different issuer/client is discarded unused. If the keychain is unavailable the user is told and signs in each launch.
+- **Principal**: never taken from the client. See `AUTH_API_CONTRACT.md`.

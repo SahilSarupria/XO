@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "http-dev",
+  "description": "DEVELOPMENT ONLY (enabled by tauri.dev.conf.json; never bundled into a release). Loopback API. Add a loopback IdP origin here only if you run one locally.",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "http://127.0.0.1:4000/*"
+        }
+      ]
+    }
+  ]
+}

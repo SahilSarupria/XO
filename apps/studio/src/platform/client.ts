@@ -1,3 +1,4 @@
+import type { AuthResult } from '../auth/oidc';
 import {
   parseCapabilityList,
   parseCompilation,
@@ -69,7 +70,10 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 export interface XoClientOptions {
   /** Same-origin proxy prefix in dev/prod; see vite.config.ts. */
   readonly baseUrl?: string;
-  readonly apiKey: string;
+  /** Static bearer (development access key). Exactly one of apiKey / bearer is required. */
+  readonly apiKey?: string;
+  /** Per-request bearer source (OIDC access token, refreshed as needed). */
+  readonly bearer?: () => Promise<AuthResult<string>>;
   readonly fetch?: FetchLike;
 }
 
@@ -91,12 +95,15 @@ export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = [
 
 export class XoClient {
   private readonly baseUrl: string;
-  private readonly apiKey: string;
+  private readonly bearer: () => Promise<AuthResult<string>>;
   private readonly doFetch: FetchLike;
 
   constructor(opts: XoClientOptions) {
     this.baseUrl = (opts.baseUrl ?? '/api').replace(/\/$/, '');
-    this.apiKey = opts.apiKey;
+    const key = opts.apiKey;
+    if (opts.bearer !== undefined) this.bearer = opts.bearer;
+    else if (key !== undefined) this.bearer = () => Promise.resolve({ ok: true as const, value: key });
+    else throw new Error('XoClient needs apiKey or bearer');
     this.doFetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
   }
 
@@ -106,7 +113,14 @@ export class XoClient {
     parse: (body: unknown) => T,
     init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>> },
   ): Promise<Result<T>> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: 'application/json' };
+    const token = await this.bearer();
+    if (!token.ok) {
+      return fail({
+        kind: token.failure.kind === 'network' ? 'network' : 'unauthenticated',
+        message: token.failure.kind === 'network' ? 'Could not reach the sign-in service to refresh your session.' : token.failure.message,
+      });
+    }
+    const headers: Record<string, string> = { Authorization: `Bearer ${token.value}`, Accept: 'application/json' };
     if (init?.contentType !== undefined) headers['Content-Type'] = init.contentType;
     if (init?.headers !== undefined) Object.assign(headers, init.headers);
 

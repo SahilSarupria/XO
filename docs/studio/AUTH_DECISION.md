@@ -1,6 +1,6 @@
 # Studio authentication — decision document
 
-Status: **proposal, awaiting owner decision.** Nothing here is implemented in the API.
+Status: **SETTLED by the owner: OIDC Authorization Code + PKCE, provider-neutral, API-authoritative principal.** Option B below. The exact Studio/API contract and what is and is not implemented are in `AUTH_API_CONTRACT.md`. The comparison is kept for the record.
 
 ## Today
 
@@ -35,6 +35,6 @@ Keep option C's property for machine callers: service API keys remain valid and 
 6. Desktop only, if the Tauri HTTP plugin is not used: CORS for the desktop origin.
 7. Tests: expired/forged/wrong-audience/wrong-issuer tokens, unmapped subject, key callers unaffected, authz and audit identical for both credential types.
 
-## Owner decision needed
+## Outcome
 
-Choose A, B, C or another option; name the IdP (or whether the API should embed one). Until then, Studio keeps the labelled access-key sign-in and the storage rules above. No API change will be made without that approval.
+Option B adopted without naming a provider. Studio-side client logic is implemented; API-side verification is not (see the contract). The access-key sign-in remains, labelled as a development mechanism and switchable off (`devSignIn`).

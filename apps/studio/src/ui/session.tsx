@@ -1,3 +1,4 @@
+import type { AuthResult } from '../auth/oidc';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { XoClient, type FetchLike } from '../platform/client';
 
@@ -39,7 +40,8 @@ export function useModeIfAny(): Mode {
 }
 
 export function SessionProvider(props: {
-  apiKey: string;
+  apiKey?: string;
+  bearer?: () => Promise<AuthResult<string>>;
   fetchImpl?: FetchLike;
   baseUrl?: string;
   onSignOut: () => void;
@@ -49,11 +51,12 @@ export function SessionProvider(props: {
   const client = useMemo(
     () =>
       new XoClient({
-        apiKey: props.apiKey,
+        ...(props.apiKey !== undefined ? { apiKey: props.apiKey } : {}),
+        ...(props.bearer !== undefined ? { bearer: props.bearer } : {}),
         ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}),
         ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
       }),
-    [props.apiKey, props.fetchImpl, props.baseUrl],
+    [props.apiKey, props.bearer, props.fetchImpl, props.baseUrl],
   );
   const value = useMemo<SessionValue>(
     () => ({

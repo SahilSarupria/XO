@@ -1,84 +1,212 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { XoClient, type ApiProblem, type FetchLike } from '../platform/client';
 import { Button, ProblemNotice, Spinner } from './primitives';
 import { SessionProvider, useSession } from './session';
 import { WorkspaceHome } from './WorkspaceHome';
 import { useShell } from '../shell/services';
+import { decodeCredential, encodeCredential, type StoredCredential } from '../auth/envelope';
+import type { AuthFailure, OidcConfig } from '../auth/oidc';
+import { OidcSession, restoreFromRefreshToken, signInWithSystemBrowser } from '../auth/oidcSession';
 
 export interface AppProps {
   /** Test seam: lets tests inject a fake transport. Production uses the browser's fetch. */
   readonly fetchImpl?: FetchLike;
   readonly baseUrl?: string;
+  /** Production sign-in settings (provider-neutral OIDC). Absent = development sign-in only. */
+  readonly oidc?: OidcConfig;
+  /** Show the development access-key sign-in. Default true. */
+  readonly devSignIn?: boolean;
+  readonly now?: () => number;
 }
 
+type Auth = { readonly kind: 'dev-key'; readonly key: string } | { readonly kind: 'oidc'; readonly session: OidcSession };
+
+interface Notice {
+  readonly tone: 'danger' | 'info';
+  readonly text: string;
+}
+
+const failureNotice = (f: AuthFailure): Notice => ({ tone: 'danger', text: f.message });
+
 /**
- * The credential is held in this component's memory and, only when the shell reports
- * `persistentCredentials`, in the shell's credential store (an OS keychain on desktop).
- * The web shell never persists it: not in localStorage, sessionStorage or cookies. It is
- * dropped on sign-out. That is a deliberate limit of access-key sign-in (a development
- * mechanism; see docs/studio/AUTH_DECISION.md).
+ * Credentials: the dev key and OIDC access token live in memory. Only a shell that reports
+ * `persistentCredentials` ever stores anything (a dev key or an OIDC *refresh* token, in the OS
+ * keychain); the web shell stores nothing. The client never decides who the user is or what they
+ * may do: the API derives the principal from the credential (docs/studio/AUTH_API_CONTRACT.md).
  */
 export function App(props: AppProps) {
   const shell = useShell();
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const now = props.now ?? Date.now;
+  const [auth, setAuth] = useState<Auth | null>(null);
   const [restoring, setRestoring] = useState(shell.capabilities.persistentCredentials);
-  const [restoreProblem, setRestoreProblem] = useState<ApiProblem | undefined>();
+  const [notice, setNotice] = useState<Notice | undefined>();
+  const [problem, setProblem] = useState<ApiProblem | undefined>();
+  const oidcCfg = props.oidc;
+  const fetchFn = useMemo<FetchLike>(() => props.fetchImpl ?? ((i, init) => globalThis.fetch(i, init)), [props.fetchImpl]);
 
-  // Restore a stored credential (desktop only). It is verified with a real call; a stale
-  // or revoked credential is cleared and the sign-in form is shown with the reason.
-  useEffect(() => {
-    if (!shell.capabilities.persistentCredentials) return;
-    let live = true;
-    void (async () => {
-      try {
-        const stored = await shell.credentials.load();
-        if (stored === null) return;
-        const probe = new XoClient({
-          apiKey: stored,
-          ...(props.fetchImpl !== undefined ? { fetch: props.fetchImpl } : {}),
-          ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
-        });
-        const r = await probe.listWorkspaces();
-        if (!live) return;
-        if (r.ok) setApiKey(stored);
-        else {
-          setRestoreProblem(r.problem);
-          // Only discard the credential when the server rejected it, never on a network blip.
-          if (r.problem.kind !== 'network') await shell.credentials.clear();
-        }
-      } catch {
-        // Credential store unavailable: fall through to manual sign-in.
-      } finally {
-        if (live) setRestoring(false);
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [shell, props.fetchImpl, props.baseUrl]);
-
-  const signOut = useCallback(() => {
-    setApiKey(null);
-    void shell.credentials.clear().catch(() => undefined);
-  }, [shell]);
-
-  const connected = useCallback(
-    (key: string) => {
-      setApiKey(key);
-      if (shell.capabilities.persistentCredentials) void shell.credentials.save(key).catch(() => undefined);
+  const persist = useCallback(
+    (c: StoredCredential) => {
+      if (!shell.capabilities.persistentCredentials) return;
+      shell.credentials.save(encodeCredential(c)).catch(() => {
+        setNotice({ tone: 'info', text: 'Secure storage is unavailable on this device, so you will need to sign in again next time.' });
+      });
     },
     [shell],
   );
+  const forget = useCallback(async () => {
+    try {
+      await shell.credentials.clear();
+    } catch {
+      setNotice({ tone: 'info', text: 'Secure storage is unavailable; a saved sign-in could not be removed.' });
+    }
+  }, [shell]);
+
+  const startedRef = useRef(false);
+  // Restore from the credential store (desktop only). Verified with real calls; a credential is
+  // discarded only when the server/provider PERMANENTLY rejected it, never on a transient failure.
+  useEffect(() => {
+    if (!shell.capabilities.persistentCredentials || startedRef.current) return;
+    startedRef.current = true;
+    void (async () => {
+      try {
+        let raw: string | null;
+        try {
+          raw = await shell.credentials.load();
+        } catch {
+          setNotice({ tone: 'info', text: 'Secure storage is unavailable on this device, so a saved sign-in could not be used.' });
+          return;
+        }
+        if (raw === null) return;
+        const stored = decodeCredential(raw);
+        if (stored === null) {
+          await forget();
+          return;
+        }
+        if (stored.kind === 'dev-key') {
+          if (props.devSignIn === false) {
+            await forget();
+            return;
+          }
+          const r = await new XoClient({
+            apiKey: stored.key,
+            fetch: fetchFn,
+            ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+          }).listWorkspaces();
+          if (r.ok) setAuth({ kind: 'dev-key', key: stored.key });
+          else {
+            setProblem(r.problem);
+            if (r.problem.kind !== 'network') await forget();
+          }
+          return;
+        }
+        // oidc-refresh
+        if (oidcCfg === undefined || stored.issuer !== oidcCfg.issuer || stored.clientId !== oidcCfg.clientId) {
+          await forget();
+          setNotice({ tone: 'info', text: 'Sign-in settings have changed, so you need to sign in again.' });
+          return;
+        }
+        const r = await restoreFromRefreshToken(
+          {
+            config: oidcCfg,
+            fetch: fetchFn,
+            now,
+            onRefreshToken: (t) => persist({ ...stored, refreshToken: t }),
+            onEnded: () => endSession(),
+          },
+          stored.refreshToken,
+        );
+        if (r.ok) setAuth({ kind: 'oidc', session: r.value });
+        else if (r.failure.kind === 'invalid_grant') {
+          await forget();
+          setNotice({ tone: 'danger', text: 'Your saved sign-in is no longer valid. Please sign in again.' });
+        } else setNotice(failureNotice(r.failure)); // transient: credential kept
+      } finally {
+        setRestoring(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore runs once per mount
+  }, []);
+
+  const endSession = useCallback(() => {
+    setAuth(null);
+    setNotice({ tone: 'danger', text: 'Your session has ended. Please sign in again.' });
+    void forget();
+  }, [forget]);
+
+  const signOut = useCallback(() => {
+    const a = auth;
+    setAuth(null);
+    setNotice(undefined);
+    setProblem(undefined);
+    if (a?.kind === 'oidc') void a.session.signOut();
+    void forget();
+  }, [auth, forget]);
+
+  const connectedDev = useCallback(
+    (key: string) => {
+      setAuth({ kind: 'dev-key', key });
+      persist({ kind: 'dev-key', key });
+    },
+    [persist],
+  );
+
+  const signInExternal = useCallback(async (): Promise<AuthFailure | undefined> => {
+    if (oidcCfg === undefined || shell.login === undefined) return { kind: 'config', message: 'Sign-in is not available in this app.' };
+    const r = await signInWithSystemBrowser({ config: oidcCfg, fetch: fetchFn, login: shell.login, now });
+    if (!r.ok) return r.failure;
+    let latest = r.value.tokens.refreshToken;
+    const session = new OidcSession(
+      {
+        config: oidcCfg,
+        endpoints: r.value.endpoints,
+        fetch: fetchFn,
+        now,
+        onRefreshToken: (t) => {
+          latest = t;
+          persist({ kind: 'oidc-refresh', refreshToken: t, issuer: oidcCfg.issuer, clientId: oidcCfg.clientId });
+        },
+        onEnded: () => endSession(),
+      },
+      r.value.tokens,
+    );
+    // The API, not Studio, decides whether this token is acceptable: verify with a real call.
+    const probe = await new XoClient({
+      bearer: session.getAccessToken,
+      fetch: fetchFn,
+      ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+    }).listWorkspaces();
+    if (!probe.ok) {
+      void session.signOut();
+      return {
+        kind: probe.problem.kind === 'network' ? 'network' : 'provider_error',
+        message:
+          probe.problem.kind === 'unauthenticated'
+            ? 'XO did not accept this sign-in. Your administrator may not have enabled single sign-on for XO yet.'
+            : probe.problem.message,
+      };
+    }
+    if (latest !== undefined) persist({ kind: 'oidc-refresh', refreshToken: latest, issuer: oidcCfg.issuer, clientId: oidcCfg.clientId });
+    setNotice(undefined);
+    setAuth({ kind: 'oidc', session });
+    return undefined;
+  }, [oidcCfg, shell, fetchFn, now, persist, endSession, props.baseUrl]);
 
   if (restoring) return <Spinner label="Reconnecting to XO" />;
-  if (apiKey === null) {
+  if (auth === null) {
     return (
-      <ConnectScreen {...props} onConnected={connected} {...(restoreProblem !== undefined ? { initialProblem: restoreProblem } : {})} />
+      <ConnectScreen
+        {...props}
+        notice={notice}
+        initialProblem={problem}
+        onConnected={connectedDev}
+        onExternalSignIn={oidcCfg !== undefined && shell.capabilities.systemBrowserLogin ? signInExternal : undefined}
+        oidcConfiguredButUnavailable={oidcCfg !== undefined && !shell.capabilities.systemBrowserLogin}
+      />
     );
   }
   return (
     <SessionProvider
-      apiKey={apiKey}
+      {...(auth.kind === 'dev-key' ? { apiKey: auth.key } : { bearer: auth.session.getAccessToken })}
       onSignOut={signOut}
       {...(props.fetchImpl !== undefined ? { fetchImpl: props.fetchImpl } : {})}
       {...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {})}
@@ -88,11 +216,31 @@ export function App(props: AppProps) {
   );
 }
 
-function ConnectScreen(props: AppProps & { onConnected: (key: string) => void; initialProblem?: ApiProblem }) {
+interface ConnectProps extends AppProps {
+  readonly onConnected: (key: string) => void;
+  readonly notice: Notice | undefined;
+  readonly initialProblem: ApiProblem | undefined;
+  readonly onExternalSignIn: (() => Promise<AuthFailure | undefined>) | undefined;
+  readonly oidcConfiguredButUnavailable: boolean;
+}
+
+function ConnectScreen(props: ConnectProps) {
   const shell = useShell();
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ssoBusy, setSsoBusy] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | undefined>(props.initialProblem);
+  const [ssoFailure, setSsoFailure] = useState<AuthFailure | undefined>();
+  const showDev = props.devSignIn !== false;
+
+  async function sso() {
+    if (props.onExternalSignIn === undefined || ssoBusy) return;
+    setSsoBusy(true);
+    setSsoFailure(undefined);
+    const f = await props.onExternalSignIn();
+    setSsoBusy(false);
+    if (f !== undefined) setSsoFailure(f);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -123,30 +271,58 @@ function ConnectScreen(props: AppProps & { onConnected: (key: string) => void; i
         <p className="lede">
           Upload what you already have. XO finds the rules inside, shows you the evidence, and only acts on what you approve.
         </p>
-        <form onSubmit={(e) => void submit(e)} className="stack">
-          <label htmlFor="api-key">Access key</label>
-          <input
-            id="api-key"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="xoak_…"
-            aria-describedby="key-help"
-          />
-          <p id="key-help" className="muted small">
-            Provided by your XO administrator (development sign-in).{' '}
-            {shell.capabilities.persistentCredentials
-              ? 'It is stored in this device\u2019s secure credential store until you sign out.'
-              : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
-          </p>
-          {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
-          <Button type="submit" variant="primary" disabled={busy || key.trim().length === 0}>
-            {busy ? 'Checking…' : 'Connect'}
-          </Button>
-          {busy ? <Spinner label="Checking your access key" /> : null}
-        </form>
+        {props.notice !== undefined ? (
+          <div className={`notice notice-${props.notice.tone}`} role={props.notice.tone === 'danger' ? 'alert' : 'status'}>
+            <p>{props.notice.text}</p>
+          </div>
+        ) : null}
+        {props.onExternalSignIn !== undefined ? (
+          <div className="stack">
+            <Button variant="primary" onClick={() => void sso()} disabled={ssoBusy}>
+              {ssoBusy ? 'Waiting for your browser…' : 'Sign in with your organisation'}
+            </Button>
+            <p className="muted small">Opens your browser to sign in. Studio never sees your password.</p>
+            {ssoFailure !== undefined ? (
+              <div className="notice notice-danger" role="alert">
+                <p>{ssoFailure.message}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {props.oidcConfiguredButUnavailable && !showDev ? (
+          <div className="notice notice-danger" role="alert">
+            <p>Organisation sign-in is not yet available in the browser version of Studio. Use the desktop app.</p>
+          </div>
+        ) : null}
+        {showDev ? (
+          <form onSubmit={(e) => void submit(e)} className="stack" aria-label="Development sign-in">
+            <p className="muted small">
+              <strong>Development sign-in</strong> (access key). Not for production use.
+            </p>
+            <label htmlFor="api-key">Access key</label>
+            <input
+              id="api-key"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="xoak_…"
+              aria-describedby="key-help"
+            />
+            <p id="key-help" className="muted small">
+              Provided by your XO administrator.{' '}
+              {shell.capabilities.persistentCredentials
+                ? 'It is stored in this device\u2019s secure credential store until you sign out.'
+                : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
+            </p>
+            {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+            <Button type="submit" variant="primary" disabled={busy || key.trim().length === 0}>
+              {busy ? 'Checking…' : 'Connect'}
+            </Button>
+            {busy ? <Spinner label="Checking your access key" /> : null}
+          </form>
+        ) : null}
       </div>
     </main>
   );

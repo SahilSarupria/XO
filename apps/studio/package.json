@@ -14,7 +14,9 @@
     "clean": "rm -rf dist",
     "dev:desktop": "vite --config vite.desktop.config.ts",
     "build:desktop": "vite build --config vite.desktop.config.ts",
-    "serve:prod": "node deploy/serve.mjs"
+    "serve:prod": "node deploy/serve.mjs",
+    "check:tauri": "node scripts/check-tauri-config.mjs",
+    "check:tauri:release": "node scripts/check-tauri-config.mjs --release"
   },
   "dependencies": {
     "react": "^18.3.1",

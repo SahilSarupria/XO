@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimum the Studio webview needs. No fs, shell, process or open-url access.",
+  "description": "Least privilege for the Studio webview: its own commands only. No http, fs, shell, process, opener or dialog access.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,9 +9,8 @@
     "allow-credential-save",
     "allow-credential-clear",
     "allow-shell-config",
-    {
-      "identifier": "http:default",
-      "allow": [{ "url": "https://xo.example.com/*" }, { "url": "http://127.0.0.1:4000/*" }]
-    }
+    "allow-login-begin",
+    "allow-login-await",
+    "allow-open-system-browser"
   ]
 }

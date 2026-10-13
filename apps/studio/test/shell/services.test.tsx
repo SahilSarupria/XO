@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { ConfigError } from '../../src/shell/ConfigError';
 import { createWebShellServices, type CredentialStore, type ShellServices } from '../../src/shell/services';
+import { decodeCredential } from '../../src/auth/envelope';
 import { FakeXo } from '../fakeXo';
 import { withShell } from '../shell';
 
@@ -43,7 +44,7 @@ function fakeDesktop(store: Map<string, string>): ShellServices & { calls: strin
       store.delete('k');
     },
   };
-  return { kind: 'desktop', capabilities: { persistentCredentials: true }, credentials, calls };
+  return { kind: 'desktop', capabilities: { persistentCredentials: true, systemBrowserLogin: false }, credentials, calls };
 }
 
 describe('the app uses injected shell services', () => {
@@ -55,7 +56,7 @@ describe('the app uses injected shell services', () => {
     render(withShell(<App fetchImpl={api.fetch} />, shell));
     await user.type(await screen.findByLabelText(/access key/i), api.validKey);
     await user.click(screen.getByRole('button', { name: /connect/i }));
-    await waitFor(() => expect(store.get('k')).toBe(api.validKey));
+    await waitFor(() => expect(decodeCredential(store.get('k') ?? '')).toEqual({ kind: 'dev-key', key: api.validKey }));
     await user.click(await screen.findByRole('button', { name: /sign out/i }));
     await waitFor(() => expect(store.has('k')).toBe(false));
   });

@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react';
+import type { SystemBrowserLogin } from '../auth/oidcSession';
 
 /**
  * The only seam between shared UI and anything native. Shared code depends on this
@@ -13,6 +14,19 @@ export type ShellKind = 'web' | 'desktop';
 export interface ShellCapabilities {
   /** True only when the shell can keep a credential in an OS-protected store across launches. */
   readonly persistentCredentials: boolean;
+  /** True only when the shell can run an external-IdP login in the system browser (see `login`). */
+  readonly systemBrowserLogin: boolean;
+}
+
+/** Thrown by credential stores that cannot do what was asked. Never carries secret material. */
+export class CredentialStoreError extends Error {
+  constructor(
+    readonly code: 'unavailable' | 'invalid',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CredentialStoreError';
+  }
 }
 
 export interface CredentialStore {
@@ -25,6 +39,8 @@ export interface ShellServices {
   readonly kind: ShellKind;
   readonly credentials: CredentialStore;
   readonly capabilities: ShellCapabilities;
+  /** Present iff `capabilities.systemBrowserLogin`. */
+  readonly login?: SystemBrowserLogin;
 }
 
 /**
@@ -36,7 +52,7 @@ export function createWebShellServices(): ShellServices {
   let secret: string | null = null;
   return {
     kind: 'web',
-    capabilities: { persistentCredentials: false },
+    capabilities: { persistentCredentials: false, systemBrowserLogin: false },
     credentials: {
       load: () => Promise.resolve(secret),
       save: (s) => {

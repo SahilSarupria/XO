@@ -7,10 +7,16 @@
  * http(s) URL. Everything else (javascript:, data:, file:, protocol-relative
  * "//host", embedded credentials, query strings, fragments) is rejected.
  */
+import { parseOidcConfig, type OidcConfig } from '../auth/oidc';
+
 export const DEFAULT_API_BASE_URL = '/api';
 
 export interface XoRuntimeConfig {
   readonly apiBaseUrl?: unknown;
+  /** Production sign-in: { issuer, clientId, scopes?, audience? }. Never a secret. */
+  readonly oidc?: unknown;
+  /** Set false to hide the development access-key sign-in. Default true. */
+  readonly devSignIn?: unknown;
 }
 
 declare global {
@@ -89,6 +95,31 @@ export function resolveApiBaseUrl(inputs: ResolveInputs): ApiBaseUrlResult {
     return { ok: true, baseUrl: n.value, source };
   }
   return { ok: true, baseUrl: DEFAULT_API_BASE_URL, source: 'default' };
+}
+
+export type AuthConfigResult =
+  { readonly ok: true; readonly oidc?: OidcConfig; readonly devSignIn: boolean } | { readonly ok: false; readonly message: string };
+
+/** Strict: a present-but-invalid setting stops startup; it is never ignored. */
+export function resolveAuthConfig(runtime: XoRuntimeConfig | undefined): AuthConfigResult {
+  let oidc: OidcConfig | undefined;
+  if (runtime?.oidc !== undefined && runtime.oidc !== null) {
+    const r = parseOidcConfig(runtime.oidc);
+    if (!r.ok) return { ok: false, message: `XO Studio is configured with invalid sign-in settings: ${r.failure.message}` };
+    oidc = r.value;
+  }
+  const d = runtime?.devSignIn;
+  if (d !== undefined && typeof d !== 'boolean') {
+    return { ok: false, message: 'XO Studio is configured with an invalid devSignIn setting (it must be true or false).' };
+  }
+  const devSignIn = d ?? true;
+  if (oidc === undefined && !devSignIn) {
+    return {
+      ok: false,
+      message: 'XO Studio has no sign-in method configured: the development sign-in is disabled and no OIDC settings were provided.',
+    };
+  }
+  return { ok: true, ...(oidc !== undefined ? { oidc } : {}), devSignIn };
 }
 
 export function resolveFromEnvironment(): ApiBaseUrlResult {

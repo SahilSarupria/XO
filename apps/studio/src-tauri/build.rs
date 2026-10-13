@@ -7,6 +7,9 @@ fn main() {
                 "credential_save",
                 "credential_clear",
                 "shell_config",
+                "login_begin",
+                "login_await",
+                "open_system_browser",
             ]),
         ),
     )
