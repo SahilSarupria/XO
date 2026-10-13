@@ -1,53 +1,21 @@
 import { AuditError, ErrorCode } from '@xo/errors';
 import { isAuthenticatedPrincipal, type Principal } from '@xo/permissions';
-import { err, ok, type Result } from '@xo/types';
+import type { Result } from '@xo/types';
+import { canonicalJson } from './canonical.js';
+import type { AuditExtensionSchemas } from './extension.js';
+import { isMintedActor, mintActorInternal } from './trust.js';
+import { validateDraftFields } from './validate.js';
+import { AUDIT_EVENT_TYPES, AUDIT_LIFECYCLE_PHASES, AUDIT_OUTCOMES, AUDIT_TARGET_KINDS } from './vocab.js';
+
+export { AUDIT_EVENT_TYPES, AUDIT_LIFECYCLE_PHASES, AUDIT_OUTCOMES, AUDIT_TARGET_KINDS };
 
 /** Schema version of the persisted event. Bump (and add a reader migration) on any breaking field change. */
 export const AUDIT_SCHEMA_VERSION = 1 as const;
 
-export const AUDIT_EVENT_TYPES = [
-  'access.attempted',
-  'access.denied',
-  'authorization.denied',
-  'execution.attempted',
-  'execution.denied',
-  'execution.started',
-  'execution.completed',
-  'execution.failed',
-  'execution.waiting_for_human',
-  'workflow.attempted',
-  'workflow.denied',
-  'workflow.started',
-  'workflow.resumed',
-  'workflow.step.completed',
-  'workflow.step.failed',
-  'workflow.completed',
-  'workflow.failed',
-  'workflow.waiting_for_human',
-  'humantask.attempted',
-  'humantask.denied',
-  'humantask.resolved',
-  'humantask.failed',
-  'audit.read',
-  'audit.purged',
-] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
-export const AUDIT_OUTCOMES = ['attempted', 'allowed', 'denied', 'started', 'completed', 'failed', 'cancelled'] as const;
 export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
 
-export const AUDIT_TARGET_KINDS = [
-  'workspace',
-  'execution',
-  'workflow',
-  'workflow-execution',
-  'workflow-step',
-  'capability',
-  'compilation',
-  'source',
-  'human-task',
-  'audit-log',
-] as const;
 export type AuditTargetKind = (typeof AUDIT_TARGET_KINDS)[number];
 
 /** Data classification of every audit record. Audit data is never ordinary application content. */
@@ -67,11 +35,8 @@ export interface AuditActorFields {
  */
 export type AuditActor = AuditActorFields & { readonly __auditActor: true };
 
-const mintedActors = new WeakSet<object>();
 function mintActor(fields: AuditActorFields): AuditActor {
-  const actor = Object.freeze({ ...fields }) as AuditActor;
-  mintedActors.add(actor);
-  return actor;
+  return mintActorInternal(fields);
 }
 
 /** The actor for an event initiated by a VERIFIED principal. Throws for anything that is not an `AuthenticatedPrincipal`. */
@@ -94,6 +59,15 @@ export interface AuditTarget {
 
 export type AuditMetadataValue = string | number | boolean;
 
+/** Lifecycle position of an event within one operation (C0.3). Enforced only by a store that supports lifecycle. */
+export type AuditLifecyclePhase = (typeof AUDIT_LIFECYCLE_PHASES)[number];
+export interface AuditLifecycle {
+  readonly operationId: string;
+  readonly phase: AuditLifecyclePhase;
+}
+/** Registered, schema-validated, closed extension payloads keyed by namespace (see `extension.ts`). */
+export type AuditExtensions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
 /** What producing code supplies. It deliberately has NO id, timestamp, sequence, retention or receipt field — those are the trusted store's. */
 export interface AuditEventDraft {
   readonly type: AuditEventType;
@@ -107,8 +81,12 @@ export interface AuditEventDraft {
   readonly reasonCode?: string;
   /** Minimal, sanitized, flat metadata. See {@link validateDraft} for the exact rules. */
   readonly metadata?: Readonly<Record<string, AuditMetadataValue>>;
-  /** Optional dedupe key: a retried append with the same key is recorded once. */
+  /** Optional dedupe key: a retried append with the same key is recorded once; the same key with DIFFERENT content is a conflict. */
   readonly idempotencyKey?: string;
+  /** Lifecycle ordering (attempt -> one terminal). Refused by stores that do not enforce it — never silently dropped. */
+  readonly lifecycle?: AuditLifecycle;
+  /** Registered closed extensions. Refused unless the store was opened with a schema for the namespace. */
+  readonly extensions?: AuditExtensions;
 }
 
 export interface AuditEvent {
@@ -131,156 +109,57 @@ export interface AuditEvent {
   readonly reasonCode?: string;
   readonly metadata?: Readonly<Record<string, AuditMetadataValue>>;
   readonly idempotencyKey?: string;
+  readonly lifecycle?: AuditLifecycle;
+  readonly extensions?: AuditExtensions;
 }
 
-// ── validation / sanitization ──────────────────────────────────────────
-
-const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
-const ACTION_RE = /^[a-z][a-z0-9._-]{0,63}$/;
-const REASON_RE = /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/;
-const META_KEY_RE = /^[a-z][A-Za-z0-9_]{0,39}$/;
-const RESERVED_META_KEYS = new Set([
-  'eventid',
-  'seq',
-  'recordedat',
-  'retainuntil',
-  'receipt',
-  'actor',
-  'schemaversion',
-  'classification',
-  'outcome',
-  'type',
-  'durable',
-  'guarantee',
-]);
-const FORBIDDEN_KEY_FRAGMENTS = [
-  'token',
-  'secret',
-  'password',
-  'passwd',
-  'credential',
-  'authorization',
-  'apikey',
-  'privatekey',
-  'prompt',
-  'response',
-  'payload',
-  'body',
-  'content',
-  'document',
-  'input',
-  'output',
-  'bearer',
-  'cookie',
-  'session',
-];
-const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
-  /bearer\s+\S+/i,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./, // JWT-like
-  /\b(sk|pk|xo|ghp|gho|xox[abp])[-_][A-Za-z0-9_-]{16,}/i, // provider/API-key-like
-  /[A-Za-z0-9+/_=-]{40,}/, // long opaque blob (key, hash-of-secret, base64 document)
-];
-const MAX_META_KEYS = 16;
-const MAX_META_STRING = 128;
-const DRAFT_KEYS = new Set([
-  'type',
-  'action',
-  'outcome',
-  'actor',
-  'target',
-  'correlationId',
-  'executionId',
-  'reasonCode',
-  'metadata',
-  'idempotencyKey',
-]);
-const TARGET_KEYS = new Set(['kind', 'id', 'workspaceId']);
-
-const TYPE_SET: ReadonlySet<string> = new Set(AUDIT_EVENT_TYPES);
-const OUTCOME_SET: ReadonlySet<string> = new Set(AUDIT_OUTCOMES);
-const TARGET_KIND_SET: ReadonlySet<string> = new Set(AUDIT_TARGET_KINDS);
-
-function bad(reason: string): Result<never, AuditError> {
-  // The reason names the FIELD, never the offending value, so a rejected secret is not echoed into logs/errors.
-  return err(new AuditError(ErrorCode.AUDIT_EVENT_INVALID, `invalid audit event: ${reason}`));
-}
+// ── validation (implementation in validate.ts; only the trusted-actor-checking entry points are public) ──
 
 export function isTrustedActor(value: unknown): value is AuditActor {
-  return typeof value === 'object' && value !== null && mintedActors.has(value);
+  return isMintedActor(value);
+}
+
+export interface ValidateDraftOptions {
+  /** Extension schemas the validating store was opened with. Without one, a draft carrying `extensions` is rejected. */
+  readonly extensionSchemas?: AuditExtensionSchemas;
 }
 
 /** Validates a draft. Returns a normalized plain copy (never the caller's mutable object). */
-export function validateDraft(draft: unknown): Result<AuditEventDraft, AuditError> {
-  if (typeof draft !== 'object' || draft === null || Array.isArray(draft)) return bad('draft must be an object');
-  const d = draft as Record<string, unknown>;
-  for (const key of Object.keys(d)) if (!DRAFT_KEYS.has(key)) return bad(`unknown field "${key.slice(0, 40)}"`);
+export function validateDraft(draft: unknown, options: ValidateDraftOptions = {}): Result<AuditEventDraft, AuditError> {
+  return validateDraftFields(draft, { actorOk: isMintedActor, extensionSchemas: options.extensionSchemas ?? {} });
+}
 
-  if (typeof d['type'] !== 'string' || !TYPE_SET.has(d['type'])) return bad('type is not a known audit event type');
-  if (typeof d['outcome'] !== 'string' || !OUTCOME_SET.has(d['outcome'])) return bad('outcome is not a known outcome');
-  if (typeof d['action'] !== 'string' || !ACTION_RE.test(d['action'])) return bad('action is malformed');
-  if (!isTrustedActor(d['actor']))
-    return bad('actor must be a trusted actor reference (actorFromPrincipal / SYSTEM_ACTOR / ANONYMOUS_ACTOR)');
-
-  const out: {
-    -readonly [K in keyof AuditEventDraft]: AuditEventDraft[K];
-  } = {
-    type: d['type'] as AuditEventType,
-    action: d['action'],
-    outcome: d['outcome'] as AuditOutcome,
-    actor: d['actor'],
-  };
-
-  if (d['target'] !== undefined) {
-    const t = d['target'];
-    if (typeof t !== 'object' || t === null || Array.isArray(t)) return bad('target must be an object');
-    const tr = t as Record<string, unknown>;
-    for (const key of Object.keys(tr)) if (!TARGET_KEYS.has(key)) return bad('target has an unknown field');
-    if (typeof tr['kind'] !== 'string' || !TARGET_KIND_SET.has(tr['kind'])) return bad('target.kind is not a known kind');
-    if (typeof tr['id'] !== 'string' || !ID_RE.test(tr['id'])) return bad('target.id is malformed');
-    if (tr['workspaceId'] !== undefined && (typeof tr['workspaceId'] !== 'string' || !ID_RE.test(tr['workspaceId'])))
-      return bad('target.workspaceId is malformed');
-    out.target = {
-      kind: tr['kind'] as AuditTargetKind,
-      id: tr['id'],
-      ...(typeof tr['workspaceId'] === 'string' ? { workspaceId: tr['workspaceId'] } : {}),
-    };
-  }
-  for (const field of ['correlationId', 'executionId', 'idempotencyKey'] as const) {
-    const v = d[field];
-    if (v === undefined) continue;
-    if (typeof v !== 'string' || !ID_RE.test(v)) return bad(`${field} is malformed`);
-    out[field] = v;
-  }
-  if (d['reasonCode'] !== undefined) {
-    if (typeof d['reasonCode'] !== 'string' || !REASON_RE.test(d['reasonCode'])) return bad('reasonCode is malformed');
-    out.reasonCode = d['reasonCode'];
-  }
-  if (d['metadata'] !== undefined) {
-    const m = d['metadata'];
-    if (typeof m !== 'object' || m === null || Array.isArray(m)) return bad('metadata must be a flat object');
-    const entries = Object.entries(m as Record<string, unknown>);
-    if (entries.length > MAX_META_KEYS) return bad('metadata has too many keys');
-    const clean: Record<string, AuditMetadataValue> = {};
-    for (const [k, v] of entries) {
-      if (!META_KEY_RE.test(k)) return bad('a metadata key is malformed');
-      const lower = k.toLowerCase();
-      if (RESERVED_META_KEYS.has(lower)) return bad('a metadata key is reserved for trusted fields');
-      if (FORBIDDEN_KEY_FRAGMENTS.some((f) => lower.includes(f))) return bad('a metadata key names forbidden (sensitive) content');
-      if (typeof v === 'boolean') clean[k] = v;
-      else if (typeof v === 'number') {
-        if (!Number.isFinite(v)) return bad('a metadata number is not finite');
-        clean[k] = v;
-      } else if (typeof v === 'string') {
-        if (v.length > MAX_META_STRING) return bad('a metadata string is too long');
-        if (/[\r\n]/.test(v)) return bad('a metadata string contains a line break');
-        if (SECRET_VALUE_PATTERNS.some((re) => re.test(v))) return bad('a metadata value looks like a secret or an opaque blob');
-        clean[k] = v;
-      } else return bad('metadata values must be string, number or boolean');
-    }
-    out.metadata = Object.freeze(clean);
-  }
-  return ok(Object.freeze(out));
+/**
+ * Identity of a draft's CONTENT for idempotency/conflict detection. Trusted, store-assigned fields (id, seq, time,
+ * retention) and the idempotency key itself are excluded: a retry of the same logical event, later, is the same event.
+ */
+export function auditContentDigest(content: {
+  readonly type: string;
+  readonly action: string;
+  readonly outcome: string;
+  readonly actor: AuditActorFields;
+  readonly target?: AuditTarget | undefined;
+  readonly correlationId?: string | undefined;
+  readonly executionId?: string | undefined;
+  readonly reasonCode?: string | undefined;
+  readonly metadata?: Readonly<Record<string, AuditMetadataValue>> | undefined;
+  readonly lifecycle?: AuditLifecycle | undefined;
+  readonly extensions?: AuditExtensions | undefined;
+}): string {
+  const { type, action, outcome, actor, target, correlationId, executionId, reasonCode, metadata, lifecycle, extensions } = content;
+  return canonicalJson({
+    type,
+    action,
+    outcome,
+    actor: { kind: actor.kind, id: actor.id, orgId: actor.orgId },
+    target,
+    correlationId,
+    executionId,
+    reasonCode,
+    metadata,
+    lifecycle,
+    extensions,
+  });
 }
 
 export { isAuditData } from '@xo/types';

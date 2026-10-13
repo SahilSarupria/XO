@@ -4,7 +4,14 @@ import { join, resolve } from 'node:path';
 import { AuditError, ErrorCode } from '@xo/errors';
 import { err, ok, type Result } from '@xo/types';
 import { consumeGrant } from './access.js';
-import { AUDIT_EVENT_TYPES, AUDIT_SCHEMA_VERSION, validateDraft, type AuditEvent, type AuditEventDraft } from './event.js';
+import {
+  AUDIT_EVENT_TYPES,
+  AUDIT_SCHEMA_VERSION,
+  auditContentDigest,
+  validateDraft,
+  type AuditEvent,
+  type AuditEventDraft,
+} from './event.js';
 import { mintReceipt } from './receipt.js';
 import { buildEvent, type AppendResult, type AuditSink } from './sink.js';
 
@@ -281,6 +288,14 @@ export class FileAuditStore implements AuditSink {
   async append(draft: AuditEventDraft): Promise<AppendResult> {
     const valid = validateDraft(draft);
     if (!valid.ok) return { ok: false, error: valid.error, indeterminate: false };
+    // This store has no lifecycle engine and no hash chain. A draft that asks for lifecycle ordering is REFUSED, never
+    // silently accepted without the guarantee it requested (use ChainedAuditStore).
+    if (valid.value.lifecycle !== undefined)
+      return {
+        ok: false,
+        error: new AuditError(ErrorCode.AUDIT_EVENT_INVALID, 'invalid audit event: lifecycle ordering requires a chained audit store'),
+        indeterminate: false,
+      };
     try {
       return await this.serialized(() => this.withLock(() => this.appendLocked(valid.value)));
     } catch (cause) {
@@ -299,6 +314,17 @@ export class FileAuditStore implements AuditSink {
     if (draft.idempotencyKey !== undefined) {
       const existing = this.keyIndex.get(draft.idempotencyKey);
       if (existing !== undefined) {
+        // Same key: an exact retry returns the original; DIFFERENT content is a conflict (never a false success).
+        if (auditContentDigest(existing) !== auditContentDigest(draft)) {
+          return {
+            ok: false,
+            error: new AuditError(
+              ErrorCode.AUDIT_CONFLICT,
+              'an event with this idempotency key was already accepted with different content',
+            ),
+            indeterminate: false,
+          };
+        }
         // The earlier attempt may have written but not synced. Confirm with fsync BEFORE minting a receipt.
         try {
           const h = await this.ops.openAppend(this.file);
@@ -312,6 +338,7 @@ export class FileAuditStore implements AuditSink {
         }
         return {
           ok: true,
+          duplicate: true,
           event: existing,
           receipt: mintReceipt({
             eventId: existing.eventId,
@@ -350,6 +377,7 @@ export class FileAuditStore implements AuditSink {
     }
     return {
       ok: true,
+      duplicate: false,
       event,
       receipt: mintReceipt({
         eventId: event.eventId,

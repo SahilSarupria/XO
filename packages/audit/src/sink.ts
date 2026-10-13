@@ -2,10 +2,18 @@ import { randomUUID } from 'node:crypto';
 import { AuditError, ErrorCode } from '@xo/errors';
 import { err, ok, type Result } from '@xo/types';
 import { AUDIT_CLASSIFICATION, AUDIT_SCHEMA_VERSION, validateDraft, type AuditEvent, type AuditEventDraft } from './event.js';
+import type { AuditExtensionSchemas } from './extension.js';
+import { AuditSemantics } from './semantics.js';
 import { mintReceipt, type DurableReceipt } from './receipt.js';
 
 export type AppendResult =
-  | { readonly ok: true; readonly receipt: DurableReceipt; readonly event: AuditEvent }
+  | {
+      readonly ok: true;
+      readonly receipt: DurableReceipt;
+      readonly event: AuditEvent;
+      /** True when this was an exact retry of an already-accepted event: nothing new was written and `event` is the original. */
+      readonly duplicate: boolean;
+    }
   | {
       readonly ok: false;
       readonly error: AuditError;
@@ -52,6 +60,8 @@ export function buildEvent(
     ...(draft.reasonCode !== undefined ? { reasonCode: draft.reasonCode } : {}),
     ...(draft.metadata !== undefined ? { metadata: { ...draft.metadata } } : {}),
     ...(draft.idempotencyKey !== undefined ? { idempotencyKey: draft.idempotencyKey } : {}),
+    ...(draft.lifecycle !== undefined ? { lifecycle: { ...draft.lifecycle } } : {}),
+    ...(draft.extensions !== undefined ? { extensions: draft.extensions } : {}),
   });
 }
 
@@ -63,17 +73,23 @@ export function buildEvent(
 export class NonProductionAuditSink implements AuditSink {
   readonly mode = 'non-production' as const;
   private readonly stored: AuditEvent[] = [];
+  private readonly semantics = new AuditSemantics<AuditEvent>();
+  private readonly extensionSchemas: AuditExtensionSchemas;
   private seq = 0;
-  constructor(private readonly clock: () => Date = () => new Date()) {}
+  constructor(
+    private readonly clock: () => Date = () => new Date(),
+    options: { readonly extensionSchemas?: AuditExtensionSchemas } = {},
+  ) {
+    this.extensionSchemas = options.extensionSchemas ?? {};
+  }
 
   async append(draft: AuditEventDraft): Promise<AppendResult> {
-    const valid = validateDraft(draft);
+    const valid = validateDraft(draft, { extensionSchemas: this.extensionSchemas });
     if (!valid.ok) return { ok: false, error: valid.error, indeterminate: false };
-    const key = valid.value.idempotencyKey;
-    if (key !== undefined) {
-      const existing = this.stored.find((e) => e.idempotencyKey === key);
-      if (existing !== undefined) return { ok: true, event: existing, receipt: this.receiptFor(existing) };
-    }
+    const decision = this.semantics.decide(valid.value);
+    if (decision.kind === 'rejected') return { ok: false, error: decision.error, indeterminate: false };
+    if (decision.kind === 'duplicate')
+      return { ok: true, event: decision.entry, receipt: this.receiptFor(decision.entry), duplicate: true };
     const now = this.clock();
     const event = buildEvent(valid.value, {
       eventId: randomUUID(),
@@ -82,7 +98,13 @@ export class NonProductionAuditSink implements AuditSink {
       retainUntil: now.toISOString(),
     });
     this.stored.push(event);
-    return { ok: true, event, receipt: this.receiptFor(event) };
+    this.semantics.commit(valid.value, decision.digest, event);
+    return { ok: true, event, receipt: this.receiptFor(event), duplicate: false };
+  }
+
+  /** Operations with an accepted attempt and no terminal event (lifecycle drafts only). */
+  openAttempts(): readonly string[] {
+    return this.semantics.openAttempts();
   }
 
   private receiptFor(event: AuditEvent): DurableReceipt {

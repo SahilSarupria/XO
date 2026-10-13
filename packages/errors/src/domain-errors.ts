@@ -343,7 +343,11 @@ export class AuditError extends XoError {
       | typeof ErrorCode.AUDIT_UNAVAILABLE
       | typeof ErrorCode.AUDIT_EVENT_INVALID
       | typeof ErrorCode.AUDIT_ACCESS_DENIED
-      | typeof ErrorCode.AUDIT_CONFIG_INVALID,
+      | typeof ErrorCode.AUDIT_CONFIG_INVALID
+      | typeof ErrorCode.AUDIT_CONFLICT
+      | typeof ErrorCode.AUDIT_ORDER_VIOLATION
+      | typeof ErrorCode.AUDIT_CORRUPT
+      | typeof ErrorCode.AUDIT_LOCKED,
     message: string,
     options?: XoErrorOptions,
   ) {
