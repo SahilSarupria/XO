@@ -44,3 +44,15 @@ Chosen by the implementer; reviewable and reversible. They do not change A, and 
 | M3c | Pre-M3 approvals have no binding and are refused until re-approved. No automatic upgrade. | Upgrading would bind an old human act to a state they never saw. Same fail-closed trade-off as M1 I5. |
 | M3d | Who may approve is unchanged: the authenticated owner of the workspace (the P0.5/P0.7 documented boundary). No `approval.grant` permission or approver role was invented. | M2 authorizes capability execution only; an approver role/permission model is a C item the owner has not decided. |
 | M3e | A capability with an unresolved binding or declaration can still be approved (existing behaviour); the approval records that state, so resolving it later is a material change. | Preserves M2/binding execution-time refusal while preventing silent carry-over. |
+
+## F. M6 implementation details established by inspecting the repository (NOT user decisions)
+
+Chosen by the implementer; reviewable and reversible. They do not reopen A-E.
+
+| #   | Detail | Basis |
+| --- | ------ | ----- |
+| M6a | Idempotency is opt-in per request via `Idempotency-Key`, on execution start and workflow start only. | Those are the only side-effecting creates; approvals are already replace-by-pair and resume is guarded by revision/state. |
+| M6b | State lives in a per-workspace `idempotency/` blob directory; no new database. `AtomicBlobStore` (`putIfAbsent` via temp+`link`, `replace` via temp+`rename`) was added to `@xo/storage` because the existing store had no atomic create. | Brief forbids a new DB; claim creation needs atomicity. |
+| M6c | Only `in_progress`/`completed` are stored. Unfinished-and-unprovable work is reported `OUTCOME_UNKNOWN`, not marked failed. | A failure must never be recorded as success, nor non-idempotent effects re-run without a rule. |
+| M6d | Resource ids are pre-minted and attached to the key before creation (`CreateExecutionInput.executionId`). | Closes the crash window between creating a resource and recording it. |
+| M6e | Coordination is in-process (matches `withExecutionLock`). | Single-process model of the repo; cross-process takeover is a documented limitation. |

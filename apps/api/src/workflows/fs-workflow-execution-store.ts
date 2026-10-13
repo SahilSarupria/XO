@@ -81,6 +81,11 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
     return ok(record);
   }
 
+  /** P1.0 M6: does a blob exist for this id at all (readable or not)? Lets an idempotency probe tell "never created" from "created but unreadable". */
+  async exists(id: string): Promise<boolean> {
+    return this.store.has(metadataKey(id));
+  }
+
   async get(workflowExecutionId: string): Promise<Result<WorkflowExecutionRecord, NotFoundError>> {
     if (!isValidWorkflowExecutionId(workflowExecutionId)) return err(new NotFoundError(`workflow execution "${workflowExecutionId}"`));
     const raw = await this.store.get(metadataKey(workflowExecutionId));

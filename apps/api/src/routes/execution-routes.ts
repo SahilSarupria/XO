@@ -7,6 +7,7 @@ import {
   requirePrincipal,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
+  workspaceIdempotencyStore,
   workspaceExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -15,7 +16,9 @@ import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import { deriveCapabilityApprovalStateFromJson } from '../approvals/approval-binding.js';
 import { verifyApproval } from '../approvals/approval-enforcement.js';
-import { FsExecutionStore } from '../executions/fs-execution-store.js';
+import { FsExecutionStore, mintExecutionId } from '../executions/fs-execution-store.js';
+import { IdempotencyGate, fingerprintRequest, readIdempotencyKey, type IdempotencyClaim, type ResourceProbe } from '../idempotency/idempotency.js';
+import { REPLAY_HEADER, gateIdempotent, recordInvalid, resourceMatchesRequest } from '../idempotency/idempotency-http.js';
 import type { PermissionManager } from '@xo/permissions';
 import { executeApprovedCapability, preflightCapabilityAuthorization } from '../executions/execute-capability.js';
 import type { ExecutionRecord } from '../executions/execution.js';
@@ -88,6 +91,9 @@ export function registerExecutionRoutes(
     // runtime declarations ... from the client" and this file's own
     // completion-report section on the same point).
     const input: unknown = body.input ?? {};
+    // M6: optional. A malformed key is a 400 before anything else happens; its value is never echoed.
+    const idemKey = readIdempotencyKey(req.headers);
+    if (!idemKey.ok) throw idemKey.error;
 
     const compilationId = body.compilationId;
     const capabilityId = body.capabilityId;
@@ -164,129 +170,203 @@ export function registerExecutionRoutes(
       );
     }
 
-    // P1.0 M4 — PRECONDITION: authorized, so durably record that execution is being started BEFORE any record is
-    // created or the capability runs. If this cannot be confirmed the whole operation is refused (AUDIT_UNAVAILABLE,
-    // 503): no execution record, no handler call, no side effect.
-    await audit.requireDurable({ ...baseDraft, type: 'execution.started', outcome: 'started' });
-
+    // M6 — idempotency gate. It runs HERE, after ownership (M1), approval (M3) and authorization (M2) were all re-decided for this
+    // very request, so a key can never stand in for any of them; and BEFORE any side effect.
     const executionStore = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const created = await executionStore.create(workspace.workspaceId, principal, { compilationId, capabilityId, input });
-    if (!created.ok) throw created.error;
+    const probe: ResourceProbe = async (resource) => {
+      const found = await executionStore.get(resource.id);
+      if (!found.ok) return (await executionStore.exists(resource.id)) ? 'unfinished' : 'absent';
+      if (found.value.identityId !== principal.id || found.value.workspaceId !== workspace.workspaceId) return 'foreign';
+      // An execution persists as a placeholder until `complete()` stamps `completedAt`; no `completedAt` => it may have run.
+      return found.value.completedAt === undefined ? 'unfinished' : 'done';
+    };
+    let claim: IdempotencyClaim | undefined;
+    let keyRef: string | undefined;
+    let takeover = false;
+    if (idemKey.value !== undefined) {
+      const gated = await gateIdempotent(
+        new IdempotencyGate(workspaceIdempotencyStore(workspace, dataConfig)),
+        audit,
+        baseDraft,
+        {
+          operation: 'execute.capability',
+          workspaceId: workspace.workspaceId,
+          principal: { kind: principal.kind, id: principal.id },
+          key: idemKey.value,
+          fingerprint: fingerprintRequest('execute.capability', { compilationId, capabilityId, input }),
+          probe,
+        },
+      );
+      if (gated.kind === 'replay') {
+        const recorded = await executionStore.get(gated.resource.id);
+        if (
+          gated.resource.kind !== 'execution' ||
+          !recorded.ok ||
+          !resourceMatchesRequest(recorded.value as unknown as { workspaceId: string; identityId: string }, {
+            workspaceId: workspace.workspaceId,
+            identityId: principal.id,
+            compilationId,
+            capabilityId,
+          })
+        )
+          throw recordInvalid();
+        return json(recorded.value.status === 'failed' ? 200 : 201, toWireRecord(recorded.value), REPLAY_HEADER);
+      }
+      claim = gated.claim;
+      keyRef = gated.keyRef;
+      takeover = gated.takeover;
+    }
 
-    // 5 (input validation) + 7 (invoke) both happen inside
-    // `executeApprovedCapability` — see its own doc comment for exactly
-    // why input-schema validation has to happen after binding
-    // resolution, not before, in this particular call sequence.
-    let outcome;
     try {
-      outcome = await executeApprovedCapability(
-        graphFound.value,
+      // P1.0 M4 — PRECONDITION: authorized, so durably record that execution is being started BEFORE any record is
+      // created or the capability runs. If this cannot be confirmed the whole operation is refused (AUDIT_UNAVAILABLE,
+      // 503): no execution record, no handler call, no side effect.
+      await audit.requireDurable({
+        ...baseDraft,
+        type: 'execution.started',
+        outcome: 'started',
+        ...(keyRef !== undefined ? { metadata: { ...baseDraft.metadata, keyRef, idempotent: true, ...(takeover ? { takeover: true } : {}) } } : {}),
+      });
+
+      const executionId = claim !== undefined ? mintExecutionId() : undefined;
+      if (claim !== undefined && executionId !== undefined) {
+        // Durably NAME the execution before it exists, so no crash window can leave a created execution the key cannot find.
+        if (!(await claim.attach({ kind: 'execution', id: executionId })))
+          throw new XoError(ErrorCode.IO_ERROR, 'the idempotency record could not be written; nothing was executed');
+      }
+      const created = await executionStore.create(workspace.workspaceId, principal, {
+        compilationId,
         capabilityId,
         input,
-        { subject: principal, permissionManager },
-        { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
-      );
-    } catch (cause) {
-      // An unexpected throw after the start record: say so (best effort), then surface the original error unchanged.
-      await audit.finalize(
-        {
-          ...baseDraft,
-          type: 'execution.failed',
-          outcome: 'failed',
-          reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
-          executionId: created.value.executionId,
-        },
-        { correlationId, executionId: created.value.executionId },
-      );
-      throw cause;
-    }
+        ...(executionId !== undefined ? { executionId } : {}),
+      });
+      if (!created.ok) throw created.error;
 
-    let completed;
-    switch (outcome.kind) {
-      case 'succeeded':
-      case 'waiting_for_human':
-        completed = await executionStore.complete(created.value.executionId, {
-          status: outcome.kind,
-          output: outcome.output,
-          ...(outcome.contractId !== undefined ? { contractId: outcome.contractId } : {}),
-          ...(outcome.bindingId !== undefined ? { bindingId: outcome.bindingId } : {}),
-          ...(outcome.sourceXoirNodeIds !== undefined ? { sourceXoirNodeIds: outcome.sourceXoirNodeIds } : {}),
-          ...(outcome.graphHash !== undefined ? { graphHash: outcome.graphHash } : {}),
-          ...(outcome.contractContentHash !== undefined ? { contractContentHash: outcome.contractContentHash } : {}),
-        });
-        break;
-      case 'invalid_input':
-        completed = await executionStore.complete(created.value.executionId, {
-          status: 'failed',
-          errorCode: ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID,
-          errorMessage: `input validation failed: ${outcome.issues.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
-        });
-        break;
-      case 'unresolved': {
-        const codeByStatus: Record<'unresolved' | 'ambiguous' | 'denied', string> = {
-          unresolved: ErrorCode.BINDING_UNRESOLVED,
-          ambiguous: ErrorCode.BINDING_AMBIGUOUS,
-          denied: ErrorCode.BINDING_DENIED,
-        };
-        completed = await executionStore.complete(created.value.executionId, {
-          status: 'failed',
-          errorCode: codeByStatus[outcome.status],
-          errorMessage: outcome.reason,
-        });
-        break;
+      // 5 (input validation) + 7 (invoke) both happen inside
+      // `executeApprovedCapability` — see its own doc comment for exactly
+      // why input-schema validation has to happen after binding
+      // resolution, not before, in this particular call sequence.
+      let outcome;
+      try {
+        outcome = await executeApprovedCapability(
+          graphFound.value,
+          capabilityId,
+          input,
+          { subject: principal, permissionManager },
+          { preflightGraphHash: preflight.graphHash, preflightDeclarationFingerprint: preflight.declarationFingerprint },
+        );
+      } catch (cause) {
+        // An unexpected throw after the start record: say so (best effort), then surface the original error unchanged.
+        await audit.finalize(
+          {
+            ...baseDraft,
+            type: 'execution.failed',
+            outcome: 'failed',
+            reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
+            executionId: created.value.executionId,
+          },
+          { correlationId, executionId: created.value.executionId },
+        );
+        throw cause;
       }
-      case 'error':
-        completed = await executionStore.complete(created.value.executionId, {
-          status: 'failed',
-          errorCode: outcome.errorCode,
-          errorMessage: outcome.errorMessage,
-        });
-        break;
-    }
-    if (!completed.ok) {
-      // The capability already ran but its result could not be persisted — record that truthfully, then surface the error.
-      await audit.finalize(
+
+      let completed;
+      switch (outcome.kind) {
+        case 'succeeded':
+        case 'waiting_for_human':
+          completed = await executionStore.complete(created.value.executionId, {
+            status: outcome.kind,
+            output: outcome.output,
+            ...(outcome.contractId !== undefined ? { contractId: outcome.contractId } : {}),
+            ...(outcome.bindingId !== undefined ? { bindingId: outcome.bindingId } : {}),
+            ...(outcome.sourceXoirNodeIds !== undefined ? { sourceXoirNodeIds: outcome.sourceXoirNodeIds } : {}),
+            ...(outcome.graphHash !== undefined ? { graphHash: outcome.graphHash } : {}),
+            ...(outcome.contractContentHash !== undefined ? { contractContentHash: outcome.contractContentHash } : {}),
+          });
+          break;
+        case 'invalid_input':
+          completed = await executionStore.complete(created.value.executionId, {
+            status: 'failed',
+            errorCode: ErrorCode.RUNTIME_CAPABILITY_INPUT_INVALID,
+            errorMessage: `input validation failed: ${outcome.issues.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
+          });
+          break;
+        case 'unresolved': {
+          const codeByStatus: Record<'unresolved' | 'ambiguous' | 'denied', string> = {
+            unresolved: ErrorCode.BINDING_UNRESOLVED,
+            ambiguous: ErrorCode.BINDING_AMBIGUOUS,
+            denied: ErrorCode.BINDING_DENIED,
+          };
+          completed = await executionStore.complete(created.value.executionId, {
+            status: 'failed',
+            errorCode: codeByStatus[outcome.status],
+            errorMessage: outcome.reason,
+          });
+          break;
+        }
+        case 'error':
+          completed = await executionStore.complete(created.value.executionId, {
+            status: 'failed',
+            errorCode: outcome.errorCode,
+            errorMessage: outcome.errorMessage,
+          });
+          break;
+      }
+      if (!completed.ok) {
+        // The capability already ran but its result could not be persisted — record that truthfully, then surface the error.
+        await audit.finalize(
+          {
+            ...baseDraft,
+            type: 'execution.failed',
+            outcome: 'failed',
+            reasonCode: completed.error.code,
+            executionId: created.value.executionId,
+          },
+          { correlationId, executionId: created.value.executionId },
+        );
+        throw completed.error;
+      }
+      // M6: the operation reached its recorded end. If this write fails the work still happened; a retry adopts it via the probe.
+      await claim?.complete();
+
+      // P1.0 M4 — COMPLETION evidence. The operation has ALREADY happened; if this write fails we report the real
+      // outcome plus a sanitized `auditFinalization` notice (correlation + execution id) and NEVER retry the side effect.
+      const finalType: AuditEventType =
+        completed.value.status === 'succeeded'
+          ? 'execution.completed'
+          : completed.value.status === 'waiting_for_human'
+            ? 'execution.waiting_for_human'
+            : 'execution.failed';
+      const finalization = await audit.finalize(
         {
           ...baseDraft,
-          type: 'execution.failed',
-          outcome: 'failed',
-          reasonCode: completed.error.code,
-          executionId: created.value.executionId,
+          type: finalType,
+          outcome: completed.value.status === 'failed' ? 'failed' : 'completed',
+          executionId: completed.value.executionId,
+          ...(completed.value.status === 'failed' &&
+          completed.value.errorCode !== undefined &&
+          safeId(completed.value.errorCode) !== undefined
+            ? { reasonCode: completed.value.errorCode }
+            : {}),
         },
-        { correlationId, executionId: created.value.executionId },
+        { correlationId, executionId: completed.value.executionId },
       );
-      throw completed.error;
-    }
-    // P1.0 M4 — COMPLETION evidence. The operation has ALREADY happened; if this write fails we report the real
-    // outcome plus a sanitized `auditFinalization` notice (correlation + execution id) and NEVER retry the side effect.
-    const finalType: AuditEventType =
-      completed.value.status === 'succeeded'
-        ? 'execution.completed'
-        : completed.value.status === 'waiting_for_human'
-          ? 'execution.waiting_for_human'
-          : 'execution.failed';
-    const finalization = await audit.finalize(
-      {
-        ...baseDraft,
-        type: finalType,
-        outcome: completed.value.status === 'failed' ? 'failed' : 'completed',
-        executionId: completed.value.executionId,
-        ...(completed.value.status === 'failed' &&
-        completed.value.errorCode !== undefined &&
-        safeId(completed.value.errorCode) !== undefined
-          ? { reasonCode: completed.value.errorCode }
-          : {}),
-      },
-      { correlationId, executionId: completed.value.executionId },
-    );
 
-    // A failed/unresolved/invalid-input execution of an AUTHORIZED caller is still a real,
-    // structured, successfully-persisted API response ABOUT that
-    // outcome — never a bare 4xx/5xx that discards the execution record
-    // itself. Only genuinely exceptional conditions (unowned workspace,
-    // unknown compilation/capability, not approved, NOT AUTHORIZED —
-    // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
-    return json(completed.value.status === 'failed' ? 200 : 201, { ...toWireRecord(completed.value), ...finalizationNotice(finalization) });
+      // A failed/unresolved/invalid-input execution of an AUTHORIZED caller is still a real,
+      // structured, successfully-persisted API response ABOUT that
+      // outcome — never a bare 4xx/5xx that discards the execution record
+      // itself. Only genuinely exceptional conditions (unowned workspace,
+      // unknown compilation/capability, not approved, NOT AUTHORIZED —
+      // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
+      return json(completed.value.status === 'failed' ? 200 : 201, { ...toWireRecord(completed.value), ...finalizationNotice(finalization) });
+  
+    } catch (cause) {
+      // Nothing is released unless provably nothing was created; otherwise the claim stays for the documented recovery rules.
+      await claim?.abort(probe);
+      throw cause;
+    } finally {
+      claim?.dispose();
+    }
   }
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {

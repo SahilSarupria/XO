@@ -55,6 +55,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUDIT_ACCESS_DENIED]: 403,
   [ErrorCode.AUDIT_CONFIG_INVALID]: 500,
 
+  // Idempotency (P1.0 M6) — 422: the request was well-formed but the key was already used for a different request. 409: the
+  // key's operation is still running or ended in an unknowable state (a retry with the SAME key can never resolve it by
+  // re-running). 500: the stored record itself is invalid (server-side integrity problem, never the caller's input).
+  [ErrorCode.IDEMPOTENCY_KEY_REUSED]: 422,
+  [ErrorCode.IDEMPOTENCY_IN_PROGRESS]: 409,
+  [ErrorCode.IDEMPOTENCY_OUTCOME_UNKNOWN]: 409,
+  [ErrorCode.IDEMPOTENCY_RECORD_INVALID]: 500,
+
   // Dependency injection — never a caller-facing failure mode, always a bug
   [ErrorCode.DI_TOKEN_NOT_REGISTERED]: 500,
   [ErrorCode.DI_CIRCULAR_DEPENDENCY]: 500,
@@ -230,7 +238,10 @@ function toBody(code: string, message: string, context?: Readonly<Record<string,
 export function errorToResponse(error: unknown): ApiResponse {
   if (error instanceof XoError) {
     const status = STATUS_BY_CODE[error.code] ?? DEFAULT_STATUS;
-    return { status, body: toBody(error.code, error.message, error.context) };
+    // M6: an in-progress idempotent operation tells the client when to look again; nothing else carries extra headers.
+    return error.code === ErrorCode.IDEMPOTENCY_IN_PROGRESS
+      ? { status, body: toBody(error.code, error.message, error.context), headers: { 'retry-after': '1' } }
+      : { status, body: toBody(error.code, error.message, error.context) };
   }
   if (error instanceof Error) {
     // Never leak an arbitrary thrown Error's message/stack verbatim —

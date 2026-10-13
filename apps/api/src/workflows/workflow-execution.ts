@@ -213,6 +213,8 @@ export interface WorkflowExecutionStore {
     input: CreateWorkflowExecutionInput,
   ): Promise<Result<WorkflowExecutionRecord, XoError>>;
   get(workflowExecutionId: string): Promise<Result<WorkflowExecutionRecord, NotFoundError>>;
+  /** P1.0 M6 — does a record exist for this id at all (readable or not)? Lets an idempotency probe tell "never created" from "unreadable". */
+  exists(workflowExecutionId: string): Promise<boolean>;
   list(): Promise<Result<readonly WorkflowExecutionRecord[], XoError>>;
   /**
    * Compare-and-swap update: persists `next` (whose `revision` MUST equal

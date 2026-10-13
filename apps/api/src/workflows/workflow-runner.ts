@@ -698,7 +698,22 @@ export interface StartWorkflowRequest {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
-export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request: StartWorkflowRequest): Promise<WorkflowExecutionRecord> {
+/**
+ * P1.0 M6 — optional seams for idempotency. Both run only AFTER the workflow was re-derived, every step was approved (M3) and
+ * authorized (M2) and the input was validated — so they can never stand in for those checks — and BEFORE anything is persisted.
+ */
+export interface StartWorkflowHooks {
+  /** `replay` short-circuits with the already-started workflow's CURRENT record (no new record, no step runs). Throwing aborts with nothing persisted. */
+  readonly gate?: () => Promise<{ readonly kind: 'proceed' } | { readonly kind: 'replay'; readonly workflowExecutionId: string }>;
+  /** Receives the id about to be created, before the record exists. Throwing aborts with nothing persisted. */
+  readonly beforeCreate?: (workflowExecutionId: string) => Promise<void>;
+}
+
+export async function startWorkflowExecution(
+  ctx: WorkflowRunnerContext,
+  request: StartWorkflowRequest,
+  hooks: StartWorkflowHooks = {},
+): Promise<WorkflowExecutionRecord> {
   const loaded = await loadWorkflowRuntime(ctx, request.compilationId, request.workflowId);
   if (!loaded.ok) throw loaded.error;
   const runtime = loaded.value;
@@ -721,7 +736,13 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
       context: { issues: problems },
     });
 
+  if (hooks.gate !== undefined) {
+    const gated = await hooks.gate();
+    if (gated.kind === 'replay') return getWorkflowExecution(ctx, gated.workflowExecutionId);
+  }
+
   const workflowExecutionId = mintWorkflowExecutionId();
+  if (hooks.beforeCreate !== undefined) await hooks.beforeCreate(workflowExecutionId);
   activeDrives.add(workflowExecutionId);
   try {
     const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {

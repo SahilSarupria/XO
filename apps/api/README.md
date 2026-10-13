@@ -459,6 +459,19 @@ How it works (code: `src/workflows/`, `src/routes/workflow-routes.ts`):
   `executable_candidate` workflow — see that file's header. The Commercial Property PDF is exercised
   end to end for its one executable (single-step HITL) workflow.
 
+## Idempotency (P1.0 M6)
+
+Optional `Idempotency-Key` header on the two side-effecting starts: `POST /workspaces/:id/executions` and `POST /workspaces/:id/workflows/:wid/executions`. Without it behaviour is unchanged.
+
+- **Scope.** operation + workspace + authenticated principal (kind, id) + key, hashed (length-prefixed SHA-256). Another principal, workspace or operation never sees or collides with a key. Keys are 8-128 chars `[A-Za-z0-9._:-]`.
+- **Equivalence.** A request fingerprint (canonical JSON hash of the material fields: compilation, capability/workflow, input) is stored. Same key + same fingerprint = same request; different fingerprint = `422 XO_IDEMPOTENCY_KEY_REUSED`.
+- **States.** `in_progress` and `completed` only. There is deliberately no stored `failed`: a failure that left a persisted result is `completed` (replayed as the original failed record); a failure before anything was persisted releases the key so the client may retry.
+- **Replay** returns the original record with `Idempotent-Replayed: true` and runs nothing. Authentication, M2 authorization and M3 approval are re-checked first on every request, so a key never bypasses them.
+- **Concurrency.** Same key while the first is running: `409 XO_IDEMPOTENCY_IN_PROGRESS` + `Retry-After`. Decisions are serialized per key in-process; the key record is created with an atomic create-if-absent (`AtomicBlobStore.putIfAbsent`).
+- **Crash/restart recovery** (the resource id is durably attached to the key *before* the resource is created): no resource named, or named but never created = nothing ran, so the retry takes over and executes once (audited `takeover`); resource finished = adopted and replayed (`idempotency.recovered`); resource started but unfinished = `409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN`, never re-run and never reported as success; resource not the caller's or record unreadable/tampered = `500 XO_IDEMPOTENCY_RECORD_INVALID` (fail closed).
+- **Audit (M4).** `idempotency.replayed|recovered|conflict|in_progress|indeterminate`; a replay's evidence is a durable precondition. Records and errors carry only a short `keyRef` digest, never the key, input or output.
+- **Limits.** Not exactly-once; single-process coordination (matches `withExecutionLock`) - concurrent *processes* sharing one data dir can race on takeover of a stranded key; no TTL/expiry of key records; an in-flight request that outlives its client is not cancelled; human-task resume and approval are not keyed.
+
 ## Known limitations
 
 - **API keys have no expiry or rotation policy.** A key is valid forever

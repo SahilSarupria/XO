@@ -137,6 +137,11 @@ export function workspaceApprovalsStore(record: WorkspaceRecord, config: Workspa
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'approvals'));
 }
 
+/** P1.0 M6 — idempotency records, `<dataRootDir>/<workspaceId>/idempotency` (tenant-scoped by directory, like every sibling). */
+export function workspaceIdempotencyStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'idempotency'));
+}
+
 /** Sixth sibling — execution records (P0.5), `<dataRootDir>/<workspaceId>/executions`. */
 export function workspaceExecutionsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'executions'));
