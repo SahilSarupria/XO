@@ -31,7 +31,16 @@ export type AuditExtensionField =
   | { readonly kind: 'list'; readonly max: number; readonly of: AuditExtensionScalar }
   | { readonly kind: 'object'; readonly fields: Readonly<Record<string, AuditExtensionFieldSpec>> };
 
-export type AuditExtensionFieldSpec = AuditExtensionField & { readonly optional?: boolean };
+export type AuditExtensionFieldSpec = AuditExtensionField & {
+  readonly optional?: boolean;
+  /**
+   * TOP-LEVEL fields only. A volatile field is still validated, bounded, filtered and PERSISTED, but is excluded from the
+   * content identity used for idempotency/conflict detection. It exists for caller-observed values that legitimately differ
+   * between a first attempt and a retry of the SAME logical event (e.g. the caller's clock reading). Everything else about
+   * the event must match exactly or the retry is a conflict.
+   */
+  readonly volatile?: boolean;
+};
 
 export interface AuditExtensionSchema {
   readonly namespace: string;
@@ -73,6 +82,7 @@ export function validateExtensionSchema(schema: AuditExtensionSchema, filters: G
     for (const [key, spec] of Object.entries(fields)) {
       const bad = checkKeyName(key, filters);
       if (bad !== undefined) return bad;
+      if (spec.volatile === true && depth > 1) return 'only top-level extension fields can be volatile';
       if (spec.kind === 'list' && !(spec.max >= 1 && spec.max <= MAX_EXTENSION_LIST)) return 'extension list bound is out of range';
       if (spec.kind === 'opaque' && !(spec.maxLength >= 1 && spec.maxLength <= 200)) return 'extension opaque bound is out of range';
       if (spec.kind === 'opaque' && !(spec.pattern.source.startsWith('^') && spec.pattern.source.endsWith('$')))
@@ -153,4 +163,23 @@ export function validateExtensionValue(
   const bytes = Buffer.byteLength(JSON.stringify(r.value), 'utf8');
   if (bytes > MAX_EXTENSION_BYTES) return err(invalid(`extension ${schema.namespace} is too large`));
   return ok(r.value as Readonly<Record<string, unknown>>);
+}
+
+/** Removes schema-declared volatile top-level fields so they do not take part in content identity. */
+export function stripVolatileExtensions(
+  extensions: Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined,
+  schemas: AuditExtensionSchemas,
+): Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined {
+  if (extensions === undefined) return undefined;
+  const out: Record<string, Readonly<Record<string, unknown>>> = {};
+  for (const [ns, value] of Object.entries(extensions)) {
+    const schema = schemas[ns];
+    const volatile = new Set(
+      Object.entries(schema?.fields ?? {})
+        .filter(([, s]) => s.volatile === true)
+        .map(([k]) => k),
+    );
+    out[ns] = Object.fromEntries(Object.entries(value).filter(([k]) => !volatile.has(k)));
+  }
+  return out;
 }

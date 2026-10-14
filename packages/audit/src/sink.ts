@@ -73,7 +73,7 @@ export function buildEvent(
 export class NonProductionAuditSink implements AuditSink {
   readonly mode = 'non-production' as const;
   private readonly stored: AuditEvent[] = [];
-  private readonly semantics = new AuditSemantics<AuditEvent>();
+  private readonly semantics: AuditSemantics<AuditEvent>;
   private readonly extensionSchemas: AuditExtensionSchemas;
   private seq = 0;
   constructor(
@@ -81,6 +81,7 @@ export class NonProductionAuditSink implements AuditSink {
     options: { readonly extensionSchemas?: AuditExtensionSchemas } = {},
   ) {
     this.extensionSchemas = options.extensionSchemas ?? {};
+    this.semantics = new AuditSemantics<AuditEvent>(this.extensionSchemas);
   }
 
   async append(draft: AuditEventDraft): Promise<AppendResult> {

@@ -1,5 +1,6 @@
 import { AuditError, ErrorCode } from '@xo/errors';
 import { auditContentDigest, type AuditEventDraft } from './event.js';
+import { stripVolatileExtensions, type AuditExtensionSchemas } from './extension.js';
 
 /**
  * INTERNAL. The idempotency, conflict and lifecycle rules shared by every store that enforces them (the chained store
@@ -24,8 +25,10 @@ export class AuditSemantics<E> {
   private readonly attempts = new Set<string>();
   private readonly terminals = new Map<string, string>();
 
+  constructor(private readonly schemas: AuditExtensionSchemas = {}) {}
+
   decide(draft: AuditEventDraft): Decision<E> {
-    const digest = auditContentDigest(draft);
+    const digest = auditContentDigest({ ...draft, extensions: stripVolatileExtensions(draft.extensions, this.schemas) });
     const key = draft.idempotencyKey;
     if (key !== undefined) {
       const existing = this.byKey.get(key);

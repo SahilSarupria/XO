@@ -120,7 +120,7 @@ function recordHash(key: Uint8Array | undefined, rec: Omit<ChainRecord, 'hash'>)
 
 /** Verifies the whole file. Any failure is `AUDIT_CORRUPT`: there is no "skip the bad line and continue". */
 function scan(text: string, key: Uint8Array | undefined, schemas: AuditExtensionSchemas): Result<Scan, AuditError> {
-  const semantics = new AuditSemantics<AuditEvent>();
+  const semantics = new AuditSemantics<AuditEvent>(schemas);
   const events: AuditEvent[] = [];
   let pos = 0;
   let n = -1;

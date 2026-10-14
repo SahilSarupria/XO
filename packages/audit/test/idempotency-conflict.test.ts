@@ -106,3 +106,29 @@ test('extension schemas cannot declare sensitive-named fields or unbounded lists
   );
   assert.ok(!validateExtensionSchema({ namespace: 'bad', fields: {} }, FILTERS).ok);
 });
+
+test('volatile extension fields: a retry that differs ONLY in a volatile field is a duplicate; any other difference is a conflict', async () => {
+  const volatileSchemas: AuditExtensionSchemas = {
+    'x-acme-demo': { namespace: 'x-acme-demo', fields: { n: { kind: 'count' }, at: { kind: 'isoTime', volatile: true } } },
+  };
+  const sink = new NonProductionAuditSink(undefined, { extensionSchemas: volatileSchemas });
+  const a = await sink.append(draft({ idempotencyKey: 'v', extensions: { 'x-acme-demo': { n: 1, at: '2026-01-01T00:00:00.000Z' } } }));
+  const retry = await sink.append(draft({ idempotencyKey: 'v', extensions: { 'x-acme-demo': { n: 1, at: '2026-01-01T00:00:09.000Z' } } }));
+  assert.ok(a.ok && retry.ok && retry.duplicate && retry.event.eventId === a.event.eventId);
+  assert.equal(
+    (retry.ok ? retry.event.extensions : undefined)?.['x-acme-demo']?.['at'],
+    '2026-01-01T00:00:00.000Z',
+    'the ORIGINAL value is kept',
+  );
+  const diff = await sink.append(draft({ idempotencyKey: 'v', extensions: { 'x-acme-demo': { n: 2, at: '2026-01-01T00:00:00.000Z' } } }));
+  assert.ok(!diff.ok && diff.error.code === ErrorCode.AUDIT_CONFLICT);
+  const { validateExtensionSchema } = await import('../src/extension.js');
+  const { FILTERS } = await import('../src/validate.js');
+  assert.ok(
+    !validateExtensionSchema(
+      { namespace: 'x-a-b', fields: { o: { kind: 'object', fields: { t: { kind: 'isoTime', volatile: true } } } } },
+      FILTERS,
+    ).ok,
+    'volatile is top-level only',
+  );
+});
