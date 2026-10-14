@@ -194,6 +194,13 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUTH_KEY_MISSING]: 401,
   [ErrorCode.AUTH_KEY_INVALID]: 401,
   [ErrorCode.AUTH_KEY_REVOKED]: 401,
+  // OIDC bearer tokens: credential problems are 401. A provider outage is
+  // 503, not 401 — the request is still refused (fail closed), but a client
+  // must not conclude its session is invalid and discard its credentials.
+  [ErrorCode.AUTH_TOKEN_INVALID]: 401,
+  [ErrorCode.AUTH_TOKEN_EXPIRED]: 401,
+  [ErrorCode.AUTH_IDENTITY_UNBOUND]: 401,
+  [ErrorCode.AUTH_PROVIDER_UNAVAILABLE]: 503,
 };
 
 const DEFAULT_STATUS = 500;

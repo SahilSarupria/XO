@@ -49,7 +49,16 @@ export interface ApiRequest {
    * derived from request data.
    */
   principal?: AuthenticatedPrincipal;
+
+  /**
+   * Which kind of credential authenticated this request. Informational (log /
+   * audit context); NEVER an input to authorization. For `oidc`, `issuer` is
+   * the verified issuer — the bearer token itself is not retained anywhere.
+   */
+  authentication?: AuthenticationInfo;
 }
+
+export type AuthenticationInfo = { readonly credential: 'api-key' } | { readonly credential: 'oidc'; readonly issuer: string };
 
 /**
  * What a route handler returns. `body` is JSON-serialized by the

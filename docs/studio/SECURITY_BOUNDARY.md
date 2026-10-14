@@ -13,11 +13,13 @@
 - Web credential store is memory-only (tested: nothing in localStorage, sessionStorage or cookies).
 - Production build reached the real API through a same-origin `/api` proxy (24/24 live contract checks).
 
+- API-side OIDC: algorithm allow-list, issuer/audience/time checks, bounded JWKS handling, server-side `(iss, sub)` binding, fail-closed configuration, no token or claim in responses or logs (`apps/api/test/oidc-auth.test.ts`, 18 tests; plus a run against the built API process).
+
 ## Not implemented or not verified
 
 - Everything under `src-tauri/` and `desktop/`: **uncompiled, unrun.**
 - Keychain behaviour per OS (Windows Credential Manager, macOS Keychain, Linux Secret Service availability).
-- Real sign-in: pending the owner's decision in `AUTH_DECISION.md`.
+- Real sign-in against a real provider: the API verifies OIDC access tokens (`AUTH_API_CONTRACT.md`) and is tested against a local test issuer only. No production login has been run.
 - A browser-driven run of the built web bundle (the live smoke exercises Studio's client and parsers from Node, not the bundle in a browser).
 
 ## Hardening added with the auth foundation

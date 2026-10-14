@@ -13,7 +13,8 @@
     "start": "node dist/index.js",
     "test": "node ../../scripts/run-tests.mjs test",
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test",
-    "keys": "node --import tsx scripts/manage-keys.ts"
+    "keys": "node --import tsx scripts/manage-keys.ts",
+    "oidc-bindings": "node --import tsx scripts/manage-oidc-bindings.ts"
   },
   "dependencies": {
     "@xo/ai-core": "0.1.0",
@@ -30,7 +31,8 @@
     "@xo/storage": "0.1.0",
     "@xo/types": "0.1.0",
     "@xo/workflow-composer": "0.1.0",
-    "@xo/xoir": "0.1.0"
+    "@xo/xoir": "0.1.0",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "@xo/benchmark": "0.1.0",

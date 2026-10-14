@@ -8,13 +8,16 @@ import { Router } from './http/router.js';
 import { readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
-import { createApiKeyAuth } from './http/auth.js';
+import { createAuthMiddleware, type OidcAuthDeps } from './http/auth.js';
 import type { ApiKeyStore } from './auth/api-key-store.interface.js';
 import { FsApiKeyStore } from './auth/fs-api-key-store.js';
 import type { WorkspaceStore } from './workspace/workspace.js';
 import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
+import { loadOidcConfig } from './auth/oidc/config.js';
+import { createOidcVerifier } from './auth/oidc/verifier.js';
+import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
 import { registerRoutes } from './routes/index.js';
 
 export interface ServerDeps {
@@ -39,6 +42,16 @@ export interface ServerDeps {
   readonly workspacesDir?: string;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
+  /**
+   * OIDC bearer-token authentication, injected directly (tests, embedding). When
+   * absent, it is built from `env` (`XO_API_OIDC_*`, see `auth/oidc/config.ts`):
+   * unset => OIDC off (API keys only); partially or invalidly set => this
+   * function THROWS, so the process fails to start rather than running with
+   * weaker authentication than configured.
+   */
+  readonly oidc?: OidcAuthDeps;
+  /** Environment OIDC configuration is read from. Defaults to `process.env`. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
@@ -62,6 +75,16 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
   };
 }
 
+function buildOidcFromEnv(deps: ServerDeps): OidcAuthDeps | undefined {
+  const config = loadOidcConfig(deps.env ?? process.env); // throws on invalid/incomplete configuration
+  if (config === undefined) return undefined;
+  deps.logger?.info(`OIDC bearer authentication enabled for issuer ${config.issuer} (audience ${config.audience})`);
+  return {
+    verifier: createOidcVerifier(config),
+    bindings: new FsIdentityBindingStore(new LocalFsBlobStore(config.bindingsDir)),
+  };
+}
+
 /**
  * Builds the router with every route registered, but doesn't bind a
  * socket — `createHttpServer()` below does that. Split out so tests can
@@ -75,8 +98,9 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const workspaceStore =
     deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));
   const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
+  const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
-  router.use(createApiKeyAuth(apiKeyStore));
+  router.use(createAuthMiddleware({ apiKeyStore, ...(oidc !== undefined ? { oidc } : {}) }));
   registerRoutes(router, { workspaceStore, workspaceDataConfig });
   return router;
 }

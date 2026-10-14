@@ -9,6 +9,8 @@
  * itself resolves to a subdirectory under `workspaceDataDir` below, never
  * anything the caller names directly.
  */
+import { loadOidcConfig, type OidcConfig } from './auth/oidc/config.js';
+
 export interface ApiConfig {
   readonly port: number;
   readonly host: string;
@@ -47,16 +49,20 @@ export interface ApiConfig {
    * `WORKSPACES_DIR`.
    */
   readonly workspaceDataDir: string;
+  /** OIDC bearer-token acceptance. Undefined = off (API keys only). Invalid or half-set configuration throws from `loadConfig`. */
+  readonly oidc?: OidcConfig;
 }
 
 export function loadConfig(env: Readonly<Record<string, string | undefined>> = process.env): ApiConfig {
   const portRaw = env['PORT'];
   const port = portRaw !== undefined ? Number(portRaw) : 4000;
+  const oidc = loadOidcConfig(env);
   return {
     port: Number.isFinite(port) && port > 0 ? port : 4000,
     host: env['HOST'] ?? '127.0.0.1',
     apiKeysDir: env['API_KEYS_DIR'] ?? '.xo-data/api-keys',
     workspacesDir: env['WORKSPACES_DIR'] ?? '.xo-data/workspaces',
     workspaceDataDir: env['WORKSPACE_DATA_DIR'] ?? '.xo-data/workspace-data',
+    ...(oidc !== undefined ? { oidc } : {}),
   };
 }

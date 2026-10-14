@@ -184,6 +184,19 @@ export const ErrorCode = {
   AUTH_KEY_INVALID: 'XO_AUTH_KEY_INVALID',
   AUTH_KEY_REVOKED: 'XO_AUTH_KEY_REVOKED',
 
+  // OIDC bearer-token authentication (apps/api src/auth/oidc). Deliberately
+  // coarse: TOKEN_INVALID covers every verification failure (signature,
+  // issuer, audience, algorithm, malformed, not-yet-valid, unknown key) so an
+  // unauthenticated caller learns nothing about the validator. EXPIRED is
+  // separate because a client legitimately reacts to it (refresh). UNBOUND is a
+  // valid token whose (iss, sub) has no active server-side binding.
+  // PROVIDER_UNAVAILABLE means the signing keys could not be obtained: the
+  // request is refused (fail closed) but is not the caller's credential fault.
+  AUTH_TOKEN_INVALID: 'XO_AUTH_TOKEN_INVALID',
+  AUTH_TOKEN_EXPIRED: 'XO_AUTH_TOKEN_EXPIRED',
+  AUTH_IDENTITY_UNBOUND: 'XO_AUTH_IDENTITY_UNBOUND',
+  AUTH_PROVIDER_UNAVAILABLE: 'XO_AUTH_PROVIDER_UNAVAILABLE',
+
   // Runtime R6 — production execution semantics (retry, simulation,
   // replay, in-flight dedup). Deliberately its own small, append-only
   // family layered on top of the Stage 2/R1-R5 RUNTIME_* codes above,

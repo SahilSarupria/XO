@@ -116,7 +116,11 @@ the old no-op described. Nothing about routing, error-mapping, or any
 individual route handler's signature changed to make this drop-in
 possible.
 
-### Scheme: static, hashed, revocable API keys — not sessions/OAuth/JWT
+### OIDC bearer tokens (optional, off unless configured)
+
+In addition to API keys, the API can accept OIDC access tokens from one configured issuer. It is **off** unless `XO_API_OIDC_ISSUER` and `XO_API_OIDC_AUDIENCE` are both set; a half-set or invalid configuration stops startup. A verified `(iss, sub)` must have an operator-written binding (`scripts/manage-oidc-bindings.ts`) or the request is a 401. API keys are unaffected and never reach the JWT verifier. Full contract, configuration table, error codes and operations: `docs/studio/AUTH_API_CONTRACT.md`. The key-scheme text below describes API keys only.
+
+### Scheme: static, hashed, revocable API keys
 
 This is the simplest scheme that's actually useful for a service other
 tools/scripts call programmatically, and it deliberately excludes:
