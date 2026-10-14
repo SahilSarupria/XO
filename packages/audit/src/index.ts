@@ -15,3 +15,20 @@ export type {
   AuditExtensionScalar,
 } from './extension.js';
 export { MAX_EXTENSION_BYTES, MAX_EXTENSION_LIST } from './extension.js';
+export {
+  ChainedAuditStore,
+  CHAIN_FORMAT,
+  CHAIN_LOG_FILE,
+  CHAIN_LOCK_FILE,
+  INDEFINITE_RETENTION,
+  verifyClosedChainedLog,
+  readClosedChainedLog,
+} from './chained-store.js';
+export type {
+  ChainedAuditStoreOptions,
+  ChainCheckpoint,
+  ChainHead,
+  ChainVerifyOptions,
+  ChainVerifyReport,
+  ClosedLogOptions,
+} from './chained-store.js';
