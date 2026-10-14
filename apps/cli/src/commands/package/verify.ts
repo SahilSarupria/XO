@@ -80,26 +80,32 @@ export async function verifyCommand(options: VerifyOptions): Promise<CommandResu
   const readResult = await unpackArchive(bytes);
   if (!readResult.ok) return failWith(readResult.error.message);
 
-  // `--pubkey` (legacy): operator-supplied local key files, verified without any trust requirements. Otherwise the operator trust policy
-  // (XO_PACKAGE_TRUST_POLICY) applies in full: required signature, trusted keys, publisher binding, revocation.
-  let validator: PackageValidator;
+  // The effective trust configuration applies to `verify` exactly as it does to install/publish/run: with none configured the command fails
+  // closed. `--pubkey` (legacy) is a cryptographic self-check against operator-supplied key files with none of the policy's requirements
+  // (no publisher binding, no revocation) — so it is honoured ONLY in explicit development mode and refused under an enforcing policy, where
+  // it would otherwise be a way to obtain a "VALID" the policy would have rejected.
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
+  let validator: PackageValidator = trust.validator;
   if (publicKeys.size > 0) {
-    validator = new PackageValidator({ resolvePublicKey: (did) => publicKeys.get(did) });
-  } else {
-    const trust = resolveTrustValidator(options.trustPolicy);
-    if (!trust.ok) return failWith(trust.message);
-    validator = trust.validator;
+    if (trust.policy.mode !== 'development') {
+      return failWith(
+        '--pubkey is only available in explicit development mode (XO_TRUST_MODE=development); under an enforcing trust policy keys come from the policy file, never from the command line',
+      );
+    }
+    validator = new PackageValidator({ trustPolicy: trust.policy, resolvePublicKey: (did) => publicKeys.get(did) });
   }
   const report = validator.validateAll(readResult.value);
   const verdict = validator.evaluateTrust(readResult.value.manifest);
 
   const lines = [
+    ...trust.warnings,
     ...checklistLines(report.issues),
     '',
     ...report.issues.map(
       (issue) => `[${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}${issue.path ? ` (${issue.path})` : ''}`,
     ),
-    `TRUST: ${verdict.status}${verdict.signers.length > 0 ? ` (${verdict.signers.map((x) => `${x.signerDid}/${x.role}`).join(', ')})` : ''}`,
+    `TRUST: ${verdict.status} [mode=${verdict.mode}]${verdict.signers.length > 0 ? ` (${verdict.signers.map((x) => `${x.signerDid}/${x.role}`).join(', ')})` : ''}`,
     report.valid ? 'VALID' : 'INVALID',
   ];
 

@@ -81,6 +81,7 @@ export class RegistryClient {
     this.benchmarks = options.benchmarks ?? new FsBenchmarkRepository(store);
     this.licenses = options.licenses ?? new FsLicenseRepository(store);
     this.ledger = options.ledger ?? new HashChainedLedger(store);
+    // No implicit trust: a client built without a configured validator is *unconfigured* and `publish` fails closed (TRUST_NOT_CONFIGURED). Callers must pass a validator carrying an enforcing policy or the explicit development policy.
     this.validator = options.validator ?? new PackageValidator();
     this.clock = options.clock ?? new SystemClock();
   }
@@ -88,9 +89,10 @@ export class RegistryClient {
   /**
    * Verifies `bundle` in full (schema, version, no-duplicate-paths,
    * required components, capabilities, dependencies, component hashes,
-   * Merkle root, and signatures where a public-key resolver was
-   * supplied to the `PackageValidator`) and only then publishes it,
-   * content-addressed by its own `manifest.merkleRoot`.
+   * Merkle root, and signatures/trust under the `PackageValidator`'s
+   * trust policy — an enforcing policy, or the explicit development
+   * mode; a validator with no policy refuses everything) and only then
+   * publishes it, content-addressed by its own `manifest.merkleRoot`.
    */
   async publish(bundle: PackageBundle): Promise<Result<WithLedgerEntry<PackageRecord>, XoError>> {
     const report = this.validator.validateAll(bundle);

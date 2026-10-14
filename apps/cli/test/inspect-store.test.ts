@@ -1,16 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { PackageInstaller, createLockfile, serializeLockfile, resolveDependencies } from '@xo/package-sdk';
+import { createLockfile, serializeLockfile, resolveDependencies } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import { inspectInstalledCommand } from '../src/commands/package/inspect.js';
 import { lockCommand } from '../src/commands/package/lock.js';
-import { withTempDir, buildTestBundle } from './helpers.js';
+import { withTempDir, buildTestBundle, devInstaller } from './helpers.js';
 
 test('inspect --store reports n/a for a package with no declared dependencies', async () => {
   await withTempDir('xo-inspect-store-test-', async (dir) => {
     const storeDir = join(dir, 'store');
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const installed = await installer.install(buildTestBundle({ name: 'xo_lonely', version: '1.0.0' }));
     assert.ok(installed.ok);
 
@@ -25,7 +25,7 @@ test('inspect --store reports n/a for a package with no declared dependencies', 
 test('inspect --store reports no lockfile found for a dependent package that has never been locked', async () => {
   await withTempDir('xo-inspect-store-test-', async (dir) => {
     const storeDir = join(dir, 'store');
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     await installer.install(buildTestBundle({ name: 'xo_dep', version: '1.0.0' }));
     await installer.install(
       buildTestBundle({ name: 'xo_root', version: '1.0.0', dependencies: [{ name: 'xo_dep', versionRange: '^1.0.0', kind: 'required' }] }),
@@ -44,7 +44,7 @@ test('inspect --store reports no lockfile found for a dependent package that has
 test('inspect --store reports fresh immediately after xo lock', async () => {
   await withTempDir('xo-inspect-store-test-', async (dir) => {
     const storeDir = join(dir, 'store');
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     await installer.install(buildTestBundle({ name: 'xo_dep', version: '1.0.0' }));
     await installer.install(
       buildTestBundle({ name: 'xo_root', version: '1.0.0', dependencies: [{ name: 'xo_dep', versionRange: '^1.0.0', kind: 'required' }] }),
@@ -63,7 +63,7 @@ test('inspect --store reports STALE when the lock no longer matches the currentl
   await withTempDir('xo-inspect-store-test-', async (dir) => {
     const storeDir = join(dir, 'store');
     const store = new LocalFsBlobStore(storeDir);
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
 
     const depV1Manifest = buildTestBundle({ name: 'xo_dep', version: '1.0.0' }).manifest;
     await installer.install(buildTestBundle({ name: 'xo_dep', version: '1.0.0' }));

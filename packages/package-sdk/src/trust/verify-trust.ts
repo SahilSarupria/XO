@@ -1,7 +1,7 @@
 import { verify as nodeVerify, createPublicKey } from 'node:crypto';
 import type { XoManifest } from '@xo/types';
 import { fingerprintManifest, signableManifestBytes } from '../hashing/fingerprint.js';
-import type { PackageTrustPolicy, SignatureRole, TrustedKey } from './trust-policy.js';
+import type { PackageTrustPolicy, SignatureRole, TrustedKey, TrustMode } from './trust-policy.js';
 
 export type TrustStatus =
   /** At least one signature verified against operator-trusted keys and every policy requirement is met. */
@@ -10,8 +10,8 @@ export type TrustStatus =
   | 'untrusted'
   /** Enforcing policy, no signatures, and signatures are not required. Not trusted — merely permitted. */
   | 'unsigned'
-  /** No enforcing policy configured: nothing was verified, nothing is claimed. */
-  | 'unenforced';
+  /** Explicit development mode: nothing was verified and nothing is claimed. Never to be treated as trusted. */
+  | 'unverified';
 
 export type TrustFailureCode =
   | 'PACKAGE_UNSIGNED'
@@ -21,7 +21,9 @@ export type TrustFailureCode =
   | 'KEY_REVOKED'
   | 'KEY_NOT_VALID_NOW'
   | 'ROLE_REQUIREMENT_UNMET'
-  | 'PUBLISHER_MISMATCH';
+  | 'PUBLISHER_MISMATCH'
+  /** No trust policy (enforcing or explicit development) was supplied to the component that needed one. Fails closed. */
+  | 'TRUST_NOT_CONFIGURED';
 
 export interface TrustFailure {
   readonly code: TrustFailureCode;
@@ -37,8 +39,10 @@ export interface VerifiedSigner {
 
 export interface TrustVerdict {
   readonly status: TrustStatus;
-  /** Whether the package may be admitted under the policy (`trusted`, permitted `unsigned`, or `unenforced`). */
+  /** Whether the package may be admitted under the policy (`trusted`, permitted `unsigned`, or `unverified` in explicit development mode). */
   readonly acceptable: boolean;
+  /** The trust mode the verdict was computed under; `unconfigured` when no policy was supplied (never acceptable). Always surfaced so a development-mode admission cannot be mistaken for an enforced one. */
+  readonly mode: TrustMode | 'unconfigured';
   readonly signers: readonly VerifiedSigner[];
   readonly failures: readonly TrustFailure[];
   readonly policyId: string;
@@ -78,12 +82,32 @@ function inWindow(key: TrustedKey, now: Date): boolean {
  *
  * Revocation is conservative: a signature made by a key now marked `revoked` is rejected regardless of when it was made, because the format carries no trustworthy signing time.
  */
-export function evaluatePackageTrust(manifest: XoManifest, policy: PackageTrustPolicy, now: Date = new Date()): TrustVerdict {
+export function evaluatePackageTrust(manifest: XoManifest, policy: PackageTrustPolicy | undefined, now: Date = new Date()): TrustVerdict {
   const manifestFingerprint = fingerprintManifest(manifest);
-  const base = { policyId: policy.policyId, manifestFingerprint };
 
-  if (policy.mode === 'unenforced') {
-    return { status: 'unenforced', acceptable: true, signers: [], failures: [], ...base };
+  // Fail closed: a caller that was never given a trust policy gets a refusal, not a default.
+  if (policy === undefined) {
+    return {
+      status: 'untrusted',
+      acceptable: false,
+      mode: 'unconfigured',
+      signers: [],
+      failures: [
+        {
+          code: 'TRUST_NOT_CONFIGURED',
+          message:
+            'no package trust policy is configured (set XO_PACKAGE_TRUST_POLICY; for local development only, XO_TRUST_MODE=development explicitly disables verification)',
+        },
+      ],
+      policyId: 'none',
+      manifestFingerprint,
+    };
+  }
+
+  const base = { policyId: policy.policyId, mode: policy.mode, manifestFingerprint };
+
+  if (policy.mode === 'development') {
+    return { status: 'unverified', acceptable: true, signers: [], failures: [], ...base };
   }
 
   const entries: unknown = manifest.signatures ?? [];

@@ -73,7 +73,8 @@ export const openApiDocument = {
     '/workspaces/{workspaceId}/registry/packages': {
       post: {
         summary: "Publish a package into this workspace's registry (mirrors RegistryClient.publish / `xo publish`)",
-        description: 'Body is the raw bytes of a .xo archive (application/octet-stream). Validated, then unpacked, then published.',
+        description:
+          'Body is the raw bytes of a .xo archive (application/octet-stream). Validated, then unpacked, then published. Publishing is gated by the effective package trust policy (an enforcing policy, or the explicit development mode); the 201 body carries a `trust` verdict (`mode`, `status`) — in development mode the status is `unverified`, never `trusted`.',
         requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
@@ -212,7 +213,7 @@ export const openApiDocument = {
       post: {
         summary: 'Validate an uploaded .xo archive (read-only; mirrors `xo verify`)',
         description:
-          "Verifies against the server's operator-configured package trust policy (XO_PACKAGE_TRUST_POLICY) only. Caller-supplied public keys are rejected with 400: a key supplied with the request cannot establish trust. The response includes a `trust` verdict.",
+          "Verifies against the server's effective package trust policy only: an enforcing operator policy (XO_PACKAGE_TRUST_POLICY) or, for local development only, the explicit XO_TRUST_MODE=development. The server refuses to start with neither (fail closed). Caller-supplied public keys are rejected with 400: a key supplied with the request cannot establish trust. The response includes a `trust` verdict whose `mode` is `enforce` or `development`; in development mode the status is `unverified` and a package is never reported `trusted`.",
         requestBody: {
           required: true,
           content: {

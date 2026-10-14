@@ -117,7 +117,9 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     }
     const unpacked = unwrapOrThrow(await unpackArchive(new Uint8Array(bytes)));
     const published = unwrapOrThrow(await c.publish(unpacked));
-    return json(201, published);
+    // Surface how the package was admitted: `trusted` under an enforcing policy, or `unverified` (mode `development`) — never silent.
+    const trust = workspacePackageValidator(dataConfig).evaluateTrust(unpacked.manifest);
+    return json(201, { ...published, trust });
   }
 
   async function getPackage(req: ApiRequest): Promise<ApiResponse> {

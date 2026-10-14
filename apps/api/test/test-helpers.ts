@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http, { type Server } from 'node:http';
 import { LocalFsBlobStore } from '@xo/storage';
+import { PackageInstaller, PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
+import type { BlobStore } from '@xo/storage';
 import { createHttpServer, type ServerDeps } from '../src/server.js';
 import { FsApiKeyStore } from '../src/auth/fs-api-key-store.js';
 import { generateApiKey, hashApiKey } from '../src/auth/api-key.js';
@@ -66,7 +68,9 @@ export class TestServer {
     });
     if (!created.ok) throw created.error;
 
-    const server = createHttpServer({ apiKeyStore, ...deps });
+    // P1.0 M5: a server cannot start without a trust configuration. These tests exercise HTTP behaviour, not trust, so they run in EXPLICIT
+    // development mode unless a test injects its own `packageTrustPolicy` (package-trust.test.ts does).
+    const server = createHttpServer({ apiKeyStore, packageTrustPolicy: PackageTrustPolicy.development(), ...deps });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('expected server to bind a port');
@@ -149,4 +153,9 @@ export class TestServer {
       req.end();
     });
   }
+}
+
+/** An installer whose validator is in explicit development mode — for tests that seed packages directly into a workspace store. */
+export function devInstaller(store: BlobStore): PackageInstaller {
+  return new PackageInstaller(store, { validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }) });
 }

@@ -78,6 +78,7 @@ import {
   packBundle,
   unpackArchive,
   PackageValidator,
+  PackageTrustPolicy,
   PackageInstaller,
   inspectBundle,
   type PackageBundle,
@@ -553,7 +554,10 @@ async function main(): Promise<void> {
     readBundle = readResult.value;
 
     const publicKeysByDid = new Map([[signerDid, devPublicKeyPem]]);
-    const validator = new PackageValidator({ resolvePublicKey: (did) => publicKeysByDid.get(did) });
+    const validator = new PackageValidator({
+      trustPolicy: PackageTrustPolicy.development(),
+      resolvePublicKey: (did) => publicKeysByDid.get(did),
+    });
     const report = validator.validateAll(readBundle);
 
     const verifier = new PackageVerifier();
@@ -615,7 +619,9 @@ async function main(): Promise<void> {
   let publishedId: string | undefined;
   try {
     const registryStore = new LocalFsBlobStore(registryDir);
-    const registryClient = new RegistryClient(registryStore);
+    const registryClient = new RegistryClient(registryStore, {
+      validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }),
+    });
 
     const published = await registryClient.publish(bundle);
     if (!published.ok) {
@@ -671,7 +677,7 @@ async function main(): Promise<void> {
   let runtime: Runtime;
   try {
     const installStore = new LocalFsBlobStore(installDir);
-    installer = new PackageInstaller(installStore);
+    installer = new PackageInstaller(installStore, { validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }) });
     const installResult = await installer.install(readBundle);
     if (!installResult.ok) {
       record('package_install_load', 'ERROR', `PackageInstaller.install() failed: ${installResult.error.message}`);

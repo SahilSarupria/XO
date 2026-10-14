@@ -4,9 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFsBlobStore } from '@xo/storage';
-import { PackageInstaller } from '../src/install/package-installer.js';
 import type { Clock } from '../src/install/clock.js';
-import { buildSampleBundle } from './fixtures.js';
+import { buildSampleBundle, devInstaller } from './fixtures.js';
 
 class FixedClock implements Clock {
   now(): Date {
@@ -25,7 +24,7 @@ async function withTempStore<T>(fn: (store: LocalFsBlobStore) => Promise<T>): Pr
 
 test('install() writes every component and creates an installed-package record', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store, { clock: new FixedClock() });
+    const installer = devInstaller(store, { clock: new FixedClock() });
     const bundle = buildSampleBundle();
     const result = await installer.install(bundle);
     assert.equal(result.ok, true);
@@ -42,7 +41,7 @@ test('install() writes every component and creates an installed-package record',
 
 test('install() refuses to reinstall the same version without force', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
     const second = await installer.install(bundle);
@@ -53,7 +52,7 @@ test('install() refuses to reinstall the same version without force', async () =
 
 test('install() rejects a bundle that fails validation (tampered component)', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     const tampered = {
       ...bundle,
@@ -67,7 +66,7 @@ test('install() rejects a bundle that fails validation (tampered component)', as
 
 test('uninstall() removes all files and the active-version pointer', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
     const result = await installer.uninstall(bundle.manifest.name, bundle.manifest.version);
@@ -82,7 +81,7 @@ test('uninstall() removes all files and the active-version pointer', async () =>
 
 test('upgrade() accepts a valid version bump and becomes the new active version', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v1 = buildSampleBundle({ version: '1.0.0' });
     const v2 = buildSampleBundle({ version: '1.1.0' });
     await installer.install(v1);
@@ -96,7 +95,7 @@ test('upgrade() accepts a valid version bump and becomes the new active version'
 
 test('upgrade() rejects a downgrade and a same-version "upgrade"', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v2 = buildSampleBundle({ version: '2.0.0' });
     await installer.install(v2);
 
@@ -111,7 +110,7 @@ test('upgrade() rejects a downgrade and a same-version "upgrade"', async () => {
 
 test('rollback() re-points the active version to a previously installed (but no longer active) version', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v1 = buildSampleBundle({ version: '1.0.0' });
     const v2 = buildSampleBundle({ version: '1.1.0' });
     await installer.install(v1);
@@ -126,7 +125,7 @@ test('rollback() re-points the active version to a previously installed (but no 
 
 test('rollback() fails for a version whose files were removed via uninstall', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v1 = buildSampleBundle({ version: '1.0.0' });
     await installer.install(v1);
     await installer.uninstall(v1.manifest.name, '1.0.0');
@@ -137,7 +136,7 @@ test('rollback() fails for a version whose files were removed via uninstall', as
 
 test('verifyInstallation detects on-disk corruption after a successful install', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
 
@@ -159,7 +158,7 @@ test('verifyInstallation detects on-disk corruption after a successful install',
 
 test('verifyInstallation reports PACKAGE_NOT_INSTALLED for a package that was never installed', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const result = await installer.verifyInstallation('xo_never_installed', '1.0.0');
     assert.equal(result.ok, false);
   });
@@ -167,7 +166,7 @@ test('verifyInstallation reports PACKAGE_NOT_INSTALLED for a package that was ne
 
 test('listAllInstalledRecords returns every installed version, unlike listInstalled which returns only the active one', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v1 = buildSampleBundle({ version: '1.0.0' });
     const v2 = buildSampleBundle({ version: '1.1.0' });
     await installer.install(v1);
@@ -182,7 +181,7 @@ test('listAllInstalledRecords returns every installed version, unlike listInstal
 
 test('getManifest reads a specific installed version, including a non-active one', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const v1 = buildSampleBundle({ version: '1.0.0' });
     const v2 = buildSampleBundle({ version: '1.1.0' });
     await installer.install(v1);
@@ -200,7 +199,7 @@ test('getManifest reads a specific installed version, including a non-active one
 
 test('getManifest reports PACKAGE_NOT_INSTALLED for a version that was never installed', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const result = await installer.getManifest('xo_never_installed', '1.0.0');
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_NOT_INSTALLED');
@@ -209,7 +208,7 @@ test('getManifest reports PACKAGE_NOT_INSTALLED for a version that was never ins
 
 test("getComponent reads a specific component's raw bytes for an installed version", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
 
@@ -221,7 +220,7 @@ test("getComponent reads a specific component's raw bytes for an installed versi
 
 test('getComponent reports PACKAGE_COMPONENT_MISSING for a component kind the manifest never declared', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
 
@@ -233,7 +232,7 @@ test('getComponent reports PACKAGE_COMPONENT_MISSING for a component kind the ma
 
 test('getComponent reports PACKAGE_NOT_INSTALLED for a version that was never installed', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const result = await installer.getComponent('xo_never_installed', '1.0.0', 'knowledge_graph');
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.error.code, 'XO_PACKAGE_NOT_INSTALLED');
@@ -242,7 +241,7 @@ test('getComponent reports PACKAGE_NOT_INSTALLED for a version that was never in
 
 test('repairInstallation reinstalls from a known-good bundle over a corrupted install', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     await installer.install(bundle);
 

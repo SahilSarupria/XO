@@ -14,6 +14,7 @@ import {
 } from '@xo/audit';
 import { TestServer, withTempDir } from './test-helpers.js';
 import { buildRouter } from '../src/server.js';
+import { parseTrustPolicy } from '@xo/package-sdk';
 
 // P1.0 M4 — durable audit at the API boundary: ordering, fail-closed, denial evidence, completion-failure semantics.
 
@@ -434,13 +435,18 @@ test('audit read fails closed when the audit-read record itself cannot be writte
 test('startup: production without a durable audit sink refuses to build the server; non-production uses the explicit volatile sink', async () => {
   const prev = process.env['NODE_ENV'];
   try {
+    // An enforcing trust policy is supplied so that THIS test exercises the audit guard (trust has its own startup tests in package-trust.test.ts).
+    const trust = parseTrustPolicy({ version: 1, keys: [] });
+    assert.ok(trust.ok);
+    if (!trust.ok) return;
+    const deps = { workspaceDataDir: '/tmp/x', apiKeysDir: '/tmp/y', workspacesDir: '/tmp/z', packageTrustPolicy: trust.value };
     process.env['NODE_ENV'] = 'production';
     assert.throws(
-      () => buildRouter({ workspaceDataDir: '/tmp/x', apiKeysDir: '/tmp/y', workspacesDir: '/tmp/z' }),
+      () => buildRouter(deps),
       (e: { code: string }) => e.code === ErrorCode.AUDIT_CONFIG_INVALID,
     );
     process.env['NODE_ENV'] = 'development';
-    assert.doesNotThrow(() => buildRouter({ workspaceDataDir: '/tmp/x', apiKeysDir: '/tmp/y', workspacesDir: '/tmp/z' }));
+    assert.doesNotThrow(() => buildRouter(deps));
   } finally {
     if (prev === undefined) delete process.env['NODE_ENV'];
     else process.env['NODE_ENV'] = prev;

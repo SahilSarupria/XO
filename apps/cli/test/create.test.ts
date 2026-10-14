@@ -4,9 +4,9 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { unpackArchive } from '@xo/package-sdk';
-import { PackageValidator } from '@xo/package-sdk';
 import { createCommand } from '../src/commands/compiler/create.js';
 import { withTempDir } from './helpers.js';
+import { authoringValidator } from '../src/package-trust.js';
 
 const OBLIGATION_TEXT =
   '# Vendor Agreement\n\n' +
@@ -51,7 +51,7 @@ test('create compiles a source straight through to a signed, validated .xo on di
     assert.equal(unpacked.value.manifest.signatures?.length, 1);
     assert.equal(unpacked.value.manifest.signatures?.[0]?.signerDid, 'did:xo:create-test-signer');
 
-    const validation = new PackageValidator().validateAll(unpacked.value);
+    const validation = authoringValidator().validateAll(unpacked.value);
     assert.equal(validation.valid, true, JSON.stringify(validation.issues));
   });
 });
@@ -194,7 +194,7 @@ test('create on a .zip archive compiles the extracted sources into one package a
     const unpacked = await unpackArchive(new Uint8Array(bytes));
     assert.ok(unpacked.ok);
     if (unpacked.ok) {
-      const validation = new PackageValidator().validateAll(unpacked.value);
+      const validation = authoringValidator().validateAll(unpacked.value);
       assert.equal(validation.valid, true, JSON.stringify(validation.issues));
     }
 
@@ -253,7 +253,7 @@ test('golden vertical: four-file directory (README, policy, claims procedure, su
     if (!unpacked.ok) return;
     assert.equal(unpacked.value.manifest.name, 'burglary_policy_bundle');
 
-    const validation = new PackageValidator().validateAll(unpacked.value);
+    const validation = authoringValidator().validateAll(unpacked.value);
     assert.equal(validation.valid, true, JSON.stringify(validation.issues));
 
     // Provenance: the merged compilation result's own per-source report

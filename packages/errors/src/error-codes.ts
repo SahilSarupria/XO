@@ -42,6 +42,8 @@ export const ErrorCode = {
   PACKAGE_COMPONENT_MISSING: 'XO_PACKAGE_COMPONENT_MISSING',
   PACKAGE_VALIDATION_FAILED: 'XO_PACKAGE_VALIDATION_FAILED',
   PACKAGE_UNTRUSTED: 'XO_PACKAGE_UNTRUSTED',
+  /** Package trust is not (validly) configured: no operator trust policy, an unreadable/invalid one, or a contradictory trust-mode configuration. Always an operator/deployment problem, never the package's. Protected operations fail closed with this code. */
+  PACKAGE_TRUST_NOT_CONFIGURED: 'XO_PACKAGE_TRUST_NOT_CONFIGURED',
   PACKAGE_ALREADY_INSTALLED: 'XO_PACKAGE_ALREADY_INSTALLED',
   PACKAGE_NOT_INSTALLED: 'XO_PACKAGE_NOT_INSTALLED',
   PACKAGE_UPGRADE_INVALID: 'XO_PACKAGE_UPGRADE_INVALID',

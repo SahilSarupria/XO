@@ -43,6 +43,7 @@ import {
 import {
   PackageSigner,
   PackageValidator,
+  PackageTrustPolicy,
   PackageVerifier,
   PackageInstaller,
   packBundle,
@@ -257,7 +258,10 @@ async function main(): Promise<void> {
   const unpacked = await unpackArchive(readBackBytes);
   if (!unpacked.ok) fail('package_validation', `unpackArchive() failed: ${unpacked.error.message}`);
   const readBundle = unpacked.value;
-  const validator = new PackageValidator({ resolvePublicKey: (did) => (did === signerDid ? keyPair.publicKey : undefined) });
+  const validator = new PackageValidator({
+    trustPolicy: PackageTrustPolicy.development(),
+    resolvePublicKey: (did) => (did === signerDid ? keyPair.publicKey : undefined),
+  });
   const report = validator.validateAll(readBundle);
   const verifier = new PackageVerifier();
   const signatureOk = readBundle.manifest.signatures?.[0]
@@ -278,7 +282,7 @@ async function main(): Promise<void> {
   // 12. Package install.
   // -----------------------------------------------------------------
   const installStore = new LocalFsBlobStore(join(runRoot, 'installed'));
-  const installer = new PackageInstaller(installStore);
+  const installer = new PackageInstaller(installStore, { validator });
   const installResult = await installer.install(readBundle);
   if (!installResult.ok) fail('package_install', `PackageInstaller.install() failed: ${installResult.error.message}`);
   record('package_install', 'PASS', `Installed via PackageInstaller (isolated local LocalFsBlobStore).`, {

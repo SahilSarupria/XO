@@ -47,7 +47,16 @@ test('run() doctor exits 0 when running under a supported Node version', async (
   const originalWrite = process.stdout.write;
   process.stdout.write = (() => true) as typeof process.stdout.write;
   try {
-    const code = await run(['doctor']);
+    // `doctor` reports package trust through the same resolver install/run use, so it needs an explicit trust configuration to pass.
+    const prev = process.env['XO_TRUST_MODE'];
+    process.env['XO_TRUST_MODE'] = 'development';
+    let code: number;
+    try {
+      code = await run(['doctor']);
+    } finally {
+      if (prev === undefined) delete process.env['XO_TRUST_MODE'];
+      else process.env['XO_TRUST_MODE'] = prev;
+    }
     assert.equal(code, 0);
   } finally {
     process.stdout.write = originalWrite;

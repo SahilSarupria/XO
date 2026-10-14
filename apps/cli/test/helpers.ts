@@ -9,8 +9,37 @@ import type {
   DependencyDeclaration,
   ManifestPermissionDeclaration,
 } from '@xo/types';
-import { ManifestBuilder, PackageInstaller, type PackageBundle } from '@xo/package-sdk';
-import { LocalFsBlobStore } from '@xo/storage';
+import { ManifestBuilder, PackageInstaller, PackageTrustPolicy, PackageValidator, type PackageBundle } from '@xo/package-sdk';
+import { LocalFsBlobStore, type BlobStore } from '@xo/storage';
+
+/**
+ * P1.0 M5: package trust is fail-closed — the CLI refuses to install/verify/publish/run with no trust configuration. These tests exercise
+ * packaging behaviour, not trust, so the whole test process runs in EXPLICIT development mode (the same operator setting a developer would
+ * use) — set here, in one visible place, never inferred. Tests about trust either inject a policy or scrub this variable with
+ * {@link withTrustEnv}. node:test runs each test file in its own process, so this cannot leak between files.
+ */
+process.env['XO_TRUST_MODE'] = 'development';
+
+/** Runs `fn` with the trust-related environment replaced by `env` (unlisted trust variables are removed), then restores it. */
+export async function withTrustEnv<T>(env: Readonly<Record<string, string>>, fn: () => Promise<T>): Promise<T> {
+  const keys = ['XO_TRUST_MODE', 'XO_PACKAGE_TRUST_POLICY', 'NODE_ENV'];
+  const saved = keys.map((k) => [k, process.env[k]] as const);
+  for (const k of keys) delete process.env[k];
+  for (const [k, v] of Object.entries(env)) process.env[k] = v;
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+/** An installer whose validator is in explicit development mode (see the note above). */
+export function devInstaller(store: BlobStore): PackageInstaller {
+  return new PackageInstaller(store, { validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }) });
+}
 
 /**
  * A minimal, always-valid `CompatibilityDeclaration` + capability +
@@ -307,7 +336,7 @@ export async function withInstalledBundle<T>(
   fn: (storeDir: string, installer: PackageInstaller) => Promise<T>,
 ): Promise<T> {
   return withTempDir('xo-cli-test-store-', async (storeDir) => {
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const installResult = await installer.install(bundle);
     if (!installResult.ok) throw new Error(`Test fixture install failed: ${installResult.error.message}`);
     return fn(storeDir, installer);

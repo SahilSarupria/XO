@@ -21,6 +21,7 @@ import { PackageSigner, PackageVerifier } from '../src/signing/package-signer.js
 import { packBundle } from '../src/archive/package-writer.js';
 import { unpackArchive } from '../src/archive/package-reader.js';
 import { PackageValidator } from '../src/validation/package-validator.js';
+import { PackageTrustPolicy } from '../src/trust/trust-policy.js';
 import { PackageInstaller } from '../src/install/package-installer.js';
 import { inspectBundle } from '../src/inspect/package-inspector.js';
 import type { PackageBundle } from '../src/types.js';
@@ -212,7 +213,10 @@ async function main(): Promise<void> {
     // ------------------------------------------------------------------
     section('9. Validating the read-back bundle (schema, hashes, Merkle root, signatures)');
     const publicKeysByDid = new Map([[signatureEntry.signerDid, devKeyPair.publicKey]]);
-    const validator = new PackageValidator({ resolvePublicKey: (did) => publicKeysByDid.get(did) });
+    const validator = new PackageValidator({
+      trustPolicy: PackageTrustPolicy.development(),
+      resolvePublicKey: (did) => publicKeysByDid.get(did),
+    });
     const report = validator.validateAll(readBundle);
     for (const issue of report.issues) {
       console.log(`  [${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}`);
@@ -236,7 +240,7 @@ async function main(): Promise<void> {
     section('10. Installing into a real LocalFsBlobStore');
     const installRoot = join(workDir, 'installed');
     const blobStore = new LocalFsBlobStore(installRoot);
-    const installer = new PackageInstaller(blobStore);
+    const installer = new PackageInstaller(blobStore, { validator });
     const installResult = await installer.install(readBundle);
     if (!installResult.ok) throw new Error(`Install failed: ${installResult.error.message}`);
     console.log(`Installed "${installResult.value.name}@${installResult.value.version}" at ${installResult.value.installedAt}`);

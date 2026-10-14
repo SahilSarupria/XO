@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PackageValidator } from '../src/validation/package-validator.js';
 import { isXoManifest } from '../src/validation/schema.js';
-import { buildSampleBundle } from './fixtures.js';
+import { buildSampleBundle, devValidator } from './fixtures.js';
 
 test('validateAll passes on a freshly-built, unmodified bundle', () => {
   const bundle = buildSampleBundle();
-  const report = new PackageValidator().validateAll(bundle);
+  const report = devValidator().validateAll(bundle);
   assert.equal(report.valid, true);
   assert.deepEqual(
     report.issues.filter((i) => i.severity === 'error'),
@@ -86,7 +86,7 @@ test('validateAll collects multiple issues in one pass rather than stopping at t
     ...bundle,
     manifest: { ...bundle.manifest, version: 'bad-version', merkleRoot: ('sha256:' + '0'.repeat(64)) as typeof bundle.manifest.merkleRoot },
   };
-  const report = new PackageValidator().validateAll(broken);
+  const report = devValidator().validateAll(broken);
   assert.equal(report.valid, false);
   const codes = report.issues.map((i) => i.code);
   assert.ok(codes.includes('VERSION_INVALID'));
@@ -150,7 +150,7 @@ test('validateDependencies passes on a well-formed dependency set', () => {
 
 test('validateAll includes dependency issues in the full report', () => {
   const bundle = buildSampleBundle({ dependencies: [{ name: 'xo_core_math', versionRange: 'garbage', kind: 'required' }] });
-  const report = new PackageValidator().validateAll(bundle);
+  const report = devValidator().validateAll(bundle);
   assert.equal(report.valid, false);
   assert.ok(report.issues.some((i) => i.code === 'DEPENDENCY_RANGE_INVALID'));
 });

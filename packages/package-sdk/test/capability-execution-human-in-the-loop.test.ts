@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CapabilityDeclaration } from '@xo/types';
 import { LocalFsBlobStore } from '@xo/storage';
-import { PackageInstaller } from '../src/install/package-installer.js';
-import { buildSampleBundle } from './fixtures.js';
+import { buildSampleBundle, devInstaller } from './fixtures.js';
 
 /**
  * Human-in-the-Loop Execution Class Lowering milestone: proves
@@ -50,7 +49,7 @@ function humanInTheLoopCapability(): CapabilityDeclaration {
 
 test("HITL: a well-formed mode: 'human_in_the_loop' capability installs successfully", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle({ capabilities: [humanInTheLoopCapability()] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, true);
@@ -59,7 +58,7 @@ test("HITL: a well-formed mode: 'human_in_the_loop' capability installs successf
 
 test("HITL: mode: 'human_in_the_loop' with no inputSchema is valid (never required for this mode, unlike deterministic_rule's optional-but-common one)", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const capability: CapabilityDeclaration = {
       ...humanInTheLoopCapability(),
       execution: { mode: 'human_in_the_loop', contractId: 'capability:reconcile-invoice-balance' },
@@ -72,7 +71,7 @@ test("HITL: mode: 'human_in_the_loop' with no inputSchema is valid (never requir
 
 test("HITL: mode: 'hybrid' and mode: 'deterministic_rule' validation is completely unaffected by the new allowlist entry", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const deterministic: CapabilityDeclaration = {
       id: 'clause_lookup_det',
       name: 'Clause Lookup',
@@ -92,7 +91,7 @@ test("HITL: mode: 'hybrid' and mode: 'deterministic_rule' validation is complete
 
 test('HITL: an unrecognized execution mode string still fails package validation -- the allowlist is still closed, not opened to arbitrary strings', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const capability = { ...humanInTheLoopCapability(), execution: { mode: 'not_a_real_mode' } } as unknown as CapabilityDeclaration;
     const bundle = buildSampleBundle({ capabilities: [capability] });
     const result = await installer.install(bundle);

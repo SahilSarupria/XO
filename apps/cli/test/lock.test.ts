@@ -2,15 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PackageInstaller, parseLockfile } from '@xo/package-sdk';
+import { parseLockfile } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import { lockCommand } from '../src/commands/package/lock.js';
-import { withTempDir, buildTestBundle } from './helpers.js';
+import { withTempDir, buildTestBundle, devInstaller } from './helpers.js';
 
 test('lock writes an xo.lock for an already-installed package with no dependencies (zero to lock, but still succeeds)', async () => {
   await withTempDir('xo-lock-test-', async (dir) => {
     const storeDir = join(dir, 'store');
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const installed = await installer.install(buildTestBundle({ name: 'xo_lonely', version: '1.0.0' }));
     assert.ok(installed.ok);
 
@@ -29,7 +29,7 @@ test("lock re-resolves against the store's CURRENT contents, not what was resolv
   await withTempDir('xo-lock-test-', async (dir) => {
     const storeDir = join(dir, 'store');
     const store = new LocalFsBlobStore(storeDir);
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
 
     const depV1 = await installer.install(buildTestBundle({ name: 'xo_dep', version: '1.0.0' }));
     assert.ok(depV1.ok);
@@ -69,7 +69,7 @@ test("lock re-resolves against the store's CURRENT contents, not what was resolv
 test('lock fails cleanly with the real DependencyError code when the package still cannot resolve', async () => {
   await withTempDir('xo-lock-test-', async (dir) => {
     const storeDir = join(dir, 'store');
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const root = await installer.install(
       buildTestBundle({
         name: 'xo_root',

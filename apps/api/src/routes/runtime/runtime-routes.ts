@@ -1,5 +1,5 @@
 import type { HostCapability, ModelFamily } from '@xo/types';
-import { PackageInstaller } from '@xo/package-sdk';
+import { DEVELOPMENT_TRUST_WARNING, PackageInstaller } from '@xo/package-sdk';
 import type { BlobStore } from '@xo/storage';
 import { EnvironmentId, ExecutionEngine, RequestId, Runtime } from '@xo/runtime';
 import type { ExecutionRequest } from '@xo/runtime';
@@ -57,7 +57,11 @@ async function bootstrapRuntime(
   const installer = new PackageInstaller(store, { validator: workspacePackageValidator(dataConfig) });
   const runtime = new Runtime(installer);
   const bootstrap = await runtime.bootstrap();
-  const bootstrapWarnings = bootstrap.failures.map((f) => `"${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`);
+  const bootstrapWarnings = [
+    // Development mode must be visible on every runtime response, never silent.
+    ...(dataConfig.packageTrustPolicy.mode === 'development' ? [DEVELOPMENT_TRUST_WARNING] : []),
+    ...bootstrap.failures.map((f) => `"${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`),
+  ];
   return { runtime, installer, bootstrapWarnings };
 }
 

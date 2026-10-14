@@ -1,4 +1,4 @@
-import { PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
+import { PackageValidator, type PackageTrustPolicy } from '@xo/package-sdk';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -18,13 +18,15 @@ import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
  */
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
-  /** P1.0 M5 — operator-controlled package trust policy, resolved once at startup (`XO_PACKAGE_TRUST_POLICY`). Absent is treated as the explicit `unenforced` policy. Never derived from request data. */
-  readonly packageTrustPolicy?: PackageTrustPolicy;
+  /**
+   * P1.0 M5 — the effective package trust policy, resolved once at startup from operator configuration (`XO_PACKAGE_TRUST_POLICY`, or the explicit `XO_TRUST_MODE=development`). REQUIRED: there is no default, so a route can never run with trust silently off. Never derived from request data.
+   */
+  readonly packageTrustPolicy: PackageTrustPolicy;
 }
 
-/** Validator carrying the operator trust policy — the only way API routes verify packages. */
+/** Validator carrying the effective trust policy — the only way API routes verify packages. A config without a policy (possible only from untyped callers) yields an unconfigured validator, which fails closed. */
 export function workspacePackageValidator(config: WorkspaceDataConfig): PackageValidator {
-  return new PackageValidator({ trustPolicy: config.packageTrustPolicy ?? PackageTrustPolicy.unenforced() });
+  return new PackageValidator({ trustPolicy: config.packageTrustPolicy });
 }
 
 /**

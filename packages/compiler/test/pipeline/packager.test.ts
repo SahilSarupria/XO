@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
-import { PackageValidator } from '@xo/package-sdk';
+import { PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
 import { StructuredComparisonBindingResolver } from '@xo/capability-contract';
 import { packageXoirGraph } from '../../src/pipeline/packager.js';
 
@@ -44,7 +44,7 @@ test('packageXoirGraph produces a manifest that PackageValidator accepts (struct
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const validator = new PackageValidator();
+  const validator = new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
   const report = validator.validateAll({
     manifest: result.value.manifest,
     components: result.value.bundle.components,
@@ -480,7 +480,7 @@ test('R1 closure (6): package validation still passes with an embedded contract 
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const validator = new PackageValidator();
+  const validator = new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
   const report = validator.validateAll({
     manifest: result.value.manifest,
     components: result.value.bundle.components,
@@ -502,7 +502,7 @@ test('package round trip: a built .xo package validates and its manifest.capabil
   assert.ok(result.ok);
   if (!result.ok) return;
 
-  const validator = new PackageValidator();
+  const validator = new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
   const report = validator.validateAll({
     manifest: result.value.manifest,
     components: result.value.bundle.components,

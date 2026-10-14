@@ -1,12 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { PackageTrustPolicy, PackageValidator, parseTrustPolicy } from '@xo/package-sdk';
 import { RegistryClient } from '../src/client/registry-client.js';
 import { withTempStore, FixedClock } from './test-helpers.js';
 import { buildFixtureBundle } from './manifest-fixtures.js';
 
+/** P1.0 M5: trust is fail-closed, so tests that are not about trust state explicit development mode. */
+function devValidator(): PackageValidator {
+  return new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
+}
+
 test('publish() verifies a real bundle, then publish()+get() round-trip it', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle();
 
     const published = await client.publish(bundle);
@@ -24,7 +30,7 @@ test('publish() verifies a real bundle, then publish()+get() round-trip it', asy
 
 test('publish() rejects a bundle with a tampered component (hash/Merkle mismatch), and never writes a record', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle();
 
     // Tamper with a component's bytes after the manifest (and its
@@ -48,7 +54,7 @@ test('publish() rejects a bundle with a tampered component (hash/Merkle mismatch
 
 test('publish() rejects duplicate publishes of the same bundle', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle();
 
     const first = await client.publish(bundle);
@@ -63,7 +69,7 @@ test('publish() rejects duplicate publishes of the same bundle', async () => {
 
 test('publish() appends a verifiable ledger entry keyed by the package id', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle();
 
     const published = await client.publish(bundle);
@@ -76,7 +82,7 @@ test('publish() appends a verifiable ledger entry keyed by the package id', asyn
 
 test('search() matches on package name, creator DID, and capability text — case-insensitively', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const contractPkg = buildFixtureBundle({ name: 'xo_contract_analyzer', creatorDid: 'did:xo:acme-legal' });
     const fraudPkg = buildFixtureBundle({ name: 'xo_fraud_detector', creatorDid: 'did:xo:acme-legal' });
     const otherPkg = buildFixtureBundle({ name: 'xo_weather_forecaster', creatorDid: 'did:xo:someone-else' });
@@ -100,7 +106,7 @@ test('search() matches on package name, creator DID, and capability text — cas
 
 test('search() with a blank query returns no results rather than the whole catalog', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle();
     await client.publish(bundle);
 
@@ -110,7 +116,7 @@ test('search() with a blank query returns no results rather than the whole catal
 
 test('listByCreator() delegates to the package repository', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const bundle = buildFixtureBundle({ creatorDid: 'did:xo:alice' });
     await client.publish(bundle);
 
@@ -121,7 +127,7 @@ test('listByCreator() delegates to the package repository', async () => {
 
 test('recordBenchmark() generates an id, records the run, and appends a ledger entry', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
 
     const recorded = await client.recordBenchmark({ packageId: 'sha256:' + 'a'.repeat(64), category: 'contract_analysis', score: 0.91 });
     assert.equal(recorded.ok, true);
@@ -139,7 +145,7 @@ test('recordBenchmark() generates an id, records the run, and appends a ledger e
 
 test('recordBenchmark() defaults challengeable to true when unspecified, and honors an explicit false', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const defaultRun = await client.recordBenchmark({ packageId: 'sha256:' + 'a'.repeat(64), category: 'contract_analysis', score: 0.5 });
     assert.equal(defaultRun.ok, true);
     if (defaultRun.ok) assert.equal(defaultRun.value.challengeable, true);
@@ -157,7 +163,7 @@ test('recordBenchmark() defaults challengeable to true when unspecified, and hon
 
 test('listBenchmarksForPackage() returns every run recorded for that package', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
     const packageId = 'sha256:' + 'a'.repeat(64);
     await client.recordBenchmark({ packageId, category: 'contract_analysis', score: 0.7 });
     await client.recordBenchmark({ packageId, category: 'fraud_detection', score: 0.8 });
@@ -169,7 +175,7 @@ test('listBenchmarksForPackage() returns every run recorded for that package', a
 
 test('createLicense() generates an id, validates the royalty split, and appends a ledger entry', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
 
     const created = await client.createLicense({
       packageId: 'sha256:' + 'a'.repeat(64),
@@ -192,7 +198,7 @@ test('createLicense() generates an id, validates the royalty split, and appends 
 
 test('createLicense() rejects a royalty split that does not sum to 10000', async () => {
   await withTempStore(async (store) => {
-    const client = new RegistryClient(store, { clock: new FixedClock() });
+    const client = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
 
     const created = await client.createLicense({
       packageId: 'sha256:' + 'a'.repeat(64),
@@ -202,5 +208,34 @@ test('createLicense() rejects a royalty split that does not sum to 10000', async
     assert.equal(created.ok, false);
     if (created.ok) return;
     assert.equal(created.error.code, 'XO_REGISTRY_ROYALTY_SPLIT_INVALID');
+  });
+});
+
+test('publish() with NO trust policy configured fails closed (REGISTRY_PACKAGE_UNVERIFIED / TRUST_NOT_CONFIGURED) and writes no record', async () => {
+  await withTempStore(async (store) => {
+    const client = new RegistryClient(store, { clock: new FixedClock() }); // no validator: unconfigured
+    const bundle = buildFixtureBundle();
+    const published = await client.publish(bundle);
+    assert.equal(published.ok, false);
+    if (!published.ok) assert.match(published.error.message, /TRUST_NOT_CONFIGURED/);
+    assert.equal((await client.get(bundle.manifest.merkleRoot as string)).ok, false);
+  });
+});
+
+test('publish() under an enforcing policy refuses an unsigned package; under explicit development mode it publishes', async () => {
+  await withTempStore(async (store) => {
+    const enforcing = parseTrustPolicy({ version: 1, keys: [] });
+    assert.ok(enforcing.ok);
+    if (!enforcing.ok) return;
+    const strict = new RegistryClient(store, {
+      clock: new FixedClock(),
+      validator: new PackageValidator({ trustPolicy: enforcing.value }),
+    });
+    const refused = await strict.publish(buildFixtureBundle());
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.match(refused.error.message, /PACKAGE_UNSIGNED/);
+
+    const dev = new RegistryClient(store, { clock: new FixedClock(), validator: devValidator() });
+    assert.equal((await dev.publish(buildFixtureBundle())).ok, true);
   });
 });

@@ -77,6 +77,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.PACKAGE_COMPONENT_MISSING]: 422,
   [ErrorCode.PACKAGE_VALIDATION_FAILED]: 422,
   [ErrorCode.PACKAGE_UNTRUSTED]: 422,
+  // Trust not (validly) configured is an operator/deployment fault, never the caller's: same class as CONFIG_* above.
+  [ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED]: 500,
   [ErrorCode.PACKAGE_ALREADY_INSTALLED]: 409,
   [ErrorCode.PACKAGE_NOT_INSTALLED]: 404,
   [ErrorCode.PACKAGE_UPGRADE_INVALID]: 409,

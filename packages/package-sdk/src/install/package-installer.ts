@@ -141,12 +141,12 @@ export class PackageInstaller {
       return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Refusing to install package: unsafe install location — ${unsafe}`));
     }
 
-    // Trust, unconditionally when the operator policy enforces (also with skipValidation).
+    // Trust, unconditionally (also with skipValidation): an enforcing policy must accept the package, explicit development mode admits it as `unverified` (never `trusted`), and a validator with no policy at all refuses — there is no implicit default.
     const verdict = this.validator.evaluateTrust(bundle.manifest);
     if (!verdict.acceptable) {
       return err(
         new InstallError(
-          ErrorCode.PACKAGE_UNTRUSTED,
+          verdict.mode === 'unconfigured' ? ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED : ErrorCode.PACKAGE_UNTRUSTED,
           `Refusing to install "${name}@${version}": package trust check failed: ${verdict.failures.map((f) => `${f.code}: ${f.message}`).join('; ')}`,
         ),
       );
@@ -237,7 +237,7 @@ export class PackageInstaller {
       installedAt: this.clock.now().toISOString(),
       manifestHash: fingerprintManifest(bundle.manifest),
       manifestDigest: fullManifestDigest(bundle.manifest),
-      trust: { status: verdict.status, policyId: verdict.policyId, signers: verdict.signers },
+      trust: { status: verdict.status, mode: verdict.mode, policyId: verdict.policyId, signers: verdict.signers },
       componentPaths: bundle.components.map((c) => `${prefix}/${c.path}`),
     };
     const recordPut = await this.store.put(recordKeyName, JSON.stringify(record, null, 2), { contentType: 'application/json' });

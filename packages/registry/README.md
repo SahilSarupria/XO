@@ -125,15 +125,12 @@ id, manifest, publishedAt }` — no component bytes. That means the
   that's a consumer's job, sitting on top of `listForPackage`/`get`.
 - **`search()` is a linear substring scan**, not a real search index —
   see "Design choices" above.
-- **No signature-verification key distribution.** `RegistryClient`
-  constructs its own `PackageValidator` with no `resolvePublicKey`
-  option, matching `xo verify`'s own default: a signed manifest's
-  signatures are reported as unverified (a warning) rather than failed,
-  unless a caller supplies keys. `RegistryClient` doesn't currently
-  expose a way to supply them — `RegistryClientOptions.validator` lets a
-  caller construct and inject their own `PackageValidator` (with a
-  resolver) if this matters to them, but there's no first-class flag or
-  CLI option for it yet.
+- **Trust is configured by the caller, and an unconfigured client refuses.** `RegistryClient` verifies a package with the
+  `PackageValidator` it is given (`RegistryClientOptions.validator`). Built with no validator it is _unconfigured_ and `publish`
+  fails closed (`TRUST_NOT_CONFIGURED`) — there is no implicit "verify nothing" mode (P1.0 M5). Pass a validator carrying an
+  enforcing `PackageTrustPolicy`, or `PackageTrustPolicy.development()` for explicit local development, which verifies nothing and
+  never reports a package as trusted. `xo publish` and the API build this validator from the operator's configuration
+  (`docs/package-trust-operations.md`).
 
 ## Judgment calls the missing specs left to this package
 

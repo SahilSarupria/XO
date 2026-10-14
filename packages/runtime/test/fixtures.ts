@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CapabilityDeclaration, CompatibilityDeclaration, ManifestPermissionDeclaration, XoMetadata } from '@xo/types';
 import { LocalFsBlobStore } from '@xo/storage';
-import { ManifestBuilder, PackageInstaller, type Clock, type PackageBundle } from '@xo/package-sdk';
+import { ManifestBuilder, PackageInstaller, PackageTrustPolicy, PackageValidator, type Clock, type PackageBundle } from '@xo/package-sdk';
 
 export const contractCompatibility: CompatibilityDeclaration = {
   modelFamilies: [
@@ -168,7 +168,11 @@ export async function withTempInstaller<T>(
   const dir = await mkdtemp(join(tmpdir(), 'xo-runtime-'));
   try {
     const store = new LocalFsBlobStore(dir);
-    const installer = new PackageInstaller(store, clock ? { clock } : {});
+    // P1.0 M5: trust is fail-closed, so fixtures that are not about trust state their mode explicitly.
+    const installer = new PackageInstaller(store, {
+      validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }),
+      ...(clock ? { clock } : {}),
+    });
     return await fn(installer, store);
   } finally {
     await rm(dir, { recursive: true, force: true });

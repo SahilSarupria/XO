@@ -19,7 +19,7 @@ import {
 } from '../src/trust/trust-policy.js';
 import { evaluatePackageTrust } from '../src/trust/verify-trust.js';
 import type { PackageBundle, SignatureEntry } from '../src/types.js';
-import { buildSampleBundle } from './fixtures.js';
+import { buildSampleBundle, devInstaller } from './fixtures.js';
 
 const ed = new Ed25519Signer();
 const CREATOR = 'did:xo:test-creator'; // matches buildSampleBundle's manifest.creatorDid
@@ -128,10 +128,12 @@ test('unsigned package: refused when a signature is required, `unsigned` (not tr
   assert.equal(lax.acceptable, true);
 });
 
-test('unenforced policy verifies nothing and never reports trusted — even for a validly signed package', () => {
+test('development policy verifies nothing and never reports trusted — even for a validly signed package', () => {
   const k = key(CREATOR);
-  const v = evaluatePackageTrust(sign(buildSampleBundle(), k).manifest, PackageTrustPolicy.unenforced());
-  assert.equal(v.status, 'unenforced');
+  const v = evaluatePackageTrust(sign(buildSampleBundle(), k).manifest, PackageTrustPolicy.development());
+  assert.equal(v.status, 'unverified');
+  assert.equal(v.mode, 'development');
+  assert.equal(v.acceptable, true);
   assert.equal(v.signers.length, 0);
 });
 
@@ -277,8 +279,8 @@ test('trust policy parsing is strict', () => {
   assert.equal(parseTrustPolicy(policyDoc([{ k }])).ok, true);
 });
 
-test('loadOperatorTrustPolicy: unset → explicit unenforced; set-but-broken → error (never a silent downgrade)', async () => {
-  assert.equal((loadOperatorTrustPolicy({}) as { ok: true; value: PackageTrustPolicy }).value.mode, 'unenforced');
+test('loadOperatorTrustPolicy: unset → ERROR (a missing policy is never development mode); set-but-broken → error; valid file → enforce', async () => {
+  assert.equal(loadOperatorTrustPolicy({}).ok, false);
   assert.equal(loadOperatorTrustPolicy({ [TRUST_POLICY_ENV]: '/definitely/not/here.json' }).ok, false);
   await withStore(async (_s, dir) => {
     const bad = join(dir, 'bad.json');
@@ -293,17 +295,18 @@ test('loadOperatorTrustPolicy: unset → explicit unenforced; set-but-broken →
 
 // ---------- validator ----------
 
-test('PackageValidator (enforce): untrusted/unsigned packages are invalid; trusted ones are valid; unenforced warns for signed packages', () => {
+test('PackageValidator (enforce): untrusted/unsigned packages are invalid; trusted ones are valid; development warns visibly', () => {
   const k = key(CREATOR);
   const enforcing = new PackageValidator({ trustPolicy: policyOf([{ k }]) });
   assert.equal(enforcing.validateAll(buildSampleBundle()).valid, false);
   assert.equal(enforcing.validateAll(sign(buildSampleBundle(), k)).valid, true);
   assert.equal(enforcing.validateAll(sign(buildSampleBundle(), key(CREATOR))).valid, false);
 
-  const unenforced = new PackageValidator();
-  const report = unenforced.validateAll(sign(buildSampleBundle(), k));
+  const development = new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
+  const report = development.validateAll(sign(buildSampleBundle(), k));
   assert.equal(report.valid, true);
   assert.ok(report.issues.some((i) => i.code === 'SIGNATURES_UNVERIFIED' && i.severity === 'warning'));
+  assert.ok(report.issues.some((i) => i.code === 'TRUST_DEVELOPMENT_MODE' && i.severity === 'warning'));
 
   assert.throws(() => new PackageValidator({ trustPolicy: policyOf([{ k }]), resolvePublicKey: () => undefined }), TypeError);
 });
@@ -376,7 +379,7 @@ test('install: modified component bytes with a validly signed manifest are rejec
 
 test("install pins the bundle: mutating the caller's buffers after the call starts cannot change what is written", async () => {
   await withStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle();
     const comp = bundle.components.find((c) => c.kind === 'safety_rules')!;
     const original = new Uint8Array(comp.data);
@@ -393,7 +396,7 @@ test("install pins the bundle: mutating the caller's buffers after the call star
 test('failed write mid-install rolls back: a fresh install leaves nothing; a forced reinstall restores the previous valid package byte-for-byte', async () => {
   await withStore(async (store) => {
     const good = buildSampleBundle();
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     assert.equal((await installer.install(good)).ok, true);
     const before = await snapshot(store);
 
@@ -423,7 +426,7 @@ test('failed write mid-install rolls back: a fresh install leaves nothing; a for
       ...v2,
       components: v2.components.map((c) => c),
     };
-    const failing = new PackageInstaller(new FailingStore(store));
+    const failing = devInstaller(new FailingStore(store));
     const r = await failing.install(changed, { force: true });
     assert.equal(r.ok, false);
     assert.deepEqual(await snapshot(store), before);
@@ -504,7 +507,7 @@ test('verifyInstallation/loadVerified (enforce): detects stripped signatures, a 
 
 test('loadVerified returns the manifest it verified; a corrupt or schema-invalid installed manifest is an error, not a crash', async () => {
   await withStore(async (store, dir) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const b = buildSampleBundle();
     await installer.install(b);
     const manifestPath = join(dir, b.manifest.name, b.manifest.version, 'manifest.json');

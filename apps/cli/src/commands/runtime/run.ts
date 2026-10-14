@@ -66,9 +66,11 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
   const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir), { validator: trust.validator });
   const runtime = new Runtime(installer, options.now !== undefined ? { now: options.now } : {});
   const bootstrap = await runtime.bootstrap();
-  const bootstrapWarnings = bootstrap.failures.map(
-    (f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`,
-  );
+  const bootstrapWarnings = [
+    // Development mode is announced on every run (text and the --json `warnings` array alike), never silent.
+    ...trust.warnings,
+    ...bootstrap.failures.map((f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`),
+  ];
 
   // Set only when the deterministic router looked at this capability and
   // explicitly declined it (`not_deterministic`) — never for a bare

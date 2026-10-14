@@ -1,6 +1,11 @@
 import type { CapabilityDeclaration, CompatibilityDeclaration, DependencyDeclaration, XoManifest, XoMetadata } from '@xo/types';
+import type { BlobStore } from '@xo/storage';
+import { PackageInstaller } from '../src/install/package-installer.js';
 import { ManifestBuilder } from '../src/manifest/manifest-builder.js';
+import { PackageTrustPolicy } from '../src/trust/trust-policy.js';
+import { PackageValidator } from '../src/validation/package-validator.js';
 import type { PackageBundle } from '../src/types.js';
+import type { Clock } from '../src/install/clock.js';
 
 export const sampleCompatibility: CompatibilityDeclaration = {
   modelFamilies: [
@@ -74,4 +79,18 @@ export function buildSampleManifest(
   } = {},
 ): XoManifest {
   return buildSampleBundle(overrides).manifest;
+}
+
+/**
+ * A validator in EXPLICIT development mode, for tests that exercise packaging/installing behaviour rather than trust. Trust is no longer
+ * implicit: a `PackageValidator`/`PackageInstaller` built with no policy fails closed, so tests that are not about trust must say which mode
+ * they run in. Tests about trust construct their own enforcing policies (see `package-trust.test.ts`).
+ */
+export function devValidator(): PackageValidator {
+  return new PackageValidator({ trustPolicy: PackageTrustPolicy.development() });
+}
+
+/** An installer whose validator is in explicit development mode — see {@link devValidator}. */
+export function devInstaller(store: BlobStore, options: { readonly clock?: Clock } = {}): PackageInstaller {
+  return new PackageInstaller(store, { validator: devValidator(), ...options });
 }

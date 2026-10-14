@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { resolveTrustValidator } from '../../package-trust.js';
+import { describeTrust, resolveTrustValidator } from '../../package-trust.js';
 import {
   createLockfile,
   PackageInstaller,
@@ -74,9 +74,11 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
     // (or a person who has seen it before) actually branches on.
     if (!installResult.ok) return failWith(`[${installResult.error.code}] ${installResult.error.message}`);
     return ok([
+      ...trust.warnings,
       `Installed "${installResult.value.name}@${installResult.value.version}"`,
       `  installedAt:   ${installResult.value.installedAt}`,
       `  manifestHash:  ${installResult.value.manifestHash}`,
+      ...(installResult.value.trust !== undefined ? [`  trust:         ${describeTrust(installResult.value.trust)}`] : []),
       `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
       ...(options.skipResolution && dependencies.length > 0
         ? [`  (--skip-resolution: ${dependencies.length} declared dependencies were not resolved or locked)`]
@@ -108,9 +110,11 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
   const skipped = resolveResult.value.skippedOptional;
 
   return ok([
+    ...trust.warnings,
     `Installed "${installResult.value.name}@${installResult.value.version}"`,
     `  installedAt:   ${installResult.value.installedAt}`,
     `  manifestHash:  ${installResult.value.manifestHash}`,
+    ...(installResult.value.trust !== undefined ? [`  trust:         ${describeTrust(installResult.value.trust)}`] : []),
     `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
     '',
     `Resolved and locked ${resolveResult.value.resolved.length} dependenc${resolveResult.value.resolved.length === 1 ? 'y' : 'ies'}:`,

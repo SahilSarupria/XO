@@ -244,8 +244,8 @@ Every other route in the table above requires `Authorization: Bearer
 
 - **Attributed.** `approver` is a snapshot of the authenticated principal (M1). The body is ignored; nothing in the request can name an approver, a binding or a target version.
 - **Bound.** The server derives the capability's material state from the persisted compiled graph and stores it: the contract content hash (which covers its rules), the permission-declaration fingerprint (M2), the resolved binding (class, resolver, id) and the compilation's source digest.
-- **Enforced where it is used, not in the UI.** The execution route, workflow start/continuation (every step), human-task resume (approve and reject), and the capability/workflow projections all call the same `verifyApproval`, deriving the *current* state from the graph about to be used. Missing, legacy (pre-M3, unbound), malformed, wrongly-targeted, inconsistently-attributed or stale approvals are refused (403) with a precise reason in the audit trail (`APPROVAL_STALE`, `APPROVAL_LEGACY_UNBOUND`, ...). `GET .../capabilities` shows `approved` plus `approvalStatus` and can never say `true` for what the boundary refuses.
-- **Material change.** Changing a rule, the permission declaration, the resolved implementation or the source digest makes the approval stale; approve again to bind the new state. Changes to *other* capabilities do not affect it.
+- **Enforced where it is used, not in the UI.** The execution route, workflow start/continuation (every step), human-task resume (approve and reject), and the capability/workflow projections all call the same `verifyApproval`, deriving the _current_ state from the graph about to be used. Missing, legacy (pre-M3, unbound), malformed, wrongly-targeted, inconsistently-attributed or stale approvals are refused (403) with a precise reason in the audit trail (`APPROVAL_STALE`, `APPROVAL_LEGACY_UNBOUND`, ...). `GET .../capabilities` shows `approved` plus `approvalStatus` and can never say `true` for what the boundary refuses.
+- **Material change.** Changing a rule, the permission declaration, the resolved implementation or the source digest makes the approval stale; approve again to bind the new state. Changes to _other_ capabilities do not affect it.
 - **Audit (M4).** `approval.attempted` (durable precondition: if it cannot be recorded, no approval is created), `approval.granted`, `approval.denied`. Only a short digest prefix is recorded.
 - **Migration.** Approvals recorded before M3 have no binding and are **not** honoured; re-approve them. (Same fail-closed trade-off as M1's unbound API keys.)
 
@@ -468,9 +468,9 @@ Optional `Idempotency-Key` header on the two side-effecting starts: `POST /works
 - **States.** `in_progress` and `completed` only. There is deliberately no stored `failed`: a failure that left a persisted result is `completed` (replayed as the original failed record); a failure before anything was persisted releases the key so the client may retry.
 - **Replay** returns the original record with `Idempotent-Replayed: true` and runs nothing. Authentication, M2 authorization and M3 approval are re-checked first on every request, so a key never bypasses them.
 - **Concurrency.** Same key while the first is running: `409 XO_IDEMPOTENCY_IN_PROGRESS` + `Retry-After`. Decisions are serialized per key in-process; the key record is created with an atomic create-if-absent (`AtomicBlobStore.putIfAbsent`).
-- **Crash/restart recovery** (the resource id is durably attached to the key *before* the resource is created): no resource named, or named but never created = nothing ran, so the retry takes over and executes once (audited `takeover`); resource finished = adopted and replayed (`idempotency.recovered`); resource started but unfinished = `409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN`, never re-run and never reported as success; resource not the caller's or record unreadable/tampered = `500 XO_IDEMPOTENCY_RECORD_INVALID` (fail closed).
+- **Crash/restart recovery** (the resource id is durably attached to the key _before_ the resource is created): no resource named, or named but never created = nothing ran, so the retry takes over and executes once (audited `takeover`); resource finished = adopted and replayed (`idempotency.recovered`); resource started but unfinished = `409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN`, never re-run and never reported as success; resource not the caller's or record unreadable/tampered = `500 XO_IDEMPOTENCY_RECORD_INVALID` (fail closed).
 - **Audit (M4).** `idempotency.replayed|recovered|conflict|in_progress|indeterminate`; a replay's evidence is a durable precondition. Records and errors carry only a short `keyRef` digest, never the key, input or output.
-- **Limits.** Not exactly-once; single-process coordination (matches `withExecutionLock`) - concurrent *processes* sharing one data dir can race on takeover of a stranded key; no TTL/expiry of key records; an in-flight request that outlives its client is not cancelled; human-task resume and approval are not keyed.
+- **Limits.** Not exactly-once; single-process coordination (matches `withExecutionLock`) - concurrent _processes_ sharing one data dir can race on takeover of a stranded key; no TTL/expiry of key records; an in-flight request that outlives its client is not cancelled; human-task resume and approval are not keyed.
 
 ## Known limitations
 
@@ -529,3 +529,17 @@ Optional `Idempotency-Key` header on the two side-effecting starts: `POST /works
   (building `packages/permissions` once first works around it). Flagged
   here rather than fixed, since `packages/runtime` is explicitly off
   limits for this task.
+
+## Package trust (P1.0 M5)
+
+The server resolves its package-trust configuration **once at startup** and refuses to start without one:
+
+- `XO_PACKAGE_TRUST_POLICY=/path/policy.json` → **enforce** mode. A missing, unreadable or invalid file aborts startup.
+- `XO_TRUST_MODE=development` (and no policy file) → explicit **development** mode: nothing is verified and no package is ever
+  reported trusted. Refused when `NODE_ENV=production`, and refused together with a policy file. Logged as a warning at startup,
+  repeated in `bootstrapWarnings` on every runtime response, and visible as `trust: { status: "unverified", mode: "development" }`
+  on `/packages/validate` and registry-publish responses.
+- Neither set → startup aborts with `XO_PACKAGE_TRUST_NOT_CONFIGURED`. A missing policy is **not** development mode.
+
+`POST /packages/validate` rejects request-supplied `publicKeys` (400): a request cannot establish trust. Policy changes require a
+restart. Full semantics, the resolution table, and migration from unsigned local packages: `docs/package-trust-operations.md`.

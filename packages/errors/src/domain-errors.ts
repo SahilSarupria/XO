@@ -68,7 +68,8 @@ export class PackageError extends XoError {
       | typeof ErrorCode.PACKAGE_CORRUPT
       | typeof ErrorCode.PACKAGE_COMPONENT_MISSING
       | typeof ErrorCode.CRYPTO_SIGNATURE_INVALID
-      | typeof ErrorCode.PACKAGE_UNTRUSTED,
+      | typeof ErrorCode.PACKAGE_UNTRUSTED
+      | typeof ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED,
     message: string,
     options?: XoErrorOptions,
   ) {
@@ -97,6 +98,7 @@ export class InstallError extends XoError {
     code:
       | typeof ErrorCode.PACKAGE_VALIDATION_FAILED
       | typeof ErrorCode.PACKAGE_UNTRUSTED
+      | typeof ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED
       | typeof ErrorCode.PACKAGE_ALREADY_INSTALLED
       | typeof ErrorCode.PACKAGE_NOT_INSTALLED
       | typeof ErrorCode.PACKAGE_UPGRADE_INVALID,

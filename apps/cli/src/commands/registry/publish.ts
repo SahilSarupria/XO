@@ -43,8 +43,11 @@ export async function publishCommand(options: PublishOptions): Promise<CommandRe
   const published = await client.publish(readResult.value);
   if (!published.ok) return failWith(`[${published.error.code}] ${published.error.message}`);
 
+  const verdict = trust.validator.evaluateTrust(readResult.value.manifest);
   return ok([
+    ...trust.warnings,
     `Published "${published.value.manifest.name}@${published.value.manifest.version}"`,
+    `  trust:         ${verdict.status} [mode=${verdict.mode}]`,
     `  id:            ${published.value.id}`,
     `  publishedAt:   ${published.value.publishedAt}`,
     `  ledgerEntry:   ${published.value.ledgerEntryHash}`,

@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { packBundle, PackageInstaller, parseLockfile } from '@xo/package-sdk';
+import { packBundle, parseLockfile } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import { installCommand } from '../src/commands/package/install.js';
-import { withTempDir, buildTestBundle } from './helpers.js';
+import { withTempDir, buildTestBundle, devInstaller } from './helpers.js';
 
 async function writeArchive(dir: string, bundle: ReturnType<typeof buildTestBundle>, filename: string): Promise<string> {
   const bytes = await packBundle(bundle);
@@ -53,7 +53,7 @@ test('install resolves and locks a real dependency chain already present in the 
   await withTempDir('xo-install-deps-test-', async (dir) => {
     const storeDir = join(dir, 'store');
     const store = new LocalFsBlobStore(storeDir);
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
 
     // Install the dependency first, on its own (it has no dependencies of its own).
     const coreMath = buildTestBundle({ name: 'xo_core_math', version: '1.4.0' });
@@ -108,7 +108,7 @@ test('install fails cleanly, without installing the root package, when a require
 
     // The root package must genuinely not be installed — check via a
     // fresh installer/store, not just by trusting the message.
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const manifestResult = await installer.getManifest('xo_finance', '1.0.0');
     assert.equal(manifestResult.ok, false);
     assert.equal(await lockFileExists(storeDir, 'xo_finance', '1.0.0'), false);
@@ -119,7 +119,7 @@ test('install fails cleanly on a genuine unsatisfiable version conflict between 
   await withTempDir('xo-install-deps-test-', async (dir) => {
     const storeDir = join(dir, 'store');
     const store = new LocalFsBlobStore(storeDir);
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
 
     const shared1 = await installer.install(buildTestBundle({ name: 'xo_shared', version: '1.0.0' }));
     assert.ok(shared1.ok);
@@ -159,7 +159,7 @@ test('install fails cleanly on a genuine unsatisfiable version conflict between 
     assert.match(output, /xo_left/);
     assert.match(output, /xo_right/);
 
-    const freshInstaller = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const freshInstaller = devInstaller(new LocalFsBlobStore(storeDir));
     const manifestResult = await freshInstaller.getManifest('xo_root', '1.0.0');
     assert.equal(manifestResult.ok, false);
   });
@@ -183,7 +183,7 @@ test('--skip-resolution installs the archive with no resolution at all, even whe
     assert.doesNotMatch(output, /Resolved and locked/);
     assert.equal(await lockFileExists(storeDir, 'xo_finance', '1.0.0'), false);
 
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const manifestResult = await installer.getManifest('xo_finance', '1.0.0');
     assert.ok(manifestResult.ok);
   });
