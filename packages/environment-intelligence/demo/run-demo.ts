@@ -83,9 +83,7 @@ async function run(title: string, root: string, origin: ModelOrigin): Promise<vo
     await auditLog.close();
     const report = await verifyAuditLog(auditDir);
     if (report.ok)
-      console.log(
-        `audit log: ${report.value.events} events, verified=${report.value.ok}, open attempts=${report.value.openAttempts.length}`,
-      );
+      console.log(`audit log: ${report.value.events} events, verified=true, open attempts=${report.value.openAttempts.length}`);
     await rm(auditDir, { recursive: true, force: true });
   }
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { PermissionScope } from '@xo/permissions';
+import { isAuthenticatedPrincipal, type PermissionScope } from '@xo/permissions';
 import { err, ok, type Result } from '@xo/types';
 import {
   AuditErrorCode,
@@ -16,6 +16,7 @@ import {
   type AuditReceipt,
   type AuditRecordRequest,
   type AuditRecorder,
+  type AuditTrust,
 } from './audit.js';
 import { requireAuthenticatedPrincipal, type TrustedAllow } from './authorization-gate.js';
 import type { ConnectorContext } from './connector.js';
@@ -58,6 +59,7 @@ const TIMED_OUT = Symbol('timed-out');
 export async function acceptAuditEvent(
   recorder: AuditRecorder,
   event: AuditRecordRequest,
+  trust: AuditTrust,
   options: AuditOptions = {},
 ): Promise<Result<AuditReceipt, AuditError>> {
   const normalized = normalizeAuditRecordRequest(event);
@@ -71,7 +73,7 @@ export async function acceptAuditEvent(
       const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
         timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
       });
-      const outcome = await Promise.race([recorder.record(normalized.value), timeout]);
+      const outcome = await Promise.race([recorder.record(normalized.value, trust), timeout]);
       if (outcome === TIMED_OUT) {
         last = auditError(AuditErrorCode.UNAVAILABLE, 'the audit recorder did not confirm the event in time');
         continue;
@@ -98,6 +100,11 @@ export async function acceptAuditEvent(
     }
   }
   return err(last);
+}
+
+/** The trusted audit context: the branded principal from the context, or nothing. Never built from a snapshot. */
+function trustOf(ctx: ConnectorContext): AuditTrust | undefined {
+  return isAuthenticatedPrincipal(ctx.principal) ? { principal: ctx.principal } : undefined;
 }
 
 const now = (ctx: ConnectorContext): string => ctx.clock.now().toISOString();
@@ -138,6 +145,7 @@ const unavailable = (
 export class AuditSession {
   constructor(
     private readonly recorder: AuditRecorder,
+    private readonly trust: AuditTrust,
     private readonly ctx: ConnectorContext,
     private readonly info: AuditedOperationInfo,
     readonly operationId: string,
@@ -163,7 +171,7 @@ export class AuditSession {
       counts: { evidence: ids.length },
       ...(ids.length > 0 && ids.length <= 10_000 ? { evidenceIds: ids } : {}),
     };
-    const accepted = await acceptAuditEvent(this.recorder, event, this.options);
+    const accepted = await acceptAuditEvent(this.recorder, event, this.trust, this.options);
     return accepted.ok ? accepted.value : undefined;
   }
 
@@ -202,7 +210,7 @@ export class AuditSession {
       ...(ids.length > 0 && ids.length <= 10_000 ? { evidenceIds: ids } : {}),
     };
     // Deliberately NOT tied to the caller's abort signal: a cancelled operation must still be recorded.
-    const accepted = await acceptAuditEvent(this.recorder, event, this.options);
+    const accepted = await acceptAuditEvent(this.recorder, event, this.trust, this.options);
     if (accepted.ok) {
       if (result.ok) this.ctx.ledger?.release(this.operationId, evidence);
       return result;
@@ -217,7 +225,7 @@ export class AuditSession {
       counts: { evidence: evidence.length },
       ...(ids.length <= 10_000 ? { evidenceIds: ids } : {}),
     };
-    const recorded = await acceptAuditEvent(this.recorder, quarantineEvent, { ...this.options, attempts: 1 });
+    const recorded = await acceptAuditEvent(this.recorder, quarantineEvent, this.trust, { ...this.options, attempts: 1 });
     return err(
       discoveryError(
         DiscoveryErrorCode.EVIDENCE_QUARANTINED,
@@ -300,10 +308,13 @@ export async function beginAudit(
       }),
     );
   }
+  // The trusted principal is the AUTHENTICATED one the gate enforced for; the request's `principal` is only a snapshot.
+  const trust = trustOf(ctx);
+  if (trust === undefined) return err(unavailable('attempt', operationId, { auditCode: AuditErrorCode.INVALID_EVENT }));
   const event = baseFields(ctx, info, operationId, 'attempt', 'attempted');
-  const accepted = await acceptAuditEvent(recorder, event, options);
+  const accepted = await acceptAuditEvent(recorder, event, trust, options);
   if (!accepted.ok) return err(unavailable('attempt', operationId, { auditCode: accepted.error.code }));
-  return ok(new AuditSession(recorder, ctx, info, operationId, options));
+  return ok(new AuditSession(recorder, trust, ctx, info, operationId, options));
 }
 
 /**
@@ -326,6 +337,8 @@ export async function auditDenial(
   if (recorder === undefined) return false;
   const who = requireAuthenticatedPrincipal(ctx.principal);
   if (!who.ok) return false;
+  const trust = trustOf(ctx);
+  if (trust === undefined) return false;
   const code = info.error.code;
   if (
     code !== DiscoveryErrorCode.AUTHORIZATION_DENIED &&
@@ -355,6 +368,6 @@ export async function auditDenial(
     },
     errorCode: code,
   };
-  const accepted = await acceptAuditEvent(recorder, event, options);
+  const accepted = await acceptAuditEvent(recorder, event, trust, options);
   return accepted.ok;
 }

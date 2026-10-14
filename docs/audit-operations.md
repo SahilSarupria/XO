@@ -81,7 +81,7 @@ capability catalogues (derived metadata, no raw documents or run data).
 
 ## Known limits / unresolved decisions
 
-- No tamper evidence (hash chain/signing) — a separate design decision.
+- The platform's `FileAuditStore` (API/CLI/runtime) has no tamper evidence. Tamper evidence exists in `ChainedAuditStore`, used for EI audit events since C0.3; see `docs/audit-canonical-contract.md` for the contract, failure semantics and the limits of a local hash chain.
 - Local CLI runs are unaudited unless `XO_AUDIT_*` is set (the operator is a trusted local context, not a principal).
 - Legal retention periods are an operator/legal decision; none is supplied.
 - `execution.started` precedes record creation, so it carries no `executionId`; join via `correlationId`.

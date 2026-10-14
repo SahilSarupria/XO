@@ -34,6 +34,7 @@ import {
   type AuditReceipt,
   type AuditRecordRequest,
   type AuditRecorder,
+  type AuditTrust,
   type ConnectorContext,
   type DiscoveryDeps,
   type Evidence,
@@ -43,7 +44,7 @@ import {
 } from '../src/index.js';
 import * as pkg from '../src/index.js';
 import { NODE_FS_OPS, type FsOps } from '../src/filesystem/fd-walk.js';
-import { TEST_PRINCIPAL, allowRoot, ctxFor, failClosed, put, withSandbox } from './helpers.js';
+import { TEST_PRINCIPAL, allowRoot, authenticated, ctxFor, failClosed, put, withSandbox } from './helpers.js';
 
 const LIST = 'filesystem.list';
 const READ = 'filesystem.read';
@@ -64,7 +65,7 @@ class ScriptedRecorder implements AuditRecorder {
     private readonly onAccepted?: (req: AuditRecordRequest) => void,
   ) {}
 
-  async record(req: AuditRecordRequest): Promise<Result<AuditReceipt, AuditError>> {
+  async record(req: AuditRecordRequest, trust: AuditTrust): Promise<Result<AuditReceipt, AuditError>> {
     this.calls.push(req);
     const n = this.calls.filter((c) => c.idempotencyKey === req.idempotencyKey).length;
     const tag = `${req.phase}:${req.outcome}`;
@@ -75,7 +76,7 @@ class ScriptedRecorder implements AuditRecorder {
     if (behavior === 'hang') return new Promise<never>(() => undefined);
     if (behavior === 'garbage') return undefined as unknown as Result<AuditReceipt, AuditError>;
     if (behavior.startsWith('delay:')) await sleep(Number(behavior.slice(6)));
-    const stored = await this.inner.record(req);
+    const stored = await this.inner.record(req, trust);
     if (!stored.ok) return stored;
     if (behavior === 'wrong_receipt') return ok({ ...stored.value, idempotencyKey: 'someone-else:attempt' });
     this.trace.push(`audit:accepted:${tag}`);
@@ -751,7 +752,13 @@ test('async: concurrent operations do not cross-release: one failing completion 
 // ---------------------------------------------------------------------------------------------------------------------
 
 test('recorder semantics: idempotent retry, conflict, and ordering', async () => {
-  const rec = new InMemoryAuditRecorder();
+  const rec0 = new InMemoryAuditRecorder();
+  const trust: AuditTrust = { principal: authenticated('operator-1') };
+  const rec = {
+    record: (e: AuditRecordRequest) => rec0.record(e, trust),
+    events: () => rec0.events(),
+    openAttempts: () => rec0.openAttempts(),
+  };
   const attempt: AuditRecordRequest = {
     idempotencyKey: 'op_9:attempt',
     operationId: 'op_9',

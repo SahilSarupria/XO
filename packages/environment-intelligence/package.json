@@ -21,6 +21,8 @@
     "demo": "node --import tsx demo/run-demo.ts"
   },
   "dependencies": {
+    "@xo/audit": "0.1.0",
+    "@xo/errors": "0.1.0",
     "@xo/types": "0.1.0",
     "@xo/xoir": "0.1.0",
     "@xo/permissions": "0.1.0"

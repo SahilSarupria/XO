@@ -84,7 +84,9 @@ Limits: `detect` and `validate_connection` are metadata-only existence probes an
 
 ### 8.3 P1.0 M4 — Durable audit persistence **[implemented, tested]**
 
-`FileAuditLog` implements the M2.2 `AuditRecorder` behind the same interface (EI does not depend on it). No existing repository store fit (the repo's persistence is JSON-file-per-record with atomic rename, no append-only log, no fsync discipline, no database dependency), so this is the smallest durable backend: one append-only JSON Lines file, one writer, `node:fs` and `node:crypto` only, no new dependencies.
+**C0.3 update:** EI no longer owns a log. `FileAuditLog` is a deprecated facade over the canonical `@xo/audit` `ChainedAuditStore` (via `CanonicalAuditRecorder`); the file is `audit.chain.jsonl`, writes require the authenticated principal (`record(event, trust)`), and there is no unauthenticated read. See `docs/audit-canonical-contract.md`. The bullets below describe the guarantees, now provided by the canonical store; sequence numbers are event sequences (no header offset), and `verifyAuditLog` returns an error (not a report with `ok:false`) on any integrity failure.
+
+Original M4 design note: `FileAuditLog` implemented the M2.2 `AuditRecorder` behind the same interface. No existing repository store fit (the repo's persistence is JSON-file-per-record with atomic rename, no append-only log, no fsync discipline, no database dependency), so this is the smallest durable backend: one append-only JSON Lines file, one writer, `node:fs` and `node:crypto` only, no new dependencies.
 
 - **Durability:** a record is acknowledged only after its complete line was written and `fsync` returned. A failed or short write, or a failed fsync, is _not accepted_ and poisons the instance until reopen. Events survive restart (tested with a clean reopen and a real `SIGKILL` of a writer).
 - **Identity and order:** `eventId`, strictly +1 `sequence`, `recordedAt`, event type/outcome; principal snapshot, permission decision metadata, requested/granted scope references, counts and evidence ids per M2.2's closed schema, re-validated by the backend.

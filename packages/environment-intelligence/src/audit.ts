@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { scopeKey, type PermissionScope, type Principal } from '@xo/permissions';
+import { scopeKey, type AuthenticatedPrincipal, type PermissionScope, type Principal } from '@xo/permissions';
 import { err, ok, type Result } from '@xo/types';
 import type { AuthorityKind } from './authorization.js';
 import { stableDigest } from './ids.js';
@@ -98,8 +98,17 @@ export interface AuditReceipt {
   readonly duplicate: boolean;
 }
 
+/**
+ * The REQUIRED trusted context of every audit write (C0.3). `principal` must be the AuthenticatedPrincipal established by
+ * the authentication/authorization boundary (it carries the platform brand); the request's own `principal` is only an
+ * attribution snapshot and is compared against it. A recorder MUST NOT derive the audit actor from the snapshot alone.
+ */
+export interface AuditTrust {
+  readonly principal: AuthenticatedPrincipal;
+}
+
 export interface AuditRecorder {
-  record(event: AuditRecordRequest): Promise<Result<AuditReceipt, AuditError>>;
+  record(event: AuditRecordRequest, trust: AuditTrust): Promise<Result<AuditReceipt, AuditError>>;
 }
 
 export const AuditErrorCode = {
@@ -338,28 +347,6 @@ export function digestKeys(keys: readonly string[]): string {
     .digest('hex')}`;
 }
 
-/** Canonical (sorted-key) JSON, for hashing and equality of normalized events. */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (isRecord(value)) {
-    return `{${Object.keys(value)
-      .filter((k) => value[k] !== undefined)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'null';
-}
-
-/**
- * Identity of an event's CONTENT for idempotency. `occurredAt` is excluded: a retry of the same logical event from a
- * later call carries a later timestamp and must still be recognised as the same event, not a contradiction.
- */
-export function requestDigest(request: AuditRecordRequest): string {
-  const { occurredAt: _occurredAt, ...content } = request;
-  return createHash('sha256').update(canonicalJson(content)).digest('hex');
-}
-
 /** True only for a receipt that is well-formed AND names the event that was submitted. Anything else is "not accepted". */
 export function isReceiptFor(receipt: unknown, request: AuditRecordRequest): receipt is AuditReceipt {
   if (!isRecord(receipt)) return false;
@@ -373,121 +360,4 @@ export function isReceiptFor(receipt: unknown, request: AuditRecordRequest): rec
     receipt['outcome'] === request.outcome &&
     typeof receipt['duplicate'] === 'boolean'
   );
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Shared semantics: idempotency, conflict and ordering. Every backend (including P1.0 M4's) applies these.
-// ---------------------------------------------------------------------------------------------------------------------
-
-export type AppendDecision =
-  | { readonly kind: 'append' }
-  | { readonly kind: 'duplicate'; readonly receipt: AuditReceipt }
-  | { readonly kind: 'rejected'; readonly error: AuditError };
-
-/**
- * The lifecycle rules a conforming audit backend enforces, kept separate from storage so the in-memory and durable
- * implementations cannot drift:
- *  - exact retry (same key, same content) -> the ORIGINAL receipt, nothing new is written (`duplicate: true`);
- *  - same key, different content -> `AUDIT_CONFLICT` (no contradictory outcome is ever stored);
- *  - a terminal event needs a durable attempt for the same operation, and an operation has at most ONE terminal event
- *    (a second one under a different key is a conflict); an attempt cannot follow its terminal.
- */
-export class AuditSemantics {
-  private readonly byKey = new Map<string, { readonly digest: string; readonly receipt: AuditReceipt }>();
-  private readonly attempts = new Set<string>();
-  private readonly terminals = new Map<string, string>();
-
-  decide(request: AuditRecordRequest): AppendDecision {
-    const existing = this.byKey.get(request.idempotencyKey);
-    if (existing !== undefined) {
-      if (existing.digest === requestDigest(request)) return { kind: 'duplicate', receipt: { ...existing.receipt, duplicate: true } };
-      return {
-        kind: 'rejected',
-        error: auditError(AuditErrorCode.CONFLICT, 'an event with this idempotency key was already accepted with different content', {
-          idempotencyKey: request.idempotencyKey,
-        }),
-      };
-    }
-    if (request.phase === 'terminal') {
-      if (!this.attempts.has(request.operationId)) {
-        return {
-          kind: 'rejected',
-          error: auditError(AuditErrorCode.ORDER_VIOLATION, 'a terminal event requires an accepted attempt for the same operation', {
-            operationId: request.operationId,
-          }),
-        };
-      }
-      if (this.terminals.has(request.operationId)) {
-        return {
-          kind: 'rejected',
-          error: auditError(AuditErrorCode.CONFLICT, 'this operation already has a terminal event', { operationId: request.operationId }),
-        };
-      }
-    }
-    if (request.phase === 'attempt' && this.terminals.has(request.operationId)) {
-      return {
-        kind: 'rejected',
-        error: auditError(AuditErrorCode.ORDER_VIOLATION, 'an attempt cannot follow the terminal event of its operation', {
-          operationId: request.operationId,
-        }),
-      };
-    }
-    return { kind: 'append' };
-  }
-
-  /** Call only after the event is accepted by the backend (durably, for a durable backend). */
-  commit(request: AuditRecordRequest, receipt: AuditReceipt): void {
-    this.byKey.set(request.idempotencyKey, { digest: requestDigest(request), receipt: { ...receipt, duplicate: false } });
-    if (request.phase === 'attempt') this.attempts.add(request.operationId);
-    if (request.phase === 'terminal') this.terminals.set(request.operationId, request.idempotencyKey);
-  }
-
-  /** Operations with an accepted attempt and no terminal event: their outcome is unknown and warrants investigation. */
-  openAttempts(): readonly string[] {
-    return [...this.attempts].filter((op) => !this.terminals.has(op)).sort();
-  }
-}
-
-/**
- * NON-DURABLE recorder for tests and local development ONLY. It is never a default anywhere in this package:
- * protected operations with no recorder configured are refused. Accepted events are lost when the process exits.
- * Production uses the durable log (`FileAuditLog`).
- */
-export class InMemoryAuditRecorder implements AuditRecorder {
-  private readonly accepted: Array<{ readonly request: AuditRecordRequest; readonly receipt: AuditReceipt }> = [];
-  private readonly semantics = new AuditSemantics();
-
-  constructor(private readonly now: () => Date = () => new Date()) {}
-
-  async record(event: AuditRecordRequest): Promise<Result<AuditReceipt, AuditError>> {
-    const normalized = normalizeAuditRecordRequest(event);
-    if (!normalized.ok) return normalized;
-    const decision = this.semantics.decide(normalized.value);
-    if (decision.kind === 'duplicate') return ok(decision.receipt);
-    if (decision.kind === 'rejected') return err(decision.error);
-    const sequence = this.accepted.length + 1;
-    const receipt: AuditReceipt = {
-      eventId: `mem_${String(sequence).padStart(8, '0')}`,
-      sequence,
-      recordedAt: this.now().toISOString(),
-      idempotencyKey: normalized.value.idempotencyKey,
-      outcome: normalized.value.outcome,
-      duplicate: false,
-    };
-    this.accepted.push({ request: normalized.value, receipt });
-    this.semantics.commit(normalized.value, receipt);
-    return ok(receipt);
-  }
-
-  events(): readonly AuditRecordRequest[] {
-    return this.accepted.map((a) => a.request);
-  }
-
-  receipts(): readonly AuditReceipt[] {
-    return this.accepted.map((a) => a.receipt);
-  }
-
-  openAttempts(): readonly string[] {
-    return this.semantics.openAttempts();
-  }
 }

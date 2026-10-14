@@ -5,5 +5,11 @@
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../types" }, { "path": "../xoir" }, { "path": "../permissions" }]
+  "references": [
+    { "path": "../types" },
+    { "path": "../xoir" },
+    { "path": "../permissions" },
+    { "path": "../audit" },
+    { "path": "../errors" }
+  ]
 }
