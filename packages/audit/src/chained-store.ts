@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, stat, truncate, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, truncate, unlink, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { AuditError, ErrorCode } from '@xo/errors';
@@ -275,7 +275,7 @@ export class ChainedAuditStore implements AuditSink {
     const lockPath = join(options.dir, CHAIN_LOCK_FILE);
     try {
       await mkdir(options.dir, { recursive: true, mode: 0o700 });
-    } catch (cause) {
+    } catch {
       return err(config('audit directory could not be prepared'));
     }
     const locked = await ChainedAuditStore.acquireLock(lockPath);
@@ -525,7 +525,6 @@ export class ChainedAuditStore implements AuditSink {
 }
 
 function reportOf(s: Scan, options: ChainVerifyOptions): Result<ChainVerifyReport, AuditError> {
-  const head: ChainCheckpoint = { logId: s.logId, records: s.records, events: s.events.length, hash: s.lastHash };
   const exp = options.expectedHead;
   if (exp !== undefined) {
     if (exp.logId !== s.logId) return err(corrupt('the checkpoint belongs to a different log'));
