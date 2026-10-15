@@ -272,7 +272,7 @@ test('single writer: a live lock fails closed (AUDIT_LOCKED); a stale lock from 
   const s = await open(dir);
   const second = await ChainedAuditStore.open({ dir });
   assert.ok(!second.ok && second.error.code === ErrorCode.AUDIT_LOCKED);
-  const closedRead = await readClosedChainedLog(dir);
+  const closedRead = await readClosedChainedLog(dir, await grant());
   assert.ok(!closedRead.ok && closedRead.error.code === ErrorCode.AUDIT_LOCKED, 'operator-local read refuses a live store');
   assert.ok(!(await verifyClosedChainedLog(dir)).ok, 'operator-local verify refuses a live store');
   await s.close();

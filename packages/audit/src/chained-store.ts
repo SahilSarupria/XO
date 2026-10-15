@@ -46,6 +46,24 @@ export const CHAIN_LOCK_FILE = 'audit.chain.lock';
 export const CHAIN_FORMAT = 'xo-audit-chain/1';
 export const INDEFINITE_RETENTION = '9999-12-31T23:59:59.999Z';
 const GENESIS = '0'.repeat(64);
+const EVENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const STORED_ACTOR_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
+const ACTOR_KINDS: ReadonlySet<string> = new Set(['human', 'service', 'system', 'anonymous']);
+
+/**
+ * A persisted actor was minted at write time and cannot be re-minted at read time, so its SHAPE is re-checked instead:
+ * only kind/id/orgId, a known kind, and path-safe identifiers. Anything else (extra members, odd ids) is corruption.
+ */
+function isWellFormedStoredActor(a: unknown): boolean {
+  if (!isRec(a)) return false;
+  for (const k of Object.keys(a)) if (k !== 'kind' && k !== 'id' && k !== 'orgId') return false;
+  if (typeof a['kind'] !== 'string' || !ACTOR_KINDS.has(a['kind'])) return false;
+  for (const f of ['id', 'orgId'] as const) {
+    const v = a[f];
+    if (v !== undefined && (typeof v !== 'string' || !STORED_ACTOR_ID_RE.test(v))) return false;
+  }
+  return true;
+}
 const MIN_KEY_BYTES = 32;
 
 export interface ChainedAuditStoreOptions {
@@ -175,8 +193,15 @@ function scan(text: string, key: Uint8Array | undefined, schemas: AuditExtension
         ...content
       } = ev as Record<string, unknown>;
       // Re-validate through the SAME closed schema used on write: an injected field or a sensitive value is corruption.
-      const v = validateDraftFields(content, { actorOk: () => true, extensionSchemas: schemas });
-      if (!v.ok || typeof ev['eventId'] !== 'string' || ev['schemaVersion'] !== 1 || ev['classification'] !== 'restricted')
+      const v = validateDraftFields(content, { actorOk: isWellFormedStoredActor, extensionSchemas: schemas });
+      if (
+        !v.ok ||
+        typeof ev['eventId'] !== 'string' ||
+        !EVENT_ID_RE.test(ev['eventId']) ||
+        ev['schemaVersion'] !== 1 ||
+        ev['classification'] !== 'restricted' ||
+        ev['retainUntil'] !== INDEFINITE_RETENTION
+      )
         return err(corrupt(`record ${n + 1} event does not satisfy the closed audit schema`));
       const decision = semantics.decide(v.value);
       if (decision.kind !== 'append') return err(corrupt(`record ${n + 1} contradicts earlier history`));
@@ -376,19 +401,44 @@ export class ChainedAuditStore implements AuditSink {
     return { ...rec, hash: recordHash(key, rec) };
   }
 
+  /**
+   * Single-writer lock. Creation is exclusive (`wx`). Taking over a lock whose owner is provably dead is a
+   * check-then-delete, which is a race when several processes find the same stale lock at once (one deletes the fresh lock
+   * another just created, leaving two writers). So the takeover is serialized by an exclusive `.takeover` guard and the
+   * staleness is RE-CHECKED while holding it. Only guard holders ever delete a lock they did not create; a leftover guard
+   * (a crash during takeover) fails CLOSED with AUDIT_LOCKED until an operator removes it.
+   */
   private static async acquireLock(lockPath: string): Promise<Result<true, AuditError>> {
     const body = JSON.stringify({ pid: process.pid, host: hostname(), startedAt: new Date().toISOString() });
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const locked = (): Result<true, AuditError> => err(new AuditError(ErrorCode.AUDIT_LOCKED, 'another writer owns this audit log'));
+    const create = async (): Promise<'created' | 'exists' | 'error'> => {
       try {
         await writeFile(lockPath, body, { flag: 'wx', mode: 0o600 });
-        return ok(true);
+        return 'created';
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return err(config('audit lock could not be created'));
-        if (await lockIsLive(lockPath)) return err(new AuditError(ErrorCode.AUDIT_LOCKED, 'another writer owns this audit log'));
-        await unlink(lockPath).catch(() => undefined); // provably dead owner on this host
+        return (e as NodeJS.ErrnoException).code === 'EEXIST' ? 'exists' : 'error';
       }
+    };
+    const first = await create();
+    if (first === 'created') return ok(true);
+    if (first === 'error') return err(config('audit lock could not be created'));
+    if (await lockIsLive(lockPath)) return locked();
+
+    const guard = `${lockPath}.takeover`;
+    try {
+      await writeFile(guard, body, { flag: 'wx', mode: 0o600 });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') return locked(); // someone else is taking over (or crashed doing so)
+      return err(config('audit lock could not be created'));
     }
-    return err(new AuditError(ErrorCode.AUDIT_LOCKED, 'another writer owns this audit log'));
+    try {
+      if (await lockIsLive(lockPath)) return locked(); // a faster taker already installed a live lock
+      await unlink(lockPath).catch(() => undefined); // provably dead owner on this host
+      const second = await create();
+      return second === 'created' ? ok(true) : second === 'exists' ? locked() : err(config('audit lock could not be created'));
+    } finally {
+      await unlink(guard).catch(() => undefined);
+    }
   }
 
   private serialized<T>(fn: () => Promise<T>): Promise<T> {
@@ -553,6 +603,7 @@ function reportOf(s: Scan, options: ChainVerifyOptions): Result<ChainVerifyRepor
 export interface ClosedLogOptions extends ChainVerifyOptions {
   readonly integrityKey?: Uint8Array;
   readonly extensionSchemas?: AuditExtensionSchemas;
+  readonly grantMaxAgeMs?: number;
 }
 async function scanClosed(dir: string, o: ClosedLogOptions): Promise<Result<Scan, AuditError>> {
   const keyErr = validateKey(o.integrityKey);
@@ -576,10 +627,17 @@ export async function verifyClosedChainedLog(dir: string, options: ClosedLogOpti
   const s = await scanClosed(dir, options);
   return s.ok ? reportOf(s.value, options) : s;
 }
+/**
+ * Reading EVENT CONTENT of a closed log is a read like any other: it requires the same single-use `read` grant as the live
+ * store. (`verifyClosedChainedLog` returns counts and a hash only and needs no grant.)
+ */
 export async function readClosedChainedLog(
   dir: string,
+  grant: unknown,
   options: ClosedLogOptions = {},
 ): Promise<Result<readonly AuditEvent[], AuditError>> {
+  const g = consumeGrant(grant, 'read', Date.now(), options.grantMaxAgeMs ?? 30_000);
+  if (!g.ok) return g;
   const s = await scanClosed(dir, options);
   return s.ok ? ok(s.value.events) : s;
 }

@@ -9,6 +9,8 @@ import {
   type AuditSink,
   type ChainedAuditStoreOptions,
 } from '@xo/audit';
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { ErrorCode, type AuditError as PlatformAuditError } from '@xo/errors';
 import { isAuthenticatedPrincipal } from '@xo/permissions';
 import { err, ok, type Result } from '@xo/types';
@@ -211,10 +213,29 @@ export class CanonicalAuditRecorder implements AuditRecorder {
   }
 }
 
-/** Opens the canonical chained store with the EI extension registered. The ONE writable history for EI audit events. */
+/** The pre-C0.3 EI log. It is never migrated and never coexists with the canonical history. */
+export const LEGACY_EI_LOG_FILE = 'audit.log';
+
+/**
+ * Opens the canonical chained store with the EI extension registered. This is the ONE writable history for EI audit
+ * events. A directory still holding a pre-C0.3 `audit.log` is refused here (not only in the deprecated `FileAuditLog`
+ * shim), so no entry point can create a second history next to it.
+ */
 export async function openEiAuditStore(
   options: Omit<ChainedAuditStoreOptions, 'extensionSchemas'>,
 ): Promise<Result<ChainedAuditStore, AuditError>> {
+  const legacy = await stat(join(options.dir, LEGACY_EI_LOG_FILE)).then(
+    () => true,
+    () => false,
+  );
+  if (legacy) {
+    return err(
+      auditError(
+        AuditErrorCode.INVALID_CONFIG,
+        'a pre-C0.3 audit.log exists in this directory; it is not migrated and would create a second history',
+      ),
+    );
+  }
   const r = await ChainedAuditStore.open({ ...options, extensionSchemas: { [EI_AUDIT_NAMESPACE]: EI_AUDIT_EXTENSION_SCHEMA } });
   return r.ok ? ok(r.value) : err(toEiAuditError(r.error));
 }

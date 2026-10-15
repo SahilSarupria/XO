@@ -1,5 +1,3 @@
-import { stat } from 'node:fs/promises';
-import { join } from 'node:path';
 import {
   CHAIN_LOCK_FILE,
   CHAIN_LOG_FILE,
@@ -45,7 +43,6 @@ import {
  */
 export const AUDIT_LOG_FILE = CHAIN_LOG_FILE;
 export const AUDIT_LOCK_FILE = CHAIN_LOCK_FILE;
-const LEGACY_LOG_FILE = 'audit.log';
 
 export type AuditRetentionPolicy = { readonly mode: 'indefinite' } | { readonly mode: 'minimum'; readonly minimumMs: number };
 
@@ -94,18 +91,6 @@ export class FileAuditLog implements AuditRecorder {
     }
     if (retention.mode === 'minimum' && !(Number.isFinite(retention.minimumMs) && retention.minimumMs >= 0)) {
       return err(auditError(AuditErrorCode.INVALID_CONFIG, 'retention must be a non-negative finite duration'));
-    }
-    const legacy = await stat(join(options.dir, LEGACY_LOG_FILE)).then(
-      () => true,
-      () => false,
-    );
-    if (legacy) {
-      return err(
-        auditError(
-          AuditErrorCode.INVALID_CONFIG,
-          'a pre-C0.3 audit.log exists in this directory; it is not migrated and would create a second history',
-        ),
-      );
     }
     const store = await openEiAuditStore({
       dir: options.dir,

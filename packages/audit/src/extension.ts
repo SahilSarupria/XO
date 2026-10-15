@@ -115,10 +115,15 @@ function scalar(spec: AuditExtensionScalar, v: unknown, filters: GlobalFilters):
     case 'isoTime':
       return typeof v === 'string' && ISO_RE.test(v) ? v : FAIL;
     case 'opaque':
-      return typeof v === 'string' && v.length <= spec.maxLength && spec.pattern.test(v) ? v : FAIL;
+      // Anchored at MATCH time, so a pattern whose source merely starts with ^ and ends with $ (e.g. an alternation
+      // `^a|b$`) still has to match the WHOLE value.
+      return typeof v === 'string' && v.length <= spec.maxLength && fullMatch(spec.pattern, v) ? v : FAIL;
   }
 }
 const FAIL = Symbol('fail');
+function fullMatch(pattern: RegExp, value: string): boolean {
+  return new RegExp(`^(?:${pattern.source})$`, pattern.flags.replace(/[gy]/g, '')).test(value);
+}
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 function field(spec: AuditExtensionField, v: unknown, filters: GlobalFilters, path: string): { value: unknown } | { fail: string } {

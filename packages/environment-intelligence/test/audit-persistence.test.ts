@@ -26,8 +26,10 @@ import {
   EnvironmentInventory,
   EvidenceLedger,
   FileAuditLog,
+  CanonicalAuditRecorder,
   InMemoryAuditRecorder,
   LocalFilesystemConnector,
+  openEiAuditStore,
   PermissionManagerAuthorization,
   acquireSourceContent,
   assertRetentionAligned,
@@ -45,6 +47,7 @@ import {
 } from '../src/index.js';
 import * as pkg from '../src/index.js';
 import { TEST_PRINCIPAL, allowRoot, authenticated, ctxFor, put, withSandbox } from './helpers.js';
+import { readGrant } from './support/audit-grants.js';
 
 const KEY = new Uint8Array(32).fill(7);
 const OPERATOR = authenticated('operator-1');
@@ -77,7 +80,10 @@ const extSchemas = { [EI_AUDIT_NAMESPACE]: EI_AUDIT_EXTENSION_SCHEMA };
 
 /** Operator-local read of a CLOSED log (refuses a live one), viewed as EI request fields. */
 async function persisted(dir: string, integrityKey?: Uint8Array) {
-  const r = await readClosedChainedLog(dir, { extensionSchemas: extSchemas, ...(integrityKey !== undefined ? { integrityKey } : {}) });
+  const r = await readClosedChainedLog(dir, await readGrant(), {
+    extensionSchemas: extSchemas,
+    ...(integrityKey !== undefined ? { integrityKey } : {}),
+  });
   assert.ok(r.ok, `closed log must read (${r.ok ? '' : r.error.code})`);
   return (r.ok ? r.value : []).map((e) => ({
     event: e,
@@ -233,8 +239,8 @@ test('a SIGKILLed writer loses no acknowledged event; the stale lock is taken ov
     assert.ok(lockLeft, 'the killed writer left its lock behind (the realistic crash case)');
     const live = await verifyAuditLog(dir);
     assert.ok(
-      live.ok || live.error.code === AuditErrorCode.LOCKED || live.error.code === AuditErrorCode.CORRUPT,
-      'a stale lock never makes verification report success for an unverifiable file',
+      live.ok || live.error.code === AuditErrorCode.CORRUPT,
+      'a dead owner is not a live writer (never LOCKED); a torn tail is reported as CORRUPT, never as success',
     );
 
     const reopened = await FileAuditLog.open({ dir });
@@ -367,6 +373,11 @@ test('exactly one writable history: a pre-C0.3 audit.log is refused, and the log
     await writeFile(join(dir, 'audit.log'), '{}\n');
     const refused = await FileAuditLog.open({ dir });
     assert.ok(!refused.ok && refused.error.code === AuditErrorCode.INVALID_CONFIG, 'a second history can never coexist');
+    const direct = await openEiAuditStore({ dir });
+    assert.ok(
+      !direct.ok && direct.error.code === AuditErrorCode.INVALID_CONFIG,
+      'the canonical entry point refuses it too, not only the shim',
+    );
   });
   const surface = Object.getOwnPropertyNames(FileAuditLog.prototype);
   for (const forbidden of ['delete', 'remove', 'truncate', 'compact', 'prune', 'purge', 'clear', 'rewrite', 'update']) {
@@ -598,5 +609,18 @@ test('the in-memory recorder is not a production default: EI refuses protected o
     delete ctx.audit;
     const run = await discoverSource(freshDeps(), request(root), ctx as ConnectorContext);
     assert.ok(run.ok && run.value.stoppedBecause?.code === DiscoveryErrorCode.AUDIT_UNAVAILABLE && run.value.evidence.length === 0);
+  });
+});
+
+test('no silent fallback: the EI recorder over an UNCHAINED store refuses lifecycle events instead of dropping the guarantee', async () => {
+  await withSandbox(async ({ base }) => {
+    const { FileAuditStore } = await import('@xo/audit');
+    const unchained = await FileAuditStore.open({
+      dir: join(base, 'unchained'),
+      retention: { defaultRetentionMs: 30 * 86_400_000, minimumRetentionMs: 7 * 86_400_000 },
+    });
+    const recorder = new CanonicalAuditRecorder(unchained);
+    const r = await recorder.record(attempt('op_fallback'), trust);
+    assert.ok(!r.ok && r.error.code === AuditErrorCode.INVALID_EVENT, 'lifecycle needs the chained store');
   });
 });
