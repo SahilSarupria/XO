@@ -44,7 +44,8 @@ export class FsExecutionStore implements ExecutionStore {
     if (input.executionId !== undefined) {
       // A caller-supplied id (M6) is used as given or refused — never replaced, or the caller's durable reference would dangle.
       if (!isValidExecutionId(executionId)) return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid execution id'));
-      if (await this.store.has(metadataKey(executionId))) return err(new XoError(ErrorCode.ALREADY_EXISTS, 'execution id is already in use'));
+      if (await this.store.has(metadataKey(executionId)))
+        return err(new XoError(ErrorCode.ALREADY_EXISTS, 'execution id is already in use'));
     } else {
       let attempts = 0;
       while (await this.store.has(metadataKey(executionId))) {

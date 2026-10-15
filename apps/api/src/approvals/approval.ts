@@ -94,13 +94,7 @@ export interface ExpectedApprovalTarget {
 }
 
 export type ApprovalDenialReason =
-  | 'not_approved'
-  | 'legacy_unbound'
-  | 'malformed'
-  | 'target_mismatch'
-  | 'attribution_invalid'
-  | 'stale'
-  | 'state_unavailable';
+  'not_approved' | 'legacy_unbound' | 'malformed' | 'target_mismatch' | 'attribution_invalid' | 'stale' | 'state_unavailable';
 
 /** Stable, audit-safe reason codes (match the audit `reasonCode` pattern). */
 export const APPROVAL_REASON_CODES: Readonly<Record<ApprovalDenialReason, string>> = Object.freeze({
@@ -212,7 +206,10 @@ export function evaluateApproval(
     record.compilationId !== expected.compilationId ||
     record.capabilityId !== expected.capabilityId
   ) {
-    return denied('target_mismatch', `the approval on record is not for ${label} in compilation "${expected.compilationId}" of this workspace`);
+    return denied(
+      'target_mismatch',
+      `the approval on record is not for ${label} in compilation "${expected.compilationId}" of this workspace`,
+    );
   }
   if (record.identityId !== record.approver.id || record.approverIdentityId !== record.approver.id) {
     return denied('attribution_invalid', `the approval for ${label} is not consistently attributed to a single approver`);
@@ -230,7 +227,10 @@ export function evaluateApproval(
     bound.bindingId !== current.bindingId ||
     bound.sourceDigestSha256 !== current.sourceDigestSha256
   ) {
-    return denied('stale', `the approval for ${label} no longer matches its current state (it changed since it was approved); approve it again`);
+    return denied(
+      'stale',
+      `the approval for ${label} no longer matches its current state (it changed since it was approved); approve it again`,
+    );
   }
   return { approved: true, record };
 }

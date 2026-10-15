@@ -1,13 +1,8 @@
 import { ErrorCode, XoError } from '@xo/errors';
 import type { AuditEventDraft } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
-import {
-  IdempotencyGate,
-  type BeginInput,
-  type IdempotencyClaim,
-  type IdempotentResource,
-  type ResourceProbe,
-} from './idempotency.js';
+import type { IdempotencyGate } from './idempotency.js';
+import { type BeginInput, type IdempotencyClaim, type IdempotentResource, type ResourceProbe } from './idempotency.js';
 
 /** What a route needs to proceed after the gate: either it owns a claim and runs the operation, or it replays a recorded resource. */
 export type GatedOutcome =
@@ -59,13 +54,19 @@ export async function gateIdempotent(
       return refuse(
         'idempotency.conflict',
         ErrorCode.IDEMPOTENCY_KEY_REUSED,
-        new XoError(ErrorCode.IDEMPOTENCY_KEY_REUSED, 'this Idempotency-Key was already used for a different request; nothing was executed'),
+        new XoError(
+          ErrorCode.IDEMPOTENCY_KEY_REUSED,
+          'this Idempotency-Key was already used for a different request; nothing was executed',
+        ),
       );
     case 'in_progress':
       return refuse(
         'idempotency.in_progress',
         ErrorCode.IDEMPOTENCY_IN_PROGRESS,
-        new XoError(ErrorCode.IDEMPOTENCY_IN_PROGRESS, 'the operation for this Idempotency-Key is still running; retry later with the same key'),
+        new XoError(
+          ErrorCode.IDEMPOTENCY_IN_PROGRESS,
+          'the operation for this Idempotency-Key is still running; retry later with the same key',
+        ),
       );
     case 'outcome_unknown':
       return refuse(

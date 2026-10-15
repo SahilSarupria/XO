@@ -5,6 +5,7 @@
 **Provenance note.** M3 was first committed as `23d8c27` in an earlier sandbox session. That sandbox was reset before M6 began and the commit was never pushed, so it was re-created from the same design in a new session (owner-approved). The code, tests and results match the first implementation, but the commit hash differs.
 
 ## Behaviour
+
 - **Attributed:** `approver` = snapshot of the authenticated principal (M1); body ignored; `identityId`/`approverIdentityId`/`approver.id` must agree.
 - **Bound:** server-derived binding: contract content hash (incl. rules), permission-declaration fingerprint (M2), resolved binding, compilation source digest, combined state digest.
 - **Enforced:** one `verifyApproval` decision at the execution route, workflow start and every step, human-task resume (approve and reject), and the capability/workflow projections.
@@ -13,9 +14,11 @@
 - **Audit (M4):** `approval.attempted` (durable precondition), `approval.granted`, `approval.denied`; precise reason codes on execution denials.
 
 ## Validation (this session)
+
 `tsc -b` exit 0. `apps/api` 271/271 (246 pre-existing + 25 new in `test/approval-integrity.test.ts`). Lint/format not run (tools unavailable; `registry.npmjs.org` is denied by the sandbox egress policy). Typecheck used global TypeScript 6.0.3, not the pinned 5.9.3.
 
 ## Limitations
+
 1. Who may approve is still "owner of the workspace"; no approver role/permission (decisions §C).
 2. No separation of duties, quorum or revocation.
 3. Approvals and the stored graph are plain files: a filesystem-level attacker can forge both consistently (signing is M5's territory).

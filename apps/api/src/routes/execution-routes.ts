@@ -17,7 +17,13 @@ import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import { deriveCapabilityApprovalStateFromJson } from '../approvals/approval-binding.js';
 import { verifyApproval } from '../approvals/approval-enforcement.js';
 import { FsExecutionStore, mintExecutionId } from '../executions/fs-execution-store.js';
-import { IdempotencyGate, fingerprintRequest, readIdempotencyKey, type IdempotencyClaim, type ResourceProbe } from '../idempotency/idempotency.js';
+import {
+  IdempotencyGate,
+  fingerprintRequest,
+  readIdempotencyKey,
+  type IdempotencyClaim,
+  type ResourceProbe,
+} from '../idempotency/idempotency.js';
 import { REPLAY_HEADER, gateIdempotent, recordInvalid, resourceMatchesRequest } from '../idempotency/idempotency-http.js';
 import type { PermissionManager } from '@xo/permissions';
 import { executeApprovedCapability, preflightCapabilityAuthorization } from '../executions/execute-capability.js';
@@ -184,19 +190,14 @@ export function registerExecutionRoutes(
     let keyRef: string | undefined;
     let takeover = false;
     if (idemKey.value !== undefined) {
-      const gated = await gateIdempotent(
-        new IdempotencyGate(workspaceIdempotencyStore(workspace, dataConfig)),
-        audit,
-        baseDraft,
-        {
-          operation: 'execute.capability',
-          workspaceId: workspace.workspaceId,
-          principal: { kind: principal.kind, id: principal.id },
-          key: idemKey.value,
-          fingerprint: fingerprintRequest('execute.capability', { compilationId, capabilityId, input }),
-          probe,
-        },
-      );
+      const gated = await gateIdempotent(new IdempotencyGate(workspaceIdempotencyStore(workspace, dataConfig)), audit, baseDraft, {
+        operation: 'execute.capability',
+        workspaceId: workspace.workspaceId,
+        principal: { kind: principal.kind, id: principal.id },
+        key: idemKey.value,
+        fingerprint: fingerprintRequest('execute.capability', { compilationId, capabilityId, input }),
+        probe,
+      });
       if (gated.kind === 'replay') {
         const recorded = await executionStore.get(gated.resource.id);
         if (
@@ -225,7 +226,9 @@ export function registerExecutionRoutes(
         ...baseDraft,
         type: 'execution.started',
         outcome: 'started',
-        ...(keyRef !== undefined ? { metadata: { ...baseDraft.metadata, keyRef, idempotent: true, ...(takeover ? { takeover: true } : {}) } } : {}),
+        ...(keyRef !== undefined
+          ? { metadata: { ...baseDraft.metadata, keyRef, idempotent: true, ...(takeover ? { takeover: true } : {}) } }
+          : {}),
       });
 
       const executionId = claim !== undefined ? mintExecutionId() : undefined;
@@ -358,8 +361,10 @@ export function registerExecutionRoutes(
       // itself. Only genuinely exceptional conditions (unowned workspace,
       // unknown compilation/capability, not approved, NOT AUTHORIZED —
       // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
-      return json(completed.value.status === 'failed' ? 200 : 201, { ...toWireRecord(completed.value), ...finalizationNotice(finalization) });
-  
+      return json(completed.value.status === 'failed' ? 200 : 201, {
+        ...toWireRecord(completed.value),
+        ...finalizationNotice(finalization),
+      });
     } catch (cause) {
       // Nothing is released unless provably nothing was created; otherwise the claim stays for the documented recovery rules.
       await claim?.abort(probe);

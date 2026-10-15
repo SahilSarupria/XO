@@ -18,7 +18,13 @@ import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { IdempotencyGate, fingerprintRequest, readIdempotencyKey, type IdempotencyClaim, type ResourceProbe } from '../idempotency/idempotency.js';
+import {
+  IdempotencyGate,
+  fingerprintRequest,
+  readIdempotencyKey,
+  type IdempotencyClaim,
+  type ResourceProbe,
+} from '../idempotency/idempotency.js';
 import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/idempotency-http.js';
 import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
 import { verifyApproval } from '../approvals/approval-enforcement.js';
@@ -323,7 +329,12 @@ export function registerWorkflowRoutes(
       return json(record.status === 'failed' ? 200 : 201, await toWorkflowExecutionView(ctx, record), REPLAY_HEADER);
     }
     await (claim as IdempotencyClaim | undefined)?.complete();
-    const finalization = await recordWorkflowOutcome(audit, keyRef === undefined ? base : { ...base, metadata: { ...base.metadata, keyRef, idempotent: true } }, record, correlationId);
+    const finalization = await recordWorkflowOutcome(
+      audit,
+      keyRef === undefined ? base : { ...base, metadata: { ...base.metadata, keyRef, idempotent: true } },
+      record,
+      correlationId,
+    );
     // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
     return json(record.status === 'failed' ? 200 : 201, {
       ...(await toWorkflowExecutionView(ctx, record)),

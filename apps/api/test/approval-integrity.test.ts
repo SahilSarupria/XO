@@ -74,7 +74,9 @@ const approvalFile = (env: Env, cap: string): string =>
 
 /** Edits ONE node's properties inside the PERSISTED compiled graph (what a post-approval change to the stored compilation looks like). */
 async function tamperNode(env: Env, nodeId: string, edit: (props: Record<string, unknown>) => void): Promise<void> {
-  const stored = JSON.parse(await readFile(resultPath(env), 'utf8')) as { graph: { nodes: { id: string; properties: Record<string, unknown> }[] } };
+  const stored = JSON.parse(await readFile(resultPath(env), 'utf8')) as {
+    graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
+  };
   const node = stored.graph.nodes.find((n) => n.id === nodeId);
   assert.ok(node, `node ${nodeId} not found in stored graph`);
   edit(node.properties);
@@ -171,7 +173,11 @@ test('an approval file copied to another capability (or compilation/workspace) i
     const genuine = JSON.parse(await readFile(approvalFile(env, IDS.flowA), 'utf8')) as Record<string, unknown>;
     const cases: readonly [string, Record<string, unknown>, string][] = [
       ['record names the other capability', { ...genuine }, 'target_mismatch'],
-      ['record names another compilation', { ...genuine, compilationId: 'cmp_00000000000000000000000000000000', capabilityId: IDS.flowB }, 'target_mismatch'],
+      [
+        'record names another compilation',
+        { ...genuine, compilationId: 'cmp_00000000000000000000000000000000', capabilityId: IDS.flowB },
+        'target_mismatch',
+      ],
       ['record names another workspace', { ...genuine, workspaceId: 'ws_other', capabilityId: IDS.flowB }, 'target_mismatch'],
       ["ids rewritten to flowB, binding is flowA's", { ...genuine, capabilityId: IDS.flowB }, 'stale'],
     ];
@@ -331,7 +337,11 @@ test('malformed, unattributed, unknown-version and unparseable approval files ar
       ['approver with authority-like extras', JSON.stringify({ ...base, approver: { ...base['approver'], admin: true } }), 'malformed'],
       ['missing binding field', JSON.stringify({ ...base, binding: { ...base['binding'], stateDigest: undefined } }), 'malformed'],
       ['approver id disagrees with identityId', JSON.stringify({ ...base, identityId: 'someone-else' }), 'attribution_invalid'],
-      ['approver id disagrees with approverIdentityId', JSON.stringify({ ...base, approverIdentityId: 'someone-else' }), 'attribution_invalid'],
+      [
+        'approver id disagrees with approverIdentityId',
+        JSON.stringify({ ...base, approverIdentityId: 'someone-else' }),
+        'attribution_invalid',
+      ],
     ];
     for (const [label, content, status] of variants) {
       await writeFile(approvalFile(env, IDS.flowA), content);
@@ -498,7 +508,11 @@ test('state derivation: stable for the same graph; distinct per capability; sour
   const sameSource = deriveCapabilityApprovalState(buildFixtureGraph(), IDS.flowA, SRC_DIGEST);
   const otherSource = deriveCapabilityApprovalState(buildFixtureGraph(), IDS.flowA, 'different');
   assert.ok(sameSource.ok && otherSource.ok);
-  assert.equal(sameSource.value.stateDigest, otherSource.value.stateDigest, 'the source digest is bound separately, not mixed into the state digest');
+  assert.equal(
+    sameSource.value.stateDigest,
+    otherSource.value.stateDigest,
+    'the source digest is bound separately, not mixed into the state digest',
+  );
   assert.notEqual(sameSource.value.sourceDigestSha256, otherSource.value.sourceDigestSha256);
   assert.notEqual(derive(buildFixtureGraph(), IDS.flowB).stateDigest, base.stateDigest, 'distinct capabilities have distinct state');
 });
@@ -522,7 +536,15 @@ test('evaluateApproval: pure decision table', () => {
     approver: { kind: 'human', id: 'alice', orgId: 'acme' },
     identityId: 'alice',
     approverIdentityId: 'alice',
-    binding: { stateDigest: 'd', contractId: 'c', contractContentHash: 'h', declarationFingerprint: 'f', implementationClass: 'deterministic_rule', bindingId: 'b', sourceDigestSha256: 's' },
+    binding: {
+      stateDigest: 'd',
+      contractId: 'c',
+      contractContentHash: 'h',
+      declarationFingerprint: 'f',
+      implementationClass: 'deterministic_rule',
+      bindingId: 'b',
+      sourceDigestSha256: 's',
+    },
   };
   assert.equal(evaluateApproval({ kind: 'bound', record }, target, current).approved, true);
   const reason = (l: Parameters<typeof evaluateApproval>[0], c: CurrentApprovalState | null = current) => {

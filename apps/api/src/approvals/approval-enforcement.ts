@@ -1,7 +1,13 @@
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import type { XoError } from '@xo/errors';
-import { evaluateApproval, type ApprovalStore, type ApprovalVerdict, type CurrentApprovalState, type ExpectedApprovalTarget } from './approval.js';
+import {
+  evaluateApproval,
+  type ApprovalStore,
+  type ApprovalVerdict,
+  type CurrentApprovalState,
+  type ExpectedApprovalTarget,
+} from './approval.js';
 
 /**
  * P1.0 M3 — the one enforcement entry point. Every place that is about to act on an approval (execution route, workflow runner,

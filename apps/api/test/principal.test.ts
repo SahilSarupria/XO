@@ -252,10 +252,19 @@ test('HITL at the service layer: a different authenticated resolver is recorded 
 
       // A fabricated / deserialized "principal" cannot resolve.
       await assert.rejects(
-        resolveHumanTaskExecution(store, comps, exec.executionId, 'approve', {}, {
-          kind: 'human',
-          id: 'forged',
-        } as unknown as AuthenticatedPrincipal, undefined as never, approvals),
+        resolveHumanTaskExecution(
+          store,
+          comps,
+          exec.executionId,
+          'approve',
+          {},
+          {
+            kind: 'human',
+            id: 'forged',
+          } as unknown as AuthenticatedPrincipal,
+          undefined as never,
+          approvals,
+        ),
       );
 
       const out = await resolveHumanTaskExecution(

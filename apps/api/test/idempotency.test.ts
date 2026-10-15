@@ -18,7 +18,6 @@ import {
   scopeHashOf,
   type ResourceProbe,
 } from '../src/idempotency/idempotency.js';
-import { LocalFsBlobStore } from '@xo/storage';
 import {
   workspaceExecutionsStore,
   workspaceIdempotencyStore,
@@ -123,7 +122,9 @@ const exec = (env: Env, cap: string, input: Record<string, unknown>, key?: strin
     { ...(key !== undefined ? { 'idempotency-key': key } : {}), ...headers },
   );
 async function workflowId(env: Env, first: string): Promise<string> {
-  const list = (await env.server.request('GET', ws(env, '/workflows'))).json<{ workflows: { workflowId: string; steps: { capabilityId: string }[] }[] }>();
+  const list = (await env.server.request('GET', ws(env, '/workflows'))).json<{
+    workflows: { workflowId: string; steps: { capabilityId: string }[] }[];
+  }>();
   const wf = list.workflows.find((w) => w.steps[0]?.capabilityId === first);
   assert.ok(wf);
   return wf.workflowId;
@@ -337,7 +338,14 @@ test('a burst of simultaneous identical requests executes exactly once; every ot
 test('gate level: of N simultaneous begin() calls exactly one proceeds; the rest see in_progress; after complete() all see a replay', async () => {
   await withEnv(async (env) => {
     const gate = gateFor(env);
-    const input = { operation: 'execute.capability', workspaceId: env.workspace.workspaceId, principal, key: KEY, fingerprint: fp(IDS.flowA, A_INPUT, env), probe: neverProbe } as const;
+    const input = {
+      operation: 'execute.capability',
+      workspaceId: env.workspace.workspaceId,
+      principal,
+      key: KEY,
+      fingerprint: fp(IDS.flowA, A_INPUT, env),
+      probe: neverProbe,
+    } as const;
     const outcomes = await Promise.all(Array.from({ length: 12 }, () => gate.begin(input)));
     const winners = outcomes.filter((o) => o.kind === 'proceed');
     assert.equal(winners.length, 1);
@@ -359,7 +367,12 @@ test('the same key in a DIFFERENT workspace is an independent operation (no shar
     const { compilationId: c2 } = await storeFixtureCompilation(ws2, env.dataDir);
     const base2 = `/workspaces/${ws2.workspaceId}`;
     assert.equal((await env.server.request('POST', `${base2}/compilations/${c2}/capabilities/${IDS.flowA}/approve`)).status, 200);
-    const res = await env.server.request('POST', `${base2}/executions`, { compilationId: c2, capabilityId: IDS.flowA, input: A_INPUT }, { 'idempotency-key': KEY });
+    const res = await env.server.request(
+      'POST',
+      `${base2}/executions`,
+      { compilationId: c2, capabilityId: IDS.flowA, input: A_INPUT },
+      { 'idempotency-key': KEY },
+    );
     assert.equal(res.status, 201, res.bodyText);
     assert.equal(res.headers['idempotent-replayed'], undefined);
     assert.notEqual(res.json<ExecWire>().executionId, first.executionId);
@@ -396,9 +409,15 @@ test('gate level: principal, workspace and operation are part of the scope; a re
 
     // Copy principal A's record file over principal B's slot: B must NOT be served A's result.
     const dir = idemDir(env);
-    const [fileA, fileB] = [scopeHashOf('execute.capability', env.workspace.workspaceId, principal, KEY), scopeHashOf('execute.capability', env.workspace.workspaceId, { kind: 'service', id: 'second-principal' }, KEY)];
+    const [fileA, fileB] = [
+      scopeHashOf('execute.capability', env.workspace.workspaceId, principal, KEY),
+      scopeHashOf('execute.capability', env.workspace.workspaceId, { kind: 'service', id: 'second-principal' }, KEY),
+    ];
     const recA = JSON.parse(await readFile(join(dir, `${fileA}.json`), 'utf8')) as Record<string, unknown>;
-    await writeFile(join(dir, `${fileB}.json`), JSON.stringify({ ...recA, state: 'completed', resource: { kind: 'execution', id: mintExecutionId() } }));
+    await writeFile(
+      join(dir, `${fileB}.json`),
+      JSON.stringify({ ...recA, state: 'completed', resource: { kind: 'execution', id: mintExecutionId() } }),
+    );
     const forged = await gate.begin({ ...base, operation: 'execute.capability', principal: { kind: 'service', id: 'second-principal' } });
     assert.equal(forged.kind, 'invalid_record');
   });
@@ -424,7 +443,18 @@ test('the same key used for an execution and for a workflow start are independen
 test('a key never bypasses authentication, approval (M3), or authorization (M2): replays re-run every check', async () => {
   await withEnv(async (env) => {
     // M1: no credentials -> 401 even with a valid key.
-    assert.equal((await env.server.request('POST', ws(env, '/executions'), { compilationId: env.compilationId, capabilityId: IDS.flowA, input: A_INPUT }, { 'idempotency-key': KEY }, { skipAuth: true })).status, 401);
+    assert.equal(
+      (
+        await env.server.request(
+          'POST',
+          ws(env, '/executions'),
+          { compilationId: env.compilationId, capabilityId: IDS.flowA, input: A_INPUT },
+          { 'idempotency-key': KEY },
+          { skipAuth: true },
+        )
+      ).status,
+      401,
+    );
     // M3: not approved -> 403, and the key is not consumed.
     assert.equal((await exec(env, IDS.flowA, A_INPUT, KEY)).status, 403);
     assert.deepEqual(await idemRecords(env), [], 'a refused request leaves no claim behind');
@@ -434,7 +464,9 @@ test('a key never bypasses authentication, approval (M3), or authorization (M2):
 
     // M3 on replay: the capability changes after approval -> the SAME key is refused (403), not served the old result.
     const resultFile = join(env.dataDir, env.workspace.workspaceId, 'compilations', env.compilationId, 'result.json');
-    const stored = JSON.parse(await readFile(resultFile, 'utf8')) as { graph: { nodes: { id: string; properties: Record<string, unknown> }[] } };
+    const stored = JSON.parse(await readFile(resultFile, 'utf8')) as {
+      graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
+    };
     stored.graph.nodes.find((n) => n.id === 'decision_p08_flow_a')!.properties['outcome'] = 'changed after approval';
     await writeFile(resultFile, JSON.stringify(stored));
     const stale = await exec(env, IDS.flowA, A_INPUT, KEY);
@@ -451,24 +483,44 @@ test('M2 on replay across a restart: a principal who is no longer authorized can
       let workspace: WorkspaceRecord;
       let compilationId: string;
       const sink = new ControlledSink();
-      const serverA = await TestServer.start({ workspaceDataDir: dataDir, workspacesDir, auditSink: sink, permissionPolicy: new RuleBasedPolicy([GRANT_FILE]) });
+      const serverA = await TestServer.start({
+        workspaceDataDir: dataDir,
+        workspacesDir,
+        auditSink: sink,
+        permissionPolicy: new RuleBasedPolicy([GRANT_FILE]),
+      });
       let executionId: string;
       try {
         workspace = (await serverA.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
         compilationId = (await storeFixtureCompilation(workspace, dataDir)).compilationId;
         const base = `/workspaces/${workspace.workspaceId}`;
         await serverA.request('POST', `${base}/compilations/${compilationId}/capabilities/${IDS.perm}/approve`);
-        const r = await serverA.request('POST', `${base}/executions`, { compilationId, capabilityId: IDS.perm, input: { file_size: 50 } }, { 'idempotency-key': KEY });
+        const r = await serverA.request(
+          'POST',
+          `${base}/executions`,
+          { compilationId, capabilityId: IDS.perm, input: { file_size: 50 } },
+          { 'idempotency-key': KEY },
+        );
         assert.equal(r.status, 201, r.bodyText);
         executionId = r.json<ExecWire>().executionId;
       } finally {
         await serverA.stop();
       }
       // "Restart": same data on disk, a policy that no longer grants this principal. (Same principal id: the key store is per-server.)
-      const serverB = await TestServer.start({ workspaceDataDir: dataDir, workspacesDir, auditSink: sink, permissionPolicy: new RuleBasedPolicy([]) });
+      const serverB = await TestServer.start({
+        workspaceDataDir: dataDir,
+        workspacesDir,
+        auditSink: sink,
+        permissionPolicy: new RuleBasedPolicy([]),
+      });
       try {
         const base = `/workspaces/${workspace.workspaceId}`;
-        const denied = await serverB.request('POST', `${base}/executions`, { compilationId, capabilityId: IDS.perm, input: { file_size: 50 } }, { 'idempotency-key': KEY });
+        const denied = await serverB.request(
+          'POST',
+          `${base}/executions`,
+          { compilationId, capabilityId: IDS.perm, input: { file_size: 50 } },
+          { 'idempotency-key': KEY },
+        );
         assert.equal(denied.status, 403, denied.bodyText);
         assert.ok(!denied.bodyText.includes(executionId));
         assert.equal(sink.ofType('idempotency.replayed').length, 0);
@@ -527,7 +579,13 @@ test('restart: a completed keyed operation is still a replay on a fresh server o
   await withTempDir('xo-m6-data-', async (dataDir) => {
     await withTempDir('xo-m6-ws-', async (workspacesDir) => {
       const sink = new ControlledSink();
-      const mk = () => TestServer.start({ workspaceDataDir: dataDir, workspacesDir, auditSink: sink, permissionPolicy: new RuleBasedPolicy([GRANT_FILE]) });
+      const mk = () =>
+        TestServer.start({
+          workspaceDataDir: dataDir,
+          workspacesDir,
+          auditSink: sink,
+          permissionPolicy: new RuleBasedPolicy([GRANT_FILE]),
+        });
       const a = await mk();
       let workspace: WorkspaceRecord;
       let compilationId: string;
@@ -537,14 +595,26 @@ test('restart: a completed keyed operation is still a replay on a fresh server o
         compilationId = (await storeFixtureCompilation(workspace, dataDir)).compilationId;
         const base = `/workspaces/${workspace.workspaceId}`;
         await a.request('POST', `${base}/compilations/${compilationId}/capabilities/${IDS.flowA}/approve`);
-        executionId = (await a.request('POST', `${base}/executions`, { compilationId, capabilityId: IDS.flowA, input: A_INPUT }, { 'idempotency-key': KEY })).json<ExecWire>().executionId;
+        executionId = (
+          await a.request(
+            'POST',
+            `${base}/executions`,
+            { compilationId, capabilityId: IDS.flowA, input: A_INPUT },
+            { 'idempotency-key': KEY },
+          )
+        ).json<ExecWire>().executionId;
       } finally {
         await a.stop();
       }
       const b = await mk();
       try {
         const base = `/workspaces/${workspace.workspaceId}`;
-        const res = await b.request('POST', `${base}/executions`, { compilationId, capabilityId: IDS.flowA, input: A_INPUT }, { 'idempotency-key': KEY });
+        const res = await b.request(
+          'POST',
+          `${base}/executions`,
+          { compilationId, capabilityId: IDS.flowA, input: A_INPUT },
+          { 'idempotency-key': KEY },
+        );
         assert.equal(res.status, 201, res.bodyText);
         assert.equal(res.headers['idempotent-replayed'], 'true');
         assert.equal(res.json<ExecWire>().executionId, executionId);
@@ -576,7 +646,12 @@ async function strandClaim(env: Env, opts: { resource?: 'none' | 'placeholder' |
     assert.equal(await begin.claim.attach({ kind: 'execution', id }), true);
     if (opts.resource !== 'absent') {
       const store = new FsExecutionStore(workspaceExecutionsStore(env.workspace, { dataRootDir: env.dataDir }));
-      const created = await store.create(env.workspace.workspaceId, authed(), { compilationId: env.compilationId, capabilityId: IDS.flowA, input: A_INPUT, executionId: id });
+      const created = await store.create(env.workspace.workspaceId, authed(), {
+        compilationId: env.compilationId,
+        capabilityId: IDS.flowA,
+        input: A_INPUT,
+        executionId: id,
+      });
       assert.ok(created.ok);
       if (opts.resource === 'completed') assert.ok((await store.complete(id, { status: 'succeeded', output: { matched: true } })).ok);
     }
@@ -715,7 +790,9 @@ test('workflow start: approval (M3) is re-checked on a keyed retry — a stale s
     const wf = await workflowId(env, IDS.flowA);
     assert.equal((await startWf(env, wf, WF_INPUT, KEY)).status, 201);
     const resultFile = join(env.dataDir, env.workspace.workspaceId, 'compilations', env.compilationId, 'result.json');
-    const stored = JSON.parse(await readFile(resultFile, 'utf8')) as { graph: { nodes: { id: string; properties: Record<string, unknown> }[] } };
+    const stored = JSON.parse(await readFile(resultFile, 'utf8')) as {
+      graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
+    };
     stored.graph.nodes.find((n) => n.id === 'decision_p08_flow_b')!.properties['outcome'] = 'changed after approval';
     await writeFile(resultFile, JSON.stringify(stored));
     const res = await startWf(env, wf, WF_INPUT, KEY);
@@ -770,8 +847,16 @@ test('key syntax and fingerprint equivalence', () => {
   const a = fingerprintRequest('execute.capability', { compilationId: 'c', capabilityId: 'k', input: { a: 1, b: { x: 1, y: [1, 2] } } });
   const b = fingerprintRequest('execute.capability', { input: { b: { y: [1, 2], x: 1 }, a: 1 }, capabilityId: 'k', compilationId: 'c' });
   assert.equal(a, b, 'object key order does not matter');
-  assert.notEqual(a, fingerprintRequest('execute.capability', { compilationId: 'c', capabilityId: 'k', input: { a: 1, b: { x: 1, y: [2, 1] } } }), 'array order does');
-  assert.notEqual(a, fingerprintRequest('start.workflow', { compilationId: 'c', capabilityId: 'k', input: { a: 1, b: { x: 1, y: [1, 2] } } }), 'operation is part of it');
+  assert.notEqual(
+    a,
+    fingerprintRequest('execute.capability', { compilationId: 'c', capabilityId: 'k', input: { a: 1, b: { x: 1, y: [2, 1] } } }),
+    'array order does',
+  );
+  assert.notEqual(
+    a,
+    fingerprintRequest('start.workflow', { compilationId: 'c', capabilityId: 'k', input: { a: 1, b: { x: 1, y: [1, 2] } } }),
+    'operation is part of it',
+  );
 });
 
 test('record parsing is strict', () => {

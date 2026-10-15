@@ -218,7 +218,10 @@ export function registerCompilationRoutes(
       ...baseDraft,
       type: 'approval.attempted',
       outcome: 'attempted',
-      metadata: { ...(safeId(compilationId) !== undefined ? { compilationId } : {}), stateDigestPrefix: state.value.stateDigest.slice(0, 23) },
+      metadata: {
+        ...(safeId(compilationId) !== undefined ? { compilationId } : {}),
+        stateDigestPrefix: state.value.stateDigest.slice(0, 23),
+      },
     });
 
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
@@ -244,7 +247,10 @@ export function registerCompilationRoutes(
         ...baseDraft,
         type: 'approval.granted',
         outcome: 'completed',
-        metadata: { ...(safeId(compilationId) !== undefined ? { compilationId } : {}), stateDigestPrefix: state.value.stateDigest.slice(0, 23) },
+        metadata: {
+          ...(safeId(compilationId) !== undefined ? { compilationId } : {}),
+          stateDigestPrefix: state.value.stateDigest.slice(0, 23),
+        },
       },
       { correlationId },
     );
