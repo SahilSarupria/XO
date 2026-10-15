@@ -24,6 +24,7 @@ import {
   finalizationNotice,
   newCorrelationId,
   safeId,
+  safeReasonCode,
   type AuditService,
 } from '../audit/audit-service.js';
 
@@ -42,6 +43,21 @@ const MAX_DECISION_DATA_BYTES = 8 * 1024; // generous for a small structured dec
 
 function toWireRecord(record: ExecutionRecord): ExecutionRecord {
   return record;
+}
+
+/**
+ * P1.0 F-1 (Option A): how a RESOLVED human task is classified for audit, from the persisted record alone.
+ *  - `failed` execution -> outcome `failed`, reasonCode = the stored `errorCode` (code only, never the message).
+ *  - `unsupported` resume -> the task is consumed but the execution is still `waiting_for_human`; that is NOT a completion,
+ *    so outcome `failed`, reasonCode = the stored `HITL_RESUME_UNSUPPORTED` code.
+ *  - otherwise (`succeeded`/`rejected`: a human rejection is a successfully recorded decision) -> `completed`, no reasonCode.
+ * Exported for unit testing: the `unsupported` branch is not reachable through the HTTP API today.
+ */
+export function classifyResolution(record: ExecutionRecord): { readonly outcome: 'completed' | 'failed'; readonly reasonCode?: string } {
+  if (record.status === 'failed') return { outcome: 'failed', reasonCode: safeReasonCode(record.errorCode) };
+  const resume = record.humanTask?.resumeOutcome;
+  if (resume?.kind === 'unsupported') return { outcome: 'failed', reasonCode: safeReasonCode(resume.errorCode) };
+  return { outcome: 'completed' };
 }
 
 function isHumanTask(record: ExecutionRecord): boolean {
@@ -198,11 +214,19 @@ export function registerHumanTaskRoutes(
         throw outcome.error;
       case 'resolved': {
         // The resolution (and any resumed execution) ALREADY happened: a failed completion write is reported, never retried.
+        // P1.0 F-1 (Option A): the audit outcome now reflects what the resume ACTUALLY did, with the authoritative stored
+        // failure code as `reasonCode` (code only, never the message). Task consumption, execution state, HTTP status and
+        // response body are unchanged.
+        //  - `failed`: execution failed; `record.errorCode` is the stored code (approval denial is stored as the coarse
+        //    RUNTIME_PERMISSION_DENIED — the approval gate returns only a message; see docs/audit-operations.md).
+        //  - `unsupported`: the task is consumed but the execution is still `waiting_for_human` — NOT a completion.
+        const classified = classifyResolution(outcome.record);
         const finalization = await audit.finalize(
           {
             ...hitlBase,
             type: 'humantask.resolved',
-            outcome: outcome.record.status === 'failed' ? 'failed' : 'completed',
+            outcome: classified.outcome,
+            ...(classified.reasonCode !== undefined ? { reasonCode: classified.reasonCode } : {}),
             metadata: { decision, resultingStatus: String(outcome.record.status) },
           },
           { correlationId, ...(targetId !== undefined ? { executionId: targetId } : {}) },

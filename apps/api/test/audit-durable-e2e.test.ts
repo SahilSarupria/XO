@@ -3,9 +3,18 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ErrorCode } from '@xo/errors';
+import { AuditError, ErrorCode } from '@xo/errors';
 import { Permissions, RuleBasedPolicy } from '@xo/permissions';
-import { FileAuditStore, SYSTEM_ACTOR, isDurableReceipt, resolveAuditConfig, type AuditEvent } from '@xo/audit';
+import {
+  FileAuditStore,
+  SYSTEM_ACTOR,
+  isDurableReceipt,
+  resolveAuditConfig,
+  type AppendResult,
+  type AuditEvent,
+  type AuditEventDraft,
+  type AuditSink,
+} from '@xo/audit';
 import { TestServer, withTempDir } from './test-helpers.js';
 
 // P1.0 M4 acceptance evidence — the REAL durable store (FileAuditStore on a temp dir) behind the API.
@@ -218,4 +227,79 @@ test('production-style configuration: missing, partial or inverted XO_AUDIT_* is
     XO_AUDIT_MIN_RETENTION_DAYS: '7',
   });
   assert.ok(good.ok && good.value.mode === 'durable');
+});
+
+// P1.0 M4 R10 — the crash window, on the REAL store. A process crash between the side effect and the completion append leaves exactly this
+// on-disk state: a durable `execution.started` for a correlation id, an execution record, and NO completion event. This test builds that
+// state with a completion-append failure (the observable state is identical to a crash at that point; a real SIGKILL is not simulated) and
+// walks the documented reconciliation in docs/audit-operations.md. It proves DETECTABILITY, not atomicity: no atomicity exists between
+// execution storage and audit storage, and nothing here repairs the gap.
+class DropCompletionSink implements AuditSink {
+  readonly mode = 'durable' as const;
+  drop = false;
+  constructor(private readonly inner: FileAuditStore) {}
+  async append(draft: AuditEventDraft): Promise<AppendResult> {
+    if (this.drop && draft.type === 'execution.completed') {
+      return {
+        ok: false,
+        error: new AuditError(ErrorCode.AUDIT_UNAVAILABLE, 'simulated crash before completion append'),
+        indeterminate: false,
+      };
+    }
+    return this.inner.append(draft);
+  }
+}
+
+test('R10 crash window on the real store: started-without-outcome is detectable by correlation id and cross-checkable against the execution record; the side effect is not repeated and nothing is fabricated', async () => {
+  await withTempDir('xo-audit-e2e-', async (dir) => {
+    const auditDir = join(dir, 'audit');
+    const file = join(auditDir, 'audit.jsonl');
+    const store = await openStore(auditDir);
+    const sink = new DropCompletionSink(store);
+    const server = await TestServer.start({ workspaceDataDir: dir, auditSink: sink });
+    try {
+      const w = (await server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+      const compilationId = await compileApproved(server, w);
+      sink.drop = true;
+      const run = await execute(server, w, compilationId);
+      assert.equal(run.status, 201, 'the real operation succeeded');
+      const body = run.json<{ executionId: string; status: string; auditFinalization?: { status: string; correlationId: string } }>();
+      assert.equal(body.status, 'succeeded');
+      assert.equal(body.auditFinalization?.status, 'failed');
+      const correlationId = body.auditFinalization?.correlationId as string;
+
+      // Reconciliation step 1: on disk there is a started event for that correlation id and no outcome for it.
+      const events = await diskEvents(file);
+      const mine = events.filter((e) => e.correlationId === correlationId);
+      assert.deepEqual(
+        mine.map((e) => e.type),
+        ['execution.started'],
+      );
+      assert.ok(!events.some((e) => e.type === 'execution.completed' || e.type === 'execution.failed'), 'no outcome was invented');
+
+      // Step 2: cross-check against the execution record (the source of truth for what really happened).
+      const list = (await server.request('GET', `/workspaces/${w}/executions`)).json<{
+        executions: { executionId: string; status: string }[];
+      }>();
+      assert.equal(list.executions.length, 1, 'exactly one execution: not re-run');
+      assert.equal(list.executions[0]?.executionId, body.executionId);
+      assert.equal(list.executions[0]?.status, 'succeeded');
+
+      // The gap survives a restart unchanged: re-opening neither repairs it nor breaks seq continuity.
+      sink.drop = false;
+      const reopened = await openStore(auditDir);
+      const probe = await reopened.append({
+        type: 'access.attempted',
+        action: 'read.r10-probe',
+        outcome: 'attempted',
+        actor: SYSTEM_ACTOR,
+      });
+      assert.ok(probe.ok);
+      const after = await diskEvents(file);
+      after.forEach((e, i) => assert.equal(e.seq, (after[0] as AuditEvent).seq + i));
+      assert.ok(!after.some((e) => e.correlationId === correlationId && e.type !== 'execution.started'));
+    } finally {
+      await server.stop();
+    }
+  });
 });

@@ -1,3 +1,4 @@
+import { ErrorCode, XoError } from '@xo/errors';
 import type { ApiResponse, Middleware, RouteHandler } from './types.js';
 
 interface CompiledRoute {
@@ -94,16 +95,34 @@ function matchSegments(
   requestSegments: readonly string[],
 ): Readonly<Record<string, string>> | undefined {
   if (routeSegments.length !== requestSegments.length) return undefined;
-  const params: Record<string, string> = {};
+  // Literal segments are compared first, so a request is only ever percent-decoded for a route whose shape it actually matches.
   for (let i = 0; i < routeSegments.length; i++) {
     const routeSegment = routeSegments[i];
     const requestSegment = requestSegments[i];
     if (routeSegment === undefined || requestSegment === undefined) return undefined;
-    if (routeSegment.kind === 'literal') {
-      if (routeSegment.value !== requestSegment) return undefined;
-    } else {
-      params[routeSegment.name] = decodeURIComponent(requestSegment);
+    if (routeSegment.kind === 'literal' && routeSegment.value !== requestSegment) return undefined;
+  }
+  const params: Record<string, string> = {};
+  for (let i = 0; i < routeSegments.length; i++) {
+    const routeSegment = routeSegments[i];
+    const requestSegment = requestSegments[i];
+    if (routeSegment?.kind === 'param' && requestSegment !== undefined) {
+      params[routeSegment.name] = decodeParam(requestSegment);
     }
   }
   return params;
+}
+
+/**
+ * P1.0: a path parameter that is not valid percent-encoding (for example `%E0%A4%A`) used to make `decodeURIComponent` throw a
+ * `URIError`, which reached the server's last-resort handler as an unauthenticated generic 500. It is a malformed client request:
+ * 400 with the existing `INVALID_ARGUMENT` code. The offending text is never echoed. Authentication behaviour is unchanged — this
+ * runs in route resolution, before the auth middleware, exactly as the 404/405 responses and the previous 500 did.
+ */
+function decodeParam(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request path contains malformed percent-encoding');
+  }
 }

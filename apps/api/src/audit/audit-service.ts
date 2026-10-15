@@ -36,6 +36,19 @@ export function safeId(raw: string | undefined): string | undefined {
   return raw !== undefined && ID_RE.test(raw) ? raw : undefined;
 }
 
+// Mirrors the audit schema's reasonCode shape (`@xo/audit` validates the same pattern on write and on read). Duplicated, not
+// exported from the audit package, so closing F-1 does not widen that package's public surface.
+const REASON_CODE_RE = /^[A-Za-z][A-Za-z0-9_.-]{0,95}$/;
+
+/**
+ * P1.0 F-1: turns a STORED failure code (an `ErrorCode` value persisted on an execution/workflow record) into an audit
+ * `reasonCode`. Only the code is ever used — never the associated message, which may carry free text. A code that does not
+ * match the schema's shape (corrupt or foreign record) degrades to `XO_UNKNOWN` instead of making the audit write fail.
+ */
+export function safeReasonCode(code: unknown): string {
+  return typeof code === 'string' && REASON_CODE_RE.test(code) ? code : ErrorCode.UNKNOWN;
+}
+
 export function newCorrelationId(): string {
   return `req-${randomUUID()}`;
 }

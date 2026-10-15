@@ -90,7 +90,11 @@ test('taxonomy accounting: event types with no emitter, and types with no direct
   //    verification succeeded); none of the graph defects tried reached it (a missing requiredPermissions yields execution.denied instead).
   //  - workflow.resumed: only the fallback arm of recordWorkflowOutcome for a status that is not succeeded/failed/rejected/interrupted/waiting_for_human.
   const noDirectTest = ['authorization.denied', 'workflow.resumed'];
-  for (const t of [...noEmitter, ...noDirectTest]) assert.ok(declared.includes(t), `${t} is still declared`);
+  // Reserved: an emitting branch exists in human-task-routes.ts but cannot be reached (the 'error' outcome comes only from store
+  // errors, never RUNTIME_PERMISSION_DENIED); a failed-resume denial is humantask.resolved/failed + reasonCode (F-1 Option A).
+  // Kept declared because removing a type makes persisted lines of that type read back as corrupt. Documented in docs/audit-operations.md.
+  const reservedUnreachable = ['humantask.denied'];
+  for (const t of [...noEmitter, ...noDirectTest, ...reservedUnreachable]) assert.ok(declared.includes(t), `${t} is still declared`);
 });
 
 test('execution.failed: an authorized execution that ends failed is recorded as execution.failed (outcome failed) with the execution id, after execution.started', async () => {
@@ -164,11 +168,17 @@ test('workflow.failed: a resume whose later step fails closed (approval revoked 
     assert.equal(last.outcome, 'failed');
     assert.equal(last.executionId, wf.workflowExecutionId);
     assert.ok(resume.some((e) => e.type === 'workflow.step.failed'));
+    // P1.0 F-1: workflow.failed carries the stored workflow errorCode (code only).
+    const stored = res.json<{ errorCode?: string; errorMessage?: string }>();
+    assert.ok(stored.errorCode !== undefined, 'the workflow record carries its failure code');
+    assert.equal(last.reasonCode, stored.errorCode);
+    if (stored.errorMessage) assert.ok(!JSON.stringify(last).includes(stored.errorMessage), 'no message text in the event');
   });
 });
 
-test('humantask — CHARACTERIZATION of current behaviour (see acceptance report F-1): a resolver whose grant was withdrawn gets 200; the task is consumed as resolved-with-failed-resume; audit records humantask.resolved/failed, not humantask.denied', async () => {
-  // This pins what the code does today so any change is deliberate and reviewed. It does NOT assert that this is the desired policy.
+test('humantask (F-1 Option A): a resolver whose grant was withdrawn gets 200; the task is consumed as resolved-with-failed-resume; audit records humantask.resolved/failed carrying the stored reasonCode (still not humantask.denied)', async () => {
+  // Pins the current contract (HTTP 200, task consumed, failed execution) and, since F-1 Option A, the audit reasonCode.
+  // humantask.denied stays reserved: this path does not and must not produce it.
   const graph = graphWith(IDS.hitlB, (p) => {
     p['requiredPermissions'] = [FILE];
   });
@@ -198,6 +208,7 @@ test('humantask — CHARACTERIZATION of current behaviour (see acceptance report
     assert.ok(done, ev.map((e) => e.type).join(','));
     assert.equal(done.outcome, 'failed');
     assert.ok(!ev.some((e) => e.type === 'humantask.denied'), 'humantask.denied is not what an unauthorized resolver produces today');
-    assert.equal(done.reasonCode, undefined, 'the denial reason is not carried on the audit event');
+    assert.equal(done.reasonCode, 'XO_RUNTIME_PERMISSION_DENIED', 'the stored failure code is carried as reasonCode');
+    assert.ok(!JSON.stringify(ev).includes('grant withdrawn'), 'the policy reason text (a message) never reaches the audit record');
   });
 });

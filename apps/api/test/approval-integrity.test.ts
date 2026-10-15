@@ -435,6 +435,14 @@ test('human-task resume is an enforcement point: a stale approval is not resumed
       const rec = resolved.json<{ status: string; errorCode?: string; output?: unknown }>();
       assert.equal(rec.status, 'failed', decision);
       assert.equal(rec.errorCode, 'XO_RUNTIME_PERMISSION_DENIED', decision);
+      // P1.0 F-1: the audit completion event carries the stored code (the coarse approval-denial code — the approval gate
+      // returns only a message) as reasonCode, outcome failed — never the message text.
+      const done = events(env, 'humantask.resolved');
+      assert.equal(done.length, 1, decision);
+      assert.equal(done[0]?.outcome, 'failed', decision);
+      assert.equal(done[0]?.reasonCode, 'XO_RUNTIME_PERMISSION_DENIED', decision);
+      const stored = (resolved.json<{ errorMessage?: string }>().errorMessage ?? '').trim();
+      if (stored.length > 0) assert.ok(!JSON.stringify(env.sink.events()).includes(stored), 'no error message text in audit');
     });
   }
 });
@@ -446,6 +454,9 @@ test('human-task resume still works for an unchanged, approved capability', asyn
     const resolved = await env.server.request('POST', ws(env, `/executions/${exec.executionId}/resolve`), { decision: 'approve' });
     assert.equal(resolved.status, 200, resolved.bodyText);
     assert.equal(resolved.json<{ status: string }>().status, 'succeeded');
+    const done = events(env, 'humantask.resolved');
+    assert.equal(done[0]?.outcome, 'completed');
+    assert.equal(done[0]?.reasonCode, undefined, 'a successful resolution carries no reasonCode');
   });
 });
 

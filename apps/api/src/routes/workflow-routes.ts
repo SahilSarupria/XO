@@ -50,6 +50,7 @@ import {
   finalizationNotice,
   newCorrelationId,
   safeId,
+  safeReasonCode,
   type AuditFinalization,
   type AuditService,
 } from '../audit/audit-service.js';
@@ -158,6 +159,8 @@ async function recordWorkflowOutcome(
       ...base,
       type,
       outcome: bad ? 'failed' : 'completed',
+      // P1.0 F-1: the stored workflow failure code (code only, never errorMessage), when the record carries one.
+      ...(type === 'workflow.failed' && record.errorCode !== undefined ? { reasonCode: safeReasonCode(record.errorCode) } : {}),
       ...(workflowExecutionId !== undefined ? { executionId: workflowExecutionId } : {}),
       metadata: { ...(base.metadata ?? {}), workflowStatus: String(record.status), revision: record.revision },
     },
