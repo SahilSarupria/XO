@@ -39,3 +39,7 @@ export * from './resolver/dependency-graph.js';
 export * from './resolver/solver.js';
 export * from './resolver/resolver.js';
 export * from './resolver/lockfile.js';
+
+// Package trust (P1.0 M5)
+export * from './trust/trust-policy.js';
+export * from './trust/verify-trust.js';

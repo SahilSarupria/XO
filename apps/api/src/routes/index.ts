@@ -14,6 +14,9 @@ import type { WorkspaceStore } from '../workspace/workspace.js';
 import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { openApiDocument } from '../openapi.js';
 import type { PermissionManager } from '@xo/permissions';
+import type { AuditAccessController, AuditSink } from '@xo/audit';
+import type { AuditService } from '../audit/audit-service.js';
+import { registerAuditRoutes } from './audit-routes.js';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -21,6 +24,11 @@ export interface RegisterRoutesDeps {
   readonly workspaceDataConfig: WorkspaceDataConfig;
   /** P1.0 M2 — required: routes cannot be registered without an authorization policy decision point. */
   readonly permissionManager: PermissionManager;
+  /** P1.0 M4 — required: protected reads and lifecycle transitions cannot be registered without an audit service. */
+  readonly audit: AuditService;
+  /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
+  readonly auditSink: AuditSink;
+  readonly auditAccess: AuditAccessController;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -32,9 +40,10 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerRuntimeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerCompilerRoutes(router);
   registerWorkspaceRoutes(router, deps.workspaceStore);
-  registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager);
-  registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager);
-  registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager);
+  registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
 }

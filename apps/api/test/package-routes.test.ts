@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { packBundle, PackageInstaller } from '@xo/package-sdk';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { packBundle } from '@xo/package-sdk';
+import { TestServer, withTempDir, devInstaller } from './test-helpers.js';
 import { buildFixtureBundle } from './fixtures.js';
 import { workspacePackagesStore } from '../src/workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
@@ -119,7 +119,7 @@ test('resolve() and lock() against a real installed package with no dependencies
       const store = workspacePackagesStore(workspace, { dataRootDir: dataDir });
 
       const bundle = buildFixtureBundle({ name: 'xo_resolve_pkg', version: '2.0.0' });
-      const installed = await new PackageInstaller(store).install(bundle);
+      const installed = await devInstaller(store).install(bundle);
       assert.equal(installed.ok, true);
 
       const base = `/workspaces/${workspace.workspaceId}/packages`;
@@ -163,7 +163,7 @@ test('GET /workspaces/:workspaceId/packages/:name/:version/manifest returns an i
       const store = workspacePackagesStore(workspace, { dataRootDir: dataDir });
 
       const bundle = buildFixtureBundle({ name: 'xo_manifest_pkg', version: '3.0.0' });
-      await new PackageInstaller(store).install(bundle);
+      await devInstaller(store).install(bundle);
 
       const base = `/workspaces/${workspace.workspaceId}/packages`;
       const okRes = await server.request('GET', `${base}/xo_manifest_pkg/3.0.0/manifest`);

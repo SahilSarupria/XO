@@ -2,8 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { PackageInstaller } from '@xo/package-sdk';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { TestServer, withTempDir, devInstaller } from './test-helpers.js';
 import { buildFixtureBundle } from './fixtures.js';
 import { workspacePackagesStore } from '../src/workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
@@ -130,7 +129,7 @@ test('workspace-scoped writes land under the expected server-controlled namespac
 
       const store = workspacePackagesStore(workspace, { dataRootDir: dataDir });
       const bundle = buildFixtureBundle({ name: 'xo_namespace_pkg', version: '1.0.0' });
-      const installed = await new PackageInstaller(store).install(bundle);
+      const installed = await devInstaller(store).install(bundle);
       assert.equal(installed.ok, true);
 
       // A real, successful write happened via the HTTP-shaped

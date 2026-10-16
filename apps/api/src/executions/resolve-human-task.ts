@@ -4,6 +4,9 @@ import type { CompilationStore } from '../compilations/compilation.js';
 import type { ExecutionRecord, ExecutionStore, HumanTaskDecision } from './execution.js';
 import { withExecutionLock } from './execution-lock.js';
 import { attemptResume } from './resume-human-task.js';
+import type { ApprovalStore } from '../approvals/approval.js';
+import { deriveCapabilityApprovalStateFromJson } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
 
 /**
  * The single implementation of "resolve one human task" — extracted
@@ -33,6 +36,8 @@ export async function resolveHumanTaskExecution(
   data: Readonly<Record<string, unknown>> | undefined,
   resolver: AuthenticatedPrincipal,
   permissionManager: PermissionManager,
+  /** P1.0 M3 — where approvals live and which workspace they must belong to. Required: resuming is an enforcement point. */
+  approvals: { readonly store: ApprovalStore; readonly workspaceId: string },
 ): Promise<ResolveHumanTaskOutcome> {
   assertAuthenticatedPrincipal(resolver); // fail closed: a resumed task is never resolved by a fabricated or deserialized identity
   return withExecutionLock(executionId, async (): Promise<ResolveHumanTaskOutcome> => {
@@ -52,6 +57,21 @@ export async function resolveHumanTaskExecution(
       decision,
       data,
       { subject: resolver, permissionManager },
+      async (graphJson) => {
+        const compilation = await compilationStore.get(preCheck.value.compilationId);
+        if (!compilation.ok) return `the compilation for this task could not be read, so its approval cannot be verified`;
+        const verdict = await verifyApproval(
+          approvals.store,
+          {
+            workspaceId: approvals.workspaceId,
+            compilationId: preCheck.value.compilationId,
+            capabilityId: preCheck.value.capabilityId,
+          },
+          deriveCapabilityApprovalStateFromJson(graphJson, preCheck.value.capabilityId, compilation.value.sourceDigestSha256),
+        );
+        if (!verdict.ok) return `its approval could not be read (${verdict.error.message})`;
+        return verdict.value.approved ? undefined : verdict.value.message;
+      },
     );
 
     const resolved = await executionStore.resolveHumanTask(executionId, {

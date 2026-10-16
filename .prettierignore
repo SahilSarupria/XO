@@ -17,3 +17,7 @@ packages/benchmark/test/fixtures/
 examples/vertical-test/*.json
 packages/benchmark/ground-truth/
 packages/benchmark/suites/
+
+# One archived record preserved byte-for-byte (verbatim copy of the externally authored M7 assessment; reformatting would alter it).
+# Deliberately a single exact path, not a directory: nothing else is exempted from the format check.
+/claude/P10_M7_GO_NO_GO_ASSESSMENT.md

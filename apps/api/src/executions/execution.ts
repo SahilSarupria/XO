@@ -113,6 +113,11 @@ export interface CreateExecutionInput {
   readonly compilationId: string;
   readonly capabilityId: string;
   readonly input: unknown;
+  /**
+   * P1.0 M6 — an id minted by the caller BEFORE the record exists (`mintExecutionId`), so an idempotency claim can durably name the
+   * resource it is about to create. Must be a valid, unused execution id; otherwise creation is refused (never silently re-minted).
+   */
+  readonly executionId?: string;
 }
 
 export type ExecutionOutcomeInput =

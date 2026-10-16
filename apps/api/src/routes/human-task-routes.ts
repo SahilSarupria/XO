@@ -5,17 +5,28 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
   requirePrincipal,
-  requireOwnedWorkspace,
   workspaceExecutionsStore,
   workspaceCompilationsStore,
+  workspaceApprovalsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
+import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import type { PermissionManager } from '@xo/permissions';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
 import type { ExecutionRecord, HumanTaskDecision } from '../executions/execution.js';
+import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
+import {
+  auditedOwnedWorkspace,
+  auditedRead,
+  finalizationNotice,
+  newCorrelationId,
+  safeId,
+  safeReasonCode,
+  type AuditService,
+} from '../audit/audit-service.js';
 
 /**
  * `human-tasks` is a VIEW over the same execution records P0.5's
@@ -32,6 +43,21 @@ const MAX_DECISION_DATA_BYTES = 8 * 1024; // generous for a small structured dec
 
 function toWireRecord(record: ExecutionRecord): ExecutionRecord {
   return record;
+}
+
+/**
+ * P1.0 F-1 (Option A): how a RESOLVED human task is classified for audit, from the persisted record alone.
+ *  - `failed` execution -> outcome `failed`, reasonCode = the stored `errorCode` (code only, never the message).
+ *  - `unsupported` resume -> the task is consumed but the execution is still `waiting_for_human`; that is NOT a completion,
+ *    so outcome `failed`, reasonCode = the stored `HITL_RESUME_UNSUPPORTED` code.
+ *  - otherwise (`succeeded`/`rejected`: a human rejection is a successfully recorded decision) -> `completed`, no reasonCode.
+ * Exported for unit testing: the `unsupported` branch is not reachable through the HTTP API today.
+ */
+export function classifyResolution(record: ExecutionRecord): { readonly outcome: 'completed' | 'failed'; readonly reasonCode?: string } {
+  if (record.status === 'failed') return { outcome: 'failed', reasonCode: safeReasonCode(record.errorCode) };
+  const resume = record.humanTask?.resumeOutcome;
+  if (resume?.kind === 'unsupported') return { outcome: 'failed', reasonCode: safeReasonCode(resume.errorCode) };
+  return { outcome: 'completed' };
 }
 
 function isHumanTask(record: ExecutionRecord): boolean {
@@ -83,32 +109,38 @@ export function registerHumanTaskRoutes(
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
+  audit: AuditService,
 ): void {
+  const auditCtx = { audit, workspaceStore };
+
   async function listHumanTasks(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const listed = await store.list();
-    if (!listed.ok) throw listed.error;
-    return json(200, { humanTasks: listed.value.filter(isHumanTask).map(toWireRecord) });
+    return auditedRead(req, auditCtx, { action: 'list.human-tasks', kind: 'human-task' }, async (workspace) => {
+      const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
+      const listed = await store.list();
+      if (!listed.ok) throw listed.error;
+      return json(200, { humanTasks: listed.value.filter(isHumanTask).map(toWireRecord) });
+    });
   }
 
   async function getHumanTask(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const executionId = req.params['executionId'];
     if (executionId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing execution id');
-    const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const found = await store.get(executionId);
-    if (!found.ok) throw found.error;
-    // "Non-HITL executions cannot be resolved/retrieved as human tasks"
-    // — treated as 404 here (not 400), consistent with every other
-    // "wrong kind of thing at this id" case elsewhere in this API (e.g.
-    // P0.5's capability-not-in-this-compilation check).
-    if (!isHumanTask(found.value)) throw new NotFoundError(`human task "${executionId}"`);
-    return json(200, toWireRecord(found.value));
+    return auditedRead(req, auditCtx, { action: 'get.human-task', kind: 'human-task', idParam: 'executionId' }, async (workspace) => {
+      const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
+      const found = await store.get(executionId);
+      if (!found.ok) throw found.error;
+      // "Non-HITL executions cannot be resolved/retrieved as human tasks"
+      // — treated as 404 here (not 400), consistent with every other
+      // "wrong kind of thing at this id" case elsewhere in this API (e.g.
+      // P0.5's capability-not-in-this-compilation check).
+      if (!isHumanTask(found.value)) throw new NotFoundError(`human task "${executionId}"`);
+      return json(200, toWireRecord(found.value));
+    });
   }
 
   async function resolveHumanTask(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'resolve.human-task', correlationId });
     const executionId = req.params['executionId'];
     if (executionId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing execution id');
 
@@ -137,23 +169,70 @@ export function registerHumanTaskRoutes(
     const store = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
     const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
 
+    // P1.0 M4 — PRECONDITION: the human decision (and the resumed execution it triggers) is a mutation; record the
+    // decision attempt durably first. Failure => nothing is resolved or resumed. `decision` is a validated enum.
+    const targetId = safeId(executionId);
+    const hitlBase = {
+      action: 'resolve.human-task',
+      actor: actorFromPrincipal(resolver),
+      correlationId,
+      target:
+        targetId !== undefined
+          ? { kind: 'human-task' as const, id: targetId, workspaceId: workspace.workspaceId }
+          : { kind: 'workspace' as const, id: workspace.workspaceId },
+      ...(targetId !== undefined ? { executionId: targetId } : {}),
+      metadata: { decision },
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+    await audit.requireDurable({ ...hitlBase, type: 'humantask.attempted', outcome: 'attempted' });
+
     // The lock + pre-check + `attemptResume` + store-write sequence lives
     // in `executions/resolve-human-task.ts` (extracted in P0.8 so the
     // workflow resume route reuses it verbatim) — see that file's doc comment.
-    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver, permissionManager);
+    const outcome = await resolveHumanTaskExecution(store, compilationStore, executionId, decision, data, resolver, permissionManager, {
+      store: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
+      workspaceId: workspace.workspaceId,
+    });
 
     switch (outcome.kind) {
       case 'not_found':
+        await audit.tryRecord({ ...hitlBase, type: 'humantask.failed', outcome: 'failed', reasonCode: outcome.error.code });
         throw outcome.error;
       case 'not_a_human_task':
+        await audit.tryRecord({ ...hitlBase, type: 'humantask.failed', outcome: 'failed', reasonCode: ErrorCode.INVALID_ARGUMENT });
         throw new XoError(ErrorCode.INVALID_ARGUMENT, `execution "${executionId}" was never waiting_for_human — nothing to resolve`);
       case 'already_resolved':
         // A deterministic conflict, carrying the ORIGINAL (unmodified) record — proves the second request never overwrote the first decision.
+        await audit.tryRecord({ ...hitlBase, type: 'humantask.failed', outcome: 'failed', reasonCode: 'ALREADY_RESOLVED' });
         return json(409, toWireRecord(outcome.record));
       case 'error':
+        await audit.tryRecord({
+          ...hitlBase,
+          type: outcome.error.code === ErrorCode.RUNTIME_PERMISSION_DENIED ? 'humantask.denied' : 'humantask.failed',
+          outcome: outcome.error.code === ErrorCode.RUNTIME_PERMISSION_DENIED ? 'denied' : 'failed',
+          reasonCode: outcome.error.code,
+        });
         throw outcome.error;
-      case 'resolved':
-        return json(200, toWireRecord(outcome.record));
+      case 'resolved': {
+        // The resolution (and any resumed execution) ALREADY happened: a failed completion write is reported, never retried.
+        // P1.0 F-1 (Option A): the audit outcome now reflects what the resume ACTUALLY did, with the authoritative stored
+        // failure code as `reasonCode` (code only, never the message). Task consumption, execution state, HTTP status and
+        // response body are unchanged.
+        //  - `failed`: execution failed; `record.errorCode` is the stored code (approval denial is stored as the coarse
+        //    RUNTIME_PERMISSION_DENIED — the approval gate returns only a message; see docs/audit-operations.md).
+        //  - `unsupported`: the task is consumed but the execution is still `waiting_for_human` — NOT a completion.
+        const classified = classifyResolution(outcome.record);
+        const finalization = await audit.finalize(
+          {
+            ...hitlBase,
+            type: 'humantask.resolved',
+            outcome: classified.outcome,
+            ...(classified.reasonCode !== undefined ? { reasonCode: classified.reasonCode } : {}),
+            metadata: { decision, resultingStatus: String(outcome.record.status) },
+          },
+          { correlationId, ...(targetId !== undefined ? { executionId: targetId } : {}) },
+        );
+        return json(200, { ...toWireRecord(outcome.record), ...finalizationNotice(finalization) });
+      }
     }
   }
 

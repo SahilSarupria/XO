@@ -24,6 +24,7 @@
     { "path": "packages/runtime-core" },
     { "path": "packages/runtime" },
     { "path": "packages/permissions" },
+    { "path": "packages/audit" },
     { "path": "packages/environment-intelligence" },
     { "path": "packages/registry-core" },
     { "path": "packages/registry" },

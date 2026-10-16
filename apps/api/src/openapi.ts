@@ -73,7 +73,8 @@ export const openApiDocument = {
     '/workspaces/{workspaceId}/registry/packages': {
       post: {
         summary: "Publish a package into this workspace's registry (mirrors RegistryClient.publish / `xo publish`)",
-        description: 'Body is the raw bytes of a .xo archive (application/octet-stream). Validated, then unpacked, then published.',
+        description:
+          'Body is the raw bytes of a .xo archive (application/octet-stream). Validated, then unpacked, then published. Publishing is gated by the effective package trust policy (an enforcing policy, or the explicit development mode); the 201 body carries a `trust` verdict (`mode`, `status`) — in development mode the status is `unverified`, never `trusted`.',
         requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
@@ -212,7 +213,7 @@ export const openApiDocument = {
       post: {
         summary: 'Validate an uploaded .xo archive (read-only; mirrors `xo verify`)',
         description:
-          "Unlike the CLI's --pubkey did=path (a local file path), publicKeys here are PEM text supplied inline in the JSON body — a server has no local filesystem of the remote caller's to read a path from. See package-routes.ts.",
+          "Verifies against the server's effective package trust policy only: an enforcing operator policy (XO_PACKAGE_TRUST_POLICY) or, for local development only, the explicit XO_TRUST_MODE=development. The server refuses to start with neither (fail closed). Caller-supplied public keys are rejected with 400: a key supplied with the request cannot establish trust. The response includes a `trust` verdict whose `mode` is `enforce` or `development`; in development mode the status is `unverified` and a package is never reported `trusted`.",
         requestBody: {
           required: true,
           content: {
@@ -222,7 +223,6 @@ export const openApiDocument = {
                 required: ['archiveBase64'],
                 properties: {
                   archiveBase64: { type: 'string', description: 'base64-encoded .xo archive bytes' },
-                  publicKeys: { type: 'object', additionalProperties: { type: 'string' }, description: '{ [creatorDid]: pemPublicKey }' },
                 },
               },
             },
@@ -332,10 +332,18 @@ export const openApiDocument = {
           'Server steps: authenticate -> workspace ownership -> load the stored compilation/graph -> resolve the workflow -> require audit status executable_candidate with every step bound (else 422 XO_WORKFLOW_NOT_EXECUTABLE, `context` carries executabilityStatus/reasons/blockers) -> authorization preflight for EVERY step (capability approved in this workspace, and every non-optional contract permission granted under the fail-closed empty policy; else 403 XO_RUNTIME_PERMISSION_DENIED) -> validate `input` -> persist the record -> execute. Nothing is persisted for a request refused before that point. ' +
           '`input` is a bounded (64 KiB) plain JSON object: each field is delivered to every step whose declared input schema names it (steps with no declared schema, today every human_in_the_loop step, receive the whole object); no mapping is inferred from names or prose. It is validated with the same validateCapabilityInput P0.5 uses, at start (for what the client must supply) and again immediately before each step (client-supplied fields only — values injected by a proven upstream binding are authoritative producer output). A field no step can receive is a 400. Proven upstream values cannot be supplied or overridden by the client. ' +
           'Execution is synchronous and strictly sequential through the existing WorkflowExecutor/RuntimeCapabilityExecutor: it runs until the workflow succeeds, fails, or reaches a human_in_the_loop step, where it STOPS (status waiting_for_human) and returns; later steps do not run. Each step is recorded as a normal P0.5 ExecutionRecord (visible under /executions and, for HITL, /human-tasks). ' +
-          'Status codes follow P0.5: 201 for succeeded/waiting_for_human, 200 when the workflow FAILED (still a real, persisted record). Starting creates a distinct execution each time (no idempotency key).',
+          'Status codes follow P0.5: 201 for succeeded/waiting_for_human, 200 when the workflow FAILED (still a real, persisted record). Without an Idempotency-Key header, starting creates a distinct execution each time; with one, see the header parameter.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'workflowId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'Idempotency-Key',
+            in: 'header',
+            required: false,
+            description:
+              'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.',
+            schema: { type: 'string' },
+          },
         ],
         requestBody: {
           required: true,
@@ -469,7 +477,7 @@ export const openApiDocument = {
       post: {
         summary: 'Approve a discovered capability for execution',
         description:
-          'Records that the authenticated identity approved this exact capability from this exact compilation, in this workspace. Only approved capabilities may be executed via POST .../executions. No review comments, multi-reviewer quorum, or un-approve endpoint in this milestone.',
+          'Records that the authenticated principal (never a request field) approved this capability, from this compilation, in this workspace, IN ITS CURRENT MATERIAL STATE: the server derives and stores a binding over the capability contract content (including its rules), its permission declaration, its resolved binding and the compilation source digest (P1.0 M3). The request body is ignored. The approval is honoured only while that state is unchanged; a materially changed capability is refused (403 at execution, workflow start and human-task resume) until it is approved again. Approvals recorded before M3 carry no binding and are refused until re-approved. 400 if the capability has no derivable state. No review comments, multi-reviewer quorum, or un-approve endpoint.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
@@ -477,7 +485,9 @@ export const openApiDocument = {
         ],
         responses: {
           '200': { description: 'ApprovalRecord' },
+          '400': { description: 'The compilation did not succeed, or the capability has no derivable approvable state' },
           '404': { description: 'Unknown compilation/capability, or workspace not owned by the caller' },
+          '503': { description: 'Durable audit evidence for the approval could not be recorded; no approval was created' },
         },
       },
     },
@@ -486,6 +496,16 @@ export const openApiDocument = {
         summary: 'Execute an approved capability synchronously through the real runtime capability-authority path',
         description:
           'Body: { compilationId, capabilityId, input }. No client-supplied runtime declaration, execution class, or identity is ever accepted — the declaration is always re-derived server-side from the stored, compiled graph. Execution is synchronous: the response always reports a finished outcome. status "succeeded": the real deterministic (or other resolved) result. status "waiting_for_human": an honest human-in-the-loop escalation — this milestone does not implement HITL resume; the execution record is terminal. status "failed": rejected before running (not approved, unresolved/ambiguous/denied binding, invalid input) or a genuine runtime failure — always a structured errorCode/errorMessage, never a fabricated success. Permission gate: RuleBasedPolicy([]) (deny-by-default for any capability that declares required permissions; today\'s compiled capabilities typically declare none) — never an unrestricted allow-all gate.',
+        parameters: [
+          {
+            name: 'Idempotency-Key',
+            in: 'header',
+            required: false,
+            description:
+              'Optional (P1.0 M6). 8-128 chars of [A-Za-z0-9._:-], starting with a letter or digit. Scoped to workspace + authenticated principal + operation. Same key + equivalent request returns the original outcome (header `Idempotent-Replayed: true`) without running again; same key + different request is 422 XO_IDEMPOTENCY_KEY_REUSED; same key while the original is running is 409 XO_IDEMPOTENCY_IN_PROGRESS (Retry-After); an interrupted original whose end cannot be proven is 409 XO_IDEMPOTENCY_OUTCOME_UNKNOWN and is never re-run or reported as success; an unreadable key record is 500 XO_IDEMPOTENCY_RECORD_INVALID. Authentication, authorization (M2) and approval (M3) are re-checked on every request, replays included. Not an exactly-once guarantee.',
+            schema: { type: 'string' },
+          },
+        ],
         requestBody: {
           required: true,
           content: {

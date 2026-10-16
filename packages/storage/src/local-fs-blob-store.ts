@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile, unlink, readdir, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { link, mkdir, readFile, rename, writeFile, unlink, readdir, stat } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, StorageError } from '@xo/errors';
-import type { BlobMetadata, BlobStore, PutOptions } from './blob-store.interface.js';
+import type { AtomicBlobStore, BlobMetadata, PutOptions } from './blob-store.interface.js';
 
 /**
  * A real, working {@link BlobStore} backed by the local filesystem. Keys
@@ -10,7 +11,7 @@ import type { BlobMetadata, BlobStore, PutOptions } from './blob-store.interface
  * is checked to still be inside `rootDir` to prevent `../` traversal
  * escaping the store.
  */
-export class LocalFsBlobStore implements BlobStore {
+export class LocalFsBlobStore implements AtomicBlobStore {
   constructor(private readonly rootDir: string) {}
 
   private resolveKey(key: string): string {
@@ -35,6 +36,63 @@ export class LocalFsBlobStore implements BlobStore {
       );
     } catch (cause) {
       return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, `Failed to write blob "${key}"`, { cause }));
+    }
+  }
+
+  private tempPathFor(path: string): string {
+    return `${path}.${process.pid}.${randomUUID()}.tmp`;
+  }
+
+  /**
+   * Atomic create-if-absent: the content is written to a private temp file first, then `link()`ed to the final name. `link` fails
+   * with `EEXIST` if the key already exists and otherwise makes the COMPLETE content visible in one step, so there is no window in
+   * which another process can observe an empty or partial blob (which `open(..., 'wx')` followed by a write would leave).
+   */
+  async putIfAbsent(
+    key: string,
+    data: Uint8Array | string,
+    _options?: PutOptions,
+  ): Promise<Result<{ readonly created: boolean }, StorageError>> {
+    let temp: string | undefined;
+    try {
+      const path = this.resolveKey(key);
+      await mkdir(dirname(path), { recursive: true });
+      temp = this.tempPathFor(path);
+      await writeFile(temp, typeof data === 'string' ? Buffer.from(data, 'utf8') : data);
+      try {
+        await link(temp, path);
+        return ok({ created: true });
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code === 'EEXIST') return ok({ created: false });
+        throw cause;
+      }
+    } catch (cause) {
+      return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, `Failed to create blob "${key}"`, { cause }));
+    } finally {
+      if (temp !== undefined) await unlink(temp).catch(() => undefined);
+    }
+  }
+
+  /** Atomic overwrite: write a private temp file, then `rename` over the key (atomic on POSIX filesystems). */
+  async replace(key: string, data: Uint8Array | string, options?: PutOptions): Promise<Result<BlobMetadata, StorageError>> {
+    let temp: string | undefined;
+    try {
+      const path = this.resolveKey(key);
+      await mkdir(dirname(path), { recursive: true });
+      const buffer = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
+      temp = this.tempPathFor(path);
+      await writeFile(temp, buffer);
+      await rename(temp, path);
+      temp = undefined;
+      return ok(
+        options?.contentType !== undefined
+          ? { key, size: buffer.byteLength, contentType: options.contentType }
+          : { key, size: buffer.byteLength },
+      );
+    } catch (cause) {
+      return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, `Failed to replace blob "${key}"`, { cause }));
+    } finally {
+      if (temp !== undefined) await unlink(temp).catch(() => undefined);
     }
   }
 

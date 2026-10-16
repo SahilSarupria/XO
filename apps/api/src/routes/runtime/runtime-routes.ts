@@ -1,5 +1,5 @@
 import type { HostCapability, ModelFamily } from '@xo/types';
-import { PackageInstaller } from '@xo/package-sdk';
+import { DEVELOPMENT_TRUST_WARNING, PackageInstaller } from '@xo/package-sdk';
 import type { BlobStore } from '@xo/storage';
 import { EnvironmentId, ExecutionEngine, RequestId, Runtime } from '@xo/runtime';
 import type { ExecutionRequest } from '@xo/runtime';
@@ -9,7 +9,12 @@ import type { ApiRequest, ApiResponse } from '../../http/types.js';
 import { json } from '../../http/types.js';
 import { errorToResponse, knownStatusCodes } from '../../http/error-mapping.js';
 import { resolveProvider } from './provider-factory.js';
-import { requireOwnedWorkspace, workspacePackagesStore, type WorkspaceDataConfig } from '../../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  workspacePackageValidator,
+  workspacePackagesStore,
+  type WorkspaceDataConfig,
+} from '../../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../../workspace/workspace.js';
 import { registerMovedStub } from '../moved-stub.js';
 
@@ -47,11 +52,16 @@ export const AI_EXECUTION_DISABLED_MESSAGE =
 
 async function bootstrapRuntime(
   store: BlobStore,
+  dataConfig: WorkspaceDataConfig,
 ): Promise<{ readonly runtime: Runtime; readonly installer: PackageInstaller; readonly bootstrapWarnings: readonly string[] }> {
-  const installer = new PackageInstaller(store);
+  const installer = new PackageInstaller(store, { validator: workspacePackageValidator(dataConfig) });
   const runtime = new Runtime(installer);
   const bootstrap = await runtime.bootstrap();
-  const bootstrapWarnings = bootstrap.failures.map((f) => `"${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`);
+  const bootstrapWarnings = [
+    // Development mode must be visible on every runtime response, never silent.
+    ...(dataConfig.packageTrustPolicy.mode === 'development' ? [DEVELOPMENT_TRUST_WARNING] : []),
+    ...bootstrap.failures.map((f) => `"${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`),
+  ];
   return { runtime, installer, bootstrapWarnings };
 }
 
@@ -133,7 +143,7 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
   /** Mounts everything installed in this workspace and returns the resulting state — mounted packages, derived capability index, any per-package mount failures — without executing anything. */
   async function getContext(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const { runtime, bootstrapWarnings } = await bootstrapRuntime(workspacePackagesStore(workspace, dataConfig));
+    const { runtime, bootstrapWarnings } = await bootstrapRuntime(workspacePackagesStore(workspace, dataConfig), dataConfig);
     const context = runtime.context();
     return json(200, {
       builtAt: context.builtAt,
@@ -178,7 +188,7 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
       );
     }
 
-    const { runtime, installer, bootstrapWarnings } = await bootstrapRuntime(workspacePackagesStore(workspace, dataConfig));
+    const { runtime, installer, bootstrapWarnings } = await bootstrapRuntime(workspacePackagesStore(workspace, dataConfig), dataConfig);
 
     let engine: ExecutionEngine;
     try {

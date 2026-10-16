@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { unpackArchive } from '@xo/package-sdk';
+import { unpackArchive, type PackageTrustPolicy } from '@xo/package-sdk';
+import { resolveTrustValidator } from '../../package-trust.js';
 import { LocalFsBlobStore } from '@xo/storage';
 import { RegistryClient } from '@xo/registry';
 import type { CommandResult } from '../../command-result.js';
@@ -8,6 +9,8 @@ import { failWith, ok } from '../../command-result.js';
 export interface PublishOptions {
   readonly archivePath: string;
   readonly registryDir: string;
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. */
+  readonly trustPolicy?: PackageTrustPolicy;
 }
 
 /**
@@ -33,13 +36,18 @@ export async function publishCommand(options: PublishOptions): Promise<CommandRe
   if (!readResult.ok) return failWith(`[${readResult.error.code}] ${readResult.error.message}`);
 
   const store = new LocalFsBlobStore(options.registryDir);
-  const client = new RegistryClient(store);
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
+  const client = new RegistryClient(store, { validator: trust.validator });
 
   const published = await client.publish(readResult.value);
   if (!published.ok) return failWith(`[${published.error.code}] ${published.error.message}`);
 
+  const verdict = trust.validator.evaluateTrust(readResult.value.manifest);
   return ok([
+    ...trust.warnings,
     `Published "${published.value.manifest.name}@${published.value.manifest.version}"`,
+    `  trust:         ${verdict.status} [mode=${verdict.mode}]`,
     `  id:            ${published.value.id}`,
     `  publishedAt:   ${published.value.publishedAt}`,
     `  ledgerEntry:   ${published.value.ledgerEntryHash}`,

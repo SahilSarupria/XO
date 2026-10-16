@@ -18,7 +18,7 @@ function metadataKey(executionId: string): string {
   return `${executionId}/metadata.json`;
 }
 
-function mintExecutionId(): string {
+export function mintExecutionId(): string {
   return `exe_${randomUUID().replace(/-/g, '')}`;
 }
 
@@ -40,11 +40,18 @@ export class FsExecutionStore implements ExecutionStore {
     input: CreateExecutionInput,
   ): Promise<Result<ExecutionRecord, XoError>> {
     assertAuthenticatedPrincipal(principal); // fail closed: only an authenticated principal may initiate
-    let executionId = mintExecutionId();
-    let attempts = 0;
-    while (await this.store.has(metadataKey(executionId))) {
-      if (++attempts > 5) return err(new XoError(ErrorCode.UNKNOWN, 'could not mint a unique execution id'));
-      executionId = mintExecutionId();
+    let executionId = input.executionId ?? mintExecutionId();
+    if (input.executionId !== undefined) {
+      // A caller-supplied id (M6) is used as given or refused — never replaced, or the caller's durable reference would dangle.
+      if (!isValidExecutionId(executionId)) return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid execution id'));
+      if (await this.store.has(metadataKey(executionId)))
+        return err(new XoError(ErrorCode.ALREADY_EXISTS, 'execution id is already in use'));
+    } else {
+      let attempts = 0;
+      while (await this.store.has(metadataKey(executionId))) {
+        if (++attempts > 5) return err(new XoError(ErrorCode.UNKNOWN, 'could not mint a unique execution id'));
+        executionId = mintExecutionId();
+      }
     }
 
     const record: ExecutionRecord = {
@@ -103,6 +110,11 @@ export class FsExecutionStore implements ExecutionStore {
     const put = await this.store.put(metadataKey(executionId), JSON.stringify(record), { contentType: 'application/json' });
     if (!put.ok) return err(put.error);
     return ok(record);
+  }
+
+  /** P1.0 M6: does a blob exist for this id at all (readable or not)? Lets an idempotency probe tell "never created" from "created but unreadable". */
+  async exists(id: string): Promise<boolean> {
+    return this.store.has(metadataKey(id));
   }
 
   async get(executionId: string): Promise<Result<ExecutionRecord, NotFoundError>> {

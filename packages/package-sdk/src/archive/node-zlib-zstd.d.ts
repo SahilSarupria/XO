@@ -12,6 +12,7 @@ import type { Transform } from 'node:stream';
 declare module 'node:zlib' {
   interface ZstdOptions {
     readonly params?: Readonly<Record<number, number>>;
+    readonly maxOutputLength?: number;
   }
 
   function zstdCompressSync(buffer: Buffer | ArrayBufferView | string, options?: ZstdOptions): Buffer;

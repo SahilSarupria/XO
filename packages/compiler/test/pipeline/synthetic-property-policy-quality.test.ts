@@ -6,7 +6,7 @@ import { compileSources } from '../../src/pipeline/compile-sources.js';
 import { lowerCapabilitiesToManifest } from '../../src/pipeline/capability-lowering.js';
 import { computeSemanticQualityReport } from '../../src/pipeline/quality-metrics.js';
 import { packageXoirGraph } from '../../src/pipeline/packager.js';
-import { PackageValidator } from '@xo/package-sdk';
+import { PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
 
 const FIXTURE_PATH = fileURLToPath(new URL('../fixtures/synthetic-property-policy.txt', import.meta.url));
 
@@ -178,7 +178,7 @@ test('end-to-end: the fixture packages into a valid .xo with all four manifest c
     'Send a confirmation notice to the policyholder',
   ]);
 
-  const validation = new PackageValidator().validateAll({
+  const validation = new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }).validateAll({
     manifest: packaged.value.manifest,
     components: packaged.value.bundle.components,
     ancillary: packaged.value.bundle.ancillary,

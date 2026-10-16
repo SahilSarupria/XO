@@ -5,8 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CapabilityDeclaration, HybridExecutionStep } from '@xo/types';
 import { LocalFsBlobStore } from '@xo/storage';
-import { PackageInstaller } from '../src/install/package-installer.js';
-import { buildSampleBundle } from './fixtures.js';
+import { buildSampleBundle, devInstaller } from './fixtures.js';
 
 /**
  * R5: proves `@xo/package-sdk`'s manifest schema validator
@@ -63,7 +62,7 @@ const validSteps: readonly HybridExecutionStep[] = [
 
 test("R5: a well-formed mode: 'hybrid' capability with a valid ordered hybridSteps list installs successfully", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(validSteps)] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, true);
@@ -72,7 +71,7 @@ test("R5: a well-formed mode: 'hybrid' capability with a valid ordered hybridSte
 
 test("R5: mode: 'hybrid' with an empty hybridSteps list fails package validation", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle({ capabilities: [hybridCapability([])] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, false);
@@ -82,7 +81,7 @@ test("R5: mode: 'hybrid' with an empty hybridSteps list fails package validation
 
 test("R5: mode: 'hybrid' with hybridSteps entirely absent fails package validation", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(undefined)] });
     const result = await installer.install(bundle);
     assert.equal(result.ok, false);
@@ -92,7 +91,7 @@ test("R5: mode: 'hybrid' with hybridSteps entirely absent fails package validati
 
 test('R5: a hybrid step declaring strategy "hybrid" fails package validation (no recursive nesting at the package-format level either)', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const nestedSteps = [{ stepId: 'nested', strategy: 'hybrid', input: { kind: 'request' } }];
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(nestedSteps)] });
     const result = await installer.install(bundle);
@@ -103,7 +102,7 @@ test('R5: a hybrid step declaring strategy "hybrid" fails package validation (no
 
 test('R5: a hybrid step missing its input reference fails package validation', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const malformedSteps = [{ stepId: 'det', strategy: 'deterministic_rule' }];
     const bundle = buildSampleBundle({ capabilities: [hybridCapability(malformedSteps)] });
     const result = await installer.install(bundle);
@@ -114,7 +113,7 @@ test('R5: a hybrid step missing its input reference fails package validation', a
 
 test("R5: existing mode: 'deterministic_rule' and mode: 'model' capabilities are completely unaffected by the hybridSteps validation addition", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const deterministicOnly: CapabilityDeclaration = {
       id: 'claim_evaluation',
       name: 'Evaluate Claim',
@@ -136,7 +135,7 @@ test("R5: existing mode: 'deterministic_rule' and mode: 'model' capabilities are
 
 test('R5: two hybrid steps sharing the same stepId fail package validation (ambiguous step identity)', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const duplicateStepIds = [
       {
         stepId: 'step',
@@ -156,7 +155,7 @@ test('R5: two hybrid steps sharing the same stepId fail package validation (ambi
 
 test("R5: a hybrid step referencing its own stepId ({ kind: 'step' } self-reference) fails package validation", async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const selfReferencing = [
       { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'det' }, contractId: 'capability:hybrid-det' },
     ];
@@ -169,7 +168,7 @@ test("R5: a hybrid step referencing its own stepId ({ kind: 'step' } self-refere
 
 test('R5: a hybrid step referencing a step declared later (a forward reference) fails package validation', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const forwardReferencing = [
       { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'step', stepId: 'model' }, contractId: 'capability:hybrid-det' },
       { stepId: 'model', strategy: 'model', input: { kind: 'request' } },
@@ -183,7 +182,7 @@ test('R5: a hybrid step referencing a step declared later (a forward reference) 
 
 test('R5: a hybrid step referencing a stepId that does not exist anywhere in the list fails package validation', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     const danglingReference = [
       { stepId: 'det', strategy: 'deterministic_rule', input: { kind: 'request' }, contractId: 'capability:hybrid-det' },
       { stepId: 'model', strategy: 'model', input: { kind: 'step', stepId: 'nonexistent' } },
@@ -197,7 +196,7 @@ test('R5: a hybrid step referencing a stepId that does not exist anywhere in the
 
 test('R5: a longer, well-ordered hybrid chain where a later step references an earlier (not immediately preceding) step installs successfully', async () => {
   await withTempStore(async (store) => {
-    const installer = new PackageInstaller(store);
+    const installer = devInstaller(store);
     // Proves the ordering check is "strictly earlier in the list", not "immediately preceding" -- step 3 may reference step 1 directly, skipping step 2.
     const chain = [
       {

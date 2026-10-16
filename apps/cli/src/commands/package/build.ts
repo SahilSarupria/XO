@@ -2,9 +2,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { XoMetadata } from '@xo/types';
 import { Ed25519Signer } from '@xo/crypto';
-import { ManifestBuilder, packBundle, PackageSigner, PackageValidator } from '@xo/package-sdk';
+import { ManifestBuilder, packBundle, PackageSigner } from '@xo/package-sdk';
 import type { CommandResult } from '../../command-result.js';
 import { failWith } from '../../command-result.js';
+import { authoringValidator } from '../../package-trust.js';
 import { readProjectConfig } from './project-config.js';
 
 export interface BuildOptions {
@@ -85,7 +86,7 @@ export async function buildCommand(options: BuildOptions): Promise<CommandResult
     }
   }
 
-  const report = new PackageValidator().validateAll(bundle);
+  const report = authoringValidator().validateAll(bundle);
   for (const issue of report.issues) lines.push(`  [${issue.severity}] ${issue.code}: ${issue.message}`);
   if (!report.valid) return { exitCode: 1, lines: [...lines, 'error: built package failed validation — see issues above'] };
 

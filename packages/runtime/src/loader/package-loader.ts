@@ -79,7 +79,8 @@ export class PackageLoader {
 
     const mountStartedAt = this.now().getTime();
 
-    const verification = await this.installer.verifyInstallation(name, version);
+    // One read: the manifest that is verified is the manifest that is mounted (no check-then-reread window).
+    const verification = await this.installer.loadVerified(name, version);
     if (!verification.ok) {
       this.instrumentation?.recordVerificationFailure({ package: name, version, reason: verification.error.code });
       return err(
@@ -88,9 +89,9 @@ export class PackageLoader {
         }),
       );
     }
-    if (!verification.value.valid) {
+    if (!verification.value.report.valid) {
       this.instrumentation?.recordVerificationFailure({ package: name, version, reason: 'validation_report_invalid' });
-      const summary = verification.value.issues
+      const summary = verification.value.report.issues
         .filter((issue) => issue.severity === 'error')
         .map((issue) => issue.message)
         .join('; ');
@@ -98,16 +99,7 @@ export class PackageLoader {
         new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Refusing to mount "${name}@${version}": failed verification: ${summary}`),
       );
     }
-
-    const manifestResult = await this.installer.getManifest(name, version);
-    if (!manifestResult.ok) {
-      return err(
-        new RuntimeError(ErrorCode.RUNTIME_MOUNT_FAILED, `Cannot mount "${name}@${version}": ${manifestResult.error.message}`, {
-          cause: manifestResult.error,
-        }),
-      );
-    }
-    const manifest = manifestResult.value;
+    const manifest = verification.value.manifest;
 
     // Fail fast on a malformed manifest permission declaration (Stage 2
     // §4/§5) — reject the mount entirely rather than letting a broken

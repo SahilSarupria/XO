@@ -2,7 +2,8 @@ import { writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { compileSources, packageXoirGraph, type CompileSourcesOptions } from '@xo/compiler';
 import { nodesOfKind } from '@xo/xoir';
-import { PackageSigner, PackageValidator, packBundle } from '@xo/package-sdk';
+import { PackageSigner, packBundle } from '@xo/package-sdk';
+import { authoringValidator } from '../../package-trust.js';
 import type { PackageBundle } from '@xo/package-sdk';
 import { Ed25519Signer } from '@xo/crypto';
 import type { CommandResult } from '../../command-result.js';
@@ -137,7 +138,7 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
       }
     }
 
-    const validation = new PackageValidator().validateAll(bundle);
+    const validation = authoringValidator().validateAll(bundle);
 
     const outPath = options.out ?? `${name}-${version}.xo`;
     let archiveBytes: Uint8Array | undefined;

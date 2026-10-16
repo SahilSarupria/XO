@@ -3,11 +3,24 @@ import type { ComponentKind, XoManifest } from '@xo/types';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, PackageError } from '@xo/errors';
 import { isXoManifest, isXoMetadata } from '../validation/schema.js';
+import { componentCollisionProblem, componentPathProblem } from '../validation/safe-path.js';
 import type { ComponentInput, PackageBundle } from '../types.js';
 import { tarBufferToEntries, tarStreamToEntries, type TarEntry } from './tar-codec.js';
 import { zstdDecompress, zstdDecompressStream } from './zstd-codec.js';
 
 function entriesToBundle(entries: readonly TarEntry[]): Result<PackageBundle, PackageError> {
+  // Every archive entry name must be a safe, confined relative path, and no two may collide (case-folding / separator tricks) — checked before any entry is interpreted.
+  for (const e of entries) {
+    // The two installer-owned root files are legitimate archive entries (exact, lowercase names only); any other spelling falls through to the reserved-name check below.
+    const problem = e.path === 'manifest.json' || e.path === 'metadata.json' ? undefined : componentPathProblem(e.path);
+    if (problem !== undefined) {
+      return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, `Archive contains an unsafe entry name: ${problem}`));
+    }
+  }
+  const collision = componentCollisionProblem(entries.map((e) => e.path));
+  if (collision !== undefined) {
+    return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, `Archive entries collide: ${collision}`));
+  }
   const byPath = new Map(entries.map((e) => [e.path, e.data]));
 
   const manifestBytes = byPath.get('manifest.json');
@@ -67,8 +80,11 @@ function entriesToBundle(entries: readonly TarEntry[]): Result<PackageBundle, Pa
 }
 
 /** Unpacks complete `.xo` archive bytes into a {@link PackageBundle}. Prefer {@link unpackArchiveStream} for large archives. */
-export async function unpackArchive(archiveBytes: Uint8Array): Promise<Result<PackageBundle, PackageError>> {
-  const decompressed = zstdDecompress(archiveBytes);
+export async function unpackArchive(
+  archiveBytes: Uint8Array,
+  options: { readonly maxDecompressedBytes?: number } = {},
+): Promise<Result<PackageBundle, PackageError>> {
+  const decompressed = zstdDecompress(archiveBytes, options.maxDecompressedBytes);
   if (!decompressed.ok) return decompressed;
   const entriesResult = await tarBufferToEntries(decompressed.value);
   if (!entriesResult.ok) return entriesResult;

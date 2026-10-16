@@ -41,6 +41,9 @@ export const ErrorCode = {
   PACKAGE_CORRUPT: 'XO_PACKAGE_CORRUPT',
   PACKAGE_COMPONENT_MISSING: 'XO_PACKAGE_COMPONENT_MISSING',
   PACKAGE_VALIDATION_FAILED: 'XO_PACKAGE_VALIDATION_FAILED',
+  PACKAGE_UNTRUSTED: 'XO_PACKAGE_UNTRUSTED',
+  /** Package trust is not (validly) configured: no operator trust policy, an unreadable/invalid one, or a contradictory trust-mode configuration. Always an operator/deployment problem, never the package's. Protected operations fail closed with this code. */
+  PACKAGE_TRUST_NOT_CONFIGURED: 'XO_PACKAGE_TRUST_NOT_CONFIGURED',
   PACKAGE_ALREADY_INSTALLED: 'XO_PACKAGE_ALREADY_INSTALLED',
   PACKAGE_NOT_INSTALLED: 'XO_PACKAGE_NOT_INSTALLED',
   PACKAGE_UPGRADE_INVALID: 'XO_PACKAGE_UPGRADE_INVALID',
@@ -163,6 +166,24 @@ export const ErrorCode = {
   PERMISSION_INVALID_REQUEST: 'XO_PERMISSION_INVALID_REQUEST',
   PERMISSION_STORE_ERROR: 'XO_PERMISSION_STORE_ERROR',
   PERMISSION_POLICY_INVALID: 'XO_PERMISSION_POLICY_INVALID',
+
+  // Audit (@xo/audit, P1.0 M4) — durable audit evidence. Messages carry no
+  // event content; infrastructure detail stays in `cause`, never on the wire.
+  AUDIT_UNAVAILABLE: 'XO_AUDIT_UNAVAILABLE',
+  AUDIT_EVENT_INVALID: 'XO_AUDIT_EVENT_INVALID',
+  AUDIT_ACCESS_DENIED: 'XO_AUDIT_ACCESS_DENIED',
+  AUDIT_CONFIG_INVALID: 'XO_AUDIT_CONFIG_INVALID',
+
+  // Idempotency (P1.0 M6) — retries/duplicates of a side-effecting request. Messages never contain the key or any request content.
+  // Key reused for a materially different request.
+  IDEMPOTENCY_KEY_REUSED: 'XO_IDEMPOTENCY_KEY_REUSED',
+  // Same key, same request, original still running in this process: neither executed again nor answered yet.
+  IDEMPOTENCY_IN_PROGRESS: 'XO_IDEMPOTENCY_IN_PROGRESS',
+  // The original attempt was interrupted AFTER its side effects may have started and no recovery rule can prove how it ended:
+  // refused rather than guessed (never re-run, never reported as success).
+  IDEMPOTENCY_OUTCOME_UNKNOWN: 'XO_IDEMPOTENCY_OUTCOME_UNKNOWN',
+  // The stored idempotency record is unreadable, foreign (another scope/principal) or inconsistent: fail closed.
+  IDEMPOTENCY_RECORD_INVALID: 'XO_IDEMPOTENCY_RECORD_INVALID',
 
   // Registry (@xo/registry) — PackageRepository/BenchmarkRepository/
   // LicenseRepository/Ledger implementations and the RegistryClient facade

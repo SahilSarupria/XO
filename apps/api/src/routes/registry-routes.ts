@@ -6,7 +6,12 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  workspacePackageValidator,
+  workspaceRegistryStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -35,7 +40,7 @@ function unwrapOrThrow<T>(result: { ok: true; value: T } | { ok: false; error: X
 
 async function client(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): Promise<RegistryClient> {
   const workspace = await requireOwnedWorkspace(req, workspaceStore);
-  return new RegistryClient(workspaceRegistryStore(workspace, dataConfig));
+  return new RegistryClient(workspaceRegistryStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) });
 }
 
 interface RecordBenchmarkBody {
@@ -112,7 +117,9 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     }
     const unpacked = unwrapOrThrow(await unpackArchive(new Uint8Array(bytes)));
     const published = unwrapOrThrow(await c.publish(unpacked));
-    return json(201, published);
+    // Surface how the package was admitted: `trusted` under an enforcing policy, or `unverified` (mode `development`) — never silent.
+    const trust = workspacePackageValidator(dataConfig).evaluateTrust(unpacked.manifest);
+    return json(201, { ...published, trust });
   }
 
   async function getPackage(req: ApiRequest): Promise<ApiResponse> {

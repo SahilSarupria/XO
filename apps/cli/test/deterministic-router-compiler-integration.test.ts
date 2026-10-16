@@ -2,10 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
 import { packageXoirGraph } from '@xo/compiler';
-import { PackageInstaller } from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import { runCommand } from '../src/commands/runtime/run.js';
-import { withTempDir } from './helpers.js';
+import { withTempDir, devInstaller } from './helpers.js';
 
 /**
  * Every other R1/R2/R3 test in `run.test.ts` proves the CLI's
@@ -97,7 +96,7 @@ test('a package built by the real, unmocked packageXoirGraph produces an executi
   assert.equal(declaration!.execution!.mode, 'deterministic_rule');
 
   await withTempDir('xo-cli-test-compiler-integration-', async (storeDir) => {
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const installResult = await installer.install(packaged.value.bundle);
     assert.ok(installResult.ok, installResult.ok ? undefined : JSON.stringify((installResult as { error: unknown }).error));
 
@@ -147,7 +146,7 @@ test('knowledge_graph fallback remains available for backward compatibility: a p
   };
 
   await withTempDir('xo-cli-test-compiler-fallback-', async (storeDir) => {
-    const installer = new PackageInstaller(new LocalFsBlobStore(storeDir));
+    const installer = devInstaller(new LocalFsBlobStore(storeDir));
     const installResult = await installer.install(strippedBundle);
     assert.ok(installResult.ok, installResult.ok ? undefined : JSON.stringify((installResult as { error: unknown }).error));
 

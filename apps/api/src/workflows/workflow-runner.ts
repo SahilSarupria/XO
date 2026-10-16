@@ -26,7 +26,8 @@ import {
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { CompilationRecord, CompilationStore } from '../compilations/compilation.js';
 import type { ApprovalStore } from '../approvals/approval.js';
-import { isApproved } from '../approvals/approval.js';
+import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
 import type { ExecutionOutcomeInput, ExecutionRecord, ExecutionStore, HumanTaskDecision } from '../executions/execution.js';
 import { withExecutionLock } from '../executions/execution-lock.js';
 import { resolveHumanTaskExecution } from '../executions/resolve-human-task.js';
@@ -230,13 +231,16 @@ async function authorizeStep(
   permissionManager: PermissionManager,
   step: { readonly capabilityId: string; readonly contractId: string | undefined },
 ): Promise<{ readonly code: string; readonly message: string } | undefined> {
-  const approval = await ctx.approvalStore.get(runtime.compilation.compilationId, step.capabilityId);
-  if (!approval.ok) return { code: approval.error.code, message: approval.error.message };
-  if (!isApproved(approval.value)) {
-    return {
-      code: ErrorCode.RUNTIME_PERMISSION_DENIED,
-      message: `capability "${step.capabilityId}" is not approved for execution in workspace "${ctx.workspace.workspaceId}"`,
-    };
+  // P1.0 M3: approved FOR THE CURRENT STATE of this capability in the graph this workflow will actually run (`runtime.graph`,
+  // re-derived from the stored compilation on every start and continuation) — not merely "a record exists".
+  const verdict = await verifyApproval(
+    ctx.approvalStore,
+    { workspaceId: ctx.workspace.workspaceId, compilationId: runtime.compilation.compilationId, capabilityId: step.capabilityId },
+    deriveCapabilityApprovalState(runtime.graph, step.capabilityId, runtime.compilation.sourceDigestSha256),
+  );
+  if (!verdict.ok) return { code: verdict.error.code, message: verdict.error.message };
+  if (!verdict.value.approved) {
+    return { code: ErrorCode.RUNTIME_PERMISSION_DENIED, message: verdict.value.message };
   }
   // P1.0 M2: a step with NO contract id cannot be matched to a declaration — deny, never skip the check.
   if (step.contractId === undefined) {
@@ -694,7 +698,22 @@ export interface StartWorkflowRequest {
   readonly input: Readonly<Record<string, unknown>>;
 }
 
-export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request: StartWorkflowRequest): Promise<WorkflowExecutionRecord> {
+/**
+ * P1.0 M6 — optional seams for idempotency. Both run only AFTER the workflow was re-derived, every step was approved (M3) and
+ * authorized (M2) and the input was validated — so they can never stand in for those checks — and BEFORE anything is persisted.
+ */
+export interface StartWorkflowHooks {
+  /** `replay` short-circuits with the already-started workflow's CURRENT record (no new record, no step runs). Throwing aborts with nothing persisted. */
+  readonly gate?: () => Promise<{ readonly kind: 'proceed' } | { readonly kind: 'replay'; readonly workflowExecutionId: string }>;
+  /** Receives the id about to be created, before the record exists. Throwing aborts with nothing persisted. */
+  readonly beforeCreate?: (workflowExecutionId: string) => Promise<void>;
+}
+
+export async function startWorkflowExecution(
+  ctx: WorkflowRunnerContext,
+  request: StartWorkflowRequest,
+  hooks: StartWorkflowHooks = {},
+): Promise<WorkflowExecutionRecord> {
   const loaded = await loadWorkflowRuntime(ctx, request.compilationId, request.workflowId);
   if (!loaded.ok) throw loaded.error;
   const runtime = loaded.value;
@@ -717,7 +736,13 @@ export async function startWorkflowExecution(ctx: WorkflowRunnerContext, request
       context: { issues: problems },
     });
 
+  if (hooks.gate !== undefined) {
+    const gated = await hooks.gate();
+    if (gated.kind === 'replay') return getWorkflowExecution(ctx, gated.workflowExecutionId);
+  }
+
   const workflowExecutionId = mintWorkflowExecutionId();
+  if (hooks.beforeCreate !== undefined) await hooks.beforeCreate(workflowExecutionId);
   activeDrives.add(workflowExecutionId);
   try {
     const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
@@ -882,6 +907,7 @@ export async function resumeWorkflowExecution(
           request.data,
           ctx.principal,
           ctx.permissionManager,
+          { store: ctx.approvalStore, workspaceId: ctx.workspace.workspaceId },
         );
         switch (outcome.kind) {
           case 'not_found':

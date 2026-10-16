@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PackageInstaller } from '@xo/package-sdk';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { DEVELOPMENT_TRUST_WARNING } from '@xo/package-sdk';
+import { TestServer, withTempDir, devInstaller } from './test-helpers.js';
 import { buildFixtureBundle } from './fixtures.js';
 import { workspacePackagesStore } from '../src/workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
@@ -73,7 +73,8 @@ test('GET /workspaces/:workspaceId/runtime/context bootstraps against an empty w
       }>();
       assert.deepEqual(body.mountedPackages, []);
       assert.deepEqual(body.capabilities, []);
-      assert.deepEqual(body.bootstrapWarnings, []);
+      // The test server runs in explicit development mode, which must be announced on every runtime response (and only then).
+      assert.deepEqual(body.bootstrapWarnings, [DEVELOPMENT_TRUST_WARNING]);
     } finally {
       await server.stop();
     }
@@ -88,7 +89,7 @@ test('GET /workspaces/:workspaceId/runtime/context reflects a real installed (ca
       const otherWorkspace = await createWorkspace(server);
 
       const bundle = buildFixtureBundle({ name: 'xo_runtime_ctx_pkg' });
-      await new PackageInstaller(workspacePackagesStore(workspace, { dataRootDir: dataDir })).install(bundle);
+      await devInstaller(workspacePackagesStore(workspace, { dataRootDir: dataDir })).install(bundle);
 
       const res = await server.request('GET', `/workspaces/${workspace.workspaceId}/runtime/context`);
       assert.equal(res.status, 200);

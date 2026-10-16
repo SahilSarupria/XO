@@ -17,6 +17,7 @@
     { "path": "../../packages/registry" },
     { "path": "../../packages/ai-core" },
     { "path": "../../packages/permissions" },
+    { "path": "../../packages/audit" },
     { "path": "../../packages/capability-contract" },
     { "path": "../../packages/runtime" },
     { "path": "../../packages/workflow-composer" },

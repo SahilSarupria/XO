@@ -4,6 +4,8 @@ import { Sha256Hasher, buildMerkleRoot } from '@xo/crypto';
 import { hashComponent } from '../hashing/component-hasher.js';
 import { isValidSemVer, isValidSemVerRange } from '../manifest/semver.js';
 import { PackageVerifier } from '../signing/package-signer.js';
+import type { PackageTrustPolicy } from '../trust/trust-policy.js';
+import { evaluatePackageTrust, type TrustVerdict } from '../trust/verify-trust.js';
 import { componentCollisionProblem, componentPathProblem, packageSegmentProblem } from './safe-path.js';
 import { isXoManifest, isXoMetadata } from './schema.js';
 import type { PackageBundle, ValidationIssue, ValidationReport } from '../types.js';
@@ -11,8 +13,16 @@ import type { PackageBundle, ValidationIssue, ValidationReport } from '../types.
 export interface PackageValidatorOptions {
   readonly hasher?: Hasher;
   readonly verifier?: PackageVerifier;
-  /** Resolves a signer DID to its public key PEM, for manifest.signatures (which carry no key of their own). Signature validation is skipped (not failed) when omitted, since a bundle that hasn't been signed yet is still a valid *unsigned* package. */
+  /**
+   * Development-compatibility only: resolves a signer DID to a public key PEM so manifest.signatures can be checked cryptographically. Requires an explicit `PackageTrustPolicy.development()` — it can never be combined with an enforcing policy or stand in for one, and packages checked this way are still never `trusted` (the key is caller-supplied, not operator-trusted).
+   */
   readonly resolvePublicKey?: (signerDid: string) => string | undefined;
+  /**
+   * The trust policy this validator applies (P1.0 M5). REQUIRED for any protected operation: an enforcing policy verifies signatures against its keys only and enforces its requirements (required signature, roles, publisher binding, revocation); `PackageTrustPolicy.development()` is the explicit local-development mode that verifies nothing and never reports `trusted`. When omitted the validator is *unconfigured* and fails closed — `validateAll` reports a `TRUST_NOT_CONFIGURED` error and `evaluateTrust` is never acceptable — so no protected caller can silently run without trust.
+   */
+  readonly trustPolicy?: PackageTrustPolicy;
+  /** Clock for key validity windows; injectable for tests. */
+  readonly now?: () => Date;
 }
 
 function issue(severity: ValidationIssue['severity'], code: string, message: string, path?: string): ValidationIssue {
@@ -32,8 +42,18 @@ export class PackageValidator {
   private readonly hasher: Hasher;
   private readonly verifier: PackageVerifier;
   private readonly resolvePublicKey?: (signerDid: string) => string | undefined;
+  /** `undefined` = unconfigured: every trust-dependent check fails closed. */
+  readonly trustPolicy: PackageTrustPolicy | undefined;
+  private readonly now: () => Date;
 
   constructor(options: PackageValidatorOptions = {}) {
+    if (options.resolvePublicKey !== undefined && options.trustPolicy?.mode !== 'development') {
+      throw new TypeError(
+        'PackageValidator: resolvePublicKey is a development-compatibility option and requires an explicit PackageTrustPolicy.development(); it cannot be combined with an enforcing policy or used without a policy',
+      );
+    }
+    this.trustPolicy = options.trustPolicy;
+    this.now = options.now ?? (() => new Date());
     this.hasher = options.hasher ?? new Sha256Hasher();
     this.verifier = options.verifier ?? new PackageVerifier();
     if (options.resolvePublicKey) this.resolvePublicKey = options.resolvePublicKey;
@@ -280,19 +300,44 @@ export class PackageValidator {
     return [];
   }
 
+  /** Evaluates the manifest against this validator's trust policy. Development-mode verdicts verify nothing (`unverified`); an unconfigured validator is never acceptable. */
+  evaluateTrust(manifest: XoManifest): TrustVerdict {
+    return evaluatePackageTrust(manifest, this.trustPolicy, this.now());
+  }
+
   validateSignatures(manifest: XoManifest): readonly ValidationIssue[] {
-    if (!manifest.signatures || manifest.signatures.length === 0) return [];
+    const policy = this.trustPolicy;
+    if (policy === undefined) {
+      // Fail closed: an unconfigured validator can never vouch for a package.
+      return this.evaluateTrust(manifest).failures.map((f) => issue('error', f.code, f.message, 'signatures/signatures.json'));
+    }
+    if (policy.mode === 'enforce') {
+      const verdict = this.evaluateTrust(manifest);
+      return verdict.failures.map((f) => issue('error', f.code, f.message, 'signatures/signatures.json'));
+    }
+    // Explicit development mode: always visible in the report, never silent.
+    const issues: ValidationIssue[] = [
+      issue(
+        'warning',
+        'TRUST_DEVELOPMENT_MODE',
+        'package trust is in DEVELOPMENT mode: signatures are NOT verified against any trust policy and this package is NOT trusted',
+      ),
+    ];
+    if (!manifest.signatures || manifest.signatures.length === 0) return issues;
     if (!this.resolvePublicKey) {
-      return [
+      issues.push(
         issue(
           'warning',
           'SIGNATURES_UNVERIFIED',
-          'Manifest carries signatures but no public-key resolver was supplied — skipping cryptographic verification',
+          'Manifest carries signatures but development mode verifies none of them — signatures were NOT verified and the package is not trusted',
         ),
-      ];
+      );
+      return issues;
     }
+    // Development-only code-supplied resolver (constructor argument, never package data): a cryptographic self-check, not trust.
     const result = this.verifier.verifyAll(manifest, [], this.resolvePublicKey);
-    return result.ok ? [] : [issue('error', 'SIGNATURE_INVALID', result.error.message, 'signatures/signatures.json')];
+    if (!result.ok) issues.push(issue('error', 'SIGNATURE_INVALID', result.error.message, 'signatures/signatures.json'));
+    return issues;
   }
 
   validateAll(bundle: PackageBundle): ValidationReport {

@@ -9,6 +9,7 @@ import { generateApiKey, hashApiKey } from '../src/auth/api-key.js';
 import { FsExecutionStore } from '../src/executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../src/workflows/fs-workflow-execution-store.js';
 import { resolveHumanTaskExecution } from '../src/executions/resolve-human-task.js';
+import { FsApprovalStore } from '../src/approvals/fs-approval-store.js';
 import { FsCompilationStore } from '../src/compilations/fs-compilation-store.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
@@ -244,13 +245,26 @@ test('HITL at the service layer: a different authenticated resolver is recorded 
       ).json<ExecWire>();
       const store = new FsExecutionStore(new LocalFsBlobStore(`${dataDir}/${workspace.workspaceId}/executions`));
       const comps = new FsCompilationStore(new LocalFsBlobStore(`${dataDir}/${workspace.workspaceId}/compilations`));
+      const approvals = {
+        store: new FsApprovalStore(new LocalFsBlobStore(`${dataDir}/${workspace.workspaceId}/approvals`)),
+        workspaceId: workspace.workspaceId,
+      };
 
       // A fabricated / deserialized "principal" cannot resolve.
       await assert.rejects(
-        resolveHumanTaskExecution(store, comps, exec.executionId, 'approve', {}, {
-          kind: 'human',
-          id: 'forged',
-        } as unknown as AuthenticatedPrincipal),
+        resolveHumanTaskExecution(
+          store,
+          comps,
+          exec.executionId,
+          'approve',
+          {},
+          {
+            kind: 'human',
+            id: 'forged',
+          } as unknown as AuthenticatedPrincipal,
+          undefined as never,
+          approvals,
+        ),
       );
 
       const out = await resolveHumanTaskExecution(
@@ -260,6 +274,8 @@ test('HITL at the service layer: a different authenticated resolver is recorded 
         'approve',
         {},
         principal('human', 'reviewer-bob', 'org.acme'),
+        undefined as never,
+        approvals,
       );
       assert.equal(out.kind, 'resolved');
       if (out.kind === 'resolved') {

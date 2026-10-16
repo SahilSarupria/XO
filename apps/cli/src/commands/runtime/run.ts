@@ -1,5 +1,6 @@
 import type { HostCapability, ModelFamily, Result } from '@xo/types';
-import { PackageInstaller } from '@xo/package-sdk';
+import { PackageInstaller, type PackageTrustPolicy } from '@xo/package-sdk';
+import { resolveTrustValidator } from '../../package-trust.js';
 import { LocalFsBlobStore } from '@xo/storage';
 import { EnvironmentId, ExecutionEngine, RequestId, Runtime } from '@xo/runtime';
 import type { ExecutionRequest } from '@xo/runtime';
@@ -7,6 +8,7 @@ import type { ModelProvider } from '@xo/ai-core';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { establishTrustedExecutionContext } from '@xo/permissions';
+import { openCliAudit } from './cli-audit.js';
 import { tryDeterministicRun } from './deterministic-router.js';
 
 export interface RunOptions {
@@ -24,6 +26,8 @@ export interface RunOptions {
   readonly maxTokens?: number;
   readonly json?: boolean;
   readonly now?: () => Date;
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. */
+  readonly trustPolicy?: PackageTrustPolicy;
   /** R3's CLI-level permission grant boundary — `xo run ... --grant <permissionId>` (repeatable). Only consulted by the deterministic path; the AI-provider path's own authorization is unchanged (see the R1–R3 report's "did not weaken the AI provider path" note). */
   readonly grantedPermissionIds?: readonly string[];
 }
@@ -57,12 +61,16 @@ export const AI_EXECUTION_DISABLED_MESSAGE =
 export async function runCommand(options: RunOptions, resolveProvider: () => Result<ModelProvider, string>): Promise<CommandResult> {
   const now = options.now ?? (() => new Date());
 
-  const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir));
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
+  const installer = new PackageInstaller(new LocalFsBlobStore(options.storeDir), { validator: trust.validator });
   const runtime = new Runtime(installer, options.now !== undefined ? { now: options.now } : {});
   const bootstrap = await runtime.bootstrap();
-  const bootstrapWarnings = bootstrap.failures.map(
-    (f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`,
-  );
+  const bootstrapWarnings = [
+    // Development mode is announced on every run (text and the --json `warnings` array alike), never silent.
+    ...trust.warnings,
+    ...bootstrap.failures.map((f) => `warning: "${f.name}@${f.version}" failed to mount: [${f.error.code}] ${f.error.message}`),
+  ];
 
   // Set only when the deterministic router looked at this capability and
   // explicitly declined it (`not_deterministic`) — never for a bare
@@ -115,6 +123,8 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
   // the AI-provider path below, unchanged from before this router
   // existed.
   if (options.capabilityId !== undefined) {
+    const cliAudit = await openCliAudit();
+    if (!cliAudit.ok) return failWith(`audit configuration error: ${cliAudit.message}`);
     const deterministic = await tryDeterministicRun(
       options.capabilityId,
       options.input,
@@ -122,6 +132,7 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
       runtime.context().registry,
       options.grantedPermissionIds ?? [],
       establishTrustedExecutionContext('local-operator'),
+      cliAudit.audit,
     );
     if (deterministic.kind === 'executed') {
       if (options.json) {

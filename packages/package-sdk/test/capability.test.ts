@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ManifestBuilder } from '../src/manifest/manifest-builder.js';
-import { PackageValidator } from '../src/validation/package-validator.js';
 import { isXoManifest } from '../src/validation/schema.js';
-import { buildSampleBundle, sampleCapability, sampleCompatibility, sampleMetadata } from './fixtures.js';
+import { buildSampleBundle, sampleCapability, sampleCompatibility, sampleMetadata, devValidator } from './fixtures.js';
 
 test('a bundle built without setCapabilities() declares zero capabilities, never inferring from metadata', () => {
   const result = ManifestBuilder.create()
@@ -39,30 +38,30 @@ test('isXoManifest rejects a capability missing required fields', () => {
 
 test('validateCapabilities flags a capability requiring a component the package does not declare', () => {
   const bundle = buildSampleBundle({ capabilities: [{ ...sampleCapability, requiredComponents: ['decision_trees'] }] });
-  const issues = new PackageValidator().validateCapabilities(bundle.manifest);
+  const issues = devValidator().validateCapabilities(bundle.manifest);
   assert.ok(issues.some((i) => i.code === 'CAPABILITY_REQUIRED_COMPONENT_UNDECLARED'));
 });
 
 test('validateCapabilities flags duplicate capability ids', () => {
   const bundle = buildSampleBundle({ capabilities: [sampleCapability, sampleCapability] });
-  const issues = new PackageValidator().validateCapabilities(bundle.manifest);
+  const issues = devValidator().validateCapabilities(bundle.manifest);
   assert.ok(issues.some((i) => i.code === 'CAPABILITY_DUPLICATE_ID'));
 });
 
 test('validateCapabilities flags an out-of-range confidence score', () => {
   const bundle = buildSampleBundle({ capabilities: [{ ...sampleCapability, confidence: { score: 1.5, basis: 'self_reported' } }] });
-  const issues = new PackageValidator().validateCapabilities(bundle.manifest);
+  const issues = devValidator().validateCapabilities(bundle.manifest);
   assert.ok(issues.some((i) => i.code === 'CAPABILITY_CONFIDENCE_OUT_OF_RANGE'));
 });
 
 test('validateCapabilities warns on a capability with no declared provider compatibility', () => {
   const bundle = buildSampleBundle({ capabilities: [{ ...sampleCapability, providerCompatibility: [] }] });
-  const issues = new PackageValidator().validateCapabilities(bundle.manifest);
+  const issues = devValidator().validateCapabilities(bundle.manifest);
   assert.ok(issues.some((i) => i.code === 'CAPABILITY_NO_PROVIDER_COMPATIBILITY' && i.severity === 'warning'));
 });
 
 test('validateAll still passes for a well-formed capability declaration', () => {
   const bundle = buildSampleBundle();
-  const report = new PackageValidator().validateAll(bundle);
+  const report = devValidator().validateAll(bundle);
   assert.equal(report.valid, true);
 });

@@ -70,3 +70,47 @@ test('a key that attempts path traversal is rejected', async () => {
     assert.ok(isErr(result));
   });
 });
+
+// P1.0 M6 — atomic primitives used by idempotency records.
+
+test('putIfAbsent creates once; later calls report created:false and never overwrite', async () => {
+  await withTempStore(async (store) => {
+    const first = await store.putIfAbsent('idem/a.json', 'first');
+    assert.ok(isOk(first));
+    if (isOk(first)) assert.equal(first.value.created, true);
+    const second = await store.putIfAbsent('idem/a.json', 'second');
+    assert.ok(isOk(second));
+    if (isOk(second)) assert.equal(second.value.created, false);
+    const got = await store.get('idem/a.json');
+    assert.ok(isOk(got));
+    if (isOk(got)) assert.equal(Buffer.from(got.value).toString('utf8'), 'first');
+  });
+});
+
+test('putIfAbsent under real concurrency: exactly one of N simultaneous creators wins, content is complete, no temp files left', async () => {
+  await withTempStore(async (store, dir) => {
+    const payloads = Array.from({ length: 16 }, (_, i) => `writer-${i}-${'x'.repeat(4096)}`);
+    const results = await Promise.all(payloads.map((p) => store.putIfAbsent('idem/race.json', p)));
+    const winners = results.flatMap((r, i) => (isOk(r) && r.value.created ? [i] : []));
+    assert.equal(winners.length, 1);
+    const got = await store.get('idem/race.json');
+    assert.ok(isOk(got));
+    if (isOk(got)) assert.equal(Buffer.from(got.value).toString('utf8'), payloads[winners[0]!]);
+    const { readdir } = await import('node:fs/promises');
+    assert.deepEqual(await readdir(join(dir, 'idem')), ['race.json']);
+  });
+});
+
+test('replace overwrites atomically and leaves no temp file; key traversal is still refused', async () => {
+  await withTempStore(async (store, dir) => {
+    assert.ok(isOk(await store.put('idem/b.json', 'old')));
+    assert.ok(isOk(await store.replace('idem/b.json', 'new')));
+    const got = await store.get('idem/b.json');
+    assert.ok(isOk(got));
+    if (isOk(got)) assert.equal(Buffer.from(got.value).toString('utf8'), 'new');
+    const { readdir } = await import('node:fs/promises');
+    assert.deepEqual(await readdir(join(dir, 'idem')), ['b.json']);
+    assert.ok(isErr(await store.putIfAbsent('../escape.json', 'x')));
+    assert.ok(isErr(await store.replace('../escape.json', 'x')));
+  });
+});

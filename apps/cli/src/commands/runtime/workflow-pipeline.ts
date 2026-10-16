@@ -18,6 +18,7 @@ import {
   type PrepareCandidateWorkflowResult,
   type CandidateWorkflowRunStatus,
 } from '@xo/runtime';
+import { openCliAudit } from './cli-audit.js';
 import {
   establishTrustedExecutionContext,
   PermissionManager,
@@ -143,10 +144,13 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
       if (reconciled.kind === 'unresolved')
         return { ok: false, message: `workflow not executed — authorization denied: ${reconciled.reason}` };
     }
+    const cliAudit = await openCliAudit();
+    if (!cliAudit.ok) return { ok: false, message: `workflow not executed — audit configuration error: ${cliAudit.message}` };
     const executor = new RuntimeCapabilityExecutor({
       registry,
       permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
       subject: establishTrustedExecutionContext('local-operator'),
+      ...(cliAudit.audit !== undefined ? { audit: cliAudit.audit } : {}),
     });
     const workflowExecutor = new WorkflowExecutor(
       async () => {

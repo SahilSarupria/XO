@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { PackageInstaller, PackageSigner, PackageValidator } from '@xo/package-sdk';
+import { PackageInstaller, PackageSigner, PackageValidator, parseTrustPolicy } from '@xo/package-sdk';
 import { PackageLoader } from '../src/loader/package-loader.js';
 import { PackageRegistry } from '../src/registry/mounted-package.js';
 import { buildContractLawyerBundle, buildFraudDetectorBundle, withTempInstaller, FixedClock } from './fixtures.js';
@@ -39,32 +39,37 @@ test('mount() rejects a package whose on-disk component was corrupted after inst
   });
 });
 
-test('mount() rejects an invalid signature (signature failure)', async () => {
-  await withTempInstaller(async (installer, store) => {
-    const validator = new PackageValidator({
-      resolvePublicKey: (signerDid) => (signerDid === 'did:xo:test-creator' ? rightKeyPair.publicKey : undefined),
+test('mount() rejects an invalid signature (signature failure) under an enforcing trust policy', async () => {
+  await withTempInstaller(async (devInstaller, store) => {
+    // The policy trusts `rightKeyPair` for the creator DID; the package is signed with `wrongKeyPair` — a forged signature.
+    const policy = parseTrustPolicy({
+      version: 1,
+      keys: [{ signerDid: 'did:xo:test-creator', publicKeyPem: rightKeyPair.publicKey, algorithm: 'ed25519', status: 'active' }],
     });
-    const signingInstaller = new PackageInstaller(store, { validator });
+    assert.ok(policy.ok);
+    if (!policy.ok) return;
+    const enforcingInstaller = new PackageInstaller(store, { validator: new PackageValidator({ trustPolicy: policy.value }) });
 
     const bundle = buildContractLawyerBundle();
-    const signer = new PackageSigner();
-    // Sign with a *different* keypair than the one `resolvePublicKey`
-    // will hand back during verification — simulating a tampered/forged
-    // signature, not just a missing one.
-    const entry = signer.sign(bundle.manifest, 'did:xo:test-creator', 'creator', wrongKeyPair.privateKey, wrongKeyPair.publicKey);
-    const signedManifest = {
-      ...bundle.manifest,
-      signatures: [{ signerDid: entry.signerDid, role: entry.role, signature: entry.signature }],
+    const entry = new PackageSigner().sign(
+      bundle.manifest,
+      'did:xo:test-creator',
+      'creator',
+      wrongKeyPair.privateKey,
+      wrongKeyPair.publicKey,
+    );
+    const signedBundle = {
+      ...bundle,
+      manifest: { ...bundle.manifest, signatures: [{ signerDid: entry.signerDid, role: entry.role, signature: entry.signature }] },
     };
-    const signedBundle = { ...bundle, manifest: signedManifest };
 
-    // Install without the (about to fail) validation pass, then mount via
-    // a loader wrapping the same signature-checking installer/validator —
-    // it's `mount()`'s call to `verifyInstallation` that must catch this.
-    const installed = await signingInstaller.install(signedBundle, { skipValidation: true });
-    assert.ok(installed.ok);
+    // The enforcing installer refuses to ADMIT the forged package at all...
+    const refused = await enforcingInstaller.install(signedBundle);
+    assert.equal(refused.ok, false);
 
-    const loader = new PackageLoader(signingInstaller);
+    // ...and even if it got onto disk some other way (admitted earlier under development mode), mount under the enforcing policy refuses it.
+    assert.ok((await devInstaller.install(signedBundle)).ok);
+    const loader = new PackageLoader(enforcingInstaller);
     const result = await loader.mount(bundle.manifest.name, bundle.manifest.version, PackageRegistry.empty());
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.error.code, 'XO_RUNTIME_MOUNT_FAILED');

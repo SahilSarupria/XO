@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { err } from '@xo/types';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -8,6 +9,7 @@ import {
   workspaceSourcesStore,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
+  requirePrincipal,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
@@ -16,7 +18,12 @@ import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { compileSourceRecord } from '../compilations/compile-source.js';
 import type { CompilationRecord, CapabilityProjection } from '../compilations/compilation.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { isApproved } from '../approvals/approval.js';
+import { APPROVAL_REASON_CODES } from '../approvals/approval.js';
+import { deriveCapabilityApprovalStateFromJson } from '../approvals/approval-binding.js';
+import { verifyApproval } from '../approvals/approval-enforcement.js';
+import type { AuditService } from '../audit/audit-service.js';
+import { auditedOwnedWorkspace, finalizationNotice, newCorrelationId, safeId } from '../audit/audit-service.js';
+import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 
 /**
  * Source -> compilation -> capability, over the exact same
@@ -42,7 +49,13 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-export function registerCompilationRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerCompilationRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  audit: AuditService,
+): void {
+  const auditCtx = { audit, workspaceStore };
   async function compile(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const sourceId = req.params['sourceId'];
@@ -120,16 +133,26 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     const found = await store.getCapabilities(compilationId);
     if (!found.ok) throw found.error;
 
-    // P0.5: each capability's approval status, reusing the same
-    // per-capability `ApprovalStore.get` the approve route itself uses —
-    // "approval fields added to the existing capability projection",
-    // per the milestone brief's own wording for which of its two options
-    // to pick.
+    // Each capability's approval status. Since P1.0 M3 `approved` means "approved FOR ITS CURRENT STATE": it is the same
+    // `verifyApproval` verdict the execution boundary reaches, so this projection can never say `true` for something the
+    // boundary would refuse. `approvalStatus` adds the precise reason (e.g. `stale`) for a capability that is not approved.
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
+    const compilationRecord = await store.get(compilationId);
+    if (!compilationRecord.ok) throw compilationRecord.error;
+    const graphJson = await store.getCompiledGraph(compilationId);
     const withApproval = await Promise.all(
       found.value.map(async (cap: CapabilityProjection) => {
-        const approval = await approvalStore.get(compilationId, cap.capabilityId);
-        return { ...cap, approved: approval.ok ? isApproved(approval.value) : false };
+        const current = graphJson.ok
+          ? deriveCapabilityApprovalStateFromJson(graphJson.value, cap.capabilityId, compilationRecord.value.sourceDigestSha256)
+          : err(graphJson.error);
+        const verdict = await verifyApproval(
+          approvalStore,
+          { workspaceId: workspace.workspaceId, compilationId, capabilityId: cap.capabilityId },
+          current,
+        );
+        const approved = verdict.ok && verdict.value.approved;
+        const approvalStatus = !verdict.ok ? 'unavailable' : verdict.value.approved ? 'approved' : verdict.value.reason;
+        return { ...cap, approved, approvalStatus };
       }),
     );
 
@@ -137,29 +160,101 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
   }
 
   async function approveCapability(req: ApiRequest): Promise<ApiResponse> {
-    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'approve.capability', correlationId });
     const compilationId = req.params['compilationId'];
     const capabilityId = req.params['capabilityId'];
     if (compilationId === undefined || capabilityId === undefined)
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation or capability id');
 
-    // "Verify the capability belongs to the compilation" — checked
-    // against the compilation's own persisted capability list (P0.4),
-    // never assumed from the URL alone. A capabilityId that isn't one of
-    // this compilation's own discovered capabilities is a 404, exactly
-    // like an unknown compilation would be — not a 400, since the id
-    // itself may well be syntactically fine, it just doesn't belong here.
+    // P1.0 M3 — ATTRIBUTION: the approver is the authenticated principal (M1), re-verified at runtime. There is no body field,
+    // header or query parameter through which an approver, a binding or a target version can be supplied.
+    const approver = requirePrincipal(req);
+    const capabilityTarget = safeId(capabilityId);
+    const baseDraft = {
+      action: 'approve.capability',
+      actor: actorFromPrincipal(approver),
+      correlationId,
+      ...(capabilityTarget !== undefined
+        ? { target: { kind: 'capability' as const, id: capabilityTarget, workspaceId: workspace.workspaceId } }
+        : { target: { kind: 'workspace' as const, id: workspace.workspaceId } }),
+      ...(safeId(compilationId) !== undefined ? { metadata: { compilationId } } : {}),
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+    const deny = async (reasonCode: string): Promise<void> => {
+      await audit.tryRecord({ ...baseDraft, type: 'approval.denied', outcome: 'denied', reasonCode });
+    };
+
+    // "Verify the capability belongs to the compilation" — checked against the compilation's own persisted capability list
+    // (P0.4), never assumed from the URL alone.
     const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    const compilationFound = await compilationStore.get(compilationId);
+    if (!compilationFound.ok) throw compilationFound.error;
+    if (compilationFound.value.status !== 'succeeded') {
+      await deny(ErrorCode.INVALID_ARGUMENT);
+      throw new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        `compilation "${compilationId}" has status "${compilationFound.value.status}" — only a succeeded compilation's capabilities can be approved`,
+      );
+    }
     const capsFound = await compilationStore.getCapabilities(compilationId);
     if (!capsFound.ok) throw capsFound.error;
     const capability = capsFound.value.find((c) => c.capabilityId === capabilityId);
     if (capability === undefined) throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
 
+    // BINDING: derive the capability's CURRENT material state from the PERSISTED graph on the server. What is approved is
+    // exactly this derived state — the client cannot name a different one. A capability whose contract cannot be built has no
+    // approvable state and is refused.
+    const graphFound = await compilationStore.getCompiledGraph(compilationId);
+    if (!graphFound.ok) throw graphFound.error;
+    const state = deriveCapabilityApprovalStateFromJson(graphFound.value, capabilityId, compilationFound.value.sourceDigestSha256);
+    if (!state.ok) {
+      await deny(APPROVAL_REASON_CODES.state_unavailable);
+      throw state.error;
+    }
+
+    // M4 PRECONDITION: durable evidence that an approval is being granted, BEFORE it is stored. If it cannot be confirmed the
+    // approval is not created (fail closed).
+    await audit.requireDurable({
+      ...baseDraft,
+      type: 'approval.attempted',
+      outcome: 'attempted',
+      metadata: {
+        ...(safeId(compilationId) !== undefined ? { compilationId } : {}),
+        stateDigestPrefix: state.value.stateDigest.slice(0, 23),
+      },
+    });
+
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
-    const approved = await approvalStore.approve(compilationId, capabilityId, workspace.workspaceId, workspace.identityId);
+    const approved = await approvalStore.approve({
+      compilationId,
+      capabilityId,
+      workspaceId: workspace.workspaceId,
+      approver: { kind: approver.kind, id: approver.id, ...(approver.orgId !== undefined ? { orgId: approver.orgId } : {}) },
+      binding: {
+        stateDigest: state.value.stateDigest,
+        contractId: state.value.contractId,
+        contractContentHash: state.value.contractContentHash,
+        declarationFingerprint: state.value.declarationFingerprint,
+        implementationClass: state.value.implementationClass,
+        bindingId: state.value.bindingId,
+        sourceDigestSha256: state.value.sourceDigestSha256,
+      },
+    });
     if (!approved.ok) throw approved.error;
 
-    return json(200, approved.value);
+    const finalization = await audit.finalize(
+      {
+        ...baseDraft,
+        type: 'approval.granted',
+        outcome: 'completed',
+        metadata: {
+          ...(safeId(compilationId) !== undefined ? { compilationId } : {}),
+          stateDigestPrefix: state.value.stateDigest.slice(0, 23),
+        },
+      },
+      { correlationId },
+    );
+    return json(200, { ...approved.value, ...finalizationNotice(finalization) });
   }
 
   router.post('/workspaces/:workspaceId/sources/:sourceId/compile', guarded(compile));

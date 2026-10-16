@@ -1,9 +1,11 @@
-import type { ComponentKind } from '@xo/types';
+import type { ComponentKind, XoManifest } from '@xo/types';
 import type { BlobStore } from '@xo/storage';
 import { err, ok, type Result } from '@xo/types';
 import type { StorageError } from '@xo/errors';
 import { ErrorCode, InstallError, PackageError } from '@xo/errors';
-import { fingerprintManifest } from '../hashing/fingerprint.js';
+import { Sha256Hasher } from '@xo/crypto';
+import { canonicalJson, fingerprintManifest } from '../hashing/fingerprint.js';
+import { hashComponent } from '../hashing/component-hasher.js';
 import { classifyBump } from '../manifest/semver.js';
 import { PackageValidator } from '../validation/package-validator.js';
 import { componentCollisionProblem, componentPathProblem, confinementProblem, packageSegmentProblem } from '../validation/safe-path.js';
@@ -13,6 +15,23 @@ import type { Clock } from './clock.js';
 import { SystemClock } from './clock.js';
 
 const INDEX_KEY = '_index.json';
+
+/** Digest of the entire manifest *including* signatures (unlike `fingerprintManifest`, which excludes them) — recorded at install so signature stripping/swapping on disk is detectable. */
+function fullManifestDigest(manifest: XoManifest): string {
+  return new Sha256Hasher().hash(new TextEncoder().encode(canonicalJson(manifest)));
+}
+
+/** Deep-copies the bundle so verification and writing see the same, caller-immutable bytes. */
+function pinBundle(input: PackageBundle): PackageBundle {
+  return {
+    manifest: JSON.parse(JSON.stringify(input.manifest)) as XoManifest,
+    components: input.components.map((c) => ({ ...c, data: new Uint8Array(c.data) })),
+    ancillary: {
+      metadataJson: new Uint8Array(input.ancillary.metadataJson),
+      ...(input.ancillary.changelogMd !== undefined ? { changelogMd: new Uint8Array(input.ancillary.changelogMd) } : {}),
+    },
+  };
+}
 
 interface InstallIndex {
   readonly active: Readonly<Record<string, string>>; // package name -> active version
@@ -107,13 +126,30 @@ export class PackageInstaller {
     await this.store.put(INDEX_KEY, JSON.stringify(index, null, 2), { contentType: 'application/json' });
   }
 
-  async install(bundle: PackageBundle, options: InstallOptions = {}): Promise<Result<InstalledPackageRecord, InstallError | PackageError>> {
+  /**
+   * Installs a bundle.
+   *
+   * M5 guarantees: the bundle is first copied (verification and writing operate on the same pinned bytes, so a caller mutating its buffers afterwards cannot make "what was verified" differ from "what was written"); path confinement and — when the trust policy enforces — signature trust are checked unconditionally (`skipValidation` never bypasses either); every written file is read back and re-verified before the install record exists; and any failure restores the previous state (previous valid install bytes, or nothing) so no partially written, loadable package is left behind.
+   */
+  async install(input: PackageBundle, options: InstallOptions = {}): Promise<Result<InstalledPackageRecord, InstallError | PackageError>> {
+    const bundle = pinBundle(input);
     const { name, version } = bundle.manifest;
 
     // Confinement first, unconditionally (even with skipValidation), and before any store access.
     const unsafe = findUnsafeInstallLocation(bundle);
     if (unsafe) {
       return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Refusing to install package: unsafe install location — ${unsafe}`));
+    }
+
+    // Trust, unconditionally (also with skipValidation): an enforcing policy must accept the package, explicit development mode admits it as `unverified` (never `trusted`), and a validator with no policy at all refuses — there is no implicit default.
+    const verdict = this.validator.evaluateTrust(bundle.manifest);
+    if (!verdict.acceptable) {
+      return err(
+        new InstallError(
+          verdict.mode === 'unconfigured' ? ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED : ErrorCode.PACKAGE_UNTRUSTED,
+          `Refusing to install "${name}@${version}": package trust check failed: ${verdict.failures.map((f) => `${f.code}: ${f.message}`).join('; ')}`,
+        ),
+      );
     }
 
     if (!options.skipValidation) {
@@ -137,13 +173,37 @@ export class PackageInstaller {
     }
 
     const prefix = packagePrefix(name, version);
-    const putResults = await Promise.all([
-      this.store.put(`${prefix}/manifest.json`, JSON.stringify(bundle.manifest, null, 2), { contentType: 'application/json' }),
-      this.store.put(`${prefix}/metadata.json`, bundle.ancillary.metadataJson, { contentType: 'application/json' }),
-      ...bundle.components.map((c) => this.store.put(`${prefix}/${c.path}`, c.data)),
-    ]);
+    const writes: { readonly key: string; readonly data: Uint8Array | string; readonly contentType?: string }[] = [
+      { key: `${prefix}/manifest.json`, data: JSON.stringify(bundle.manifest, null, 2), contentType: 'application/json' },
+      { key: `${prefix}/metadata.json`, data: bundle.ancillary.metadataJson, contentType: 'application/json' },
+      ...bundle.components.map((c) => ({ key: `${prefix}/${c.path}`, data: c.data })),
+    ];
+    const recordKeyName = recordKey(name, version);
+    const touched = [...writes.map((w) => w.key), recordKeyName];
+
+    // Snapshot whatever is there now so a failed (re)install restores it instead of leaving a mixture.
+    const backup = new Map<string, Uint8Array | undefined>();
+    for (const key of touched) {
+      const existing = await this.store.get(key);
+      backup.set(key, existing.ok ? existing.value : undefined);
+    }
+    const restore = async (): Promise<void> => {
+      for (const key of touched) {
+        const prior = backup.get(key);
+        if (prior === undefined) await this.store.delete(key);
+        else await this.store.put(key, prior);
+      }
+    };
+
+    // Until the record is written the package is "not installed"; a forced reinstall removes the old record first so a crash mid-write can never leave an old record vouching for new, half-written bytes.
+    if (alreadyInstalled) await this.store.delete(recordKeyName);
+
+    const putResults = await Promise.all(
+      writes.map((w) => this.store.put(w.key, w.data, w.contentType !== undefined ? { contentType: w.contentType } : undefined)),
+    );
     const failed = putResults.find((r) => !r.ok);
     if (failed && !failed.ok) {
+      await restore();
       return err(
         new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Failed to write component(s) for "${name}@${version}"`, {
           cause: failed.error,
@@ -151,14 +211,44 @@ export class PackageInstaller {
       );
     }
 
+    // Read-back verification: what is on disk is what was verified. Skipped only when the caller explicitly opted out of validation.
+    if (!options.skipValidation) {
+      const readBack = await this.verifyAndLoad(name, version);
+      if (!readBack.ok || !readBack.value.report.valid) {
+        await restore();
+        const detail = readBack.ok
+          ? readBack.value.report.issues
+              .filter((i) => i.severity === 'error')
+              .map((i) => i.message)
+              .join('; ')
+          : readBack.error.message;
+        return err(
+          new InstallError(
+            ErrorCode.PACKAGE_VALIDATION_FAILED,
+            `Installed bytes for "${name}@${version}" failed read-back verification: ${detail}`,
+          ),
+        );
+      }
+    }
+
     const record: InstalledPackageRecord = {
       name,
       version,
       installedAt: this.clock.now().toISOString(),
       manifestHash: fingerprintManifest(bundle.manifest),
+      manifestDigest: fullManifestDigest(bundle.manifest),
+      trust: { status: verdict.status, mode: verdict.mode, policyId: verdict.policyId, signers: verdict.signers },
       componentPaths: bundle.components.map((c) => `${prefix}/${c.path}`),
     };
-    await this.store.put(recordKey(name, version), JSON.stringify(record, null, 2), { contentType: 'application/json' });
+    const recordPut = await this.store.put(recordKeyName, JSON.stringify(record, null, 2), { contentType: 'application/json' });
+    if (!recordPut.ok) {
+      await restore();
+      return err(
+        new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `Failed to write install record for "${name}@${version}"`, {
+          cause: recordPut.error,
+        }),
+      );
+    }
 
     const index = await this.readIndex();
     await this.writeIndex({ active: { ...index.active, [name]: version } });
@@ -318,6 +408,15 @@ export class PackageInstaller {
     if (!raw.ok) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}"'s "${kind}" component is not present in storage`));
     }
+    // Re-checked on every read: components are read long after mount, so a verification done once at mount must not authorise different bytes later.
+    if (hashComponent({ kind, path: entry.path, data: raw.value, required: entry.required }) !== entry.hash) {
+      return err(
+        new PackageError(
+          ErrorCode.PACKAGE_CORRUPT,
+          `"${name}@${version}"'s "${kind}" component does not match its manifest hash (modified after install?)`,
+        ),
+      );
+    }
     return ok(raw.value);
   }
 
@@ -331,18 +430,82 @@ export class PackageInstaller {
     return records;
   }
 
-  /** Re-hashes every installed file for `name@version` against its recorded manifest — detects on-disk corruption or tampering after install, distinct from `PackageValidator` validating a bundle before install. */
+  /** Re-hashes every installed file for `name@version` against its recorded manifest and re-evaluates trust under the *current* operator policy — detects on-disk corruption, tampering, a swapped manifest, or a since-revoked signing key; distinct from `PackageValidator` validating a bundle before install. */
   async verifyInstallation(name: string, version: string): Promise<Result<ValidationReport, InstallError>> {
+    const loaded = await this.verifyAndLoad(name, version);
+    return loaded.ok ? ok(loaded.value.report) : loaded;
+  }
+
+  /**
+   * Verifies the installed package and returns the very manifest that was verified, from one read. Callers that go on to use the manifest (the runtime loader) MUST use this rather than calling `verifyInstallation` and then re-reading `getManifest`, which would let the bytes change between the check and the use.
+   */
+  async loadVerified(
+    name: string,
+    version: string,
+  ): Promise<Result<{ readonly manifest: XoManifest; readonly report: ValidationReport }, InstallError>> {
+    return this.verifyAndLoad(name, version);
+  }
+
+  private async verifyAndLoad(
+    name: string,
+    version: string,
+  ): Promise<Result<{ readonly manifest: XoManifest; readonly report: ValidationReport }, InstallError>> {
     const unsafeIdentity = notInstalledIfUnsafe(name, version);
     if (unsafeIdentity) return err(unsafeIdentity);
     const manifestRaw = await this.store.get(`${packagePrefix(name, version)}/manifest.json`);
     if (!manifestRaw.ok) {
       return err(new InstallError(ErrorCode.PACKAGE_NOT_INSTALLED, `"${name}@${version}" is not installed`));
     }
-    const manifest = JSON.parse(new TextDecoder().decode(manifestRaw.value)) as PackageBundle['manifest'];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(manifestRaw.value));
+    } catch {
+      return err(new InstallError(ErrorCode.PACKAGE_VALIDATION_FAILED, `"${name}@${version}" has an unreadable installed manifest`));
+    }
+    if (!isXoManifest(parsed)) {
+      return err(
+        new InstallError(
+          ErrorCode.PACKAGE_VALIDATION_FAILED,
+          `"${name}@${version}" has an installed manifest that does not match the XoManifest schema`,
+        ),
+      );
+    }
+    const manifest: XoManifest = parsed;
+
+    const issues: ValidationReport['issues'][number][] = [];
+    // Identity: the directory a manifest lives in must be the identity it declares.
+    if (manifest.name !== name || manifest.version !== version) {
+      issues.push({
+        severity: 'error',
+        code: 'INSTALLED_IDENTITY_MISMATCH',
+        message: `installed manifest declares "${manifest.name}@${manifest.version}" but lives under "${name}@${version}"`,
+        path: 'manifest.json',
+      });
+    }
+    // The manifest on disk must be byte-for-byte the manifest (signatures included) that was admitted at install time.
+    const recordRaw = await this.store.get(recordKey(name, version));
+    if (recordRaw.ok) {
+      try {
+        const record = JSON.parse(new TextDecoder().decode(recordRaw.value)) as InstalledPackageRecord;
+        if (record.manifestDigest !== undefined && record.manifestDigest !== fullManifestDigest(manifest)) {
+          issues.push({
+            severity: 'error',
+            code: 'INSTALLED_MANIFEST_CHANGED',
+            message: 'the installed manifest (or its signatures) differs from the manifest that was admitted at install time',
+            path: 'manifest.json',
+          });
+        }
+      } catch {
+        issues.push({
+          severity: 'error',
+          code: 'INSTALLED_RECORD_CORRUPT',
+          message: 'the install record is unreadable',
+          path: `_records/${name}@${version}.json`,
+        });
+      }
+    }
 
     const metadataRaw = await this.store.get(`${packagePrefix(name, version)}/metadata.json`);
-    const issues: ValidationReport['issues'][number][] = [];
     const components: PackageBundle['components'][number][] = [];
     for (const [kind, entry] of Object.entries(manifest.components)) {
       const data = await this.store.get(`${packagePrefix(name, version)}/${entry.path}`);
@@ -370,7 +533,7 @@ export class PackageInstaller {
       ancillary: { metadataJson: metadataRaw.ok ? metadataRaw.value : new Uint8Array() },
     };
     const report = this.validator.validateAll(bundle);
-    return ok({ valid: report.valid && issues.length === 0, issues: [...issues, ...report.issues] });
+    return ok({ manifest, report: { valid: report.valid && issues.length === 0, issues: [...issues, ...report.issues] } });
   }
 
   /**

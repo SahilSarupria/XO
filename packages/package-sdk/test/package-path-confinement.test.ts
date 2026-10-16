@@ -4,14 +4,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFsBlobStore } from '@xo/storage';
-import { PackageInstaller } from '../src/install/package-installer.js';
+import type { PackageInstaller } from '../src/install/package-installer.js';
 import { ManifestBuilder } from '../src/manifest/manifest-builder.js';
 import { packBundle } from '../src/archive/package-writer.js';
 import { unpackArchive } from '../src/archive/package-reader.js';
-import { PackageValidator } from '../src/validation/package-validator.js';
 import { isXoManifest } from '../src/validation/schema.js';
 import type { PackageBundle } from '../src/types.js';
-import { buildSampleBundle, sampleCompatibility, sampleMetadata } from './fixtures.js';
+import { buildSampleBundle, sampleCompatibility, sampleMetadata, devInstaller, devValidator } from './fixtures.js';
 
 /**
  * Regression tests for the package-installation path-traversal fix: a
@@ -90,7 +89,7 @@ async function withSandbox<T>(fn: (s: Sandbox) => Promise<T>): Promise<T> {
   try {
     const root = join(sandbox, 'store');
     await mkdir(root);
-    const installer = new PackageInstaller(new LocalFsBlobStore(root));
+    const installer = devInstaller(new LocalFsBlobStore(root));
     const victim = await installer.install(buildSampleBundle({ name: 'victim_pkg', version: '1.0.0' }));
     assert.equal(victim.ok, true, 'victim package must install cleanly as test setup');
     return await fn({ root, sandbox, installer, victimRulesPath: join(root, 'victim_pkg/1.0.0/safety/rules.json') });
@@ -195,7 +194,7 @@ test('component collisions are rejected with zero writes (same file via trailing
 });
 
 test('PackageValidator reports COMPONENT_PATH_COLLISION', () => {
-  const report = new PackageValidator().validateAll(bundleWithExtra('lora', 'weights/lora/', 'weights/lora'));
+  const report = devValidator().validateAll(bundleWithExtra('lora', 'weights/lora/', 'weights/lora'));
   assert.ok(report.issues.some((i) => i.severity === 'error' && i.code === 'COMPONENT_PATH_COLLISION'));
 });
 
@@ -368,7 +367,7 @@ test('force-reinstall and upgrade() cannot be used to smuggle an unsafe package 
 // ── Earlier layers report the problem too (validator + schema) ──────────
 
 test('PackageValidator.validateAll reports COMPONENT_PATH_UNSAFE and PACKAGE_IDENTITY_UNSAFE', () => {
-  const validator = new PackageValidator();
+  const validator = devValidator();
   const pathReport = validator.validateAll(bundleWithComponentPath('../../x.txt'));
   assert.equal(pathReport.valid, false);
   assert.ok(pathReport.issues.some((i) => i.severity === 'error' && i.code === 'COMPONENT_PATH_UNSAFE'));

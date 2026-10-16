@@ -1,5 +1,13 @@
 import { readFile } from 'node:fs/promises';
-import { createLockfile, PackageInstaller, resolveDependencies, serializeLockfile, unpackArchive } from '@xo/package-sdk';
+import { describeTrust, resolveTrustValidator } from '../../package-trust.js';
+import {
+  createLockfile,
+  PackageInstaller,
+  type PackageTrustPolicy,
+  resolveDependencies,
+  serializeLockfile,
+  unpackArchive,
+} from '@xo/package-sdk';
 import { LocalFsBlobStore } from '@xo/storage';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
@@ -8,6 +16,8 @@ import { buildLocalStoreLookup, lockfileKey } from './dependency-lookup.js';
 export interface InstallOptions {
   readonly archivePath: string;
   readonly storeDir: string;
+  /** P1.0 M5 — injected trust policy (tests). Defaults to the operator's `XO_PACKAGE_TRUST_POLICY`. */
+  readonly trustPolicy?: PackageTrustPolicy;
   readonly force?: boolean;
   /** Installs only the one archive, with no dependency resolution or lockfile write at all — for the case where someone is deliberately installing a dependency itself before its dependents (which would otherwise be an unresolvable "not found in store" failure on its own dependents' next install/lock). */
   readonly skipResolution?: boolean;
@@ -48,8 +58,10 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
   const readResult = await unpackArchive(bytes);
   if (!readResult.ok) return failWith(`[${readResult.error.code}] ${readResult.error.message}`);
 
+  const trust = resolveTrustValidator(options.trustPolicy);
+  if (!trust.ok) return failWith(trust.message);
   const store = new LocalFsBlobStore(options.storeDir);
-  const installer = new PackageInstaller(store);
+  const installer = new PackageInstaller(store, { validator: trust.validator });
   const installOptions = options.force !== undefined ? { force: options.force } : {};
 
   const dependencies = readResult.value.manifest.dependencies ?? [];
@@ -62,9 +74,11 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
     // (or a person who has seen it before) actually branches on.
     if (!installResult.ok) return failWith(`[${installResult.error.code}] ${installResult.error.message}`);
     return ok([
+      ...trust.warnings,
       `Installed "${installResult.value.name}@${installResult.value.version}"`,
       `  installedAt:   ${installResult.value.installedAt}`,
       `  manifestHash:  ${installResult.value.manifestHash}`,
+      ...(installResult.value.trust !== undefined ? [`  trust:         ${describeTrust(installResult.value.trust)}`] : []),
       `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
       ...(options.skipResolution && dependencies.length > 0
         ? [`  (--skip-resolution: ${dependencies.length} declared dependencies were not resolved or locked)`]
@@ -96,9 +110,11 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
   const skipped = resolveResult.value.skippedOptional;
 
   return ok([
+    ...trust.warnings,
     `Installed "${installResult.value.name}@${installResult.value.version}"`,
     `  installedAt:   ${installResult.value.installedAt}`,
     `  manifestHash:  ${installResult.value.manifestHash}`,
+    ...(installResult.value.trust !== undefined ? [`  trust:         ${describeTrust(installResult.value.trust)}`] : []),
     `  ${installResult.value.componentPaths.length} component file(s) written under ${options.storeDir}`,
     '',
     `Resolved and locked ${resolveResult.value.resolved.length} dependenc${resolveResult.value.resolved.length === 1 ? 'y' : 'ies'}:`,

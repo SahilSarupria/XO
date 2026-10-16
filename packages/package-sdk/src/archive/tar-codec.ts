@@ -32,14 +32,6 @@ function writeOctal(buf: Buffer, offset: number, length: number, value: number):
   buf[offset + length - 1] = 0;
 }
 
-function parseOctal(buf: Buffer, offset: number, length: number): number {
-  const raw = buf
-    .toString('ascii', offset, offset + length)
-    .replace(/\0/g, '')
-    .trim();
-  return raw.length > 0 ? Number.parseInt(raw, 8) : 0;
-}
-
 /** Splits `path` into ustar's `name` (<=100 bytes) + `prefix` (<=155 bytes) fields, preferring the split closest to the start of the path so `name` stays as short as possible. */
 function splitPath(path: string): { readonly name: string; readonly prefix: string } {
   if (Buffer.byteLength(path, 'utf8') <= 100) return { name: path, prefix: '' };
@@ -101,26 +93,69 @@ function packEntries(entries: readonly TarEntry[]): Buffer {
   return Buffer.concat(blocks);
 }
 
+/** Hard limits applied to every archive read; exceeding either is a corrupt/hostile archive, not a resource to serve. */
+export const MAX_DECOMPRESSED_ARCHIVE_BYTES = 512 * 1024 * 1024;
+export const MAX_ARCHIVE_ENTRIES = 4096;
+
+function parseStrictOctal(buf: Buffer, offset: number, length: number): number {
+  const raw = buf
+    .toString('ascii', offset, offset + length)
+    .replace(/[\0 ]+$/u, '')
+    .replace(/^ +/u, '');
+  if (!/^[0-7]{1,11}$/u.test(raw)) throw new Error('malformed octal field in tar header');
+  return Number.parseInt(raw, 8);
+}
+
+function decodeName(buf: Buffer, offset: number, length: number): string {
+  const slice = buf.subarray(offset, offset + length);
+  const nul = slice.indexOf(0);
+  const text = slice.subarray(0, nul === -1 ? slice.length : nul).toString('utf8');
+  if (text.includes('\uFFFD')) throw new Error('tar entry name is not valid UTF-8');
+  return text;
+}
+
+/**
+ * Strict ustar reader. Fails closed on anything it does not fully understand: bad header checksums, malformed sizes, truncated data or a missing end-of-archive marker, non-regular entries (symlinks, hard links, directories, pax/GNU extension headers), empty or non-UTF-8 names, duplicate entry paths, non-zero bytes after the end marker, and entry-count/size limits.
+ */
 function parseEntries(buf: Buffer): TarEntry[] {
   const entries: TarEntry[] = [];
+  const seen = new Set<string>();
   let offset = 0;
+  let terminated = false;
   while (offset + BLOCK_SIZE <= buf.byteLength) {
     const header = buf.subarray(offset, offset + BLOCK_SIZE);
-    if (header.every((b) => b === 0)) break; // end-of-archive marker
+    if (header.every((b) => b === 0)) {
+      terminated = true;
+      if (!buf.subarray(offset).every((b) => b === 0)) throw new Error('non-zero data after end-of-archive marker');
+      break;
+    }
 
-    const name = header.toString('utf8', 0, 100).replace(/\0.*$/su, '');
-    const prefix = header.toString('utf8', 345, 500).replace(/\0.*$/su, '');
-    const size = parseOctal(header, 124, 12);
+    // Header checksum: sum of all header bytes with the checksum field treated as spaces.
+    const stored = parseStrictOctal(header, 148, 8);
+    let sum = 0;
+    for (let i = 0; i < BLOCK_SIZE; i++) sum += i >= 148 && i < 156 ? 0x20 : (header[i] as number);
+    if (sum !== stored) throw new Error('tar header checksum mismatch');
+
     const typeflag = header[156];
-    offset += BLOCK_SIZE;
+    if (typeflag !== 0x30 && typeflag !== 0) {
+      throw new Error(`unsupported tar entry type 0x${(typeflag ?? 0).toString(16)} (only regular files are allowed)`);
+    }
+    const name = decodeName(header, 0, 100);
+    const prefix = decodeName(header, 345, 155);
+    const path = joinPath(name, prefix);
+    if (name.length === 0) throw new Error('tar entry has an empty name');
+    if (seen.has(path)) throw new Error(`duplicate tar entry "${path}"`);
+    seen.add(path);
+    if (seen.size > MAX_ARCHIVE_ENTRIES) throw new Error('too many tar entries');
 
+    const size = parseStrictOctal(header, 124, 12);
+    offset += BLOCK_SIZE;
+    if (offset + size > buf.byteLength) throw new Error(`tar entry "${path}" is truncated`);
     const data = buf.subarray(offset, offset + size);
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
-
-    if (typeflag === 0x30 || typeflag === 0) {
-      entries.push({ path: joinPath(name, prefix), data: new Uint8Array(data) });
-    }
+    entries.push({ path, data: new Uint8Array(data) });
   }
+  if (!terminated) throw new Error('tar archive has no end-of-archive marker (truncated?)');
   return entries;
 }
 
@@ -149,8 +184,14 @@ export async function tarEntriesToBuffer(entries: readonly TarEntry[]): Promise<
  */
 export async function tarStreamToEntries(input: Readable): Promise<Result<readonly TarEntry[], PackageError>> {
   const chunks: Buffer[] = [];
+  let total = 0;
   try {
     for await (const chunk of input) {
+      total += (chunk as Buffer).byteLength;
+      if (total > MAX_DECOMPRESSED_ARCHIVE_BYTES) {
+        (input as Readable).destroy();
+        return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, 'Archive exceeds the maximum decompressed size'));
+      }
       chunks.push(chunk as Buffer);
     }
   } catch (cause) {
@@ -159,7 +200,7 @@ export async function tarStreamToEntries(input: Readable): Promise<Result<readon
   try {
     return ok(parseEntries(Buffer.concat(chunks)));
   } catch (cause) {
-    return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, 'Corrupt tar archive', { cause }));
+    return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, `Corrupt tar archive: ${(cause as Error).message}`, { cause }));
   }
 }
 
@@ -167,6 +208,6 @@ export async function tarBufferToEntries(buffer: Uint8Array): Promise<Result<rea
   try {
     return ok(parseEntries(Buffer.from(buffer)));
   } catch (cause) {
-    return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, 'Corrupt tar archive', { cause }));
+    return err(new PackageError(ErrorCode.PACKAGE_CORRUPT, `Corrupt tar archive: ${(cause as Error).message}`, { cause }));
   }
 }

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@xo/ai-core": "0.1.0",
+    "@xo/audit": "0.1.0",
     "@xo/capability-contract": "0.1.0",
     "@xo/compiler": "0.1.0",
     "@xo/crypto": "0.1.0",

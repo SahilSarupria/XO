@@ -1,3 +1,4 @@
+import { PackageValidator, type PackageTrustPolicy } from '@xo/package-sdk';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -17,6 +18,15 @@ import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
  */
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
+  /**
+   * P1.0 M5 — the effective package trust policy, resolved once at startup from operator configuration (`XO_PACKAGE_TRUST_POLICY`, or the explicit `XO_TRUST_MODE=development`). REQUIRED: there is no default, so a route can never run with trust silently off. Never derived from request data.
+   */
+  readonly packageTrustPolicy: PackageTrustPolicy;
+}
+
+/** Validator carrying the effective trust policy — the only way API routes verify packages. A config without a policy (possible only from untyped callers) yields an unconfigured validator, which fails closed. */
+export function workspacePackageValidator(config: WorkspaceDataConfig): PackageValidator {
+  return new PackageValidator({ trustPolicy: config.packageTrustPolicy });
 }
 
 /**
@@ -135,6 +145,11 @@ export function workspaceCompilationsStore(record: WorkspaceRecord, config: Work
 /** Fifth sibling — capability approval records (P0.5), `<dataRootDir>/<workspaceId>/approvals`. */
 export function workspaceApprovalsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'approvals'));
+}
+
+/** P1.0 M6 — idempotency records, `<dataRootDir>/<workspaceId>/idempotency` (tenant-scoped by directory, like every sibling). */
+export function workspaceIdempotencyStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'idempotency'));
 }
 
 /** Sixth sibling — execution records (P0.5), `<dataRootDir>/<workspaceId>/executions`. */

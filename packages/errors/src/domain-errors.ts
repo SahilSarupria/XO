@@ -67,7 +67,9 @@ export class PackageError extends XoError {
       | typeof ErrorCode.PACKAGE_VERSION_INVALID
       | typeof ErrorCode.PACKAGE_CORRUPT
       | typeof ErrorCode.PACKAGE_COMPONENT_MISSING
-      | typeof ErrorCode.CRYPTO_SIGNATURE_INVALID,
+      | typeof ErrorCode.CRYPTO_SIGNATURE_INVALID
+      | typeof ErrorCode.PACKAGE_UNTRUSTED
+      | typeof ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED,
     message: string,
     options?: XoErrorOptions,
   ) {
@@ -95,6 +97,8 @@ export class InstallError extends XoError {
   constructor(
     code:
       | typeof ErrorCode.PACKAGE_VALIDATION_FAILED
+      | typeof ErrorCode.PACKAGE_UNTRUSTED
+      | typeof ErrorCode.PACKAGE_TRUST_NOT_CONFIGURED
       | typeof ErrorCode.PACKAGE_ALREADY_INSTALLED
       | typeof ErrorCode.PACKAGE_NOT_INSTALLED
       | typeof ErrorCode.PACKAGE_UPGRADE_INVALID,
@@ -119,6 +123,8 @@ export class RuntimeError extends XoError {
       | typeof ErrorCode.RUNTIME_INVALID_REQUEST
       | typeof ErrorCode.RUNTIME_RETRIEVAL_FAILED
       | typeof ErrorCode.RUNTIME_SAFETY_BLOCKED
+      | typeof ErrorCode.AUDIT_UNAVAILABLE
+      | typeof ErrorCode.AUDIT_ACCESS_DENIED
       | typeof ErrorCode.RUNTIME_BUDGET_EXCEEDED
       | typeof ErrorCode.RUNTIME_EXECUTION_FAILED
       | typeof ErrorCode.RUNTIME_EXECUTION_TIMEOUT
@@ -321,6 +327,27 @@ export class RegistryError extends XoError {
       | typeof ErrorCode.REGISTRY_LICENSE_ALREADY_EXISTS
       | typeof ErrorCode.REGISTRY_LEDGER_TAMPERED
       | typeof ErrorCode.REGISTRY_LEDGER_ENTRY_NOT_FOUND,
+    message: string,
+    options?: XoErrorOptions,
+  ) {
+    super(code, message, options);
+  }
+}
+
+/**
+ * P1.0 M4 — raised by `@xo/audit`. `AUDIT_UNAVAILABLE` means a REQUIRED audit
+ * write could not be confirmed durable (callers fail closed on it);
+ * `AUDIT_EVENT_INVALID` is a programmer error (an event that violates the
+ * contract); `AUDIT_ACCESS_DENIED` is an unauthorized audit read/purge;
+ * `AUDIT_CONFIG_INVALID` is a startup misconfiguration (e.g. no retention policy).
+ */
+export class AuditError extends XoError {
+  constructor(
+    code:
+      | typeof ErrorCode.AUDIT_UNAVAILABLE
+      | typeof ErrorCode.AUDIT_EVENT_INVALID
+      | typeof ErrorCode.AUDIT_ACCESS_DENIED
+      | typeof ErrorCode.AUDIT_CONFIG_INVALID,
     message: string,
     options?: XoErrorOptions,
   ) {
