@@ -7,6 +7,7 @@ import { useShell } from '../shell/services';
 import { decodeCredential, encodeCredential, type StoredCredential } from '../auth/envelope';
 import type { AuthFailure, OidcConfig } from '../auth/oidc';
 import { OidcSession, restoreFromRefreshToken, signInWithSystemBrowser } from '../auth/oidcSession';
+import { XoAuthApi, XoSession, restoreXoSession, signInWithGoogle } from '../auth/xoSession';
 
 export interface AppProps {
   /** Test seam: lets tests inject a fake transport. Production uses the browser's fetch. */
@@ -19,7 +20,10 @@ export interface AppProps {
   readonly now?: () => number;
 }
 
-type Auth = { readonly kind: 'dev-key'; readonly key: string } | { readonly kind: 'oidc'; readonly session: OidcSession };
+type Auth =
+  | { readonly kind: 'dev-key'; readonly key: string }
+  | { readonly kind: 'oidc'; readonly session: OidcSession }
+  | { readonly kind: 'xo'; readonly session: XoSession };
 
 interface Notice {
   readonly tone: 'danger' | 'info';
@@ -99,8 +103,41 @@ export function App(props: AppProps) {
           }
           return;
         }
+        if (stored.kind === 'xo-session') {
+          // An XO session is only valid for the Google sign-in it came from; any change of settings discards it.
+          if (
+            oidcCfg === undefined ||
+            oidcCfg.provider !== 'google' ||
+            stored.issuer !== oidcCfg.issuer ||
+            stored.clientId !== oidcCfg.clientId
+          ) {
+            await forget();
+            setNotice({ tone: 'info', text: 'Sign-in settings have changed, so you need to sign in again.' });
+            return;
+          }
+          const xo = await restoreXoSession(
+            {
+              api: new XoAuthApi(props.baseUrl, fetchFn),
+              now,
+              onRefreshCredential: (t) => persist({ ...stored, refreshCredential: t }),
+              onEnded: () => endSession(),
+            },
+            stored.refreshCredential,
+          );
+          if (xo.ok) setAuth({ kind: 'xo', session: xo.value });
+          else if (xo.failure.kind === 'invalid_grant') {
+            await forget();
+            setNotice({ tone: 'danger', text: 'Your saved sign-in is no longer valid. Please sign in again.' });
+          } else setNotice(failureNotice(xo.failure)); // transient: credential kept
+          return;
+        }
         // oidc-refresh
-        if (oidcCfg === undefined || stored.issuer !== oidcCfg.issuer || stored.clientId !== oidcCfg.clientId) {
+        if (
+          oidcCfg === undefined ||
+          oidcCfg.provider === 'google' ||
+          stored.issuer !== oidcCfg.issuer ||
+          stored.clientId !== oidcCfg.clientId
+        ) {
           await forget();
           setNotice({ tone: 'info', text: 'Sign-in settings have changed, so you need to sign in again.' });
           return;
@@ -138,7 +175,7 @@ export function App(props: AppProps) {
     setAuth(null);
     setNotice(undefined);
     setProblem(undefined);
-    if (a?.kind === 'oidc') void a.session.signOut();
+    if (a?.kind === 'oidc' || a?.kind === 'xo') void a.session.signOut();
     void forget();
   }, [auth, forget]);
 
@@ -152,6 +189,41 @@ export function App(props: AppProps) {
 
   const signInExternal = useCallback(async (): Promise<AuthFailure | undefined> => {
     if (oidcCfg === undefined || shell.login === undefined) return { kind: 'config', message: 'Sign-in is not available in this app.' };
+    if (oidcCfg.provider === 'google') {
+      const api = new XoAuthApi(props.baseUrl, fetchFn);
+      const g = await signInWithGoogle({ config: oidcCfg, authFetch: fetchFn, api, login: shell.login, now });
+      if (!g.ok) return g.failure;
+      let latest = g.value.refreshCredential;
+      const xo = new XoSession(
+        {
+          api,
+          now,
+          onRefreshCredential: (t) => {
+            latest = t;
+            persist({ kind: 'xo-session', refreshCredential: t, issuer: oidcCfg.issuer, clientId: oidcCfg.clientId });
+          },
+          onEnded: () => endSession(),
+        },
+        g.value,
+      );
+      // XO verified Google's ID token and bound the identity; confirm with a real authorized call before showing the app.
+      const check = await new XoClient({
+        bearer: xo.getAccessToken,
+        fetch: fetchFn,
+        ...(props.baseUrl !== undefined ? { baseUrl: props.baseUrl } : {}),
+      }).listWorkspaces();
+      if (!check.ok) {
+        void xo.signOut();
+        return {
+          kind: check.problem.kind === 'network' ? 'network' : 'provider_error',
+          message: check.problem.kind === 'unauthenticated' ? 'XO did not accept this sign-in.' : check.problem.message,
+        };
+      }
+      persist({ kind: 'xo-session', refreshCredential: latest, issuer: oidcCfg.issuer, clientId: oidcCfg.clientId });
+      setNotice(undefined);
+      setAuth({ kind: 'xo', session: xo });
+      return undefined;
+    }
     const r = await signInWithSystemBrowser({ config: oidcCfg, fetch: fetchFn, login: shell.login, now });
     if (!r.ok) return r.failure;
     let latest = r.value.tokens.refreshToken;

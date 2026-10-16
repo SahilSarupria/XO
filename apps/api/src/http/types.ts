@@ -20,6 +20,9 @@ export interface ApiRequest {
   readonly params: Readonly<Record<string, string>>;
   readonly query: URLSearchParams;
   readonly headers: IncomingHttpHeaders;
+
+  /** The TCP peer address, for per-client rate limiting. Behind a reverse proxy this is the proxy's address (forwarding headers are not trusted). */
+  readonly remoteAddress?: string;
   /** Raw body bytes, read once and cached — safe to call more than once. */
   readonly rawBody: () => Promise<Buffer>;
   /**
@@ -56,9 +59,15 @@ export interface ApiRequest {
    * the verified issuer — the bearer token itself is not retained anywhere.
    */
   authentication?: AuthenticationInfo;
+
+  /** Set only when the request authenticated with an XO session credential: which session family it belongs to (used by logout to revoke exactly this session). */
+  session?: { readonly familyId: string };
 }
 
-export type AuthenticationInfo = { readonly credential: 'api-key' } | { readonly credential: 'oidc'; readonly issuer: string };
+export type AuthenticationInfo =
+  | { readonly credential: 'api-key' }
+  | { readonly credential: 'oidc'; readonly issuer: string }
+  | { readonly credential: 'session'; readonly issuer: string };
 
 /**
  * What a route handler returns. `body` is JSON-serialized by the

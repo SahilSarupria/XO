@@ -13,7 +13,9 @@
 - Web credential store is memory-only (tested: nothing in localStorage, sessionStorage or cookies).
 - Production build reached the real API through a same-origin `/api` proxy (24/24 live contract checks).
 
-- API-side OIDC: algorithm allow-list, issuer/audience/time checks, bounded JWKS handling, server-side `(iss, sub)` binding, fail-closed configuration, no token or claim in responses or logs (`apps/api/test/oidc-auth.test.ts`, 18 tests; plus a run against the built API process).
+- API-side OIDC: algorithm allow-list, issuer/audience/time checks, bounded JWKS handling, server-side `(iss, sub)` binding, fail-closed configuration, no token or claim in responses or logs (`apps/api/test/oidc-*.test.ts`, including `oidc-integration.test.ts`, which drives the built API over HTTP against a local test issuer).
+
+- Google sign-in → XO sessions: separate ID-token verifier (RS256, exact issuer/audience/expiry, server-issued single-use nonce), opaque hashed sessions with rotation, reuse detection and immediate revocation, per-process rate limits, bounded operator-only discovery of unbound identities (`apps/api/test/session-*.test.ts`, `apps/studio/test/auth/googleSession.test.tsx`). Local fakes only.
 
 ## Not implemented or not verified
 

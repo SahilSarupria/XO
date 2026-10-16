@@ -1,3 +1,4 @@
+import { toRecordedAuthentication, type RecordedAuthentication } from '../auth/recorded-authentication.js';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -48,6 +49,11 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
       return errorToResponse(cause);
     }
   };
+}
+
+function optionalAuthentication(req: ApiRequest): { authentication?: RecordedAuthentication } {
+  const authentication = toRecordedAuthentication(req.authentication);
+  return authentication !== undefined ? { authentication } : {};
 }
 
 export function registerExecutionRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
@@ -109,7 +115,12 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
     if (!graphFound.ok) throw graphFound.error;
 
     const executionStore = new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig));
-    const created = await executionStore.create(workspace.workspaceId, requirePrincipal(req), { compilationId, capabilityId, input });
+    const created = await executionStore.create(workspace.workspaceId, requirePrincipal(req), {
+      compilationId,
+      capabilityId,
+      input,
+      ...optionalAuthentication(req),
+    });
     if (!created.ok) throw created.error;
 
     // 5 (input validation) + 7 (invoke) both happen inside

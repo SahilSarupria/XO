@@ -50,6 +50,7 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
       workspaceId,
       identityId: principal.id,
       initiator: toPrincipalSnapshot(principal),
+      ...(input.authentication !== undefined ? { authentication: input.authentication } : {}),
       compilationId: input.compilationId,
       workflowId: input.workflowId,
       workflowName: input.workflowName,

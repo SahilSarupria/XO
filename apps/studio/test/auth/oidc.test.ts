@@ -92,15 +92,15 @@ describe('discoverProvider: issuer and endpoint trust', () => {
 });
 
 describe('PKCE, state and callback handling', () => {
-  it('generates RFC 7636-shaped verifier, S256 challenge, unique state/nonce', async () => {
+  it('generates RFC 7636-shaped verifier, S256 challenge, unique state', async () => {
     const a = await createPkce(crypto);
     const b = await createPkce(crypto);
     expect(a.verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     const expected = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(a.verifier))).toString('base64url');
     expect(a.challenge).toBe(expected);
-    expect(new Set([a.verifier, b.verifier, a.state, b.state, a.nonce, b.nonce]).size).toBe(6);
+    expect(new Set([a.verifier, b.verifier, a.state, b.state]).size).toBe(4);
   });
-  it('builds an authorization URL with S256, state, nonce and no secret', async () => {
+  it('builds an authorization URL with S256 and state, no secret, and no nonce (Studio never reads the ID token; a nonce can end up in provider access tokens, which the API refuses)', async () => {
     const p = await createPkce(crypto);
     const u = new URL(
       buildAuthorizationUrl(
@@ -113,7 +113,7 @@ describe('PKCE, state and callback handling', () => {
     expect(u.searchParams.get('code_challenge_method')).toBe('S256');
     expect(u.searchParams.get('response_type')).toBe('code');
     expect(u.searchParams.get('state')).toBe(p.state);
-    expect(u.searchParams.get('nonce')).toBe(p.nonce);
+    expect(u.searchParams.has('nonce')).toBe(false);
     expect(u.toString()).not.toMatch(/secret|verifier/i);
   });
   it('accepts a callback only with the matching state', () => {

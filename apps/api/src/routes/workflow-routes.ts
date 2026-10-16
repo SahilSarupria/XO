@@ -1,3 +1,4 @@
+import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { Router } from '../http/router.js';
@@ -89,10 +90,12 @@ function boundedPlainObject(value: unknown, field: string, maxBytes: number): Re
 }
 
 export function registerWorkflowRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
-  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal): WorkflowRunnerContext {
+  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal, req: ApiRequest): WorkflowRunnerContext {
+    const authentication = toRecordedAuthentication(req.authentication);
     return {
       workspace,
       principal,
+      ...(authentication !== undefined ? { authentication } : {}),
       compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
       approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
       executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),
@@ -103,7 +106,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
   // GET /workspaces/:workspaceId/workflows[?compilationId=]
   async function listWorkflows(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const only = req.query.get('compilationId');
 
     const listed = await ctx.compilationStore.list();
@@ -150,7 +153,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"workflowId" in the body, if present, must equal the workflowId in the path');
     const input = body['input'] === undefined ? {} : boundedPlainObject(body['input'], 'input', MAX_WORKFLOW_INPUT_BYTES);
 
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const idempotencyKey = parseIdempotencyKey(req.headers[IDEMPOTENCY_KEY_HEADER]);
     const { record, replayed } = await startWorkflowExecutionDetailed(ctx, {
       compilationId: body['compilationId'],
@@ -166,7 +169,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const records = await listWorkflowExecutions(ctx);
     return json(200, { workflowExecutions: await Promise.all(records.map((r) => toWorkflowExecutionView(ctx, r))) });
   }
@@ -175,7 +178,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const id = req.params['workflowExecutionId'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow execution id');
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const record = await getWorkflowExecution(ctx, id);
     return json(200, await toWorkflowExecutionView(ctx, record));
   }
@@ -222,7 +225,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
       ...(typeof body['expectedRevision'] === 'number' ? { expectedRevision: body['expectedRevision'] } : {}),
     };
 
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     // Ownership of the workflow execution is implicit in the workspace-scoped store: an id from another workspace simply does not exist here (404).
     const record = await resumeWorkflowExecution(ctx, id, request);
     return json(200, await toWorkflowExecutionView(ctx, record));

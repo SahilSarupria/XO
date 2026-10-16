@@ -201,6 +201,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUTH_TOKEN_EXPIRED]: 401,
   [ErrorCode.AUTH_IDENTITY_UNBOUND]: 401,
   [ErrorCode.AUTH_PROVIDER_UNAVAILABLE]: 503,
+  [ErrorCode.AUTH_CHALLENGE_INVALID]: 401,
+  [ErrorCode.AUTH_RATE_LIMITED]: 429,
 };
 
 const DEFAULT_STATUS = 500;

@@ -37,6 +37,74 @@ export const openApiDocument = {
       get: { summary: 'This document', security: [], responses: { '200': { description: 'OK' } } },
     },
 
+    // Present only when the server is configured for Google sign-in (XO_API_GOOGLE_CLIENT_ID); see docs/studio/AUTH_API_CONTRACT.md.
+    '/auth/login-challenge': {
+      post: {
+        summary: 'Start a Google sign-in: issue a single-use, 5-minute challenge (server nonce)',
+        security: [],
+        responses: {
+          '201': { description: 'challengeId, nonce, expiresAt' },
+          '429': { description: 'Rate limited, or too many outstanding challenges' },
+        },
+      },
+    },
+    '/auth/session': {
+      post: {
+        summary: 'Exchange a Google ID token (for that challenge) for an XO session',
+        description:
+          'The ID token is verified independently (signature, issuer, audience, expiry, the nonce of THIS challenge) and used once; it is never an API credential. The verified identity must have an operator-written binding (401 XO_AUTH_IDENTITY_UNBOUND otherwise). The challenge is consumed whether or not the exchange succeeds.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['challengeId', 'idToken'],
+                properties: { challengeId: { type: 'string' }, idToken: { type: 'string' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'accessCredential (xoas_, 15 min), refreshCredential (xoar_), expiry times' },
+          '401': { description: 'Challenge invalid, ID token invalid or expired, or identity unbound' },
+          '429': { description: 'Rate limited' },
+          '503': { description: 'Signing keys unavailable (fail closed)' },
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        summary: 'Rotate a session refresh credential',
+        description: 'Single use. Presenting a used credential revokes the whole session.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['refreshCredential'], properties: { refreshCredential: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'New credential pair' },
+          '401': { description: 'Invalid, expired, reused or identity unbound' },
+          '429': { description: 'Rate limited' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        summary: 'Revoke the calling XO session (authenticated with its access credential)',
+        responses: {
+          '204': { description: 'Session revoked' },
+          '400': { description: 'Not an XO session credential' },
+          '401': { description: 'Not authenticated' },
+        },
+      },
+    },
+
     '/workspaces': {
       post: {
         summary: 'Create a workspace owned by the authenticated identity',

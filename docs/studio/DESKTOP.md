@@ -30,6 +30,8 @@ To build a release: copy `src-tauri/deploy/http-deploy.capability.example.json` 
 
 Launch configuration (environment): `XO_API_URL`, `XO_OIDC_ISSUER`, `XO_OIDC_CLIENT_ID`, optional `XO_OIDC_AUDIENCE`, `XO_DEV_SIGN_IN=0` to hide the development sign-in. Invalid values stop startup with a message.
 
+**Google:** set `XO_OIDC_ISSUER=https://accounts.google.com` and `XO_OIDC_CLIENT_ID` to your Google _Desktop app_ client id (no audience, no secret). That issuer selects the Google path automatically; Studio then signs in at Google, hands Google's ID token to the XO API once, and holds only XO session credentials (access in memory, rotating refresh credential in the keychain). See `AUTH_API_CONTRACT.md` and `GOOGLE_SIGNIN_RUNBOOK.md`. Your release capability file needs the Google origins as well as the XO API origin.
+
 ## Owner: verify locally (none of the native code was compiled or run)
 
 Prerequisites: Rust stable, platform webview libraries (Linux: webkit2gtk-4.1, libsoup3, a Secret Service such as gnome-keyring; Windows: WebView2; macOS: Xcode CLT), Node 20+.
@@ -55,8 +57,8 @@ Manual checklist:
 5. **Revocation**: revoke the refresh token at the provider; within the access-token lifetime Studio returns to sign-in with a message. Block the network instead: Studio shows "cannot reach" and the keychain entry is kept.
 6. **API unavailable**: stop the API; the app shows a connection message, not a blank or success screen.
 7. **Packaged startup**: install the built package on a clean user account; it starts with only the launch environment above; invalid `XO_API_URL` shows the configuration error.
-8. **Expected today**: an OIDC login ends with "XO did not accept this sign-in" until the API implements the contract; the development sign-in works.
+8. **Expected**: with the API configured for the generic provider or for Google sign-in, login completes; with the API unconfigured, it ends with "XO did not accept this sign-in" and the development sign-in still works.
 
 ## Known gaps
 
-No icons, signing/notarization, or auto-update. Web OIDC redirect flow not implemented. API OIDC verification not implemented. Native code uncompiled. Keychain behaviour per OS untested.
+No icons, signing/notarization, or auto-update. Web OIDC redirect flow not implemented. The API-side verification and the Google session flow are implemented and tested only against local fakes. Native code uncompiled and the desktop Google flow never run. Keychain behaviour per OS untested.

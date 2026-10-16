@@ -17,6 +17,8 @@ import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import { loadOidcConfig } from './auth/oidc/config.js';
 import { createOidcVerifier } from './auth/oidc/verifier.js';
+import { createSessionAuth, loadSessionAuthConfig, type SessionAuthBundle, type SessionAuthOptions } from './auth/session/index.js';
+import { registerAuthSessionRoutes } from './routes/auth-session-routes.js';
 import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
 import { registerRoutes } from './routes/index.js';
 
@@ -50,6 +52,13 @@ export interface ServerDeps {
    * weaker authentication than configured.
    */
   readonly oidc?: OidcAuthDeps;
+  /**
+   * Google sign-in → XO sessions. Injected by tests; in production it is built from the environment
+   * (`XO_API_GOOGLE_CLIENT_ID`, see `auth/session/config.ts`) and is off when that is unset.
+   */
+  readonly sessionAuth?: SessionAuthBundle;
+  /** Test-only tuning for the environment-built session auth (clocks, limits, key-fetch timing). */
+  readonly sessionAuthOptions?: SessionAuthOptions;
   /** Environment OIDC configuration is read from. Defaults to `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -67,6 +76,7 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
     params,
     query: url.searchParams,
     headers: incoming.headers,
+    ...(incoming.socket.remoteAddress !== undefined ? { remoteAddress: incoming.socket.remoteAddress } : {}),
     rawBody,
     json: async <T>(): Promise<Result<T, XoError>> => {
       const buffer = await rawBody();
@@ -75,13 +85,20 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
   };
 }
 
+function buildSessionAuthFromEnv(deps: ServerDeps): SessionAuthBundle | undefined {
+  const config = loadSessionAuthConfig(deps.env ?? process.env); // throws on invalid/incomplete configuration
+  if (config === undefined) return undefined;
+  deps.logger?.info(`Google sign-in enabled (issuer ${config.issuer}); XO sessions stored under the configured sessions directory`);
+  return createSessionAuth(config, deps.sessionAuthOptions);
+}
+
 function buildOidcFromEnv(deps: ServerDeps): OidcAuthDeps | undefined {
   const config = loadOidcConfig(deps.env ?? process.env); // throws on invalid/incomplete configuration
   if (config === undefined) return undefined;
   deps.logger?.info(`OIDC bearer authentication enabled for issuer ${config.issuer} (audience ${config.audience})`);
   return {
     verifier: createOidcVerifier(config),
-    bindings: new FsIdentityBindingStore(new LocalFsBlobStore(config.bindingsDir)),
+    bindings: new FsIdentityBindingStore(config.bindingsDir),
   };
 }
 
@@ -100,8 +117,16 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const workspaceDataConfig: WorkspaceDataConfig = { dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir };
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
-  router.use(createAuthMiddleware({ apiKeyStore, ...(oidc !== undefined ? { oidc } : {}) }));
+  const sessionAuth = deps.sessionAuth ?? buildSessionAuthFromEnv(deps);
+  router.use(
+    createAuthMiddleware({
+      apiKeyStore,
+      ...(oidc !== undefined ? { oidc } : {}),
+      ...(sessionAuth !== undefined ? { sessions: { store: sessionAuth.sessions, bindings: sessionAuth.bindings } } : {}),
+    }),
+  );
   registerRoutes(router, { workspaceStore, workspaceDataConfig });
+  if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   return router;
 }
 

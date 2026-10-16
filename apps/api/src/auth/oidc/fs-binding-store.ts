@@ -1,11 +1,15 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { constants } from 'node:fs';
+import { mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
-import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
-import type { BlobStore } from '@xo/storage';
+import { ErrorCode, NotFoundError, StorageError, XoError } from '@xo/errors';
 import type { IdentityBinding, IdentityBindingStore } from './binding-store.interface.js';
 
-const PREFIX = 'identity-bindings/by-subject/';
+const SUBDIR = join('identity-bindings', 'by-subject');
+const MAX_RECORD_BYTES = 16 * 1024;
+const RECORD_NAME = /^[0-9a-f]{64}\.json$/;
 
 /** Hash of the JSON pair, so (issuer, subject) boundaries are unambiguous and no subject text becomes a path. */
 export function computeBindingId(issuer: string, subject: string): string {
@@ -14,23 +18,109 @@ export function computeBindingId(issuer: string, subject: string): string {
     .digest('hex');
 }
 
-function recordKey(issuer: string, subject: string): string {
-  return `${PREFIX}${computeBindingId(issuer, subject)}.json`;
+function isErrno(cause: unknown, code: string): boolean {
+  return typeof cause === 'object' && cause !== null && (cause as { code?: unknown }).code === code;
 }
 
-function decode(bytes: Uint8Array, issuer: string, subject: string): IdentityBinding | undefined {
+function decode(text: string, issuer: string, subject: string): IdentityBinding | undefined {
   try {
-    const record = JSON.parse(new TextDecoder().decode(bytes)) as IdentityBinding;
-    // Defence in depth: the stored pair must be exactly the pair asked for.
-    if (record.issuer !== issuer || record.subject !== subject || record.bindingId !== computeBindingId(issuer, subject)) return undefined;
+    const record = JSON.parse(text) as IdentityBinding;
+    // Defence in depth: the stored pair, and the id derived from it, must be exactly what was asked for.
+    if (record.issuer !== issuer || record.subject !== subject || record.bindingId !== computeBindingId(issuer, subject)) {
+      return undefined;
+    }
     return record;
   } catch {
     return undefined;
   }
 }
 
+/**
+ * Filesystem binding store: one JSON record per (issuer, subject), named by its hash.
+ *
+ * Writes are atomic and, where the filesystem allows, durable (a private temp file is fsynced, renamed over the record, and the directory fsynced), so a concurrent
+ * request sees the whole old record or the whole new one and never a torn file. Files are created
+ * 0600 and directories 0700. Reads refuse symlinks and non-regular files and are size-bounded; a
+ * record that does not parse, does not match its own name, or is not a regular file is reported as
+ * absent, which the middleware answers as "unbound" (fail closed). There is no in-memory cache, so a
+ * revocation applies to the next request.
+ *
+ * The bindings directory is the authorization list: whoever can write it can bind any identity. It
+ * is operator-owned, at the same trust level as starting the server.
+ */
 export class FsIdentityBindingStore implements IdentityBindingStore {
-  constructor(private readonly store: BlobStore) {}
+  private readonly dir: string;
+  constructor(rootDir: string) {
+    this.dir = join(rootDir, SUBDIR);
+  }
+
+  private pathFor(issuer: string, subject: string): string {
+    return join(this.dir, `${computeBindingId(issuer, subject)}.json`);
+  }
+
+  /** `undefined` when absent or untrustworthy; throws only for genuine I/O failure. */
+  private async readRecord(path: string, issuer: string, subject: string): Promise<IdentityBinding | undefined> {
+    let handle;
+    try {
+      handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (cause) {
+      if (isErrno(cause, 'ENOENT') || isErrno(cause, 'ELOOP') || isErrno(cause, 'ENOTDIR')) return undefined;
+      throw cause;
+    }
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > MAX_RECORD_BYTES) return undefined;
+      return decode(await handle.readFile({ encoding: 'utf8' }), issuer, subject);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  private async writeRecord(binding: IdentityBinding): Promise<void> {
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const target = this.pathFor(binding.issuer, binding.subject);
+    const tmp = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+    const handle = await open(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+    try {
+      await handle.writeFile(JSON.stringify(binding), { encoding: 'utf8' });
+      await handle.sync();
+    } catch (cause) {
+      await handle.close();
+      await unlink(tmp).catch(() => undefined);
+      throw cause;
+    }
+    await handle.close();
+    try {
+      await rename(tmp, target);
+    } catch (cause) {
+      await unlink(tmp).catch(() => undefined);
+      throw cause;
+    }
+    await this.syncDirectory();
+  }
+
+  /**
+   * Persist the rename itself: without this, a power loss after a revocation was acknowledged could bring
+   * the previous (active) record back. Filesystems that cannot fsync a directory (some FUSE/network mounts,
+   * and Windows, which cannot open one) are tolerated: atomicity still holds there, only crash-durability
+   * of the directory entry is best-effort.
+   */
+  private async syncDirectory(): Promise<void> {
+    let handle;
+    try {
+      handle = await open(this.dir, constants.O_RDONLY);
+    } catch (cause) {
+      if (isErrno(cause, 'EISDIR') || isErrno(cause, 'EPERM') || isErrno(cause, 'EACCES')) return;
+      throw cause;
+    }
+    try {
+      await handle.sync();
+    } catch (cause) {
+      if (!(isErrno(cause, 'EINVAL') || isErrno(cause, 'ENOTSUP') || isErrno(cause, 'EPERM'))) throw cause;
+    } finally {
+      await handle.close();
+    }
+  }
 
   async create(binding: IdentityBinding): Promise<Result<void, XoError>> {
     const found = await this.find(binding.issuer, binding.subject);
@@ -38,18 +128,20 @@ export class FsIdentityBindingStore implements IdentityBindingStore {
     if (found.value !== undefined && found.value.revokedAt === undefined) {
       return err(new XoError(ErrorCode.ALREADY_EXISTS, 'an active binding already exists for this identity'));
     }
-    const put = await this.store.put(recordKey(binding.issuer, binding.subject), JSON.stringify(binding));
-    if (!put.ok) return err(put.error);
+    try {
+      await this.writeRecord(binding);
+    } catch (cause) {
+      return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, 'could not write the binding record', { cause }));
+    }
     return ok(undefined);
   }
 
   async find(issuer: string, subject: string): Promise<Result<IdentityBinding | undefined, XoError>> {
-    const raw = await this.store.get(recordKey(issuer, subject));
-    if (!raw.ok) {
-      if (raw.error.code === ErrorCode.STORAGE_OBJECT_NOT_FOUND) return ok(undefined);
-      return err(raw.error);
+    try {
+      return ok(await this.readRecord(this.pathFor(issuer, subject), issuer, subject));
+    } catch (cause) {
+      return err(new XoError(ErrorCode.UNKNOWN, 'could not read the binding record', { cause }));
     }
-    return ok(decode(raw.value, issuer, subject));
   }
 
   async revoke(issuer: string, subject: string): Promise<Result<{ readonly alreadyRevoked: boolean }, XoError>> {
@@ -57,27 +149,42 @@ export class FsIdentityBindingStore implements IdentityBindingStore {
     if (!found.ok) return err(found.error);
     if (found.value === undefined) return err(new NotFoundError('identity binding'));
     if (found.value.revokedAt !== undefined) return ok({ alreadyRevoked: true });
-    const updated: IdentityBinding = { ...found.value, revokedAt: new Date().toISOString() };
-    const put = await this.store.put(recordKey(issuer, subject), JSON.stringify(updated));
-    if (!put.ok) return err(put.error);
+    try {
+      await this.writeRecord({ ...found.value, revokedAt: new Date().toISOString() });
+    } catch (cause) {
+      return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, 'could not write the binding record', { cause }));
+    }
     return ok({ alreadyRevoked: false });
   }
 
   async list(): Promise<Result<readonly IdentityBinding[], XoError>> {
-    const listed = await this.store.list(PREFIX);
-    if (!listed.ok) {
-      if (listed.error.code === ErrorCode.STORAGE_OBJECT_NOT_FOUND) return ok([]);
-      return err(listed.error);
+    let names: string[];
+    try {
+      names = await readdir(this.dir);
+    } catch (cause) {
+      if (isErrno(cause, 'ENOENT')) return ok([]);
+      return err(new XoError(ErrorCode.UNKNOWN, 'could not list binding records', { cause }));
     }
     const out: IdentityBinding[] = [];
-    for (const key of listed.value) {
-      const raw = await this.store.get(key);
-      if (!raw.ok) continue;
+    for (const name of names.filter((n) => RECORD_NAME.test(n)).sort()) {
       try {
-        const record = JSON.parse(new TextDecoder().decode(raw.value)) as IdentityBinding;
-        if (record.bindingId === computeBindingId(record.issuer, record.subject)) out.push(record);
+        const path = join(this.dir, name);
+        // Read without knowing the pair, then require the record to match its own file name.
+        const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+          const stat = await handle.stat();
+          if (!stat.isFile() || stat.size > MAX_RECORD_BYTES) continue;
+          const record = JSON.parse(await handle.readFile({ encoding: 'utf8' })) as IdentityBinding;
+          // Listed only if find() would honour it: the name, the stored pair and the stored id must all agree.
+          if (typeof record.issuer === 'string' && typeof record.subject === 'string') {
+            const id = computeBindingId(record.issuer, record.subject);
+            if (`${id}.json` === name && record.bindingId === id) out.push(record);
+          }
+        } finally {
+          await handle.close();
+        }
       } catch {
-        // corrupt record: omitted from the listing and never honoured by find()
+        // unreadable, symlinked or corrupt: omitted from the listing and never honoured by find()
       }
     }
     return ok(out);

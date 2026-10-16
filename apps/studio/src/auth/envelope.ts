@@ -1,11 +1,13 @@
 /**
  * What the native credential store holds: one opaque string, versioned and bound to the
  * sign-in method that produced it. Decoding is strict; anything unexpected is "no credential".
- * Access tokens are never persisted, only a dev key or an OIDC refresh token.
+ * Access tokens are never persisted, only a dev key, an OIDC refresh token, or an XO session refresh credential.
  */
 export type StoredCredential =
   | { readonly kind: 'dev-key'; readonly key: string }
-  | { readonly kind: 'oidc-refresh'; readonly refreshToken: string; readonly issuer: string; readonly clientId: string };
+  | { readonly kind: 'oidc-refresh'; readonly refreshToken: string; readonly issuer: string; readonly clientId: string }
+  /** An XO session's rotating refresh credential (xoar_…), bound to the sign-in method that issued it. Never a Google token. */
+  | { readonly kind: 'xo-session'; readonly refreshCredential: string; readonly issuer: string; readonly clientId: string };
 
 export function encodeCredential(c: StoredCredential): string {
   return JSON.stringify({ v: 1, ...c });
@@ -32,6 +34,15 @@ export function decodeCredential(raw: string): StoredCredential | null {
     const issuer = s('issuer');
     const clientId = s('clientId');
     return refreshToken === null || issuer === null || clientId === null ? null : { kind: 'oidc-refresh', refreshToken, issuer, clientId };
+  }
+  if (r['kind'] === 'xo-session') {
+    const refreshCredential = s('refreshCredential');
+    const issuer = s('issuer');
+    const clientId = s('clientId');
+    // Shape-checked so a corrupted or foreign value is "no credential" rather than something sent to the API.
+    if (refreshCredential === null || !/^xoar_[A-Za-z0-9_-]{43}$/.test(refreshCredential) || issuer === null || clientId === null)
+      return null;
+    return { kind: 'xo-session', refreshCredential, issuer, clientId };
   }
   return null;
 }

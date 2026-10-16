@@ -69,7 +69,8 @@ export function loadOidcConfig(env: Readonly<Record<string, string | undefined>>
   const skewRaw = env['XO_API_OIDC_CLOCK_SKEW_SECONDS'];
 
   if (unset(issuerRaw) && unset(audienceRaw)) {
-    // OIDC is off. A JWKS override or skew with no issuer is a half-configured deployment: say so.
+    // OIDC is off. A JWKS override with no issuer is a half-configured deployment: say so. (A skew or bindings
+    // directory on its own is harmless: it only tunes a feature that is off, so OIDC stays off, fail closed.)
     if (!unset(jwksRaw)) throw bad('XO_API_OIDC_JWKS_URI', 'set without XO_API_OIDC_ISSUER and XO_API_OIDC_AUDIENCE');
     return undefined;
   }

@@ -1,3 +1,4 @@
+import type { RecordedAuthentication } from '../auth/recorded-authentication.js';
 import type { Result } from '@xo/types';
 import type { AuthenticatedPrincipal, Principal } from '@xo/permissions';
 import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
@@ -91,6 +92,8 @@ export interface WorkflowExecutionRecord {
   readonly identityId: string;
   /** P1.0 M1 — immutable attribution snapshot of the authenticated principal that started this workflow (`identityId` equals `initiator.id`). Absent on pre-M1 records. Resumes by other principals never replace it. */
   readonly initiator?: Principal;
+  /** How the starting principal authenticated (credential type and, for provider-backed credentials, the canonical issuer). Set once at creation; absent on earlier records. Attribution only. */
+  readonly authentication?: RecordedAuthentication;
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
@@ -143,6 +146,7 @@ export interface WorkflowExecutionRecord {
 }
 
 export interface CreateWorkflowExecutionInput {
+  readonly authentication?: RecordedAuthentication;
   readonly workflowExecutionId: string;
   readonly compilationId: string;
   readonly workflowId: string;

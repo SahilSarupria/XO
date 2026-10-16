@@ -3,7 +3,9 @@
  *
  * Trust model (see docs/studio/AUTH_API_CONTRACT.md):
  *  - Studio holds no client secret and makes no identity decision. The XO API verifies the
- *    access token and derives the principal. The ID token is never used or retained here.
+ *    access token and derives the principal. On the generic path the ID token is never used or retained here.
+ *    On the Google path (xoSession.ts) the ID token is carried ONCE to the XO API, which verifies it; Studio
+ *    never decodes or trusts it, and it is never used as an API credential.
  *  - Studio only guarantees what a public client can: PKCE (S256), state binding of the
  *    callback to this attempt, strict issuer/endpoint validation, and safe token handling.
  *  - Nothing here touches storage, the DOM, or Tauri. Everything is injectable.
@@ -34,6 +36,11 @@ export interface OidcConfig {
   readonly clientId: string;
   readonly scopes: readonly string[];
   readonly audience?: string;
+  /**
+   * `google`: sign in with Google, then exchange the verified identity for an XO session (see xoSession.ts). Google
+   * access tokens are opaque to XO and are never sent to the XO API. Absent: the generic provider-JWT path, unchanged.
+   */
+  readonly provider?: 'google';
 }
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -51,7 +58,7 @@ export function parseOidcConfig(raw: unknown): AuthResult<OidcConfig> {
   for (const k of Object.keys(o)) {
     if (/secret/i.test(k)) return failAuth('config', 'Studio is a public client: a client secret must never be configured here.');
   }
-  const allowed = new Set(['issuer', 'clientId', 'scopes', 'audience']);
+  const allowed = new Set(['issuer', 'clientId', 'scopes', 'audience', 'provider']);
   for (const k of Object.keys(o)) if (!allowed.has(k)) return failAuth('config', `Unknown OIDC setting "${k}".`);
 
   if (typeof o['issuer'] !== 'string') return failAuth('config', 'OIDC issuer is missing.');
@@ -68,7 +75,11 @@ export function parseOidcConfig(raw: unknown): AuthResult<OidcConfig> {
   if (typeof clientId !== 'string' || clientId.length === 0 || clientId.length > 256 || /\s/.test(clientId)) {
     return failAuth('config', 'OIDC clientId is missing or invalid.');
   }
-  let scopes: string[] = ['openid', 'offline_access'];
+  // Google's own issuer always means the Google path: its access tokens are opaque to XO, so the generic provider-JWT
+  // path cannot work with it, and the native launcher passes only issuer/clientId (it has no provider setting).
+  const provider = o['provider'] ?? (o['issuer'] === 'https://accounts.google.com' ? 'google' : undefined);
+  if (provider !== undefined && provider !== 'google') return failAuth('config', 'OIDC provider must be \"google\" or omitted.');
+  let scopes: string[] = provider === 'google' ? ['openid'] : ['openid', 'offline_access'];
   if (o['scopes'] !== undefined) {
     if (!Array.isArray(o['scopes']) || o['scopes'].some((s) => typeof s !== 'string' || s.length === 0 || /\s/.test(s))) {
       return failAuth('config', 'OIDC scopes must be a list of scope names.');
@@ -79,12 +90,19 @@ export function parseOidcConfig(raw: unknown): AuthResult<OidcConfig> {
   if (o['audience'] !== undefined && (typeof o['audience'] !== 'string' || o['audience'].length === 0 || /\s/.test(o['audience']))) {
     return failAuth('config', 'OIDC audience is invalid.');
   }
+  if (provider === 'google') {
+    // Google signs the user in; XO issues its own session. Nothing here may ask Google for more than identity.
+    if (o['audience'] !== undefined) return failAuth('config', 'The Google provider takes no audience setting.');
+    if (scopes.includes('offline_access'))
+      return failAuth('config', 'The Google provider must not request offline_access: XO keeps the session, not Google.');
+  }
   return okAuth({
     // The issuer string is compared byte-for-byte with the provider's own claim, so it is kept exactly as configured.
     issuer: o['issuer'],
     clientId,
     scopes,
     ...(typeof o['audience'] === 'string' ? { audience: o['audience'] } : {}),
+    ...(provider === 'google' ? { provider: 'google' as const } : {}),
   });
 }
 
@@ -148,7 +166,6 @@ export interface Pkce {
   readonly verifier: string;
   readonly challenge: string;
   readonly state: string;
-  readonly nonce: string;
 }
 
 function b64url(bytes: Uint8Array): string {
@@ -162,10 +179,15 @@ function randomToken(c: Crypto, bytes: number): string {
   return b64url(a);
 }
 
+// No `nonce` is sent. A nonce only binds an ID token to a login, and Studio never reads the ID
+// token. Some providers copy the request nonce into the ACCESS token as well, and the API
+// refuses any access token carrying a `nonce` (that is how it tells an ID token from an access
+// token), so sending one would make such a provider's tokens unusable for no security benefit.
+// The code flow's integrity comes from PKCE (S256) and `state`.
 export async function createPkce(c: Crypto = globalThis.crypto): Promise<Pkce> {
   const verifier = randomToken(c, 64); // 86 chars, within RFC 7636's 43..128
   const digest = await c.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  return { verifier, challenge: b64url(new Uint8Array(digest)), state: randomToken(c, 32), nonce: randomToken(c, 32) };
+  return { verifier, challenge: b64url(new Uint8Array(digest)), state: randomToken(c, 32) };
 }
 
 /** Redirect must be a loopback http URL (RFC 8252) or https; never a bare custom value. */
@@ -181,7 +203,13 @@ export function validateRedirectUri(raw: string): AuthResult<string> {
   return okAuth(raw);
 }
 
-export function buildAuthorizationUrl(endpoints: ProviderEndpoints, config: OidcConfig, redirectUri: string, p: Pkce): string {
+export function buildAuthorizationUrl(
+  endpoints: ProviderEndpoints,
+  config: OidcConfig,
+  redirectUri: string,
+  p: Pkce,
+  nonce?: string,
+): string {
   const u = new URL(endpoints.authorizationEndpoint);
   const q = u.searchParams;
   q.set('response_type', 'code');
@@ -189,10 +217,11 @@ export function buildAuthorizationUrl(endpoints: ProviderEndpoints, config: Oidc
   q.set('redirect_uri', redirectUri);
   q.set('scope', config.scopes.join(' '));
   q.set('state', p.state);
-  q.set('nonce', p.nonce);
   q.set('code_challenge', p.challenge);
   q.set('code_challenge_method', 'S256');
   if (config.audience !== undefined) q.set('audience', config.audience);
+  // A nonce is sent only when the caller has a server-issued one to verify later (the Google path). Never invented here.
+  if (nonce !== undefined) q.set('nonce', nonce);
   return u.toString();
 }
 
@@ -327,6 +356,38 @@ export async function refreshTokens(
 }
 
 /** Best effort: failure to revoke never blocks local sign-out. */
+/** What a Google code exchange yields that XO needs: the ID token to hand to the XO API. Google's access token is discarded unread; its refresh token is returned ONLY so it can be revoked, never stored. */
+export interface IdentityGrant {
+  readonly idToken: string;
+  readonly refreshToken?: string;
+}
+
+export async function exchangeCodeForIdentity(
+  endpoints: ProviderEndpoints,
+  config: OidcConfig,
+  a: { code: string; verifier: string; redirectUri: string },
+  doFetch: AuthFetch,
+): Promise<AuthResult<IdentityGrant>> {
+  const r = await postToken(
+    endpoints,
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: a.code,
+      redirect_uri: a.redirectUri,
+      client_id: config.clientId,
+      code_verifier: a.verifier,
+    }),
+    doFetch,
+  );
+  if (!r.ok) return r;
+  const idToken = r.value['id_token'];
+  if (typeof idToken !== 'string' || idToken.length === 0 || /\s/.test(idToken) || idToken.length > 8192) {
+    return failAuth('malformed', 'The identity provider returned no usable identity token.');
+  }
+  const rt = r.value['refresh_token'];
+  return okAuth({ idToken, ...(typeof rt === 'string' && rt.length > 0 ? { refreshToken: rt } : {}) });
+}
+
 export async function revokeRefreshToken(
   endpoints: ProviderEndpoints,
   config: OidcConfig,

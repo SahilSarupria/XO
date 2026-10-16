@@ -196,6 +196,8 @@ export const ErrorCode = {
   AUTH_TOKEN_EXPIRED: 'XO_AUTH_TOKEN_EXPIRED',
   AUTH_IDENTITY_UNBOUND: 'XO_AUTH_IDENTITY_UNBOUND',
   AUTH_PROVIDER_UNAVAILABLE: 'XO_AUTH_PROVIDER_UNAVAILABLE',
+  AUTH_CHALLENGE_INVALID: 'XO_AUTH_CHALLENGE_INVALID',
+  AUTH_RATE_LIMITED: 'XO_AUTH_RATE_LIMITED',
 
   // Runtime R6 — production execution semantics (retry, simulation,
   // replay, in-flight dedup). Deliberately its own small, append-only

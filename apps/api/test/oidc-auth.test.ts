@@ -1,123 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import http, { type Server } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SignJWT, exportJWK, generateKeyPair, type JWK, type CryptoKey } from 'jose';
-import { LocalFsBlobStore } from '@xo/storage';
+import { SignJWT, generateKeyPair } from 'jose';
 import { ErrorCode } from '@xo/errors';
-import type { Logger, LogFields } from '@xo/logger';
 import { TestServer } from './test-helpers.js';
+import { AUDIENCE, CapturingLogger, TestIdp } from './oidc-test-idp.js';
 import { loadOidcConfig } from '../src/auth/oidc/config.js';
 import { createOidcVerifier, type VerifierTuning } from '../src/auth/oidc/verifier.js';
 import { FsIdentityBindingStore, computeBindingId } from '../src/auth/oidc/fs-binding-store.js';
 import { createAuthMiddleware } from '../src/http/auth.js';
 import { buildRouter } from '../src/server.js';
 import type { ApiRequest } from '../src/http/types.js';
-
-// ---------------------------------------------------------------------
-// A real local identity provider: serves discovery + JWKS over loopback
-// HTTP and signs tokens with generated keys. No external network, no
-// shared fixtures, no production values.
-// ---------------------------------------------------------------------
-
-const AUDIENCE = 'xo-api-test';
-
-class TestIdp {
-  readonly keys = new Map<string, { privateKey: CryptoKey; jwk: JWK; alg: string }>();
-  jwksStatus = 200;
-  discoveryStatus = 200;
-  jwksHits = 0;
-  discoveryHits = 0;
-  issuer = '';
-  private server!: Server;
-
-  static async start(): Promise<TestIdp> {
-    const idp = new TestIdp();
-    idp.server = http.createServer((req, res) => {
-      if (req.url === '/.well-known/openid-configuration') {
-        idp.discoveryHits++;
-        res.statusCode = idp.discoveryStatus;
-        res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({ issuer: idp.issuer, jwks_uri: `${idp.issuer}/jwks` }));
-      } else if (req.url === '/jwks') {
-        idp.jwksHits++;
-        res.statusCode = idp.jwksStatus;
-        res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({ keys: [...idp.keys.values()].map((k) => k.jwk) }));
-      } else {
-        res.statusCode = 404;
-        res.end();
-      }
-    });
-    await new Promise<void>((r) => idp.server.listen(0, '127.0.0.1', r));
-    const addr = idp.server.address();
-    if (addr === null || typeof addr === 'string') throw new Error('no port');
-    idp.issuer = `http://127.0.0.1:${addr.port}`;
-    await idp.addKey('k1');
-    return idp;
-  }
-
-  async addKey(kid: string, alg = 'RS256', publish = true): Promise<void> {
-    const { privateKey, publicKey } = await generateKeyPair(alg, { extractable: true });
-    const jwk = { ...(await exportJWK(publicKey)), kid, alg, use: 'sig' };
-    this.keys.set(kid, { privateKey, jwk, alg });
-    if (!publish) this.unpublished.add(kid);
-  }
-  private readonly unpublished = new Set<string>();
-  publish(kid: string): void {
-    this.unpublished.delete(kid);
-  }
-
-  async sign(
-    opts: {
-      sub?: string | undefined;
-      iss?: string;
-      aud?: string | string[];
-      exp?: number | string;
-      nbf?: number;
-      iat?: number;
-      kid?: string;
-      claims?: Record<string, unknown>;
-      typ?: string;
-    } = {},
-  ): Promise<string> {
-    const kid = opts.kid ?? 'k1';
-    const key = this.keys.get(kid);
-    if (key === undefined) throw new Error('unknown test key');
-    const jwt = new SignJWT({ ...(opts.claims ?? {}) })
-      .setProtectedHeader({ alg: key.alg, kid, ...(opts.typ !== undefined ? { typ: opts.typ } : {}) })
-      .setIssuer(opts.iss ?? this.issuer)
-      .setAudience(opts.aud ?? AUDIENCE)
-      .setIssuedAt(opts.iat)
-      .setExpirationTime(opts.exp ?? '5m');
-    if (opts.sub !== undefined || !('sub' in opts)) jwt.setSubject(opts.sub ?? 'user-1');
-    if (opts.nbf !== undefined) jwt.setNotBefore(opts.nbf);
-    return jwt.sign(key.privateKey);
-  }
-
-  async stop(): Promise<void> {
-    await new Promise<void>((r, j) => this.server.close((e) => (e ? j(e) : r())));
-  }
-}
-
-class CapturingLogger implements Logger {
-  readonly level = 'trace' as const;
-  readonly lines: string[] = [];
-  private rec(m: string, f?: LogFields): void {
-    this.lines.push(m + (f !== undefined ? JSON.stringify(f) : ''));
-  }
-  trace = (m: string, f?: LogFields): void => this.rec(m, f);
-  debug = (m: string, f?: LogFields): void => this.rec(m, f);
-  info = (m: string, f?: LogFields): void => this.rec(m, f);
-  warn = (m: string, f?: LogFields): void => this.rec(m, f);
-  error = (m: string, f?: LogFields): void => this.rec(m, f);
-  fatal = (m: string, f?: LogFields): void => this.rec(m, f);
-  child(): Logger {
-    return this;
-  }
-}
 
 interface Rig {
   readonly idp: TestIdp;
@@ -132,7 +27,7 @@ interface Rig {
 async function rig(tuning: VerifierTuning = {}): Promise<Rig> {
   const idp = await TestIdp.start();
   const dir = await mkdtemp(join(tmpdir(), 'xo-oidc-bindings-'));
-  const bindings = new FsIdentityBindingStore(new LocalFsBlobStore(dir));
+  const bindings = new FsIdentityBindingStore(dir);
   const config = loadOidcConfig({ XO_API_OIDC_ISSUER: idp.issuer, XO_API_OIDC_AUDIENCE: AUDIENCE, XO_API_OIDC_BINDINGS_DIR: dir });
   assert.ok(config);
   const verifier = createOidcVerifier(config, { jwksCooldownMs: 0, discoveryRetryMs: 0, httpTimeoutMs: 2000, ...tuning });
@@ -293,7 +188,7 @@ test('forged tokens are refused: tampered payload, foreign key, alg none, HS256 
     const body = enc({ iss: r.idp.issuer, aud: AUDIENCE, sub: 'user-1', exp: Math.floor(Date.now() / 1000) + 300 });
     const algNone = `${enc({ alg: 'none', typ: 'JWT' })}.${body}.`;
     // Algorithm confusion: HMAC using the (public) key material as the secret.
-    const pub = JSON.stringify(r.idp.keys.get('k1')?.jwk);
+    const pub = JSON.stringify(r.idp.publicJwk('k1'));
     const { createHmac } = await import('node:crypto');
     const hsHead = enc({ alg: 'HS256', kid: 'k1', typ: 'JWT' });
     const hs256 = `${hsHead}.${body}.${createHmac('sha256', pub).update(`${hsHead}.${body}`).digest('base64url')}`;
@@ -324,8 +219,6 @@ test('unknown kid is refused; a rotated-in key is accepted after the key set is 
   try {
     await r.bind('user-1', 'alice');
     assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400); // warms the cache
-    await r.idp.addKey('k2');
-    r.idp.keys.delete('k2'); // sign with k2 but do not publish yet
     const stray = (await generateKeyPair('RS256')).privateKey;
     const unpublished = await new SignJWT({})
       .setProtectedHeader({ alg: 'RS256', kid: 'k-unknown' })
@@ -655,4 +548,157 @@ test('configuration: off when unset; half-set, malformed or insecure values thro
 test('server construction fails visibly on invalid OIDC environment instead of starting with weaker auth', () => {
   assert.throws(() => buildRouter({ env: { XO_API_OIDC_ISSUER: 'https://idp.example' } }), /XO_API_OIDC_AUDIENCE is missing/);
   assert.doesNotThrow(() => buildRouter({ env: {} }));
+});
+
+// ---------------------------------------------------------------------
+// Hardening review: algorithms, key types, provider misbehaviour
+// ---------------------------------------------------------------------
+
+test('ES256 and PS256 access tokens are accepted alongside RS256; a token cannot name a key of the wrong type', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    await r.idp.addKey('ec1', 'ES256');
+    await r.idp.addKey('ps1', 'PS256');
+    assert.equal((await r.get('/registry/search', await r.idp.sign({ kid: 'ec1' }))).status, 400, 'ES256');
+    assert.equal((await r.get('/registry/search', await r.idp.sign({ kid: 'ps1' }))).status, 400, 'PS256');
+    // Key-type confusion: the signature is made with an RSA key but the header names the EC key's kid (and vice versa).
+    const rsaNamesEc = await r.idp.sign({ kid: 'k1', headerKid: 'ec1' });
+    const ecNamesRsa = await r.idp.sign({ kid: 'ec1', headerKid: 'k1' });
+    for (const token of [rsaNamesEc, ecNamesRsa]) {
+      const res = await r.get('/registry/search', token);
+      assert.equal(res.status, 401);
+      assert.equal(code(res), ErrorCode.AUTH_TOKEN_INVALID);
+    }
+  } finally {
+    await r.stop();
+  }
+});
+
+test('a key that signs before the provider publishes it is refused, then accepted once published', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    await r.idp.addKey('k-new', 'RS256', false);
+    const token = await r.idp.sign({ kid: 'k-new' });
+    assert.equal(code(await r.get('/registry/search', token)), ErrorCode.AUTH_TOKEN_INVALID);
+    r.idp.publish('k-new');
+    assert.equal((await r.get('/registry/search', token)).status, 400);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('redirects from discovery or the JWKS endpoint are never followed (503), even to a valid key set', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    r.idp.jwksRedirect = true;
+    const viaJwks = await r.get('/registry/search', await r.idp.sign());
+    assert.equal(viaJwks.status, 503);
+    assert.equal(code(viaJwks), ErrorCode.AUTH_PROVIDER_UNAVAILABLE);
+  } finally {
+    await r.stop();
+  }
+  const r2 = await rig();
+  try {
+    await r2.bind('user-1', 'alice');
+    r2.idp.discoveryRedirect = true;
+    const viaDiscovery = await r2.get('/registry/search', await r2.idp.sign());
+    assert.equal(viaDiscovery.status, 503);
+    assert.equal(code(viaDiscovery), ErrorCode.AUTH_PROVIDER_UNAVAILABLE);
+  } finally {
+    await r2.stop();
+  }
+});
+
+test('malformed JWKS responses are a provider fault (503); an empty key set is simply no matching key (401)', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    for (const body of ['not json at all', '{"keys":"nope"}', '[]']) {
+      r.idp.jwksBody = body;
+      const res = await r.get('/registry/search', await r.idp.sign());
+      assert.equal(res.status, 503, body);
+      assert.equal(code(res), ErrorCode.AUTH_PROVIDER_UNAVAILABLE, body);
+    }
+    for (const body of ['{"keys":[]}', '{"keys":[{"kty":"RSA"}]}']) {
+      r.idp.jwksBody = body;
+      const none = await r.get('/registry/search', await r.idp.sign());
+      assert.equal(none.status, 401, body);
+      assert.equal(code(none), ErrorCode.AUTH_TOKEN_INVALID, body);
+    }
+    r.idp.jwksBody = undefined;
+    assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400, 'recovers');
+  } finally {
+    await r.stop();
+  }
+});
+
+test('a provider outage after the key set is cached keeps verifying cached keys, never accepts unknown ones, and discovery loss does not strand a working key set', async () => {
+  const r = await rig({ discoveryTtlMs: 0, discoveryRetryMs: 0 });
+  try {
+    await r.bind('user-1', 'alice');
+    assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400);
+    const hitsBefore = r.idp.discoveryHits;
+    r.idp.discoveryStatus = 500; // discovery now fails on every request
+    assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400, 'cached key location still used');
+    assert.ok(r.idp.discoveryHits > hitsBefore, 'discovery really was retried');
+    // A key the provider has not published still cannot authenticate, outage or not.
+    await r.idp.addKey('k-late', 'RS256', false);
+    r.idp.jwksStatus = 500;
+    const res = await r.get('/registry/search', await r.idp.sign({ kid: 'k-late' }));
+    assert.equal(res.status, 503);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('credentials in the wrong shape never authenticate and never reach the JWT verifier', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    const good = await r.idp.sign();
+    const send = (authorization: string | undefined): ReturnType<TestServer['request']> =>
+      r.server.request('GET', '/registry/search', undefined, authorization === undefined ? {} : { authorization }, { skipAuth: true });
+    const cases: Array<[string, string | undefined, string]> = [
+      ['no header', undefined, ErrorCode.AUTH_KEY_MISSING],
+      ['Basic scheme', `Basic ${Buffer.from('a:b').toString('base64')}`, ErrorCode.AUTH_KEY_MISSING],
+      ['Token scheme with a valid JWT', `Token ${good}`, ErrorCode.AUTH_KEY_MISSING],
+      ['bare JWT with no scheme', good, ErrorCode.AUTH_KEY_MISSING],
+      ['empty bearer', 'Bearer ', ErrorCode.AUTH_KEY_MISSING],
+      ['unknown API key', 'Bearer xoak_doesnotexist', ErrorCode.AUTH_KEY_INVALID],
+      ['opaque non-JWT token', 'Bearer opaque-access-token', ErrorCode.AUTH_KEY_INVALID],
+    ];
+    for (const [name, header, expected] of cases) {
+      const res = await send(header);
+      assert.equal(res.status, 401, name);
+      assert.equal(code(res), expected, name);
+    }
+    // The scheme word is matched exactly ("Bearer"), as it always has been for API keys; a lowercase
+    // scheme is refused rather than guessed at (fails closed; RFC 7235 would allow it, which is a
+    // pre-existing, deliberately unchanged strictness).
+    assert.equal(code(await send(`bearer ${good}`)), ErrorCode.AUTH_KEY_MISSING);
+    // The same JWT in a query string is not a credential.
+    const q = await r.server.request('GET', `/registry/search?access_token=${good}`, undefined, {}, { skipAuth: true });
+    assert.equal(q.status, 401);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('an oversized discovery document is refused (503) without being read to the end, even when no length is declared', async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    const pad = 'x'.repeat(200_000);
+    r.idp.discoveryBody = JSON.stringify({ issuer: r.idp.issuer, jwks_uri: `${r.idp.issuer}/jwks`, pad });
+    const res = await r.get('/registry/search', await r.idp.sign());
+    assert.equal(res.status, 503);
+    assert.equal(code(res), ErrorCode.AUTH_PROVIDER_UNAVAILABLE);
+    r.idp.discoveryBody = undefined;
+    assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400, 'a normal document works');
+  } finally {
+    await r.stop();
+  }
 });

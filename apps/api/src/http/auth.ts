@@ -5,6 +5,8 @@ import type { ApiKeyStore } from '../auth/api-key-store.interface.js';
 import { hashApiKey } from '../auth/api-key.js';
 import { looksLikeJwt, type AccessTokenVerifier } from '../auth/oidc/verifier.js';
 import type { IdentityBindingStore } from '../auth/oidc/binding-store.interface.js';
+import { ACCESS_PREFIX, type FsSessionStore } from '../auth/session/session-store.js';
+import { SESSION_PUBLIC_PATHS } from '../auth/session/paths.js';
 import type { ApiRequest, Middleware } from './types.js';
 
 /**
@@ -41,7 +43,7 @@ import type { ApiRequest, Middleware } from './types.js';
  * anything not listed requires authentication, so a new route is protected by
  * default.
  */
-const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/openapi.json']);
+const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/openapi.json', ...SESSION_PUBLIC_PATHS]);
 
 const API_KEY_PREFIX = 'xoak_';
 
@@ -58,8 +60,15 @@ export interface OidcAuthDeps {
   readonly bindings: IdentityBindingStore;
 }
 
+export interface SessionAuthDeps {
+  readonly store: FsSessionStore;
+  readonly bindings: IdentityBindingStore;
+}
+
 export interface AuthDeps {
   readonly apiKeyStore: ApiKeyStore;
+  /** Absent => `xoas_` credentials are not recognised (they fall to the API-key path and are refused as unknown keys). */
+  readonly sessions?: SessionAuthDeps;
   /** Absent => OIDC acceptance is off (the fail-closed default). */
   readonly oidc?: OidcAuthDeps;
 }
@@ -121,6 +130,43 @@ async function authenticateOidc(req: ApiRequest, token: string, oidc: OidcAuthDe
   req.authentication = { credential: 'oidc', issuer: verified.issuer };
 }
 
+async function authenticateSession(req: ApiRequest, token: string, sessions: SessionAuthDeps): Promise<void> {
+  let result;
+  let found;
+  try {
+    result = await sessions.store.authenticate(token);
+    if (!result.ok) {
+      throw result.reason === 'expired'
+        ? new AuthError(ErrorCode.AUTH_TOKEN_EXPIRED, 'session access credential has expired; refresh it')
+        : new AuthError(ErrorCode.AUTH_TOKEN_INVALID, 'session credential is not valid');
+    }
+    found = await sessions.bindings.find(result.session.issuer, result.session.subject);
+  } catch (cause) {
+    if (cause instanceof AuthError) throw cause;
+    // The session or binding store failed: identity cannot be established, so refuse (fail closed).
+    throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be verified right now; try again shortly');
+  }
+  if (!found.ok) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be verified right now; try again shortly');
+  const binding = found.value;
+  // The principal is re-derived from the binding on EVERY request: revoking the binding ends the session's access at once.
+  if (binding === undefined || binding.revokedAt !== undefined) {
+    // End the session for good, so re-binding the same identity later does not silently revive old credentials.
+    await sessions.store.revoke(result.session.familyId, 'binding-revoked').catch(() => undefined);
+    throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
+  }
+  const principal = establishAuthenticatedPrincipal({
+    kind: binding.principalKind,
+    id: binding.identityId,
+    ...(binding.orgId !== undefined ? { orgId: binding.orgId } : {}),
+  });
+  if (!principal.ok) throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
+
+  req.principal = principal.value;
+  req.identity = { identityId: binding.identityId };
+  req.authentication = { credential: 'session', issuer: result.session.issuer };
+  req.session = { familyId: result.session.familyId };
+}
+
 /** Builds the auth `Middleware`. Not a singleton: stores are constructed from config or injected by tests. */
 export function createAuthMiddleware(deps: AuthDeps): Middleware {
   const hasher = new Sha256Hasher();
@@ -133,7 +179,9 @@ export function createAuthMiddleware(deps: AuthDeps): Middleware {
       throw new AuthError(ErrorCode.AUTH_KEY_MISSING, 'missing or malformed "Authorization: Bearer <key>" header');
     }
 
-    if (deps.oidc !== undefined && !token.startsWith(API_KEY_PREFIX) && looksLikeJwt(token)) {
+    if (deps.sessions !== undefined && token.startsWith(ACCESS_PREFIX)) {
+      await authenticateSession(req, token, deps.sessions);
+    } else if (deps.oidc !== undefined && !token.startsWith(API_KEY_PREFIX) && looksLikeJwt(token)) {
       await authenticateOidc(req, token, deps.oidc);
     } else {
       await authenticateApiKey(req, token, deps.apiKeyStore, hasher);

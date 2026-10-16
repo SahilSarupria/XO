@@ -1,3 +1,4 @@
+import type { RecordedAuthentication } from '../auth/recorded-authentication.js';
 import type { Result } from '@xo/types';
 import type { AuthenticatedPrincipal, Principal } from '@xo/permissions';
 import type { NotFoundError, XoError } from '@xo/errors';
@@ -75,6 +76,8 @@ export interface ExecutionRecord {
   readonly identityId: string;
   /** P1.0 M1 — immutable attribution snapshot of the authenticated principal that initiated this execution (`identityId` above equals `initiator.id`). Set once at creation from `req.principal`, never changed by `complete()` or a human-task resolution — a resolver is recorded separately in `humanTask.resolver`. Absent on records written before M1 (never back-filled or guessed). Attribution only: not proof of authorization. */
   readonly initiator?: Principal;
+  /** How the initiator authenticated (credential type and, for provider-backed credentials, the canonical issuer). Set once at creation from what the server established; absent on earlier records. Attribution only. */
+  readonly authentication?: RecordedAuthentication;
   readonly compilationId: string;
   readonly capabilityId: string;
   /**
@@ -110,6 +113,7 @@ export interface ExecutionRecord {
 }
 
 export interface CreateExecutionInput {
+  readonly authentication?: RecordedAuthentication;
   readonly compilationId: string;
   readonly capabilityId: string;
   readonly input: unknown;

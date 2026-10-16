@@ -52,6 +52,7 @@ export class FsExecutionStore implements ExecutionStore {
       workspaceId,
       identityId: principal.id,
       initiator: toPrincipalSnapshot(principal),
+      ...(input.authentication !== undefined ? { authentication: input.authentication } : {}),
       compilationId: input.compilationId,
       capabilityId: input.capabilityId,
       status: 'failed', // placeholder until `complete()` — see doc comment below

@@ -1,3 +1,4 @@
+import type { RecordedAuthentication } from '../auth/recorded-authentication.js';
 import { err, ok, type Result } from '@xo/types';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { CapabilityInputSchema } from '@xo/types';
@@ -108,6 +109,8 @@ export interface WorkflowRunnerContext {
   readonly workspace: WorkspaceRecord;
   /** P1.0 M1 — the authenticated principal driving this call (start, resume, or HITL resolution). Step executions are initiated by it; it never defaults and is never replaced by a worker. */
   readonly principal: AuthenticatedPrincipal;
+  /** How `principal` authenticated, stamped onto the records this call creates. Attribution only. */
+  readonly authentication?: RecordedAuthentication;
   readonly compilationStore: CompilationStore;
   readonly approvalStore: ApprovalStore;
   readonly executionStore: ExecutionStore;
@@ -373,6 +376,7 @@ class RecordingStepExecutor {
       compilationId: this.runtime.compilation.compilationId,
       capabilityId: step.capabilityId,
       input: request.input,
+      ...(this.ctx.authentication !== undefined ? { authentication: this.ctx.authentication } : {}),
     });
     if (!created.ok) throw created.error;
     const executionId = created.value.executionId;
@@ -732,6 +736,7 @@ export async function startWorkflowExecutionDetailed(
 
   const createRecord = () =>
     ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
+      ...(ctx.authentication !== undefined ? { authentication: ctx.authentication } : {}),
       workflowExecutionId,
       compilationId: request.compilationId,
       workflowId: request.workflowId,
