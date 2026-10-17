@@ -262,15 +262,29 @@ async function desktop() {
 
   if (await apiUp(s.apiPort, s.host)) {
     ok(`Using the API already running on port ${s.apiPort}`);
+    if (google)
+      warn(
+        'That API was not started by this command: Google sign-in only works if it was started with XO_API_GOOGLE_CLIENT_ID. Stop it and re-run to be sure.',
+      );
   } else {
     if (!apiUrl.startsWith(`http://${s.host}:`) && !apiUrl.startsWith('http://127.0.0.1:') && !apiUrl.startsWith('http://localhost:'))
       throw new Error(
         `XO_API_URL (${apiUrl}) is not a local address and nothing answers there. Start that API, or remove XO_API_URL from .env.`,
       );
     buildApi();
+    // Google sign-in needs the API to know the same client id Studio uses, plus local folders for sessions and the
+    // operator-managed identity bindings. Derived from .env so there is one place to configure; explicit XO_API_* wins.
+    const googleApi = {};
+    if (google) {
+      googleApi.XO_API_GOOGLE_CLIENT_ID = env.XO_API_GOOGLE_CLIENT_ID ?? clientId;
+      googleApi.XO_API_SESSIONS_DIR = env.XO_API_SESSIONS_DIR ?? join(dataDir, 'sessions');
+      googleApi.XO_API_OIDC_BINDINGS_DIR = env.XO_API_OIDC_BINDINGS_DIR ?? join(dataDir, 'bindings');
+      for (const d of [googleApi.XO_API_SESSIONS_DIR, googleApi.XO_API_OIDC_BINDINGS_DIR]) mkdirSync(d, { recursive: true, mode: 0o700 });
+    }
     const api = spawn(process.execPath, ['run-api.mjs'], {
       cwd: join(root, 'apps/api'),
       env: {
+        ...googleApi,
         ...env,
         PORT: String(s.apiPort),
         HOST: s.host,
@@ -295,6 +309,17 @@ async function desktop() {
   }
 
   const childEnv = { ...env, XO_API_URL: apiUrl };
+  if (google) {
+    const sessions = env.XO_API_SESSIONS_DIR ?? join(dataDir, 'sessions');
+    const bindings = env.XO_API_OIDC_BINDINGS_DIR ?? join(dataDir, 'bindings');
+    console.log(
+      `\n${c(1, 'Google sign-in is on.')} The first time an account signs in, XO refuses it until you bind it (this is by design). Then run:\n` +
+        `  node --import tsx apps/api/scripts/manage-oidc-bindings.ts unbound --sessions-dir "${sessions}"\n` +
+        `  node --import tsx apps/api/scripts/manage-oidc-bindings.ts bind --issuer ${GOOGLE_ISSUER} --subject <subject from above> --identity <principal id> --kind human --dir "${bindings}"\n`,
+    );
+  } else {
+    warn('Google sign-in is OFF: add XO_OIDC_ISSUER and XO_OIDC_CLIENT_ID to .env (see .env.example), then re-run.');
+  }
   console.log(
     `\n  API      ${apiUrl}\n  Sign-in  ${google ? 'Google (and the development access key)' : 'development access key'}\n  Config   ${config}\n` +
       (existsSync(keyFile)
