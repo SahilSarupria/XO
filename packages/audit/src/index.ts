@@ -20,6 +20,7 @@ export {
   CHAIN_FORMAT,
   CHAIN_LOG_FILE,
   CHAIN_LOCK_FILE,
+  CHAIN_INIT_MARKER,
   INDEFINITE_RETENTION,
   verifyClosedChainedLog,
   readClosedChainedLog,

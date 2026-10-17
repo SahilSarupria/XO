@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, stat, truncate, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open as openFile, readFile, stat, truncate, unlink, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { AuditError, ErrorCode } from '@xo/errors';
@@ -43,6 +43,8 @@ import { FILTERS, validateDraftFields } from './validate.js';
  */
 export const CHAIN_LOG_FILE = 'audit.chain.jsonl';
 export const CHAIN_LOCK_FILE = 'audit.chain.lock';
+/** Creation marker (opt-in, see `creationMarker`): present only while a new log's header is not yet durable. */
+export const CHAIN_INIT_MARKER = 'audit.chain.init';
 export const CHAIN_FORMAT = 'xo-audit-chain/1';
 export const INDEFINITE_RETENTION = '9999-12-31T23:59:59.999Z';
 const GENESIS = '0'.repeat(64);
@@ -75,6 +77,17 @@ export interface ChainedAuditStoreOptions {
   readonly clock?: () => Date;
   readonly ops?: FileOps;
   readonly grantMaxAgeMs?: number;
+  /**
+   * OPT-IN (default off; C0.3 behaviour unchanged). Makes a crash DURING INITIAL HEADER CREATION recoverable without an
+   * operator, and provably without discarding anything acknowledged: a marker file is created and fsynced before the first
+   * header write and removed only after the header is written, fsynced and the directory synced. Acknowledgement needs a
+   * complete fsynced line and records are only appended after `open()` returns (i.e. after the marker is gone), so a log
+   * with NO complete record next to a PRESENT marker cannot contain an acknowledged record. That case is recovered as fresh.
+   * No marker => the same file is `AUDIT_CORRUPT` (operator). A marker never licenses discarding a complete record: a file
+   * with any complete line is verified normally. Local attackers who can write the directory can also forge a marker; that is
+   * inside the documented tamper-evident-not-tamper-proof limitation.
+   */
+  readonly creationMarker?: boolean;
 }
 
 export interface ChainHead {
@@ -316,10 +329,29 @@ export class ChainedAuditStore implements AuditSink {
         if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
       }
       const clock = options.clock ?? (() => new Date());
+      const useMarker = options.creationMarker === true;
+      const markerPath = join(options.dir, CHAIN_INIT_MARKER);
+      const markerPresent =
+        useMarker &&
+        (await stat(markerPath).then(
+          () => true,
+          () => false,
+        ));
+      if (markerPresent && text.length > 0 && !text.includes('\n')) {
+        // Torn header under a present creation marker: no complete (hence no acknowledged) record can exist. Start fresh.
+        await truncate(file, 0);
+        text = '';
+      }
       let handle: AppendHandle;
       let sc: Scan;
       if (text.length === 0) {
         // Fresh log: write the header exclusively (or, if a crash left a zero-byte file, append it).
+        if (useMarker && !markerPresent) {
+          const fh = await openFile(markerPath, 'wx', 0o600);
+          await fh.sync();
+          await fh.close();
+          await ops.syncDir(options.dir);
+        }
         const logId = randomUUID();
         const rec = ChainedAuditStore.seal(options.integrityKey, {
           v: 1,
@@ -342,6 +374,11 @@ export class ChainedAuditStore implements AuditSink {
         const s = scan(line.toString('utf8'), options.integrityKey, schemas);
         if (!s.ok) throw s.error;
         sc = s.value;
+        if (useMarker) {
+          // The header is durable: creation is complete, the marker has done its job.
+          await unlink(markerPath).catch(() => undefined);
+          await ops.syncDir(options.dir);
+        }
       } else {
         const s = scan(text, options.integrityKey, schemas);
         if (!s.ok) {
@@ -372,6 +409,11 @@ export class ChainedAuditStore implements AuditSink {
         // Everything read at open is made durable BEFORE any caller can be told a retry is a duplicate of it, so a
         // record that landed during an indeterminate failure is never reported durable while only in page cache.
         await handle.sync();
+        if (markerPresent) {
+          // A stale marker beside a log that just verified (crash after the header, before the marker was removed).
+          await unlink(markerPath).catch(() => undefined);
+          await ops.syncDir(options.dir);
+        }
       }
       const bytes = (await stat(file)).size;
       return ok(

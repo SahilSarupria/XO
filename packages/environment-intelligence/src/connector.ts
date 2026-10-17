@@ -4,6 +4,7 @@ import type { AuditOptions } from './audited-operation.js';
 import type { AuditRecorder } from './audit.js';
 import type { AuthorizationPort } from './authorization.js';
 import type { EvidenceLedger } from './evidence-ledger.js';
+import type { EiStateStore } from './state-journal.js';
 import type { DiscoveryError } from './errors.js';
 import type { Evidence, EvidenceKind } from './evidence.js';
 import type { ConnectorId, SourceId } from './ids.js';
@@ -79,6 +80,12 @@ export interface ConnectorContext {
   readonly audit?: AuditRecorder;
   /** M2.2: tracks released / quarantined / revoked / purged evidence so ineligible evidence is not selected again. Optional. */
   readonly ledger?: EvidenceLedger;
+  /**
+   * C0.4: durable lifecycle-state store. OPTIONAL: with none configured, ledger and inventory are in-memory exactly as before.
+   * When configured it must be started (`start()`), its `ledger` must be the one in this context, and protected operations are
+   * refused with `EI_STATE_UNAVAILABLE` whenever it is not operational (no memory-only fallback).
+   */
+  readonly state?: EiStateStore;
   /** M2.2: timeout / retry / operation-id tuning for audit writes. Optional. */
   readonly auditOptions?: AuditOptions;
 }

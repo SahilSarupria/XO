@@ -31,8 +31,39 @@ interface Entry {
 
 const SEVERITY: Readonly<Record<EvidenceState, number>> = { released: 0, quarantined: 1, revoked: 2, purged: 3 };
 
+/** A ledger entry as persisted by the C0.4 state journal: ids and states only, never payloads. */
+export interface LedgerEntryRecord {
+  readonly id: EvidenceId;
+  readonly state: EvidenceState;
+  readonly sourceId: SourceId;
+  readonly operationId: string;
+}
+
 export class EvidenceLedger implements EvidenceEligibility {
   private readonly entries = new Map<EvidenceId, Entry>();
+  private gate: (() => boolean) | undefined;
+
+  /**
+   * C0.4 (fail closed): when a durable state store is attached it installs a gate here. While the gate returns false
+   * (store not started, persistence failed or indeterminate, integrity unverified, closed) NOTHING is eligible, including ids
+   * this ledger holds as `released`. With no gate (no durable store configured) behaviour is exactly as before.
+   */
+  setEligibilityGate(gate: (() => boolean) | undefined): void {
+    this.gate = gate;
+  }
+
+  /** Every entry, sorted by id (used to persist and to compare state). */
+  exportEntries(): readonly LedgerEntryRecord[] {
+    return [...this.entries.entries()]
+      .map(([id, e]) => ({ id, state: e.state, sourceId: e.sourceId, operationId: e.operationId }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  }
+
+  /** Replaces ALL entries (state restored from the durable journal at startup). */
+  restoreEntries(entries: readonly LedgerEntryRecord[]): void {
+    this.entries.clear();
+    for (const e of entries) this.entries.set(e.id, { state: e.state, sourceId: e.sourceId, operationId: e.operationId });
+  }
 
   /** Marks evidence as released by an operation whose completion audit was accepted. Supersedes any earlier state (a new authorization). */
   release(operationId: string, evidence: readonly Evidence[]): void {
@@ -81,6 +112,7 @@ export class EvidenceLedger implements EvidenceEligibility {
   }
 
   isEligible(id: EvidenceId): boolean {
+    if (this.gate !== undefined && !this.gate()) return false;
     return this.entries.get(id)?.state === 'released';
   }
 

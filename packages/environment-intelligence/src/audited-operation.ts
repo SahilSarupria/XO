@@ -6,6 +6,7 @@ import {
   auditError,
   digestKeys,
   isReceiptFor,
+  isSafeAuditId,
   normalizeAuditRecordRequest,
   safeIdentifier,
   scopeRef,
@@ -19,6 +20,7 @@ import {
   type AuditTrust,
 } from './audit.js';
 import { requireAuthenticatedPrincipal, type TrustedAllow } from './authorization-gate.js';
+import { STATE_ID_MAX_LENGTH, requireOperationalState } from './state-journal.js';
 import type { ConnectorContext } from './connector.js';
 import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError } from './errors.js';
 import type { Evidence } from './evidence.js';
@@ -146,6 +148,8 @@ export class AuditSession {
   constructor(
     private readonly recorder: AuditRecorder,
     private readonly trust: AuditTrust,
+    /** Event id of the accepted write-ahead attempt (cross-reference for the C0.4 state journal). */
+    readonly attemptEventId: string,
     private readonly ctx: ConnectorContext,
     private readonly info: AuditedOperationInfo,
     readonly operationId: string,
@@ -212,13 +216,29 @@ export class AuditSession {
     // Deliberately NOT tied to the caller's abort signal: a cancelled operation must still be recorded.
     const accepted = await acceptAuditEvent(this.recorder, event, this.trust, this.options);
     if (accepted.ok) {
-      if (result.ok) this.ctx.ledger?.release(this.operationId, evidence);
-      return result;
+      if (!result.ok) return result;
+      const state = this.ctx.state;
+      if (state === undefined) {
+        this.ctx.ledger?.release(this.operationId, evidence);
+        return result;
+      }
+      // C0.4: the completion audit is CONFIRMED; only now is the release made durable, and evidence is returned only after it is.
+      // On any journal failure the store withheld the evidence (quarantined in memory) and nothing is eligible.
+      const persisted = await state.release(this.trust, this.operationId, evidence, accepted.value.eventId);
+      if (persisted.ok) return result;
+      return err(
+        discoveryError(
+          DiscoveryErrorCode.EVIDENCE_QUARANTINED,
+          'the lifecycle state could not be persisted; the acquired evidence was withheld and not released',
+          { operationId: this.operationId, evidenceCount: evidence.length, stateDurable: false, quarantineAudited: false },
+        ),
+      );
     }
     if (!result.ok) return result; // The operation already failed; its (unrecorded) failure is the answer, not an audit error.
     if (evidence.length === 0) return err(unavailable('completion', this.operationId));
     // Evidence in hand, completion not accepted: quarantine. The result is dropped; only opaque ids are kept.
-    this.ctx.ledger?.quarantine(this.operationId, evidence);
+    if (this.ctx.state !== undefined) await this.ctx.state.quarantine(this.trust, this.operationId, evidence);
+    else this.ctx.ledger?.quarantine(this.operationId, evidence);
     const quarantineEvent: AuditRecordRequest = {
       ...this.base('quarantined'),
       errorCode: DiscoveryErrorCode.AUDIT_UNAVAILABLE,
@@ -298,6 +318,15 @@ export async function beginAudit(
   operationIdOverride?: string,
 ): Promise<Result<AuditSession, DiscoveryError>> {
   const options = ctx.auditOptions ?? {};
+  // A caller-supplied operation id must satisfy the canonical id contract. A malformed one is REFUSED before anything else happens and
+  // is never echoed into the error (the context carries a fixed placeholder), so a hostile id cannot reach logs or responses.
+  if (operationIdOverride !== undefined && !isSafeAuditId(operationIdOverride))
+    return err(unavailable('attempt', 'invalid', { auditCode: AuditErrorCode.INVALID_EVENT }));
+  // With a durable state store configured, an id the journal cannot key (longer than STATE_ID_MAX_LENGTH, though valid for audit) is
+  // refused here, BEFORE the audit attempt: otherwise the attempt would be accepted and the journal would reject the intent, leaving an
+  // open attempt no retry could ever complete.
+  if (ctx.state !== undefined && operationIdOverride !== undefined && operationIdOverride.length > STATE_ID_MAX_LENGTH)
+    return err(unavailable('attempt', 'invalid', { auditCode: AuditErrorCode.INVALID_EVENT }));
   const operationId = operationIdOverride ?? (options.newOperationId ?? (() => `op_${randomUUID()}`))();
   const recorder = ctx.audit;
   if (recorder === undefined) {
@@ -311,10 +340,13 @@ export async function beginAudit(
   // The trusted principal is the AUTHENTICATED one the gate enforced for; the request's `principal` is only a snapshot.
   const trust = trustOf(ctx);
   if (trust === undefined) return err(unavailable('attempt', operationId, { auditCode: AuditErrorCode.INVALID_EVENT }));
+  // C0.4: with a durable state store configured, a non-operational store refuses the operation BEFORE any audit attempt or read.
+  const stateOk = requireOperationalState(ctx);
+  if (!stateOk.ok) return stateOk;
   const event = baseFields(ctx, info, operationId, 'attempt', 'attempted');
   const accepted = await acceptAuditEvent(recorder, event, trust, options);
   if (!accepted.ok) return err(unavailable('attempt', operationId, { auditCode: accepted.error.code }));
-  return ok(new AuditSession(recorder, trust, ctx, info, operationId, options));
+  return ok(new AuditSession(recorder, trust, accepted.value.eventId, ctx, info, operationId, options));
 }
 
 /**

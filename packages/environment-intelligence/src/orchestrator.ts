@@ -18,6 +18,7 @@ import { resourceScope } from '@xo/permissions';
 import { requireAuthenticatedPrincipal, requireAuthorization } from './authorization-gate.js';
 import { planConnection, type ConnectionPlan, type ConnectorRegistry } from './registry.js';
 import type { SourceEvent } from './source-state.js';
+import { isStateRepresentableId, rejectedForState, requireOperationalState, trustFromContext } from './state-journal.js';
 
 export interface DiscoveryDeps {
   readonly registry: ConnectorRegistry;
@@ -83,7 +84,7 @@ function applyOrFail(
  * run. Denial auditing depends on the separately designed M2.2 audit port and
  * is not implemented here.
  */
-export async function discoverSource<TScope extends DiscoveryScopeBase>(
+async function discoverSourceCore<TScope extends DiscoveryScopeBase>(
   deps: DiscoveryDeps,
   request: DiscoveryRequest<TScope>,
   ctx: ConnectorContext,
@@ -171,6 +172,43 @@ export async function discoverSource<TScope extends DiscoveryScopeBase>(
   return ok({ record, plan, outcome, evidence: outcome.evidence });
 }
 
+/**
+ * Persists the inventory changes a core operation made, when a durable state store is configured (C0.4). Identity is checked
+ * first (an unauthenticated caller learns nothing); then a non-operational store refuses the operation BEFORE anything runs
+ * (no memory-only fallback); after the core ran, changed sources are journaled. A journal failure is returned as an error.
+ */
+async function withDurableInventory<T>(
+  ctx: ConnectorContext,
+  permission: string | undefined,
+  run: () => Promise<Result<T, DiscoveryError>>,
+  /** Optional refusal evaluated after identity and the state guard but BEFORE anything runs or is mutated. */
+  precheck?: () => DiscoveryError | undefined,
+): Promise<Result<T, DiscoveryError>> {
+  const state = ctx.state;
+  if (state === undefined) return run();
+  const who = requireAuthenticatedPrincipal(ctx.principal, permission);
+  if (!who.ok) return who;
+  const guard = requireOperationalState(ctx);
+  if (!guard.ok) return guard;
+  const refused = precheck?.();
+  if (refused !== undefined) return err(refused);
+  const result = await run();
+  const trust = trustFromContext(ctx);
+  if (trust === undefined) return result;
+  const synced = await state.syncInventory(trust);
+  if (!synced.ok) return synced;
+  return result;
+}
+
+/** Drives one source through detect -> match -> plan -> validate -> discover; see `discoverSourceCore`. With a durable state store the touched inventory is journaled afterwards. */
+export async function discoverSource<TScope extends DiscoveryScopeBase>(
+  deps: DiscoveryDeps,
+  request: DiscoveryRequest<TScope>,
+  ctx: ConnectorContext,
+): Promise<Result<DiscoveryRun, DiscoveryError>> {
+  return withDurableInventory(ctx, undefined, () => discoverSourceCore(deps, request, ctx));
+}
+
 /** Provisional bound on one declaration call (pure check, before any authorization or record). */
 export const MAX_DECLARED_SOURCES_PER_CALL = 500;
 
@@ -202,6 +240,20 @@ const DECLARE_SOURCES_CONNECTOR = ConnectorId('xo.environment-intelligence');
  * values are data, never proof of permission.
  */
 export async function registerDeclaredSources(
+  deps: DiscoveryDeps,
+  sources: readonly DetectedSource[],
+  ctx: ConnectorContext,
+): Promise<Result<readonly SourceRecord[], DiscoveryError>> {
+  return withDurableInventory(
+    ctx,
+    DECLARE_SOURCES_PERMISSION,
+    () => registerDeclaredSourcesCore(deps, sources, ctx),
+    // A source the journal cannot key must never enter the inventory: it could not be persisted and would wedge every later sync.
+    () => (sources.every((s) => isStateRepresentableId(s?.sourceId)) ? undefined : rejectedForState('inventory')),
+  );
+}
+
+async function registerDeclaredSourcesCore(
   deps: DiscoveryDeps,
   sources: readonly DetectedSource[],
   ctx: ConnectorContext,
@@ -266,6 +318,9 @@ export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
   // M2.1: identity before any inventory lookup, so an unauthenticated caller cannot learn which sources exist.
   const who = requireAuthenticatedPrincipal(ctx.principal);
   if (!who.ok) return who;
+  // C0.4: a non-operational durable store refuses before any lookup, audit attempt or read.
+  const stateGuard = requireOperationalState(ctx);
+  if (!stateGuard.ok) return stateGuard;
   const record = deps.inventory.get(request.sourceId);
   if (record === undefined || record.connectorId === undefined) {
     return err(discoveryError(DiscoveryErrorCode.INVALID_TRANSITION, 'source is not in the inventory or has no matched connector', {}));

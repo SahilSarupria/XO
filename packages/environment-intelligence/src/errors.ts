@@ -43,6 +43,11 @@ export const DiscoveryErrorCode = {
   AUDIT_UNAVAILABLE: 'EI_AUDIT_UNAVAILABLE',
   /** Evidence was acquired but its completion audit was not accepted: it was quarantined and NOT released. */
   EVIDENCE_QUARANTINED: 'EI_EVIDENCE_QUARANTINED',
+  /**
+   * C0.4: the durable lifecycle-state store is not operational (not started, persistence failed or was indeterminate, or integrity
+   * could not be verified). Nothing was read or released and no evidence is eligible; there is no memory-only fallback.
+   */
+  STATE_UNAVAILABLE: 'EI_STATE_UNAVAILABLE',
   /** Unexpected internal failure (wrapped, never leaked raw). */
   INTERNAL: 'EI_INTERNAL',
 } as const;
@@ -62,6 +67,7 @@ const RETRYABLE: ReadonlySet<DiscoveryErrorCode> = new Set([
   DiscoveryErrorCode.SOURCE_UNAVAILABLE,
   DiscoveryErrorCode.CANCELLED,
   DiscoveryErrorCode.INTERNAL,
+  DiscoveryErrorCode.STATE_UNAVAILABLE,
 ]);
 
 export function discoveryError(

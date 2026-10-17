@@ -8,6 +8,7 @@ import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError 
 import type { EvidenceLedger } from './evidence-ledger.js';
 import { ConnectorId, type EvidenceId, type SourceId } from './ids.js';
 import type { EnvironmentInventory } from './inventory.js';
+import { requireOperationalState, trustFromContext } from './state-journal.js';
 
 /**
  * Revocation and purge of released evidence (M2.2).
@@ -87,6 +88,9 @@ async function runLifecycle(
   if (record === undefined) {
     return err(discoveryError(DiscoveryErrorCode.INVALID_TRANSITION, 'source is not in the inventory', { operation }));
   }
+  // C0.4: a non-operational durable store refuses the operation before any audit attempt (no memory-only fallback).
+  const stateGuard = requireOperationalState(ctx);
+  if (!stateGuard.ok) return stateGuard;
 
   // Write-ahead: nothing changes until the attempt is accepted.
   const session = await beginAudit(
@@ -107,17 +111,61 @@ async function runLifecycle(
   const at = ctx.clock.now().toISOString();
 
   let covered: readonly EvidenceId[];
+  const state = ctx.state;
+  const trust = trustFromContext(ctx);
+  // C0.4. A failure of the STATE JOURNAL is returned (never thrown) and leaves the audit attempt OPEN with NO terminal event: the
+  // outcome of the journal write may be unknown (it may have landed), so recording `failed` could contradict the durable state.
+  // A retry with the same operationId completes it (intent, revoke and terminal are all idempotent), before or after a restart.
+  // A definite failure of a purge HOLDER is different: the state is known (revoked, not purged), and it is audited as `failed`
+  // exactly as without a durable store.
+  const stateFailure = (e: DiscoveryError): Result<EvidenceLifecycleResult, DiscoveryError> =>
+    err(discoveryError(e.code, e.message, { ...e.context, operationId, attemptOpen: true, completionAudited: false }));
   try {
-    deps.inventory.apply(request.sourceId, 'authorization_revoked', at);
-    deps.ledger.revokeSource(request.sourceId, operationId);
+    if (state !== undefined) {
+      // Durable ordering (docs/environment-intelligence/c0-4-state-journal.md): write-ahead INTENT, then revoke (memory first, then
+      // the journaled transition), then - only for purge, only after every holder deleted - the purged transition.
+      if (trust === undefined)
+        return stateFailure(
+          discoveryError(DiscoveryErrorCode.STATE_UNAVAILABLE, 'no trusted principal for the state journal', {
+            phase: 'intent',
+            outcome: 'rejected',
+          }),
+        );
+      const begun = await state.beginLifecycle(trust, {
+        kind,
+        operationId,
+        sourceId: request.sourceId,
+        at,
+        auditEventId: session.value.attemptEventId,
+      });
+      if (!begun.ok) return stateFailure(begun.error);
+      const revoked = await state.applyRevoke(trust, { operationId, sourceId: request.sourceId, at });
+      if (!revoked.ok) return stateFailure(revoked.error);
+    } else {
+      deps.inventory.apply(request.sourceId, 'authorization_revoked', at);
+      deps.ledger.revokeSource(request.sourceId, operationId);
+    }
     if (kind === 'revoke') {
       covered = deps.ledger.idsOf(request.sourceId, ['revoked', 'purged']);
     } else {
       // Already ineligible (revoked above). Ask every holder to delete; only then mark purged.
       const toPurge = deps.ledger.idsOf(request.sourceId, ['revoked']);
       for (const target of request.targets ?? []) await target.purge(toPurge);
-      deps.ledger.purgeSource(request.sourceId, operationId);
-      deps.inventory.markPurged(request.sourceId, at);
+      if (state !== undefined) {
+        // With a durable store configured there is NO in-memory fallback, even structurally: a missing trusted principal is a failure.
+        if (trust === undefined)
+          return stateFailure(
+            discoveryError(DiscoveryErrorCode.STATE_UNAVAILABLE, 'no trusted principal for the state journal', {
+              phase: 'purge',
+              outcome: 'rejected',
+            }),
+          );
+        const purged = await state.applyPurge(trust, { operationId, sourceId: request.sourceId, at });
+        if (!purged.ok) return stateFailure(purged.error);
+      } else {
+        deps.ledger.purgeSource(request.sourceId, operationId);
+        deps.inventory.markPurged(request.sourceId, at);
+      }
       covered = deps.ledger.idsOf(request.sourceId, ['purged']);
     }
   } catch (e) {

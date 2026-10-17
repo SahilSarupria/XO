@@ -147,6 +147,12 @@ export class EnvironmentInventory {
     return this.records.get(sourceId);
   }
 
+  /** Replaces ALL records (state restored from the durable C0.4 journal at startup). Records are frozen. */
+  restoreRecords(records: readonly SourceRecord[]): void {
+    this.records.clear();
+    for (const r of records) this.records.set(r.source.sourceId, Object.freeze({ ...r }));
+  }
+
   /** Deterministic order (by id) so snapshots are stable across runs. */
   list(): readonly SourceRecord[] {
     return [...this.records.values()].sort((a, b) =>

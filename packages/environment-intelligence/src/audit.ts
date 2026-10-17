@@ -212,6 +212,11 @@ const bad = (field: string): Result<never, AuditError> =>
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const safeId = (v: unknown): v is string => typeof v === 'string' && SAFE_ID.test(v);
+
+/** The canonical EI id contract (`[A-Za-z0-9][A-Za-z0-9._:@+-]{0,199}`): ids are validated against it, never normalized or truncated. */
+export function isSafeAuditId(v: unknown): v is string {
+  return safeId(v);
+}
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 
 function hasOnly(value: Record<string, unknown>, allowed: readonly string[]): boolean {
