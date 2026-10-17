@@ -1,10 +1,11 @@
 import { webcrypto } from 'node:crypto';
 
 /**
- * A fake Google plus a fake XO session API, enforcing what the real ones enforce for this flow: Google checks
- * PKCE S256, single-use codes and REJECTS any client_secret it did not expect (a public client sends none); XO checks the
- * single-use challenge, that the ID token carries that challenge's nonce, that the identity is bound, rotates refresh
- * credentials, and revokes sessions on logout. None of this is the real Google service.
+ * A fake Google plus a fake XO session API, enforcing what the real ones enforce for this flow: Google checks PKCE S256,
+ * single-use codes, and REQUIRES the client secret at its token endpoint (observed against the real service: a request
+ * without one is refused with `invalid_request: client_secret is missing.`); XO redeems the code SERVER-SIDE with that
+ * secret, checks the single-use challenge, that the ID token carries that challenge's nonce, that the identity is
+ * bound, rotates refresh credentials, and revokes sessions on logout. None of this is the real Google service.
  */
 export class FakeGoogle {
   readonly issuer = 'https://accounts.google.test';
@@ -12,7 +13,11 @@ export class FakeGoogle {
   omitIdToken = false;
   revokeFails = false;
   returnRefreshToken = true;
-  calls: { url: string; body: string }[] = [];
+  /** `caller` is 'studio' unless the XO API fake made the request (it sets the x-fake-caller header). */
+  calls: { url: string; body: string; caller: string }[] = [];
+  /** The secret only the XO server holds. */
+  static readonly SECRET = 'server-held-client-secret';
+  clientRejected = false;
   revoked: string[] = [];
   lastAuth: URLSearchParams | undefined;
   private codes = new Map<string, { challenge: string; nonce: string }>();
@@ -21,7 +26,7 @@ export class FakeGoogle {
   readonly fetch = async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const body = typeof init?.body === 'string' ? init.body : '';
-    this.calls.push({ url: input, body });
+    this.calls.push({ url: input, body, caller: new Headers(init?.headers).get('x-fake-caller') ?? 'studio' });
     const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
     if (url.pathname === '/.well-known/openid-configuration') {
       return json({
@@ -42,7 +47,8 @@ export class FakeGoogle {
       if (this.tokenDown === 'network') throw new TypeError('Failed to fetch');
       if (this.tokenDown === '503') return json({ error: 'temporarily_unavailable' }, 503);
       const p = new URLSearchParams(body);
-      if (p.has('client_secret')) return json({ error: 'invalid_client' }, 401);
+      if (!p.has('client_secret')) return json({ error: 'invalid_request', error_description: 'client_secret is missing.' }, 400);
+      if (this.clientRejected || p.get('client_secret') !== FakeGoogle.SECRET) return json({ error: 'invalid_client' }, 401);
       const code = p.get('code') ?? '';
       const entry = this.codes.get(code);
       this.codes.delete(code);
@@ -76,6 +82,8 @@ export class FakeGoogle {
 const cred = (prefix: string, n: number): string => `${prefix}${String(n).padStart(43, 'a')}`;
 
 export class FakeXoSessions {
+  /** @param google the Google this "API" redeems codes against (server-side, with the secret). Absent = not configured (501). */
+  constructor(private readonly google?: FakeGoogle) {}
   bound = true;
   now = () => Date.now();
   challengeDown: 'none' | 'network' | '503' = 'none';
@@ -98,7 +106,7 @@ export class FakeXoSessions {
     this.calls.push({ path, body, authorization: headers.get('authorization') });
     const reply = (status: number, o?: unknown) =>
       new Response(o === undefined ? null : JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
-    const err = (status: number, code: string) => reply(status, { error: { code, message: 'x' } });
+    const err = (status: number, code: string, message = 'x') => reply(status, { error: { code, message } });
     const parsed = body === '' ? {} : (JSON.parse(body) as Record<string, string>);
 
     if (path === '/auth/login-challenge') {
@@ -113,7 +121,45 @@ export class FakeXoSessions {
       const nonce = this.challenges.get(parsed['challengeId'] ?? '');
       this.challenges.delete(parsed['challengeId'] ?? '');
       if (nonce === undefined) return err(401, 'XO_AUTH_CHALLENGE_INVALID');
-      if (parsed['idToken'] !== `idtok.${nonce}`) return err(401, 'XO_AUTH_TOKEN_INVALID');
+      let idToken = parsed['idToken'];
+      if (parsed['code'] !== undefined) {
+        if (this.google === undefined) return err(501, 'XO_UNIMPLEMENTED', 'server-side code exchange is not enabled on this API');
+        if (!/^http:\/\/127\.0\.0\.1:\d{4,5}\/callback$/.test(parsed['redirectUri'] ?? '')) return err(400, 'XO_INVALID_ARGUMENT');
+        let res: Response;
+        try {
+          res = await this.google.fetch(`${this.google.issuer}/token`, {
+            method: 'POST',
+            headers: { 'x-fake-caller': 'xo-api' },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: parsed['code'],
+              redirect_uri: parsed['redirectUri'] ?? '',
+              client_id: 'server-configured-client-id',
+              client_secret: FakeGoogle.SECRET,
+              code_verifier: parsed['codeVerifier'] ?? '',
+            }).toString(),
+          });
+        } catch {
+          return err(503, 'XO_AUTH_PROVIDER_UNAVAILABLE');
+        }
+        if (res.status >= 500) return err(503, 'XO_AUTH_PROVIDER_UNAVAILABLE');
+        const g = (await res.json()) as { error?: string; id_token?: string; refresh_token?: string };
+        if (!res.ok)
+          return g.error === 'invalid_grant'
+            ? err(401, 'XO_AUTH_TOKEN_INVALID', 'the sign-in code is invalid or has expired; start again')
+            : err(401, 'XO_AUTH_TOKEN_INVALID', `the identity provider refused the sign-in (${g.error ?? 'error'})`);
+        if (g.refresh_token !== undefined)
+          void this.google
+            .fetch(`${this.google.issuer}/revoke`, {
+              method: 'POST',
+              headers: { 'x-fake-caller': 'xo-api' },
+              body: new URLSearchParams({ token: g.refresh_token }).toString(),
+            })
+            .catch(() => undefined);
+        if (g.id_token === undefined) return err(401, 'XO_AUTH_TOKEN_INVALID', 'the identity provider returned no usable identity token');
+        idToken = g.id_token;
+      }
+      if (idToken !== `idtok.${nonce}`) return err(401, 'XO_AUTH_TOKEN_INVALID');
       if (!this.bound) return err(401, 'XO_AUTH_IDENTITY_UNBOUND');
       return reply(201, this.issue(++this.families));
     }

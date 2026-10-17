@@ -50,9 +50,9 @@ export const openApiDocument = {
     },
     '/auth/session': {
       post: {
-        summary: 'Exchange a Google ID token (for that challenge) for an XO session',
+        summary: 'Exchange a Google ID token, or an authorization code, (for that challenge) for an XO session',
         description:
-          'The ID token is verified independently (signature, issuer, audience, expiry, the nonce of THIS challenge) and used once; it is never an API credential. The verified identity must have an operator-written binding (401 XO_AUTH_IDENTITY_UNBOUND otherwise). The challenge is consumed whether or not the exchange succeeds.',
+          'Send exactly one of idToken, or code + codeVerifier + redirectUri. With a code, the API redeems it at Google with the OAuth client secret (server configuration only; 501 when not configured) and then continues with the ID token it obtains. The ID token is verified independently (signature, issuer, audience, expiry, the nonce of THIS challenge) and used once; it is never an API credential. The verified identity must have an operator-written binding (401 XO_AUTH_IDENTITY_UNBOUND otherwise). The challenge is consumed whether or not the exchange succeeds.',
         security: [],
         requestBody: {
           required: true,
@@ -60,8 +60,17 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['challengeId', 'idToken'],
-                properties: { challengeId: { type: 'string' }, idToken: { type: 'string' } },
+                required: ['challengeId'],
+                properties: {
+                  challengeId: { type: 'string' },
+                  idToken: { type: 'string' },
+                  code: { type: 'string' },
+                  codeVerifier: { type: 'string', description: 'RFC 7636 PKCE verifier (43-128 unreserved characters)' },
+                  redirectUri: {
+                    type: 'string',
+                    description: 'Exactly http://127.0.0.1:<port>/callback, the loopback address Studio listened on',
+                  },
+                },
               },
             },
           },
@@ -69,8 +78,10 @@ export const openApiDocument = {
         responses: {
           '201': { description: 'accessCredential (xoas_, 15 min), refreshCredential (xoar_), expiry times' },
           '401': { description: 'Challenge invalid, ID token invalid or expired, or identity unbound' },
+          '400': { description: 'Malformed request (both or neither of idToken/code, or an invalid code, verifier or redirect address)' },
           '429': { description: 'Rate limited' },
-          '503': { description: 'Signing keys unavailable (fail closed)' },
+          '501': { description: 'A code was sent but server-side code exchange is not configured' },
+          '503': { description: 'Signing keys or the identity provider unavailable (fail closed)' },
         },
       },
     },

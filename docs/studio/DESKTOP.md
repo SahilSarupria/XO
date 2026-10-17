@@ -21,13 +21,13 @@ Order: `window.__XO_CONFIG__.apiBaseUrl` > `VITE_XO_API_URL` > `/api`. Relative 
 
 The API sends no CORS headers and the CSP stays strict, so all API **and identity-provider** calls go through `tauri-plugin-http`, limited by a capability allow-list. The committed default grants no origins.
 
-| Mode        | Command                                                  | Capabilities enabled                                    |
-| ----------- | -------------------------------------------------------- | ------------------------------------------------------- |
-| Development | `tauri dev --config src-tauri/tauri.dev.conf.json`       | `default` + `http-dev` (loopback `127.0.0.1:4000` only) |
-| Development + Google sign-in | `tauri dev --config src-tauri/tauri.dev.google.conf.json` | `default` + `http-dev` + `http-dev-google` (loopback API, plus exactly `https://accounts.google.com/*` and `https://oauth2.googleapis.com/*`) |
-| Release     | `tauri build --config src-tauri/tauri.release.conf.json` | `default` + `http-deploy` (**you create it**)           |
+| Mode                         | Command                                                   | Capabilities enabled                                                                                    |
+| ---------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Development                  | `tauri dev --config src-tauri/tauri.dev.conf.json`        | `default` + `http-dev` (loopback `127.0.0.1:4000` only)                                                 |
+| Development + Google sign-in | `tauri dev --config src-tauri/tauri.dev.google.conf.json` | `default` + `http-dev` + `http-dev-google` (loopback API, plus exactly `https://accounts.google.com/*`) |
+| Release                      | `tauri build --config src-tauri/tauri.release.conf.json`  | `default` + `http-deploy` (**you create it**)                                                           |
 
-Google sign-in in development needs the **Development + Google sign-in** row: Studio fetches Google's discovery document and token endpoint through the native HTTP plugin, so a loopback-only scope blocks them and sign-in fails with "Could not reach the identity provider." The plain Development row stays loopback-only for local/dev-access-key work.
+Google sign-in in development needs the **Development + Google sign-in** row: Studio fetches Google's OIDC discovery document through the native HTTP plugin, so a loopback-only scope blocks it and sign-in fails with "Could not reach the identity provider." The plain Development row stays loopback-only for local/dev-access-key work.
 
 To build a release: copy `src-tauri/deploy/http-deploy.capability.example.json` to `src-tauri/capabilities/http-deploy.json` and replace both origins (your XO API and your OIDC provider; no wildcards). Check with `npm run check:tauri:release`.
 
@@ -35,7 +35,7 @@ To build a release: copy `src-tauri/deploy/http-deploy.capability.example.json` 
 
 Launch configuration (environment): `XO_API_URL`, `XO_OIDC_ISSUER`, `XO_OIDC_CLIENT_ID`, optional `XO_OIDC_AUDIENCE`, `XO_DEV_SIGN_IN=0` to hide the development sign-in. Invalid values stop startup with a message.
 
-**Google:** set `XO_OIDC_ISSUER=https://accounts.google.com` and `XO_OIDC_CLIENT_ID` to your Google _Desktop app_ client id (no audience, no secret). That issuer selects the Google path automatically; Studio then signs in at Google, hands Google's ID token to the XO API once, and holds only XO session credentials (access in memory, rotating refresh credential in the keychain). See `AUTH_API_CONTRACT.md` and `GOOGLE_SIGNIN_RUNBOOK.md`. Your release capability file needs the Google origins as well as the XO API origin.
+**Google:** set `XO_OIDC_ISSUER=https://accounts.google.com` and `XO_OIDC_CLIENT_ID` to your Google _Desktop app_ client id (no audience; Studio holds no secret). That issuer selects the Google path automatically; Studio then signs in at Google, hands Google's ID token to the XO API once, and holds only XO session credentials (access in memory, rotating refresh credential in the keychain). See `AUTH_API_CONTRACT.md` and `GOOGLE_SIGNIN_RUNBOOK.md`. The **API** (not Studio) also needs `XO_API_GOOGLE_CLIENT_SECRET`: Google requires the client secret to redeem the sign-in code, so Studio sends the code to the API and the API redeems it. With `npm run desktop`, put it in `.env`; it is passed to the API process only and removed from the desktop app's environment. Your release capability file needs only the XO API origin and `https://accounts.google.com` (not `oauth2.googleapis.com`).
 
 ## Owner: verify locally (none of the native code was compiled or run)
 

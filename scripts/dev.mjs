@@ -246,6 +246,11 @@ async function desktop() {
   }
   const apiUrl = env.XO_API_URL ?? `http://${s.host}:${s.apiPort}`;
   const google = issuer === GOOGLE_ISSUER;
+  if (google && (env.XO_API_GOOGLE_CLIENT_SECRET ?? '').trim() === '')
+    throw new Error(
+      "Google sign-in needs XO_API_GOOGLE_CLIENT_SECRET in .env: your Google Desktop client's secret (Google Cloud Console > Credentials). " +
+        'It is read by the API only; the desktop app never sees it.',
+    );
   if (issuer !== '' && !google) warn('A non-Google issuer needs its origin added to a dev capability by hand; see docs/studio/DESKTOP.md.');
   const config = google ? 'src-tauri/tauri.dev.google.conf.json' : 'src-tauri/tauri.dev.conf.json';
 
@@ -278,9 +283,9 @@ async function desktop() {
       } catch {
         /* treated as not ready */
       }
-      if (status === 404)
+      if (status === 404 || status === 501)
         throw new Error(
-          `An API from an earlier run is still on port ${s.apiPort} and was started without Google sign-in. Stop it, then re-run. ` +
+          `An API from an earlier run is still on port ${s.apiPort} and was started without Google sign-in (or without its client secret). Stop it, then re-run. ` +
             (isWin
               ? `Windows: netstat -ano | findstr :${s.apiPort}   then   taskkill /PID <pid> /F`
               : `lsof -ti :${s.apiPort} | xargs kill`),
@@ -297,6 +302,7 @@ async function desktop() {
     const googleApi = {};
     if (google) {
       googleApi.XO_API_GOOGLE_CLIENT_ID = env.XO_API_GOOGLE_CLIENT_ID ?? clientId;
+      googleApi.XO_API_GOOGLE_CLIENT_SECRET = env.XO_API_GOOGLE_CLIENT_SECRET;
       googleApi.XO_API_SESSIONS_DIR = env.XO_API_SESSIONS_DIR ?? join(dataDir, 'sessions');
       googleApi.XO_API_OIDC_BINDINGS_DIR = env.XO_API_OIDC_BINDINGS_DIR ?? join(dataDir, 'bindings');
       for (const d of [googleApi.XO_API_SESSIONS_DIR, googleApi.XO_API_OIDC_BINDINGS_DIR]) mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -329,6 +335,7 @@ async function desktop() {
   }
 
   const childEnv = { ...env, XO_API_URL: apiUrl };
+  delete childEnv.XO_API_GOOGLE_CLIENT_SECRET; // the API process reads it; the desktop app must never inherit it
   if (google) {
     const sessions = env.XO_API_SESSIONS_DIR ?? join(dataDir, 'sessions');
     const bindings = env.XO_API_OIDC_BINDINGS_DIR ?? join(dataDir, 'bindings');

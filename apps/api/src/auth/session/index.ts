@@ -1,4 +1,6 @@
-export { loadSessionAuthConfig, GOOGLE_ISSUER } from './config.js';
+export { loadSessionAuthConfig, GOOGLE_ISSUER, GOOGLE_TOKEN_URI } from './config.js';
+export { createCodeExchanger } from './code-exchanger.js';
+export type { CodeExchanger, CodeExchangerOptions } from './code-exchanger.js';
 export type { SessionAuthConfig } from './config.js';
 export { createIdTokenVerifier } from './id-token-verifier.js';
 export type { IdTokenVerifier, VerifiedLogin } from './id-token-verifier.js';

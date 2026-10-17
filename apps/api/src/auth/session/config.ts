@@ -4,8 +4,13 @@ import { assertTrustedUrl } from '../oidc/config.js';
 /**
  * Operator configuration for Google sign-in → XO sessions. Off unless `XO_API_GOOGLE_CLIENT_ID` is set.
  *
- * `XO_API_GOOGLE_CLIENT_ID` is the Google *Desktop app* OAuth client id: a public identifier, not a secret. No
- * client secret is read, stored or required by XO.
+ * `XO_API_GOOGLE_CLIENT_ID` is the Google *Desktop app* OAuth client id: a public identifier, not a secret.
+ *
+ * `XO_API_GOOGLE_CLIENT_SECRET` (optional) is that client's secret. Google's token endpoint requires it even for a
+ * PKCE desktop flow, and Studio, being a distributed public client, must never hold it. Setting it enables the
+ * SERVER-SIDE code exchange: Studio sends the authorization code + PKCE verifier to this API, which redeems them at
+ * Google. The secret lives only in this process's environment (a secret manager in production): it is never logged,
+ * returned, or written to disk. Without it, only the ID-token exchange (`idToken` in the request) is available.
  *
  * The trusted issuer is operator configuration, never taken from a token. It defaults to Google's published
  * issuer. `XO_API_GOOGLE_ISSUER` exists so a test or proxy deployment can point at a different, explicitly
@@ -14,6 +19,7 @@ import { assertTrustedUrl } from '../oidc/config.js';
  * identities are bound and recorded under the single canonical issuer string.
  */
 export const GOOGLE_ISSUER = 'https://accounts.google.com';
+export const GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const GOOGLE_LEGACY_ISSUER = 'accounts.google.com';
 const DEFAULT_SESSIONS_DIR = '.xo-data/sessions';
 const DEFAULT_BINDINGS_DIR = '.xo-data/oidc-bindings';
@@ -27,6 +33,10 @@ export interface SessionAuthConfig {
   readonly sessionsDir: string;
   readonly bindingsDir: string;
   readonly jwksUri?: string;
+  /** Present only when the server-side code exchange is enabled. Never log or serialize this config object. */
+  readonly clientSecret?: string;
+  /** Where the server redeems authorization codes. Defaults to Google's. */
+  readonly tokenUri: string;
 }
 
 function bad(name: string, why: string): XoError {
@@ -36,7 +46,13 @@ const unset = (v: string | undefined): boolean => v === undefined || v.trim() ==
 
 export function loadSessionAuthConfig(env: Readonly<Record<string, string | undefined>> = process.env): SessionAuthConfig | undefined {
   const clientIdRaw = env['XO_API_GOOGLE_CLIENT_ID'];
-  const others = ['XO_API_GOOGLE_ISSUER', 'XO_API_GOOGLE_JWKS_URI', 'XO_API_SESSIONS_DIR'] as const;
+  const others = [
+    'XO_API_GOOGLE_ISSUER',
+    'XO_API_GOOGLE_JWKS_URI',
+    'XO_API_SESSIONS_DIR',
+    'XO_API_GOOGLE_CLIENT_SECRET',
+    'XO_API_GOOGLE_TOKEN_URI',
+  ] as const;
   if (unset(clientIdRaw)) {
     for (const name of others) {
       if (!unset(env[name])) throw bad(name, 'set without XO_API_GOOGLE_CLIENT_ID');
@@ -56,6 +72,16 @@ export function loadSessionAuthConfig(env: Readonly<Record<string, string | unde
     assertTrustedUrl('XO_API_GOOGLE_JWKS_URI', jwksUri);
   }
 
+  let clientSecret: string | undefined;
+  if (!unset(env['XO_API_GOOGLE_CLIENT_SECRET'])) {
+    clientSecret = (env['XO_API_GOOGLE_CLIENT_SECRET'] as string).trim();
+    // The value is never echoed in an error: only the variable name and the rule.
+    if (clientSecret.length > 256 || !/^[\x21-\x7e]+$/.test(clientSecret))
+      throw bad('XO_API_GOOGLE_CLIENT_SECRET', 'must be a single printable token of at most 256 characters');
+  }
+  const tokenUri = unset(env['XO_API_GOOGLE_TOKEN_URI']) ? GOOGLE_TOKEN_URI : (env['XO_API_GOOGLE_TOKEN_URI'] as string).trim();
+  assertTrustedUrl('XO_API_GOOGLE_TOKEN_URI', tokenUri);
+
   return {
     clientId,
     issuer,
@@ -63,5 +89,7 @@ export function loadSessionAuthConfig(env: Readonly<Record<string, string | unde
     sessionsDir: unset(env['XO_API_SESSIONS_DIR']) ? DEFAULT_SESSIONS_DIR : (env['XO_API_SESSIONS_DIR'] as string).trim(),
     bindingsDir: unset(env['XO_API_OIDC_BINDINGS_DIR']) ? DEFAULT_BINDINGS_DIR : (env['XO_API_OIDC_BINDINGS_DIR'] as string).trim(),
     ...(jwksUri !== undefined ? { jwksUri } : {}),
+    ...(clientSecret !== undefined ? { clientSecret } : {}),
+    tokenUri,
   };
 }

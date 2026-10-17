@@ -8,7 +8,9 @@ import type { SessionAuthService } from '../auth/session/service.js';
  * Sign-in → XO session endpoints. Registered only when Google sign-in is configured.
  *
  *   POST /auth/login-challenge   unauthenticated, rate limited
- *   POST /auth/session           unauthenticated, rate limited: { challengeId, idToken } -> session
+ *   POST /auth/session           unauthenticated, rate limited -> session, from EITHER { challengeId, idToken }
+ *                                OR { challengeId, code, codeVerifier, redirectUri } (the API redeems the code with the
+ *                                OAuth client secret; 501 unless the operator configured it)
  *   POST /auth/refresh           unauthenticated, rate limited: { refreshCredential } -> session
  *   POST /auth/logout            authenticated with the session's access credential; revokes ONLY that session
  *
@@ -47,7 +49,16 @@ export function registerAuthSessionRoutes(router: Router, service: SessionAuthSe
 
   router.post('/auth/session', async (req): Promise<ApiResponse> => {
     const b = await body(req);
-    return json(201, await service.exchange(clientKey(req), field(b, 'challengeId'), field(b, 'idToken')), noStore);
+    const challengeId = field(b, 'challengeId');
+    const hasToken = b['idToken'] !== undefined;
+    const hasCode = b['code'] !== undefined;
+    if (hasToken === hasCode) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'send exactly one of "idToken" or "code"');
+    if (hasToken) return json(201, await service.exchange(clientKey(req), challengeId, field(b, 'idToken')), noStore);
+    return json(
+      201,
+      await service.exchangeWithCode(clientKey(req), challengeId, field(b, 'code'), field(b, 'codeVerifier'), field(b, 'redirectUri')),
+      noStore,
+    );
   });
 
   router.post('/auth/refresh', async (req): Promise<ApiResponse> => {

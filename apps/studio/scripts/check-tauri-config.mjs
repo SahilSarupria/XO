@@ -167,12 +167,12 @@ export function checkTauriConfig(root, { release = false } = {}) {
         }
       }
   }
-  // Opt-in dev capability for Google sign-in: exactly Google's discovery and token/revocation origins, nothing else.
+  // Opt-in dev capability for Google sign-in: exactly Google's OIDC discovery origin, nothing else. The token exchange runs
+  // on the XO API (which holds the client secret), so Studio needs no Google token or revocation origin.
   if (caps.has('http-dev-google')) {
-    const allowed = new Set(['https://accounts.google.com/*', 'https://oauth2.googleapis.com/*']);
+    const allowed = new Set(['https://accounts.google.com/*']);
     for (const p of caps.get('http-dev-google').permissions ?? [])
-      for (const a of p.allow ?? [])
-        need(allowed.has(a.url), `http-dev-google may only allow Google's sign-in origins (found ${a.url})`);
+      for (const a of p.allow ?? []) need(allowed.has(a.url), `http-dev-google may only allow Google's sign-in origins (found ${a.url})`);
   }
   need(!(enabled ?? []).includes('http-dev-google'), 'http-dev-google must not be enabled in the base/release configuration');
   need(rel?.app?.security?.capabilities?.includes('http-dev-google') !== true, 'release config must not enable http-dev-google');

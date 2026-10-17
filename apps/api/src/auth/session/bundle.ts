@@ -3,6 +3,7 @@ import type { IdentityBindingStore } from '../oidc/binding-store.interface.js';
 import type { VerifierTuning } from '../oidc/jwks.js';
 import type { SessionAuthConfig } from './config.js';
 import { createIdTokenVerifier, type IdTokenVerifier } from './id-token-verifier.js';
+import { createCodeExchanger, type CodeExchanger, type CodeExchangerOptions } from './code-exchanger.js';
 import { FsChallengeStore, type ChallengeStoreOptions } from './challenge-store.js';
 import { FsSessionStore, type SessionStoreOptions } from './session-store.js';
 import { FsUnboundLog } from './unbound-log.js';
@@ -21,6 +22,9 @@ export interface SessionAuthBundle {
 export interface SessionAuthOptions {
   readonly verifier?: IdTokenVerifier;
   readonly verifierTuning?: VerifierTuning;
+  /** Replaces the Google code exchanger (tests). Otherwise built from the config when a client secret is set. */
+  readonly codeExchanger?: CodeExchanger;
+  readonly codeExchangerOptions?: CodeExchangerOptions;
   readonly bindings?: IdentityBindingStore;
   readonly challenge?: ChallengeStoreOptions;
   readonly session?: SessionStoreOptions;
@@ -42,6 +46,7 @@ export function createSessionAuth(config: SessionAuthConfig, options: SessionAut
   const bindings = options.bindings ?? new FsIdentityBindingStore(config.bindingsDir);
   const sessions = new FsSessionStore(config.sessionsDir, options.session);
   const unbound = new FsUnboundLog(config.sessionsDir);
+  const codeExchanger = options.codeExchanger ?? createCodeExchanger(config, options.codeExchangerOptions);
   const service = new SessionAuthService({
     challenges: new FsChallengeStore(config.sessionsDir, options.challenge),
     sessions,
@@ -49,6 +54,7 @@ export function createSessionAuth(config: SessionAuthConfig, options: SessionAut
     bindings,
     unbound,
     limits: options.limits ?? defaultLimits(),
+    ...(codeExchanger !== undefined ? { codeExchanger } : {}),
   });
   return { service, sessions, bindings, unbound };
 }

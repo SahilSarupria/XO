@@ -1,6 +1,7 @@
-import { AuthError, ErrorCode } from '@xo/errors';
+import { AuthError, ErrorCode, XoError } from '@xo/errors';
 import type { IdentityBindingStore } from '../oidc/binding-store.interface.js';
 import type { IdTokenVerifier } from './id-token-verifier.js';
+import type { CodeExchanger } from './code-exchanger.js';
 import { ChallengeCapReached, type FsChallengeStore } from './challenge-store.js';
 import type { FsSessionStore, IssuedSession } from './session-store.js';
 import type { FsUnboundLog } from './unbound-log.js';
@@ -10,6 +11,8 @@ import type { RateLimiter } from './rate-limiter.js';
  * The sign-in → XO-session protocol, independent of HTTP:
  *
  *   createChallenge()  → server-issued, single-use, 5-minute nonce
+ *   exchangeWithCode() → redeem a Google authorization code SERVER-SIDE (the OAuth client secret never leaves this
+ *                        process), then continue exactly as `exchange` does with the ID token it returns
  *   exchange(...)      → verify the provider ID token (signature, issuer, audience, expiry, THIS challenge's
  *                        nonce), resolve `(issuer, sub)` through the operator-written binding, mint a session
  *   refresh(...)       → rotate the refresh credential
@@ -40,6 +43,23 @@ export interface SessionResponse {
 
 const UNBOUND_MESSAGE = 'this identity is not authorized to use XO';
 
+// Shapes Studio produces. The API re-checks them: the redirect URI is untrusted input to a token request.
+const CODE_SHAPE = /^[\x21-\x7e]{1,2048}$/;
+const VERIFIER_SHAPE = /^[A-Za-z0-9\-._~]{43,128}$/; // RFC 7636 §4.1
+const LOOPBACK_REDIRECT = /^http:\/\/127\.0\.0\.1:(\d{1,5})\/callback$/;
+
+function invalidArgument(name: string): XoError {
+  return new XoError(ErrorCode.INVALID_ARGUMENT, `"${name}" is not valid`);
+}
+
+export function assertCodeExchangeInput(code: string, codeVerifier: string, redirectUri: string): void {
+  if (!CODE_SHAPE.test(code)) throw invalidArgument('code');
+  if (!VERIFIER_SHAPE.test(codeVerifier)) throw invalidArgument('codeVerifier');
+  const m = LOOPBACK_REDIRECT.exec(redirectUri);
+  const port = m === null ? 0 : Number(m[1]);
+  if (m === null || port < 1024 || port > 65535) throw invalidArgument('redirectUri');
+}
+
 function rateLimited(): AuthError {
   return new AuthError(ErrorCode.AUTH_RATE_LIMITED, 'too many requests; try again shortly');
 }
@@ -56,6 +76,8 @@ export class SessionAuthService {
       readonly bindings: IdentityBindingStore;
       readonly unbound: FsUnboundLog;
       readonly limits: SessionLimits;
+      /** Absent unless the operator configured the OAuth client secret. */
+      readonly codeExchanger?: CodeExchanger;
     },
   ) {}
 
@@ -75,8 +97,29 @@ export class SessionAuthService {
     // Consume first: a challenge is single-use whether or not the rest succeeds, and concurrent callers cannot both win.
     const challenge = await this.deps.challenges.consume(challengeId);
     if (challenge === undefined) throw challengeInvalid();
+    return this.complete(idToken, challenge.nonce);
+  }
 
-    const login = await this.deps.verifier.verify(idToken, challenge.nonce); // throws AuthError
+  async exchangeWithCode(
+    clientKey: string,
+    challengeId: string,
+    code: string,
+    codeVerifier: string,
+    redirectUri: string,
+  ): Promise<SessionResponse> {
+    const exchanger = this.deps.codeExchanger;
+    if (exchanger === undefined) throw new XoError(ErrorCode.UNIMPLEMENTED, 'server-side code exchange is not enabled on this API');
+    if (!this.deps.limits.exchange.allow(clientKey)) throw rateLimited();
+    assertCodeExchangeInput(code, codeVerifier, redirectUri); // before consuming: a malformed request must not burn a challenge
+    const challenge = await this.deps.challenges.consume(challengeId);
+    if (challenge === undefined) throw challengeInvalid();
+    const idToken = await exchanger.exchange({ code, codeVerifier, redirectUri });
+    return this.complete(idToken, challenge.nonce);
+  }
+
+  /** Shared tail: verify the ID token against THIS attempt's nonce, resolve the binding, mint the session. */
+  private async complete(idToken: string, nonce: string): Promise<SessionResponse> {
+    const login = await this.deps.verifier.verify(idToken, nonce); // throws AuthError
 
     const found = await this.deps.bindings.find(login.issuer, login.subject);
     if (!found.ok) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');

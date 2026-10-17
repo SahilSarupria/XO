@@ -1,17 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "http-dev-google",
-  "description": "DEVELOPMENT ONLY, OPT-IN (enabled by tauri.dev.google.conf.json; never bundled into a release). Exactly Google's OIDC discovery origin (accounts.google.com) and its token/revocation origin (oauth2.googleapis.com), the only hosts Studio fetches during Google sign-in. The authorization page opens in the system browser and needs no entry here.",
-  "windows": ["main"],
+  "description": "DEVELOPMENT ONLY, OPT-IN (enabled by tauri.dev.google.conf.json; never bundled into a release). Exactly Google's OIDC discovery origin (accounts.google.com), the only Google host Studio itself fetches. The authorization page opens in the system browser; the code-for-token exchange happens on the XO API (which holds the client secret), so no token or revocation origin is needed here.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     {
       "identifier": "http:default",
       "allow": [
         {
           "url": "https://accounts.google.com/*"
-        },
-        {
-          "url": "https://oauth2.googleapis.com/*"
         }
       ]
     }

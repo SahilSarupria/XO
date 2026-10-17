@@ -9,7 +9,7 @@ Requires: a Google account that can create an OAuth client in a Google Cloud pro
 1. Google Cloud Console → pick or create a project → **APIs & Services → OAuth consent screen**. Configure it; while testing, leave publishing status as **Testing** and add the second account under **Test users**. Scopes: only the defaults for sign-in (`openid`); XO asks for nothing else.
 2. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 3. Application type: **Desktop app**. Name it (for example `XO Studio (test)`). Create.
-4. Copy the **Client ID** (`<digits>-<random>.apps.googleusercontent.com`). It is public. Google also shows a "client secret" for this type: **do not use or copy it anywhere** unless step 5 forces a decision (below).
+4. Copy the **Client ID** (`<digits>-<random>.apps.googleusercontent.com`). It is public. Google also shows a **client secret** for this type. Studio never holds it; you will put it **only** in the API's configuration in step 2 (`XO_API_GOOGLE_CLIENT_SECRET`, or `.env` for local development). Never paste it into chat, a ticket, Studio's settings or git.
 5. There is no redirect-URI list to fill in for a Desktop client: Google accepts the loopback address (`http://127.0.0.1:<random port>`) that Studio opens. If Google later rejects the redirect, record the exact `redirect_uri_mismatch` text.
 
 ## 2. Configure the XO API
@@ -18,16 +18,17 @@ On the host that runs the API (one host, a local filesystem):
 
 ```
 XO_API_GOOGLE_CLIENT_ID=<the Client ID from step 1>
+XO_API_GOOGLE_CLIENT_SECRET=<that client's secret; API process only>
 XO_API_SESSIONS_DIR=/var/lib/xo/sessions        # local disk, 0700, owned by the API user
 XO_API_OIDC_BINDINGS_DIR=/var/lib/xo/bindings   # the operator-managed binding list
 ```
 
-Leave `XO_API_GOOGLE_ISSUER` and `XO_API_GOOGLE_JWKS_URI` **unset** (the defaults are Google's). Start the API. It must start without an error; `XO_API_GOOGLE_CLIENT_ID` must be exactly the client id Studio is configured with. Check: `POST /auth/login-challenge` returns 201 with a `challengeId` and `nonce`.
+Leave `XO_API_GOOGLE_ISSUER` and `XO_API_GOOGLE_JWKS_URI` **unset** (the defaults are Google's). Start the API. It must start without an error; `XO_API_GOOGLE_CLIENT_ID` must be exactly the client id Studio is configured with. Check: `POST /auth/login-challenge` returns 201 with a `challengeId` and `nonce`. Without `XO_API_GOOGLE_CLIENT_SECRET` the desktop sign-in is refused with "not set up for desktop Google sign-in" (501).
 
 ## 3. Build and start Studio
 
 1. `cd apps/studio`. Run the native checks: `cargo check` and `cargo test` in `src-tauri`, then `npm run check:tauri`. Record the real output.
-2. Release configuration: copy `src-tauri/deploy/http-deploy.capability.example.json` to `src-tauri/capabilities/http-deploy.json` and set your **real** origins: the XO API and Google (`https://accounts.google.com`, `https://oauth2.googleapis.com`). No wildcards. Then `npm run check:tauri:release` must pass. Do not weaken the check to make it pass.
+2. Release configuration: copy `src-tauri/deploy/http-deploy.capability.example.json` to `src-tauri/capabilities/http-deploy.json` and set your **real** origins: the XO API and Google's discovery origin (`https://accounts.google.com`; the token endpoint is called by the API, not Studio). No wildcards. Then `npm run check:tauri:release` must pass. Do not weaken the check to make it pass.
 3. Launch with:
    ```
    XO_API_URL=<your API origin>
@@ -41,7 +42,7 @@ Leave `XO_API_GOOGLE_ISSUER` and `XO_API_GOOGLE_JWKS_URI` **unset** (the default
 
 1. Click the sign-in button. The system browser opens Google. Sign in as the **test user**. Check the address bar URL while it is open: it contains `scope=openid`, `code_challenge_method=S256`, `state`, `nonce`; it contains **no** `client_secret`, no `offline_access`.
 2. Studio returns to a message that XO did not accept the sign-in / the account is not enabled. That is correct: nothing is bound yet.
-3. **If instead Google or Studio reports a token-exchange error such as `client_secret is missing` (`invalid_client`):** this is the known open question. Copy the exact response text, **stop**, and take it to the owner: do not embed or configure a secret. Options (owner decision): supply Google's non-confidential Desktop secret through deployment configuration, or move the code exchange to the API with a confidential Web client.
+3. **If instead Studio reports `XO could not complete the Google sign-in: … refused the sign-in (invalid_client)`:** the API's client id or secret does not match the Google client Studio signed in with. Re-copy both from the same Desktop client. `redirect_uri_mismatch` or any other code: record the exact text and stop.
 4. On the API host: `node --import tsx apps/api/scripts/manage-oidc-bindings.ts unbound --sessions-dir /var/lib/xo/sessions`. You should see exactly one line: `issuer="https://accounts.google.com"` and the test user's `subject` (a long number), with a time. Nothing else (no email).
 
 ## 5. Bind and sign in
@@ -75,4 +76,4 @@ Leave `XO_API_GOOGLE_ISSUER` and `XO_API_GOOGLE_JWKS_URI` **unset** (the default
 
 ## What a pass means
 
-All of section 4 to 7 behaving as written means: real Google sign-in works for a Desktop client without a client secret (or you have the exact failure to decide on), the desktop flow works on the platform you tested, and the XO session lifecycle behaves as documented. It does **not** cover other operating systems, a multi-host deployment (unsupported), or production hardening beyond this document.
+All of section 4 to 7 behaving as written means: real Google sign-in works end to end with the server-side code exchange (or you have the exact failure), the desktop flow works on the platform you tested, and the XO session lifecycle behaves as documented. It does **not** cover other operating systems, a multi-host deployment (unsupported), or production hardening beyond this document.

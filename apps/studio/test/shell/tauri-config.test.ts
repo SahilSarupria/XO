@@ -28,24 +28,18 @@ describe('committed Tauri configuration', () => {
     const f = checkTauriConfig(real, { release: true });
     expect(f.join('\n')).toMatch(/http-deploy\.json/);
   });
-  it('the opt-in Google dev overlay enables exactly the Google origins Studio fetches during sign-in', () => {
+  it('the opt-in Google dev overlay enables exactly the one Google origin Studio fetches during sign-in', () => {
     const overlay = JSON.parse(readFileSync(join(real, 'tauri.dev.google.conf.json'), 'utf8'));
     expect(overlay.app.security.capabilities).toEqual(['default', 'http-dev', 'http-dev-google']);
     const cap = JSON.parse(readFileSync(join(real, 'capabilities/http-dev-google.json'), 'utf8'));
-    expect(cap.permissions[0].allow.map((a: any) => a.url)).toEqual(['https://accounts.google.com/*', 'https://oauth2.googleapis.com/*']);
+    expect(cap.permissions[0].allow.map((a: any) => a.url)).toEqual(['https://accounts.google.com/*']);
   });
-  it('Google sign-in is reachable under the opt-in dev scope: every origin Studio fetches is allowed, nothing extra', () => {
-    // Studio fetches discovery, then the token endpoint, then (best effort) revocation. These are Google's documented
-    // endpoints; the authorization page opens in the system browser and is not fetched by the webview.
-    const fetched = [
-      'https://accounts.google.com/.well-known/openid-configuration',
-      'https://oauth2.googleapis.com/token',
-      'https://oauth2.googleapis.com/revoke',
-    ];
+  it('Google sign-in is reachable under the opt-in dev scope: discovery is allowed and Google token/revocation origins are NOT (the API redeems the code)', () => {
     const cap = JSON.parse(readFileSync(join(real, 'capabilities/http-dev-google.json'), 'utf8'));
     const origins = new Set(cap.permissions[0].allow.map((a: any) => new URL(a.url.replace('*', '')).origin));
-    for (const u of fetched) expect(origins.has(new URL(u).origin)).toBe(true);
-    expect(origins.size).toBe(2);
+    expect(origins.has(new URL('https://accounts.google.com/.well-known/openid-configuration').origin)).toBe(true);
+    expect(origins.has('https://oauth2.googleapis.com')).toBe(false);
+    expect(origins.size).toBe(1);
   });
   it('grants the webview no http scope by default, and only its own commands', () => {
     const d = JSON.parse(readFileSync(join(real, 'capabilities/default.json'), 'utf8'));

@@ -2,11 +2,9 @@ import {
   buildAuthorizationUrl,
   createPkce,
   discoverProvider,
-  exchangeCodeForIdentity,
   failAuth,
   okAuth,
   parseCallback,
-  revokeRefreshToken,
   validateRedirectUri,
   type AuthFetch,
   type AuthResult,
@@ -23,13 +21,13 @@ import type { SystemBrowserLogin } from './oidcSession';
  *
  * Studio's part is narrow and holds no secret: it fetches a server-issued single-use challenge, sends the user to
  * Google in the SYSTEM browser (code flow + PKCE S256 + `state`, with the challenge's nonce), receives the code on the
- * loopback listener, exchanges it at Google for an ID token, hands that ID token to the XO API ONCE, and keeps only
- * what the API returns: a 15-minute access credential (memory only) and a rotating refresh credential (OS keychain).
+ * loopback listener, and hands the CODE and its PKCE verifier to the XO API. The API, which alone holds the OAuth client
+ * secret Google requires, redeems the code at Google, verifies the ID token against this attempt's nonce, and returns
+ * what Studio keeps: a 15-minute access credential (memory only) and a rotating refresh credential (OS keychain).
  *
- * What it never does: decode or trust the ID token; use it, or any Google token, as an API credential; request
- * `offline_access`; persist anything Google issued; or decide who the user is. Google's access token is discarded
- * unread. If Google returns a refresh token it is revoked best-effort and never stored; sign-in does not wait for
- * or depend on that revocation (its behaviour against the real Google service is NOT verified).
+ * What it never does: hold or send a client secret; talk to Google's token or revocation endpoints; see, decode or
+ * trust any Google token; request `offline_access`; persist anything Google issued; or decide who the user is. The
+ * only Google endpoint it fetches is OIDC discovery, to find the page it opens in the browser.
  */
 
 export interface XoSessionTokens {
@@ -110,16 +108,35 @@ export class XoAuthApi {
     return okAuth({ challengeId: o.challengeId, nonce: o.nonce });
   }
 
+  /** Legacy/other-IdP path: the caller already holds an ID token. */
   async exchange(challengeId: string, idToken: string): Promise<AuthResult<XoSessionTokens>> {
-    const r = await this.post('/auth/session', { challengeId, idToken });
+    return this.sessionResult(await this.post('/auth/session', { challengeId, idToken }), false);
+  }
+
+  /** Google path: the API redeems the authorization code (it holds the client secret) and returns the XO session. */
+  async exchangeCode(challengeId: string, code: string, codeVerifier: string, redirectUri: string): Promise<AuthResult<XoSessionTokens>> {
+    return this.sessionResult(await this.post('/auth/session', { challengeId, code, codeVerifier, redirectUri }), true);
+  }
+
+  private sessionResult(r: { status: number; json: unknown } | undefined, explainRefusal: boolean): AuthResult<XoSessionTokens> {
     if (r === undefined) return failAuth('network', 'Could not reach XO.');
     if (r.status === 201) return parseSession(r.json);
-    const code = (r.json as { error?: { code?: unknown } } | undefined)?.error?.code;
+    const e = (r.json as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
+    const code = e?.code;
     if (code === 'XO_AUTH_IDENTITY_UNBOUND')
       return failAuth('provider_error', 'XO did not accept this sign-in. Your administrator may not have enabled XO for this account yet.');
     if (code === 'XO_AUTH_CHALLENGE_INVALID')
       return failAuth('provider_error', 'The sign-in took too long or was already used. Please try again.');
+    // 501 is a permanent "not configured on this server", not a transient outage: say so before the generic 5xx rule.
+    if (explainRefusal && r.status === 501)
+      return failAuth('provider_error', 'This XO server is not set up for desktop Google sign-in yet. Ask your administrator.');
     if (r.status === 429 || r.status >= 500) return failAuth('network', 'XO is busy or unavailable. Try again shortly.');
+    if (explainRefusal) {
+      // The API's own fixed, non-secret sentence (for example that Google refused the sign-in, with Google's error code).
+      const m = e?.message;
+      if (code === 'XO_AUTH_TOKEN_INVALID' && typeof m === 'string' && /^[\x20-\x7e]{1,200}$/.test(m))
+        return failAuth('provider_error', `XO could not complete the Google sign-in: ${m}.`);
+    }
     return failAuth('provider_error', 'XO did not accept this sign-in.');
   }
 
@@ -201,7 +218,7 @@ export class XoSession {
 
 export interface GoogleSignInDeps {
   readonly config: OidcConfig;
-  /** Fetch used for Google (discovery, token exchange, revocation). */
+  /** Fetch used for Google OIDC discovery (the only Google endpoint Studio itself calls). */
   readonly authFetch: AuthFetch;
   readonly api: XoAuthApi;
   readonly login: SystemBrowserLogin;
@@ -243,18 +260,8 @@ export async function signInWithGoogle(d: GoogleSignInDeps): Promise<AuthResult<
   const cb = parseCallback(query, pkce.state);
   if (!cb.ok) return cb;
 
-  const grant = await exchangeCodeForIdentity(
-    disc.value,
-    d.config,
-    { code: cb.value.code, verifier: pkce.verifier, redirectUri },
-    d.authFetch,
-  );
-  if (!grant.ok) return grant;
-  // Google may return a refresh token for an installed app. XO does not want it: revoke it best-effort, in the background, and never wait on it.
-  if (grant.value.refreshToken !== undefined)
-    void revokeRefreshToken(disc.value, d.config, grant.value.refreshToken, d.authFetch).catch(() => undefined);
-
-  return d.api.exchange(challenge.value.challengeId, grant.value.idToken);
+  // Studio never redeems the code itself: Google requires a client secret for that, and a distributed app cannot hold one.
+  return d.api.exchangeCode(challenge.value.challengeId, cb.value.code, pkce.verifier, redirectUri);
 }
 
 /** Restore from a stored XO refresh credential. The caller decides what to keep from the failure kind. */

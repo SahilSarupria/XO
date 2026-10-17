@@ -21,7 +21,7 @@ const cfg: OidcConfig = {
 
 function rig(browserOpts: { tamperState?: boolean; error?: string; hang?: boolean } = {}) {
   const google = new FakeGoogle();
-  const xo = new FakeXoSessions();
+  const xo = new FakeXoSessions(google);
   const opened: string[] = [];
   const login: SystemBrowserLogin = {
     begin: async () => ({ redirectUri: 'http://127.0.0.1:50000/callback' }),
@@ -68,7 +68,7 @@ describe('envelope: xo-session', () => {
 });
 
 describe('signInWithGoogle', () => {
-  it('runs code+PKCE with the server challenge nonce, hands the ID token to XO once, and keeps only XO credentials', async () => {
+  it('runs code+PKCE with the server challenge nonce, hands the CODE to XO once (XO redeems it), and keeps only XO credentials', async () => {
     const { google, xo, login, opened, api } = rig();
     const r = await signInWithGoogle({ config: cfg, authFetch: google.fetch, api, login, now: () => 0, crypto });
     expect(r.ok).toBe(true);
@@ -80,12 +80,22 @@ describe('signInWithGoogle', () => {
     expect(q.has('audience')).toBe(false);
     expect(q.get('scope')).not.toContain('offline_access');
     expect(opened[0]).not.toMatch(/client_secret|access_token|id_token/);
-    expect(google.calls.find((c) => c.url.endsWith('/token'))?.body).not.toMatch(/client_secret/);
 
-    // XO received the ID token exactly once, and nothing else Google issued.
+    // Studio itself touched Google only for OIDC discovery: no token endpoint, no revocation, no secret anywhere.
+    const studioCalls = google.calls.filter((c) => c.caller === 'studio');
+    expect(studioCalls.map((c) => new URL(c.url).pathname)).toEqual(['/.well-known/openid-configuration']);
+    expect(studioCalls.some((c) => /client_secret/.test(c.body))).toBe(false);
+    expect(JSON.stringify(xo.calls)).not.toContain(FakeGoogle.SECRET);
+
+    // XO received the authorization code and PKCE verifier exactly once, and nothing else Google issued.
     const exchanges = xo.calls.filter((c) => c.path === '/auth/session');
     expect(exchanges).toHaveLength(1);
-    expect(JSON.parse(exchanges[0]!.body)).toEqual({ challengeId: 'challenge-1', idToken: 'idtok.nonce-1' });
+    const sent = JSON.parse(exchanges[0]!.body) as Record<string, string>;
+    expect(Object.keys(sent).sort()).toEqual(['challengeId', 'code', 'codeVerifier', 'redirectUri']);
+    expect(sent['challengeId']).toBe('challenge-1');
+    expect(sent['code']).toBe('gcode_1');
+    expect(sent['redirectUri']).toBe('http://127.0.0.1:50000/callback');
+    expect(sent['codeVerifier']).toMatch(/^[A-Za-z0-9\-._~]{43,128}$/);
     for (const c of xo.calls) {
       expect(c.body).not.toContain('ya29.google-opaque-access-token');
       expect(c.body).not.toContain('1//google-refresh-token');
@@ -97,11 +107,12 @@ describe('signInWithGoogle', () => {
     expect(text).not.toMatch(/ya29|1\/\/google|idtok/);
     expect(r.ok && r.value.accessCredential).toMatch(/^xoas_/);
     expect(r.ok && r.value.refreshCredential).toMatch(/^xoar_/);
-    // Google's refresh token was revoked (best effort), not kept.
+    // Google's refresh token was revoked by the XO server (best effort), not kept, and never reached Studio.
     await vi.waitFor(() => expect(google.revoked).toEqual(['1//google-refresh-token']));
+    expect(google.calls.filter((c) => c.caller === 'studio' && c.url.endsWith('/revoke'))).toHaveLength(0);
   });
 
-  it('succeeds even if revoking the Google refresh token fails (sign-in never depends on it)', async () => {
+  it('succeeds even if the server-side revocation of the Google refresh token fails (sign-in never depends on it)', async () => {
     const { google, login, api } = rig();
     google.revokeFails = true;
     const r = await signInWithGoogle({ config: cfg, authFetch: google.fetch, api, login, now: () => 0, crypto });
@@ -116,7 +127,7 @@ describe('signInWithGoogle', () => {
     expect(xo.calls.some((c) => c.path === '/auth/session')).toBe(false);
   });
 
-  it('decline, timeout, provider outage and a missing ID token fail distinctly and never call XO to exchange', async () => {
+  it('decline and timeout never call XO to exchange; a Google outage and a missing ID token (reported by XO) fail distinctly', async () => {
     const denied = rig({ error: 'access_denied' });
     expect(
       (await signInWithGoogle({ config: cfg, authFetch: denied.google.fetch, api: denied.api, login: denied.login, now: () => 0, crypto }))
@@ -132,8 +143,33 @@ describe('signInWithGoogle', () => {
     const noId = rig();
     noId.google.omitIdToken = true;
     const m = await signInWithGoogle({ config: cfg, authFetch: noId.google.fetch, api: noId.api, login: noId.login, now: () => 0, crypto });
-    expect(!m.ok && m.failure.kind).toBe('malformed');
-    for (const x of [denied, hung, down, noId]) expect(x.xo.calls.some((c) => c.path === '/auth/session')).toBe(false);
+    expect(!m.ok && m.failure.kind).toBe('provider_error');
+    for (const x of [denied, hung]) expect(x.xo.calls.some((c) => c.path === '/auth/session')).toBe(false);
+  });
+
+  it("Google refusing the XO server's client is explained with Google's error code, not a vague refusal", async () => {
+    const a = rig();
+    a.google.clientRejected = true;
+    const r = await signInWithGoogle({ config: cfg, authFetch: a.google.fetch, api: a.api, login: a.login, now: () => 0, crypto });
+    expect(!r.ok && r.failure.kind).toBe('provider_error');
+    expect(!r.ok && r.failure.message).toMatch(/Google sign-in: .*refused the sign-in \(invalid_client\)/);
+  });
+
+  it('an XO server without server-side code exchange says so in plain words', async () => {
+    const a = rig();
+    const bare = new XoAuthApi('/api', new FakeXoSessions().fetch); // no Google configured on this API
+    const r = await signInWithGoogle({ config: cfg, authFetch: a.google.fetch, api: bare, login: a.login, now: () => 0, crypto });
+    expect(!r.ok && r.failure.message).toMatch(/not set up for desktop Google sign-in/);
+  });
+
+  it('what a client-side exchange would get from real Google (no secret) is exactly the failure this design avoids', async () => {
+    const a = rig();
+    const res = await a.google.fetch('https://accounts.google.test/token', {
+      method: 'POST',
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'x', client_id: 'c', code_verifier: 'v' }).toString(),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'invalid_request', error_description: 'client_secret is missing.' });
   });
 
   it('XO unreachable at the start stops before any browser opens; an unbound identity is reported as such', async () => {
@@ -241,7 +277,7 @@ describe('XoSession: expiry, refresh, revocation, logout', () => {
 
 function appRig() {
   const google = new FakeGoogle();
-  const xo = new FakeXoSessions();
+  const xo = new FakeXoSessions(google);
   const store = new Map<string, string>();
   const opened: string[] = [];
   const fetchImpl = (i: string, init?: RequestInit) =>
