@@ -4,6 +4,8 @@ import {
   buildAuthorizationUrl,
   createPkce,
   discoverProvider,
+  exchangeCodeForIdentity,
+  refusalDetail,
   parseCallback,
   parseOidcConfig,
   validateRedirectUri,
@@ -161,5 +163,38 @@ describe('stored credential envelope', () => {
     ]) {
       expect(decodeCredential(bad)).toBeNull();
     }
+  });
+});
+
+describe('token-endpoint refusals name the error code the provider gave', () => {
+  const endpoints = { authorizationEndpoint: 'https://idp.test/a', tokenEndpoint: 'https://idp.test/t' };
+  const args = { code: 'c', verifier: 'v'.repeat(43), redirectUri: 'http://127.0.0.1:5555/callback' };
+  const refuse = (status: number, body: unknown) => async () =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  it('shows a well-formed error code and short description', async () => {
+    const r = await exchangeCodeForIdentity(
+      endpoints,
+      cfg,
+      args,
+      refuse(400, { error: 'invalid_request', error_description: 'client_secret is missing.' }),
+    );
+    expect(!r.ok && r.failure.kind).toBe('provider_error');
+    expect(!r.ok && r.failure.message).toBe('The identity provider refused the request (invalid_request: client_secret is missing.).');
+  });
+  it('keeps the plain message when the response has no usable error code', async () => {
+    const r = await exchangeCodeForIdentity(endpoints, cfg, args, refuse(400, { message: 'nope' }));
+    expect(!r.ok && r.failure.message).toBe('The identity provider refused the request.');
+  });
+  it('never echoes a malformed code, control characters or an overlong description', () => {
+    expect(refusalDetail({ error: 'Bad Code <script>' })).toBe('');
+    expect(refusalDetail({ error: 'invalid_client', error_description: 'x\u0000y\n' + 'z'.repeat(500) })).toMatch(
+      /^ \(invalid_client: x y z{1,}\)$/,
+    );
+    expect(refusalDetail({ error: 'invalid_client', error_description: 'x\u0000y\n' + 'z'.repeat(500) }).length).toBeLessThan(160);
+  });
+  it('still reports invalid_grant as an ended sign-in, not a refusal', async () => {
+    const r = await exchangeCodeForIdentity(endpoints, cfg, args, refuse(400, { error: 'invalid_grant' }));
+    expect(!r.ok && r.failure.kind).toBe('invalid_grant');
   });
 });

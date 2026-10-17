@@ -300,7 +300,26 @@ async function postToken(
     return failAuth('network', 'The identity provider is temporarily unavailable.');
   // Permanent rejection of a grant: only the protocol's invalid_grant (or a 401 from the token endpoint).
   if (obj?.['error'] === 'invalid_grant' || res.status === 401) return failAuth('invalid_grant', 'Your sign-in is no longer valid.');
-  return failAuth('provider_error', 'The identity provider refused the request.');
+  return failAuth('provider_error', `The identity provider refused the request${refusalDetail(obj)}.`);
+}
+
+/**
+ * The provider's own RFC 6749 error code (and a short description) explains a refusal without exposing anything
+ * sensitive: it is never the request body, a token or a secret. Only a well-formed code is shown; the description is
+ * stripped of control characters and truncated.
+ */
+export function refusalDetail(obj: Record<string, unknown> | undefined): string {
+  const code = obj?.['error'];
+  if (typeof code !== 'string' || !/^[a-z][a-z_]{0,39}$/.test(code)) return '';
+  const d = obj?.['error_description'];
+  const desc =
+    typeof d === 'string'
+      ? d
+          .replace(/[^\x20-\x7e]/g, ' ')
+          .trim()
+          .slice(0, 120)
+      : '';
+  return desc === '' ? ` (${code})` : ` (${code}: ${desc})`;
 }
 
 function toTokenSet(obj: Record<string, unknown>, now: number, previousRefresh?: string): AuthResult<TokenSet> {
