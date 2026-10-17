@@ -12,6 +12,9 @@ const apiTarget = process.env['XO_API_URL'] ?? 'http://127.0.0.1:4000';
 
 export default defineConfig({
   plugins: [react()],
+  // The web build starts from index.html only. Without this, Vite also scans the desktop entry and warns
+  // about Tauri packages the web app never loads.
+  optimizeDeps: { entries: ['index.html'] },
   server: {
     port: 5173,
     proxy: { '/api': { target: apiTarget, changeOrigin: false, rewrite: (p) => p.replace(/^\/api/, '') } },

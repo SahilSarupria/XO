@@ -5,22 +5,12 @@ Talks to `@xo/api` over HTTP only. Architecture, capability map and platform gap
 
 ## Run locally
 
-From the repo root:
+From the repo root (full guide: [`docs/DEVELOPING.md`](../../docs/DEVELOPING.md)):
 
 ```sh
-npm ci
-npm run typecheck                      # existing platform build (unchanged)
-
-# 1. an API key for yourself (prints the key once)
-cd apps/api
-npm run keys -- issue me --kind human --dir /tmp/xo-dev/keys
-
-# 2. start the API (needs a built apps/api/dist: `npm run build` at the root)
-API_KEYS_DIR=/tmp/xo-dev/keys WORKSPACES_DIR=/tmp/xo-dev/ws WORKSPACE_DATA_DIR=/tmp/xo-dev/wsd PORT=4000 node run-api.mjs
-
-# 3. start Studio (proxies /api -> http://127.0.0.1:4000; override with XO_API_URL)
-cd ../studio
-npm run dev                            # http://localhost:5173 — paste the key to connect
+npm run setup   # once: installs, creates .env, builds the API, creates a dev access key
+npm run dev     # API + Studio together; prints the URL and the key to paste
+npm run doctor  # if anything is wrong
 ```
 
 ## Checks

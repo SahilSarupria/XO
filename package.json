@@ -2,7 +2,7 @@
   "name": "xo-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "XO Platform monorepo — Module 1: engineering foundation (no compiler/runtime/registry business logic).",
+  "description": "XO Platform monorepo \u2014 Module 1: engineering foundation (no compiler/runtime/registry business logic).",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.15.0",
@@ -13,6 +13,14 @@
     "apps/*"
   ],
   "scripts": {
+    "setup": "node scripts/dev.mjs setup",
+    "dev": "node scripts/dev.mjs dev",
+    "doctor": "node scripts/dev.mjs doctor",
+    "smoke": "node scripts/dev.mjs smoke",
+    "test:studio": "npm run test -w @xo/studio",
+    "test:studio:watch": "npm run test:watch -w @xo/studio",
+    "test:api": "npm run test -w @xo/api",
+    "check:studio": "npm run typecheck -w @xo/studio && npm run test -w @xo/studio",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:coverage": "npm run test:coverage --workspaces --if-present",

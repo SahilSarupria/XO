@@ -16,7 +16,8 @@
     "build:desktop": "vite build --config vite.desktop.config.ts",
     "serve:prod": "node deploy/serve.mjs",
     "check:tauri": "node scripts/check-tauri-config.mjs",
-    "check:tauri:release": "node scripts/check-tauri-config.mjs --release"
+    "check:tauri:release": "node scripts/check-tauri-config.mjs --release",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^18.3.1",
