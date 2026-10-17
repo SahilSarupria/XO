@@ -9,11 +9,12 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, 
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { loadPlaywright, newContext, shoot } from './lib/browser.mjs';
+import { InfraError, loadPlaywright, newContext, shoot } from './lib/browser.mjs';
 import { classify } from './lib/classify.mjs';
 import { decodePng } from './lib/png.mjs';
 import { Recorder } from './lib/recorder.mjs';
 import { writeReport } from './lib/report.mjs';
+import { screen } from './screens.mjs';
 import { EXIT, VIEWPORTS } from './visual.config.mjs';
 import { readFileSync } from 'node:fs';
 
@@ -170,6 +171,60 @@ try {
     classify({ infraError: 'x', results: same.results }).kind === 'infra',
   );
   expect('a run that captured nothing is infrastructure, not a pass', classify({ results: [] }).kind === 'infra');
+
+  // 7. The bug the first CI run hit: Studio's Rules tab carries a count badge, so its accessible name is "Rules7 ready for
+  //    review" (no space), and a word boundary after "Rules" cannot match it.
+  const tab = (count) =>
+    `<div class="app"><button type="button">Documents</button><button type="button">Rules${
+      count > 0 ? `<span aria-label="${count} ready for review">${count}</span>` : ''
+    }</button></div>`;
+  const ctx7 = await newContext(browser, 'desktop');
+  const p7 = await ctx7.newPage();
+  p7.setDefaultTimeout(1000);
+  const found = async (count, re) => {
+    await p7.setContent(tab(count));
+    return p7.getByRole('button', { name: re }).count();
+  };
+  expect('the old selector /^Rules\\b/ really cannot see a Rules tab that has a count badge', (await found(7, /^Rules\b/)) === 0);
+  expect(
+    'the fixed selector finds the Rules tab with and without a count badge',
+    (await found(7, /^Rules(?![A-Za-z])/)) === 1 && (await found(0, /^Rules(?![A-Za-z])/)) === 1,
+  );
+
+  // 8. A control missing from a live page fails THAT screen (with a screenshot) and the run carries on.
+  await p7.setContent(tab(0));
+  const rec8 = new Recorder({ outDir: join(out, '8-missing-control'), baselinesDir: baselines, mode: 'compare' });
+  await screen(rec8, 'desktop', 'setup-rules', p7, async () => {
+    await p7.getByRole('button', { name: /^Nope(?![A-Za-z])/ }).click();
+  });
+  await screen(rec8, 'desktop', 'next-screen', p7, async () => rec8.submit('desktop', 'next-screen', await shoot(p7)));
+  const failure = rec8.results.find((r) => r.id === 'desktop/setup-rules');
+  expect(
+    'a missing control is recorded as a failure of that screen, naming what was awaited, with a screenshot',
+    failure?.status === 'functional' &&
+      /waiting for getByRole/.test(failure.detail) &&
+      failure.failureShot !== undefined &&
+      nonEmptyPng(join('8-missing-control', failure.failureShot)),
+    JSON.stringify(failure),
+  );
+  expect(
+    'the run carried on to the next screen',
+    rec8.results.some((r) => r.id === 'desktop/next-screen'),
+  );
+  expect('that is a regression, not an infrastructure failure', classify({ results: rec8.results }).kind === 'regression');
+
+  // 9. If the page itself is gone, the same timeout is an infrastructure failure.
+  await p7.setContent('<p>a blank page: no app, no sign-in</p>');
+  let thrown;
+  try {
+    await screen(rec8, 'desktop', 'after-crash', p7, async () => {
+      await p7.getByRole('button', { name: 'Anything' }).click();
+    });
+  } catch (e) {
+    thrown = e;
+  }
+  expect('a timeout on a page with no app is an INFRASTRUCTURE failure', thrown instanceof InfraError, String(thrown));
+  await ctx7.close();
 } finally {
   await browser.close();
   server.close();

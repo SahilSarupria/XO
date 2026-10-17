@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { EXPECTED_PLAYWRIGHT_VERSION, VIEWPORTS } from '../visual.config.mjs';
+import { EXPECTED_PLAYWRIGHT_VERSION, TIMEOUTS, VIEWPORTS } from '../visual.config.mjs';
 
 /**
  * Loads the pinned Playwright library (CommonJS resolution, so a global or local install both work) and refuses to run
@@ -45,6 +45,8 @@ export async function newContext(browser, viewportName) {
     reducedMotion: 'reduce',
     serviceWorkers: 'block',
   });
+  // One bound for every click and wait (Playwright's default is 30s), so a missing control fails fast and consistently.
+  context.setDefaultTimeout(TIMEOUTS.uiMs);
   await context.addInitScript(DATE_SHIM);
   return context;
 }

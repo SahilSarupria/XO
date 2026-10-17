@@ -39,7 +39,8 @@ export function buildReport({ verdict, results, orphans, info, mode }) {
     lines.push('| Screen | Result | Changed pixels | Notes |', '| --- | --- | --- | --- |');
     for (const r of results) {
       const px = r.diffPixels === undefined || r.diffPixels === null ? '' : `${r.diffPixels} of ${r.totalPixels}`;
-      const files = r.sideBySide === undefined ? '' : `\`${r.sideBySide}\``;
+      const shown = r.sideBySide ?? r.failureShot;
+      const files = shown === undefined ? '' : `\`${shown}\``;
       lines.push(`| ${r.id} | ${LABEL[r.status] ?? r.status} | ${px} | ${[r.detail, files].filter(Boolean).join(' ')} |`);
     }
     lines.push('');

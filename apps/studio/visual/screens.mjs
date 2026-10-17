@@ -46,7 +46,8 @@ async function signIn(page, baseUrl, key) {
 }
 
 async function openDrawer(page) {
-  await page.getByRole('button', { name: 'Menu' }).click();
+  // Idempotent: if an earlier screen failed with the drawer open, clicking Menu again would close it.
+  if ((await page.locator('#sidebar[data-open="true"]').count()) === 0) await page.getByRole('button', { name: 'Menu' }).click();
   await expectVisible(page, page.locator('#sidebar[data-open="true"]'), 'The navigation drawer');
 }
 
@@ -61,19 +62,47 @@ async function closeDrawerWithEscape(page) {
 
 async function goTo(page, viewport, label, pageHeading) {
   if (viewport === 'mobile') await openDrawer(page);
-  await page.getByRole('button', { name: new RegExp(`^${label}\\b`) }).click();
+  await page.getByRole('button', { name: new RegExp(`^${label}(?![A-Za-z])`) }).click();
   await expectVisible(page, pageHeading, `The ${label} screen`);
   await settle(page);
 }
 
-/** Runs one screen. A functional failure is recorded and the run continues; anything else aborts the run as infra. */
-async function screen(rec, viewport, name, fn) {
+/**
+ * Runs one screen. A control or screen that is missing in a Studio that is up is recorded as a failure of THAT screen (with a
+ * screenshot of what was on the page) and the run carries on, so one broken screen cannot hide the others. If the page itself
+ * is gone, nothing after it can be trusted, so that stays an infrastructure failure.
+ */
+export async function screen(rec, viewport, name, page, fn) {
   try {
     await fn();
   } catch (e) {
-    if (e instanceof FunctionalFailure) rec.functionalFailure(viewport, name, e.message);
-    else throw e;
+    const missing = e instanceof FunctionalFailure || e?.name === 'TimeoutError';
+    if (!missing) throw e;
+    const alive =
+      (await page
+        .locator('.app, #api-key')
+        .count()
+        .catch(() => 0)) > 0;
+    if (!alive) throw new InfraError(`Studio stopped responding during "${viewport}/${name}": ${firstLine(e.message)}`);
+    const shot = await shoot(page).catch(() => undefined);
+    const detail = e instanceof FunctionalFailure ? e.message : `A control or screen was not found in time. ${describeTimeout(e.message)}`;
+    rec.functionalFailure(viewport, name, detail, shot);
   }
+}
+
+// Playwright wraps parts of its error text in ANSI colour codes (ESC [ ... m); they must not reach reports or be parsed around.
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+const plain = (text) => String(text).replace(ANSI, '');
+
+const firstLine = (text) => plain(text).split('\n')[0];
+
+/** "locator.click: Timeout 20000ms exceeded." plus what it was waiting for, without the rest of Playwright's call log. */
+function describeTimeout(message) {
+  const lines = plain(message)
+    .split('\n')
+    .map((l) => l.trim());
+  const waiting = lines.find((l) => l.startsWith('- waiting for'));
+  return [lines[0], waiting === undefined ? undefined : waiting.replace(/^- /, '')].filter(Boolean).join(' ');
 }
 
 async function firstRun(browser, baseUrl, keys, rec) {
@@ -81,12 +110,12 @@ async function firstRun(browser, baseUrl, keys, rec) {
   const page = await context.newPage();
   try {
     await signIn(page, baseUrl, keys.empty);
-    await screen(rec, 'desktop', 'first-run', async () => {
+    await screen(rec, 'desktop', 'first-run', page, async () => {
       await expectVisible(page, heading(page, 'Start with a workspace', 3), 'The first-run workspace prompt');
       await settle(page);
       rec.submit('desktop', 'first-run', await shoot(page));
     });
-    await screen(rec, 'desktop', 'home-empty', async () => {
+    await screen(rec, 'desktop', 'home-empty', page, async () => {
       await page.locator('#ws-name').fill(SYNTHETIC.emptyWorkspaceName);
       await page.getByRole('button', { name: 'Create workspace' }).click();
       await expectVisible(page, heading(page, 'Home'), 'The Home screen of a new workspace');
@@ -109,33 +138,33 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
     await expectVisible(page, heading(page, 'Home'), 'The Home screen');
     await settle(page);
 
-    await screen(rec, viewport, 'home', async () => rec.submit(viewport, 'home', await shoot(page)));
+    await screen(rec, viewport, 'home', page, async () => rec.submit(viewport, 'home', await shoot(page)));
 
     if (mobile) {
-      await screen(rec, viewport, 'drawer-open', async () => {
+      await screen(rec, viewport, 'drawer-open', page, async () => {
         await openDrawer(page);
         rec.submit(viewport, 'drawer-open', await shoot(page));
         await closeDrawerWithEscape(page);
       });
     }
 
-    await screen(rec, viewport, 'work', async () => {
+    await screen(rec, viewport, 'work', page, async () => {
       await goTo(page, viewport, 'Work', heading(page, 'Work'));
       rec.submit(viewport, 'work', await shoot(page));
     });
-    await screen(rec, viewport, 'work-detail', async () => {
+    await screen(rec, viewport, 'work-detail', page, async () => {
       await page.getByText('What each step is based on').first().click();
       await settle(page);
       rec.submit(viewport, 'work-detail', await shoot(page, { fullPage: true }));
     });
 
-    await screen(rec, viewport, 'tasks', async () => {
+    await screen(rec, viewport, 'tasks', page, async () => {
       await goTo(page, viewport, 'Tasks', heading(page, 'Tasks'));
       rec.submit(viewport, 'tasks', await shoot(page));
     });
 
     // Browser history keeps the person's place (the section lives in the URL fragment).
-    await screen(rec, viewport, 'history', async () => {
+    await screen(rec, viewport, 'history', page, async () => {
       await page.goBack();
       await expectVisible(page, heading(page, 'Work'), 'Back to Work');
       await page.goForward();
@@ -143,16 +172,16 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
     });
 
     if (!mobile) {
-      await screen(rec, viewport, 'activity', async () => {
+      await screen(rec, viewport, 'activity', page, async () => {
         await goTo(page, viewport, 'Activity', heading(page, 'Activity'));
         rec.submit(viewport, 'activity', await shoot(page));
       });
-      await screen(rec, viewport, 'setup-documents', async () => {
+      await screen(rec, viewport, 'setup-documents', page, async () => {
         await goTo(page, viewport, 'Setup', heading(page, 'Context'));
         rec.submit(viewport, 'setup-documents', await shoot(page));
       });
-      await screen(rec, viewport, 'setup-rules', async () => {
-        await page.getByRole('button', { name: /^Rules\b/ }).click();
+      await screen(rec, viewport, 'setup-rules', page, async () => {
+        await page.getByRole('button', { name: /^Rules(?![A-Za-z])/ }).click();
         await expectVisible(page, heading(page, 'Review'), 'The Review screen');
         await settle(page);
         rec.submit(viewport, 'setup-rules', await shoot(page));

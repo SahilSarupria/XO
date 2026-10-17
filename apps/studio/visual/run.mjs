@@ -131,7 +131,9 @@ async function main() {
   try {
     const { chromium, version } = loadPlaywright();
     info.Playwright = version;
-    info.Commit = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim() || 'unknown';
+    // In Actions the checkout is owned by another user inside the container, so `git rev-parse` can refuse to run there.
+    info.Commit =
+      process.env.GITHUB_SHA || spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim() || 'unknown';
 
     if (!opts.skipBuild) {
       run('build-api', 'npx', ['tsc', '-b', 'apps/api/tsconfig.json']);

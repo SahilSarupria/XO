@@ -55,9 +55,15 @@ export class Recorder {
     this.results.push(record);
   }
 
-  /** The UI loaded but did not behave as expected. Counts as a regression, not an infrastructure problem. */
-  functionalFailure(viewport, name, detail) {
-    this.results.push({ id: `${viewport}/${name}`, status: 'functional', detail });
+  /**
+   * The UI loaded but did not behave as expected. Counts as a regression, not an infrastructure problem.
+   * `png` (optional) is what the page looked like at that moment, kept under failures/ so a reviewer can see why.
+   */
+  functionalFailure(viewport, name, detail, png) {
+    const id = `${viewport}/${name}`;
+    const record = { id, status: 'functional', detail };
+    if (png !== undefined) record.failureShot = this.#write(`failures/${id}.png`, png);
+    this.results.push(record);
   }
 
   /** Approved references that no screen produced any more (a screen was removed or renamed). Reported, not failed. */
