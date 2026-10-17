@@ -3,7 +3,7 @@ import type { Capability, Execution, Workflow, WorkflowRun, WorkflowRunStep } fr
 import type { OutcomeTone } from './review';
 
 /**
- * Business-neutral derivations for the Work, Tasks and Home views. Everything here is computed from
+ * Business-neutral derivations for the Workflows, Runs & History and Home views. Everything here is computed from
  * real platform records; nothing is stored or invented, and nothing here is a security boundary —
  * the server decides what is allowed.
  */
@@ -204,7 +204,7 @@ export function describeStartProblem(p: ApiProblem, w: Pick<Workflow, 'steps'>):
       return {
         kind: 'needs_approval',
         title: 'Some steps need approval first',
-        body: 'XO did not start this process because these steps have no recorded approval. Approve them in Setup, then start again. Nothing ran.',
+        body: 'XO did not start this process because these steps have no recorded approval. Approve them in Sources, then start again. Nothing ran.',
         items: named,
       };
     }
@@ -212,7 +212,7 @@ export function describeStartProblem(p: ApiProblem, w: Pick<Workflow, 'steps'>):
       return {
         kind: 'needs_approval',
         title: 'Some steps need approval first',
-        body: 'XO did not start this process because a step has no recorded approval. Approve the steps in Setup, then start again. Nothing ran.',
+        body: 'XO did not start this process because a step has no recorded approval. Approve the steps in Sources, then start again. Nothing ran.',
         items: [],
       };
     }

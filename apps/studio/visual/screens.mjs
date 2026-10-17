@@ -12,7 +12,7 @@ const wait = { timeout: TIMEOUTS.uiMs };
 const heading = (page, name, level = 2) => page.getByRole('heading', { level, name, exact: true });
 
 async function settle(page) {
-  const idle = () => page.waitForFunction(() => document.querySelector('.spinner') === null, undefined, wait);
+  const idle = () => page.waitForFunction(() => document.querySelector('.spinner, .skeleton') === null, undefined, wait);
   await idle();
   await page.waitForLoadState('networkidle', wait);
   await idle();
@@ -149,7 +149,7 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
     }
 
     await screen(rec, viewport, 'work', page, async () => {
-      await goTo(page, viewport, 'Work', heading(page, 'Work'));
+      await goTo(page, viewport, 'Workflows', heading(page, 'Workflows'));
       rec.submit(viewport, 'work', await shoot(page));
     });
     await screen(rec, viewport, 'work-detail', page, async () => {
@@ -159,14 +159,14 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
     });
 
     await screen(rec, viewport, 'tasks', page, async () => {
-      await goTo(page, viewport, 'Tasks', heading(page, 'Tasks'));
+      await goTo(page, viewport, 'Runs & History', heading(page, 'Tasks'));
       rec.submit(viewport, 'tasks', await shoot(page));
     });
 
     // Browser history keeps the person's place (the section lives in the URL fragment).
     await screen(rec, viewport, 'history', page, async () => {
       await page.goBack();
-      await expectVisible(page, heading(page, 'Work'), 'Back to Work');
+      await expectVisible(page, heading(page, 'Workflows'), 'Back to Workflows');
       await page.goForward();
       await expectVisible(page, heading(page, 'Tasks'), 'Forward to Tasks');
     });
@@ -177,7 +177,7 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
         rec.submit(viewport, 'activity', await shoot(page));
       });
       await screen(rec, viewport, 'setup-documents', page, async () => {
-        await goTo(page, viewport, 'Setup', heading(page, 'Context'));
+        await goTo(page, viewport, 'Sources', heading(page, 'Context'));
         rec.submit(viewport, 'setup-documents', await shoot(page));
       });
       await screen(rec, viewport, 'setup-rules', page, async () => {

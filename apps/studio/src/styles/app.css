@@ -117,6 +117,42 @@ a {
   flex-direction: column;
   gap: var(--s-4);
 }
+.crumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+.crumbs li + li::before {
+  content: '/';
+  margin-right: var(--s-2);
+  color: var(--border-strong);
+}
+.crumbs li[aria-current='page'] {
+  color: var(--text-muted);
+}
+.crumb-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.crumb-link:hover {
+  color: var(--text);
+}
+.crumb-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 .stack {
   display: flex;
   flex-direction: column;
@@ -342,11 +378,34 @@ select {
   color: var(--accent-strong);
   font-weight: 700;
 }
-.goal {
+.start {
   display: flex;
   flex-direction: column;
-  gap: var(--s-1);
-  max-width: 40rem;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.start-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+.start-others {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s-4);
+}
+.start-others li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
 }
 
 /* cards and lists */
@@ -975,4 +1034,31 @@ details summary {
   min-height: 2.9rem;
   padding-inline: var(--s-5);
   font-size: var(--text-md);
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.skeleton-row {
+  display: block;
+  height: 3.25rem;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--surface-1), var(--surface-2), var(--surface-1));
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-row {
+    animation: none;
+  }
 }

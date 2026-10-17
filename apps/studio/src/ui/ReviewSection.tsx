@@ -12,7 +12,7 @@ import {
 } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Compilation, Execution } from '../platform/wire';
-import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section, Spinner, type LoadState } from './primitives';
+import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section, Skeleton, type LoadState } from './primitives';
 import { ExecutionOutcome, RunPanel } from './runs';
 import { useSession } from './session';
 
@@ -56,7 +56,7 @@ export function ReviewSection(props: {
   if (props.caps.phase === 'loading')
     return (
       <Section id="review-h" title="Review">
-        <Spinner label="Loading what XO found" />
+        <Skeleton label="Loading what XO found" />
       </Section>
     );
   if (props.caps.phase === 'error')

@@ -1,5 +1,5 @@
 import type { Workflow } from '../platform/wire';
-import { Badge, EmptyState, loadedValue, ProblemNotice, Section, Spinner, type LoadState } from './primitives';
+import { Badge, EmptyState, loadedValue, ProblemNotice, Section, Skeleton, type LoadState } from './primitives';
 
 /**
  * Builder Mode, read-only. Workflows are composed by the platform from discovered capabilities.
@@ -15,9 +15,9 @@ export function ProcessesSection(props: { state: LoadState<Workflow[]>; reload: 
     <Section
       id="processes-h"
       title="Processes"
-      lede="Technical view of the processes XO composed from what it found. Start them from Work."
+      lede="Technical view of the processes XO composed from what it found. Start them from Workflows."
     >
-      {state.phase === 'loading' ? <Spinner label="Loading processes" /> : null}
+      {state.phase === 'loading' ? <Skeleton label="Loading processes" /> : null}
       {state.phase === 'error' && state.stale === undefined ? <ProblemNotice problem={state.problem} onRetry={reload} /> : null}
       {shown !== undefined && shown.length === 0 ? (
         <EmptyState title="No processes yet">Analyse a document to see candidate workflows.</EmptyState>

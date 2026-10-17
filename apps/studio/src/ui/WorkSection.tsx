@@ -40,17 +40,17 @@ export function WorkSection(props: {
   const here = props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId);
 
   return (
-    <Section id="work-h" title="Work" lede="Processes XO found in your documents. Start one, or pick up where you left off.">
+    <Section id="work-h" title="Workflows" lede="Processes XO found in your documents. Start one, or pick up where you left off.">
       {props.compilation === undefined ? (
         <EmptyState title="No processes yet">
           Add a document and let XO analyse it. Processes it can carry out will appear here.{' '}
           <Button variant="quiet" onClick={props.goToSetup}>
-            Go to Setup
+            Go to Sources
           </Button>
         </EmptyState>
       ) : here.length === 0 ? (
         <EmptyState title="XO did not find a process in this document">
-          It found rules, but could not put them in a sequence. You can still review the individual rules in Setup.
+          It found rules, but could not put them in a sequence. You can still review the individual rules in Sources.
         </EmptyState>
       ) : (
         <ul className="list">
@@ -230,7 +230,7 @@ function WorkflowCard(props: {
           </Button>
           {!ready.canStart && ready.needApproval.length > 0 ? (
             <Button variant="secondary" onClick={props.goToSetup}>
-              Review rules in Setup
+              Review rules in Sources
             </Button>
           ) : null}
         </div>
@@ -256,7 +256,7 @@ function WorkflowCard(props: {
         action={
           notice !== undefined && 'view' in notice && notice.view.kind === 'needs_approval' ? (
             <Button variant="secondary" onClick={props.goToSetup}>
-              Review rules in Setup
+              Review rules in Sources
             </Button>
           ) : undefined
         }

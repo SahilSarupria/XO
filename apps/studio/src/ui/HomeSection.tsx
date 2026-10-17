@@ -3,7 +3,9 @@ import { findActiveRun, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
 import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
 import { runTitle } from './RunCard';
-import { Badge, Button, Section } from './primitives';
+import { startActions, type StartTarget } from '../domain/start';
+import { Badge, Button, formatWhen, Section } from './primitives';
+import { StartWork } from './StartWork';
 
 /**
  * The landing view. It shows only things the platform reports: decisions waiting, processes under way,
@@ -19,11 +21,16 @@ export function HomeSection(props: {
   next: Progress;
   /** Runs/workflows failed to load: do not present an empty Home as "nothing to do". */
   incomplete: boolean;
-  goToWork: () => void;
-  goToTasks: () => void;
+  workspaceName: string;
+  sourceCount: number;
+  analysisCount: number;
+  readyForReview: number;
+  goTo: (target: StartTarget) => void;
   goToActivity: () => void;
-  goToSetup: () => void;
 }) {
+  const goToTasks = () => props.goTo('tasks');
+  const goToWork = () => props.goTo('workflows');
+  const goToSetup = () => props.goTo('rules');
   const waiting = pendingTasks(props.runs);
   const waitingCount = waiting.length + props.standalonePending;
   const interrupted = recoverableRuns(props.runs);
@@ -38,10 +45,27 @@ export function HomeSection(props: {
       startReadiness(w, props.caps).needApproval.length > 0 &&
       findActiveRun(props.runs, w.workflowId, w.compilationId) === undefined,
   );
-  const anything = waitingCount > 0 || interrupted.length > 0 || inProgress.length > 0 || ready.length > 0 || blockedOnApproval.length > 0;
+  // Finished work, newest first, straight from the platform's run records. A failure among the latest is surfaced, not buried.
+  const recent = props.runs
+    .filter((r) => !isActiveRun(r))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 3);
+  const recentFailed = recent.filter((r) => r.status === 'failed');
 
   return (
-    <Section id="home-h" title="Home" lede="What needs you, what is under way, and what you can start.">
+    <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
+      <StartWork
+        actions={startActions({
+          sources: props.sourceCount,
+          succeededCompilations: props.analysisCount,
+          readyForReview: props.readyForReview,
+          readyWorkflows: ready.length,
+          waitingDecisions: waitingCount + interrupted.length,
+          incomplete: props.incomplete,
+        })}
+        onChoose={props.goTo}
+      />
+
       {waitingCount > 0 ? (
         <div className="card">
           <div className="card-main">
@@ -57,8 +81,31 @@ export function HomeSection(props: {
               ))}
             </ul>
             <div className="row">
-              <Button variant="primary" onClick={props.goToTasks}>
+              <Button variant="primary" onClick={goToTasks}>
                 {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {recentFailed.length > 0 ? (
+        <div className="card">
+          <div className="card-main">
+            <div className="row between">
+              <h3>Did not complete</h3>
+              <Badge tone="danger">{recentFailed.length}</Badge>
+            </div>
+            <ul className="plain">
+              {recentFailed.map((r) => (
+                <li key={r.workflowExecutionId} className="small">
+                  {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="row">
+              <Button variant="secondary" onClick={props.goToActivity}>
+                See what happened
               </Button>
             </div>
           </div>
@@ -80,7 +127,7 @@ export function HomeSection(props: {
               ))}
             </ul>
             <div className="row">
-              <Button variant="primary" onClick={props.goToTasks}>
+              <Button variant="primary" onClick={goToTasks}>
                 Review in Tasks
               </Button>
             </div>
@@ -124,8 +171,8 @@ export function HomeSection(props: {
               ))}
             </ul>
             <div className="row">
-              <Button variant="secondary" onClick={props.goToWork}>
-                Open Work
+              <Button variant="secondary" onClick={goToWork}>
+                Open Workflows
               </Button>
             </div>
           </div>
@@ -141,7 +188,7 @@ export function HomeSection(props: {
               approve them.
             </p>
             <div className="row">
-              <Button variant="secondary" onClick={props.goToSetup}>
+              <Button variant="secondary" onClick={goToSetup}>
                 Review rules
               </Button>
             </div>
@@ -149,19 +196,30 @@ export function HomeSection(props: {
         </div>
       ) : null}
 
-      {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} goToSetup={props.goToSetup} /> : null}
-      {!anything && props.next.step === 'done' && !props.incomplete ? (
-        <div className="next-step" aria-live="polite">
-          <span className="next-step-label">Next</span>
-          <div>
-            <strong>{props.next.headline}</strong>
-            <span className="muted"> — {props.next.hint}</span>
+      {recent.length > 0 ? (
+        <section className="card" aria-labelledby="recent-h">
+          <div className="card-main">
+            <h3 id="recent-h">Recent work</h3>
+            <ul className="plain">
+              {recent.map((r) => {
+                const v = describeRun(r);
+                return (
+                  <li key={r.workflowExecutionId} className="small">
+                    {runTitle(r)} <Badge tone={v.tone}>{v.label}</Badge> <span className="muted">{formatWhen(r.updatedAt)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="row">
+              <Button variant="quiet" onClick={props.goToActivity}>
+                See all history
+              </Button>
+            </div>
           </div>
-          <Button variant="primary" onClick={props.goToWork}>
-            Open Work
-          </Button>
-        </div>
+        </section>
       ) : null}
+
+      {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
     </Section>
   );
 }
@@ -177,7 +235,7 @@ const GS_STEPS: readonly { readonly key: Progress['step']; readonly title: strin
  * First-run guide. The current step comes from what the platform actually holds (documents, analyses,
  * approvals, runs) via `nextStep`; nothing here is a stored "onboarding" flag or a made-up figure.
  */
-function GetStarted(props: { next: Progress; goToSetup: () => void }) {
+function GetStarted(props: { next: Progress }) {
   const current = GS_STEPS.findIndex((x) => x.key === props.next.step);
   return (
     <section className="getstarted" aria-labelledby="gs-h">
@@ -206,16 +264,6 @@ function GetStarted(props: { next: Progress; goToSetup: () => void }) {
           );
         })}
       </ol>
-      <div className="next-step" aria-live="polite">
-        <span className="next-step-label">Next</span>
-        <div>
-          <strong>{props.next.headline}</strong>
-          <span className="muted"> — {props.next.hint}</span>
-        </div>
-        <Button variant="primary" className="btn-lg" onClick={props.goToSetup}>
-          Open Setup
-        </Button>
-      </div>
     </section>
   );
 }

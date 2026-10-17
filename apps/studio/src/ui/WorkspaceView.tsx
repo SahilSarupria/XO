@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { nextStep, summarize } from '../domain/review';
+import type { StartTarget } from '../domain/start';
 import { recordedNotes, standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
 import { ActivitySection } from './ActivitySection';
@@ -8,7 +9,8 @@ import { HomeSection } from './HomeSection';
 import { TasksSection } from './TasksSection';
 import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
-import { ProblemNotice, Spinner, useLoad, loadedValue } from './primitives';
+import { Breadcrumbs, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 import { useSectionRoute, type Section } from './sectionRoute';
@@ -17,9 +19,23 @@ import { Icon, type IconName } from './icons';
 type View = Section;
 type SetupView = 'documents' | 'rules';
 
-const GOAL_KEY = (ws: string) => `xo-studio:goal:${ws}`;
+const PAGE_LABEL: Record<View, string> = {
+  home: 'Home',
+  workspaces: 'Workspaces',
+  work: 'Workflows',
+  tasks: 'Runs & History',
+  activity: 'Runs & History',
+  setup: 'Sources',
+  processes: 'Processes',
+};
 
-export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactNode, content: ReactNode) => ReactNode }) {
+export function WorkspaceView(props: {
+  workspace: Workspace;
+  workspaces: readonly Workspace[];
+  onSelectWorkspace: (workspaceId: string) => void;
+  onNewWorkspace: () => void;
+  frame: (nav: ReactNode, content: ReactNode) => ReactNode;
+}) {
   const { client, mode } = useSession();
   const ws = props.workspace.workspaceId;
   const [view, setView, replaceView] = useSectionRoute();
@@ -52,6 +68,14 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
   useEffect(() => {
     if (mode === 'user' && view === 'processes') replaceView('home');
   }, [mode, view, replaceView]);
+
+  /** Start work / Home shortcuts. They only select a screen; the API decides what is permitted there. */
+  function goToTarget(target: StartTarget) {
+    if (target === 'documents' || target === 'rules') {
+      setSetupView(target);
+      setView('setup');
+    } else setView(target === 'workflows' ? 'work' : 'tasks');
+  }
 
   function refreshAll() {
     sources.reload();
@@ -87,27 +111,14 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
   const decisionsUnknown = runs.state.phase === 'error' || executions.state.phase === 'error';
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
+  const runsView = view === 'tasks' || view === 'activity';
   const nav = (
     <nav className="nav" aria-label="Workspace sections">
       <NavItem current={view} id="home" icon="home" hint="What needs you today" onSelect={setView}>
         Home
       </NavItem>
-      <NavItem current={view} id="work" icon="work" hint="Start a process" onSelect={setView}>
-        Work
-      </NavItem>
-      <NavItem
-        current={view}
-        id="tasks"
-        icon="tasks"
-        hint="Decisions for you to make"
-        onSelect={setView}
-        count={taskCount}
-        countLabel="need attention"
-      >
-        Tasks
-      </NavItem>
-      <NavItem current={view} id="activity" icon="activity" hint="What has happened" onSelect={setView}>
-        Activity
+      <NavItem current={view} id="workspaces" icon="workspaces" hint="Switch or create" onSelect={setView}>
+        Workspaces
       </NavItem>
       <NavItem
         current={view}
@@ -118,7 +129,21 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
         count={summary?.readyForReview}
         countLabel="ready for review"
       >
-        Setup
+        Sources
+      </NavItem>
+      <NavItem current={view} id="work" icon="work" hint="Start a process" onSelect={setView}>
+        Workflows
+      </NavItem>
+      <NavItem
+        current={runsView ? 'tasks' : view}
+        id="tasks"
+        icon="tasks"
+        hint="Decisions and what has happened"
+        onSelect={setView}
+        count={taskCount}
+        countLabel="need attention"
+      >
+        Runs &amp; History
       </NavItem>
       {mode === 'builder' ? (
         <NavItem current={view} id="processes" icon="processes" hint="Technical view" onSelect={setView}>
@@ -128,9 +153,28 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
     </nav>
   );
 
+  const runsTabs = (
+    <SubNav
+      label="Runs and history views"
+      current={view}
+      items={[
+        { id: 'tasks', label: 'Tasks', count: taskCount, onSelect: () => setView('tasks') },
+        { id: 'activity', label: 'Activity', onSelect: () => setView('activity') },
+      ]}
+    />
+  );
+
   const content = (
     <main className="page">
       <header className="page-head">
+        <Breadcrumbs
+          items={[
+            { label: 'Workspaces', onSelect: () => setView('workspaces') },
+            ...(view === 'workspaces'
+              ? [{ label: props.workspace.name ?? 'Untitled workspace' }]
+              : [{ label: props.workspace.name ?? 'Untitled workspace', onSelect: () => setView('home') }, { label: PAGE_LABEL[view] }]),
+          ]}
+        />
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
       </header>
 
@@ -150,10 +194,23 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
           standalonePending={standalonePending}
           next={step}
           incomplete={decisionsUnknown}
-          goToWork={() => setView('work')}
-          goToTasks={() => setView('tasks')}
+          workspaceName={props.workspace.name ?? 'Untitled workspace'}
+          sourceCount={loadedValue(sources.state)?.length ?? 0}
+          analysisCount={succeeded.length}
+          readyForReview={summary?.readyForReview ?? 0}
+          goTo={goToTarget}
           goToActivity={() => setView('activity')}
-          goToSetup={() => setView('setup')}
+        />
+      ) : null}
+      {view === 'workspaces' ? (
+        <WorkspacesSection
+          workspaces={props.workspaces}
+          activeId={ws}
+          onSelect={(id) => {
+            props.onSelectWorkspace(id);
+            setView('home');
+          }}
+          onNew={props.onNewWorkspace}
         />
       ) : null}
       {view === 'work' ? (
@@ -173,6 +230,7 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
           goToActivity={() => setView('activity')}
         />
       ) : null}
+      {runsView ? runsTabs : null}
       {view === 'tasks' ? (
         <TasksSection
           workspaceId={ws}
@@ -186,7 +244,7 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
       ) : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
-          <Spinner label="Loading activity" />
+          <Skeleton label="Loading activity" />
         ) : executions.state.phase === 'error' && executions.state.stale === undefined ? null : (
           <ActivitySection
             workspaceId={ws}
@@ -201,20 +259,20 @@ export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactN
       ) : null}
       {view === 'setup' ? (
         <>
-          <GoalNote workspaceId={ws} />
-          <div className="segmented" role="group" aria-label="Setup sections">
-            <button type="button" className="tab" aria-pressed={setupView === 'documents'} onClick={() => setSetupView('documents')}>
-              Documents
-            </button>
-            <button type="button" className="tab" aria-pressed={setupView === 'rules'} onClick={() => setSetupView('rules')}>
-              Rules
-              {summary !== undefined && summary.readyForReview > 0 ? (
-                <span className="tab-count" aria-label={`${summary.readyForReview} ready for review`}>
-                  {summary.readyForReview}
-                </span>
-              ) : null}
-            </button>
-          </div>
+          <SubNav
+            label="Sources views"
+            current={setupView}
+            items={[
+              { id: 'documents', label: 'Documents', onSelect: () => setSetupView('documents') },
+              {
+                id: 'rules',
+                label: 'Rules',
+                count: summary?.readyForReview,
+                countLabel: 'ready for review',
+                onSelect: () => setSetupView('rules'),
+              },
+            ]}
+          />
           {setupView === 'documents' ? (
             <ContextSection
               workspaceId={ws}
@@ -282,44 +340,5 @@ function NavItem(props: {
         </span>
       ) : null}
     </button>
-  );
-}
-
-/**
- * The goal is a personal note. XO has no "goal" concept in the platform today, so this is
- * stored in this browser only and is NOT sent anywhere. It is labelled as such rather than
- * implying XO is using it.
- */
-function GoalNote(props: { workspaceId: string }) {
-  const [goal, setGoal] = useState(() => {
-    try {
-      return window.localStorage.getItem(GOAL_KEY(props.workspaceId)) ?? '';
-    } catch {
-      return '';
-    }
-  });
-  function save(v: string) {
-    setGoal(v);
-    try {
-      window.localStorage.setItem(GOAL_KEY(props.workspaceId), v);
-    } catch {
-      /* not saving a note is not an error */
-    }
-  }
-  return (
-    <div className="goal">
-      <label htmlFor="goal">What are you trying to achieve?</label>
-      <input
-        id="goal"
-        value={goal}
-        onChange={(e) => save(e.target.value)}
-        placeholder="e.g. Check every new request against our approval rules"
-        maxLength={200}
-        aria-describedby="goal-help"
-      />
-      <p id="goal-help" className="muted small">
-        A note for you and your team. Saved in this browser only — XO does not receive it yet.
-      </p>
-    </div>
   );
 }

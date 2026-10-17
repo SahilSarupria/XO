@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { openScreen } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
-const go = (user: U, name: RegExp | string) => user.click(screen.getByRole('button', { name }));
+const go = (user: U, name: RegExp | string) => openScreen(user, name);
 const gets = (api: FakeXo, suffix: string) => api.calls.filter((c) => c.method === 'GET' && c.path.endsWith(suffix)).length;
 
 async function connect(api: FakeXo): Promise<U> {
@@ -47,7 +48,7 @@ describe('a failed load is never presented as an empty result', () => {
     await seed(api);
     api.failing.add('/executions');
     const user = await returnLater(api);
-    await user.click(screen.getByRole('button', { name: /^tasks/i }));
+    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
     expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument();
     expect(screen.queryByText('Nothing is waiting for you')).not.toBeInTheDocument();
     api.failing.clear();

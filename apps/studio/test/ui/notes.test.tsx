@@ -4,10 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { openScreen } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const posts = (api: FakeXo, suffix: string) => api.calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix));
-const go = (user: U, name: RegExp | string) => user.click(screen.getByRole('button', { name }));
+const go = (user: U, name: RegExp | string) => openScreen(user, name);
 
 async function withWaitingRun(api: FakeXo): Promise<U> {
   api.approvals.all = true;
@@ -67,7 +68,7 @@ describe('optional decision notes', () => {
     await u2.type(screen.getByLabelText(/access key/i), api.validKey);
     await u2.click(screen.getByRole('button', { name: /connect/i }));
     await screen.findByRole('heading', { name: 'Ops' });
-    await u2.click(screen.getByRole('button', { name: 'Activity' }));
+    await openScreen(u2, 'Activity');
     expect(await screen.findByText(/note from sally: looks right/i)).toBeInTheDocument();
   });
 

@@ -29,13 +29,13 @@ describe('parseSection', () => {
 describe('section in the URL', () => {
   it('records the section, and Back returns to the previous one', async () => {
     const user = await connectToWorkspace(new FakeXo());
-    await user.click(screen.getByRole('button', { name: /^work/i }));
+    await user.click(screen.getByRole('button', { name: /^workflows/i }));
     expect(window.location.hash).toBe('#/work');
-    await user.click(screen.getByRole('button', { name: /^tasks/i }));
+    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
     expect(window.location.hash).toBe('#/tasks');
     window.history.back();
-    await screen.findByRole('heading', { name: /^work$/i });
-    expect(screen.getByRole('button', { name: /^work/i })).toHaveAttribute('aria-current', 'page');
+    await screen.findByRole('heading', { name: /^workflows$/i });
+    expect(screen.getByRole('button', { name: /^workflows/i })).toHaveAttribute('aria-current', 'page');
   });
 
   it('does not expose the builder-only section in Standard mode, even by URL', async () => {

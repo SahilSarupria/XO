@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiProblem } from '../platform/client';
-import { Button, EmptyState, ProblemNotice, Spinner, useLoad } from './primitives';
+import { Button, EmptyState, ProblemNotice, Skeleton, useLoad } from './primitives';
 import { useSession } from './session';
 import { AppChrome } from './AppChrome';
 import { WorkspaceView } from './WorkspaceView';
@@ -15,7 +15,7 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     return (
       <AppChrome account={props.account}>
         <main className="page">
-          <Spinner label="Loading your workspaces" />
+          <Skeleton label="Loading your workspaces" />
         </main>
       </AppChrome>
     );
@@ -29,7 +29,8 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     );
 
   const workspaces = state.value;
-  const active = workspaces.find((w) => w.workspaceId === selected) ?? (creating ? undefined : workspaces[0]);
+  // Creating takes over the screen even when a workspace is already selected; Cancel returns to it.
+  const active = creating ? undefined : (workspaces.find((w) => w.workspaceId === selected) ?? workspaces[0]);
 
   if (active === undefined) {
     return (
@@ -69,6 +70,9 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     <WorkspaceView
       key={active.workspaceId}
       workspace={active}
+      workspaces={workspaces}
+      onSelectWorkspace={setSelected}
+      onNewWorkspace={() => setCreating(true)}
       frame={(nav, content) => (
         <AppChrome switcher={switcher} nav={nav} account={props.account}>
           {content}

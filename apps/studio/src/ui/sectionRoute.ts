@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 // Comment-only change to check that a push touching apps/studio/** starts the visual-regression workflow. No behaviour change.
-export const SECTIONS = ['home', 'work', 'tasks', 'activity', 'setup', 'processes'] as const;
+export const SECTIONS = ['home', 'workspaces', 'work', 'tasks', 'activity', 'setup', 'processes'] as const;
 export type Section = (typeof SECTIONS)[number];
 
 /** `#/work` -> 'work'. Anything unrecognised is 'home'; the hash never grants anything, it only selects a screen. */

@@ -2,7 +2,18 @@ import { useRef, useState } from 'react';
 import { describeProblem, type ProblemView } from '../domain/review';
 import { SUPPORTED_UPLOAD_EXTENSIONS, type ApiProblem } from '../platform/client';
 import type { Compilation, Source } from '../platform/wire';
-import { Badge, Button, EmptyState, formatBytes, formatWhen, ProblemNotice, Section, Spinner, type LoadState } from './primitives';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  formatBytes,
+  formatWhen,
+  ProblemNotice,
+  Section,
+  Skeleton,
+  Spinner,
+  type LoadState,
+} from './primitives';
 import { useSession } from './session';
 
 export function ContextSection(props: {
@@ -105,7 +116,7 @@ export function ContextSection(props: {
       ) : uploadProblem !== undefined ? (
         <ProblemNotice problem={uploadProblem} />
       ) : null}
-      {props.sources.phase === 'loading' ? <Spinner label="Loading documents" /> : null}
+      {props.sources.phase === 'loading' ? <Skeleton label="Loading documents" rows={2} /> : null}
       {props.sources.phase === 'ready' && sources.length === 0 ? (
         <EmptyState title="No documents yet">
           Add a policy, procedure or rulebook to get started. Supported: PDF, HTML, text, Markdown, CSV, JSON and images.

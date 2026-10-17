@@ -17,7 +17,7 @@ async function createWorkspaceAndUpload(user: ReturnType<typeof userEvent.setup>
   await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Claims Ops' });
-  await user.click(screen.getByRole('button', { name: /^setup/i }));
+  await user.click(screen.getByRole('button', { name: /^sources/i }));
   const input = document.getElementById('file-upload') as HTMLInputElement;
   await user.upload(input, new File(['%PDF'], filename, { type: 'application/pdf' }));
 }
@@ -175,7 +175,7 @@ describe('honest handling of things that cannot proceed', () => {
     await user.type(await screen.findByLabelText(/workspace name/i), 'W');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
     await screen.findByRole('heading', { name: 'W' });
-    await user.click(screen.getByRole('button', { name: /^setup/i }));
+    await user.click(screen.getByRole('button', { name: /^sources/i }));
     const input = document.getElementById('file-upload') as HTMLInputElement;
     // userEvent honours `accept`, so bypass it to exercise our own check
     const u2 = userEvent.setup({ applyAccept: false });
@@ -240,7 +240,8 @@ describe('Builder Mode', () => {
     await user.click(await screen.findByRole('button', { name: 'Builder' }));
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /start|execute|run/i })).not.toBeInTheDocument();
+    // Scoped to the page: the sidebar's "Runs & History" is navigation, not an action.
+    expect(within(screen.getByRole('main')).queryByRole('button', { name: /start|execute|run/i })).not.toBeInTheDocument();
   });
 });
 

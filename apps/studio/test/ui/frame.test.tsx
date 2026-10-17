@@ -33,8 +33,8 @@ describe('app frame', () => {
     const home = screen.getByRole('button', { name: 'Home' });
     expect(home).toHaveAttribute('aria-current', 'page');
     expect(home).toHaveAccessibleDescription(/needs you/i);
-    await user.click(screen.getByRole('button', { name: 'Work' }));
-    expect(screen.getByRole('button', { name: 'Work' })).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
     expect(home).not.toHaveAttribute('aria-current');
   });
 
@@ -44,7 +44,7 @@ describe('app frame', () => {
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     expect(menu).toHaveAttribute('aria-expanded', 'true');
-    await user.click(screen.getByRole('button', { name: 'Work' }));
+    await user.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     await user.keyboard('{Escape}');
@@ -58,6 +58,58 @@ describe('app frame', () => {
     expect(steps).toHaveLength(4);
     expect(steps[0]).toHaveAttribute('aria-current', 'step');
     expect(steps[1]).not.toHaveAttribute('aria-current');
-    expect(within(guide).getByText('Add your first document')).toBeInTheDocument();
+    expect(within(steps[0]!).getByText('Add a document')).toBeInTheDocument();
+    // The recommended next action is the same real step, offered once, in Start work.
+    const start = screen.getByRole('region', { name: 'Start work' });
+    expect(within(start).getByRole('button', { name: 'Add your first document' })).toBeInTheDocument();
+  });
+
+  it('names the sidebar sections by what people do, and has no Settings destination yet', async () => {
+    await open(new FakeXo());
+    const nav = screen.getByRole('navigation', { name: /workspace sections/i });
+    const labels = within(nav)
+      .getAllByRole('button')
+      .map((b) => b.querySelector('.nav-label')?.textContent);
+    expect(labels).toEqual(['Home', 'Workspaces', 'Sources', 'Workflows', 'Runs & History']);
+    expect(labels).not.toContain('Settings');
+  });
+
+  it('shows where you are in a breadcrumb that follows the page', async () => {
+    const user = await open(new FakeXo());
+    const crumbs = () => screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs()).getByText('Home').closest('li')).toHaveAttribute('aria-current', 'page');
+    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    const current = within(crumbs()).getByText('Workflows').closest('li');
+    expect(current).toHaveAttribute('aria-current', 'page');
+    // Earlier crumbs are links; the current page is not.
+    expect(within(crumbs()).getByRole('button', { name: 'Claims Ops' })).toBeInTheDocument();
+    expect(within(crumbs()).queryByRole('button', { name: 'Workflows' })).not.toBeInTheDocument();
+  });
+
+  it('Workspaces lists the real workspaces, marks the current one, and can start a new one', async () => {
+    const api = new FakeXo();
+    const user = await open(api);
+    const nav = screen.getByRole('navigation', { name: /workspace sections/i });
+    await user.click(within(nav).getByRole('button', { name: 'Workspaces' }));
+    expect(await screen.findByRole('heading', { name: 'Workspaces', level: 2 })).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Your workspaces' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getByText('Current')).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /^open/i })).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'New workspace' }));
+    expect(await screen.findByLabelText(/workspace name/i)).toBeInTheDocument();
+  });
+
+  it('keeps Tasks and Activity under Runs & History, and Back still returns to the previous page', async () => {
+    const user = await open(new FakeXo());
+    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
+    const runs = screen.getByRole('button', { name: /^runs & history/i });
+    expect(runs).toHaveAttribute('aria-current', 'page');
+    const tabs = screen.getByRole('group', { name: /runs and history views/i });
+    expect(within(tabs).getByRole('button', { name: /^tasks/i })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(within(tabs).getByRole('button', { name: 'Activity' }));
+    expect(window.location.hash).toBe('#/activity');
+    expect(screen.getByRole('button', { name: /^runs & history/i })).toHaveAttribute('aria-current', 'page');
+    expect(within(tabs).getByRole('button', { name: 'Activity' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

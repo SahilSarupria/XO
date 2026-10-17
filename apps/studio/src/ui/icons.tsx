@@ -1,6 +1,8 @@
-export type IconName = 'home' | 'work' | 'tasks' | 'activity' | 'setup' | 'processes' | 'menu' | 'check' | 'user' | 'file' | 'play';
+export type IconName =
+  'home' | 'workspaces' | 'work' | 'tasks' | 'activity' | 'setup' | 'processes' | 'menu' | 'check' | 'user' | 'file' | 'play';
 
 const PATHS: Record<IconName, string> = {
+  workspaces: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
   home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
   work: 'M5 4v16M5 6h11l-2 3 2 3H5',
   tasks: 'M9 11l3 3 8-9M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9',

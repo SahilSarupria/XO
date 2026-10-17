@@ -36,6 +36,21 @@ export function Spinner(props: { label: string }) {
   );
 }
 
+/**
+ * Placeholder for content that is on its way. It claims nothing about the content (no numbers, no fake rows of data):
+ * only shape, plus a text label for assistive technology. Use Spinner for an action in flight.
+ */
+export function Skeleton(props: { label: string; rows?: number }) {
+  return (
+    <div className="skeleton" role="status" aria-busy="true">
+      <span className="visually-hidden">{props.label}</span>
+      {Array.from({ length: props.rows ?? 3 }, (_, i) => (
+        <span key={i} className="skeleton-row" aria-hidden="true" />
+      ))}
+    </div>
+  );
+}
+
 export function EmptyState(props: { title: string; children?: ReactNode }) {
   return (
     <div className="empty">
@@ -116,16 +131,74 @@ export function useLoad<T>(fn: () => Promise<Result<T>>, deps: readonly unknown[
   return { state, reload: () => setTick((t) => t + 1) };
 }
 
+/** Page title, optional one-line explanation and page-level actions. Layout only. */
+export function PageHeader(props: { title: string; lede?: string; actions?: ReactNode; id?: string }) {
+  return (
+    <header className="section-head">
+      <div>
+        <h2 id={props.id}>{props.title}</h2>
+        {props.lede !== undefined ? <p className="lede">{props.lede}</p> : null}
+      </div>
+      {props.actions !== undefined ? <div className="section-actions">{props.actions}</div> : null}
+    </header>
+  );
+}
+
+/** Where the person is. The last item is the current page and is not a link. Presentation only. */
+export function Breadcrumbs(props: { items: readonly { label: string; onSelect?: () => void }[] }) {
+  return (
+    <nav className="crumbs" aria-label="Breadcrumb">
+      <ol>
+        {props.items.map((item, i) => {
+          const last = i === props.items.length - 1;
+          return (
+            <li key={`${i}-${item.label}`} {...(last ? { 'aria-current': 'page' as const } : {})}>
+              {!last && item.onSelect !== undefined ? (
+                <button type="button" className="crumb-link" onClick={item.onSelect}>
+                  {item.label}
+                </button>
+              ) : (
+                <span>{item.label}</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+/** Switches between closely related views of one page. Each choice selects a screen; it grants nothing. */
+export function SubNav(props: {
+  label: string;
+  current: string;
+  items: readonly { id: string; label: string; count?: number | undefined; countLabel?: string; onSelect: () => void }[];
+}) {
+  return (
+    <div className="segmented" role="group" aria-label={props.label}>
+      {props.items.map((item) => (
+        <button key={item.id} type="button" className="tab" aria-pressed={props.current === item.id} onClick={item.onSelect}>
+          {item.label}
+          {item.count !== undefined && item.count > 0 ? (
+            <span className="tab-count" aria-label={`${item.count} ${item.countLabel ?? 'need attention'}`}>
+              {item.count}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Section(props: { title: string; lede?: string; actions?: ReactNode; children: ReactNode; id?: string }) {
   return (
     <section className="section" aria-labelledby={props.id}>
-      <header className="section-head">
-        <div>
-          <h2 id={props.id}>{props.title}</h2>
-          {props.lede !== undefined ? <p className="lede">{props.lede}</p> : null}
-        </div>
-        {props.actions !== undefined ? <div className="section-actions">{props.actions}</div> : null}
-      </header>
+      <PageHeader
+        title={props.title}
+        {...(props.lede !== undefined ? { lede: props.lede } : {})}
+        {...(props.actions !== undefined ? { actions: props.actions } : {})}
+        {...(props.id !== undefined ? { id: props.id } : {})}
+      />
       {props.children}
     </section>
   );
