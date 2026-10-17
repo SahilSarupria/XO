@@ -262,10 +262,30 @@ async function desktop() {
 
   if (await apiUp(s.apiPort, s.host)) {
     ok(`Using the API already running on port ${s.apiPort}`);
-    if (google)
-      warn(
-        'That API was not started by this command: Google sign-in only works if it was started with XO_API_GOOGLE_CLIENT_ID. Stop it and re-run to be sure.',
-      );
+    if (google) {
+      // An API left over from an earlier run was started without Google sign-in; it answers 404 and Studio would only say
+      // "XO could not start the sign-in". Detect that here and say what to do.
+      let status = 0;
+      try {
+        status = (
+          await fetch(`${apiUrl}/auth/login-challenge`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+            signal: AbortSignal.timeout(3000),
+          })
+        ).status;
+      } catch {
+        /* treated as not ready */
+      }
+      if (status === 404)
+        throw new Error(
+          `An API from an earlier run is still on port ${s.apiPort} and was started without Google sign-in. Stop it, then re-run. ` +
+            (isWin
+              ? `Windows: netstat -ano | findstr :${s.apiPort}   then   taskkill /PID <pid> /F`
+              : `lsof -ti :${s.apiPort} | xargs kill`),
+        );
+    }
   } else {
     if (!apiUrl.startsWith(`http://${s.host}:`) && !apiUrl.startsWith('http://127.0.0.1:') && !apiUrl.startsWith('http://localhost:'))
       throw new Error(
