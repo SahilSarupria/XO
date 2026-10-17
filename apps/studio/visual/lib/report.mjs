@@ -25,7 +25,7 @@ export function buildReport({ verdict, results, orphans, info, mode }) {
   }
   if (results.length > 0 && results.every((r) => r.status === 'missing-baseline')) {
     lines.push(
-      '**No approved references exist yet.** This is the expected first result before the references are bootstrapped: run this workflow manually with mode `update-candidates`, review the screenshots, and commit them (see “First-time setup” in `docs/studio/VISUAL_REGRESSION.md`).',
+      '**No approved references exist yet.** This is the expected first result before the references are bootstrapped: review the screenshots in this artifact (`actual/`), and commit the ones you approve under `apps/studio/visual/baselines/` (see “First-time setup” in `docs/studio/VISUAL_REGRESSION.md`).',
       '',
     );
   }

@@ -20,6 +20,22 @@ test('every non-matching status is a regression, with its own exit code', () => 
   }
 });
 
+test('with no references at all the headline says so instead of claiming screens differ', () => {
+  const v = classify({ results: [1, 2, 3].map((n) => ({ id: `d/${n}`, status: 'missing-baseline' })) });
+  assert.match(v.headline, /none of the 3 screens has an approved reference/);
+  assert.doesNotMatch(v.headline, /differ/);
+});
+
+test('a mixed result names each kind of problem with its count', () => {
+  const v = classify({
+    results: [match, { id: 'a', status: 'diff' }, { id: 'b', status: 'size-mismatch' }, { id: 'c', status: 'missing-baseline' }, { id: 'd', status: 'functional' }],
+  });
+  assert.match(v.headline, /4 of 5 screens need attention/);
+  assert.match(v.headline, /2 differ from the approved references/);
+  assert.match(v.headline, /1 have no approved reference/);
+  assert.match(v.headline, /1 did not behave as expected/);
+});
+
 test('infrastructure failure outranks everything and has a different exit code from a regression', () => {
   const v = classify({ infraError: 'API did not start', results: [{ id: 'x/y', status: 'diff' }] });
   assert.equal(v.kind, 'infra');

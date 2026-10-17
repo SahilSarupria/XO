@@ -85,20 +85,24 @@ the run fails). It contains:
 There are no approved references until someone approves them. Until then every screen reports “no approved reference”.
 References must come from the CI image, not a laptop, because fonts and rendering differ between machines.
 
-1. Actions → **Studio visual regression** → **Run workflow** → mode `update-candidates` (on the branch you want).
-2. Download the artifact and open `candidates/`. **Look at every image.** Confirm they show the intended screens with
-   synthetic content only.
-3. Copy `candidates/desktop/` and `candidates/mobile/` into `apps/studio/visual/baselines/` and commit them in a normal
-   pull request. A reviewer approves them like any other change.
+1. Push the branch. The automatic run captures every screen on the pinned CI image and, with no references yet, reports
+   “no approved reference” (a red check by design). Open that run and download its artifact.
+   (Alternatively, Actions → **Studio visual regression** → **Run workflow** → mode `update-candidates`. GitHub only offers
+   manual runs for workflows that exist on the default branch, so this works once the workflow is on `main`.)
+2. In the artifact open `actual/` (or `candidates/` for a manual run). **Look at every image.** Confirm they show the
+   intended screens with synthetic content only.
+3. Copy `desktop/` and `mobile/` into `apps/studio/visual/baselines/` and commit them in a normal pull request. A
+   reviewer approves them like any other change.
 
 ## Updating approved references
 
 References change only through a reviewed commit, never automatically.
 
 1. A run fails with differences. Download the artifact and review each `side-by-side.png`.
-2. If the change is **unintended**, fix the code. If it is **intended**, run the workflow manually in `update-candidates`
-   mode on your branch (so the images come from the pinned CI image), or run the local Docker command below.
-3. Copy the changed `candidates/<viewport>/<screen>.png` over the matching file in `apps/studio/visual/baselines/` and
+2. If the change is **unintended**, fix the code. If it is **intended**, take the new images from the failed run's
+   artifact (`actual/<viewport>/<screen>.png`, rendered on the pinned CI image), or run the workflow manually in
+   `update-candidates` mode once it is on `main`, or run the local Docker command below.
+3. Copy the changed images over the matching file in `apps/studio/visual/baselines/` and
    commit with the code change. The pull request now shows old and new reference images side by side.
 4. If a screen was removed or renamed, delete its reference deliberately (the report lists unmatched ones as “orphaned”).
 

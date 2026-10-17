@@ -23,9 +23,23 @@ export function classify({ infraError, results }) {
   if (bad.length === 0) {
     return { kind: 'pass', exitCode: EXIT.pass, headline: `Visual check passed: ${results.length} of ${results.length} screens match.` };
   }
-  return {
-    kind: 'regression',
-    exitCode: EXIT.regression,
-    headline: `Visual regression: ${bad.length} of ${results.length} screens differ from the approved references.`,
-  };
+  return { kind: 'regression', exitCode: EXIT.regression, headline: regressionHeadline(results, bad) };
+}
+
+/** Says what is actually wrong: "no reference yet" is not the same as "the pixels changed". */
+function regressionHeadline(results, bad) {
+  const total = results.length;
+  const count = (status) => bad.filter((r) => r.status === status).length;
+  const missing = count('missing-baseline');
+  if (missing === total) {
+    return `Visual regression: none of the ${total} screens has an approved reference yet (nothing has changed; the references still need to be committed).`;
+  }
+  const parts = [
+    [count('diff') + count('size-mismatch'), 'differ from the approved references'],
+    [missing, 'have no approved reference'],
+    [count('functional'), 'did not behave as expected'],
+  ]
+    .filter(([n]) => n > 0)
+    .map(([n, what]) => `${n} ${what}`);
+  return `Visual regression: ${bad.length} of ${total} screens need attention: ${parts.join(', ')}.`;
 }
