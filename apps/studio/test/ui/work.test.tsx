@@ -42,7 +42,7 @@ describe('shell stays business-neutral', () => {
     expect(
       within(nav)
         .getAllByRole('button')
-        .map((b) => b.textContent?.replace(/\d+$/, '')),
+        .map((b) => b.querySelector('.nav-label')?.textContent),
     ).toEqual(['Home', 'Work', 'Tasks', 'Activity', 'Setup']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });

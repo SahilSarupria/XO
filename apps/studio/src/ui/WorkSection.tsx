@@ -174,12 +174,23 @@ function WorkflowCard(props: {
         {w.gapCount > 0 ? ` · XO flagged ${w.gapCount} ${w.gapCount === 1 ? 'uncertainty' : 'uncertainties'} about the order` : ''}
       </p>
 
-      <ol className="steps" aria-label="Steps in this process">
-        {w.steps.map((s) => (
-          <li key={s.capabilityId} className="step">
-            <span className="step-name">{tidyName(s.name)}</span>
-          </li>
-        ))}
+      <ol className="flow" aria-label="Steps in this process">
+        {w.steps.map((s, i) => {
+          const person = props.caps?.find((c) => c.capabilityId === s.capabilityId)?.executionClass === 'human_in_the_loop';
+          return (
+            <li key={s.capabilityId} className="flow-step" data-who={person ? 'person' : 'xo'}>
+              <span className="flow-dot" aria-hidden="true">
+                {i + 1}
+              </span>
+              <div className="flow-body">
+                <span className="step-name">{tidyName(s.name)}</span>
+                {props.caps !== undefined ? (
+                  <span className="flow-who">{person ? 'A person decides here' : 'XO carries this out'}</span>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
       </ol>
 
       <details>
@@ -210,6 +221,7 @@ function WorkflowCard(props: {
         <div className="row">
           <Button
             variant="primary"
+            className="btn-lg"
             disabled={busy || !ready.canStart}
             onClick={() => void start()}
             aria-describedby={`why-${w.workflowId}`}

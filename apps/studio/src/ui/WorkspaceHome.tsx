@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type { ApiProblem } from '../platform/client';
 import { Button, EmptyState, ProblemNotice, Spinner, useLoad } from './primitives';
 import { useSession } from './session';
+import { AppChrome } from './AppChrome';
 import { WorkspaceView } from './WorkspaceView';
 
-export function WorkspaceHome() {
+export function WorkspaceHome(props: { account: ReactNode }) {
   const { client } = useSession();
   const { state, reload } = useLoad(() => client.listWorkspaces(), [client]);
   const [selected, setSelected] = useState<string | undefined>();
@@ -12,15 +13,19 @@ export function WorkspaceHome() {
 
   if (state.phase === 'loading')
     return (
-      <main className="page">
-        <Spinner label="Loading your workspaces" />
-      </main>
+      <AppChrome account={props.account}>
+        <main className="page">
+          <Spinner label="Loading your workspaces" />
+        </main>
+      </AppChrome>
     );
   if (state.phase === 'error')
     return (
-      <main className="page">
-        <ProblemNotice problem={state.problem} onRetry={reload} />
-      </main>
+      <AppChrome account={props.account}>
+        <main className="page">
+          <ProblemNotice problem={state.problem} onRetry={reload} />
+        </main>
+      </AppChrome>
     );
 
   const workspaces = state.value;
@@ -28,39 +33,48 @@ export function WorkspaceHome() {
 
   if (active === undefined) {
     return (
-      <main className="page narrow">
-        <CreateWorkspace
-          first={workspaces.length === 0}
-          onCreated={(id) => {
-            setCreating(false);
-            setSelected(id);
-            reload();
-          }}
-          onCancel={workspaces.length > 0 ? () => setCreating(false) : undefined}
-        />
-      </main>
+      <AppChrome account={props.account}>
+        <main className="page narrow">
+          <CreateWorkspace
+            first={workspaces.length === 0}
+            onCreated={(id) => {
+              setCreating(false);
+              setSelected(id);
+              reload();
+            }}
+            onCancel={workspaces.length > 0 ? () => setCreating(false) : undefined}
+          />
+        </main>
+      </AppChrome>
     );
   }
 
+  const switcher = (
+    <div className="switcher">
+      <label htmlFor="workspace-select">Workspace</label>
+      <select id="workspace-select" value={active.workspaceId} onChange={(e) => setSelected(e.target.value)}>
+        {workspaces.map((w) => (
+          <option key={w.workspaceId} value={w.workspaceId}>
+            {w.name ?? 'Untitled workspace'}
+          </option>
+        ))}
+      </select>
+      <Button variant="quiet" onClick={() => setCreating(true)}>
+        New workspace
+      </Button>
+    </div>
+  );
+
   return (
-    <>
-      <nav className="workspace-bar" aria-label="Workspace">
-        <label htmlFor="workspace-select" className="visually-hidden">
-          Workspace
-        </label>
-        <select id="workspace-select" value={active.workspaceId} onChange={(e) => setSelected(e.target.value)}>
-          {workspaces.map((w) => (
-            <option key={w.workspaceId} value={w.workspaceId}>
-              {w.name ?? 'Untitled workspace'}
-            </option>
-          ))}
-        </select>
-        <Button variant="quiet" onClick={() => setCreating(true)}>
-          New workspace
-        </Button>
-      </nav>
-      <WorkspaceView key={active.workspaceId} workspace={active} />
-    </>
+    <WorkspaceView
+      key={active.workspaceId}
+      workspace={active}
+      frame={(nav, content) => (
+        <AppChrome switcher={switcher} nav={nav} account={props.account}>
+          {content}
+        </AppChrome>
+      )}
+    />
   );
 }
 

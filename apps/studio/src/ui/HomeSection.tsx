@@ -149,18 +149,73 @@ export function HomeSection(props: {
         </div>
       ) : null}
 
-      {!anything && !props.incomplete ? (
+      {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} goToSetup={props.goToSetup} /> : null}
+      {!anything && props.next.step === 'done' && !props.incomplete ? (
         <div className="next-step" aria-live="polite">
           <span className="next-step-label">Next</span>
           <div>
             <strong>{props.next.headline}</strong>
             <span className="muted"> — {props.next.hint}</span>
           </div>
-          <Button variant="primary" onClick={props.goToSetup}>
-            Open Setup
+          <Button variant="primary" onClick={props.goToWork}>
+            Open Work
           </Button>
         </div>
       ) : null}
     </Section>
+  );
+}
+
+const GS_STEPS: readonly { readonly key: Progress['step']; readonly title: string; readonly detail: string }[] = [
+  { key: 'context', title: 'Add a document', detail: 'A procedure, guideline or rulebook your team already uses.' },
+  { key: 'analyze', title: 'Let XO read it', detail: 'XO lists the rules it finds and shows where each one came from.' },
+  { key: 'review', title: 'Check the rules', detail: 'You approve what is right. XO never acts on anything you have not approved.' },
+  { key: 'run', title: 'Start a process', detail: 'Run it, and step in whenever a person needs to decide.' },
+];
+
+/**
+ * First-run guide. The current step comes from what the platform actually holds (documents, analyses,
+ * approvals, runs) via `nextStep`; nothing here is a stored "onboarding" flag or a made-up figure.
+ */
+function GetStarted(props: { next: Progress; goToSetup: () => void }) {
+  const current = GS_STEPS.findIndex((x) => x.key === props.next.step);
+  return (
+    <section className="getstarted" aria-labelledby="gs-h">
+      <div className="stack">
+        <h3 id="gs-h">Get started in four steps</h3>
+        <p className="muted small">
+          XO turns the documents you already have into processes your team can follow, with a person always in charge.
+        </p>
+      </div>
+      <ol>
+        {GS_STEPS.map((x, i) => {
+          const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+          return (
+            <li key={x.key} className="gs-step" data-state={state} aria-current={state === 'current' ? 'step' : undefined}>
+              <span className="gs-dot" aria-hidden="true">
+                {state === 'done' ? '✓' : i + 1}
+              </span>
+              <div>
+                <p className="gs-title">
+                  {x.title}
+                  {state === 'done' ? <span className="visually-hidden"> (done)</span> : null}
+                </p>
+                <p className="muted small">{x.detail}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="next-step" aria-live="polite">
+        <span className="next-step-label">Next</span>
+        <div>
+          <strong>{props.next.headline}</strong>
+          <span className="muted"> — {props.next.hint}</span>
+        </div>
+        <Button variant="primary" className="btn-lg" onClick={props.goToSetup}>
+          Open Setup
+        </Button>
+      </div>
+    </section>
   );
 }

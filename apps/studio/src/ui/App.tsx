@@ -402,28 +402,20 @@ function ConnectScreen(props: ConnectProps) {
 
 function Shell() {
   const { mode, setMode, signOut } = useSession();
-  return (
-    <div className="shell">
-      <header className="topbar">
-        <p className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          XO Studio
-        </p>
-        <div className="topbar-right">
-          <div className="mode" role="group" aria-label="Detail level">
-            <button type="button" aria-pressed={mode === 'user'} onClick={() => setMode('user')}>
-              Standard
-            </button>
-            <button type="button" aria-pressed={mode === 'builder'} onClick={() => setMode('builder')}>
-              Builder
-            </button>
-          </div>
-          <Button variant="quiet" onClick={signOut}>
-            Sign out
-          </Button>
-        </div>
-      </header>
-      <WorkspaceHome />
-    </div>
+  const account = (
+    <>
+      <div className="mode" role="group" aria-label="Detail level">
+        <button type="button" aria-pressed={mode === 'user'} onClick={() => setMode('user')}>
+          Standard
+        </button>
+        <button type="button" aria-pressed={mode === 'builder'} onClick={() => setMode('builder')}>
+          Builder
+        </button>
+      </div>
+      <Button variant="quiet" onClick={signOut}>
+        Sign out
+      </Button>
+    </>
   );
+  return <WorkspaceHome account={account} />;
 }

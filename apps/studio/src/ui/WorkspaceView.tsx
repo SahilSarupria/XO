@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { nextStep, summarize } from '../domain/review';
 import { recordedNotes, standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
@@ -11,16 +11,18 @@ import { ProcessesSection } from './ProcessesSection';
 import { ProblemNotice, Spinner, useLoad, loadedValue } from './primitives';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
+import { useSectionRoute, type Section } from './sectionRoute';
+import { Icon, type IconName } from './icons';
 
-type View = 'home' | 'work' | 'tasks' | 'activity' | 'setup' | 'processes';
+type View = Section;
 type SetupView = 'documents' | 'rules';
 
 const GOAL_KEY = (ws: string) => `xo-studio:goal:${ws}`;
 
-export function WorkspaceView(props: { workspace: Workspace }) {
+export function WorkspaceView(props: { workspace: Workspace; frame: (nav: ReactNode, content: ReactNode) => ReactNode }) {
   const { client, mode } = useSession();
   const ws = props.workspace.workspaceId;
-  const [view, setView] = useState<View>('home');
+  const [view, setView, replaceView] = useSectionRoute();
   const [setupView, setSetupView] = useState<SetupView>('documents');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
 
@@ -48,8 +50,8 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   );
 
   useEffect(() => {
-    if (mode === 'user' && view === 'processes') setView('home');
-  }, [mode, view]);
+    if (mode === 'user' && view === 'processes') replaceView('home');
+  }, [mode, view, replaceView]);
 
   function refreshAll() {
     sources.reload();
@@ -85,34 +87,52 @@ export function WorkspaceView(props: { workspace: Workspace }) {
   const decisionsUnknown = runs.state.phase === 'error' || executions.state.phase === 'error';
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
-  return (
+  const nav = (
+    <nav className="nav" aria-label="Workspace sections">
+      <NavItem current={view} id="home" icon="home" hint="What needs you today" onSelect={setView}>
+        Home
+      </NavItem>
+      <NavItem current={view} id="work" icon="work" hint="Start a process" onSelect={setView}>
+        Work
+      </NavItem>
+      <NavItem
+        current={view}
+        id="tasks"
+        icon="tasks"
+        hint="Decisions for you to make"
+        onSelect={setView}
+        count={taskCount}
+        countLabel="need attention"
+      >
+        Tasks
+      </NavItem>
+      <NavItem current={view} id="activity" icon="activity" hint="What has happened" onSelect={setView}>
+        Activity
+      </NavItem>
+      <NavItem
+        current={view}
+        id="setup"
+        icon="setup"
+        hint="Your documents and rules"
+        onSelect={setView}
+        count={summary?.readyForReview}
+        countLabel="ready for review"
+      >
+        Setup
+      </NavItem>
+      {mode === 'builder' ? (
+        <NavItem current={view} id="processes" icon="processes" hint="Technical view" onSelect={setView}>
+          Processes
+        </NavItem>
+      ) : null}
+    </nav>
+  );
+
+  const content = (
     <main className="page">
       <header className="page-head">
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
       </header>
-
-      <nav className="tabs" aria-label="Workspace sections">
-        <TabButton current={view} id="home" onSelect={setView}>
-          Home
-        </TabButton>
-        <TabButton current={view} id="work" onSelect={setView}>
-          Work
-        </TabButton>
-        <TabButton current={view} id="tasks" onSelect={setView} count={taskCount} countLabel="need attention">
-          Tasks
-        </TabButton>
-        <TabButton current={view} id="activity" onSelect={setView}>
-          Activity
-        </TabButton>
-        <TabButton current={view} id="setup" onSelect={setView} count={summary?.readyForReview} countLabel="ready for review">
-          Setup
-        </TabButton>
-        {mode === 'builder' ? (
-          <TabButton current={view} id="processes" onSelect={setView}>
-            Processes
-          </TabButton>
-        ) : null}
-      </nav>
 
       {firstError?.phase === 'error' ? (
         <>
@@ -224,22 +244,40 @@ export function WorkspaceView(props: { workspace: Workspace }) {
       {view === 'processes' && mode === 'builder' ? <ProcessesSection state={workflows.state} reload={workflows.reload} /> : null}
     </main>
   );
+  return <>{props.frame(nav, content)}</>;
 }
 
-function TabButton(props: {
+function NavItem(props: {
   current: View;
   id: View;
+  icon: IconName;
+  hint: string;
   onSelect: (v: View) => void;
   count?: number | undefined;
   countLabel?: string;
   children: string;
 }) {
   const active = props.current === props.id;
+  const counted = props.count !== undefined && props.count > 0;
+  const label = counted ? `${props.children}, ${props.count} ${props.countLabel ?? ''}`.trim() : props.children;
   return (
-    <button type="button" className="tab" aria-current={active ? 'page' : undefined} onClick={() => props.onSelect(props.id)}>
-      {props.children}
-      {props.count !== undefined && props.count > 0 ? (
-        <span className="tab-count" aria-label={`${props.count} ${props.countLabel ?? ''}`.trim()}>
+    <button
+      type="button"
+      className="nav-item"
+      aria-current={active ? 'page' : undefined}
+      aria-label={label}
+      aria-describedby={`nav-hint-${props.id}`}
+      onClick={() => props.onSelect(props.id)}
+    >
+      <Icon name={props.icon} />
+      <span className="nav-text" aria-hidden="true">
+        <span className="nav-label">{props.children}</span>
+        <span id={`nav-hint-${props.id}`} className="nav-hint">
+          {props.hint}
+        </span>
+      </span>
+      {counted ? (
+        <span className="nav-count" aria-hidden="true">
           {props.count}
         </span>
       ) : null}

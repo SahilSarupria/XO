@@ -33,6 +33,7 @@ async function returnToInterruptedRun(api: FakeXo): Promise<U> {
   await screen.findByRole('button', { name: /approve this step/i });
   api.interruptRun(api.workflowRuns[0]!);
   cleanup(); // the browser is closed; the person returns later
+  window.history.replaceState(null, '', window.location.pathname); // ...to a fresh URL, with no remembered section
   user = await connect(api);
   await screen.findByRole('heading', { name: 'Ops' });
   return user;
