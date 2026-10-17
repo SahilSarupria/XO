@@ -1,0 +1,10 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run build:desktop"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["default", "http-dev", "http-dev-google"]
+    }
+  }
+}

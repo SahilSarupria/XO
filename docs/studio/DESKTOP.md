@@ -24,7 +24,10 @@ The API sends no CORS headers and the CSP stays strict, so all API **and identit
 | Mode        | Command                                                  | Capabilities enabled                                    |
 | ----------- | -------------------------------------------------------- | ------------------------------------------------------- |
 | Development | `tauri dev --config src-tauri/tauri.dev.conf.json`       | `default` + `http-dev` (loopback `127.0.0.1:4000` only) |
+| Development + Google sign-in | `tauri dev --config src-tauri/tauri.dev.google.conf.json` | `default` + `http-dev` + `http-dev-google` (loopback API, plus exactly `https://accounts.google.com/*` and `https://oauth2.googleapis.com/*`) |
 | Release     | `tauri build --config src-tauri/tauri.release.conf.json` | `default` + `http-deploy` (**you create it**)           |
+
+Google sign-in in development needs the **Development + Google sign-in** row: Studio fetches Google's discovery document and token endpoint through the native HTTP plugin, so a loopback-only scope blocks them and sign-in fails with "Could not reach the identity provider." The plain Development row stays loopback-only for local/dev-access-key work.
 
 To build a release: copy `src-tauri/deploy/http-deploy.capability.example.json` to `src-tauri/capabilities/http-deploy.json` and replace both origins (your XO API and your OIDC provider; no wildcards). Check with `npm run check:tauri:release`.
 

@@ -28,6 +28,25 @@ describe('committed Tauri configuration', () => {
     const f = checkTauriConfig(real, { release: true });
     expect(f.join('\n')).toMatch(/http-deploy\.json/);
   });
+  it('the opt-in Google dev overlay enables exactly the Google origins Studio fetches during sign-in', () => {
+    const overlay = JSON.parse(readFileSync(join(real, 'tauri.dev.google.conf.json'), 'utf8'));
+    expect(overlay.app.security.capabilities).toEqual(['default', 'http-dev', 'http-dev-google']);
+    const cap = JSON.parse(readFileSync(join(real, 'capabilities/http-dev-google.json'), 'utf8'));
+    expect(cap.permissions[0].allow.map((a: any) => a.url)).toEqual(['https://accounts.google.com/*', 'https://oauth2.googleapis.com/*']);
+  });
+  it('Google sign-in is reachable under the opt-in dev scope: every origin Studio fetches is allowed, nothing extra', () => {
+    // Studio fetches discovery, then the token endpoint, then (best effort) revocation. These are Google's documented
+    // endpoints; the authorization page opens in the system browser and is not fetched by the webview.
+    const fetched = [
+      'https://accounts.google.com/.well-known/openid-configuration',
+      'https://oauth2.googleapis.com/token',
+      'https://oauth2.googleapis.com/revoke',
+    ];
+    const cap = JSON.parse(readFileSync(join(real, 'capabilities/http-dev-google.json'), 'utf8'));
+    const origins = new Set(cap.permissions[0].allow.map((a: any) => new URL(a.url.replace('*', '')).origin));
+    for (const u of fetched) expect(origins.has(new URL(u).origin)).toBe(true);
+    expect(origins.size).toBe(2);
+  });
   it('grants the webview no http scope by default, and only its own commands', () => {
     const d = JSON.parse(readFileSync(join(real, 'capabilities/default.json'), 'utf8'));
     const perms: string[] = d.permissions.map((p: any) => (typeof p === 'string' ? p : p.identifier));
@@ -98,6 +117,19 @@ describe('the checker rejects privilege escalation', () => {
     const d = copy();
     edit(d, 'tauri.conf.json', (j) => j.app.security.capabilities.push('http-dev'));
     expect(checkTauriConfig(d).join('\n')).toMatch(/http-dev must not be enabled/);
+  });
+  it('http-dev-google allowing anything beyond Google sign-in origins', () => {
+    const d = copy();
+    edit(d, 'capabilities/http-dev-google.json', (j) => j.permissions[0].allow.push({ url: 'https://www.googleapis.com/*' }));
+    expect(checkTauriConfig(d).join('\n')).toMatch(/http-dev-google may only allow Google's sign-in origins/);
+  });
+  it('http-dev-google enabled in the base or release config would ship dev origins', () => {
+    const a = copy();
+    edit(a, 'tauri.conf.json', (j) => j.app.security.capabilities.push('http-dev-google'));
+    expect(checkTauriConfig(a).join('\n')).toMatch(/http-dev-google must not be enabled/);
+    const b = copy();
+    edit(b, 'tauri.release.conf.json', (j) => j.app.security.capabilities.push('http-dev-google'));
+    expect(checkTauriConfig(b).join('\n')).toMatch(/release config must not enable http-dev-google/);
   });
   it('a capability that is not scoped to the main window', () => {
     const d = copy();
