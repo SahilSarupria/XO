@@ -1,0 +1,20 @@
+{
+  "name": "@xo/studio-visual",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Studio visual-regression suite. Deliberately NOT an npm workspace: it installs one exact-pinned dependency (playwright) on its own so the root lockfile and the product build are untouched.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "capture": "node run.mjs",
+    "update-candidates": "node run.mjs --mode update-candidates",
+    "self-test": "node selftest.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "check-paths": "node check-trigger-paths.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

@@ -1,0 +1,175 @@
+name: Studio visual regression
+
+# Starts the real Studio and API, takes the established desktop and mobile screenshots in headless Chromium, and compares
+# them with the approved references in apps/studio/visual/baselines. It never commits, pushes or updates anything.
+# Full description, baseline review process and local reproduction: docs/studio/VISUAL_REGRESSION.md
+#
+# The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
+# built from). Regenerate with:  node apps/studio/visual/check-trigger-paths.mjs --print
+# A step below and a unit test both fail if they drift. GitHub does not allow sharing a list between events, so the two
+# lists are identical copies.
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/studio-visual.yml'
+      - '.npmrc'
+      - '.nvmrc'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
+      - 'examples/vertical-test/Aastha.pdf'
+      - 'apps/studio/**'
+      - 'apps/api/**'
+      - 'packages/ai-core/**'
+      - 'packages/capability-contract/**'
+      - 'packages/compiler/**'
+      - 'packages/compiler-core/**'
+      - 'packages/crypto/**'
+      - 'packages/errors/**'
+      - 'packages/logger/**'
+      - 'packages/observability/**'
+      - 'packages/package-sdk/**'
+      - 'packages/permissions/**'
+      - 'packages/registry/**'
+      - 'packages/registry-core/**'
+      - 'packages/runtime/**'
+      - 'packages/serialization/**'
+      - 'packages/storage/**'
+      - 'packages/testing/**'
+      - 'packages/types/**'
+      - 'packages/workflow-composer/**'
+      - 'packages/xoir/**'
+      - '!**/*.md'
+      - '!**/test/**'
+      - '!**/*.test.ts'
+      - '!**/*.test.tsx'
+      - '!apps/studio/src-tauri/**'
+      - '!apps/studio/desktop/**'
+      - '!apps/studio/vite.desktop.config.ts'
+      - '!apps/studio/scripts/**'
+      - '!apps/studio/deploy/**'
+      - 'apps/studio/visual/**'
+  pull_request:
+    paths:
+      - '.github/workflows/studio-visual.yml'
+      - '.npmrc'
+      - '.nvmrc'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
+      - 'examples/vertical-test/Aastha.pdf'
+      - 'apps/studio/**'
+      - 'apps/api/**'
+      - 'packages/ai-core/**'
+      - 'packages/capability-contract/**'
+      - 'packages/compiler/**'
+      - 'packages/compiler-core/**'
+      - 'packages/crypto/**'
+      - 'packages/errors/**'
+      - 'packages/logger/**'
+      - 'packages/observability/**'
+      - 'packages/package-sdk/**'
+      - 'packages/permissions/**'
+      - 'packages/registry/**'
+      - 'packages/registry-core/**'
+      - 'packages/runtime/**'
+      - 'packages/serialization/**'
+      - 'packages/storage/**'
+      - 'packages/testing/**'
+      - 'packages/types/**'
+      - 'packages/workflow-composer/**'
+      - 'packages/xoir/**'
+      - '!**/*.md'
+      - '!**/test/**'
+      - '!**/*.test.ts'
+      - '!**/*.test.tsx'
+      - '!apps/studio/src-tauri/**'
+      - '!apps/studio/desktop/**'
+      - '!apps/studio/vite.desktop.config.ts'
+      - '!apps/studio/scripts/**'
+      - '!apps/studio/deploy/**'
+      - 'apps/studio/visual/**'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'compare = check against approved references. update-candidates = only produce new screenshots to review (nothing is changed).'
+        type: choice
+        options:
+          - compare
+          - update-candidates
+        default: compare
+
+# Read-only. The job needs nothing else and the workflow uses no secrets.
+permissions:
+  contents: read
+
+# A newer push to the same branch (or pull request) supersedes the older run.
+concurrency:
+  group: studio-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    name: Studio screenshots
+    # A pull request from this repository is already covered by the push run for the same commit, so running both would
+    # only duplicate work. Forks have no push run here, so for them pull_request is the trigger (and runs without secrets).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Browser, system libraries and fonts come from one pinned image, so screenshots are comparable between runs.
+    # The tag must match EXPECTED_PLAYWRIGHT_VERSION in apps/studio/visual/visual.config.mjs and package.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
+    env:
+      CI: 'true'
+      TZ: UTC
+      HUSKY: '0'
+    steps:
+      - name: Check out the exact commit that triggered this run
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Check path filters and workflow safety rules
+        run: node apps/studio/visual/check-trigger-paths.mjs
+
+      - name: Install dependencies
+        run: npm ci
+
+      # One exact-pinned dependency, installed on its own so the root lockfile and the product build are untouched.
+      - name: Install the pinned Playwright library
+        working-directory: apps/studio/visual
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Test the visual-regression tooling
+        run: node --test "apps/studio/visual/test/*.test.mjs"
+
+      # Exit code 10 = visual regression, 20 = infrastructure failure. The error annotation and job summary say which.
+      - name: Capture screenshots and compare with approved references
+        id: capture
+        env:
+          MODE: ${{ inputs.mode || 'compare' }}
+        run: node apps/studio/visual/run.mjs --mode "$MODE" --out "$RUNNER_TEMP/studio-visual"
+
+      # Always uploaded, including on failure: screenshots, diffs, report and (redacted) logs.
+      - name: Upload screenshots, diffs, report and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-visual-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/studio-visual
+          retention-days: 14
+          if-no-files-found: warn
