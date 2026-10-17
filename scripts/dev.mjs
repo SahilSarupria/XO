@@ -3,6 +3,7 @@
 //
 //   npm run setup    one-time: check tools, install, create .env, build the API, create a dev access key
 //   npm run dev      start the API and Studio together and tell you where to open it
+//   npm run desktop  start the API (if needed) and the XO Studio desktop app, configured from .env
 //   npm run doctor   check everything and say exactly what to fix
 //   npm run smoke    run Studio's live contract check against the running dev API
 //
@@ -229,6 +230,89 @@ async function dev() {
   }, 1500);
 }
 
+const GOOGLE_ISSUER = 'https://accounts.google.com';
+
+/** Desktop app: reads ./.env once, so nothing has to be exported in the shell on every run. */
+async function desktop() {
+  const env = loadEnv();
+  const s = settings(env);
+  if (!nodeOk()) throw new Error(`Node 22.15+ is required (you have ${process.versions.node}).`);
+  const issuer = (env.XO_OIDC_ISSUER ?? '').trim();
+  const clientId = (env.XO_OIDC_CLIENT_ID ?? '').trim();
+  if ((issuer === '') !== (clientId === '')) throw new Error('Set XO_OIDC_ISSUER and XO_OIDC_CLIENT_ID together in .env (or neither).');
+  if (!existsSync(join(root, 'node_modules')) || !existsSync(keyFile)) {
+    warn('First run: setting things up…');
+    await setup();
+  }
+  const apiUrl = env.XO_API_URL ?? `http://${s.host}:${s.apiPort}`;
+  const google = issuer === GOOGLE_ISSUER;
+  if (issuer !== '' && !google) warn('A non-Google issuer needs its origin added to a dev capability by hand; see docs/studio/DESKTOP.md.');
+  const config = google ? 'src-tauri/tauri.dev.google.conf.json' : 'src-tauri/tauri.dev.conf.json';
+
+  step('Starting XO Studio (desktop)');
+  const kids = [];
+  let stopping = false;
+  const stop = (code = 0) => {
+    stopping = true;
+    for (const k of kids) k.kill();
+    setTimeout(() => process.exit(code), 300);
+  };
+  process.on('SIGINT', () => stop(0));
+  process.on('SIGTERM', () => stop(0));
+
+  if (await apiUp(s.apiPort, s.host)) {
+    ok(`Using the API already running on port ${s.apiPort}`);
+  } else {
+    if (!apiUrl.startsWith(`http://${s.host}:`) && !apiUrl.startsWith('http://127.0.0.1:') && !apiUrl.startsWith('http://localhost:'))
+      throw new Error(
+        `XO_API_URL (${apiUrl}) is not a local address and nothing answers there. Start that API, or remove XO_API_URL from .env.`,
+      );
+    buildApi();
+    const api = spawn(process.execPath, ['run-api.mjs'], {
+      cwd: join(root, 'apps/api'),
+      env: {
+        ...env,
+        PORT: String(s.apiPort),
+        HOST: s.host,
+        API_KEYS_DIR: s.keys,
+        WORKSPACES_DIR: s.workspaces,
+        WORKSPACE_DATA_DIR: s.workspaceData,
+      },
+      stdio: 'inherit',
+    });
+    kids.push(api);
+    api.on('exit', (code) => {
+      if (!stopping) {
+        console.log(`\n${c(31, `API stopped (exit ${code}).`)}`);
+        stop(1);
+      }
+    });
+    for (let i = 0; i < 40 && !(await apiUp(s.apiPort, s.host)); i++) await new Promise((r) => setTimeout(r, 250));
+    if (!(await apiUp(s.apiPort, s.host))) {
+      bad('The API did not start. Look at the lines above.');
+      return stop(1);
+    }
+  }
+
+  const childEnv = { ...env, XO_API_URL: apiUrl };
+  console.log(
+    `\n  API      ${apiUrl}\n  Sign-in  ${google ? 'Google (and the development access key)' : 'development access key'}\n  Config   ${config}\n` +
+      (existsSync(keyFile)
+        ? `  Access key (paste into "Development sign-in"):\n           ${c(1, readFileSync(keyFile, 'utf8').trim())}\n`
+        : ''),
+  );
+  const app = spawn(npx, ['tauri', 'dev', '--config', config], {
+    cwd: join(root, 'apps/studio'),
+    env: childEnv,
+    stdio: 'inherit',
+    shell: isWin,
+  });
+  kids.push(app);
+  app.on('exit', (code) => {
+    if (!stopping) stop(code ?? 0);
+  });
+}
+
 async function smoke() {
   const s = settings(loadEnv());
   if (!existsSync(keyFile)) throw new Error('No dev key yet. Run `npm run setup`.');
@@ -240,10 +324,10 @@ async function smoke() {
   process.exitCode = r.status ?? 1;
 }
 
-const cmds = { setup, dev, doctor, smoke };
+const cmds = { setup, dev, desktop, doctor, smoke };
 const cmd = process.argv[2];
 if (cmds[cmd] === undefined) {
-  console.log('Usage: node scripts/dev.mjs <setup|dev|doctor|smoke>');
+  console.log('Usage: node scripts/dev.mjs <setup|dev|desktop|doctor|smoke>');
   process.exit(2);
 }
 cmds[cmd]().catch((e) => {

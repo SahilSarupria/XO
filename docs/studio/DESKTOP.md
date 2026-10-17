@@ -31,6 +31,8 @@ Google sign-in in development needs the **Development + Google sign-in** row: St
 
 To build a release: copy `src-tauri/deploy/http-deploy.capability.example.json` to `src-tauri/capabilities/http-deploy.json` and replace both origins (your XO API and your OIDC provider; no wildcards). Check with `npm run check:tauri:release`.
 
+**Configure once, run every time:** `npm run desktop` (repo root) reads `./.env` (git-ignored; `npm run setup` creates it from `.env.example`), defaults `XO_API_URL` to the local dev API, starts that API if it is not already running, and launches the desktop app with the right dev config (Google-enabled when `XO_OIDC_ISSUER=https://accounts.google.com`). For Google, put `XO_OIDC_ISSUER` and `XO_OIDC_CLIENT_ID` in `.env` once. Real shell variables take precedence over `.env`. Never put a client secret in `.env`.
+
 Launch configuration (environment): `XO_API_URL`, `XO_OIDC_ISSUER`, `XO_OIDC_CLIENT_ID`, optional `XO_OIDC_AUDIENCE`, `XO_DEV_SIGN_IN=0` to hide the development sign-in. Invalid values stop startup with a message.
 
 **Google:** set `XO_OIDC_ISSUER=https://accounts.google.com` and `XO_OIDC_CLIENT_ID` to your Google _Desktop app_ client id (no audience, no secret). That issuer selects the Google path automatically; Studio then signs in at Google, hands Google's ID token to the XO API once, and holds only XO session credentials (access in memory, rotating refresh credential in the keychain). See `AUTH_API_CONTRACT.md` and `GOOGLE_SIGNIN_RUNBOOK.md`. Your release capability file needs the Google origins as well as the XO API origin.

@@ -15,6 +15,7 @@
   "scripts": {
     "setup": "node scripts/dev.mjs setup",
     "dev": "node scripts/dev.mjs dev",
+    "desktop": "node scripts/dev.mjs desktop",
     "doctor": "node scripts/dev.mjs doctor",
     "smoke": "node scripts/dev.mjs smoke",
     "test:studio": "npm run test -w @xo/studio",
