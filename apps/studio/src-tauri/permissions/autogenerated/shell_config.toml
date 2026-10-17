@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-config"
+description = "Enables the shell_config command without any pre-configured scope."
+commands.allow = ["shell_config"]
+
+[[permission]]
+identifier = "deny-shell-config"
+description = "Denies the shell_config command without any pre-configured scope."
+commands.deny = ["shell_config"]
