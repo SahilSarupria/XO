@@ -374,6 +374,17 @@ export class FakeXo {
       if (this.resumeBehavior === 'network_after_apply') throw new TypeError('Failed to fetch');
       return reply(200, run);
     }
+    if (method === 'GET' && path === '/health') return reply(200, { status: 'ok' });
+    if (method === 'GET' && path === '/openapi.json')
+      return reply(200, {
+        openapi: '3.0.3',
+        info: { title: 'XO Platform API', version: '0.1.0' },
+        paths: {
+          '/health': { get: { summary: 'Liveness check', security: [] } },
+          '/workspaces': { get: { summary: 'List workspaces' }, post: { summary: 'Create a workspace' } },
+          '/workspaces/{workspaceId}/sources': { get: { summary: 'List sources' }, post: { summary: 'Upload a source' } },
+        },
+      });
     if (method === 'GET' && path === '/workspaces') return reply(200, { workspaces: this.workspaces });
     if (method === 'POST' && path === '/workspaces') {
       const w = { workspaceId: this.id('ws'), name: body.name ?? '', createdAt: new Date().toISOString() };

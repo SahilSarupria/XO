@@ -1,10 +1,12 @@
 import type { AuthResult } from '../auth/oidc';
 import {
+  parseApiDescription,
   parseCapabilityList,
   parseCompilation,
   parseCompilationList,
   parseExecution,
   parseExecutionList,
+  parseHealth,
   parseSource,
   parseSourceList,
   parseWorkflowList,
@@ -14,6 +16,7 @@ import {
   parseWorkspaceList,
   tryParseErrorBody,
   WireParseError,
+  type ApiDescription,
   type Capability,
   type Compilation,
   type Execution,
@@ -169,6 +172,14 @@ export class XoClient {
 
   private json(body: unknown): { body: string; contentType: string } {
     return { body: JSON.stringify(body), contentType: 'application/json' };
+  }
+
+  // ---- platform description (read-only; both are public routes on the platform)
+  getHealth(): Promise<Result<{ readonly status: string }>> {
+    return this.call('GET', '/health', parseHealth);
+  }
+  getApiDescription(): Promise<Result<ApiDescription>> {
+    return this.call('GET', '/openapi.json', parseApiDescription);
   }
 
   // ---- workspaces

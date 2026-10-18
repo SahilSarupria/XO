@@ -3,8 +3,8 @@ import { findActiveRun, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
 import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
 import { runTitle } from './RunCard';
-import { startActions, type StartTarget } from '../domain/start';
-import { Badge, Button, formatWhen, Section } from './primitives';
+import { startActions, unavailableActions, type StartFacts, type StartTarget } from '../domain/start';
+import { Badge, Button, formatWhen, Section, Skeleton } from './primitives';
 import { StartWork } from './StartWork';
 
 /**
@@ -21,6 +21,8 @@ export function HomeSection(props: {
   next: Progress;
   /** Runs/workflows failed to load: do not present an empty Home as "nothing to do". */
   incomplete: boolean;
+  /** First load still in progress: nothing may be claimed (no first-run prompts, no "nothing to do"). */
+  loading: boolean;
   workspaceName: string;
   sourceCount: number;
   analysisCount: number;
@@ -52,19 +54,39 @@ export function HomeSection(props: {
     .slice(0, 3);
   const recentFailed = recent.filter((r) => r.status === 'failed');
 
+  const facts: StartFacts = {
+    sources: props.sourceCount,
+    succeededCompilations: props.analysisCount,
+    readyForReview: props.readyForReview,
+    readyWorkflows: ready.length,
+    waitingDecisions: waitingCount + interrupted.length,
+    blockedWorkflows: blockedOnApproval.length,
+    activeRuns: inProgress.length,
+    incomplete: props.incomplete,
+  };
+
+  if (props.loading) {
+    return (
+      <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}.`}>
+        <Skeleton label="Loading your workspace" />
+      </Section>
+    );
+  }
+
   return (
     <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
       <StartWork
-        actions={startActions({
-          sources: props.sourceCount,
-          succeededCompilations: props.analysisCount,
-          readyForReview: props.readyForReview,
-          readyWorkflows: ready.length,
-          waitingDecisions: waitingCount + interrupted.length,
-          incomplete: props.incomplete,
-        })}
+        actions={startActions(facts)}
+        unavailable={unavailableActions(facts)}
+        incomplete={props.incomplete}
         onChoose={props.goTo}
       />
+      {props.incomplete ? (
+        <p className="notice notice-warning small" role="status">
+          Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or open
+          Runs &amp; History.
+        </p>
+      ) : null}
 
       {waitingCount > 0 ? (
         <div className="card">
@@ -81,7 +103,7 @@ export function HomeSection(props: {
               ))}
             </ul>
             <div className="row">
-              <Button variant="primary" onClick={goToTasks}>
+              <Button variant="secondary" onClick={goToTasks}>
                 {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
               </Button>
             </div>
@@ -127,7 +149,7 @@ export function HomeSection(props: {
               ))}
             </ul>
             <div className="row">
-              <Button variant="primary" onClick={goToTasks}>
+              <Button variant="secondary" onClick={goToTasks}>
                 Review in Tasks
               </Button>
             </div>

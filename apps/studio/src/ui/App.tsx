@@ -407,13 +407,18 @@ function Shell() {
   const { mode, setMode, signOut } = useSession();
   const account = (
     <>
-      <div className="mode" role="group" aria-label="Detail level">
-        <button type="button" aria-pressed={mode === 'user'} onClick={() => setMode('user')}>
-          Standard
-        </button>
-        <button type="button" aria-pressed={mode === 'builder'} onClick={() => setMode('builder')}>
-          Builder
-        </button>
+      <div className="mode-switch">
+        <span className="mode-caption" id="mode-caption">
+          Mode
+        </span>
+        <div className="mode" role="group" aria-label="Detail level" aria-describedby="mode-caption">
+          <button type="button" aria-pressed={mode === 'user'} onClick={() => setMode('user')}>
+            User
+          </button>
+          <button type="button" aria-pressed={mode === 'builder'} onClick={() => setMode('builder')}>
+            Builder
+          </button>
+        </div>
       </div>
       <Button variant="quiet" onClick={signOut}>
         Sign out

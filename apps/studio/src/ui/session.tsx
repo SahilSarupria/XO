@@ -3,9 +3,10 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 import { XoClient, type FetchLike } from '../platform/client';
 
 /**
- * Mode is presentation only. It decides how much technical detail is *shown*; it never
- * changes which requests are made, which controls are enabled, or what authority the
- * caller has. Authority comes solely from the API key the backend authenticates.
+ * Mode is presentation only. It decides how much technical detail is *shown* and whether the Builder screens
+ * (Contracts, Processes, Platform) exist in the navigation; it never changes which controls are enabled or what
+ * authority the caller has. Authority comes solely from the API key the backend authenticates. The preference is
+ * per browser (not per workspace) and defaults to User.
  */
 export type Mode = 'user' | 'builder';
 

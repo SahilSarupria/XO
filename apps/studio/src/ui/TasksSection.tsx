@@ -32,6 +32,7 @@ export function TasksSection(props: {
   notes: ReadonlyMap<string, RecordedNote>;
   /** The runs or executions list failed to load: do not claim that nothing is waiting. */
   incomplete: boolean;
+  onOpenActivity?: () => void;
   onChanged: () => void;
 }) {
   const tasks = pendingTasks(props.runs);
@@ -57,7 +58,22 @@ export function TasksSection(props: {
         </p>
       ) : null}
       {!props.incomplete && tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
-        <EmptyState title="Nothing is waiting for you">When a process needs a decision, it will appear here.</EmptyState>
+        <EmptyState title="Nothing is waiting for you">
+          When a process needs a decision, it will appear here.
+          {props.onOpenActivity !== undefined ? (
+            <>
+              {' '}
+              <button type="button" className="crumb-link" onClick={props.onOpenActivity}>
+                See past activity
+              </button>
+            </>
+          ) : null}
+        </EmptyState>
+      ) : null}
+      {props.incomplete && tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
+        <p className="notice notice-warning small" role="status">
+          Decisions could not be loaded, so XO cannot tell whether anything is waiting. Use Retry above.
+        </p>
       ) : null}
       <ul className="list">
         {tasks.map((r) => (

@@ -1,12 +1,17 @@
 import type { Workflow } from '../platform/wire';
-import { Badge, EmptyState, loadedValue, ProblemNotice, Section, Skeleton, type LoadState } from './primitives';
+import { Badge, Button, EmptyState, loadedValue, ProblemNotice, Section, Skeleton, type LoadState } from './primitives';
 
 /**
  * Builder Mode, read-only. Workflows are composed by the platform from discovered capabilities.
  * Studio shows what the platform says about each one — including why it cannot run — and does
  * not offer to start them in this milestone.
  */
-export function ProcessesSection(props: { state: LoadState<Workflow[]>; reload: () => void }) {
+export function ProcessesSection(props: {
+  state: LoadState<Workflow[]>;
+  reload: () => void;
+  /** Open the platform's contract for one step's capability (Contracts screen). */
+  onOpenContract: (capabilityId: string) => void;
+}) {
   // The parent already loads the workflows; this view renders that same state instead of asking the platform again.
   const { state, reload } = props;
   const shown = loadedValue(state);
@@ -36,6 +41,25 @@ export function ProcessesSection(props: { state: LoadState<Workflow[]>; reload: 
                   {w.workflowId} · {w.status} · {w.stepCount} step(s) · {w.gapCount} gap(s) · confidence {Math.round(w.confidence * 100)}%
                   {w.requiresHumanDecision ? ' · needs a human decision' : ''}
                 </p>
+                <details>
+                  <summary>Steps ({w.steps.length})</summary>
+                  <ol className="plain">
+                    {[...w.steps]
+                      .sort((a, b) => a.order - b.order)
+                      .map((s) => (
+                        <li key={`${s.order}-${s.capabilityId}`} className="small">
+                          {s.name} <span className="mono muted">{s.capabilityId}</span>{' '}
+                          <Button
+                            variant="quiet"
+                            aria-label={`Open contract for ${s.name}`}
+                            onClick={() => props.onOpenContract(s.capabilityId)}
+                          >
+                            Contract
+                          </Button>
+                        </li>
+                      ))}
+                  </ol>
+                </details>
                 {w.notExecutableReasons.length > 0 ? (
                   <details>
                     <summary>Why it cannot run ({w.notExecutableReasons.length})</summary>

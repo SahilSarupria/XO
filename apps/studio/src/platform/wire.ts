@@ -504,3 +504,47 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
 export function parseWorkflowRunList(v: unknown): WorkflowRun[] {
   return arr(obj(v, 'body')['workflowExecutions'], 'workflowExecutions').map((r, i) => parseWorkflowRun(r, `workflowExecutions[${i}]`));
 }
+
+// ---------------------------------------------------------------- API description (Builder Mode)
+/** `GET /health`. Anything other than a string `status` is not a health answer Studio can show. */
+export function parseHealth(v: unknown): { readonly status: string } {
+  return { status: str(obj(v, 'health')['status'], 'health.status') };
+}
+
+export interface ApiOperation {
+  readonly method: string;
+  readonly path: string;
+  readonly summary?: string;
+  /** `security: []` on an operation means the platform serves it without credentials. */
+  readonly requiresAuth: boolean;
+}
+export interface ApiDescription {
+  readonly title: string;
+  readonly version: string;
+  readonly operations: readonly ApiOperation[];
+}
+
+const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
+
+/**
+ * `GET /openapi.json`: the platform's own description of its API. Only what Studio displays is read (title, version,
+ * method, path, summary, whether the operation is open); unknown OpenAPI detail is ignored, not trusted or rendered.
+ */
+export function parseApiDescription(v: unknown): ApiDescription {
+  const doc = obj(v, 'openapi');
+  const info = obj(doc['info'], 'openapi.info');
+  const paths = obj(doc['paths'], 'openapi.paths');
+  const operations: ApiOperation[] = [];
+  for (const [path, item] of Object.entries(paths)) {
+    const o = obj(item, `openapi.paths.${path}`);
+    for (const method of HTTP_METHODS) {
+      const op = o[method];
+      if (op === undefined) continue;
+      const od = obj(op, `openapi.paths.${path}.${method}`);
+      const summary = od['summary'] === undefined ? undefined : str(od['summary'], `openapi.paths.${path}.${method}.summary`);
+      const open = Array.isArray(od['security']) && od['security'].length === 0;
+      operations.push({ method: method.toUpperCase(), path, ...(summary !== undefined ? { summary } : {}), requiresAuth: !open });
+    }
+  }
+  return { title: str(info['title'], 'openapi.info.title'), version: str(info['version'], 'openapi.info.version'), operations };
+}

@@ -21,8 +21,19 @@ export interface StartFacts {
   readonly readyWorkflows: number;
   /** Decisions waiting for a person (including stopped processes that can be continued). */
   readonly waitingDecisions: number;
+  /** Processes that exist and could run once their rules are approved. */
+  readonly blockedWorkflows: number;
+  /** Processes currently running (not waiting for a person, not stopped). */
+  readonly activeRuns: number;
   /** Some of the lists above failed to load: do not recommend from partial facts. */
   readonly incomplete: boolean;
+}
+
+export interface UnavailableAction {
+  readonly id: StartAction['id'];
+  readonly title: string;
+  /** Why it cannot be done right now, in plain words, from the same facts as the available list. */
+  readonly reason: string;
 }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -69,5 +80,37 @@ export function startActions(f: StartFacts): StartAction[] {
       ? addDocument('Add your first document', 'Upload a procedure, guideline or rulebook. XO reads it and finds the rules inside.')
       : addDocument('Add another document', 'More documents give XO more rules to find.'),
   );
+  return out;
+}
+
+/**
+ * What cannot be done right now, and why. Shown so a missing option is explained rather than silently absent.
+ * Empty when the facts are incomplete: a reason computed from missing data would be a guess.
+ */
+export function unavailableActions(f: StartFacts): UnavailableAction[] {
+  if (f.incomplete) return [];
+  const out: UnavailableAction[] = [];
+  if (f.waitingDecisions === 0)
+    out.push({ id: 'decide', title: 'Review a waiting decision', reason: 'Nothing is waiting for a decision.' });
+  if (f.readyWorkflows === 0) {
+    const reason =
+      f.blockedWorkflows > 0
+        ? f.blockedWorkflows === 1
+          ? '1 process needs its rules approved first.'
+          : `${f.blockedWorkflows} processes need their rules approved first.`
+        : f.activeRuns > 0
+          ? 'A process is already running.'
+          : f.succeededCompilations === 0
+            ? 'XO needs an analysed document first, so it has rules to build a process from.'
+            : 'No process from your latest analysis can be started yet.';
+    out.push({ id: 'start-process', title: 'Start a process', reason });
+  }
+  if (f.readyForReview === 0)
+    out.push({
+      id: 'review-rules',
+      title: 'Review what XO found',
+      reason: f.succeededCompilations === 0 ? 'Nothing has been analysed yet.' : 'No rules are waiting for your approval.',
+    });
+  if (f.sources === 0) out.push({ id: 'analyse', title: 'Analyse your document', reason: 'Add a document first.' });
   return out;
 }

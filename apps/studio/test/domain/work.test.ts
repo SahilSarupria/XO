@@ -6,6 +6,7 @@ import {
   recordedNotes,
   describeResumeProblem,
   recoverableRuns,
+  runBucket,
   describeRun,
   describeStartProblem,
   findActiveRun,
@@ -274,5 +275,18 @@ describe('decision notes', () => {
     expect(
       recordedNotes([parseExecution({ ...base, status: 'succeeded', humanTask: { status: 'resolved', decisionData: { note: 5 } } })]).size,
     ).toBe(0);
+  });
+});
+
+describe('runBucket', () => {
+  it('groups every run status exactly once, and keeps failed apart from finished', () => {
+    const b = (status: WorkflowRun['status']) => runBucket({ status });
+    expect(b('waiting_for_human')).toBe('attention');
+    expect(b('interrupted')).toBe('attention');
+    expect(b('created')).toBe('running');
+    expect(b('running')).toBe('running');
+    expect(b('failed')).toBe('failed');
+    expect(b('succeeded')).toBe('finished');
+    expect(b('rejected')).toBe('finished');
   });
 });

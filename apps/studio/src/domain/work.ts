@@ -330,3 +330,22 @@ export function newIdempotencyKey(): string {
 export function isAmbiguousFailure(p: ApiProblem): boolean {
   return p.kind === 'network' || p.kind === 'server' || p.kind === 'malformed';
 }
+
+/** How a run is grouped when browsing history. Derived only from the platform's run status. */
+export type RunBucket = 'attention' | 'running' | 'failed' | 'finished';
+
+export function runBucket(run: Pick<WorkflowRun, 'status'>): RunBucket {
+  switch (run.status) {
+    case 'waiting_for_human':
+    case 'interrupted':
+      return 'attention';
+    case 'created':
+    case 'running':
+      return 'running';
+    case 'failed':
+      return 'failed';
+    case 'succeeded':
+    case 'rejected':
+      return 'finished';
+  }
+}

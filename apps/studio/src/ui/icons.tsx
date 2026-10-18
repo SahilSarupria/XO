@@ -1,5 +1,18 @@
 export type IconName =
-  'home' | 'workspaces' | 'work' | 'tasks' | 'activity' | 'setup' | 'processes' | 'menu' | 'check' | 'user' | 'file' | 'play';
+  | 'home'
+  | 'workspaces'
+  | 'work'
+  | 'tasks'
+  | 'activity'
+  | 'setup'
+  | 'processes'
+  | 'contracts'
+  | 'platform'
+  | 'menu'
+  | 'check'
+  | 'user'
+  | 'file'
+  | 'play';
 
 const PATHS: Record<IconName, string> = {
   workspaces: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
@@ -9,6 +22,8 @@ const PATHS: Record<IconName, string> = {
   activity: 'M3 12h4l3-8 4 16 3-8h4',
   setup: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7',
   processes: 'M6 5a2 2 0 1 0 0 .01M6 19a2 2 0 1 0 0 .01M18 12a2 2 0 1 0 0 .01M8 6l8 5M8 18l8-5',
+  contracts: 'M7 4h10v16H7zM10 8h4M10 12h4M10 16h2',
+  platform: 'M4 6h16v5H4zM4 13h16v5H4zM8 8.5h.01M8 15.5h.01',
   menu: 'M4 7h16M4 12h16M4 17h16',
   check: 'M5 12l5 5 9-11',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21a8 8 0 0 1 16 0',

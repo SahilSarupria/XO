@@ -33,6 +33,11 @@ export function RunSummary(props: { run: WorkflowRun; notes?: ReadonlyMap<string
         <Badge tone={v.tone}>{v.label}</Badge> <span className="muted small">Started {formatWhen(r.createdAt)}</span>
       </p>
       <p className={v.tone === 'danger' ? 'outcome-detail danger-text' : 'outcome-detail'}>{v.summary}</p>
+      {r.status === 'failed' ? (
+        <p className="muted small">
+          A process that did not complete cannot be retried or continued. You can start it again from Workflows.
+        </p>
+      ) : null}
       <ol className="steps" aria-label="Steps">
         {r.steps.map((s) => (
           <li key={s.stepId} className="step" aria-current={r.currentStepIndex === s.order ? 'step' : undefined}>

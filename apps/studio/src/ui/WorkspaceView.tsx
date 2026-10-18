@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { nextStep, summarize } from '../domain/review';
 import type { StartTarget } from '../domain/start';
 import { recordedNotes, standaloneExecutions } from '../domain/work';
@@ -9,11 +9,13 @@ import { HomeSection } from './HomeSection';
 import { TasksSection } from './TasksSection';
 import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
-import { Breadcrumbs, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import { ContractsSection } from './ContractsSection';
+import { PlatformSection } from './PlatformSection';
+import { Badge, Breadcrumbs, Button, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
 import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
-import { useSectionRoute, type Section } from './sectionRoute';
+import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
 import { Icon, type IconName } from './icons';
 
 type View = Section;
@@ -27,6 +29,8 @@ const PAGE_LABEL: Record<View, string> = {
   activity: 'Runs & History',
   setup: 'Sources',
   processes: 'Processes',
+  contracts: 'Contracts',
+  platform: 'Platform',
 };
 
 export function WorkspaceView(props: {
@@ -36,11 +40,15 @@ export function WorkspaceView(props: {
   onNewWorkspace: () => void;
   frame: (nav: ReactNode, content: ReactNode) => ReactNode;
 }) {
-  const { client, mode } = useSession();
+  const { client, mode, setMode } = useSession();
   const ws = props.workspace.workspaceId;
   const [view, setView, replaceView] = useSectionRoute();
   const [setupView, setSetupView] = useState<SetupView>('documents');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
+  /** A Builder-only screen that was asked for in User mode: explained on Home instead of silently dropped. */
+  const [blocked, setBlocked] = useState<Section | undefined>();
+  const [focusedCapability, setFocusedCapability] = useState<string | undefined>();
+  const previousMode = useRef(mode);
 
   const sources = useLoad(() => client.listSources(ws), [client, ws]);
   const compilations = useLoad(() => client.listCompilations(ws), [client, ws]);
@@ -65,9 +73,22 @@ export function WorkspaceView(props: {
     [client, ws, activeCompilation?.compilationId],
   );
 
+  // Mode is presentation. The workspace is never touched; only a screen that does not exist in the new mode is replaced.
   useEffect(() => {
-    if (mode === 'user' && view === 'processes') replaceView('home');
+    const was = previousMode.current;
+    previousMode.current = mode;
+    if (mode === 'builder') setBlocked(undefined);
+    if (mode === 'user' && isBuilderSection(view)) {
+      if (was === 'builder') replaceView(BUILDER_SECTIONS[view] ?? 'home');
+      else {
+        setBlocked(view);
+        replaceView('home');
+      }
+    }
   }, [mode, view, replaceView]);
+  useEffect(() => {
+    if (blocked !== undefined && view !== 'home' && view !== blocked) setBlocked(undefined);
+  }, [view, blocked]);
 
   /** Start work / Home shortcuts. They only select a screen; the API decides what is permitted there. */
   function goToTarget(target: StartTarget) {
@@ -109,6 +130,10 @@ export function WorkspaceView(props: {
   );
   // Emptiness may only be claimed when the lists it depends on actually loaded.
   const decisionsUnknown = runs.state.phase === 'error' || executions.state.phase === 'error';
+  const allStates = [sources.state, compilations.state, workflows.state, runs.state, executions.state, caps.state];
+  // Home summarises all of them: until each has answered, nothing may be claimed; if one failed, Home says it is partial.
+  const homeLoading = allStates.some((s) => s.phase === 'loading');
+  const homeIncomplete = allStates.some((s) => s.phase === 'error');
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
   const runsView = view === 'tasks' || view === 'activity';
@@ -146,9 +171,18 @@ export function WorkspaceView(props: {
         Runs &amp; History
       </NavItem>
       {mode === 'builder' ? (
-        <NavItem current={view} id="processes" icon="processes" hint="Technical view" onSelect={setView}>
-          Processes
-        </NavItem>
+        <div className="nav-group" role="group" aria-label="Builder tools">
+          <p className="nav-group-label">Builder tools</p>
+          <NavItem current={view} id="contracts" icon="contracts" hint="Rule inputs and sources" onSelect={setView}>
+            Contracts
+          </NavItem>
+          <NavItem current={view} id="processes" icon="processes" hint="Steps and readiness" onSelect={setView}>
+            Processes
+          </NavItem>
+          <NavItem current={view} id="platform" icon="platform" hint="Service and API" onSelect={setView}>
+            Platform
+          </NavItem>
+        </div>
       ) : null}
     </nav>
   );
@@ -167,14 +201,20 @@ export function WorkspaceView(props: {
   const content = (
     <main className="page">
       <header className="page-head">
-        <Breadcrumbs
-          items={[
-            { label: 'Workspaces', onSelect: () => setView('workspaces') },
-            ...(view === 'workspaces'
-              ? [{ label: props.workspace.name ?? 'Untitled workspace' }]
-              : [{ label: props.workspace.name ?? 'Untitled workspace', onSelect: () => setView('home') }, { label: PAGE_LABEL[view] }]),
-          ]}
-        />
+        <div className="row between page-head-top">
+          <Breadcrumbs
+            items={[
+              { label: 'Workspaces', onSelect: () => setView('workspaces') },
+              ...(view === 'workspaces'
+                ? [{ label: props.workspace.name ?? 'Untitled workspace' }]
+                : [
+                    { label: props.workspace.name ?? 'Untitled workspace', onSelect: () => setView('home'), low: true },
+                    { label: PAGE_LABEL[view] },
+                  ]),
+            ]}
+          />
+          <Badge tone={mode === 'builder' ? 'accent' : 'neutral'}>{mode === 'builder' ? 'Builder mode' : 'User mode'}</Badge>
+        </div>
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
       </header>
 
@@ -185,6 +225,31 @@ export function WorkspaceView(props: {
         </>
       ) : null}
 
+      {blocked !== undefined && mode === 'user' ? (
+        <div className="notice notice-info" role="status">
+          <p>
+            {PAGE_LABEL[blocked]} is part of Builder mode, so you are on Home. Builder mode adds technical views; it does not change what
+            you are allowed to do.
+          </p>
+          <div className="row">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const target = blocked;
+                setMode('builder');
+                setBlocked(undefined);
+                replaceView(target);
+              }}
+            >
+              Switch to Builder mode
+            </Button>
+            <Button variant="quiet" onClick={() => setBlocked(undefined)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {view === 'home' ? (
         <HomeSection
           compilation={activeCompilation}
@@ -193,7 +258,8 @@ export function WorkspaceView(props: {
           runs={runList}
           standalonePending={standalonePending}
           next={step}
-          incomplete={decisionsUnknown}
+          incomplete={homeIncomplete}
+          loading={homeLoading}
           workspaceName={props.workspace.name ?? 'Untitled workspace'}
           sourceCount={loadedValue(sources.state)?.length ?? 0}
           analysisCount={succeeded.length}
@@ -239,6 +305,7 @@ export function WorkspaceView(props: {
           caps={capList ?? []}
           notes={notes}
           incomplete={decisionsUnknown}
+          onOpenActivity={() => setView('activity')}
           onChanged={refreshAll}
         />
       ) : null}
@@ -253,6 +320,8 @@ export function WorkspaceView(props: {
             notes={notes}
             caps={capList ?? []}
             activeCompilationId={activeCompilation?.compilationId}
+            incomplete={decisionsUnknown}
+            onOpenTasks={() => setView('tasks')}
             onChanged={refreshAll}
           />
         )
@@ -273,6 +342,11 @@ export function WorkspaceView(props: {
               },
             ]}
           />
+          {mode === 'user' ? (
+            <p className="muted small">
+              Documents are what you gave XO. Rules are what XO worked out from them, shown with the evidence. Only you can approve a rule.
+            </p>
+          ) : null}
           {setupView === 'documents' ? (
             <ContextSection
               workspaceId={ws}
@@ -299,7 +373,26 @@ export function WorkspaceView(props: {
           )}
         </>
       ) : null}
-      {view === 'processes' && mode === 'builder' ? <ProcessesSection state={workflows.state} reload={workflows.reload} /> : null}
+      {view === 'processes' && mode === 'builder' ? (
+        <ProcessesSection
+          state={workflows.state}
+          reload={workflows.reload}
+          onOpenContract={(id) => {
+            setFocusedCapability(id);
+            setView('contracts');
+          }}
+        />
+      ) : null}
+      {view === 'contracts' && mode === 'builder' ? (
+        <ContractsSection
+          caps={caps.state}
+          workflows={workflowList}
+          focus={focusedCapability}
+          goToSources={() => goToTarget('rules')}
+          goToProcesses={() => setView('processes')}
+        />
+      ) : null}
+      {view === 'platform' && mode === 'builder' ? <PlatformSection /> : null}
     </main>
   );
   return <>{props.frame(nav, content)}</>;

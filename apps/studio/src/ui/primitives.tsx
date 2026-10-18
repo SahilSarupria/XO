@@ -145,14 +145,21 @@ export function PageHeader(props: { title: string; lede?: string; actions?: Reac
 }
 
 /** Where the person is. The last item is the current page and is not a link. Presentation only. */
-export function Breadcrumbs(props: { items: readonly { label: string; onSelect?: () => void }[] }) {
+export function Breadcrumbs(props: {
+  /** `low`: dropped on narrow screens, where the same name is already the page title directly below. */
+  items: readonly { label: string; onSelect?: () => void; low?: boolean }[];
+}) {
   return (
     <nav className="crumbs" aria-label="Breadcrumb">
       <ol>
         {props.items.map((item, i) => {
           const last = i === props.items.length - 1;
           return (
-            <li key={`${i}-${item.label}`} {...(last ? { 'aria-current': 'page' as const } : {})}>
+            <li
+              key={`${i}-${item.label}`}
+              className={item.low === true ? 'crumb-low' : undefined}
+              {...(last ? { 'aria-current': 'page' as const } : {})}
+            >
               {!last && item.onSelect !== undefined ? (
                 <button type="button" className="crumb-link" onClick={item.onSelect}>
                   {item.label}
@@ -171,16 +178,25 @@ export function Breadcrumbs(props: { items: readonly { label: string; onSelect?:
 /** Switches between closely related views of one page. Each choice selects a screen; it grants nothing. */
 export function SubNav(props: {
   label: string;
+  /** `tabs` switches between views of a page; `chips` filters the list on the page (same look as the Review filter). */
+  variant?: 'tabs' | 'chips';
   current: string;
   items: readonly { id: string; label: string; count?: number | undefined; countLabel?: string; onSelect: () => void }[];
 }) {
+  const chips = props.variant === 'chips';
   return (
-    <div className="segmented" role="group" aria-label={props.label}>
+    <div className={chips ? 'summary' : 'segmented'} role="group" aria-label={props.label}>
       {props.items.map((item) => (
-        <button key={item.id} type="button" className="tab" aria-pressed={props.current === item.id} onClick={item.onSelect}>
+        <button
+          key={item.id}
+          type="button"
+          className={chips ? 'chip' : 'tab'}
+          aria-pressed={props.current === item.id}
+          onClick={item.onSelect}
+        >
           {item.label}
-          {item.count !== undefined && item.count > 0 ? (
-            <span className="tab-count" aria-label={`${item.count} ${item.countLabel ?? 'need attention'}`}>
+          {item.count !== undefined && (chips || item.count > 0) ? (
+            <span className={chips ? 'chip-n' : 'tab-count'} aria-label={`${item.count} ${item.countLabel ?? 'need attention'}`}>
               {item.count}
             </span>
           ) : null}
