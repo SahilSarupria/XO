@@ -1,0 +1,224 @@
+import { Sha256Hasher } from '@xo/crypto';
+import { buildSemanticCapabilityContract, type SemanticCapabilityContract } from '@xo/capability-contract';
+import type { ProcedureDefinition, ProcedureFinding, ProcedureErrorCode, CapabilityStep } from '@xo/procedure';
+import { canonicalStringify, fromJson, XoirNodeId, type XoirGraph, type XoirGraphJson } from '@xo/xoir';
+import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
+import { declaredPermissionsForNode } from '../executions/authorization.js';
+import type { CapabilityProjection, CompilationStore } from '../compilations/compilation.js';
+
+/**
+ * P1.1 M2 — registry-dependent procedure validation.
+ *
+ * Authoritative sources (nothing client-supplied is trusted):
+ *   - the workspace's own compilation record (`status === 'succeeded'`), capability projections and persisted XOIR graph;
+ *   - `graphHash` = `XoirGraph.contentHash()` of that persisted graph (the same value the runtime pins in execution receipts);
+ *   - contract / permission-declaration / binding state = `deriveCapabilityApprovalState` (the M3 approval-state derivation, reused unchanged);
+ *   - permission declaration = `declaredPermissionsForNode` (an absent or malformed declaration is `unresolved`, never "no permissions").
+ *
+ * FAIL CLOSED: a missing, failed, unreadable or cross-workspace compilation is `PROC_COMPILATION_UNAVAILABLE` and is
+ * indistinguishable from an unknown id; absence of registry evidence is never treated as validity. Pure given its loader: no
+ * network, no filesystem access of its own, no adapter or model call.
+ */
+
+export interface LoadedCompilation {
+  readonly compilationId: string;
+  readonly sourceDigestSha256: string;
+  readonly graph: XoirGraph;
+  readonly graphHash: string;
+  readonly capabilities: readonly CapabilityProjection[];
+}
+/** Returns `undefined` for ANY failure to establish authoritative evidence (unknown, other workspace, failed, unreadable, corrupt). */
+export type CompilationLoader = (compilationId: string) => Promise<LoadedCompilation | undefined>;
+
+export function compilationLoaderFromStore(store: CompilationStore): CompilationLoader {
+  const cache = new Map<string, Promise<LoadedCompilation | undefined>>();
+  const load = async (compilationId: string): Promise<LoadedCompilation | undefined> => {
+    try {
+      const record = await store.get(compilationId);
+      if (!record.ok || record.value.status !== 'succeeded') return undefined;
+      const caps = await store.getCapabilities(compilationId);
+      const graphJson = await store.getCompiledGraph(compilationId);
+      if (!caps.ok || !graphJson.ok) return undefined;
+      const graph = fromJson(graphJson.value as XoirGraphJson);
+      if (!graph.ok) return undefined;
+      return {
+        compilationId,
+        sourceDigestSha256: record.value.sourceDigestSha256,
+        graph: graph.value,
+        graphHash: graph.value.contentHash(),
+        capabilities: caps.value,
+      };
+    } catch {
+      return undefined;
+    }
+  };
+  return (id) => {
+    let hit = cache.get(id);
+    if (hit === undefined) {
+      hit = load(id);
+      cache.set(id, hit);
+    }
+    return hit;
+  };
+}
+
+export interface StepRegistryState {
+  readonly stepId: string;
+  readonly capabilityId: string;
+  readonly contractId: string;
+  readonly contractContentHash: string;
+  readonly declarationFingerprint: string;
+  readonly implementationClass: string;
+  readonly bindingId: string;
+  readonly stateDigest: string;
+  readonly confidence: number;
+}
+
+export interface RegistrySnapshot {
+  readonly compilationId: string;
+  readonly graphHash: string;
+  /** sha256 over the canonical (compilationId, graphHash, per-step state digests). Changes if ANY resolved fact changes. */
+  readonly digest: string;
+  readonly steps: readonly StepRegistryState[];
+}
+
+export type RegistryResult =
+  { readonly ok: true; readonly snapshot: RegistrySnapshot } | { readonly ok: false; readonly findings: readonly ProcedureFinding[] };
+
+const SUPPORTED_CLASSES = new Set(['deterministic_rule', 'human_in_the_loop', 'external_tool']);
+
+export async function validateAgainstRegistry(def: ProcedureDefinition, load: CompilationLoader): Promise<RegistryResult> {
+  const findings: ProcedureFinding[] = [];
+  const add = (code: ProcedureErrorCode, path: string): void => void findings.push({ code, path });
+  const capabilitySteps: { step: CapabilityStep; index: number }[] = [];
+  def.steps.forEach((step, index) => {
+    if (step.kind === 'capability') capabilitySteps.push({ step, index });
+  });
+
+  const ref = def.compilationRef;
+  if (ref === undefined) {
+    if (capabilitySteps.length > 0) add('PROC_COMPILATION_REF_REQUIRED', '/compilationRef');
+    return { ok: false, findings };
+  }
+  const compilation = await load(ref.compilationId);
+  if (compilation === undefined)
+    return { ok: false, findings: [{ code: 'PROC_COMPILATION_UNAVAILABLE', path: '/compilationRef/compilationId' }] };
+  if (compilation.graphHash !== ref.graphHash) {
+    // Contract-hash drift: the persisted graph no longer hashes to what the author recorded. Nothing derived from it is trusted.
+    return { ok: false, findings: [{ code: 'PROC_COMPILATION_DRIFT', path: '/compilationRef/graphHash' }] };
+  }
+
+  const contracts = new Map<string, { contract: SemanticCapabilityContract; state: StepRegistryState }>();
+  for (const { step, index } of capabilitySteps) {
+    const at = `/steps/${index}`;
+    const projection = compilation.capabilities.find((c) => c.capabilityId === step.capabilityId);
+    if (projection === undefined || projection.status !== 'resolved') {
+      add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
+      continue;
+    }
+    if (step.contractId !== undefined && step.contractId !== projection.contractId) add('PROC_CONTRACT_MISMATCH', `${at}/contractId`);
+    const built = buildSemanticCapabilityContract(compilation.graph, XoirNodeId(step.capabilityId));
+    const derived = deriveCapabilityApprovalState(compilation.graph, step.capabilityId, compilation.sourceDigestSha256);
+    if (!built.ok || !derived.ok) {
+      add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
+      continue;
+    }
+    if (built.value.id !== projection.contractId) {
+      add('PROC_CONTRACT_MISMATCH', `${at}/capabilityId`);
+      continue;
+    }
+    if (declaredPermissionsForNode(compilation.graph, step.capabilityId).kind === 'unresolved') {
+      add('PROC_PERMISSION_DECLARATION_UNRESOLVED', `${at}/capabilityId`);
+      continue;
+    }
+    const cls = derived.value.implementationClass;
+    if (cls === 'ai_provider') {
+      add('PROC_AI_STEP_DISABLED', `${at}/capabilityId`);
+      continue;
+    }
+    if (cls.startsWith('unresolved:')) {
+      add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
+      continue;
+    }
+    if (!SUPPORTED_CLASSES.has(cls)) {
+      add('PROC_UNSUPPORTED_CAPABILITY_CLASS', `${at}/capabilityId`);
+      continue;
+    }
+    contracts.set(step.id, {
+      contract: built.value,
+      state: {
+        stepId: step.id,
+        capabilityId: step.capabilityId,
+        contractId: derived.value.contractId,
+        contractContentHash: derived.value.contractContentHash,
+        declarationFingerprint: derived.value.declarationFingerprint,
+        implementationClass: cls,
+        bindingId: derived.value.bindingId,
+        stateDigest: derived.value.stateDigest,
+        confidence: projection.confidence,
+      },
+    });
+  }
+
+  // Binding / reference checks run only against steps whose contracts were established.
+  for (const { step, index } of capabilitySteps) {
+    const mine = contracts.get(step.id);
+    if (mine === undefined) continue;
+    const declared = new Map(mine.contract.inputs.map((p) => [p.name, p] as const));
+    const bound = new Set<string>();
+    (step.inputBindings ?? []).forEach((b, j) => {
+      const bp = `/steps/${index}/inputBindings/${j}`;
+      const param = declared.get(b.param);
+      if (param === undefined) add('PROC_UNKNOWN_INPUT_PARAM', `${bp}/param`);
+      else bound.add(b.param);
+      if (!('step' in b.from)) return;
+      const producer = contracts.get(b.from.step);
+      if (producer === undefined) return; // producer itself already produced a finding (or is not a capability step: M1 caught it)
+      const out = producer.contract.outputs.find((o) => o.name === (b.from as { output: string }).output);
+      if (out === undefined) {
+        add('PROC_BINDING_OUTPUT_UNDECLARED', `${bp}/from/output`);
+        return;
+      }
+      const a = out.semanticType;
+      const c = param?.semanticType;
+      if (a !== undefined && c !== undefined && a !== 'unknown' && c !== 'unknown' && a !== c)
+        add('PROC_BINDING_TYPE_MISMATCH', `${bp}/from/output`);
+    });
+    for (const p of mine.contract.inputs) {
+      if (p.required === true && !bound.has(p.name)) add('PROC_UNBOUND_REQUIRED_INPUT', `/steps/${index}`);
+    }
+  }
+
+  // Condition references to step outputs must name a declared output of a capability step.
+  const checkOutputRef = (path: string, at: string): void => {
+    const segs = path.split('.');
+    if (segs[0] !== 'steps' || segs.length < 4) return;
+    const producer = contracts.get(segs[1] as string);
+    if (producer === undefined) return;
+    if (!producer.contract.outputs.some((o) => o.name === segs[3])) add('PROC_BINDING_OUTPUT_UNDECLARED', at);
+  };
+  def.steps.forEach((s, i) => {
+    if (s.kind === 'decision') checkOutputRef(s.condition.path, `/steps/${i}/condition/path`);
+  });
+  (def.then ?? []).forEach((c, j) => checkOutputRef(c.path, `/then/${j}/path`));
+
+  if (findings.length > 0) return { ok: false, findings };
+  const steps = capabilitySteps.map(({ step }) => (contracts.get(step.id) as { state: StepRegistryState }).state);
+  const digest = String(
+    new Sha256Hasher().hash(
+      canonicalStringify({
+        schema: 'xo.procedure-registry-state.v1',
+        compilationId: compilation.compilationId,
+        graphHash: compilation.graphHash,
+        steps: steps.map((s) => ({ stepId: s.stepId, capabilityId: s.capabilityId, stateDigest: s.stateDigest })),
+      }),
+    ),
+  );
+  return { ok: true, snapshot: { compilationId: compilation.compilationId, graphHash: compilation.graphHash, digest, steps } };
+}
+
+/** True when ANY step is presumed effectful: an advisory `effectIntent: write` (escalation-only) or an `external_tool` class. Authoritative effect classification is unresolved (owner O-2) and is NOT claimed. */
+export function presumedEffectful(def: ProcedureDefinition, snapshot: RegistrySnapshot | undefined): boolean {
+  if (def.steps.some((s) => s.kind === 'capability' && s.effectIntent === 'write')) return true;
+  return snapshot?.steps.some((s) => s.implementationClass === 'external_tool') === true;
+}

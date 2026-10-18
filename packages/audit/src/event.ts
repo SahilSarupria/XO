@@ -38,6 +38,13 @@ export const AUDIT_EVENT_TYPES = [
   'approval.denied',
   'audit.read',
   'audit.purged',
+  // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.
+  'procedure.authored',
+  'procedure.validated',
+  'procedure.approval.granted',
+  'procedure.approval.denied',
+  'procedure.attempted',
+  'procedure.denied',
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
@@ -55,6 +62,7 @@ export const AUDIT_TARGET_KINDS = [
   'source',
   'human-task',
   'audit-log',
+  'procedure',
 ] as const;
 export type AuditTargetKind = (typeof AUDIT_TARGET_KINDS)[number];
 

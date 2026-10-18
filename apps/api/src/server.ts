@@ -6,7 +6,7 @@ import type { Logger } from '@xo/logger';
 import { LocalFsBlobStore } from '@xo/storage';
 import type { ApiRequest, ApiResponse } from './http/types.js';
 import { Router } from './http/router.js';
-import { readRawBody, parseJsonBody } from './http/body.js';
+import { BodyTooLargeError, readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
 import { createApiKeyAuth } from './http/auth.js';
@@ -77,6 +77,12 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
     query: url.searchParams,
     headers: incoming.headers,
     rawBody,
+    rawBodyLimited: async (maxBytes: number): Promise<Buffer> => {
+      cachedBody ??= readRawBody(incoming, maxBytes);
+      const buffer = await cachedBody;
+      if (buffer.length > maxBytes) throw new BodyTooLargeError(maxBytes);
+      return buffer;
+    },
     json: async <T>(): Promise<Result<T, XoError>> => {
       const buffer = await rawBody();
       return parseJsonBody<T>(buffer);

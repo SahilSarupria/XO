@@ -294,6 +294,114 @@ export const openApiDocument = {
     },
 
     // P0.8: persistent, step-aware workflow execution.
+    '/workspaces/{workspaceId}/procedures:validate': {
+      post: {
+        summary:
+          "Validate a procedure definition against the strict schema and this workspace's compilation registry (pure: persists nothing)",
+        description:
+          'Requires permission `procedure.author` (default deny). Body = the ProcedureDefinition JSON, at most 262,144 UTF-8 bytes. Always 200 for a well-formed request: `{ valid, findings[], procedureHash?, registryStateDigest? }`. Findings are stable codes + JSON pointers only; no submitted value is echoed. A missing, failed, other-workspace or drifted compilation fails closed (PROC_COMPILATION_UNAVAILABLE / PROC_COMPILATION_DRIFT). Execution is not part of this API.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureDefinition' } } } },
+        responses: {
+          '200': {
+            description: 'Validation report',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureValidationReport' } } },
+          },
+          '401': { description: 'Missing/invalid API key' },
+          '403': { description: 'Principal lacks procedure.author' },
+          '404': { description: 'Workspace not owned by the caller' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedures': {
+      get: {
+        summary: 'List procedures and their versions with computed lifecycle',
+        description:
+          'Requires `procedure.read`. `lifecycle` is computed from persisted facts and the CURRENT registry state: draft | approved | approval_stale | approval_invalid | approval_unverifiable. `executable` is always false in this milestone.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: '{ procedures: [{ procedureId, versions: [...] }] }' },
+          '401': { description: 'Missing/invalid API key' },
+          '403': { description: 'Principal lacks procedure.read' },
+          '404': { description: 'Workspace not owned by the caller' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedures/{procedureId}': {
+      get: {
+        summary: 'Read one procedure version (latest unless ?version=n)',
+        description:
+          'Requires `procedure.read`. An unknown procedure, an unknown version, and a procedure in another workspace are indistinguishable (404).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'procedureId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'version', in: 'query', required: false, schema: { type: 'integer', minimum: 1 } },
+        ],
+        responses: {
+          '200': {
+            description: 'ProcedureView',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureView' } } },
+          },
+          '401': { description: 'Missing/invalid API key' },
+          '403': { description: 'Principal lacks procedure.read' },
+          '404': { description: 'Unknown procedure/version, or workspace not owned by the caller' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedures/{procedureId}/versions/{version}': {
+      put: {
+        summary: 'Create a draft procedure version (immutable once created)',
+        description:
+          'Requires `procedure.author`, checked BEFORE the body is read: an unauthorized caller leaves no file. Body = ProcedureDefinition (<= 262,144 UTF-8 bytes); its procedureId and version must equal the path. Created with an atomic put-if-absent: an existing version is never overwritten (409).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'procedureId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'version', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } },
+        ],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureDefinition' } } } },
+        responses: {
+          '201': {
+            description: 'Draft created',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureView' } } },
+          },
+          '400': { description: 'Rejected: findings[] (stable codes + JSON pointers, never values)' },
+          '401': { description: 'Missing/invalid API key' },
+          '403': { description: 'Principal lacks procedure.author' },
+          '404': { description: 'Workspace not owned by the caller' },
+          '409': { description: 'Version already exists (published versions are immutable)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedures/{procedureId}/versions/{version}/approve': {
+      post: {
+        summary: 'Approve a procedure version for its CURRENT validated registry state',
+        description:
+          'Requires `procedure.approve`. The approver is the authenticated principal; there is no body field, header or query parameter that can name one. The server re-validates against the registry at approval time and refuses with findings if anything blocks. A service principal cannot approve a procedure presumed to have side effects (advisory write intent or external tool). Body is optional and closed: only `acknowledgment` (string) is accepted, and is required when the procedure has author-asserted steps or unknowns. The approval binds procedureHash, the validation report hash, the registry state digest and per-step contract hash / permission fingerprint / binding id. Documented limits (not enforced here): there is no approval revocation in this milestone; the interval between a check and any later effect is not closed by approval; XO makes no claim that an approver is independent of the author (one principal may author and approve).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'procedureId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'version', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: { type: 'object', additionalProperties: false, properties: { acknowledgment: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'ProcedureView with approval',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureView' } } },
+          },
+          '400': { description: 'Body rejected, validation failed against the registry, or acknowledgment missing' },
+          '401': { description: 'Missing/invalid API key' },
+          '403': { description: 'Principal lacks procedure.approve, or a service principal approving a possibly effectful procedure' },
+          '404': { description: 'Unknown procedure/version, or workspace not owned by the caller' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflows': {
       get: {
         summary: "Discover the workflows composed from this workspace's stored compilations",
@@ -797,6 +905,48 @@ export const openApiDocument = {
       },
     },
     schemas: {
+      ProcedureDefinition: {
+        type: 'object',
+        description:
+          'Closed, strict schema (xo.procedure/1). Client input never defines permissions, effects, limits, human-gate status, approvers or binding state; unknown or authority-bearing fields are rejected. inputs/outputs blocks are not accepted in this milestone.',
+        additionalProperties: false,
+        required: ['schema', 'procedureId', 'version', 'steps'],
+        properties: {
+          schema: { type: 'string', enum: ['xo.procedure/1'] },
+          procedureId: { type: 'string' },
+          version: { type: 'integer', minimum: 1 },
+          title: { type: 'string' },
+          compilationRef: { type: 'object', properties: { compilationId: { type: 'string' }, graphHash: { type: 'string' } } },
+          steps: { type: 'array', maxItems: 25, items: { type: 'object' } },
+          unknowns: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      ProcedureValidationReport: {
+        type: 'object',
+        properties: {
+          valid: { type: 'boolean' },
+          findings: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, path: { type: 'string' } } } },
+          procedureHash: { type: 'string' },
+          registryStateDigest: { type: 'string' },
+        },
+      },
+      ProcedureView: {
+        type: 'object',
+        properties: {
+          procedureId: { type: 'string' },
+          version: { type: 'integer' },
+          procedureHash: { type: 'string' },
+          lifecycle: { type: 'string', enum: ['draft', 'approved', 'approval_stale', 'approval_invalid', 'approval_unverifiable'] },
+          executable: {
+            type: 'boolean',
+            description: 'Always false in this milestone: nothing executes, and executability is computed at start, never stored.',
+          },
+          unknowns: { type: 'array', items: { type: 'string' } },
+          authorAssertedSteps: { type: 'array', items: { type: 'string' } },
+          approval: { type: 'object' },
+          definition: { $ref: '#/components/schemas/ProcedureDefinition' },
+        },
+      },
       Principal: {
         type: 'object',
         description:

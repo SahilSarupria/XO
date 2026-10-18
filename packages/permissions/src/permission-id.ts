@@ -124,6 +124,12 @@ export const Permissions = {
     execute: PermissionId('runtime.execute'),
     workflow: PermissionId('runtime.workflow'),
   },
+  procedure: {
+    author: PermissionId('procedure.author'),
+    approve: PermissionId('procedure.approve'),
+    execute: PermissionId('procedure.execute'),
+    read: PermissionId('procedure.read'),
+  },
   audit: {
     read: PermissionId('audit.read'),
     purge: PermissionId('audit.purge'),

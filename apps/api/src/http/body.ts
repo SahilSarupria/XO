@@ -2,6 +2,13 @@ import type { IncomingMessage } from 'node:http';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, XoError } from '@xo/errors';
 
+/** Raised when a body exceeds the byte cap in force for the route. Still an `INVALID_ARGUMENT` (400); routes with their own stable error shape can recognise it. */
+export class BodyTooLargeError extends XoError {
+  constructor(readonly maxBytes: number) {
+    super(ErrorCode.INVALID_ARGUMENT, `request body exceeds ${maxBytes} byte limit`);
+  }
+}
+
 const DEFAULT_MAX_BODY_BYTES = 64 * 1024 * 1024; // 64MB — generous enough for a .xo archive upload, bounded so a client can't OOM the process.
 
 /**
@@ -35,7 +42,7 @@ export function readRawBody(incoming: IncomingMessage, maxBytes: number = DEFAUL
       if (total > maxBytes) {
         failed = true;
         chunks.length = 0; // release what was buffered so far; nothing further is retained.
-        reject(new XoError(ErrorCode.INVALID_ARGUMENT, `request body exceeds ${maxBytes} byte limit`));
+        reject(new BodyTooLargeError(maxBytes));
         return;
       }
       chunks.push(chunk);

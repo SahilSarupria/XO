@@ -25,6 +25,7 @@
     "@xo/logger": "0.1.0",
     "@xo/package-sdk": "0.1.0",
     "@xo/permissions": "0.1.0",
+    "@xo/procedure": "0.1.0",
     "@xo/registry": "0.1.0",
     "@xo/registry-core": "0.1.0",
     "@xo/runtime": "0.1.0",

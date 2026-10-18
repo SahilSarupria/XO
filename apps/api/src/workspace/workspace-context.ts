@@ -161,3 +161,8 @@ export function workspaceExecutionsStore(record: WorkspaceRecord, config: Worksp
 export function workspaceWorkflowExecutionsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'workflow-executions'));
 }
+
+/** P1.1 M2 — procedure definitions (immutable versions) and their approval records, per workspace. */
+export function workspaceProceduresStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'procedures'));
+}

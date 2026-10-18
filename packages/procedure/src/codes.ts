@@ -38,7 +38,20 @@ export type ProcedureErrorCode =
   | 'PROC_GRAPH_CYCLE'
   | 'PROC_UNREACHABLE'
   | 'PROC_AMBIGUOUS_ORDER'
-  | 'PROC_EMPTY';
+  | 'PROC_EMPTY'
+  // P1.1 M2 — produced only by registry-dependent validation (apps/api), never by the pure M1 validator.
+  | 'PROC_PATH_MISMATCH'
+  | 'PROC_COMPILATION_REF_REQUIRED'
+  | 'PROC_COMPILATION_UNAVAILABLE'
+  | 'PROC_COMPILATION_DRIFT'
+  | 'PROC_UNRESOLVED_CAPABILITY'
+  | 'PROC_CONTRACT_MISMATCH'
+  | 'PROC_UNSUPPORTED_CAPABILITY_CLASS'
+  | 'PROC_PERMISSION_DECLARATION_UNRESOLVED'
+  | 'PROC_UNKNOWN_INPUT_PARAM'
+  | 'PROC_BINDING_OUTPUT_UNDECLARED'
+  | 'PROC_BINDING_TYPE_MISMATCH'
+  | 'PROC_UNBOUND_REQUIRED_INPUT';
 
 export interface ProcedureFinding {
   readonly code: ProcedureErrorCode;

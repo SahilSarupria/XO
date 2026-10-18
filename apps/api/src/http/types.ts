@@ -23,6 +23,11 @@ export interface ApiRequest {
   /** Raw body bytes, read once and cached — safe to call more than once. */
   readonly rawBody: () => Promise<Buffer>;
   /**
+   * Like `rawBody`, but enforces a ROUTE-SPECIFIC byte cap while reading (P1.1 M2: procedure bodies). Optional so request
+   * doubles that predate it keep compiling; handlers fall back to `rawBody()` plus a length check. Throws `BodyTooLargeError`.
+   */
+  readonly rawBodyLimited?: (maxBytes: number) => Promise<Buffer>;
+  /**
    * Parses the body as JSON. Returns a `Result` rather than throwing —
    * a malformed body is exactly the kind of "expected failure mode"
    * `@xo/types`' `Result` doc comment describes, not a programmer error.
