@@ -93,6 +93,7 @@ interface Rig {
   readonly server: TestServer;
   readonly sessionsDir: string;
   readonly logger: CapturingLogger;
+  readonly bindings: FsIdentityBindingStore;
   bind(sub: string): Promise<void>;
   challenge(): Promise<{ challengeId: string; nonce: string }>;
   /** A code Google would have issued for this sign-in attempt. */
@@ -102,7 +103,7 @@ interface Rig {
 }
 
 let n = 0;
-async function rig(opts: { withSecret?: boolean } = {}): Promise<Rig> {
+async function rig(opts: { withSecret?: boolean; selfSignup?: boolean } = {}): Promise<Rig> {
   const idp = await TestIdp.start();
   const sessionsDir = await mkdtemp(join(tmpdir(), 'xo-code-sessions-'));
   const bindDir = await mkdtemp(join(tmpdir(), 'xo-code-bind-'));
@@ -115,6 +116,7 @@ async function rig(opts: { withSecret?: boolean } = {}): Promise<Rig> {
     ...(opts.withSecret === false ? {} : { XO_API_GOOGLE_CLIENT_SECRET: SECRET }),
     XO_API_SESSIONS_DIR: sessionsDir,
     XO_API_OIDC_BINDINGS_DIR: bindDir,
+    ...(opts.selfSignup === true ? { XO_API_SELF_SIGNUP: '1' } : {}),
   });
   assert.ok(config);
   const logger = new CapturingLogger();
@@ -137,6 +139,7 @@ async function rig(opts: { withSecret?: boolean } = {}): Promise<Rig> {
     server,
     sessionsDir,
     logger,
+    bindings,
     async bind(sub) {
       const c = await bindings.create({
         bindingId: computeBindingId(idp.issuer, sub),
@@ -423,4 +426,73 @@ test('configuration: the secret needs the client id, is validated, and is never 
   assert.equal(ok?.tokenUri, 'https://oauth2.googleapis.com/token');
   // Without a secret there is no code exchange.
   assert.equal(loadSessionAuthConfig({ XO_API_GOOGLE_CLIENT_ID: CLIENT_ID })?.clientSecret, undefined);
+});
+
+async function signIn(r: Rig, sub: string): ReturnType<Rig['post']> {
+  const c = await r.challenge();
+  const code = r.codeFor(c.nonce, sub);
+  return r.post({ challengeId: c.challengeId, code, codeVerifier: VERIFIER, redirectUri: REDIRECT });
+}
+
+test('self sign-up is off by default: an unbound identity is still refused', async () => {
+  const r = await rig();
+  try {
+    const res = await signIn(r, 'g-newcomer');
+    assert.equal(res.status, 401);
+    assert.equal(errCode(res), 'XO_AUTH_IDENTITY_UNBOUND');
+    const found = await r.bindings.find(r.idp.issuer, 'g-newcomer');
+    assert.ok(found.ok && found.value === undefined);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up: a new verified identity gets its own identity and organisation; two customers never share either', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    assert.equal((await signIn(r, 'g-one')).status, 201);
+    assert.equal((await signIn(r, 'g-two')).status, 201);
+    const a = await r.bindings.find(r.idp.issuer, 'g-one');
+    const b = await r.bindings.find(r.idp.issuer, 'g-two');
+    assert.ok(a.ok && a.value !== undefined && b.ok && b.value !== undefined);
+    assert.match(a.value.identityId, /^usr_[0-9a-f]{24}$/);
+    assert.match(a.value.orgId ?? '', /^org_[0-9a-f]{24}$/);
+    assert.notEqual(a.value.identityId, b.value.identityId);
+    assert.notEqual(a.value.orgId, b.value.orgId);
+    assert.equal(a.value.principalKind, 'human');
+    // Signing in again reuses the same identity rather than creating another.
+    assert.equal((await signIn(r, 'g-one')).status, 201);
+    const again = await r.bindings.find(r.idp.issuer, 'g-one');
+    assert.ok(again.ok && again.value?.identityId === a.value.identityId);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up never overrides an operator revocation', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    assert.equal((await signIn(r, 'g-banned')).status, 201);
+    const rev = await r.bindings.revoke(r.idp.issuer, 'g-banned');
+    assert.ok(rev.ok);
+    const res = await signIn(r, 'g-banned');
+    assert.equal(res.status, 401);
+    assert.equal(errCode(res), 'XO_AUTH_IDENTITY_UNBOUND');
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up still requires a verified Google identity: a wrong nonce provisions nothing', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    const c = await r.challenge();
+    const code = r.codeFor('not-the-nonce', 'g-forged');
+    const res = await r.post({ challengeId: c.challengeId, code, codeVerifier: VERIFIER, redirectUri: REDIRECT });
+    assert.equal(res.status, 401);
+    const found = await r.bindings.find(r.idp.issuer, 'g-forged');
+    assert.ok(found.ok && found.value === undefined);
+  } finally {
+    await r.stop();
+  }
 });

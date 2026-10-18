@@ -54,6 +54,7 @@ export function createSessionAuth(config: SessionAuthConfig, options: SessionAut
     bindings,
     unbound,
     limits: options.limits ?? defaultLimits(),
+    selfSignup: config.selfSignup,
     ...(codeExchanger !== undefined ? { codeExchanger } : {}),
   });
   return { service, sessions, bindings, unbound };

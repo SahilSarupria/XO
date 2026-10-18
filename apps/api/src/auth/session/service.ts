@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AuthError, ErrorCode, XoError } from '@xo/errors';
 import type { IdentityBindingStore } from '../oidc/binding-store.interface.js';
 import type { IdTokenVerifier } from './id-token-verifier.js';
@@ -76,6 +77,8 @@ export class SessionAuthService {
       readonly bindings: IdentityBindingStore;
       readonly unbound: FsUnboundLog;
       readonly limits: SessionLimits;
+      /** Provision a private organisation on the first sign-in of a verified, never-bound identity. Never re-provisions a revoked binding. */
+      readonly selfSignup?: boolean;
       /** Absent unless the operator configured the OAuth client secret. */
       readonly codeExchanger?: CodeExchanger;
     },
@@ -123,12 +126,40 @@ export class SessionAuthService {
 
     const found = await this.deps.bindings.find(login.issuer, login.subject);
     if (!found.ok) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
+    if (found.value === undefined && this.deps.selfSignup === true) {
+      // Self sign-up: the identity is already verified (signature, issuer, audience, nonce). It gets its OWN
+      // identity and its OWN organisation label, derived from (issuer, sub), so two customers never share either.
+      // A revoked binding is an operator decision and is never overridden here.
+      const created = await this.provision(login.issuer, login.subject);
+      if (!created) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
+      return toResponse(await this.deps.sessions.create(login.issuer, login.subject));
+    }
     if (found.value === undefined || found.value.revokedAt !== undefined) {
       // Verified at the provider but not authorized here. Remember only (issuer, sub) so an operator can bind it.
       await this.deps.unbound.record(login.issuer, login.subject).catch(() => undefined);
       throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
     }
     return toResponse(await this.deps.sessions.create(login.issuer, login.subject));
+  }
+
+  /** Creates the private-organisation binding for a new identity. Returns false only on a storage failure. */
+  private async provision(issuer: string, subject: string): Promise<boolean> {
+    const bindingId = createHash('sha256')
+      .update(JSON.stringify([issuer, subject]))
+      .digest('hex');
+    const made = await this.deps.bindings.create({
+      bindingId,
+      issuer,
+      subject,
+      identityId: `usr_${bindingId.slice(0, 24)}`,
+      principalKind: 'human',
+      orgId: `org_${bindingId.slice(0, 24)}`,
+      createdAt: new Date().toISOString(),
+    });
+    if (made.ok) return true;
+    // A concurrent first sign-in of the same account created it first: that is fine, use the winner's record.
+    const again = await this.deps.bindings.find(issuer, subject);
+    return again.ok && again.value !== undefined && again.value.revokedAt === undefined;
   }
 
   async refresh(clientKey: string, refreshCredential: string): Promise<SessionResponse> {

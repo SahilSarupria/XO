@@ -303,6 +303,7 @@ async function desktop() {
     if (google) {
       googleApi.XO_API_GOOGLE_CLIENT_ID = env.XO_API_GOOGLE_CLIENT_ID ?? clientId;
       googleApi.XO_API_GOOGLE_CLIENT_SECRET = env.XO_API_GOOGLE_CLIENT_SECRET;
+      if (env.XO_API_SELF_SIGNUP !== undefined) googleApi.XO_API_SELF_SIGNUP = env.XO_API_SELF_SIGNUP;
       googleApi.XO_API_SESSIONS_DIR = env.XO_API_SESSIONS_DIR ?? join(dataDir, 'sessions');
       googleApi.XO_API_OIDC_BINDINGS_DIR = env.XO_API_OIDC_BINDINGS_DIR ?? join(dataDir, 'bindings');
       for (const d of [googleApi.XO_API_SESSIONS_DIR, googleApi.XO_API_OIDC_BINDINGS_DIR]) mkdirSync(d, { recursive: true, mode: 0o700 });

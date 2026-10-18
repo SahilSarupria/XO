@@ -37,6 +37,8 @@ export interface SessionAuthConfig {
   readonly clientSecret?: string;
   /** Where the server redeems authorization codes. Defaults to Google's. */
   readonly tokenUri: string;
+  /** When true, a first sign-in from a verified, never-seen identity is provisioned its own private organisation. Off by default. */
+  readonly selfSignup: boolean;
 }
 
 function bad(name: string, why: string): XoError {
@@ -91,5 +93,6 @@ export function loadSessionAuthConfig(env: Readonly<Record<string, string | unde
     ...(jwksUri !== undefined ? { jwksUri } : {}),
     ...(clientSecret !== undefined ? { clientSecret } : {}),
     tokenUri,
+    selfSignup: /^(1|true)$/i.test((env['XO_API_SELF_SIGNUP'] ?? '').trim()),
   };
 }
