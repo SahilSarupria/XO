@@ -1,0 +1,170 @@
+/*
+ * "Choose a workspace" screen, built to the XO Studio desktop design (XO_Studio_Desktop___Design.pdf).
+ * Scoped under .cw with its own variables so it does not depend on, or change, the shared tokens while
+ * the redesign of the other screens is in flight. When the shared tokens adopt the design palette,
+ * replace the --cw-* values below with var(--…) references and delete this note.
+ */
+.cw {
+  --cw-bg: #131313;
+  --cw-surface: #1a1a1a;
+  --cw-surface-selected: #1a1a1a;
+  --cw-tile: #232323;
+  --cw-tile-selected: #1d2b26;
+  --cw-border: #2b2b2b;
+  --cw-dashed: #333333;
+  --cw-text: #ecebe6;
+  --cw-muted: #9a9a96;
+  --cw-mint: #5fd4b0;
+  --cw-mint-ink: #0b1f18;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: var(--cw-bg);
+  color: var(--cw-text);
+  font-family: var(--font-sans);
+}
+.cw-panel {
+  width: 100%;
+  max-width: 35.25rem;
+  display: flex;
+  flex-direction: column;
+}
+.cw-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 2.1rem;
+  font-size: 1.06rem;
+  font-weight: 500;
+}
+.cw-mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.4rem;
+  background: var(--cw-mint);
+}
+.cw h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.cw-sub {
+  margin: 0.55rem 0 1.5rem;
+  color: var(--cw-muted);
+  font-size: 0.94rem;
+}
+.cw-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cw-mint);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cw-link:hover {
+  text-decoration: underline;
+}
+.cw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+.cw-option {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  width: 100%;
+  min-height: 4.4rem;
+  padding: 0 1.1rem;
+  border: 1px solid var(--cw-border);
+  border-radius: 0.75rem;
+  background: var(--cw-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cw-option:hover {
+  border-color: #3a3a3a;
+}
+.cw-option[aria-checked='true'] {
+  border-color: var(--cw-mint);
+  background: var(--cw-surface-selected);
+}
+.cw-tile {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.5rem;
+  background: var(--cw-tile);
+}
+.cw-option[aria-checked='true'] .cw-tile {
+  background: var(--cw-tile-selected);
+}
+.cw-text {
+  flex: 1;
+  min-width: 0;
+}
+.cw-name {
+  display: block;
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-meta {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--cw-muted);
+  font-size: 0.82rem;
+}
+.cw-check {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--cw-mint);
+}
+.cw-actions {
+  margin-top: 0.75rem;
+}
+.cw-dashed {
+  width: 100%;
+  min-height: 2.85rem;
+  border: 1px dashed var(--cw-dashed);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--cw-mint);
+  font: inherit;
+  font-size: 0.94rem;
+  cursor: pointer;
+}
+.cw-dashed:hover {
+  border-color: var(--cw-mint);
+}
+.cw-open {
+  margin-top: 1.6rem;
+  width: 100%;
+  min-height: 3.1rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: var(--cw-mint);
+  color: var(--cw-mint-ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cw-open:hover {
+  filter: brightness(1.06);
+}
+.cw :focus-visible {
+  outline: 2px solid var(--cw-mint);
+  outline-offset: 2px;
+}
