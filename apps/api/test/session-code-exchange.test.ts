@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { ErrorCode, StorageError } from '@xo/errors';
 import { TestServer } from './test-helpers.js';
 import { TestIdp, CapturingLogger } from './oidc-test-idp.js';
 import { FsIdentityBindingStore, computeBindingId } from '../src/auth/oidc/fs-binding-store.js';
@@ -94,6 +95,7 @@ interface Rig {
   readonly sessionsDir: string;
   readonly logger: CapturingLogger;
   readonly bindings: FsIdentityBindingStore;
+  readonly bindDir: string;
   bind(sub: string): Promise<void>;
   challenge(): Promise<{ challengeId: string; nonce: string }>;
   /** A code Google would have issued for this sign-in attempt. */
@@ -103,11 +105,18 @@ interface Rig {
 }
 
 let n = 0;
-async function rig(opts: { withSecret?: boolean; selfSignup?: boolean } = {}): Promise<Rig> {
+async function rig(opts: { withSecret?: boolean; selfSignup?: boolean; failCreate?: boolean } = {}): Promise<Rig> {
   const idp = await TestIdp.start();
   const sessionsDir = await mkdtemp(join(tmpdir(), 'xo-code-sessions-'));
   const bindDir = await mkdtemp(join(tmpdir(), 'xo-code-bind-'));
-  const bindings = new FsIdentityBindingStore(bindDir);
+  const realBindings = new FsIdentityBindingStore(bindDir);
+  // A storage failure while provisioning: create() fails, find() still works.
+  const bindings: FsIdentityBindingStore =
+    opts.failCreate === true
+      ? (Object.assign(Object.create(realBindings), {
+          createIfAbsent: async () => ({ ok: false, error: new StorageError(ErrorCode.STORAGE_WRITE_FAILED, 'disk full') }),
+        }) as FsIdentityBindingStore)
+      : realBindings;
   const google = new FakeGoogleToken(idp);
   const config = loadSessionAuthConfig({
     XO_API_GOOGLE_CLIENT_ID: CLIENT_ID,
@@ -140,6 +149,7 @@ async function rig(opts: { withSecret?: boolean; selfSignup?: boolean } = {}): P
     sessionsDir,
     logger,
     bindings,
+    bindDir,
     async bind(sub) {
       const c = await bindings.create({
         bindingId: computeBindingId(idp.issuer, sub),
@@ -447,7 +457,7 @@ test('self sign-up is off by default: an unbound identity is still refused', asy
   }
 });
 
-test('self sign-up: a new verified identity gets its own identity and organisation; two customers never share either', async () => {
+test('self sign-up: a new verified identity gets its own personal identity and NO organisation; two customers never share an identity', async () => {
   const r = await rig({ selfSignup: true });
   try {
     assert.equal((await signIn(r, 'g-one')).status, 201);
@@ -456,9 +466,9 @@ test('self sign-up: a new verified identity gets its own identity and organisati
     const b = await r.bindings.find(r.idp.issuer, 'g-two');
     assert.ok(a.ok && a.value !== undefined && b.ok && b.value !== undefined);
     assert.match(a.value.identityId, /^usr_[0-9a-f]{24}$/);
-    assert.match(a.value.orgId ?? '', /^org_[0-9a-f]{24}$/);
+    assert.equal(a.value.orgId, undefined);
+    assert.equal(b.value.orgId, undefined);
     assert.notEqual(a.value.identityId, b.value.identityId);
-    assert.notEqual(a.value.orgId, b.value.orgId);
     assert.equal(a.value.principalKind, 'human');
     // Signing in again reuses the same identity rather than creating another.
     assert.equal((await signIn(r, 'g-one')).status, 201);
@@ -492,6 +502,127 @@ test('self sign-up still requires a verified Google identity: a wrong nonce prov
     assert.equal(res.status, 401);
     const found = await r.bindings.find(r.idp.issuer, 'g-forged');
     assert.ok(found.ok && found.value === undefined);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up: personal work stays private to its owner, and an unauthenticated caller sees nothing', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    const tokens = async (sub: string): Promise<string> => (await signIn(r, sub)).json<{ accessCredential: string }>().accessCredential;
+    const a = await tokens('g-priv-a');
+    const b = await tokens('g-priv-b');
+    const as = (t: string): Record<string, string> => ({ authorization: `Bearer ${t}` });
+    const made = await r.server.request('POST', '/workspaces', { name: 'A private' }, as(a), { skipAuth: true });
+    assert.equal(made.status, 201, made.bodyText.slice(0, 200));
+    const wsId = made.json<{ workspaceId: string }>().workspaceId;
+
+    const listA = await r.server.request('GET', '/workspaces', undefined, as(a), { skipAuth: true });
+    assert.ok(listA.bodyText.includes(wsId));
+    const listB = await r.server.request('GET', '/workspaces', undefined, as(b), { skipAuth: true });
+    assert.equal(listB.status, 200);
+    assert.ok(!listB.bodyText.includes(wsId));
+    const intoA = await r.server.request('GET', `/workspaces/${wsId}/executions`, undefined, as(b), { skipAuth: true });
+    assert.ok(intoA.status === 403 || intoA.status === 404, `expected 403/404, got ${intoA.status}`);
+    const anon = await r.server.request('GET', '/workspaces', undefined, {}, { skipAuth: true });
+    assert.equal(anon.status, 401);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up: concurrent first sign-ins of the same account leave exactly one consistent binding', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    const results = await Promise.all([signIn(r, 'g-race'), signIn(r, 'g-race'), signIn(r, 'g-race')]);
+    assert.deepEqual(
+      results.map((x) => x.status),
+      [201, 201, 201],
+    );
+    const list = await r.bindings.list();
+    assert.ok(list.ok);
+    assert.equal(list.value.filter((x) => x.subject === 'g-race').length, 1);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up: a storage failure while provisioning is a retryable 503 and grants no session', async () => {
+  const r = await rig({ selfSignup: true, failCreate: true });
+  try {
+    const res = await signIn(r, 'g-disk');
+    assert.equal(res.status, 503);
+    const found = await r.bindings.find(r.idp.issuer, 'g-disk');
+    assert.ok(found.ok && found.value === undefined);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('development access key: same trusted-principal path and the same isolation as a session; a bad key is refused', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    // The server's default credential is a development access key (xoak_) bound to its own identity.
+    const keyMade = await r.server.request('POST', '/workspaces', { name: 'key-owned' });
+    assert.equal(keyMade.status, 201);
+    const keyWs = keyMade.json<{ workspaceId: string; identityId: string }>();
+    assert.equal(keyWs.identityId, r.server.identityId); // derived from the key's server-side record, not from the request
+
+    const access = (await signIn(r, 'g-vs-key')).json<{ accessCredential: string }>().accessCredential;
+    const bearer = { authorization: `Bearer ${access}` };
+    const sessMade = await r.server.request('POST', '/workspaces', { name: 'session-owned' }, bearer, { skipAuth: true });
+    assert.equal(sessMade.status, 201);
+    const sessWs = sessMade.json<{ workspaceId: string; identityId: string }>();
+    assert.notEqual(sessWs.identityId, keyWs.identityId);
+
+    // Neither credential type can see or enter the other's workspace.
+    const keyList = await r.server.request('GET', '/workspaces');
+    assert.ok(keyList.bodyText.includes(keyWs.workspaceId) && !keyList.bodyText.includes(sessWs.workspaceId));
+    const sessList = await r.server.request('GET', '/workspaces', undefined, bearer, { skipAuth: true });
+    assert.ok(sessList.bodyText.includes(sessWs.workspaceId) && !sessList.bodyText.includes(keyWs.workspaceId));
+    const cross = await r.server.request('GET', `/workspaces/${sessWs.workspaceId}/executions`);
+    assert.ok(cross.status === 403 || cross.status === 404, `expected 403/404, got ${cross.status}`);
+
+    // A client-supplied identity or organisation is ignored, and an unknown key is a 401.
+    const spoof = await r.server.request('GET', '/workspaces', undefined, { 'x-xo-identity': sessWs.identityId, 'x-xo-org': 'org_other' });
+    assert.ok(!spoof.bodyText.includes(sessWs.workspaceId));
+    const bad = await r.server.request(
+      'GET',
+      '/workspaces',
+      undefined,
+      { authorization: 'Bearer xoak_not-a-real-key' },
+      { skipAuth: true },
+    );
+    assert.equal(bad.status, 401);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up cannot overwrite a corrupt existing record: 503, the file is untouched, no session', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    const file = join(r.bindDir, 'identity-bindings', 'by-subject', `${computeBindingId(r.idp.issuer, 'g-corrupt')}.json`);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, '{corrupt');
+    const res = await signIn(r, 'g-corrupt');
+    assert.equal(res.status, 503);
+    assert.ok(!res.bodyText.includes('xoas_'));
+    assert.equal(await readFile(file, 'utf8'), '{corrupt');
+  } finally {
+    await r.stop();
+  }
+});
+
+test('self sign-up leaves a manually bound account exactly as the operator made it', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    await r.bind('g-manual'); // identity "alice", set by the operator
+    const res = await signIn(r, 'g-manual');
+    assert.equal(res.status, 201);
+    const found = await r.bindings.find(r.idp.issuer, 'g-manual');
+    assert.ok(found.ok && found.value?.identityId === 'alice');
   } finally {
     await r.stop();
   }

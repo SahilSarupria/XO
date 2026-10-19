@@ -18,27 +18,48 @@ are an owner opt-in and must be verified; personal Gmail accounts are allowed an
 - `orgId` is only a label. Workspaces are owned by `identityId` (a person), so isolation between people already holds.
 - The ID-token verifier deliberately returns only `(issuer, sub)`. It ignores `email`, `email_verified` and `hd`.
 
-## Step 1 (built): private organisation on first sign-in
+## Step 1 (built): individual-first sign-in
 
-Enabled by `XO_API_SELF_SIGNUP=1` (off by default; with it off, behaviour is unchanged and an operator must bind each account).
+Revised after audit: the first version created an organisation for every new user. That was wrong for the product: `orgId` is only a
+label (nothing authorises on it, and there are no membership records), so it implied a company the person never made. Now:
 
-On the first verified sign-in of an identity with no binding, the API creates one:
+Enabled by `XO_API_SELF_SIGNUP=1` (off by default; with it off, an operator must bind each account). Never enable it in a public
+environment merely to make a demo work.
 
-- `identityId = usr_<first 24 hex of sha256([issuer, sub])>`, `orgId = org_<same 24 hex>`, kind `human`.
-- Derived from the verified pair only, so it is stable, unguessable from outside, and two customers cannot collide in practice.
+On the first verified sign-in of an identity with no binding, the API creates a **personal identity and no organisation**:
+
+- `identityId = usr_<first 24 hex of sha256([issuer, sub])>`, kind `human`, no `orgId`.
+- Everything the person creates (workspaces, sources, runs, approvals) is already scoped to that identity server-side, so personal work is
+  private by construction. Tested: a second self-signed-up person cannot list or reach it; no credential gets a 401.
 - A **revoked** binding is never re-created. Revocation is an operator decision and wins.
-- A concurrent first sign-in of the same account is safe: the loser reuses the winner's binding.
-- Nothing from the token other than `(issuer, sub)` is stored. No email, no name.
+- Concurrent first sign-ins of one account leave exactly one binding (tested). A storage failure while provisioning is a retryable 503 with
+  no session and no binding (tested), so no half-made or privileged state.
+- Only `(issuer, sub)` is stored. No email, no name.
+- Bindings made earlier by an operator (with or without `orgId`) are untouched. No migration is needed.
 
-Known limits of step 1: there is no cap on how many accounts can be created (it is bounded only by the sign-in rate limits and by
-needing a real Google login), and the organisation has exactly one member.
+Organisations are created or joined later by an explicit action (step 2). Joining one will not move or expose personal work: membership
+grants nothing by itself, and personal workspaces stay owned by the person.
+
+Known limits (found in review, not yet fixed):
+
+- ~~Check-then-write creation~~ **Fixed.** Self sign-up uses `createIfAbsent`: the record is written and fsynced to a private temp file, then
+  published with a hard link, which fails if any entry (active, revoked, corrupt, oversized, symlink) already has that name. So concurrent
+  first sign-ins have exactly one winner, and a revoked or corrupt record is never replaced (a corrupt record is a retryable 503 and needs
+  an operator; it is never read as "absent"). Guarantee depends on the filesystem supporting hard links; if it does not, creation fails
+  closed with a storage error rather than falling back to an overwriting write. The operator `bind` path still uses `create`.
+- Account creation is limited only by the per-address exchange limit (10 a minute) and the outstanding-challenge cap. Behind a reverse
+  proxy the "address" is the proxy unless it is forwarded, so all users would share one bucket. Add an account-creation cap and alert
+  before public rollout.
+
+Also: no cap on account creation (bounded only by sign-in rate limits and needing a real Google login); the only automated
+tests use a fake identity provider, not real Google.
 
 ## Step 2 (designed): organisations and invites
 
 New operator-independent store, `OrgStore`, separate from bindings:
 
 - `Org { orgId, name, createdAt }`, `Membership { orgId, identityId, role: owner | admin | member, addedAt }`.
-- The private org from step 1 gets a membership row with role `owner` for its creator.
+- Creating an organisation is an explicit action by a signed-in person: they become its `owner`; their personal work is not moved.
 - **Invite**: an owner/admin creates `{ orgId, role, expiresAt, maxUses: 1, createdBy }`. The API returns a link token **once**; only its
   SHA-256 is stored. Tokens are 256-bit random, expire (default 7 days), are single use, and are revocable.
 - **Accepting** requires a verified sign-in. The invitee's identity is added as a member of the inviting org. It does not move their

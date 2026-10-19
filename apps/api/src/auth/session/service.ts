@@ -77,7 +77,7 @@ export class SessionAuthService {
       readonly bindings: IdentityBindingStore;
       readonly unbound: FsUnboundLog;
       readonly limits: SessionLimits;
-      /** Provision a private organisation on the first sign-in of a verified, never-bound identity. Never re-provisions a revoked binding. */
+      /** Provision a personal identity (no organisation) on the first sign-in of a verified, never-bound identity. Never re-provisions a revoked binding. */
       readonly selfSignup?: boolean;
       /** Absent unless the operator configured the OAuth client secret. */
       readonly codeExchanger?: CodeExchanger;
@@ -128,10 +128,12 @@ export class SessionAuthService {
     if (!found.ok) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
     if (found.value === undefined && this.deps.selfSignup === true) {
       // Self sign-up: the identity is already verified (signature, issuer, audience, nonce). It gets its OWN
-      // identity and its OWN organisation label, derived from (issuer, sub), so two customers never share either.
-      // A revoked binding is an operator decision and is never overridden here.
-      const created = await this.provision(login.issuer, login.subject);
-      if (!created) throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
+      // personal identity, derived from (issuer, sub), and NO organisation: organisations are created or joined
+      // later by an explicit act, never implied by signing in.
+      const outcome = await this.provision(login.issuer, login.subject);
+      if (outcome === 'unavailable')
+        throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
+      if (outcome === 'revoked') throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
       return toResponse(await this.deps.sessions.create(login.issuer, login.subject));
     }
     if (found.value === undefined || found.value.revokedAt !== undefined) {
@@ -142,24 +144,30 @@ export class SessionAuthService {
     return toResponse(await this.deps.sessions.create(login.issuer, login.subject));
   }
 
-  /** Creates the private-organisation binding for a new identity. Returns false only on a storage failure. */
-  private async provision(issuer: string, subject: string): Promise<boolean> {
+  /**
+   * Creates the personal binding (own identity, no organisation) with an atomic create-only-if-absent, so it can never
+   * replace an existing record. Outcomes: 'ok' (we created it, or a concurrent first sign-in did and it is active);
+   * 'revoked' (a record exists and is revoked: an operator decision, left untouched); 'unavailable' (storage failed,
+   * or a record exists but cannot be read or validated: fail closed, never treated as absent).
+   */
+  private async provision(issuer: string, subject: string): Promise<'ok' | 'revoked' | 'unavailable'> {
     const bindingId = createHash('sha256')
       .update(JSON.stringify([issuer, subject]))
       .digest('hex');
-    const made = await this.deps.bindings.create({
+    const made = await this.deps.bindings.createIfAbsent({
       bindingId,
       issuer,
       subject,
       identityId: `usr_${bindingId.slice(0, 24)}`,
       principalKind: 'human',
-      orgId: `org_${bindingId.slice(0, 24)}`,
       createdAt: new Date().toISOString(),
     });
-    if (made.ok) return true;
-    // A concurrent first sign-in of the same account created it first: that is fine, use the winner's record.
-    const again = await this.deps.bindings.find(issuer, subject);
-    return again.ok && again.value !== undefined && again.value.revokedAt === undefined;
+    if (made.ok) return 'ok';
+    if (made.error.code !== ErrorCode.ALREADY_EXISTS) return 'unavailable';
+    // Something is already there. Use it only if it is a valid ACTIVE record (a concurrent first sign-in won the race).
+    const existing = await this.deps.bindings.find(issuer, subject);
+    if (!existing.ok || existing.value === undefined) return 'unavailable';
+    return existing.value.revokedAt === undefined ? 'ok' : 'revoked';
   }
 
   async refresh(clientKey: string, refreshCredential: string): Promise<SessionResponse> {

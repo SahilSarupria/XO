@@ -37,7 +37,7 @@ export interface SessionAuthConfig {
   readonly clientSecret?: string;
   /** Where the server redeems authorization codes. Defaults to Google's. */
   readonly tokenUri: string;
-  /** When true, a first sign-in from a verified, never-seen identity is provisioned its own private organisation. Off by default. */
+  /** When true, a first sign-in from a verified, never-seen identity is provisioned its own personal identity (no organisation). Off by default. */
   readonly selfSignup: boolean;
 }
 

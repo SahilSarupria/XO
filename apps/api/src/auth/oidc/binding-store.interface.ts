@@ -26,6 +26,13 @@ export interface IdentityBinding {
 }
 
 export interface IdentityBindingStore {
+  /**
+   * Atomic create-only-if-absent. Succeeds only if NO directory entry exists for this (issuer, subject): a readable
+   * active record, a revoked one, a corrupt or unreadable one, and anything else all make it fail with `ALREADY_EXISTS`
+   * and change nothing. Unlike `create`, it never replaces a record, so it can neither resurrect a revocation nor race
+   * with one. Used by self sign-up; the operator path keeps `create`.
+   */
+  createIfAbsent(binding: IdentityBinding): Promise<Result<void, XoError>>;
   /** Fails `ALREADY_EXISTS` if an active binding exists for this (issuer, subject). Replaces a revoked one (explicit operator re-binding). */
   create(binding: IdentityBinding): Promise<Result<void, XoError>>;
   /** `undefined` means no record. A corrupt record is also reported as no record (fail closed). */

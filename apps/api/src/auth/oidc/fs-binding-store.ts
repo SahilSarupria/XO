@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { constants } from 'node:fs';
-import { mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
+import { link, mkdir, open, readdir, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
@@ -120,6 +120,37 @@ export class FsIdentityBindingStore implements IdentityBindingStore {
     } finally {
       await handle.close();
     }
+  }
+
+  /**
+   * Create-only-if-absent. The record is written completely and fsynced to a private temp file, then published with
+   * `link(2)`, which fails with EEXIST if ANY entry (file, corrupt file, symlink, dangling symlink) already has the target
+   * name. So concurrent creators get exactly one winner, the winner's record is never visible half-written, and an existing
+   * record of any kind (revoked or corrupt included) is never replaced. A revocation cannot be overwritten either: `revoke`
+   * only acts on an existing record, and this method never replaces one. If the filesystem cannot hard-link, the call
+   * fails closed with a storage error; it does NOT fall back to an overwriting write.
+   */
+  async createIfAbsent(binding: IdentityBinding): Promise<Result<void, XoError>> {
+    const target = this.pathFor(binding.issuer, binding.subject);
+    const tmp = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.new`;
+    try {
+      await mkdir(this.dir, { recursive: true, mode: 0o700 });
+      const handle = await open(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+      try {
+        await handle.writeFile(JSON.stringify(binding), { encoding: 'utf8' });
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await link(tmp, target);
+    } catch (cause) {
+      await unlink(tmp).catch(() => undefined);
+      if (isErrno(cause, 'EEXIST')) return err(new XoError(ErrorCode.ALREADY_EXISTS, 'a binding record already exists for this identity'));
+      return err(new StorageError(ErrorCode.STORAGE_WRITE_FAILED, 'could not write the binding record', { cause }));
+    }
+    await unlink(tmp).catch(() => undefined);
+    await this.syncDirectory().catch(() => undefined);
+    return ok(undefined);
   }
 
   async create(binding: IdentityBinding): Promise<Result<void, XoError>> {
