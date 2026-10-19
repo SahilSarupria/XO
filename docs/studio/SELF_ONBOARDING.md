@@ -47,12 +47,24 @@ Known limits (found in review, not yet fixed):
   first sign-ins have exactly one winner, and a revoked or corrupt record is never replaced (a corrupt record is a retryable 503 and needs
   an operator; it is never read as "absent"). Guarantee depends on the filesystem supporting hard links; if it does not, creation fails
   closed with a storage error rather than falling back to an overwriting write. The operator `bind` path still uses `create`.
-- Account creation is limited only by the per-address exchange limit (10 a minute) and the outstanding-challenge cap. Behind a reverse
-  proxy the "address" is the proxy unless it is forwarded, so all users would share one bucket. Add an account-creation cap and alert
-  before public rollout.
+- ~~Account creation cap~~ **Added.** At most `XO_API_SELF_SIGNUP_MAX_PER_DAY` (default 200) new self-created accounts in any rolling 24 hours.
+  People who already have an account are never affected. At the limit a new person gets a 429 "new sign-ups are paused for the moment"; no
+  binding or session is created. If the existing accounts cannot be counted, sign-up fails closed (503). It is a soft cap: first sign-ins in
+  flight at the same instant can overshoot by that number. Alerting: a structured warning line (`self_signup_near_cap` at 80%,
+  `self_signup_cap_reached`), at most one per kind per minute, counts only, no identity. Point a log alert at those event names.
+- ~~Shared proxy address~~ **Added.** Set `XO_API_TRUSTED_PROXY_HOPS` to the number of proxies you control in front of the API (0 to 5,
+  default 0). The client address for rate limits is then taken from `X-Forwarded-For` that many entries from the right; entries to its
+  left are client-controlled and ignored, and a missing or malformed header falls back to the connection address. Leave it at 0 when
+  nothing is in front of the API; setting it too high lets a client choose its own address.
+- Rate limits and the cap counters are per process. Several API instances multiply the sign-in limits; the 24-hour cap reads shared
+  storage, so it holds across instances on the same disk.
 
-Also: no cap on account creation (bounded only by sign-in rate limits and needing a real Google login); the only automated
-tests use a fake identity provider, not real Google.
+Isolation evidence: existing per-route tests prove another identity gets 404 on approvals, executions, human tasks, packages, registry,
+runtime, sources, compilations and workflows (they use API keys, which share the same request path as session tokens). A sweep test with
+two self-signed-up people now covers the workspace, sources, compilations, executions, human-tasks, workflows and workflow-executions
+routes through real session tokens. Registry routes that need query parameters are covered only by the existing key-based test.
+
+The only automated sign-in tests use a fake identity provider, not real Google.
 
 ## Step 2 (designed): organisations and invites
 

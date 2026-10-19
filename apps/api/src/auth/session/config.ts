@@ -39,6 +39,18 @@ export interface SessionAuthConfig {
   readonly tokenUri: string;
   /** When true, a first sign-in from a verified, never-seen identity is provisioned its own personal identity (no organisation). Off by default. */
   readonly selfSignup: boolean;
+  /** Most NEW self-signed-up accounts allowed in any rolling 24 hours. Existing accounts are never affected. */
+  readonly selfSignupMaxPerDay: number;
+}
+
+export const DEFAULT_SELF_SIGNUP_MAX_PER_DAY = 200;
+function parseMaxPerDay(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SELF_SIGNUP_MAX_PER_DAY;
+  const text = raw.trim();
+  const n = Number(text);
+  if (!/^\d+$/.test(text) || n < 1 || n > 1_000_000)
+    throw bad('XO_API_SELF_SIGNUP_MAX_PER_DAY', 'must be a whole number from 1 to 1000000');
+  return n;
 }
 
 function bad(name: string, why: string): XoError {
@@ -94,5 +106,6 @@ export function loadSessionAuthConfig(env: Readonly<Record<string, string | unde
     ...(clientSecret !== undefined ? { clientSecret } : {}),
     tokenUri,
     selfSignup: /^(1|true)$/i.test((env['XO_API_SELF_SIGNUP'] ?? '').trim()),
+    selfSignupMaxPerDay: parseMaxPerDay(env['XO_API_SELF_SIGNUP_MAX_PER_DAY']),
   };
 }

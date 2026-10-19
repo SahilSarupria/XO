@@ -68,6 +68,15 @@ function challengeInvalid(): AuthError {
   return new AuthError(ErrorCode.AUTH_CHALLENGE_INVALID, 'the sign-in attempt is invalid or has expired; start again');
 }
 
+export interface SelfSignupEvent {
+  readonly kind: 'cap_reached' | 'near_cap';
+  /** New self-signed-up accounts in the last 24 hours, and the configured limit. */
+  readonly last24h: number;
+  readonly limit: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export class SessionAuthService {
   constructor(
     private readonly deps: {
@@ -79,6 +88,11 @@ export class SessionAuthService {
       readonly limits: SessionLimits;
       /** Provision a personal identity (no organisation) on the first sign-in of a verified, never-bound identity. Never re-provisions a revoked binding. */
       readonly selfSignup?: boolean;
+      /** Most NEW self-signed-up accounts in any rolling 24 hours (default: unlimited when absent, e.g. in tests that do not set it). */
+      readonly selfSignupMaxPerDay?: number;
+      /** Operational signal for alerting. Carries counts only, never an identity. */
+      readonly onSelfSignupEvent?: (event: SelfSignupEvent) => void;
+      readonly now?: () => number;
       /** Absent unless the operator configured the OAuth client secret. */
       readonly codeExchanger?: CodeExchanger;
     },
@@ -130,6 +144,10 @@ export class SessionAuthService {
       // Self sign-up: the identity is already verified (signature, issuer, audience, nonce). It gets its OWN
       // personal identity, derived from (issuer, sub), and NO organisation: organisations are created or joined
       // later by an explicit act, never implied by signing in.
+      const room = await this.signupRoom();
+      if (room === 'unavailable')
+        throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
+      if (room === 'full') throw new AuthError(ErrorCode.AUTH_RATE_LIMITED, 'new sign-ups are paused for the moment; try again later');
       const outcome = await this.provision(login.issuer, login.subject);
       if (outcome === 'unavailable')
         throw new AuthError(ErrorCode.AUTH_PROVIDER_UNAVAILABLE, 'sign-in cannot be completed right now; try again shortly');
@@ -142,6 +160,27 @@ export class SessionAuthService {
       throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
     }
     return toResponse(await this.deps.sessions.create(login.issuer, login.subject));
+  }
+
+  /**
+   * Account-creation cap: counts self-created accounts (`usr_` identities) made in the last 24 hours. It runs only when an
+   * account is about to be created, so signing in as an existing user never touches it. It is a SOFT cap: several first
+   * sign-ins in flight at the same moment can overshoot by that many, which is acceptable for a safeguard. If the count
+   * cannot be read it fails closed (retryable 503) rather than allowing unlimited creation.
+   */
+  private async signupRoom(): Promise<'ok' | 'full' | 'unavailable'> {
+    const limit = this.deps.selfSignupMaxPerDay;
+    if (limit === undefined) return 'ok';
+    const all = await this.deps.bindings.list();
+    if (!all.ok) return 'unavailable';
+    const since = (this.deps.now ?? ((): number => Date.now()))() - DAY_MS;
+    const recent = all.value.filter((b) => b.identityId.startsWith('usr_') && Date.parse(b.createdAt) >= since).length;
+    if (recent >= limit) {
+      this.deps.onSelfSignupEvent?.({ kind: 'cap_reached', last24h: recent, limit });
+      return 'full';
+    }
+    if (recent + 1 >= Math.ceil(limit * 0.8)) this.deps.onSelfSignupEvent?.({ kind: 'near_cap', last24h: recent + 1, limit });
+    return 'ok';
   }
 
   /**

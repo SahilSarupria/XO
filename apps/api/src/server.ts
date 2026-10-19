@@ -17,6 +17,7 @@ import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import { loadOidcConfig } from './auth/oidc/config.js';
 import { createOidcVerifier } from './auth/oidc/verifier.js';
+import { parseTrustedProxyHops, resolveClientAddress } from './http/client-address.js';
 import { createSessionAuth, loadSessionAuthConfig, type SessionAuthBundle, type SessionAuthOptions } from './auth/session/index.js';
 import { registerAuthSessionRoutes } from './routes/auth-session-routes.js';
 import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
@@ -63,8 +64,14 @@ export interface ServerDeps {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
+function buildApiRequest(
+  incoming: IncomingMessage,
+  params: Readonly<Record<string, string>>,
+  url: URL,
+  trustedProxyHops: number,
+): ApiRequest {
   let cachedBody: Promise<Buffer> | undefined;
+  const clientAddress = resolveClientAddress(incoming.socket.remoteAddress, incoming.headers['x-forwarded-for'], trustedProxyHops);
   const rawBody = (): Promise<Buffer> => {
     cachedBody ??= readRawBody(incoming);
     return cachedBody;
@@ -76,7 +83,7 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
     params,
     query: url.searchParams,
     headers: incoming.headers,
-    ...(incoming.socket.remoteAddress !== undefined ? { remoteAddress: incoming.socket.remoteAddress } : {}),
+    ...(clientAddress !== undefined ? { remoteAddress: clientAddress } : {}),
     rawBody,
     json: async <T>(): Promise<Result<T, XoError>> => {
       const buffer = await rawBody();
@@ -141,6 +148,7 @@ async function runHandler(handler: (req: ApiRequest) => Promise<ApiResponse>, re
 
 export function createHttpServer(deps: ServerDeps = {}): Server {
   const router = buildRouter(deps);
+  const trustedProxyHops = parseTrustedProxyHops((deps.env ?? process.env)['XO_API_TRUSTED_PROXY_HOPS']); // throws on an invalid value
 
   return createServer((incoming, res) => {
     void (async () => {
@@ -159,7 +167,7 @@ export function createHttpServer(deps: ServerDeps = {}): Server {
           return;
         }
 
-        const apiRequest = buildApiRequest(incoming, resolved.params, url);
+        const apiRequest = buildApiRequest(incoming, resolved.params, url, trustedProxyHops);
         const response = await runHandler(resolved.handler, apiRequest);
         writeResponse(res, response);
       } catch (cause) {

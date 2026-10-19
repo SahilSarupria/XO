@@ -96,6 +96,7 @@ interface Rig {
   readonly logger: CapturingLogger;
   readonly bindings: FsIdentityBindingStore;
   readonly bindDir: string;
+  readonly events: { kind: string; last24h: number; limit: number }[];
   bind(sub: string): Promise<void>;
   challenge(): Promise<{ challengeId: string; nonce: string }>;
   /** A code Google would have issued for this sign-in attempt. */
@@ -105,7 +106,17 @@ interface Rig {
 }
 
 let n = 0;
-async function rig(opts: { withSecret?: boolean; selfSignup?: boolean; failCreate?: boolean } = {}): Promise<Rig> {
+async function rig(
+  opts: {
+    withSecret?: boolean;
+    selfSignup?: boolean;
+    failCreate?: boolean;
+    maxPerDay?: number;
+    now?: () => number;
+    challengePerMinute?: number;
+    env?: Record<string, string>;
+  } = {},
+): Promise<Rig> {
   const idp = await TestIdp.start();
   const sessionsDir = await mkdtemp(join(tmpdir(), 'xo-code-sessions-'));
   const bindDir = await mkdtemp(join(tmpdir(), 'xo-code-bind-'));
@@ -126,21 +137,26 @@ async function rig(opts: { withSecret?: boolean; selfSignup?: boolean; failCreat
     XO_API_SESSIONS_DIR: sessionsDir,
     XO_API_OIDC_BINDINGS_DIR: bindDir,
     ...(opts.selfSignup === true ? { XO_API_SELF_SIGNUP: '1' } : {}),
+    ...(opts.maxPerDay !== undefined ? { XO_API_SELF_SIGNUP_MAX_PER_DAY: String(opts.maxPerDay) } : {}),
   });
   assert.ok(config);
   const logger = new CapturingLogger();
+  const events: { kind: string; last24h: number; limit: number }[] = [];
   const server = await TestServer.start({
     sessionAuth: createSessionAuth(config, {
       bindings,
       verifierTuning: { jwksCooldownMs: 0, discoveryRetryMs: 0, httpTimeoutMs: 2000 },
       codeExchangerOptions: { fetch: google.fetch as typeof fetch, timeoutMs: 2000 },
+      onSelfSignupEvent: (e) => events.push({ ...e }),
+      ...(opts.now !== undefined ? { now: opts.now } : {}),
       limits: {
-        challenge: createRateLimiter({ windowMs: 60_000, max: 1000 }),
+        challenge: createRateLimiter({ windowMs: 60_000, max: opts.challengePerMinute ?? 1000 }),
         exchange: createRateLimiter({ windowMs: 60_000, max: 1000 }),
         refresh: createRateLimiter({ windowMs: 60_000, max: 1000 }),
       },
     }),
     logger,
+    ...(opts.env !== undefined ? { env: opts.env } : {}),
   });
   return {
     idp,
@@ -150,6 +166,7 @@ async function rig(opts: { withSecret?: boolean; selfSignup?: boolean; failCreat
     logger,
     bindings,
     bindDir,
+    events,
     async bind(sub) {
       const c = await bindings.create({
         bindingId: computeBindingId(idp.issuer, sub),
@@ -623,6 +640,121 @@ test('self sign-up leaves a manually bound account exactly as the operator made 
     assert.equal(res.status, 201);
     const found = await r.bindings.find(r.idp.issuer, 'g-manual');
     assert.ok(found.ok && found.value?.identityId === 'alice');
+  } finally {
+    await r.stop();
+  }
+});
+
+test('account-creation cap: new accounts stop at the limit, existing users are unaffected, and the cap raises an alert event', async () => {
+  const r = await rig({ selfSignup: true, maxPerDay: 3 });
+  try {
+    assert.equal((await signIn(r, 'cap-1')).status, 201);
+    assert.equal((await signIn(r, 'cap-2')).status, 201);
+    assert.deepEqual(r.events, []); // 2 of 3 is still under the 80% warning line
+    assert.equal((await signIn(r, 'cap-3')).status, 201);
+    assert.ok(r.events.some((e) => e.kind === 'near_cap' && e.last24h === 3));
+    const refused = await signIn(r, 'cap-4');
+    assert.equal(refused.status, 429);
+    assert.equal(errCode(refused), 'XO_AUTH_RATE_LIMITED');
+    assert.ok(!refused.bodyText.includes('xoas_'));
+    const none = await r.bindings.find(r.idp.issuer, 'cap-4');
+    assert.ok(none.ok && none.value === undefined);
+    assert.ok(r.events.some((e) => e.kind === 'cap_reached' && e.last24h === 3 && e.limit === 3));
+    // People who already have an account are never blocked by the cap.
+    assert.equal((await signIn(r, 'cap-1')).status, 201);
+    // The alert carries counts only.
+    assert.ok(r.events.every((e) => Object.keys(e).sort().join() === 'kind,last24h,limit'));
+  } finally {
+    await r.stop();
+  }
+});
+
+test('account-creation cap is a rolling 24-hour window and does not count operator-made bindings', async () => {
+  let clock = Date.now();
+  const r = await rig({ selfSignup: true, maxPerDay: 1, now: () => clock });
+  try {
+    await r.bind('operator-made'); // identity "alice": not a self-signup, not counted
+    assert.equal((await signIn(r, 'win-1')).status, 201);
+    assert.equal((await signIn(r, 'win-2')).status, 429);
+    clock += 25 * 60 * 60 * 1000;
+    assert.equal((await signIn(r, 'win-2')).status, 201);
+  } finally {
+    await r.stop();
+  }
+});
+
+test('account-creation cap fails closed (503) when the existing accounts cannot be counted', async () => {
+  const r = await rig({ selfSignup: true, maxPerDay: 5 });
+  try {
+    r.bindings.list = async () => ({ ok: false, error: new Error('read failed') }) as never;
+    const res = await signIn(r, 'cap-unreadable');
+    assert.equal(res.status, 503);
+    assert.ok(!res.bodyText.includes('xoas_'));
+  } finally {
+    await r.stop();
+  }
+});
+
+test('account-creation cap configuration is validated, and the default is 200 a day', async () => {
+  const base = { XO_API_GOOGLE_CLIENT_ID: CLIENT_ID };
+  assert.equal(loadSessionAuthConfig(base)?.selfSignupMaxPerDay, 200);
+  assert.equal(loadSessionAuthConfig({ ...base, XO_API_SELF_SIGNUP_MAX_PER_DAY: '50' })?.selfSignupMaxPerDay, 50);
+  for (const bad of ['0', '-1', '1.5', 'many', '2000000'])
+    assert.throws(() => loadSessionAuthConfig({ ...base, XO_API_SELF_SIGNUP_MAX_PER_DAY: bad }), /XO_API_SELF_SIGNUP_MAX_PER_DAY/);
+  assert.equal(loadSessionAuthConfig(base)?.selfSignup, false); // still off by default
+});
+
+test('behind a trusted proxy, rate limits follow the real client address and a spoofed header cannot dodge them', async () => {
+  const challenge = async (r: Rig, headers: Record<string, string>): Promise<number> =>
+    (await r.server.request('POST', '/auth/login-challenge', {}, headers, { skipAuth: true })).status;
+
+  const proxied = await rig({ challengePerMinute: 2, env: { XO_API_TRUSTED_PROXY_HOPS: '1' } });
+  try {
+    // One proxy hop: the proxy appends the real client address; anything the client put before it is ignored.
+    assert.equal(await challenge(proxied, { 'x-forwarded-for': 'spoof-1, 203.0.113.7' }), 201);
+    assert.equal(await challenge(proxied, { 'x-forwarded-for': '198.51.100.9, 203.0.113.7' }), 201);
+    assert.equal(await challenge(proxied, { 'x-forwarded-for': '192.0.2.1, 203.0.113.7' }), 429); // same real client: limited
+    assert.equal(await challenge(proxied, { 'x-forwarded-for': '203.0.113.8' }), 201); // a different real client is not
+  } finally {
+    await proxied.stop();
+  }
+
+  const direct = await rig({ challengePerMinute: 2 });
+  try {
+    // No trusted proxy configured: the header is ignored, so rotating it does not escape the limit.
+    assert.equal(await challenge(direct, { 'x-forwarded-for': '203.0.113.1' }), 201);
+    assert.equal(await challenge(direct, { 'x-forwarded-for': '203.0.113.2' }), 201);
+    assert.equal(await challenge(direct, { 'x-forwarded-for': '203.0.113.3' }), 429);
+  } finally {
+    await direct.stop();
+  }
+});
+
+const WORKSPACE_GET_ROUTES = ['', '/sources', '/compilations', '/executions', '/human-tasks', '/workflows', '/workflow-executions'];
+
+test('self-signed-up people cannot reach each other through any workspace route family; no credential gets 401', async () => {
+  const r = await rig({ selfSignup: true });
+  try {
+    const tok = async (sub: string): Promise<Record<string, string>> => ({
+      authorization: `Bearer ${(await signIn(r, sub)).json<{ accessCredential: string }>().accessCredential}`,
+    });
+    const a = await tok('sweep-a');
+    const b = await tok('sweep-b');
+    const wsId = (await r.server.request('POST', '/workspaces', { name: 'A' }, a, { skipAuth: true })).json<{ workspaceId: string }>()
+      .workspaceId;
+    for (const suffix of WORKSPACE_GET_ROUTES) {
+      const path = `/workspaces/${wsId}${suffix}`;
+      const own = await r.server.request('GET', path, undefined, a, { skipAuth: true });
+      assert.ok(own.status < 400, `owner must reach ${path} (got ${own.status})`);
+      const other = await r.server.request('GET', path, undefined, b, { skipAuth: true });
+      assert.equal(other.status, 404, `another person must get 404 on ${path}`);
+      const anon = await r.server.request('GET', path, undefined, {}, { skipAuth: true });
+      assert.equal(anon.status, 401, `${path} without a credential`);
+    }
+    const upload = await r.server.request('POST', `/workspaces/${wsId}/sources`, { name: 'x.txt', content: 'hello' }, b, {
+      skipAuth: true,
+    });
+    assert.equal(upload.status, 404);
   } finally {
     await r.stop();
   }
