@@ -12,12 +12,13 @@ import {
 } from '../domain/work';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { ActionNoticeView, Confirmation, useGuardedAction, type ActionNotice } from './actions';
-import { Button, EmptyState, formatWhen, Section } from './primitives';
+import { Badge, Button, EmptyState, formatWhen } from './primitives';
 import { NoteField } from './NoteField';
 import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
 import { useSession } from './session';
+import '../styles/inbox.css';
 
 /**
  * Everything waiting for a person. Workflow decisions go through the platform's resume contract:
@@ -49,78 +50,138 @@ export function TasksSection(props: {
   // Keep what the platform returned so the person sees the outcome of what they just did.
   const [finished, setFinished] = useState<WorkflowRun[]>([]);
   const [banner, setBanner] = useState<string | undefined>();
+  const [picked, setPicked] = useState<string | undefined>();
+
+  /** One list for everything waiting on a person. The detail pane always shows the platform's own record for the chosen item. */
+  const items: InboxItem[] = [
+    ...tasks.map((r): InboxItem => ({
+      key: `run:${r.workflowExecutionId}`,
+      title: runTitle(r),
+      sub: `${r.workflowName} \u00b7 step ${(r.currentStepIndex ?? 0) + 1} of ${r.steps.length}`,
+      badge: `Step ${(r.currentStepIndex ?? 0) + 1} of ${r.steps.length}`,
+      run: r,
+    })),
+    ...interrupted.map((r): InboxItem => ({
+      key: `stopped:${r.workflowExecutionId}`,
+      title: runTitle(r),
+      sub: `${r.workflowName} \u00b7 stopped`,
+      badge: 'Stopped',
+      stopped: r,
+    })),
+    ...single.map((e): InboxItem => {
+      const title = tidyName(names.get(e.capabilityId) ?? 'A rule from an earlier analysis');
+      return { key: `rule:${e.executionId}`, title, sub: `Started ${formatWhen(e.requestedAt)}`, badge: 'Needs a decision', execution: e };
+    }),
+  ];
+  const selected = items.find((i) => i.key === picked) ?? items[0];
+  const justDecided = finished.filter((f) => !tasks.some((t) => t.workflowExecutionId === f.workflowExecutionId));
 
   return (
-    <Section id="tasks-h" title="Tasks" lede="Decisions waiting for a person, and processes that stopped and can be continued.">
-      {banner !== undefined ? (
-        <p className="notice notice-warning" role="alert">
-          {banner}
+    <div className="ib" role="region" aria-labelledby="tasks-h">
+      <div className="ib-list">
+        <h1 id="tasks-h" className="ib-title">
+          Inbox
+        </h1>
+        <p className="ib-chips">
+          <span className="ib-chip">Needs review {items.length}</span>
         </p>
-      ) : null}
-      {!props.incomplete && tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
-        <EmptyState title="Nothing is waiting for you">
-          When a process needs a decision, it will appear here.
-          {props.onOpenActivity !== undefined ? (
-            <>
-              {' '}
-              <button type="button" className="crumb-link" onClick={props.onOpenActivity}>
-                See past activity
-              </button>
-            </>
-          ) : null}
-        </EmptyState>
-      ) : null}
-      {props.incomplete && tasks.length === 0 && single.length === 0 && interrupted.length === 0 ? (
-        <p className="notice notice-warning small" role="status">
-          Decisions could not be loaded, so XO cannot tell whether anything is waiting. Use Retry above.
-        </p>
-      ) : null}
-      <ul className="list">
-        {tasks.map((r) => (
-          <li key={r.workflowExecutionId} className="card">
-            <DecisionCard
-              workspaceId={props.workspaceId}
-              run={r}
-              notes={props.notes}
-              onChanged={props.onChanged}
-              onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
-            />
-          </li>
-        ))}
-        {interrupted.map((r) => (
-          <li key={r.workflowExecutionId} className="card">
-            <RecoveryCard workspaceId={props.workspaceId} run={r} onChanged={props.onChanged} onInfo={setBanner} />
-          </li>
-        ))}
-        {single.map((e) => (
-          <li key={e.executionId} className="card">
-            <div className="card-main">
-              <h3>{tidyName(names.get(e.capabilityId) ?? 'A rule from an earlier analysis')}</h3>
-              <p className="muted small">Started {formatWhen(e.requestedAt)}</p>
-              <ExecutionOutcome workspaceId={props.workspaceId} execution={e} onChanged={props.onChanged} />
-            </div>
-          </li>
-        ))}
-      </ul>
-      {finished.length > 0 ? (
-        <>
-          <h3 className="subhead">Just decided</h3>
-          <ul className="list">
-            {finished
-              .filter((f) => !tasks.some((t) => t.workflowExecutionId === f.workflowExecutionId))
-              .map((r) => (
-                <li key={r.workflowExecutionId} className="card">
-                  <div className="card-main">
-                    <h3>{runTitle(r)}</h3>
-                    <RunSummary run={r} notes={props.notes} />
-                  </div>
+        {banner !== undefined ? (
+          <p className="notice notice-warning" role="alert">
+            {banner}
+          </p>
+        ) : null}
+        {items.length > 0 ? (
+          <ul className="ib-rows" aria-label="Waiting for a person">
+            {items.map((i) => (
+              <li key={i.key}>
+                <button
+                  type="button"
+                  className="ib-row"
+                  aria-current={selected?.key === i.key ? 'true' : undefined}
+                  onClick={() => setPicked(i.key)}
+                >
+                  <span className="ib-row-title">{i.title}</span>
+                  <span className="ib-row-sub">{i.sub}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {justDecided.length > 0 ? (
+          <>
+            <h2 className="ib-sub">Just decided</h2>
+            <ul className="ib-rows">
+              {justDecided.map((r) => (
+                <li key={r.workflowExecutionId} className="ib-decided">
+                  <span className="ib-row-title">{runTitle(r)}</span>
+                  <RunSummary run={r} notes={props.notes} />
                 </li>
               ))}
-          </ul>
-        </>
-      ) : null}
-    </Section>
+            </ul>
+          </>
+        ) : null}
+      </div>
+      <div className="ib-detail">
+        {selected === undefined ? (
+          props.incomplete ? (
+            <p className="notice notice-warning small" role="status">
+              Decisions could not be loaded, so XO cannot tell whether anything is waiting. Use Retry above.
+            </p>
+          ) : (
+            <EmptyState title="Nothing is waiting for you">
+              When a process needs a decision, it will appear here.
+              {props.onOpenActivity !== undefined ? (
+                <>
+                  {' '}
+                  <button type="button" className="crumb-link" onClick={props.onOpenActivity}>
+                    See past activity
+                  </button>
+                </>
+              ) : null}
+            </EmptyState>
+          )
+        ) : (
+          <>
+            <div className="ib-head">
+              <h2>{selected.title}</h2>
+              <Badge tone="warning">{selected.badge}</Badge>
+            </div>
+            {selected.run !== undefined ? (
+              <DecisionCard
+                key={selected.key}
+                inbox
+                workspaceId={props.workspaceId}
+                run={selected.run}
+                notes={props.notes}
+                onChanged={props.onChanged}
+                onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
+              />
+            ) : null}
+            {selected.stopped !== undefined ? (
+              <div className="ib-card">
+                <RecoveryCard workspaceId={props.workspaceId} run={selected.stopped} onChanged={props.onChanged} onInfo={setBanner} />
+              </div>
+            ) : null}
+            {selected.execution !== undefined ? (
+              <div className="ib-card">
+                <ExecutionOutcome workspaceId={props.workspaceId} execution={selected.execution} onChanged={props.onChanged} />
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
   );
+}
+
+interface InboxItem {
+  readonly key: string;
+  readonly title: string;
+  readonly sub: string;
+  readonly badge: string;
+  readonly run?: WorkflowRun;
+  readonly stopped?: WorkflowRun;
+  readonly execution?: Execution;
 }
 
 export function DecisionCard(props: {
@@ -129,6 +190,8 @@ export function DecisionCard(props: {
   notes?: ReadonlyMap<string, RecordedNote>;
   onChanged: () => void;
   onFinished?: (run: WorkflowRun) => void;
+  /** Inbox layout: the title is shown by the pane header, and the buttons read Approve / Reject (same accessible names). */
+  inbox?: boolean;
 }) {
   const { client } = useSession();
   const [run, setRun] = useState(props.run);
@@ -226,8 +289,8 @@ export function DecisionCard(props: {
 
   const pending = busy || settling;
   return (
-    <div className="card-main">
-      <h3>{runTitle(run)}</h3>
+    <div className={props.inbox === true ? 'ib-card' : 'card-main'}>
+      {props.inbox === true ? null : <h3>{runTitle(run)}</h3>}
       {waiting && step !== undefined ? (
         <div className="decision">
           <p>
@@ -240,11 +303,11 @@ export function DecisionCard(props: {
           </p>
           <NoteField value={noteText} onChange={setNoteText} disabled={busy} />
           <div className="row">
-            <Button variant="primary" pending={pending} onClick={() => decide('approve')}>
-              Approve this step
+            <Button variant="primary" pending={pending} aria-label="Approve this step" onClick={() => decide('approve')}>
+              {props.inbox === true ? 'Approve' : 'Approve this step'}
             </Button>
-            <Button variant="danger" pending={pending} onClick={() => decide('reject')}>
-              Reject and stop
+            <Button variant="danger" pending={pending} aria-label="Reject and stop" onClick={() => decide('reject')}>
+              {props.inbox === true ? 'Reject' : 'Reject and stop'}
             </Button>
           </div>
         </div>

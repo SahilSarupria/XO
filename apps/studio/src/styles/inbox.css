@@ -1,0 +1,139 @@
+/*
+ * Inbox, built to the XO Studio desktop design (XO_Studio_Desktop___Design.pdf): a list of what is waiting
+ * on the left and the chosen item on the right. Scoped under .ib. The local variable overrides recolour the
+ * shared components used inside it (buttons, badges, notices) to the design palette without changing the
+ * shared tokens while the other screens are redesigned. When the shared tokens adopt this palette, delete
+ * the overrides.
+ */
+.ib {
+  --bg: #131313;
+  --surface-1: #1a1a1a;
+  --surface-2: #202020;
+  --surface-3: #262626;
+  --border: #2b2b2b;
+  --border-strong: #3a3a3a;
+  --accent: #5fd4b0;
+  --accent-strong: #7fe0c2;
+  --accent-ink: #0b1f18;
+  --accent-wash: rgba(95, 212, 176, 0.12);
+  --success: #5fd4b0;
+  --success-wash: rgba(95, 212, 176, 0.12);
+  --warning: #e8b64a;
+  --warning-wash: rgba(232, 182, 74, 0.12);
+  display: grid;
+  grid-template-columns: minmax(16rem, 21.25rem) minmax(0, 1fr);
+  min-height: 100%;
+  background: var(--bg);
+}
+.ib-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.75rem 1.1rem;
+  border-right: 1px solid var(--border);
+}
+.ib-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+.ib-chips {
+  margin: 0;
+}
+.ib-chip {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-3);
+  font-size: 0.8rem;
+}
+.ib-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ib-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ib-row:hover {
+  border-color: var(--border-strong);
+}
+.ib-row[aria-current='true'] {
+  border-color: #6b5a25;
+}
+.ib-row-title {
+  font-size: 0.95rem;
+}
+.ib-row-sub {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.ib-sub {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.ib-decided {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-1);
+}
+.ib-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.75rem 2.2rem;
+}
+.ib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ib-head h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.ib-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.1rem 1.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface-1);
+}
+.ib .btn {
+  border-radius: 999px;
+}
+@media (max-width: 52rem) {
+  .ib {
+    grid-template-columns: 1fr;
+  }
+  .ib-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .ib-detail {
+    padding: 1.25rem 1rem;
+  }
+}

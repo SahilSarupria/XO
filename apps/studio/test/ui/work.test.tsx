@@ -64,11 +64,11 @@ describe('Home', () => {
     const user = await analysed(api);
     await goTo(user, 'Work');
     await user.click(await screen.findByRole('button', { name: /start this process/i }));
-    await screen.findByRole('heading', { name: 'Tasks' });
+    await screen.findByRole('heading', { name: 'Inbox' });
     await goTo(user, 'Home');
     expect(await screen.findByText('Waiting for you')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /review this decision/i }));
-    expect(await screen.findByRole('heading', { name: 'Tasks' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeInTheDocument();
   });
 });
 
