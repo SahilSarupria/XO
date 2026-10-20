@@ -89,9 +89,9 @@ export function WorkspaceHome(props: { account: ReactNode }) {
       workspaces={workspaces}
       onSelectWorkspace={setSelected}
       onNewWorkspace={() => setCreating(true)}
-      frame={(nav, content) => (
-        <AppChrome switcher={switcher} nav={nav} account={props.account}>
-          {content}
+      frame={(parts) => (
+        <AppChrome switcher={switcher} nav={parts.nav} account={props.account} layout={parts.layout} rail={parts.rail}>
+          {parts.content}
         </AppChrome>
       )}
     />

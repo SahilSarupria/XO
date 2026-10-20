@@ -3,7 +3,7 @@
  * reported (documents, analyses, rule approvals, workflows, waiting decisions). It is not a task resolver: nothing
  * here interprets free text or invents an action XO cannot perform. Pure logic: no React, no requests.
  */
-export type StartTarget = 'documents' | 'rules' | 'workflows' | 'tasks';
+export type StartTarget = 'documents' | 'rules' | 'workflows' | 'tasks' | 'graph' | 'executions' | 'create';
 
 export interface StartAction {
   readonly id: 'decide' | 'start-process' | 'review-rules' | 'analyse' | 'add-document';

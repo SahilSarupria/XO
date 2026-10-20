@@ -1823,3 +1823,67 @@ details summary {
 .radio-row[aria-checked='true'] .radio-dot {
   background: var(--accent);
 }
+
+/* immersive frames: the chat rail and the bare workflow screens */
+.app[data-layout='rail'] {
+  grid-template-columns: 4rem minmax(0, 1fr);
+}
+.app[data-layout='bare'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) 0;
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--border);
+}
+.rail-btn {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.rail-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.rail-btn[aria-current='page'] {
+  background: var(--surface-3);
+  color: var(--accent-strong);
+  border-color: var(--border-strong);
+}
+
+/* home command bar extras */
+.cmdbar-icon {
+  flex: none;
+  color: var(--accent-strong);
+}
+.cmdbar-pill,
+.cmdbar-kbd {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+}
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+}

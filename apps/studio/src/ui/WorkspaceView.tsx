@@ -19,12 +19,21 @@ import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } fro
 import { Icon, type IconName } from './icons';
 import { XosSection } from './XosSection';
 import { AuditSection, LibrarySection, SettingsSection } from './DesignSections';
+import { ChatScreen } from './ChatScreen';
+import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
+import { xoItems } from '../domain/xo';
+import type { FrameLayout } from './AppChrome';
 
 type View = Section;
 type SetupView = 'documents' | 'rules';
 
 const PAGE_LABEL: Record<View, string> = {
   home: 'Home',
+  chat: 'Chat',
+  graph: 'Workflow',
+  executions: 'Executions',
+  create: 'Create XO',
+  xo: 'XO',
   workspaces: 'Workspaces',
   work: 'Workflows',
   tasks: 'Inbox',
@@ -43,7 +52,7 @@ export function WorkspaceView(props: {
   workspaces: readonly Workspace[];
   onSelectWorkspace: (workspaceId: string) => void;
   onNewWorkspace: () => void;
-  frame: (nav: ReactNode, content: ReactNode) => ReactNode;
+  frame: (parts: { nav: ReactNode; rail: ReactNode; content: ReactNode; layout: FrameLayout }) => ReactNode;
 }) {
   const { client, mode, setMode } = useSession();
   const ws = props.workspace.workspaceId;
@@ -54,6 +63,10 @@ export function WorkspaceView(props: {
   const [blocked, setBlocked] = useState<Section | undefined>();
   const [focusedCapability, setFocusedCapability] = useState<string | undefined>();
   const previousMode = useRef(mode);
+  const [threads, setThreads] = useState<readonly ChatThread[]>([]);
+  const [activeThread, setActiveThread] = useState<string | undefined>();
+  const threadSeq = useRef(1);
+  const messageSeq = useRef(1);
 
   const sources = useLoad(() => client.listSources(ws), [client, ws]);
   const compilations = useLoad(() => client.listCompilations(ws), [client, ws]);
@@ -100,8 +113,40 @@ export function WorkspaceView(props: {
     if (target === 'documents' || target === 'rules') {
       setSetupView(target);
       setView('setup');
-    } else setView(target === 'workflows' ? 'work' : 'tasks');
+    } else if (target === 'graph' || target === 'executions' || target === 'create') setView(target);
+    else setView(target === 'workflows' ? 'work' : 'tasks');
   }
+
+  const chatFacts: ChatFacts = {
+    documents: loadedValue(sources.state)?.length,
+    analyses: compilations.state.phase === 'loading' ? undefined : succeeded.length,
+    processes: loadedValue(workflows.state)?.length,
+    runs: loadedValue(runs.state)?.length,
+  };
+  function newChat() {
+    setActiveThread(undefined);
+    setView('chat');
+  }
+  /** Adds one question and its fixed reply to a conversation, creating the conversation on the first message. */
+  function sendChat(text: string, attached: readonly string[] = []) {
+    const reply = chatReply(text, chatFacts, attached);
+    const id = messageSeq.current;
+    messageSeq.current += 2;
+    const pair = [
+      { id, from: 'you' as const, text, ...(attached.length > 0 ? { attached } : {}) },
+      { id: id + 1, from: 'xo' as const, text: reply.text, ...(reply.action !== undefined ? { action: reply.action } : {}) },
+    ];
+    if (activeThread === undefined) {
+      const tid = `t${threadSeq.current++}`;
+      setThreads((t) => [...t, { id: tid, title: threadTitle(text), messages: pair }]);
+      setActiveThread(tid);
+    } else {
+      setThreads((t) => t.map((x) => (x.id === activeThread ? { ...x, messages: [...x.messages, ...pair] } : x)));
+    }
+    setView('chat');
+  }
+  const latestDocument = [...(loadedValue(sources.state) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.originalFilename;
+  const xoList = xoItems(succeeded, loadedValue(sources.state) ?? []);
 
   function refreshAll() {
     sources.reload();
@@ -141,13 +186,15 @@ export function WorkspaceView(props: {
   const homeIncomplete = allStates.some((s) => s.phase === 'error');
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
+  const navCurrent: View =
+    view === 'chat' ? 'home' : view === 'graph' || view === 'executions' ? 'work' : view === 'create' || view === 'xo' ? 'setup' : view;
   const nav = (
     <nav className="nav" aria-label="Workspace sections">
-      <NavItem current={view} id="home" icon="home" hint="What needs you today" onSelect={setView}>
+      <NavItem current={navCurrent} id="home" icon="home" hint="What needs you today" onSelect={setView}>
         Home
       </NavItem>
       <NavItem
-        current={view}
+        current={navCurrent}
         id="tasks"
         icon="inbox"
         hint="Decisions that need you"
@@ -157,11 +204,11 @@ export function WorkspaceView(props: {
       >
         Inbox
       </NavItem>
-      <NavItem current={view} id="work" icon="work" hint="Start a process" onSelect={setView}>
+      <NavItem current={navCurrent} id="work" icon="work" hint="Start a process" onSelect={setView}>
         Workflows
       </NavItem>
       <NavItem
-        current={view}
+        current={navCurrent}
         id="setup"
         icon="xos"
         hint="Your documents and rules"
@@ -171,31 +218,31 @@ export function WorkspaceView(props: {
       >
         My XOs
       </NavItem>
-      <NavItem current={view} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
+      <NavItem current={navCurrent} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
         Library
       </NavItem>
-      <NavItem current={view} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
+      <NavItem current={navCurrent} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
         Activity
       </NavItem>
-      <NavItem current={view} id="audit" icon="audit" hint="Who ran what" onSelect={setView}>
+      <NavItem current={navCurrent} id="audit" icon="audit" hint="Who ran what" onSelect={setView}>
         Audit log
       </NavItem>
       {mode === 'builder' ? (
         <div className="nav-group" role="group" aria-label="Builder tools">
           <p className="nav-group-label">Builder tools</p>
-          <NavItem current={view} id="contracts" icon="contracts" hint="Rule inputs and sources" onSelect={setView}>
+          <NavItem current={navCurrent} id="contracts" icon="contracts" hint="Rule inputs and sources" onSelect={setView}>
             Contracts
           </NavItem>
-          <NavItem current={view} id="processes" icon="processes" hint="Steps and readiness" onSelect={setView}>
+          <NavItem current={navCurrent} id="processes" icon="processes" hint="Steps and readiness" onSelect={setView}>
             Processes
           </NavItem>
-          <NavItem current={view} id="platform" icon="platform" hint="Service and API" onSelect={setView}>
+          <NavItem current={navCurrent} id="platform" icon="platform" hint="Service and API" onSelect={setView}>
             Platform
           </NavItem>
         </div>
       ) : null}
       <div className="nav-spacer" />
-      <NavItem current={view} id="settings" icon="settings" hint="Detail level and runtime" onSelect={setView}>
+      <NavItem current={navCurrent} id="settings" icon="settings" hint="Detail level and runtime" onSelect={setView}>
         Settings
       </NavItem>
       <button
@@ -212,6 +259,39 @@ export function WorkspaceView(props: {
       </button>
     </nav>
   );
+
+  const rail = (
+    <>
+      <RailButton current={navCurrent === 'home'} label="Home" icon="home" onSelect={() => setView('home')} />
+      <RailButton current={navCurrent === 'work'} label="Workflows" icon="work" onSelect={() => setView('work')} />
+      <RailButton current={navCurrent === 'setup'} label="My XOs" icon="xos" onSelect={() => setView('setup')} />
+    </>
+  );
+
+  if (view === 'chat') {
+    return (
+      <>
+        {props.frame({
+          nav,
+          rail,
+          layout: 'rail',
+          content: (
+            <main className="immersive">
+              <ChatScreen
+                threads={threads}
+                activeId={activeThread}
+                onSelect={setActiveThread}
+                onNew={newChat}
+                onSend={sendChat}
+                xos={xoList}
+                goTo={goToTarget}
+              />
+            </main>
+          ),
+        })}
+      </>
+    );
+  }
 
   const content = (
     <main className="page">
@@ -278,9 +358,11 @@ export function WorkspaceView(props: {
           loading={homeLoading}
           workspaceName={props.workspace.name ?? 'Untitled workspace'}
           sourceCount={loadedValue(sources.state)?.length ?? 0}
+          latestDocument={latestDocument}
           analysisCount={succeeded.length}
           readyForReview={summary?.readyForReview ?? 0}
           goTo={goToTarget}
+          onAsk={sendChat}
           goToActivity={() => setView('activity')}
         />
       ) : null}
@@ -424,7 +506,7 @@ export function WorkspaceView(props: {
       ) : null}
     </main>
   );
-  return <>{props.frame(nav, content)}</>;
+  return <>{props.frame({ nav, rail, content, layout: 'standard' })}</>;
 }
 
 function NavItem(props: {
@@ -461,6 +543,14 @@ function NavItem(props: {
           {props.count}
         </span>
       ) : null}
+    </button>
+  );
+}
+
+function RailButton(props: { current: boolean; label: string; icon: IconName; onSelect: () => void }) {
+  return (
+    <button type="button" className="rail-btn" aria-label={props.label} title={props.label} aria-current={props.current ? 'page' : undefined} onClick={props.onSelect}>
+      <Icon name={props.icon} />
     </button>
   );
 }

@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import type { Progress } from '../domain/review';
 import { homeMetrics } from '../domain/home';
-import { HomeCommandBar } from './HomeCommandBar';
+import { HomeCommandBar, type HomeChip } from './HomeCommandBar';
 import { HomeMetrics } from './HomeMetrics';
 import { ActiveWork } from './ActiveWork';
 import { findActiveRun, startReadiness, tidyName } from '../domain/work';
@@ -31,12 +30,15 @@ export function HomeSection(props: {
   loading: boolean;
   workspaceName: string;
   sourceCount: number;
+  /** Name of the most recently added document, for the quick action; undefined when there is none. */
+  latestDocument?: string | undefined;
   analysisCount: number;
   readyForReview: number;
   goTo: (target: StartTarget) => void;
+  /** Opens the conversation screen with this first message. */
+  onAsk: (text: string) => void;
   goToActivity: () => void;
 }) {
-  const [chatOpen, setChatOpen] = useState(false);
   const goToTasks = () => props.goTo('tasks');
   const goToWork = () => props.goTo('workflows');
   const goToSetup = () => props.goTo('rules');
@@ -72,6 +74,15 @@ export function HomeSection(props: {
     incomplete: props.incomplete,
   };
 
+  const chips: HomeChip[] = [
+    props.latestDocument !== undefined
+      ? { label: `Analyse ${props.latestDocument}`, target: 'documents' }
+      : { label: 'Add a document', target: 'documents' },
+    ...(ready[0] !== undefined ? [{ label: `Run ${tidyName(ready[0].steps[0]?.name ?? ready[0].name, 32)}`, target: 'workflows' as const }] : []),
+    { label: 'Create XO from scratch', target: 'create' },
+    ...(here[0] !== undefined ? [{ label: 'Open last workflow', target: 'graph' as const }] : []),
+  ];
+
   if (props.loading) {
     return (
       <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}.`}>
@@ -82,9 +93,8 @@ export function HomeSection(props: {
 
   return (
     <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
-      <HomeCommandBar open={chatOpen} onOpenChange={setChatOpen} goTo={props.goTo} />
-      {chatOpen ? null : (
-        <>
+      <HomeCommandBar onAsk={props.onAsk} chips={chips} onChip={props.goTo} />
+      <>
           {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
           {!props.incomplete && props.runs.length > 0 ? (
             <ActiveWork
@@ -262,8 +272,7 @@ export function HomeSection(props: {
           ) : null}
 
           {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
-        </>
-      )}
+      </>
     </Section>
   );
 }

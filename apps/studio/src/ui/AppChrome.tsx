@@ -6,7 +6,18 @@ import { Icon } from './icons';
  * On narrow screens the panel becomes a drawer opened from a Menu button; it closes when a section is
  * chosen or Escape is pressed. Layout only — it holds no data and grants nothing.
  */
-export function AppChrome(props: { switcher?: ReactNode; nav?: ReactNode; account: ReactNode; children: ReactNode }) {
+export type FrameLayout = 'standard' | 'rail' | 'bare';
+
+export function AppChrome(props: {
+  switcher?: ReactNode;
+  nav?: ReactNode;
+  account: ReactNode;
+  children: ReactNode;
+  /** `rail`: a narrow icon rail (chat). `bare`: no side panel (workflow graph, executions). Default: the full panel. */
+  layout?: FrameLayout;
+  rail?: ReactNode;
+}) {
+  const layout = props.layout ?? 'standard';
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -16,6 +27,20 @@ export function AppChrome(props: { switcher?: ReactNode; nav?: ReactNode; accoun
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  if (layout !== 'standard') {
+    return (
+      <div className="app" data-layout={layout}>
+        {layout === 'rail' ? (
+          <aside className="rail" aria-label="XO Studio">
+            <span className="brand-mark" aria-hidden="true" />
+            {props.rail}
+          </aside>
+        ) : null}
+        <div className="content content-immersive">{props.children}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
