@@ -22,7 +22,7 @@ async function open(api: FakeXo): Promise<U> {
 /** Uploads + analyses a document in Sources. Leaves the user in Sources > Rules. */
 async function analysed(api: FakeXo): Promise<U> {
   const user = await open(api);
-  await user.click(screen.getByRole('button', { name: /^sources/i }));
+  await user.click(screen.getByRole('button', { name: /^my xos/i }));
   await user.upload(
     document.getElementById('file-upload') as HTMLInputElement,
     new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
@@ -43,8 +43,9 @@ describe('shell stays business-neutral', () => {
     expect(
       within(nav)
         .getAllByRole('button')
+        .filter((b) => b.classList.contains('nav-item'))
         .map((b) => b.querySelector('.nav-label')?.textContent),
-    ).toEqual(['Home', 'Workspaces', 'Sources', 'Workflows', 'Runs & History']);
+    ).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });
 });
@@ -64,11 +65,11 @@ describe('Home', () => {
     const user = await analysed(api);
     await goTo(user, 'Work');
     await user.click(await screen.findByRole('button', { name: /start this process/i }));
-    await screen.findByRole('heading', { name: 'Inbox' });
+    await screen.findByRole('region', { name: 'Inbox' });
     await goTo(user, 'Home');
     expect(await screen.findByText('Waiting for you')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /review this decision/i }));
-    expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Inbox' })).toBeInTheDocument();
   });
 });
 

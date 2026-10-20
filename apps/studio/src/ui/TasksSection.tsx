@@ -77,11 +77,9 @@ export function TasksSection(props: {
   const justDecided = finished.filter((f) => !tasks.some((t) => t.workflowExecutionId === f.workflowExecutionId));
 
   return (
-    <div className="ib" role="region" aria-labelledby="tasks-h">
+    <div className="ib" role="region" aria-label="Inbox">
       <div className="ib-list">
-        <h1 id="tasks-h" className="ib-title">
-          Inbox
-        </h1>
+        <p className="ib-title">Inbox</p>
         <p className="ib-chips">
           <span className="ib-chip">Needs review {items.length}</span>
         </p>

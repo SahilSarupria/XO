@@ -8,6 +8,11 @@ export type IconName =
   | 'processes'
   | 'contracts'
   | 'platform'
+  | 'inbox'
+  | 'xos'
+  | 'library'
+  | 'audit'
+  | 'settings'
   | 'menu'
   | 'check'
   | 'user'
@@ -23,6 +28,11 @@ const PATHS: Record<IconName, string> = {
   setup: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7',
   processes: 'M6 5a2 2 0 1 0 0 .01M6 19a2 2 0 1 0 0 .01M18 12a2 2 0 1 0 0 .01M8 6l8 5M8 18l8-5',
   contracts: 'M7 4h10v16H7zM10 8h4M10 12h4M10 16h2',
+  xos: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12v9M4 7.5L12 12l8-4.5',
+  inbox: 'M3 7h18v12H3zM3 7l9 7 9-7',
+  library: 'M4 4h6v16H4zM12 4h8v7h-8zM12 13h8v7h-8z',
+  audit: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12h2M3 12h2M12 3v2M12 19v2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4',
   platform: 'M4 6h16v5H4zM4 13h16v5H4zM8 8.5h.01M8 15.5h.01',
   menu: 'M4 7h16M4 12h16M4 17h16',
   check: 'M5 12l5 5 9-11',

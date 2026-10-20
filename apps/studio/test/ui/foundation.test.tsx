@@ -48,7 +48,7 @@ describe('a failed load is never presented as an empty result', () => {
     await seed(api);
     api.failing.add('/executions');
     const user = await returnLater(api);
-    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
+    await user.click(screen.getByRole('button', { name: /^inbox/i }));
     expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument();
     expect(screen.queryByText('Nothing is waiting for you')).not.toBeInTheDocument();
     api.failing.clear();

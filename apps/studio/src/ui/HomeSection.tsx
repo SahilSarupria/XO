@@ -1,4 +1,9 @@
+import { useState } from 'react';
 import type { Progress } from '../domain/review';
+import { homeMetrics } from '../domain/home';
+import { HomeCommandBar } from './HomeCommandBar';
+import { HomeMetrics } from './HomeMetrics';
+import { ActiveWork } from './ActiveWork';
 import { findActiveRun, startReadiness, tidyName } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
 import { describeRun, pendingTasks, isActiveRun, recoverableRuns } from '../domain/work';
@@ -17,6 +22,7 @@ export function HomeSection(props: {
   workflows: readonly Workflow[];
   caps: readonly Capability[] | undefined;
   runs: readonly WorkflowRun[];
+  analyses: readonly Compilation[];
   standalonePending: number;
   next: Progress;
   /** Runs/workflows failed to load: do not present an empty Home as "nothing to do". */
@@ -30,6 +36,7 @@ export function HomeSection(props: {
   goTo: (target: StartTarget) => void;
   goToActivity: () => void;
 }) {
+  const [chatOpen, setChatOpen] = useState(false);
   const goToTasks = () => props.goTo('tasks');
   const goToWork = () => props.goTo('workflows');
   const goToSetup = () => props.goTo('rules');
@@ -75,173 +82,188 @@ export function HomeSection(props: {
 
   return (
     <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
-      <StartWork
-        actions={startActions(facts)}
-        unavailable={unavailableActions(facts)}
-        incomplete={props.incomplete}
-        onChoose={props.goTo}
-      />
-      {props.incomplete ? (
-        <p className="notice notice-warning small" role="status">
-          Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or open
-          Runs &amp; History.
-        </p>
-      ) : null}
-
-      {waitingCount > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <div className="row between">
-              <h3>Waiting for you</h3>
-              <Badge tone="warning">{waitingCount}</Badge>
-            </div>
-            <ul className="plain">
-              {waiting.slice(0, 3).map((r) => (
-                <li key={r.workflowExecutionId} className="small">
-                  {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <Button variant="secondary" onClick={goToTasks}>
-                {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {recentFailed.length > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <div className="row between">
-              <h3>Did not complete</h3>
-              <Badge tone="danger">{recentFailed.length}</Badge>
-            </div>
-            <ul className="plain">
-              {recentFailed.map((r) => (
-                <li key={r.workflowExecutionId} className="small">
-                  {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <Button variant="secondary" onClick={props.goToActivity}>
-                See what happened
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {interrupted.length > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <div className="row between">
-              <h3>Stopped — can be continued</h3>
-              <Badge tone="warning">{interrupted.length}</Badge>
-            </div>
-            <ul className="plain">
-              {interrupted.slice(0, 3).map((r) => (
-                <li key={r.workflowExecutionId} className="small">
-                  {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <Button variant="secondary" onClick={goToTasks}>
-                Review in Tasks
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {inProgress.length > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <h3>In progress</h3>
-            <ul className="plain">
-              {inProgress.map((r) => (
-                <li key={r.workflowExecutionId} className="small">
-                  {runTitle(r)} — <span className="muted">{describeRun(r).label}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <Button variant="secondary" onClick={props.goToActivity}>
-                See progress
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {ready.length > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <h3>Ready to start</h3>
-            <ul className="plain">
-              {ready.slice(0, 3).map((w) => (
-                <li key={w.workflowId} className="small">
-                  {tidyName(w.steps[0]?.name ?? w.name, 70)}
-                  <span className="muted">
-                    {' '}
-                    — {w.stepCount} {w.stepCount === 1 ? 'step' : 'steps'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <Button variant="secondary" onClick={goToWork}>
-                Open Workflows
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {blockedOnApproval.length > 0 ? (
-        <div className="card">
-          <div className="card-main">
-            <h3>Needs your approval first</h3>
-            <p className="muted small">
-              {blockedOnApproval.length} {blockedOnApproval.length === 1 ? 'process has' : 'processes have'} steps XO will not run until you
-              approve them.
+      <HomeCommandBar open={chatOpen} onOpenChange={setChatOpen} goTo={props.goTo} />
+      {chatOpen ? null : (
+        <>
+          {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
+          {!props.incomplete && props.runs.length > 0 ? (
+            <ActiveWork
+              runs={props.runs}
+              analyses={props.analyses}
+              onOpenRun={(r) => props.goTo(r.status === 'waiting_for_human' || r.status === 'interrupted' ? 'tasks' : 'workflows')}
+              onCreateXo={() => props.goTo('documents')}
+            />
+          ) : null}
+          {!props.incomplete && props.runs.length === 0 && props.sourceCount === 0 ? <FirstRun /> : null}
+          <StartWork
+            actions={startActions(facts)}
+            unavailable={unavailableActions(facts)}
+            incomplete={props.incomplete}
+            onChoose={props.goTo}
+          />
+          {props.incomplete ? (
+            <p className="notice notice-warning small" role="status">
+              Part of this workspace&rsquo;s activity could not be loaded. Home may not show everything that needs you: use Retry above, or
+              open Runs &amp; History.
             </p>
-            <div className="row">
-              <Button variant="secondary" onClick={goToSetup}>
-                Review rules
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          ) : null}
 
-      {recent.length > 0 ? (
-        <section className="card" aria-labelledby="recent-h">
-          <div className="card-main">
-            <h3 id="recent-h">Recent work</h3>
-            <ul className="plain">
-              {recent.map((r) => {
-                const v = describeRun(r);
-                return (
-                  <li key={r.workflowExecutionId} className="small">
-                    {runTitle(r)} <Badge tone={v.tone}>{v.label}</Badge> <span className="muted">{formatWhen(r.updatedAt)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="row">
-              <Button variant="quiet" onClick={props.goToActivity}>
-                See all history
-              </Button>
+          {waitingCount > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <div className="row between">
+                  <h3>Waiting for you</h3>
+                  <Badge tone="warning">{waitingCount}</Badge>
+                </div>
+                <ul className="plain">
+                  {waiting.slice(0, 3).map((r) => (
+                    <li key={r.workflowExecutionId} className="small">
+                      {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  <Button variant="secondary" onClick={goToTasks}>
+                    {waitingCount === 1 ? 'Review this decision' : `Review ${waitingCount} decisions`}
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
-      ) : null}
+          ) : null}
 
-      {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
+          {recentFailed.length > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <div className="row between">
+                  <h3>Did not complete</h3>
+                  <Badge tone="danger">{recentFailed.length}</Badge>
+                </div>
+                <ul className="plain">
+                  {recentFailed.map((r) => (
+                    <li key={r.workflowExecutionId} className="small">
+                      {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  <Button variant="secondary" onClick={props.goToActivity}>
+                    See what happened
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {interrupted.length > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <div className="row between">
+                  <h3>Stopped — can be continued</h3>
+                  <Badge tone="warning">{interrupted.length}</Badge>
+                </div>
+                <ul className="plain">
+                  {interrupted.slice(0, 3).map((r) => (
+                    <li key={r.workflowExecutionId} className="small">
+                      {runTitle(r)} — <span className="muted">{describeRun(r).summary}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  <Button variant="secondary" onClick={goToTasks}>
+                    Review in Tasks
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {inProgress.length > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <h3>In progress</h3>
+                <ul className="plain">
+                  {inProgress.map((r) => (
+                    <li key={r.workflowExecutionId} className="small">
+                      {runTitle(r)} — <span className="muted">{describeRun(r).label}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  <Button variant="secondary" onClick={props.goToActivity}>
+                    See progress
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {ready.length > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <h3>Ready to start</h3>
+                <ul className="plain">
+                  {ready.slice(0, 3).map((w) => (
+                    <li key={w.workflowId} className="small">
+                      {tidyName(w.steps[0]?.name ?? w.name, 70)}
+                      <span className="muted">
+                        {' '}
+                        — {w.stepCount} {w.stepCount === 1 ? 'step' : 'steps'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="row">
+                  <Button variant="secondary" onClick={goToWork}>
+                    Open Workflows
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {blockedOnApproval.length > 0 ? (
+            <div className="card">
+              <div className="card-main">
+                <h3>Needs your approval first</h3>
+                <p className="muted small">
+                  {blockedOnApproval.length} {blockedOnApproval.length === 1 ? 'process has' : 'processes have'} steps XO will not run until
+                  you approve them.
+                </p>
+                <div className="row">
+                  <Button variant="secondary" onClick={goToSetup}>
+                    Review rules
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {recent.length > 0 ? (
+            <section className="card" aria-labelledby="recent-h">
+              <div className="card-main">
+                <h3 id="recent-h">Recent work</h3>
+                <ul className="plain">
+                  {recent.map((r) => {
+                    const v = describeRun(r);
+                    return (
+                      <li key={r.workflowExecutionId} className="small">
+                        {runTitle(r)} <Badge tone={v.tone}>{v.label}</Badge> <span className="muted">{formatWhen(r.updatedAt)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="row">
+                  <Button variant="quiet" onClick={props.goToActivity}>
+                    See all history
+                  </Button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
+        </>
+      )}
     </Section>
   );
 }
@@ -286,6 +308,34 @@ function GetStarted(props: { next: Progress }) {
           );
         })}
       </ol>
+    </section>
+  );
+}
+
+const TEMPLATES = [
+  ['Process claims', 'Check claims against policy, escalate unsure ones.'],
+  ['Review contracts', 'Flag risky clauses and suggest changes.'],
+  ['Answer policy questions', 'Cited answers from your documents.'],
+  ['Draft renewals', 'Reminders and quotes from policy data.'],
+  ['Triage my inbox', 'Sort, label and draft replies.'],
+  ['Start blank', 'Build your own XO from scratch.'],
+] as const;
+
+/** The empty workspace's welcome, as designed. Templates are not available yet and say so. */
+function FirstRun() {
+  return (
+    <section className="firstrun" aria-label="Get started">
+      <p className="hero-title">What do you want to automate?</p>
+      <p className="muted">Add a document and XO will find the rules inside it. Templates are coming.</p>
+      <ul className="template-grid plain">
+        {TEMPLATES.map(([t, d]) => (
+          <li key={t} className="template" aria-disabled="true">
+            <span className="dot" aria-hidden="true" />
+            <p className="template-title">{t}</p>
+            <p className="muted small">{d}</p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

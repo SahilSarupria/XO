@@ -2,7 +2,7 @@
  * XO Studio design tokens. Everything visual derives from these; components never
  * hard-code colours or spacing.
  *
- * Orange (--accent) carries identity and the single most important action on a screen.
+ * Mint (--accent) carries identity and the single most important action on a screen.
  * Status colours are semantic and independent of the accent, so "needs attention" is never
  * confused with "brand".
  */
@@ -10,33 +10,34 @@
   color-scheme: dark;
 
   /* surfaces — charcoal ramp, not pure black, to keep elevation legible */
-  --bg: #0e0f11;
-  --surface-1: #15171a;
-  --surface-2: #1c1f23;
-  --surface-3: #25292e;
-  --border: #2d3238;
-  --border-strong: #3d444c;
+  --bg: #151513;
+  --bg-sunken: #111110;
+  --surface-1: #1a1a18;
+  --surface-2: #212120;
+  --surface-3: #2a2a27;
+  --border: #2a2a27;
+  --border-strong: #3a3a35;
 
   /* text — all pairs below meet WCAG AA against --bg and --surface-1 */
-  --text: #eceae6;
-  --text-muted: #a4a9b0;
-  --text-faint: #7d838b;
+  --text: #ecebe6;
+  --text-muted: #a3a198;
+  --text-faint: #8a887f;
 
   /* identity */
-  --accent: #ff7a1a;
-  --accent-strong: #ff9446;
-  --accent-ink: #1a0d00; /* text on accent */
-  --accent-wash: rgba(255, 122, 26, 0.12);
+  --accent: #5fd3b0;
+  --accent-strong: #7be0c2;
+  --accent-ink: #0d0d0c; /* text on accent */
+  --accent-wash: rgba(95, 211, 176, 0.12);
 
   /* semantic status */
-  --success: #4cc38a;
-  --success-wash: rgba(76, 195, 138, 0.12);
-  --warning: #e8b64a;
-  --warning-wash: rgba(232, 182, 74, 0.12);
-  --danger: #f06b5f;
-  --danger-wash: rgba(240, 107, 95, 0.12);
-  --info: #7fb2ff;
-  --info-wash: rgba(127, 178, 255, 0.1);
+  --success: #5fd3b0;
+  --success-wash: rgba(95, 211, 176, 0.12);
+  --warning: #e8b04a;
+  --warning-wash: rgba(232, 176, 74, 0.12);
+  --danger: #e5645c;
+  --danger-wash: rgba(229, 100, 92, 0.12);
+  --info: #8ab4ff;
+  --info-wash: rgba(138, 180, 255, 0.1);
 
   /* type */
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;

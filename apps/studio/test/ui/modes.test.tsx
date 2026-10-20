@@ -10,6 +10,7 @@ const nav = () => screen.getByRole('navigation', { name: /workspace sections/i }
 const navLabels = () =>
   within(nav())
     .getAllByRole('button')
+    .filter((b) => b.classList.contains('nav-item'))
     .map((b) => b.querySelector('.nav-label')?.textContent);
 const modeGroup = () => screen.getByRole('group', { name: /detail level/i });
 const goNav = (user: U, name: RegExp | string) => user.click(within(nav()).getByRole('button', { name }));
@@ -31,7 +32,7 @@ async function open(api: FakeXo): Promise<U> {
 async function analysed(api: FakeXo): Promise<U> {
   api.publishContract = true;
   const user = await open(api);
-  await goNav(user, /^sources/i);
+  await goNav(user, /^my xos/i);
   await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'p.pdf', { type: 'application/pdf' }));
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
@@ -51,7 +52,7 @@ describe('mode: default, switching and persistence', () => {
     await open(new FakeXo());
     expect(within(modeGroup()).getByRole('button', { name: 'User' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(modeGroup()).getByRole('button', { name: 'Builder' })).toHaveAttribute('aria-pressed', 'false');
-    expect(navLabels()).toEqual(['Home', 'Workspaces', 'Sources', 'Workflows', 'Runs & History']);
+    expect(navLabels()).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
     expect(screen.getByText('User mode')).toBeInTheDocument();
   });
@@ -59,7 +60,19 @@ describe('mode: default, switching and persistence', () => {
   it('Builder mode adds one group of technical screens to the same navigation, and shows the mode', async () => {
     const user = await open(new FakeXo());
     await toBuilder(user);
-    expect(navLabels()).toEqual(['Home', 'Workspaces', 'Sources', 'Workflows', 'Runs & History', 'Contracts', 'Processes', 'Platform']);
+    expect(navLabels()).toEqual([
+      'Home',
+      'Inbox',
+      'Workflows',
+      'My XOs',
+      'Library',
+      'Activity',
+      'Audit log',
+      'Contracts',
+      'Processes',
+      'Platform',
+      'Settings',
+    ]);
     expect(within(screen.getByRole('group', { name: /builder tools/i })).getAllByRole('button')).toHaveLength(3);
     expect(screen.getByText('Builder mode')).toBeInTheDocument();
   });
@@ -343,7 +356,7 @@ describe('User mode journeys are unchanged by the existence of Builder mode', ()
 
   it('User mode explains what is received, what is inferred, and who approves', async () => {
     const user = await open(new FakeXo());
-    await goNav(user, /^sources/i);
+    await goNav(user, /^my xos/i);
     expect(screen.getByText(/documents are what you gave xo\. rules are what xo worked out/i)).toBeInTheDocument();
     await toBuilder(user);
     expect(screen.queryByText(/documents are what you gave xo/i)).not.toBeInTheDocument();

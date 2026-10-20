@@ -17,6 +17,8 @@ import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
 import { Icon, type IconName } from './icons';
+import { XosSection } from './XosSection';
+import { AuditSection, LibrarySection, SettingsSection } from './DesignSections';
 
 type View = Section;
 type SetupView = 'documents' | 'rules';
@@ -25,12 +27,15 @@ const PAGE_LABEL: Record<View, string> = {
   home: 'Home',
   workspaces: 'Workspaces',
   work: 'Workflows',
-  tasks: 'Runs & History',
-  activity: 'Runs & History',
-  setup: 'Sources',
+  tasks: 'Inbox',
+  activity: 'Activity',
+  setup: 'My XOs',
   processes: 'Processes',
   contracts: 'Contracts',
   platform: 'Platform',
+  library: 'Library',
+  audit: 'Audit log',
+  settings: 'Settings',
 };
 
 export function WorkspaceView(props: {
@@ -136,39 +141,44 @@ export function WorkspaceView(props: {
   const homeIncomplete = allStates.some((s) => s.phase === 'error');
   const capsFailed = caps.state.phase === 'error' && caps.state.stale === undefined;
 
-  const runsView = view === 'tasks' || view === 'activity';
   const nav = (
     <nav className="nav" aria-label="Workspace sections">
       <NavItem current={view} id="home" icon="home" hint="What needs you today" onSelect={setView}>
         Home
       </NavItem>
-      <NavItem current={view} id="workspaces" icon="workspaces" hint="Switch or create" onSelect={setView}>
-        Workspaces
-      </NavItem>
       <NavItem
         current={view}
-        id="setup"
-        icon="setup"
-        hint="Your documents and rules"
+        id="tasks"
+        icon="inbox"
+        hint="Decisions that need you"
         onSelect={setView}
-        count={summary?.readyForReview}
-        countLabel="ready for review"
+        count={taskCount}
+        countLabel="need attention"
       >
-        Sources
+        Inbox
       </NavItem>
       <NavItem current={view} id="work" icon="work" hint="Start a process" onSelect={setView}>
         Workflows
       </NavItem>
       <NavItem
-        current={runsView ? 'tasks' : view}
-        id="tasks"
-        icon="tasks"
-        hint="Decisions and what has happened"
+        current={view}
+        id="setup"
+        icon="xos"
+        hint="Your documents and rules"
         onSelect={setView}
-        count={taskCount}
-        countLabel="need attention"
+        count={summary?.readyForReview}
+        countLabel="ready for review"
       >
-        Runs &amp; History
+        My XOs
+      </NavItem>
+      <NavItem current={view} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
+        Library
+      </NavItem>
+      <NavItem current={view} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
+        Activity
+      </NavItem>
+      <NavItem current={view} id="audit" icon="audit" hint="Who ran what" onSelect={setView}>
+        Audit log
       </NavItem>
       {mode === 'builder' ? (
         <div className="nav-group" role="group" aria-label="Builder tools">
@@ -184,18 +194,23 @@ export function WorkspaceView(props: {
           </NavItem>
         </div>
       ) : null}
+      <div className="nav-spacer" />
+      <NavItem current={view} id="settings" icon="settings" hint="Detail level and runtime" onSelect={setView}>
+        Settings
+      </NavItem>
+      <button
+        type="button"
+        className="ws-card"
+        aria-label="Workspaces"
+        aria-current={view === 'workspaces' ? 'page' : undefined}
+        onClick={() => setView('workspaces')}
+      >
+        <span className="ws-name">{props.workspace.name ?? 'Untitled workspace'}</span>
+        <span className="ws-status">
+          <span className="dot" aria-hidden="true" /> Connected
+        </span>
+      </button>
     </nav>
-  );
-
-  const runsTabs = (
-    <SubNav
-      label="Runs and history views"
-      current={view}
-      items={[
-        { id: 'tasks', label: 'Tasks', count: taskCount, onSelect: () => setView('tasks') },
-        { id: 'activity', label: 'Activity', onSelect: () => setView('activity') },
-      ]}
-    />
   );
 
   const content = (
@@ -256,6 +271,7 @@ export function WorkspaceView(props: {
           workflows={workflowList}
           caps={capList}
           runs={runList}
+          analyses={succeeded}
           standalonePending={standalonePending}
           next={step}
           incomplete={homeIncomplete}
@@ -296,7 +312,6 @@ export function WorkspaceView(props: {
           goToActivity={() => setView('activity')}
         />
       ) : null}
-      {runsView ? runsTabs : null}
       {view === 'tasks' ? (
         <TasksSection
           workspaceId={ws}
@@ -392,7 +407,21 @@ export function WorkspaceView(props: {
           goToProcesses={() => setView('processes')}
         />
       ) : null}
-      {view === 'platform' && mode === 'builder' ? <PlatformSection /> : null}
+      {view === 'library' ? <LibrarySection goTo={goToTarget} /> : null}
+      {view === 'audit' ? <AuditSection runs={runList} incomplete={decisionsUnknown} /> : null}
+      {view === 'settings' ? <SettingsSection workspaceName={props.workspace.name ?? 'Untitled workspace'} /> : null}
+      {view === 'platform' && mode === 'builder' ? (
+        <>
+          <XosSection
+            analyses={succeeded}
+            sourceCount={loadedValue(sources.state)?.length ?? 0}
+            summary={summary}
+            next={step}
+            goTo={goToTarget}
+          />
+          <PlatformSection />
+        </>
+      ) : null}
     </main>
   );
   return <>{props.frame(nav, content)}</>;

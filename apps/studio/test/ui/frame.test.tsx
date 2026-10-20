@@ -64,14 +64,15 @@ describe('app frame', () => {
     expect(within(start).getByRole('button', { name: 'Add your first document' })).toBeInTheDocument();
   });
 
-  it('names the sidebar sections by what people do, and has no Settings destination yet', async () => {
+  it('names the sidebar sections as designed, with Settings as the last destination', async () => {
     await open(new FakeXo());
     const nav = screen.getByRole('navigation', { name: /workspace sections/i });
     const labels = within(nav)
       .getAllByRole('button')
+      .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    expect(labels).toEqual(['Home', 'Workspaces', 'Sources', 'Workflows', 'Runs & History']);
-    expect(labels).not.toContain('Settings');
+    expect(labels).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
+    expect(labels.at(-1)).toBe('Settings');
   });
 
   it('shows where you are in a breadcrumb that follows the page', async () => {
@@ -100,16 +101,14 @@ describe('app frame', () => {
     expect(await screen.findByLabelText(/workspace name/i)).toBeInTheDocument();
   });
 
-  it('keeps Tasks and Activity under Runs & History, and Back still returns to the previous page', async () => {
+  it('has Inbox and Activity as separate sidebar sections, each keeping the route it always had', async () => {
     const user = await open(new FakeXo());
-    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
-    const runs = screen.getByRole('button', { name: /^runs & history/i });
-    expect(runs).toHaveAttribute('aria-current', 'page');
-    const tabs = screen.getByRole('group', { name: /runs and history views/i });
-    expect(within(tabs).getByRole('button', { name: /^tasks/i })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(within(tabs).getByRole('button', { name: 'Activity' }));
+    await user.click(screen.getByRole('button', { name: /^inbox/i }));
+    expect(screen.getByRole('button', { name: /^inbox/i })).toHaveAttribute('aria-current', 'page');
+    expect(window.location.hash).toBe('#/tasks');
+    await user.click(screen.getByRole('button', { name: 'Activity' }));
     expect(window.location.hash).toBe('#/activity');
-    expect(screen.getByRole('button', { name: /^runs & history/i })).toHaveAttribute('aria-current', 'page');
-    expect(within(tabs).getByRole('button', { name: 'Activity' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /^inbox/i })).not.toHaveAttribute('aria-current');
   });
 });

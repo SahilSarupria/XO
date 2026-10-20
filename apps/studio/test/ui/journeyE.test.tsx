@@ -150,7 +150,7 @@ describe('Runs & History: failed and interrupted work is described accurately', 
     expect(await screen.findByRole('heading', { name: 'Activity', level: 2 })).toBeInTheDocument();
     expect(screen.getByText(/cannot be retried or continued/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /retry|continue|replay|restart/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^runs & history$/i })).toBeInTheDocument(); // nothing needs attention
+    expect(screen.getByRole('button', { name: /^inbox$/i })).toBeInTheDocument(); // nothing needs attention
   });
 
   it('filters history by what actually happened, and an empty group says so', async () => {
@@ -218,13 +218,11 @@ describe('visual-acceptance fixes', () => {
     expect(within(main).getByRole('button', { name: /review this decision/i })).toHaveClass('btn-secondary');
   });
 
-  it('Activity filters look like filters (chips), not like the page tabs above them', async () => {
+  it('Activity filters look like filters (chips), and there are no page tabs above them', async () => {
     const user = await returnAfter(new FakeXo(), () => {});
     await go(user, 'Activity');
-    const tabs = await screen.findByRole('group', { name: /runs and history views/i });
-    const filter = screen.getByRole('group', { name: 'Filter processes' });
-    expect(tabs.querySelectorAll('.tab')).toHaveLength(2);
-    expect(tabs.querySelectorAll('.chip')).toHaveLength(0);
+    const filter = await screen.findByRole('group', { name: 'Filter processes' });
+    expect(screen.queryByRole('group', { name: /runs and history views/i })).not.toBeInTheDocument(); // Inbox and Activity are sidebar sections now
     expect(filter.querySelectorAll('.chip')).toHaveLength(5);
     expect(filter.querySelectorAll('.tab')).toHaveLength(0);
     // Every chip still reports its count to assistive technology, including zero.

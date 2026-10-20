@@ -3,6 +3,7 @@ import { runBucket, standaloneExecutions, tidyName, type RecordedNote, type RunB
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { Button, EmptyState, formatWhen, Section, SubNav } from './primitives';
 import { RunSummary, runTitle } from './RunCard';
+import { RunReplay } from './RunReplay';
 import { ExecutionOutcome } from './runs';
 import { useSession } from './session';
 
@@ -71,6 +72,12 @@ export function ActivitySection(props: {
                 <div className="card-main">
                   <h3>{runTitle(r)}</h3>
                   <RunSummary run={r} notes={props.notes} />
+                  {r.steps.length > 0 ? (
+                    <details className="replay-disclosure">
+                      <summary>Review steps</summary>
+                      <RunReplay run={r} />
+                    </details>
+                  ) : null}
                   {runBucket(r) === 'attention' ? (
                     <div className="row">
                       <Button variant="secondary" aria-label={`Open ${runTitle(r)} in Tasks`} onClick={props.onOpenTasks}>

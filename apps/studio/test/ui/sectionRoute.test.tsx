@@ -31,7 +31,7 @@ describe('section in the URL', () => {
     const user = await connectToWorkspace(new FakeXo());
     await user.click(screen.getByRole('button', { name: /^workflows/i }));
     expect(window.location.hash).toBe('#/work');
-    await user.click(screen.getByRole('button', { name: /^runs & history/i }));
+    await user.click(screen.getByRole('button', { name: /^inbox/i }));
     expect(window.location.hash).toBe('#/tasks');
     window.history.back();
     await screen.findByRole('heading', { name: /^workflows$/i });

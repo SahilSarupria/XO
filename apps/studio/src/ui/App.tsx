@@ -335,69 +335,98 @@ function ConnectScreen(props: ConnectProps) {
   const hasSso = props.onExternalSignIn !== undefined;
   return (
     <main className="connect">
-      <div className="connect-card">
-        <p className="brand brand-large">
-          <span className="brand-mark" aria-hidden="true" />
+      <div className="connect-hero" aria-hidden="true">
+        <p className="brand">
+          <span className="brand-mark" />
           XO Studio
         </p>
-        <h1>Welcome to XO</h1>
-        <p className="lede">Turn your organisation&rsquo;s documents into rules you can trust.</p>
-        {props.notice !== undefined ? (
-          <div className={`notice notice-${props.notice.tone}`} role={props.notice.tone === 'danger' ? 'alert' : 'status'}>
-            <p>{props.notice.text}</p>
-          </div>
-        ) : null}
-        {hasSso ? (
-          <div className="stack connect-sso">
-            <Button variant="primary" onClick={() => void sso()} disabled={ssoBusy}>
-              {ssoBusy ? 'Waiting for your browser…' : 'Sign in with your organisation'}
-            </Button>
-            <p className="muted small connect-note">Opens your browser to sign in. Studio never sees your password.</p>
-            {ssoFailure !== undefined ? (
-              <div className="notice notice-danger" role="alert">
-                <p>{ssoFailure.message}</p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {props.oidcConfiguredButUnavailable && !showDev ? (
-          <div className="notice notice-danger" role="alert">
-            <p>Organisation sign-in is not yet available in the browser version of Studio. Use the desktop app.</p>
-          </div>
-        ) : null}
-        {showDev ? (
-          <details className="connect-dev" open={!hasSso || problem !== undefined}>
-            <summary>{hasSso ? 'Use a development access key instead' : 'Development sign-in'}</summary>
-            <form onSubmit={(e) => void submit(e)} className="stack" aria-label="Development sign-in">
-              <p className="muted small">
-                <strong>Development sign-in</strong> (access key). Not for production use.
-              </p>
-              <label htmlFor="api-key">Access key</label>
-              <input
-                id="api-key"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="xoak_…"
-                aria-describedby="key-help"
-              />
-              <p id="key-help" className="muted small">
-                Provided by your XO administrator.{' '}
-                {shell.capabilities.persistentCredentials
-                  ? 'It is stored in this device\u2019s secure credential store until you sign out.'
-                  : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
-              </p>
-              {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
-              <Button type="submit" variant="secondary" disabled={busy || key.trim().length === 0}>
-                {busy ? 'Checking…' : 'Connect'}
+        <p className="connect-headline">Turn your documents into rules you can trust.</p>
+        <p className="connect-sub">Compile policies into XOs, review what XO found, and run it with a person in the loop.</p>
+        <svg className="connect-graph" viewBox="0 0 460 190" fill="none">
+          <g stroke="var(--border-strong)" strokeWidth="1.6">
+            <path d="M60 95C100 95 100 50 140 50" />
+            <path d="M60 95C100 95 100 140 140 140" />
+            <path d="M200 50C240 50 240 95 280 95" />
+            <path d="M200 140C240 140 240 95 280 95" />
+            <path d="M340 95C370 95 370 50 400 50" />
+            <path d="M340 95C370 95 370 140 400 140" stroke="var(--accent)" />
+          </g>
+          <g fill="var(--surface-1)" strokeWidth="1">
+            <rect x="0" y="75" width="60" height="40" rx="9" stroke="var(--border-strong)" />
+            <rect x="140" y="30" width="60" height="40" rx="9" stroke="var(--accent)" />
+            <rect x="140" y="120" width="60" height="40" rx="9" stroke="var(--border-strong)" />
+            <rect x="280" y="75" width="60" height="40" rx="9" stroke="var(--warning)" />
+            <rect x="400" y="30" width="60" height="40" rx="9" stroke="var(--border-strong)" />
+            <rect x="400" y="120" width="60" height="40" rx="9" stroke="var(--accent)" />
+          </g>
+        </svg>
+        <p className="connect-hero-foot">Every XO is signed and its benchmarks are independently verifiable.</p>
+      </div>
+      <div className="connect-main">
+        <div className="connect-card">
+          <p className="brand brand-large">
+            <span className="brand-mark" aria-hidden="true" />
+            XO Studio
+          </p>
+          <h1>Sign in</h1>
+          <p className="lede">Turn your organisation&rsquo;s documents into rules you can trust.</p>
+          {props.notice !== undefined ? (
+            <div className={`notice notice-${props.notice.tone}`} role={props.notice.tone === 'danger' ? 'alert' : 'status'}>
+              <p>{props.notice.text}</p>
+            </div>
+          ) : null}
+          {hasSso ? (
+            <div className="stack connect-sso">
+              <Button variant="primary" onClick={() => void sso()} disabled={ssoBusy}>
+                {ssoBusy ? 'Waiting for your browser…' : 'Sign in with your organisation'}
               </Button>
-              {busy ? <Spinner label="Checking your access key" /> : null}
-            </form>
-          </details>
-        ) : null}
-        <p className="muted small connect-legal">Your documents stay yours. XO only acts on what you approve.</p>
+              <p className="muted small connect-note">Opens your browser to sign in. Studio never sees your password.</p>
+              {ssoFailure !== undefined ? (
+                <div className="notice notice-danger" role="alert">
+                  <p>{ssoFailure.message}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {props.oidcConfiguredButUnavailable && !showDev ? (
+            <div className="notice notice-danger" role="alert">
+              <p>Organisation sign-in is not yet available in the browser version of Studio. Use the desktop app.</p>
+            </div>
+          ) : null}
+          {showDev ? (
+            <details className="connect-dev" open={!hasSso || problem !== undefined}>
+              <summary>{hasSso ? 'Use a development access key instead' : 'Development sign-in'}</summary>
+              <form onSubmit={(e) => void submit(e)} className="stack" aria-label="Development sign-in">
+                <p className="muted small">
+                  <strong>Development sign-in</strong> (access key). Not for production use.
+                </p>
+                <label htmlFor="api-key">Access key</label>
+                <input
+                  id="api-key"
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="xoak_…"
+                  aria-describedby="key-help"
+                />
+                <p id="key-help" className="muted small">
+                  Provided by your XO administrator.{' '}
+                  {shell.capabilities.persistentCredentials
+                    ? 'It is stored in this device\u2019s secure credential store until you sign out.'
+                    : 'It is kept in this tab only and is forgotten when you close it or sign out.'}
+                </p>
+                {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+                <Button type="submit" variant="secondary" disabled={busy || key.trim().length === 0}>
+                  {busy ? 'Checking…' : 'Connect'}
+                </Button>
+                {busy ? <Spinner label="Checking your access key" /> : null}
+              </form>
+            </details>
+          ) : null}
+          <p className="muted small connect-legal">Your documents stay yours. XO only acts on what you approve.</p>
+        </div>
       </div>
     </main>
   );
