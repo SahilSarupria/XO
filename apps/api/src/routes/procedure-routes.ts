@@ -10,7 +10,11 @@ import { BodyTooLargeError } from '../http/body.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
   requirePrincipal,
+  workspaceApprovalsStore,
   workspaceCompilationsStore,
+  workspaceExecutionsStore,
+  workspaceIdempotencyStore,
+  workspaceProcedureExecutionsStore,
   workspaceProceduresStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -35,6 +39,27 @@ import {
   type RegistryResult,
 } from '../procedures/registry-validation.js';
 import { computeLifecycle, deriveProcedureApprovalBinding, type ProcedureLifecycle } from '../procedures/procedure-approval.js';
+import { FsApprovalStore } from '../approvals/fs-approval-store.js';
+import { FsExecutionStore } from '../executions/fs-execution-store.js';
+import {
+  IdempotencyGate,
+  fingerprintRequest,
+  readIdempotencyKey,
+  type IdempotencyClaim,
+  type ResourceProbe,
+} from '../idempotency/idempotency.js';
+import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/idempotency-http.js';
+import {
+  FsProcedureExecutionStore,
+  isValidProcedureExecutionId,
+  type ProcedureExecutionRecord,
+} from '../procedures/procedure-execution.js';
+import {
+  rejectedFindings,
+  resumeProcedureExecution,
+  startProcedureExecution,
+  type ProcedureRunnerContext,
+} from '../procedures/procedure-runner.js';
 
 /**
  * P1.1 M2 — procedure lifecycle over HTTP (authoring, validation, approval, read). NO execution route exists.
@@ -96,6 +121,7 @@ export function registerProcedureRoutes(
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
   audit: AuditService,
+  options: { readonly stepTimeoutMs?: number } = {},
 ): void {
   const auditCtx = { audit, workspaceStore };
 
@@ -510,9 +536,260 @@ export function registerProcedureRoutes(
     return json(200, { ...view(record, d, false), ...finalizationNotice(finalization) });
   }
 
+  // ════════════════════════════ P1.1 M3 — execution (effect-free) ════════════════════════════
+
+  function runnerContext(workspace: WorkspaceRecord, req: ApiRequest, correlationId: string): ProcedureRunnerContext {
+    return {
+      workspace,
+      principal: requirePrincipal(req),
+      permissionManager,
+      compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
+      approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
+      executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),
+      procedures: new FsProcedureStore(workspaceProceduresStore(workspace, dataConfig), workspace.workspaceId),
+      records: new FsProcedureExecutionStore(workspaceProcedureExecutionsStore(workspace, dataConfig), workspace.workspaceId),
+      audit,
+      correlationId,
+      ...(options.stepTimeoutMs !== undefined ? { stepTimeoutMs: options.stepTimeoutMs } : {}),
+    };
+  }
+
+  /** Closed JSON object body: only `allowed` fields; authority-bearing names are rejected explicitly; never echoes a value. */
+  async function readClosedBody(req: ApiRequest, allowed: readonly string[], allowEmpty: boolean): Promise<Record<string, unknown>> {
+    const body = await readProcedureBody(req);
+    if (!body.ok) throw rejectedFindings('request rejected', body.findings);
+    if (body.bytes.length === 0) {
+      if (allowEmpty) return {};
+      throw rejectedFindings('request rejected', [{ code: 'PROC_MISSING_FIELD', path: '' }]);
+    }
+    const parsed = parseStrictJson(body.bytes);
+    if (!parsed.ok) throw rejectedFindings('request rejected', parsed.findings);
+    const value = parsed.value;
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+      throw rejectedFindings('request rejected', [{ code: 'PROC_NOT_AN_OBJECT', path: '' }]);
+    const findings: ProcedureFinding[] = [];
+    for (const key of Object.keys(value)) {
+      if (allowed.includes(key)) continue;
+      findings.push({
+        code: isAuthorityField(key) || APPROVAL_AUTHORITY.has(key) ? 'PROC_AUTHORITY_FIELD' : 'PROC_UNKNOWN_FIELD',
+        path: ptr(key),
+      });
+    }
+    if (findings.length > 0) throw rejectedFindings('request rejected', findings);
+    return value as Record<string, unknown>;
+  }
+
+  function executionView(record: ProcedureExecutionRecord): Record<string, unknown> {
+    const waiting = record.waitingStepId === undefined ? undefined : record.steps.find((s) => s.stepId === record.waitingStepId);
+    return {
+      procedureExecutionId: record.procedureExecutionId,
+      procedureId: record.procedureId,
+      version: record.version,
+      procedureHash: record.procedureHash,
+      status: record.status,
+      revision: record.revision,
+      initiator: { kind: record.initiator.kind, id: record.initiator.id },
+      steps: record.steps.map((s) => ({
+        stepId: s.stepId,
+        capabilityId: s.capabilityId,
+        status: s.status,
+        ...(s.executionId !== undefined ? { executionId: s.executionId } : {}),
+        ...(s.failureClass !== undefined ? { failureClass: s.failureClass } : {}),
+        ...(s.errorCode !== undefined ? { errorCode: s.errorCode } : {}),
+      })),
+      outputs: record.outputs,
+      ...(waiting?.executionId !== undefined ? { waitingFor: { stepId: waiting.stepId, executionId: waiting.executionId } } : {}),
+      ...(record.failure !== undefined ? { failure: { class: record.failure.class, code: record.failure.code } } : {}),
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
+    };
+  }
+
+  // ── POST /procedures/:procedureId/versions/:version/executions ───────────────────────────────────────────────────────
+  async function start(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'start.procedure', correlationId });
+    // Authorization FIRST: a denied caller reads no body, creates no record, runs nothing.
+    await requirePermission(req, workspace, Permissions.procedure.execute, { action: 'start.procedure', correlationId });
+    const principal = requirePrincipal(req);
+    const procedureId = req.params['procedureId'];
+    const version = parseVersionParam(req.params['version']);
+    const notFound = new NotFoundError(`procedure "${safeId(procedureId) ?? 'unknown'}"`);
+    if (!isValidProcedureId(procedureId) || version === undefined) throw notFound;
+    const body = await readClosedBody(req, ['input'], true);
+    const rawInput = body['input'];
+    if (rawInput !== undefined && (typeof rawInput !== 'object' || rawInput === null || Array.isArray(rawInput))) {
+      throw rejectedFindings('procedure input rejected', [{ code: 'PROC_INVALID_FIELD', path: '/input' }]);
+    }
+    const input = (rawInput ?? {}) as Record<string, unknown>;
+    const idemKey = readIdempotencyKey(req.headers);
+    if (!idemKey.ok) throw idemKey.error;
+    const ctx = runnerContext(workspace, req, correlationId);
+    const found = await ctx.procedures.getVersion(procedureId, version);
+    if (!found.ok) throw found.error;
+    if (found.value.kind === 'none') throw notFound;
+    if (found.value.kind === 'malformed') throw new XoError(ErrorCode.UNKNOWN, 'stored procedure record failed integrity verification');
+    const record = found.value.record;
+    const base = {
+      action: 'start.procedure',
+      actor: actorFromPrincipal(principal),
+      target: targetFor(workspace, procedureId),
+      correlationId,
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+    // Durable evidence of the attempt BEFORE anything is checked against the registry or run (fail closed).
+    await audit.requireDurable({
+      ...base,
+      type: 'procedure.attempted',
+      outcome: 'attempted',
+      metadata: { version, procedureHashPrefix: record.procedureHash.slice(0, 23) },
+    });
+    const probe: ResourceProbe = async (resource) => {
+      const existing = await ctx.records.get(resource.id);
+      if (!existing.ok) return 'absent';
+      return existing.value.initiator.id === principal.id && existing.value.workspaceId === workspace.workspaceId ? 'done' : 'foreign';
+    };
+    let claim: IdempotencyClaim | undefined;
+    let replayed = false;
+    const gate =
+      idemKey.value === undefined
+        ? undefined
+        : {
+            gate: async () => {
+              const gated = await gateIdempotent(new IdempotencyGate(workspaceIdempotencyStore(workspace, dataConfig)), audit, base, {
+                operation: 'start.procedure',
+                workspaceId: workspace.workspaceId,
+                principal: { kind: principal.kind, id: principal.id },
+                key: idemKey.value as string,
+                fingerprint: fingerprintRequest('start.procedure', { procedureId, version, procedureHash: record.procedureHash, input }),
+                probe,
+              });
+              if (gated.kind === 'replay') {
+                if (gated.resource.kind !== 'procedure-execution') throw recordInvalid();
+                replayed = true;
+                return { kind: 'replay' as const, procedureExecutionId: gated.resource.id };
+              }
+              claim = gated.claim;
+              return { kind: 'proceed' as const };
+            },
+            beforeCreate: async (executionId: string) => {
+              if (claim === undefined || !(await claim.attach({ kind: 'procedure-execution', id: executionId }))) {
+                throw new XoError(ErrorCode.IO_ERROR, 'the idempotency record could not be written; nothing was started');
+              }
+            },
+          };
+    let result: ProcedureExecutionRecord;
+    try {
+      result = await startProcedureExecution(ctx, record, input, gate ?? {});
+    } catch (cause) {
+      await (claim as IdempotencyClaim | undefined)?.abort(probe);
+      if (cause instanceof XoError && !cause.code.startsWith('XO_IDEMPOTENCY_')) {
+        if (cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED) {
+          await audit.tryRecord({ ...base, type: 'procedure.denied', outcome: 'denied', reasonCode: cause.code });
+        } else if (cause.code === ErrorCode.INVALID_ARGUMENT) {
+          await audit.tryRecord({
+            ...base,
+            type: 'procedure.validated',
+            outcome: 'failed',
+            reasonCode: cause.code,
+            metadata: { valid: false, phase: 'start-input' },
+          });
+        }
+      }
+      throw cause;
+    } finally {
+      (claim as IdempotencyClaim | undefined)?.dispose();
+    }
+    if (replayed) return json(result.status === 'failed' ? 200 : 201, executionView(result), REPLAY_HEADER);
+    await (claim as IdempotencyClaim | undefined)?.complete();
+    return json(result.status === 'failed' ? 200 : 201, executionView(result));
+  }
+
+  // ── GET /procedure-executions/:executionId ───────────────────────────────────────────────────────────────────────────
+  async function getExecution(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'read.procedure-execution', correlationId });
+    await requirePermission(req, workspace, Permissions.procedure.read, { action: 'read.procedure-execution', correlationId });
+    const id = req.params['executionId'];
+    await audit.requireDurable({
+      type: 'access.attempted',
+      action: 'read.procedure-execution',
+      outcome: 'attempted',
+      actor: actorFromPrincipal(requirePrincipal(req)),
+      target: isValidProcedureExecutionId(id)
+        ? { kind: 'procedure-execution', id, workspaceId: workspace.workspaceId }
+        : { kind: 'workspace', id: workspace.workspaceId },
+      correlationId,
+    });
+    const records = new FsProcedureExecutionStore(workspaceProcedureExecutionsStore(workspace, dataConfig), workspace.workspaceId);
+    const found = await records.get(id ?? '');
+    if (!found.ok) throw found.error;
+    return json(200, executionView(found.value));
+  }
+
+  // ── POST /procedure-executions/:executionId/resume ───────────────────────────────────────────────────────────────────
+  async function resume(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'resume.procedure', correlationId });
+    await requirePermission(req, workspace, Permissions.procedure.execute, { action: 'resume.procedure', correlationId });
+    const principal = requirePrincipal(req);
+    const id = req.params['executionId'];
+    const notFound = new NotFoundError('procedure execution');
+    if (!isValidProcedureExecutionId(id)) throw notFound;
+    const body = await readClosedBody(req, ['decision', 'data', 'expectedRevision', 'expectedStepExecutionId'], false);
+    const findings: ProcedureFinding[] = [];
+    const decision = body['decision'];
+    if (decision !== 'approve' && decision !== 'reject') findings.push({ code: 'PROC_INVALID_FIELD', path: '/decision' });
+    const data = body['data'];
+    if (data !== undefined && (typeof data !== 'object' || data === null || Array.isArray(data)))
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/data' });
+    const expectedRevision = body['expectedRevision'];
+    if (
+      expectedRevision !== undefined &&
+      (typeof expectedRevision !== 'number' || !Number.isInteger(expectedRevision) || expectedRevision < 0)
+    )
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/expectedRevision' });
+    const expectedStep = body['expectedStepExecutionId'];
+    if (expectedStep !== undefined && typeof expectedStep !== 'string')
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/expectedStepExecutionId' });
+    if (findings.length > 0) throw rejectedFindings('resume request rejected', findings);
+    const ctx = runnerContext(workspace, req, correlationId);
+    const existing = await ctx.records.get(id);
+    if (!existing.ok) throw existing.error;
+    const base = {
+      action: 'resume.procedure',
+      actor: actorFromPrincipal(principal),
+      target: { kind: 'procedure-execution' as const, id, workspaceId: workspace.workspaceId },
+      correlationId,
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+    await audit.requireDurable({
+      ...base,
+      type: 'procedure.attempted',
+      outcome: 'attempted',
+      metadata: { revision: existing.value.revision },
+    });
+    try {
+      const result = await resumeProcedureExecution(ctx, id, {
+        decision: decision as 'approve' | 'reject',
+        ...(data !== undefined ? { data: data as Record<string, unknown> } : {}),
+        ...(expectedRevision !== undefined ? { expectedRevision: expectedRevision as number } : {}),
+        ...(expectedStep !== undefined ? { expectedStepExecutionId: expectedStep as string } : {}),
+      });
+      return json(200, executionView(result));
+    } catch (cause) {
+      if (cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED) {
+        await audit.tryRecord({ ...base, type: 'procedure.denied', outcome: 'denied', reasonCode: cause.code });
+      }
+      throw cause;
+    }
+  }
+
   router.post('/workspaces/:workspaceId/procedures:validate', guarded(validate));
   router.get('/workspaces/:workspaceId/procedures', guarded(list));
   router.get('/workspaces/:workspaceId/procedures/:procedureId', guarded(get));
   router.add('PUT', '/workspaces/:workspaceId/procedures/:procedureId/versions/:version', guarded(putVersion));
   router.post('/workspaces/:workspaceId/procedures/:procedureId/versions/:version/approve', guarded(approve));
+  router.post('/workspaces/:workspaceId/procedures/:procedureId/versions/:version/executions', guarded(start));
+  router.get('/workspaces/:workspaceId/procedure-executions/:executionId', guarded(getExecution));
+  router.post('/workspaces/:workspaceId/procedure-executions/:executionId/resume', guarded(resume));
 }

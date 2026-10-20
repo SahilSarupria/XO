@@ -217,6 +217,12 @@ export function declarationFingerprint(capabilityId: string, declaration: Permis
 
 /** Optional hardening for `executeApprovedCapability` — see `preflightCapabilityAuthorization`. */
 export interface ExecuteApprovedCapabilityOptions {
+  /**
+   * P1.1 M3 — set `false` ONLY by a caller that has already validated the client-supplied portion of `input` against the capability's
+   * input schema itself (the procedure runner: step-bound values are injected from upstream outputs and are not schema properties).
+   * Default (omitted/true): the whole `input` is validated, exactly as before.
+   */
+  readonly validateInputSchema?: boolean;
   /** The declaration fingerprint a preflight authorized. If the declaration derived from the graph executed here differs, execution is refused. */
   readonly preflightDeclarationFingerprint?: string;
   /** The graph content hash a preflight authorized. If the graph loaded here has a different content hash, execution is refused (see `preflightCapabilityAuthorization` for what the hash does and does not detect). */
@@ -306,7 +312,7 @@ export async function executeApprovedCapability(
   }
 
   const inputSchema = findInputSchema(graph, contract.id);
-  if (inputSchema !== undefined) {
+  if (inputSchema !== undefined && options.validateInputSchema !== false) {
     const validation = validateCapabilityInput(inputSchema, input);
     if (!validation.valid) {
       return { kind: 'invalid_input', issues: validation.issues.map((issue) => ({ path: issue.property, message: issue.message })) };

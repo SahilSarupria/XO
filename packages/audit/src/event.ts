@@ -45,6 +45,14 @@ export const AUDIT_EVENT_TYPES = [
   'procedure.approval.denied',
   'procedure.attempted',
   'procedure.denied',
+  // P1.1 M3 — owner-approved execution subset (2026-10-18): exactly these seven. No cancel/retry/effect/MCP types.
+  'procedure.execution.started',
+  'procedure.execution.waiting_for_human',
+  'procedure.execution.resumed',
+  'procedure.execution.completed',
+  'procedure.execution.failed',
+  'procedure.step.completed',
+  'procedure.step.failed',
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
 
@@ -63,6 +71,8 @@ export const AUDIT_TARGET_KINDS = [
   'human-task',
   'audit-log',
   'procedure',
+  'procedure-execution',
+  'procedure-step',
 ] as const;
 export type AuditTargetKind = (typeof AUDIT_TARGET_KINDS)[number];
 

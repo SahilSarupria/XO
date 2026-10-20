@@ -21,8 +21,8 @@ import type { AtomicBlobStore } from '@xo/storage';
 export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
-export type IdempotentOperation = 'execute.capability' | 'start.workflow';
-export type IdempotentResourceKind = 'execution' | 'workflow-execution';
+export type IdempotentOperation = 'execute.capability' | 'start.workflow' | 'start.procedure';
+export type IdempotentResourceKind = 'execution' | 'workflow-execution' | 'procedure-execution';
 
 export interface IdempotentResource {
   readonly kind: IdempotentResourceKind;
@@ -104,7 +104,8 @@ export function parseIdempotencyRecord(raw: unknown): IdempotencyRecord | undefi
   const o = raw as Record<string, unknown>;
   if (Object.keys(o).some((k) => !RECORD_KEYS.has(k))) return undefined;
   if (o['schemaVersion'] !== 1) return undefined;
-  if (o['operation'] !== 'execute.capability' && o['operation'] !== 'start.workflow') return undefined;
+  if (o['operation'] !== 'execute.capability' && o['operation'] !== 'start.workflow' && o['operation'] !== 'start.procedure')
+    return undefined;
   if (typeof o['workspaceId'] !== 'string' || o['workspaceId'].length === 0) return undefined;
   const p = o['principal'] as Record<string, unknown> | null | undefined;
   if (typeof p !== 'object' || p === null) return undefined;
@@ -119,7 +120,11 @@ export function parseIdempotencyRecord(raw: unknown): IdempotencyRecord | undefi
     const r = o['resource'] as Record<string, unknown> | null;
     if (typeof r !== 'object' || r === null) return undefined;
     if (Object.keys(r).some((k) => k !== 'kind' && k !== 'id')) return undefined;
-    if ((r['kind'] !== 'execution' && r['kind'] !== 'workflow-execution') || typeof r['id'] !== 'string' || r['id'].length === 0)
+    if (
+      (r['kind'] !== 'execution' && r['kind'] !== 'workflow-execution' && r['kind'] !== 'procedure-execution') ||
+      typeof r['id'] !== 'string' ||
+      r['id'].length === 0
+    )
       return undefined;
     resource = { kind: r['kind'], id: r['id'] };
   }

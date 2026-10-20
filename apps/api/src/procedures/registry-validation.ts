@@ -1,5 +1,7 @@
 import { Sha256Hasher } from '@xo/crypto';
-import { buildSemanticCapabilityContract, type SemanticCapabilityContract } from '@xo/capability-contract';
+import { buildSemanticCapabilityContract, normalizeToFallbackKey, type SemanticCapabilityContract } from '@xo/capability-contract';
+import { lowerCapabilitiesToManifest } from '@xo/compiler';
+import type { CapabilityInputSchema } from '@xo/types';
 import type { ProcedureDefinition, ProcedureFinding, ProcedureErrorCode, CapabilityStep } from '@xo/procedure';
 import { canonicalStringify, fromJson, XoirNodeId, type XoirGraph, type XoirGraphJson } from '@xo/xoir';
 import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
@@ -85,6 +87,16 @@ export interface RegistrySnapshot {
 export type RegistryResult =
   { readonly ok: true; readonly snapshot: RegistrySnapshot } | { readonly ok: false; readonly findings: readonly ProcedureFinding[] };
 
+/** Consumer input schemas by contract id: the established contract representation for CLIENT-supplied input (property keys are `normalizeToFallbackKey(param name)`). */
+export function schemasByContract(graph: XoirGraph): ReadonlyMap<string, CapabilityInputSchema> {
+  const out = new Map<string, CapabilityInputSchema>();
+  for (const outcome of lowerCapabilitiesToManifest(graph).outcomes) {
+    const schema = outcome.declaration?.execution?.inputSchema;
+    if (schema !== undefined) out.set(outcome.contractId, schema);
+  }
+  return out;
+}
+
 const SUPPORTED_CLASSES = new Set(['deterministic_rule', 'human_in_the_loop', 'external_tool']);
 
 export async function validateAgainstRegistry(def: ProcedureDefinition, load: CompilationLoader): Promise<RegistryResult> {
@@ -161,15 +173,20 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
   }
 
   // Binding / reference checks run only against steps whose contracts were established.
+  const schemas = schemasByContract(compilation.graph);
   for (const { step, index } of capabilitySteps) {
     const mine = contracts.get(step.id);
     if (mine === undefined) continue;
     const declared = new Map(mine.contract.inputs.map((p) => [p.name, p] as const));
+    // A parameter is also declared when it names a property of the capability's execution input schema (P1.1 M3 finding: a
+    // capability's client-supplied inputs live in that schema and need not appear among its contract `inputs`).
+    const schemaProps = schemas.get(mine.state.contractId)?.properties ?? {};
     const bound = new Set<string>();
     (step.inputBindings ?? []).forEach((b, j) => {
       const bp = `/steps/${index}/inputBindings/${j}`;
       const param = declared.get(b.param);
-      if (param === undefined) add('PROC_UNKNOWN_INPUT_PARAM', `${bp}/param`);
+      const inSchema = Object.prototype.hasOwnProperty.call(schemaProps, normalizeToFallbackKey(b.param));
+      if (param === undefined && !inSchema) add('PROC_UNKNOWN_INPUT_PARAM', `${bp}/param`);
       else bound.add(b.param);
       if (!('step' in b.from)) return;
       const producer = contracts.get(b.from.step);

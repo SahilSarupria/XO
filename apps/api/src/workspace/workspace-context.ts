@@ -166,3 +166,8 @@ export function workspaceWorkflowExecutionsStore(record: WorkspaceRecord, config
 export function workspaceProceduresStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'procedures'));
 }
+
+/** P1.1 M3 — procedure execution records (one atomically replaced file per execution), per workspace. */
+export function workspaceProcedureExecutionsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'procedure-executions'));
+}

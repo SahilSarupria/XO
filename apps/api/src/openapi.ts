@@ -402,6 +402,94 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/procedures/{procedureId}/versions/{version}/executions': {
+      post: {
+        summary: 'Start an APPROVED procedure version (effect-free); runs until it completes, fails, or pauses at a human gate',
+        description:
+          'Requires `procedure.execute` (default deny), checked before the body is read. Body (closed): `{ input?: object }`. At start the server recomputes the procedure lifecycle and registry state (anything but `approved` is 403), authorizes EVERY step, and validates `input` against the consumer contracts of the `{input: ...}` bindings; any failure leaves zero execution records. Optional `Idempotency-Key`: the same key and payload replays the same execution (header `idempotent-replayed: true`); a different payload with that key is 422. Effects, MCP, cancel-in-flight and step retries do not exist in this milestone.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'procedureId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'version', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': { schema: { type: 'object', additionalProperties: false, properties: { input: { type: 'object' } } } },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'ProcedureExecution (running to completion, or waiting_for_human)',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureExecution' } } },
+          },
+          '200': { description: 'The execution ran and failed (see `failure.class`)' },
+          '400': { description: 'Body or input rejected: findings[] (codes + JSON pointers only)' },
+          '403': {
+            description: 'Missing procedure.execute, procedure not approved for its current registry state, or a step is not authorized',
+          },
+          '404': { description: 'Unknown procedure/version or workspace not owned by the caller' },
+          '422': { description: 'Idempotency-Key reused with a different request' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}': {
+      get: {
+        summary: 'Read a procedure execution',
+        description: 'Requires `procedure.read`. Unknown and other-workspace executions are indistinguishable (404).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'ProcedureExecution',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureExecution' } } },
+          },
+          '403': { description: 'Principal lacks procedure.read' },
+          '404': { description: 'Unknown execution, or workspace not owned by the caller' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}/resume': {
+      post: {
+        summary: 'Resolve the pending human task of a paused procedure execution and continue it',
+        description:
+          'Requires `procedure.execute`. Body (closed): `{ decision: "approve" | "reject", data?: object, expectedRevision?: integer, expectedStepExecutionId?: string }`. Authorization is re-checked before every later step. 409: already resolved / terminal / not waiting / stale revision / stale step execution (the decision is NOT applied).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['decision'],
+                properties: {
+                  decision: { type: 'string', enum: ['approve', 'reject'] },
+                  data: { type: 'object' },
+                  expectedRevision: { type: 'integer' },
+                  expectedStepExecutionId: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'ProcedureExecution after the decision',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ProcedureExecution' } } },
+          },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing procedure.execute or the resolver is not authorized' },
+          '404': { description: 'Unknown execution, or workspace not owned by the caller' },
+          '409': { description: 'Conflict (see description)' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflows': {
       get: {
         summary: "Discover the workflows composed from this workspace's stored compilations",
@@ -919,6 +1007,51 @@ export const openApiDocument = {
           compilationRef: { type: 'object', properties: { compilationId: { type: 'string' }, graphHash: { type: 'string' } } },
           steps: { type: 'array', maxItems: 25, items: { type: 'object' } },
           unknowns: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      ProcedureExecution: {
+        type: 'object',
+        properties: {
+          procedureExecutionId: { type: 'string' },
+          procedureId: { type: 'string' },
+          version: { type: 'integer' },
+          procedureHash: { type: 'string' },
+          status: { type: 'string', enum: ['running', 'waiting_for_human', 'completed', 'failed'] },
+          revision: { type: 'integer' },
+          steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                stepId: { type: 'string' },
+                capabilityId: { type: 'string' },
+                status: { type: 'string', enum: ['pending', 'running', 'succeeded', 'waiting_for_human', 'failed', 'skipped'] },
+                executionId: { type: 'string' },
+                failureClass: { type: 'string' },
+              },
+            },
+          },
+          outputs: { type: 'object' },
+          waitingFor: { type: 'object' },
+          failure: {
+            type: 'object',
+            properties: {
+              class: {
+                type: 'string',
+                enum: [
+                  'authorization',
+                  'stale_binding',
+                  'input_invalid',
+                  'capability_error',
+                  'timeout',
+                  'failed_postcondition',
+                  'human_rejected',
+                  'internal',
+                ],
+              },
+              code: { type: 'string' },
+            },
+          },
         },
       },
       ProcedureValidationReport: {

@@ -508,8 +508,18 @@ test('stored records fail closed: a tampered definition (hash mismatch) is never
 });
 
 test('audit: the approved M2 subset is exactly the six procedure.* types; a full lifecycle emits the expected events with no execution/step events', async () => {
+  // M2's six are unchanged; the seven M3 execution types (owner-approved separately) are excluded here and pinned exactly in procedure-execution.test.ts.
+  const m3Types = [
+    'procedure.execution.started',
+    'procedure.execution.waiting_for_human',
+    'procedure.execution.resumed',
+    'procedure.execution.completed',
+    'procedure.execution.failed',
+    'procedure.step.completed',
+    'procedure.step.failed',
+  ];
   assert.deepEqual(
-    AUDIT_EVENT_TYPES.filter((t) => t.startsWith('procedure.')).sort(),
+    AUDIT_EVENT_TYPES.filter((t) => t.startsWith('procedure.') && !m3Types.includes(t)).sort(),
     [
       'procedure.approval.denied',
       'procedure.approval.granted',
@@ -536,7 +546,7 @@ test('audit: the approved M2 subset is exactly the six procedure.* types; a full
   });
 });
 
-test('OpenAPI documents every M2 route and no execution route exists', async () => {
+test('OpenAPI documents every M2 route', async () => {
   const paths = Object.keys(openApiDocument.paths);
   for (const p of [
     '/workspaces/{workspaceId}/procedures:validate',
@@ -546,15 +556,8 @@ test('OpenAPI documents every M2 route and no execution route exists', async () 
     '/workspaces/{workspaceId}/procedures/{procedureId}/versions/{version}/approve',
   ])
     assert.ok(paths.includes(p), p);
-  assert.equal(
-    paths.some((p) => /procedures.*(execut|start)/i.test(p)),
-    false,
-  );
-  await withEnv(async (env) => {
-    for (const path of [`${base(env)}/procedures/claim-flow/executions`, `${base(env)}/procedures/claim-flow/start`]) {
-      assert.equal((await env.server.request('POST', path, {})).status, 404);
-    }
-  });
+  // M2 intentionally asserted that no execution route existed. M3 (owner-authorized) adds execution routes, so that assertion was
+  // retired here; the M3 suite pins the execution routes and the absence of cancel/retry routes instead.
 });
 
 test('audit fail-closed: if the durable "attempted" evidence cannot be recorded, nothing is authored or approved; validation discloses nothing', async () => {

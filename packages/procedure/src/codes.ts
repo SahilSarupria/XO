@@ -51,7 +51,12 @@ export type ProcedureErrorCode =
   | 'PROC_UNKNOWN_INPUT_PARAM'
   | 'PROC_BINDING_OUTPUT_UNDECLARED'
   | 'PROC_BINDING_TYPE_MISMATCH'
-  | 'PROC_UNBOUND_REQUIRED_INPUT';
+  | 'PROC_UNBOUND_REQUIRED_INPUT'
+  // P1.1 M3 — start-time input validation (derived from consumer contracts; never from a client schema).
+  | 'PROC_INPUT_INVALID'
+  | 'PROC_INPUT_MISSING'
+  | 'PROC_INPUT_UNDECLARED'
+  | 'PROC_INPUT_CONTRACT_UNAVAILABLE';
 
 export interface ProcedureFinding {
   readonly code: ProcedureErrorCode;
