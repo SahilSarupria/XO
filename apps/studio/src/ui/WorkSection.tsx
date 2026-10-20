@@ -1,17 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
-import {
-  describeRun,
-  describeStartProblem,
-  findActiveRun,
-  humanStepCount,
-  isAmbiguousFailure,
-  newIdempotencyKey,
-  startReadiness,
-  tidyName,
-  workflowTitle,
-} from '../domain/work';
+import { describeRun, humanStepCount, tidyName, workflowTitle } from '../domain/work';
 import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
-import { ActionNoticeView, useGuardedAction, type ActionNotice } from './actions';
+import { ActionNoticeView } from './actions';
+import { useStartWorkflow } from './useStartWorkflow';
 import { Badge, Button, EmptyState, Section } from './primitives';
 import { useSession } from './session';
 
@@ -36,6 +26,7 @@ export function WorkSection(props: {
   goToSetup: () => void;
   goToTasks: () => void;
   goToActivity: () => void;
+  onOpenGraph: (workflowId: string) => void;
 }) {
   const here = props.workflows.filter((w) => props.compilation !== undefined && w.compilationId === props.compilation.compilationId);
 
@@ -66,6 +57,7 @@ export function WorkSection(props: {
                 goToSetup={props.goToSetup}
                 goToTasks={props.goToTasks}
                 goToActivity={props.goToActivity}
+                onOpenGraph={props.onOpenGraph}
               />
             </li>
           ))}
@@ -85,65 +77,12 @@ function WorkflowCard(props: {
   goToSetup: () => void;
   goToTasks: () => void;
   goToActivity: () => void;
+  onOpenGraph: (workflowId: string) => void;
 }) {
-  const { client, mode } = useSession();
+  const { mode } = useSession();
   const w = props.workflow;
-  const [notice, setNotice] = useState<ActionNotice | undefined>();
-  const { run: guard, busy } = useGuardedAction();
-  // One key per start INTENT. It is reused only to retry after an unclear failure, so the platform can hand back
-  // the original run instead of creating a second; it is dropped as soon as the outcome is known.
-  const intentKey = useRef<string | undefined>(undefined);
-
-  const active = findActiveRun(props.runs, w.workflowId, w.compilationId);
-  const ready = useMemo(() => startReadiness(w, props.caps), [w, props.caps]);
+  const { start, busy, notice, ready, active } = useStartWorkflow(props);
   const human = humanStepCount(w, props.caps);
-
-  function start() {
-    void guard(async () => {
-      setNotice(undefined);
-      // Re-read the platform's runs right before starting; the list on screen may be stale.
-      const before = await client.listWorkflowRuns(props.workspaceId);
-      if (!before.ok) {
-        setNotice({ problem: before.problem });
-        return;
-      }
-      const existing = findActiveRun(before.value, w.workflowId, w.compilationId);
-      if (existing !== undefined) {
-        setNotice({ info: 'This process is already in progress, so a second one was not started. You can continue it instead.' });
-        props.onChanged();
-        return;
-      }
-      intentKey.current ??= newIdempotencyKey();
-      const r = await client.startWorkflow(props.workspaceId, w.workflowId, w.compilationId, intentKey.current);
-      if (r.ok) {
-        intentKey.current = undefined;
-        props.onChanged();
-        if (r.value.status === 'waiting_for_human') props.goToTasks();
-        else props.goToActivity();
-        return;
-      }
-      const known = describeStartProblem(r.problem, w);
-      if (known !== undefined) {
-        intentKey.current = undefined; // a definite refusal: nothing was created, the next start is a new intent
-        setNotice({ view: known });
-        props.onChanged();
-      } else if (isAmbiguousFailure(r.problem)) {
-        // The request may or may not have reached the platform. Ask it, rather than guessing or resending.
-        const after = await client.listWorkflowRuns(props.workspaceId);
-        const found = after.ok ? findActiveRun(after.value, w.workflowId, w.compilationId) : undefined;
-        props.onChanged();
-        setNotice({
-          info: !after.ok
-            ? 'XO did not confirm whether this started, and Studio could not check. Look in Activity before starting again.'
-            : found !== undefined
-              ? 'The process did start. XO\u2019s records show it in progress.'
-              : 'XO did not confirm whether this started. Studio checked and found no run yet. You can try again: the retry carries the same request key, so XO will hand back the original run if the first attempt did arrive instead of creating a second.',
-        });
-      } else {
-        setNotice({ problem: r.problem });
-      }
-    });
-  }
 
   const runView = active === undefined ? undefined : describeRun(active);
 
@@ -193,6 +132,12 @@ function WorkflowCard(props: {
         })}
       </ol>
 
+      <div className="row">
+        <Button variant="quiet" onClick={() => props.onOpenGraph(w.workflowId)} aria-label={`View graph of ${workflowTitle(w)}`}>
+          View graph
+        </Button>
+      </div>
+
       <details>
         <summary>What each step is based on</summary>
         <ul className="plain">
@@ -223,7 +168,7 @@ function WorkflowCard(props: {
             variant="primary"
             className="btn-lg"
             disabled={busy || !ready.canStart}
-            onClick={() => void start()}
+            onClick={start}
             aria-describedby={`why-${w.workflowId}`}
           >
             {busy ? 'Starting…' : 'Start this process'}

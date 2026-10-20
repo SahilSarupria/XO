@@ -11,7 +11,7 @@ import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
 import { ContractsSection } from './ContractsSection';
 import { PlatformSection } from './PlatformSection';
-import { Badge, Breadcrumbs, Button, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import { Badge, Breadcrumbs, Button, EmptyState, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
 import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
@@ -20,6 +20,7 @@ import { Icon, type IconName } from './icons';
 import { XosSection } from './XosSection';
 import { AuditSection, LibrarySection, SettingsSection } from './DesignSections';
 import { ChatScreen } from './ChatScreen';
+import { WorkflowEditor } from './WorkflowScreen';
 import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
 import { xoItems } from '../domain/xo';
 import type { FrameLayout } from './AppChrome';
@@ -65,6 +66,8 @@ export function WorkspaceView(props: {
   const previousMode = useRef(mode);
   const [threads, setThreads] = useState<readonly ChatThread[]>([]);
   const [activeThread, setActiveThread] = useState<string | undefined>();
+  const [selectedWorkflow, setSelectedWorkflow] = useState<string | undefined>();
+  const [wfSettings, setWfSettings] = useState(false);
   const threadSeq = useRef(1);
   const messageSeq = useRef(1);
 
@@ -268,6 +271,61 @@ export function WorkspaceView(props: {
     </>
   );
 
+  if (view === 'graph') {
+    const wf =
+      workflowList.find((w) => w.workflowId === selectedWorkflow) ??
+      workflowList.find((w) => w.compilationId === activeCompilation?.compilationId) ??
+      workflowList[0];
+    return (
+      <>
+        {props.frame({
+          nav,
+          rail,
+          layout: 'bare',
+          content: (
+            <main className="immersive">
+              {wf === undefined ? (
+                <div className="page narrow">
+                  {workflows.state.phase === 'loading' ? (
+                    <Skeleton label="Loading workflows" />
+                  ) : (
+                    <EmptyState title="No workflow to show yet">Add a document and let XO analyse it. The processes it finds can be opened here.</EmptyState>
+                  )}
+                  <div className="row">
+                    <Button variant="secondary" onClick={() => setView('work')}>
+                      Back to Workflows
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <WorkflowEditor
+                  key={wf.workflowId}
+                  workspaceId={ws}
+                  workflows={workflowList}
+                  workflow={wf}
+                  onSelectWorkflow={setSelectedWorkflow}
+                  caps={capList}
+                  executions={execList}
+                  runs={runList}
+                  xos={xoList}
+                  tab={wfSettings ? 'settings' : 'editor'}
+                  onTab={(t) => {
+                    if (t === 'executions') setView('activity');
+                    else setWfSettings(t === 'settings');
+                  }}
+                  onBack={() => setView('work')}
+                  onChanged={refreshAll}
+                  goToTasks={() => setView('tasks')}
+                  goToActivity={() => setView('activity')}
+                />
+              )}
+            </main>
+          ),
+        })}
+      </>
+    );
+  }
+
   if (view === 'chat') {
     return (
       <>
@@ -392,6 +450,11 @@ export function WorkspaceView(props: {
           }}
           goToTasks={() => setView('tasks')}
           goToActivity={() => setView('activity')}
+          onOpenGraph={(id) => {
+            setSelectedWorkflow(id);
+            setWfSettings(false);
+            setView('graph');
+          }}
         />
       ) : null}
       {view === 'tasks' ? (

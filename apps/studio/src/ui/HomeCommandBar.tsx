@@ -50,7 +50,7 @@ export function HomeCommandBar(props: { onAsk: (text: string) => void; chips: re
           Send
         </Button>
       </form>
-      <ul className="chips-row plain" aria-label="Quick actions">
+      <ul className="chips-row bare-list" aria-label="Quick actions">
         {props.chips.map((c) => (
           <li key={c.label}>
             <button type="button" className="chip" onClick={() => props.onChip?.(c.target)}>

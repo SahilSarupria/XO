@@ -53,7 +53,7 @@ export function ChatScreen(props: {
           + New chat
         </Button>
         {today.length > 0 ? <p className="chat-group">This session</p> : <p className="muted small chat-empty">No conversations yet.</p>}
-        <ul className="plain">
+        <ul className="bare-list">
           {[...today].reverse().map((t) => (
             <li key={t.id}>
               <button type="button" className="chat-thread" aria-current={t.id === props.activeId ? 'true' : undefined} onClick={() => props.onSelect(t.id)}>
@@ -156,7 +156,7 @@ export function ChatScreen(props: {
       <aside className="chat-context" aria-label="Context">
         <h3 className="chat-label">Loaded XOs</h3>
         {props.xos.length === 0 ? <p className="muted small">None yet. An XO is built from an analysed document.</p> : null}
-        <ul className="plain">
+        <ul className="bare-list">
           {props.xos.slice(0, 6).map((x) => (
             <li key={x.id} className="chat-xoitem">
               <span className="dot" aria-hidden="true" />
