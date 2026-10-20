@@ -10,7 +10,7 @@ async function waitingDecision(api: FakeXo) {
   const user = userEvent.setup();
   render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
-  await user.click(screen.getByRole('button', { name: /connect/i }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
@@ -57,7 +57,7 @@ describe('Inbox', () => {
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={api.fetch} />));
     await user.type(screen.getByLabelText(/access key/i), api.validKey);
-    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
     await screen.findByRole('heading', { name: 'Ops' });

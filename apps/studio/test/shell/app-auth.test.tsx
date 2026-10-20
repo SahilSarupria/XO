@@ -73,7 +73,7 @@ describe('production sign-in (OIDC) through the app', () => {
     const h = harness();
     const user = userEvent.setup();
     renderApp(h);
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByRole('button', { name: /sign out/i })).toBeInTheDocument();
     const stored = decodeCredential(h.store.get('k') ?? '');
     expect(stored?.kind).toBe('oidc-refresh');
@@ -89,7 +89,7 @@ describe('production sign-in (OIDC) through the app', () => {
     h.idp.accessToken = 'jwt.that.the.api.cannot.verify';
     const user = userEvent.setup();
     renderApp(h);
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByText(/XO did not accept this sign-in/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
     expect(h.store.has('k')).toBe(false);
@@ -102,7 +102,7 @@ describe('production sign-in (OIDC) through the app', () => {
     const forged: SystemBrowserLogin = { ...login, awaitCallback: async () => 'code=stolen&state=attacker' };
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={h.fetchImpl} oidc={oidc} />, { ...h.shell, login: forged }));
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByText(/did not match this sign-in attempt/i)).toBeInTheDocument();
     expect(h.idp.calls.some((c) => c.url.endsWith('/token'))).toBe(false);
   });
@@ -154,7 +154,7 @@ describe('production sign-in (OIDC) through the app', () => {
     h.failLoad = true;
     renderApp(h);
     expect(await screen.findByText(/secure storage is unavailable/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sign in with your organisation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
   });
 
   it('says so when a credential cannot be saved, and the session still works', async () => {
@@ -162,7 +162,7 @@ describe('production sign-in (OIDC) through the app', () => {
     h.failSave = true;
     const user = userEvent.setup();
     renderApp(h);
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByRole('button', { name: /sign out/i })).toBeInTheDocument();
     expect(h.store.has('k')).toBe(false);
   });
@@ -178,20 +178,20 @@ describe('development sign-in is explicit and can be switched off', () => {
   it('is absent when disabled; the OIDC option remains', async () => {
     const h = harness();
     renderApp(h, { devSignIn: false });
-    expect(await screen.findByRole('button', { name: /sign in with your organisation/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /continue with google/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/access key/i)).not.toBeInTheDocument();
   });
   it('a stored dev key is refused and cleared when dev sign-in is disabled', async () => {
     const h = harness();
     h.store.set('k', encodeCredential({ kind: 'dev-key', key: h.api.validKey }));
     renderApp(h, { devSignIn: false });
-    await screen.findByRole('button', { name: /sign in with your organisation/i });
+    await screen.findByRole('button', { name: /continue with google/i });
     expect(h.store.has('k')).toBe(false);
   });
   it('web shell with OIDC configured and no dev sign-in explains it is not yet available (no dead end, no fake button)', async () => {
     const h = harness();
     render(withShell(<App fetchImpl={h.fetchImpl} oidc={oidc} devSignIn={false} />, createWebShellServices()));
     expect(await screen.findByText(/not yet available in the browser/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /sign in with your organisation/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue with google/i })).not.toBeInTheDocument();
   });
 });

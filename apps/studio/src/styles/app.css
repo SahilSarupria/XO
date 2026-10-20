@@ -252,28 +252,42 @@ a {
 }
 .connect-sso button {
   width: 100%;
-  padding-block: 0.75rem;
+  min-height: 48px;
+  border-radius: 10px;
   font-size: var(--text-md);
 }
-.connect-note,
-.connect-legal {
-  text-align: left;
-}
-.connect-dev {
-  border-top: 1px solid var(--border);
-  padding-top: var(--s-4);
-}
-.connect-dev summary {
-  cursor: pointer;
+.connect-or {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
-  margin-bottom: var(--s-3);
 }
-.connect-dev[open] summary {
-  margin-bottom: var(--s-4);
+.connect-or::before,
+.connect-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+.connect-dev input {
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 10px;
+}
+.connect-dev button[type='submit'] {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 10px;
+  font-size: var(--text-md);
+  font-weight: 650;
+}
+.connect-note {
+  margin: 0;
 }
 .connect-legal {
   margin: 0;
+  text-align: center;
   color: var(--text-faint);
 }
 @media (max-width: 56rem) {
@@ -292,34 +306,6 @@ a {
 }
 .connect-card .stack {
   text-align: left;
-}
-.connect-sso button {
-  width: 100%;
-  padding-block: 0.75rem;
-  font-size: var(--text-md);
-}
-.connect-note,
-.connect-legal {
-  text-align: center;
-}
-.connect-dev {
-  border-top: 1px solid var(--border);
-  padding-top: var(--s-4);
-  text-align: left;
-}
-.connect-dev summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  text-align: center;
-  margin-bottom: var(--s-3);
-}
-.connect-dev[open] summary {
-  margin-bottom: var(--s-4);
-}
-.connect-legal {
-  margin: 0;
-  color: var(--text-faint);
 }
 .lede {
   color: var(--text-muted);

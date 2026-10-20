@@ -15,7 +15,7 @@ async function withWaitingRun(api: FakeXo): Promise<U> {
   const user = userEvent.setup();
   render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
-  await user.click(screen.getByRole('button', { name: /connect/i }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   await user.type(await screen.findByLabelText(/workspace name/i), 'Ops');
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
@@ -66,7 +66,7 @@ describe('optional decision notes', () => {
     const u2 = userEvent.setup();
     render(withShell(<App fetchImpl={api.fetch} />));
     await u2.type(screen.getByLabelText(/access key/i), api.validKey);
-    await u2.click(screen.getByRole('button', { name: /connect/i }));
+    await u2.click(screen.getByRole('button', { name: 'Continue' }));
     await screen.findByRole('heading', { name: 'Ops' });
     await openScreen(u2, 'Activity');
     expect(await screen.findByText(/note from sally: looks right/i)).toBeInTheDocument();

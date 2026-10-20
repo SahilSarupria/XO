@@ -304,7 +304,7 @@ describe('Google sign-in through the app', () => {
     const h = appRig();
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={h.fetchImpl} oidc={cfg} />, h.shell));
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByRole('button', { name: /sign out/i })).toBeInTheDocument();
     const raw = h.store.get('k') ?? '';
     expect(decodeCredential(raw)?.kind).toBe('xo-session');
@@ -318,12 +318,12 @@ describe('Google sign-in through the app', () => {
     const h = appRig();
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={h.fetchImpl} oidc={cfg} />, h.shell));
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     await screen.findByRole('button', { name: /sign out/i });
     h.xo.logoutDown = true;
     await user.click(screen.getByRole('button', { name: /sign out/i }));
     await waitFor(() => expect(h.store.has('k')).toBe(false));
-    expect(await screen.findByRole('button', { name: /sign in with your organisation/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /continue with google/i })).toBeInTheDocument();
   });
 
   it('an unbound identity is told so, no session is stored, and nothing is left signed in', async () => {
@@ -331,7 +331,7 @@ describe('Google sign-in through the app', () => {
     h.xo.bound = false;
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={h.fetchImpl} oidc={cfg} />, h.shell));
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     expect(await screen.findByText(/administrator may not have enabled XO/i)).toBeInTheDocument();
     expect(h.store.has('k')).toBe(false);
     expect(screen.queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
@@ -341,7 +341,7 @@ describe('Google sign-in through the app', () => {
     const first = appRig();
     const user = userEvent.setup();
     const a = render(withShell(<App fetchImpl={first.fetchImpl} oidc={cfg} />, first.shell));
-    await user.click(await screen.findByRole('button', { name: /sign in with your organisation/i }));
+    await user.click(await screen.findByRole('button', { name: /continue with google/i }));
     await screen.findByRole('button', { name: /sign out/i });
     const saved = first.store.get('k') ?? '';
     a.unmount();
@@ -393,7 +393,7 @@ describe('Google sign-in through the app', () => {
     };
     first.xo.refreshDown = 'network';
     render(withShell(<App fetchImpl={first.fetchImpl} oidc={cfg} />, shell4));
-    await screen.findByRole('button', { name: /sign in with your organisation/i });
+    await screen.findByRole('button', { name: /continue with google/i });
     expect(fourth.has('k')).toBe(true);
   });
 

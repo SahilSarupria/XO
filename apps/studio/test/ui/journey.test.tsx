@@ -9,7 +9,7 @@ async function connect(api: FakeXo, key = api.validKey) {
   const user = userEvent.setup();
   render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), key);
-  await user.click(screen.getByRole('button', { name: /connect/i }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   return user;
 }
 
@@ -51,7 +51,7 @@ describe('connecting', () => {
       ),
     );
     await user.type(screen.getByLabelText(/access key/i), 'k');
-    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(await screen.findByText(/cannot reach xo/i)).toBeInTheDocument();
   });
 });

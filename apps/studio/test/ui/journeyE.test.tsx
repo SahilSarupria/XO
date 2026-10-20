@@ -14,7 +14,7 @@ async function connect(api: FakeXo, fetchImpl: typeof api.fetch = api.fetch): Pr
   const user = userEvent.setup();
   render(withShell(<App fetchImpl={fetchImpl} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
-  await user.click(screen.getByRole('button', { name: /connect/i }));
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
   return user;
 }
 

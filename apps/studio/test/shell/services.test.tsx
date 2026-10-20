@@ -55,7 +55,7 @@ describe('the app uses injected shell services', () => {
     const user = userEvent.setup();
     render(withShell(<App fetchImpl={api.fetch} />, shell));
     await user.type(await screen.findByLabelText(/access key/i), api.validKey);
-    await user.click(screen.getByRole('button', { name: /connect/i }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(decodeCredential(store.get('k') ?? '')).toEqual({ kind: 'dev-key', key: api.validKey }));
     await user.click(await screen.findByRole('button', { name: /sign out/i }));
     await waitFor(() => expect(store.has('k')).toBe(false));
