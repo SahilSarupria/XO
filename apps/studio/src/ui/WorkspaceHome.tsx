@@ -4,12 +4,15 @@ import { Button, EmptyState, ProblemNotice, Skeleton, useLoad } from './primitiv
 import { useSession } from './session';
 import { AppChrome } from './AppChrome';
 import { WorkspaceView } from './WorkspaceView';
+import { ChooseWorkspace } from './ChooseWorkspace';
 
 export function WorkspaceHome(props: { account: ReactNode }) {
-  const { client } = useSession();
+  const { client, signOut } = useSession();
   const { state, reload } = useLoad(() => client.listWorkspaces(), [client]);
   const [selected, setSelected] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
+  /** With several workspaces, the person chooses one on arrival; a single workspace opens directly. */
+  const [chosen, setChosen] = useState(false);
 
   if (state.phase === 'loading')
     return (
@@ -29,6 +32,19 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     );
 
   const workspaces = state.value;
+  if (!chosen && !creating && selected === undefined && workspaces.length > 1)
+    return (
+      <ChooseWorkspace
+        workspaces={workspaces}
+        onOpen={(id) => {
+          setSelected(id);
+          setChosen(true);
+        }}
+        onCreate={() => setCreating(true)}
+        onSwitchAccount={signOut}
+      />
+    );
+
   // Creating takes over the screen even when a workspace is already selected; Cancel returns to it.
   const active = creating ? undefined : (workspaces.find((w) => w.workspaceId === selected) ?? workspaces[0]);
 
