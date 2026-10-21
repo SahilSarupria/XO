@@ -71,7 +71,7 @@ describe('app frame', () => {
       .getAllByRole('button')
       .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    expect(labels).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
+    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
     expect(labels.at(-1)).toBe('Settings');
   });
 

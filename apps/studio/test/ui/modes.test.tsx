@@ -52,7 +52,7 @@ describe('mode: default, switching and persistence', () => {
     await open(new FakeXo());
     expect(within(modeGroup()).getByRole('button', { name: 'User' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(modeGroup()).getByRole('button', { name: 'Builder' })).toHaveAttribute('aria-pressed', 'false');
-    expect(navLabels()).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
+    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
     expect(screen.getByText('User mode')).toBeInTheDocument();
   });
@@ -62,9 +62,9 @@ describe('mode: default, switching and persistence', () => {
     await toBuilder(user);
     expect(navLabels()).toEqual([
       'Home',
-      'Inbox',
       'Workflows',
       'My XOs',
+      'Inbox',
       'Library',
       'Activity',
       'Audit log',

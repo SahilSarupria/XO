@@ -222,17 +222,6 @@ export function WorkspaceView(props: {
       <NavItem current={navCurrent} id="home" icon="home" hint="What needs you today" onSelect={setView}>
         Home
       </NavItem>
-      <NavItem
-        current={navCurrent}
-        id="tasks"
-        icon="inbox"
-        hint="Decisions that need you"
-        onSelect={setView}
-        count={taskCount}
-        countLabel="need attention"
-      >
-        Inbox
-      </NavItem>
       <NavItem current={navCurrent} id="work" icon="work" hint="Start a process" onSelect={setView}>
         Workflows
       </NavItem>
@@ -246,6 +235,17 @@ export function WorkspaceView(props: {
         countLabel="ready for review"
       >
         My XOs
+      </NavItem>
+      <NavItem
+        current={navCurrent}
+        id="tasks"
+        icon="inbox"
+        hint="Decisions that need you"
+        onSelect={setView}
+        count={taskCount}
+        countLabel="need attention"
+      >
+        Inbox
       </NavItem>
       <NavItem current={navCurrent} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
         Library

@@ -45,7 +45,7 @@ describe('shell stays business-neutral', () => {
         .getAllByRole('button')
         .filter((b) => b.classList.contains('nav-item'))
         .map((b) => b.querySelector('.nav-label')?.textContent),
-    ).toEqual(['Home', 'Inbox', 'Workflows', 'My XOs', 'Library', 'Activity', 'Audit log', 'Settings']);
+    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });
 });
