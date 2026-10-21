@@ -121,7 +121,7 @@ export function registerProcedureRoutes(
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
   audit: AuditService,
-  options: { readonly stepTimeoutMs?: number } = {},
+  options: { readonly stepTimeoutMs?: number; readonly testBeforeStepExecute?: () => Promise<void> } = {},
 ): void {
   const auditCtx = { audit, workspaceStore };
 
@@ -551,6 +551,7 @@ export function registerProcedureRoutes(
       audit,
       correlationId,
       ...(options.stepTimeoutMs !== undefined ? { stepTimeoutMs: options.stepTimeoutMs } : {}),
+      ...(options.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: options.testBeforeStepExecute } : {}),
     };
   }
 

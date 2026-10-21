@@ -47,6 +47,21 @@ export interface ApiConfig {
    * `WORKSPACES_DIR`.
    */
   readonly workspaceDataDir: string;
+  /**
+   * P1.1 M3 closeout (owner decision D2). Server-level per-step timeout for procedure execution, in milliseconds
+   * (`XO_PROCEDURE_STEP_TIMEOUT_MS`). UNSET MEANS NO TIMEOUT -- there is deliberately no numeric default. A timeout only
+   * CLASSIFIES the step as `timeout`; it does not cancel the in-flight capability call (cancellation is out of scope).
+   */
+  readonly procedureStepTimeoutMs?: number;
+}
+
+/** Unset/empty -> undefined (no timeout). A set value must be a positive integer; anything else aborts startup (fail closed). */
+export function parseStepTimeoutMs(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  if (!/^[1-9][0-9]{0,9}$/.test(raw.trim())) {
+    throw new Error('XO_PROCEDURE_STEP_TIMEOUT_MS must be a positive integer number of milliseconds (unset means no timeout)');
+  }
+  return Number(raw.trim());
 }
 
 export function loadConfig(env: Readonly<Record<string, string | undefined>> = process.env): ApiConfig {
@@ -58,5 +73,8 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>> = p
     apiKeysDir: env['API_KEYS_DIR'] ?? '.xo-data/api-keys',
     workspacesDir: env['WORKSPACES_DIR'] ?? '.xo-data/workspaces',
     workspaceDataDir: env['WORKSPACE_DATA_DIR'] ?? '.xo-data/workspace-data',
+    ...(parseStepTimeoutMs(env['XO_PROCEDURE_STEP_TIMEOUT_MS']) !== undefined
+      ? { procedureStepTimeoutMs: parseStepTimeoutMs(env['XO_PROCEDURE_STEP_TIMEOUT_MS']) as number }
+      : {}),
   };
 }

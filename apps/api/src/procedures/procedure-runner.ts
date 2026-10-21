@@ -72,6 +72,12 @@ export interface ProcedureRunnerContext {
    * cancelled (cancel-in-flight is out of scope).
    */
   readonly stepTimeoutMs?: number;
+  /**
+   * TEST-ONLY SEAM (owner decision D2, 2026-10-21). Awaited INSIDE the timed work, immediately before the real
+   * `executeApprovedCapability` call. It can only DELAY the real call: it cannot replace, skip or alter execution, so it is
+   * not an execution bypass. Ignored when NODE_ENV is 'production'. Not exposed through HTTP or environment configuration.
+   */
+  readonly testBeforeStepExecute?: () => Promise<void>;
 }
 
 const enc = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -414,14 +420,18 @@ async function runStep(
   if (!created.ok) throw created.error;
   const executionId = created.value.executionId;
   await holder.update((r) => ({ ...r, steps: replaceStep(r.steps, step.id, { status: 'running', executionId }) }));
+  const seam = process.env['NODE_ENV'] === 'production' ? undefined : ctx.testBeforeStepExecute;
   const outcome = await raceTimeout(
-    executeApprovedCapability(
-      rt.value.graphJson,
-      step.capabilityId,
-      input.value,
-      { permissionManager: ctx.permissionManager, subject: ctx.principal },
-      { validateInputSchema: false, preflightGraphHash: ContentHash(rt.value.graphHash) },
-    ),
+    (async () => {
+      if (seam !== undefined) await seam();
+      return executeApprovedCapability(
+        rt.value.graphJson,
+        step.capabilityId,
+        input.value,
+        { permissionManager: ctx.permissionManager, subject: ctx.principal },
+        { validateInputSchema: false, preflightGraphHash: ContentHash(rt.value.graphHash) },
+      );
+    })(),
     ctx.stepTimeoutMs,
   );
   if (outcome === 'timeout') return fail('timeout', 'XO_PROCEDURE_STEP_TIMEOUT', executionId, 'step timed out');
