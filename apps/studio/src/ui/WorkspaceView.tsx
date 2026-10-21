@@ -11,7 +11,7 @@ import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
 import { ContractsSection } from './ContractsSection';
 import { PlatformSection } from './PlatformSection';
-import { Badge, Breadcrumbs, Button, EmptyState, ProblemNotice, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import { Badge, Breadcrumbs, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
 import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
@@ -22,11 +22,13 @@ import { AuditSection, LibrarySection, SettingsSection } from './DesignSections'
 import { ChatScreen } from './ChatScreen';
 import { WorkflowEditor } from './WorkflowScreen';
 import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
-import { xoItems } from '../domain/xo';
+import { xoItems, type XoSubject } from '../domain/xo';
+import { CreateXo } from './CreateXo';
+import { XoInspector } from './XoInspector';
 import type { FrameLayout } from './AppChrome';
 
 type View = Section;
-type SetupView = 'documents' | 'rules';
+type SetupView = 'xos' | 'documents' | 'rules';
 
 const PAGE_LABEL: Record<View, string> = {
   home: 'Home',
@@ -68,6 +70,7 @@ export function WorkspaceView(props: {
   const [activeThread, setActiveThread] = useState<string | undefined>();
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | undefined>();
   const [wfSettings, setWfSettings] = useState(false);
+  const [xoSubject, setXoSubject] = useState<XoSubject | undefined>();
   const [selectedRun, setSelectedRun] = useState<string | undefined>();
   const threadSeq = useRef(1);
   const messageSeq = useRef(1);
@@ -511,6 +514,7 @@ export function WorkspaceView(props: {
             label="Sources views"
             current={setupView}
             items={[
+              { id: 'xos', label: 'XOs', onSelect: () => setSetupView('xos') },
               { id: 'documents', label: 'Documents', onSelect: () => setSetupView('documents') },
               {
                 id: 'rules',
@@ -526,7 +530,45 @@ export function WorkspaceView(props: {
               Documents are what you gave XO. Rules are what XO worked out from them, shown with the evidence. Only you can approve a rule.
             </p>
           ) : null}
-          {setupView === 'documents' ? (
+          {setupView === 'xos' ? (
+            <PageSection
+              id="xos-list-h"
+              title="My XOs"
+              lede="XOs built from your documents."
+              actions={
+                <Button variant="primary" onClick={() => setView('create')}>
+                  + Create XO
+                </Button>
+              }
+            >
+              {xoList.length === 0 ? (
+                <EmptyState title="No XOs yet">Analyse a document to make your first XO.</EmptyState>
+              ) : (
+                <ul className="list">
+                  {xoList.map((x) => (
+                    <li key={x.id} className="card">
+                      <div className="card-main">
+                        <h3>{x.label}</h3>
+                        <p className="muted small">Analysed {formatWhen(x.at)}</p>
+                      </div>
+                      <div className="card-actions">
+                        <Button
+                          variant="secondary"
+                          aria-label={`Open ${x.label}`}
+                          onClick={() => {
+                            setXoSubject({ kind: 'analysis', id: x.id });
+                            setView('xo');
+                          }}
+                        >
+                          Open
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </PageSection>
+          ) : setupView === 'documents' ? (
             <ContextSection
               workspaceId={ws}
               sources={sources.state}
@@ -571,7 +613,51 @@ export function WorkspaceView(props: {
           goToProcesses={() => setView('processes')}
         />
       ) : null}
-      {view === 'library' ? <LibrarySection goTo={goToTarget} /> : null}
+      {view === 'create' ? (
+        <CreateXo
+          workspaceId={ws}
+          sources={sources.state}
+          compilations={succeeded}
+          summary={summary}
+          onChanged={refreshAll}
+          goTo={goToTarget}
+          onOpenXo={(id) => {
+            setXoSubject({ kind: 'analysis', id });
+            setView('xo');
+          }}
+        />
+      ) : null}
+      {view === 'xo' ? (
+        xoSubject === undefined ? (
+          <EmptyState title="No XO selected">
+            <Button variant="secondary" onClick={() => setView('setup')}>
+              Back to My XOs
+            </Button>
+          </EmptyState>
+        ) : (
+          <XoInspector
+            workspaceId={ws}
+            subject={xoSubject}
+            compilations={succeeded}
+            sources={loadedValue(sources.state) ?? []}
+            onBack={() => {
+              setSetupView('xos');
+              setView('setup');
+            }}
+            goTo={goToTarget}
+          />
+        )
+      ) : null}
+      {view === 'library' ? (
+        <LibrarySection
+          workspaceId={ws}
+          goTo={goToTarget}
+          onOpenPackage={(id) => {
+            setXoSubject({ kind: 'package', id });
+            setView('xo');
+          }}
+        />
+      ) : null}
       {view === 'audit' ? <AuditSection runs={runList} incomplete={decisionsUnknown} /> : null}
       {view === 'settings' ? <SettingsSection workspaceName={props.workspace.name ?? 'Untitled workspace'} /> : null}
       {view === 'platform' && mode === 'builder' ? (

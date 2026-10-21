@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import type { WorkflowRun } from '../platform/wire';
+import type { Result } from '../platform/client';
+import type { RegistryPackage, WorkflowRun } from '../platform/wire';
 import type { StartTarget } from '../domain/start';
-import { Badge, Button, formatWhen, Section } from './primitives';
+import { shortDid } from '../domain/xo';
+import { Badge, Button, formatWhen, ProblemNotice, Section } from './primitives';
 import { runTitle } from './RunCard';
 import { useSession, type Mode } from './session';
 
@@ -28,37 +30,92 @@ const SAMPLE = [
   { name: 'renewal-assistant', by: 'Sample publisher', text: 'Drafts renewal reminders and quotes from policy data.', tag: 'Insurance' },
 ] as const;
 
-/** Library, as designed. The registry is not connected to Studio yet, so these are labelled samples with no scores or install. */
-export function LibrarySection(props: { goTo: (t: StartTarget) => void }) {
+/** Library: a real registry search (read-only), plus labelled samples. No install, scores or prices: the registry gives none. */
+export function LibrarySection(props: { workspaceId: string; goTo: (t: StartTarget) => void; onOpenPackage: (id: string) => void }) {
+  const { client } = useSession();
   const [filter, setFilter] = useState<string>('All');
   const [q, setQ] = useState('');
+  const [searched, setSearched] = useState<{ query: string; result: Result<RegistryPackage[]> } | undefined>();
+  const [searching, setSearching] = useState(false);
   const shown = SAMPLE.filter(
     (s) => (filter === 'All' || s.tag === filter) && `${s.name} ${s.text}`.toLowerCase().includes(q.toLowerCase()),
   );
+  async function search() {
+    const query = q.trim();
+    if (query === '') return;
+    setSearching(true);
+    const result = await client.searchRegistry(props.workspaceId, query);
+    setSearching(false);
+    setSearched({ query, result });
+  }
   return (
     <Section
       id="library-h"
       title="Library"
       lede="Browse XOs to add to your workspace."
       actions={
-        <Button variant="primary" onClick={() => props.goTo('documents')}>
+        <Button variant="primary" onClick={() => props.goTo('create')}>
           + Create XO
         </Button>
       }
     >
-      <p className="notice notice-info small">
-        Preview: these are samples. The registry is not connected to Studio yet, so nothing here can be installed or scored.
-      </p>
-      <label className="visually-hidden" htmlFor="lib-q">
-        Search the library
-      </label>
-      <input
-        id="lib-q"
-        className="searchbox"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search by what you need, e.g. “check claim eligibility”…"
-      />
+      <form
+        className="row"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void search();
+        }}
+      >
+        <label className="visually-hidden" htmlFor="lib-q">
+          Search the library
+        </label>
+        <input
+          id="lib-q"
+          className="searchbox"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by what you need, e.g. “check claim eligibility”…"
+        />
+        <Button variant="secondary" type="submit" disabled={searching || q.trim() === ''}>
+          {searching ? 'Searching…' : 'Search registry'}
+        </Button>
+      </form>
+      {searched !== undefined ? (
+        <section aria-label="Registry results" className="stack">
+          <h3>Registry results for “{searched.query}”</h3>
+          {!searched.result.ok ? <ProblemNotice problem={searched.result.problem} onRetry={() => void search()} /> : null}
+          {searched.result.ok && searched.result.value.length === 0 ? <p className="muted small">The registry has nothing for “{searched.query}”.</p> : null}
+          {searched.result.ok ? (
+            <ul className="xo-grid plain">
+              {searched.result.value.map((p) => (
+                <li key={p.id} className="xo-card">
+                  <div className="row between">
+                    <h3>{p.name}</h3>
+                    <Badge tone="neutral">v{p.version}</Badge>
+                  </div>
+                  <p className="mono muted small">{shortDid(p.creatorDid)}</p>
+                  <p className="xo-card-text">
+                    {p.capabilities.length} {p.capabilities.length === 1 ? 'capability' : 'capabilities'} declared
+                  </p>
+                  <div className="row between">
+                    <Button variant="secondary" aria-label={`Open ${p.name}`} onClick={() => props.onOpenPackage(p.id)}>
+                      Open
+                    </Button>
+                    <Button variant="secondary" aria-disabled title="Installing from the registry is not available yet">
+                      Install
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : (
+        <p className="muted small">The registry can only be searched, not listed. Type what you need and search.</p>
+      )}
+      <h3>Samples</h3>
+      <p className="notice notice-info small">Preview: these are samples, not registry entries. Nothing here can be installed or scored.</p>
       <div className="chips-row" role="group" aria-label="Filter by area">
         {['All', 'Insurance', 'Legal', 'Finance'].map((f) => (
           <button key={f} type="button" className="chip" aria-pressed={filter === f} onClick={() => setFilter(f)}>

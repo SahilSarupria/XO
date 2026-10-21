@@ -7,6 +7,8 @@ import {
   parseExecution,
   parseExecutionList,
   parseHealth,
+  parseRegistryInspect,
+  parseRegistrySearch,
   parseSource,
   parseSourceList,
   parseWorkflowList,
@@ -17,9 +19,11 @@ import {
   tryParseErrorBody,
   WireParseError,
   type ApiDescription,
+  type BenchmarkRun,
   type Capability,
   type Compilation,
   type Execution,
+  type RegistryPackage,
   type Source,
   type Workflow,
   type WorkflowRun,
@@ -200,6 +204,14 @@ export class XoClient {
       body: buf,
       ...(file.type.length > 0 ? { contentType: file.type } : {}),
     });
+  }
+
+  // ---- registry (read-only). The registry has no "list everything" route: it answers a search, or one package.
+  searchRegistry(ws: string, query: string): Promise<Result<RegistryPackage[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/registry/search?q=${encodeURIComponent(query)}`, parseRegistrySearch);
+  }
+  inspectPackage(ws: string, packageId: string): Promise<Result<{ record: RegistryPackage; runs: BenchmarkRun[] }>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/registry/packages/${enc(packageId)}/inspect`, parseRegistryInspect);
   }
 
   // ---- compilation (analysis)

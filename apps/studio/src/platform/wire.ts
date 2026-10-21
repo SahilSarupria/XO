@@ -548,3 +548,80 @@ export function parseApiDescription(v: unknown): ApiDescription {
   }
   return { title: str(info['title'], 'openapi.info.title'), version: str(info['version'], 'openapi.info.version'), operations };
 }
+
+// ---------------------------------------------------------------- registry (read-only)
+/** A capability a published package declares in its manifest. */
+export interface RegistryCapability {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+/**
+ * A published package as the workspace's registry holds it. Only what Studio shows: the registry's record carries no score,
+ * rating, price or "verified" flag, so none is modelled here.
+ */
+export interface RegistryPackage {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly creatorDid: string;
+  readonly publishedAt: string;
+  readonly capabilities: readonly RegistryCapability[];
+  /** How many signatures the manifest carries. Their validity is not judged here. */
+  readonly signatureCount: number;
+  readonly components: readonly { readonly kind: string; readonly path: string }[];
+}
+/** One recorded benchmark run. The registry does not state the scale of `score`, so Studio shows it as recorded. */
+export interface BenchmarkRun {
+  readonly id: string;
+  readonly packageId: string;
+  readonly category: string;
+  readonly score: number;
+  readonly runAt: string;
+  readonly challengeable: boolean;
+}
+export function parseRegistryRecord(v: unknown, path = 'record'): RegistryPackage {
+  const o = obj(v, path);
+  const m = obj(o['manifest'], `${path}.manifest`);
+  const caps = m['capabilities'] === undefined ? [] : arr(m['capabilities'], `${path}.manifest.capabilities`);
+  const sigs = m['signatures'] === undefined ? [] : arr(m['signatures'], `${path}.manifest.signatures`);
+  const comps = m['components'] === undefined ? {} : obj(m['components'], `${path}.manifest.components`);
+  return {
+    id: str(o['id'], `${path}.id`),
+    name: str(m['name'], `${path}.manifest.name`),
+    version: str(m['version'], `${path}.manifest.version`),
+    creatorDid: str(m['creatorDid'], `${path}.manifest.creatorDid`),
+    publishedAt: str(o['publishedAt'], `${path}.publishedAt`),
+    capabilities: caps.map((c, i) => {
+      const co = obj(c, `${path}.manifest.capabilities[${i}]`);
+      return {
+        id: str(co['id'], `${path}.manifest.capabilities[${i}].id`),
+        name: str(co['name'], `${path}.manifest.capabilities[${i}].name`),
+        description: str(co['description'], `${path}.manifest.capabilities[${i}].description`),
+      };
+    }),
+    signatureCount: sigs.length,
+    components: Object.entries(comps).map(([kind, e]) => ({ kind, path: str(obj(e, `${path}.manifest.components.${kind}`)['path'], `${path}.manifest.components.${kind}.path`) })),
+  };
+}
+export function parseBenchmarkRun(v: unknown, path = 'run'): BenchmarkRun {
+  const o = obj(v, path);
+  return {
+    id: str(o['id'], `${path}.id`),
+    packageId: str(o['packageId'], `${path}.packageId`),
+    category: str(o['category'], `${path}.category`),
+    score: num(o['score'], `${path}.score`),
+    runAt: str(o['runAt'], `${path}.runAt`),
+    challengeable: bool(o['challengeable'], `${path}.challengeable`),
+  };
+}
+export function parseRegistrySearch(v: unknown): RegistryPackage[] {
+  return arr(obj(v, 'body')['records'], 'records').map((r, i) => parseRegistryRecord(r, `records[${i}]`));
+}
+export function parseRegistryInspect(v: unknown): { record: RegistryPackage; runs: BenchmarkRun[] } {
+  const o = obj(v, 'body');
+  return {
+    record: parseRegistryRecord(o['record']),
+    runs: arr(o['benchmarkRuns'], 'benchmarkRuns').map((r, i) => parseBenchmarkRun(r, `benchmarkRuns[${i}]`)),
+  };
+}

@@ -94,6 +94,9 @@ export class FakeXo {
   ];
   /** Simulates a stale view: the server refuses an approval Studio's view thought was allowed. */
   approveRefusal = false;
+  /** Published packages and recorded benchmark runs, in the registry's real record shapes (read by the Library and the inspector). */
+  registryPackages: Array<Record<string, any>> = [];
+  benchmarkRuns: Array<Record<string, any>> = [];
   /** Workflow runs, in the platform's real record shape (see scripts/live-smoke.mjs). */
   workflowRuns: Array<Record<string, any>> = [];
   workflowExecutable = true;
@@ -213,6 +216,24 @@ export class FakeXo {
     let m: RegExpMatchArray | null;
     if (method === 'GET' && [...this.failing].some((suffix) => path.endsWith(suffix)))
       return err(500, 'XO_INTERNAL', 'temporarily unavailable');
+
+    // ---- registry (read-only): search needs a non-empty q; inspect returns the record plus its recorded benchmark runs
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/registry\/search\?q=(.*)$/))) {
+      const q = decodeURIComponent(m[1]!).trim().toLowerCase();
+      if (q === '') return err(400, 'XO_INVALID_ARGUMENT', 'query parameter "q" is required');
+      return reply(200, {
+        records: this.registryPackages.filter(
+          (r) =>
+            r.manifest.name.toLowerCase().includes(q) ||
+            (r.manifest.capabilities ?? []).some((c: any) => `${c.name} ${c.description}`.toLowerCase().includes(q)),
+        ),
+      });
+    }
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/registry\/packages\/([^/]+)\/inspect$/))) {
+      const record = this.registryPackages.find((r) => r.id === m![1]);
+      if (!record) return err(404, 'XO_NOT_FOUND', `package "${m[1]}" was not found`);
+      return reply(200, { record, benchmarkRuns: this.benchmarkRuns.filter((b) => b.packageId === record.id) });
+    }
 
     // ---- workflows (real route/response shapes; checked live by scripts/live-smoke.mjs)
     if (method === 'GET' && path.endsWith('/workflows')) {
