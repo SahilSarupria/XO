@@ -37,6 +37,8 @@ export function HomeSection(props: {
   goTo: (target: StartTarget) => void;
   /** Opens the conversation screen with this first message. */
   onAsk: (text: string) => void;
+  /** Opens one run on the Executions screen. */
+  onOpenRun: (run: WorkflowRun) => void;
   goToActivity: () => void;
 }) {
   const goToTasks = () => props.goTo('tasks');
@@ -100,7 +102,7 @@ export function HomeSection(props: {
             <ActiveWork
               runs={props.runs}
               analyses={props.analyses}
-              onOpenRun={(r) => props.goTo(r.status === 'waiting_for_human' || r.status === 'interrupted' ? 'tasks' : 'workflows')}
+              onOpenRun={(r) => (r.status === 'waiting_for_human' || r.status === 'interrupted' ? props.goTo('tasks') : props.onOpenRun(r))}
               onCreateXo={() => props.goTo('documents')}
             />
           ) : null}

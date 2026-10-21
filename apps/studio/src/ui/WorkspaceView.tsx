@@ -68,6 +68,7 @@ export function WorkspaceView(props: {
   const [activeThread, setActiveThread] = useState<string | undefined>();
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | undefined>();
   const [wfSettings, setWfSettings] = useState(false);
+  const [selectedRun, setSelectedRun] = useState<string | undefined>();
   const threadSeq = useRef(1);
   const messageSeq = useRef(1);
 
@@ -110,6 +111,15 @@ export function WorkspaceView(props: {
   useEffect(() => {
     if (blocked !== undefined && view !== 'home' && view !== blocked) setBlocked(undefined);
   }, [view, blocked]);
+
+  // Run history is what the Executions screen is for, so opening it re-reads the platform's records. A failed refresh keeps
+  // the last good list (see useLoad), so the screen never goes blank.
+  useEffect(() => {
+    if (view !== 'executions') return;
+    runs.reload();
+    executions.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on arrival at the screen only
+  }, [view]);
 
   /** Start work / Home shortcuts. They only select a screen; the API decides what is permitted there. */
   function goToTarget(target: StartTarget) {
@@ -271,7 +281,7 @@ export function WorkspaceView(props: {
     </>
   );
 
-  if (view === 'graph') {
+  if (view === 'graph' || view === 'executions') {
     const wf =
       workflowList.find((w) => w.workflowId === selectedWorkflow) ??
       workflowList.find((w) => w.compilationId === activeCompilation?.compilationId) ??
@@ -308,10 +318,14 @@ export function WorkspaceView(props: {
                   executions={execList}
                   runs={runList}
                   xos={xoList}
-                  tab={wfSettings ? 'settings' : 'editor'}
+                  tab={view === 'executions' ? 'executions' : wfSettings ? 'settings' : 'editor'}
+                  initialRunId={selectedRun}
                   onTab={(t) => {
-                    if (t === 'executions') setView('activity');
-                    else setWfSettings(t === 'settings');
+                    if (t === 'executions') setView('executions');
+                    else {
+                      setWfSettings(t === 'settings');
+                      setView('graph');
+                    }
                   }}
                   onBack={() => setView('work')}
                   onChanged={refreshAll}
@@ -421,6 +435,11 @@ export function WorkspaceView(props: {
           readyForReview={summary?.readyForReview ?? 0}
           goTo={goToTarget}
           onAsk={sendChat}
+          onOpenRun={(r) => {
+            setSelectedWorkflow(r.workflowId);
+            setSelectedRun(r.workflowExecutionId);
+            setView('executions');
+          }}
           goToActivity={() => setView('activity')}
         />
       ) : null}

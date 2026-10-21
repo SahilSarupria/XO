@@ -8,6 +8,7 @@ import { ActionNoticeView } from './actions';
 import { Badge, Button, EmptyState } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
+import { ExecutionsPane } from './ExecutionsPane';
 import '../styles/graph.css';
 
 export type WorkflowTab = 'editor' | 'executions' | 'settings';
@@ -64,7 +65,7 @@ export function WorkflowEditor(props: {
   onChanged: () => void;
   goToTasks: () => void;
   goToActivity: () => void;
-  children?: ReactNode;
+  initialRunId?: string | undefined;
 }) {
   const { mode } = useSession();
   const w = props.workflow;
@@ -100,8 +101,8 @@ export function WorkflowEditor(props: {
 
   return (
     <div className="wf">
-      <WorkflowBar workflow={w} tab={props.tab} onTab={props.onTab} onBack={props.onBack} status={status} actions={actions} />
-      <div className="wf-notes" id="wf-run-why">
+      <WorkflowBar workflow={w} tab={props.tab} onTab={props.onTab} onBack={props.onBack} status={status} actions={props.tab === 'executions' ? undefined : actions} />
+      <div className="wf-notes" id="wf-run-why" hidden={props.tab === 'executions'}>
         {active !== undefined ? (
           <p className="small">
             {describeRun(active).summary}{' '}
@@ -115,7 +116,7 @@ export function WorkflowEditor(props: {
         <ActionNoticeView notice={notice} />
       </div>
       {props.tab === 'executions' ? (
-        props.children
+        <ExecutionsPane workflow={w} runs={props.runs} executions={props.executions} caps={props.caps} initialRunId={props.initialRunId} />
       ) : props.tab === 'settings' ? (
         <WorkflowSettings workflow={w} workflows={props.workflows} onSelectWorkflow={props.onSelectWorkflow} builder={mode === 'builder'} />
       ) : (

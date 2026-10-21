@@ -3,7 +3,7 @@ import { replayFrame } from '../domain/replay';
 import type { WorkflowRun } from '../platform/wire';
 import { Button } from './primitives';
 
-const STATE_LABEL = {
+export const REPLAY_STATE_LABEL = {
   upcoming: 'Not reached yet',
   done: 'Finished',
   waiting: 'Waiting',
@@ -11,46 +11,28 @@ const STATE_LABEL = {
   skipped: 'Skipped',
 } as const;
 
-/** Read-only picture of a run's steps in the order they ran, with a slider to step through them. */
-export function RunReplay(props: { run: WorkflowRun }) {
-  const total = props.run.steps.length;
-  const [position, setPosition] = useState(0);
+/** Play / pause, a slider and the caption for a replay. The position itself belongs to the caller so a graph can follow it. */
+export function ReplayControls(props: { total: number; position: number; onPosition: (p: number) => void; caption: string }) {
+  const { total, position, onPosition } = props;
   const [playing, setPlaying] = useState(false);
   const sliderId = useId();
 
   useEffect(() => {
     if (!playing) return;
     const t = setInterval(() => {
-      setPosition((p) => {
-        if (p + 1 >= total) setPlaying(false);
-        return Math.min(p + 1, total);
-      });
+      if (position + 1 >= total) setPlaying(false);
+      onPosition(Math.min(position + 1, total));
     }, 800);
     return () => clearInterval(t);
-  }, [playing, total]);
+  }, [playing, position, total, onPosition]);
 
-  const { nodes, caption } = replayFrame(props.run, position);
   return (
-    <div className="replay">
-      <ol className="stepgraph" aria-label="Steps in the order they ran">
-        {nodes.map((n) => (
-          <li
-            key={n.stepId}
-            className="stepnode"
-            data-state={n.state}
-            data-current={n.current}
-            aria-current={n.current ? 'step' : undefined}
-          >
-            <span className="stepnode-name">{n.name}</span>
-            <span className="stepnode-state">{STATE_LABEL[n.state]}</span>
-          </li>
-        ))}
-      </ol>
+    <>
       <div className="row replay-controls">
         <Button
           variant="secondary"
           onClick={() => {
-            if (position >= total) setPosition(0);
+            if (position >= total) onPosition(0);
             setPlaying((p) => !p);
           }}
         >
@@ -68,13 +50,39 @@ export function RunReplay(props: { run: WorkflowRun }) {
           value={position}
           onChange={(e) => {
             setPlaying(false);
-            setPosition(Number(e.target.value));
+            onPosition(Number(e.target.value));
           }}
         />
       </div>
       <p className="small" role="status">
-        {caption}
+        {props.caption}
       </p>
+    </>
+  );
+}
+
+/** Read-only picture of a run's steps in the order they ran, with a slider to step through them. */
+export function RunReplay(props: { run: WorkflowRun }) {
+  const total = props.run.steps.length;
+  const [position, setPosition] = useState(0);
+  const { nodes, caption } = replayFrame(props.run, position);
+  return (
+    <div className="replay">
+      <ol className="stepgraph" aria-label="Steps in the order they ran">
+        {nodes.map((n) => (
+          <li
+            key={n.stepId}
+            className="stepnode"
+            data-state={n.state}
+            data-current={n.current}
+            aria-current={n.current ? 'step' : undefined}
+          >
+            <span className="stepnode-name">{n.name}</span>
+            <span className="stepnode-state">{REPLAY_STATE_LABEL[n.state]}</span>
+          </li>
+        ))}
+      </ol>
+      <ReplayControls total={total} position={position} onPosition={setPosition} caption={caption} />
       {nodes.find((n) => n.current)?.errorMessage ? (
         <p className="notice notice-danger small">{nodes.find((n) => n.current)?.errorMessage}</p>
       ) : null}
