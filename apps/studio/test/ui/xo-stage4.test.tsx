@@ -47,14 +47,18 @@ describe('Library registry search', () => {
     expect(search).toBeDisabled();
     await user.type(screen.getByLabelText('Search the library'), 'burglary');
     await user.click(search);
-    const results = await screen.findByRole('region', { name: 'Registry results' });
-    expect(within(results).getByText('burglary-policy')).toBeInTheDocument();
-    expect(within(results).getByText('1 capability declared')).toBeInTheDocument();
-    expect(within(results).getByRole('button', { name: 'Install' })).toHaveAttribute('aria-disabled', 'true');
-    expect(within(results).queryByText(/verified|★|₹|\$/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/these are samples, not registry entries/i)).toBeInTheDocument();
+    const grid = screen.getByRole('list', { name: 'XOs' });
+    const card = (await within(grid).findByText('1 capability declared')).closest('li')!;
+    expect(within(card).getByText('burglary-policy')).toBeInTheDocument();
+    expect(within(card).getByText('In your registry')).toBeInTheDocument();
+    expect(within(card).queryByText(/verified|★|₹|\$/i)).not.toBeInTheDocument();
+    // Samples stay labelled as samples, with Install unavailable.
+    expect(within(grid).getAllByText('Sample').length).toBeGreaterThan(0);
+    expect(within(grid).getAllByRole('button', { name: 'Install' })[0]).toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('button', { name: 'My company' }));
+    expect(within(grid).queryByText('Sample')).not.toBeInTheDocument();
 
-    await user.click(within(results).getByRole('button', { name: 'Open burglary-policy' }));
+    await user.click(within(card).getByRole('button', { name: 'Open burglary-policy' }));
     const xo = await screen.findByRole('region', { name: 'XO' });
     expect(within(xo).getByRole('heading', { name: 'burglary-policy' })).toBeInTheDocument();
     expect(within(xo).getByText('Signatures on the manifest')).toBeInTheDocument();
@@ -91,17 +95,23 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     expect(screen.getByText('No XOs yet')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ Create XO' }));
     expect(window.location.hash).toBe('#/create');
-    const next = screen.getByRole('button', { name: 'Next' });
-    expect(next).toBeDisabled();
+    const steps = screen.getByRole('list', { name: 'Steps' });
+    const items = within(steps).getAllByRole('listitem');
+    ['1 Add sources', '2 Build', '3 Test', '4 Publish'].forEach((t, i) => expect(items[i]!.textContent).toContain(t));
+    expect(items[0]).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByRole('button', { name: 'Continue to Build' })).toBeDisabled();
     await user.upload(screen.getByLabelText('Choose a document to upload'), new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }));
     await user.click(await screen.findByRole('radio', { name: /procedure\.pdf/ }));
-    await user.click(screen.getByRole('button', { name: 'Next' }));
-    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled(); // not analysed yet
+    expect(screen.getByText(/pasting a link is not available yet/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue to Build' }));
+    expect(screen.getByRole('button', { name: 'Continue to Test' })).toBeDisabled(); // not analysed yet
     await user.click(screen.getByRole('button', { name: 'Analyse' }));
-    expect(await screen.findByText(/^Analysed/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText(/\d+ rules? found/)).toBeInTheDocument();
+    expect(await screen.findByText('Notify the Insurer')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue to Test' }));
     expect(screen.getByText(/You approve every rule/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText(/Running test cases against this XO is not available yet/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue to Publish' }));
     expect(screen.getByText(/Not available yet. Publishing needs a signed \.xo package/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Open XO' }));
 
@@ -125,6 +135,6 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     await user.click(screen.getByRole('button', { name: '+ Create XO' }));
     await user.upload(screen.getByLabelText('Choose a document to upload'), new File(['x'], 'rules.docx'));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Word documents are not supported yet/);
-    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Continue to Build' })).toBeDisabled();
   });
 });

@@ -185,3 +185,120 @@
 .wiz-docs li {
   padding: var(--s-2) 0;
 }
+
+/* Create XO, as designed: steps, Sources on the left, what XO found on the right. */
+.cx {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.cx-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+.cx-draft {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.cx-steps {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.cx-steps li {
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.cx-steps li[data-state='done'] {
+  background: var(--accent-wash);
+  border-color: transparent;
+  color: var(--accent-strong);
+}
+.cx-steps li[data-state='current'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.cx-panes {
+  display: grid;
+  grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+}
+@media (max-width: 52rem) {
+  .cx-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.cx-right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.cx-docs li label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.cx-docs li label[data-picked='true'] {
+  border-color: var(--accent);
+}
+.cx-docs li label span:first-of-type {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.cx-drop {
+  margin-top: var(--s-2);
+  padding: var(--s-4);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--accent-strong);
+}
+.cx-drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.cx-rules li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem 3rem;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--border);
+}
+.xoi-bar > span[data-low='true'] {
+  background: var(--warning);
+}
+.cx-input {
+  border-radius: var(--radius);
+}
+.cx-input h2 {
+  font-size: var(--text-md);
+  margin-bottom: var(--s-2);
+}
+.cx-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+}
+.cx-foot-right {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, setDetailLevel } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -95,7 +95,7 @@ describe('no duplicate requests', () => {
     const user = await returnLater(api);
     await waitFor(() => expect(gets(api, '/workflows')).toBeGreaterThan(0));
     const before = gets(api, '/workflows');
-    await go(user, 'Builder');
+    await setDetailLevel(user, 'builder');
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     expect(gets(api, '/workflows')).toBe(before);

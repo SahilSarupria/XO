@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, setDetailLevel } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -45,7 +45,7 @@ describe('shell stays business-neutral', () => {
         .getAllByRole('button')
         .filter((b) => b.classList.contains('nav-item'))
         .map((b) => b.querySelector('.nav-label')?.textContent),
-    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
+    ).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log']);
     expect(nav.textContent).not.toMatch(/insur|polic|commission|tds|capabilit|xoir|compil/i);
   });
 });
@@ -336,7 +336,7 @@ describe('Tasks and Activity', () => {
     const user = await withWaitingRun(api);
     expect(screen.queryByText(/wfx_/)).not.toBeInTheDocument();
     const before = api.calls.length;
-    await goTo(user, 'Builder');
+    await setDetailLevel(user, 'builder');
     expect((await screen.findAllByText(/wfx_/)).length).toBeGreaterThan(0);
     expect(api.calls.length).toBe(before);
   });

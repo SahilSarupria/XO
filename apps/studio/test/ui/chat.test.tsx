@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -107,23 +107,77 @@ describe('Chat inside the app', () => {
     return user;
   }
 
-  it('Home hands the first message to the chat screen, which answers with a fixed reply and a real link', async () => {
+  it('Home opens the Ask XO drawer with the first message and a fixed reply, without leaving Home', async () => {
     const user = await home();
     await user.type(await screen.findByLabelText('Ask XO'), 'what do i have{enter}');
-    const log = await screen.findByRole('log', { name: 'Messages' });
+    const drawer = await screen.findByRole('dialog', { name: /ask xo|what do i have/i });
+    const log = within(drawer).getByRole('log', { name: 'Messages' });
     expect(within(log).getByText('what do i have')).toBeInTheDocument();
     expect(await within(log).findByText(/This workspace holds/)).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/chat');
+    expect(within(drawer).getByText('Preview')).toBeInTheDocument();
+    expect(window.location.hash).not.toBe('#/chat'); // still on Home
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('the rail leads back to the main screens, and New chat starts an empty conversation', async () => {
+  it('the drawer grows into the full Chat screen with the same conversation, and the rail leads back', async () => {
     const user = await home();
     await user.type(await screen.findByLabelText('Ask XO'), 'hello{enter}');
-    await screen.findByRole('log', { name: 'Messages' });
+    const drawer = await screen.findByRole('dialog');
+    await user.click(within(drawer).getByRole('button', { name: 'Open full chat' }));
+    await waitFor(() => expect(window.location.hash).toBe('#/chat'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(within(await screen.findByRole('log', { name: 'Messages' })).getByText('hello')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ New chat' }));
     expect(screen.getByRole('heading', { name: 'New chat' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Workflows' }));
     expect(await screen.findByRole('heading', { name: /^workflows$/i })).toBeInTheDocument();
+  });
+});
+
+describe('Ask XO from every screen', () => {
+  async function app() {
+    const api = new FakeXo();
+    const user = userEvent.setup();
+    render(withShell(<App fetchImpl={api.fetch} />));
+    await user.type(screen.getByLabelText(/access key/i), api.validKey);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
+    await user.click(screen.getByRole('button', { name: /create workspace/i }));
+    await screen.findByRole('heading', { name: 'Claims Ops' });
+    return user;
+  }
+
+  it('a bar at the top of every page except Home opens the drawer on the same page, with the cursor in the message box', async () => {
+    const user = await app();
+    for (const name of ['Library', 'Activity', 'Audit log']) {
+      await user.click(screen.getByRole('button', { name }));
+      const bar = screen.getByRole('button', { name: 'Ask XO' });
+      await user.click(bar);
+      const drawer = await screen.findByRole('dialog', { name: 'Ask XO' });
+      expect(within(drawer).getByLabelText('Message')).toHaveFocus();
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(bar).toHaveFocus(); // focus returns to where it was
+    }
+  });
+
+  it('Ctrl+J opens and closes it, and a message asked there stays in the conversation on the page you are on', async () => {
+    const user = await app();
+    await user.click(screen.getByRole('button', { name: 'Library' }));
+    await user.keyboard('{Control>}j{/Control}');
+    const drawer = await screen.findByRole('dialog', { name: 'Ask XO' });
+    await user.type(within(drawer).getByLabelText('Message'), 'show me the graph{enter}');
+    expect(await within(drawer).findByText(/steps in the order XO composed them/)).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/library');
+    await user.keyboard('{Control>}j{/Control}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('is reachable from the palette too', async () => {
+    const user = await app();
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'ask{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'Ask XO' })).toBeInTheDocument();
   });
 });

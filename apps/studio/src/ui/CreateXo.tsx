@@ -1,30 +1,35 @@
 import { useState } from 'react';
 import { SUPPORTED_UPLOAD_EXTENSIONS } from '../platform/client';
-import type { ReviewSummary } from '../domain/review';
+import { barPercent, documentLabel, needsInput } from '../domain/xo';
+import { summarize } from '../domain/review';
 import type { StartTarget } from '../domain/start';
 import type { Compilation, Source } from '../platform/wire';
-import { Badge, Button, formatBytes, formatWhen, ProblemNotice, Spinner, type LoadState } from './primitives';
+import { Badge, Button, formatBytes, ProblemNotice, Skeleton, Spinner, useLoad, type LoadState } from './primitives';
+import { useSession } from './session';
 import { useDocuments } from './useDocuments';
 import '../styles/xo.css';
 
-const STEPS = ['Source', 'Analyse', 'Review rules', 'Publish'] as const;
+const STEPS = ['Add sources', 'Build', 'Test', 'Publish'] as const;
 
 /**
- * Creating an XO from your own documents. Steps 1 to 3 are the real flow (upload, analyse, review); the state of each is
- * derived from what the workspace holds. Publishing is shown as not available, because Studio cannot package or sign.
+ * Creating an XO from your own documents, as designed: Sources on the left, what XO found on the right.
+ * Add sources, Build (analysis) and the rules it finds are real. Test hands over to the chat, whose replies are fixed
+ * previews. Publish is not available, because Studio cannot package or sign. Nothing here is estimated.
  */
 export function CreateXo(props: {
   workspaceId: string;
   sources: LoadState<Source[]>;
   compilations: readonly Compilation[];
-  summary: ReviewSummary | undefined;
   onChanged: () => void;
   onOpenXo: (compilationId: string) => void;
+  onTestInChat: () => void;
   goTo: (t: StartTarget) => void;
 }) {
+  const { client } = useSession();
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<string | undefined>();
   const [analysed, setAnalysed] = useState<Compilation | undefined>();
+  const [dragging, setDragging] = useState(false);
   const docs = useDocuments({
     workspaceId: props.workspaceId,
     onChanged: props.onChanged,
@@ -35,145 +40,212 @@ export function CreateXo(props: {
   });
   const sources = props.sources.phase === 'ready' ? props.sources.value : [];
   const source = sources.find((s) => s.sourceId === picked);
-  const analysedHere = analysed ?? props.compilations.find((c) => c.sourceId === picked && c.status === 'succeeded');
+  const built =
+    analysed !== undefined && analysed.sourceId === picked
+      ? analysed
+      : props.compilations.find((c) => c.sourceId === picked && c.status === 'succeeded');
+  const caps = useLoad(
+    async () => (built === undefined ? { ok: true as const, value: [] } : client.getCapabilities(props.workspaceId, built.compilationId)),
+    [client, props.workspaceId, built?.compilationId],
+  );
+  const rules = caps.state.phase === 'ready' ? caps.state.value : caps.state.phase === 'error' ? (caps.state.stale ?? []) : [];
+  const counts = summarize(rules);
+  const open = needsInput(rules);
   const go = (n: number) => setStep(Math.max(0, Math.min(STEPS.length - 1, n)));
+  const canContinue = (step === 0 && picked !== undefined) || (step === 1 && built !== undefined) || step === 2;
+
   return (
-    <section className="xoi" aria-labelledby="create-h">
-      <button type="button" className="crumb-link xoi-back" onClick={() => props.goTo('documents')}>
-        ← My XOs
-      </button>
-      <h1 id="create-h">Create XO</h1>
-      <ol className="wiz-steps bare-list" aria-label="Steps">
+    <section className="cx" aria-labelledby="create-h">
+      <header className="cx-head">
+        <h1 id="create-h">Create XO</h1>
+        <span className="mono cx-draft">{source === undefined ? 'new · draft' : `${documentLabel(source.originalFilename)} · draft`}</span>
+      </header>
+      <ol className="cx-steps bare-list" aria-label="Steps">
         {STEPS.map((label, i) => (
-          <li key={label} aria-current={i === step ? 'step' : undefined} data-done={i < step}>
-            <span className="wiz-n" aria-hidden="true">
-              {i < step ? '✓' : i + 1}
-            </span>{' '}
-            {label}
+          <li key={label} aria-current={i === step ? 'step' : undefined} data-state={i < step ? 'done' : i === step ? 'current' : 'todo'}>
+            {i + 1} {label}
+            {i < step ? <span aria-hidden="true"> ✓</span> : null}
             {i < step ? <span className="visually-hidden"> (done)</span> : null}
           </li>
         ))}
       </ol>
 
-      <div className="xoi-card" role="group" aria-label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}>
-        {step === 0 ? (
-          <>
-            <h2>Choose the document this XO is built from</h2>
-            <input
-              ref={docs.fileInput}
-              id="wiz-upload"
-              type="file"
-              className="visually-hidden"
-              aria-label="Choose a document to upload"
-              accept={SUPPORTED_UPLOAD_EXTENSIONS.join(',')}
-              onChange={(e) => void docs.onFiles(e.target.files)}
-            />
-            <Button variant="secondary" disabled={docs.uploading} onClick={() => docs.fileInput.current?.click()}>
-              {docs.uploading ? 'Uploading…' : 'Upload a document'}
+      <div className="cx-panes">
+        <section className="xoi-card cx-sources" aria-labelledby="cx-src-h">
+          <h2 id="cx-src-h">Sources</h2>
+          <input
+            ref={docs.fileInput}
+            id="wiz-upload"
+            type="file"
+            className="visually-hidden"
+            aria-label="Choose a document to upload"
+            accept={SUPPORTED_UPLOAD_EXTENSIONS.join(',')}
+            onChange={(e) => void docs.onFiles(e.target.files)}
+          />
+          {sources.length === 0 ? <p className="muted small">No documents yet.</p> : null}
+          <ul className="cx-docs bare-list">
+            {sources.map((s) => (
+              <li key={s.sourceId}>
+                <label data-picked={picked === s.sourceId}>
+                  <input type="radio" name="wiz-source" checked={picked === s.sourceId} onChange={() => setPicked(s.sourceId)} />
+                  <span>{s.originalFilename}</span>
+                  <span className="mono">{formatBytes(s.byteSize)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div
+            className="cx-drop"
+            data-over={dragging}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              void docs.onFiles(e.dataTransfer.files);
+            }}
+          >
+            <Button variant="quiet" disabled={docs.uploading} onClick={() => docs.fileInput.current?.click()}>
+              {docs.uploading ? 'Uploading…' : 'Drop files, or choose a file'}
             </Button>
-            {typeof docs.uploadProblem === 'string' ? (
-              <div className="notice notice-warning" role="alert">
-                {docs.uploadProblem}
+            <p className="muted small">Pasting a link is not available yet.</p>
+          </div>
+          {typeof docs.uploadProblem === 'string' ? (
+            <div className="notice notice-warning" role="alert">
+              {docs.uploadProblem}
+            </div>
+          ) : docs.uploadProblem !== undefined ? (
+            <ProblemNotice problem={docs.uploadProblem} />
+          ) : null}
+        </section>
+
+        <div className="cx-right">
+          {step === 0 ? (
+            <section className="xoi-card">
+              <h2>What this XO can do</h2>
+              <p className="muted small">Choose a document on the left, then continue. XO reads it in the next step.</p>
+            </section>
+          ) : null}
+
+          {step === 1 ? (
+            <section className="xoi-card" aria-labelledby="cx-do-h">
+              <div className="row between">
+                <h2 id="cx-do-h">What this XO can do</h2>
+                {built !== undefined ? <span className="mono muted small">{rules.length} {rules.length === 1 ? 'rule' : 'rules'} found</span> : null}
               </div>
-            ) : docs.uploadProblem !== undefined ? (
-              <ProblemNotice problem={docs.uploadProblem} />
-            ) : null}
-            {sources.length === 0 ? (
-              <p className="muted small">No documents yet. Supported: {SUPPORTED_UPLOAD_EXTENSIONS.join(', ')}.</p>
-            ) : (
-              <ul className="wiz-docs bare-list">
-                {sources.map((s) => (
-                  <li key={s.sourceId}>
-                    <label>
-                      <input type="radio" name="wiz-source" checked={picked === s.sourceId} onChange={() => setPicked(s.sourceId)} />{' '}
-                      <strong>{s.originalFilename}</strong>{' '}
-                      <span className="muted small">
-                        {formatBytes(s.byteSize)} · added {formatWhen(s.createdAt)}
-                      </span>
-                    </label>
+              {docs.analysing !== undefined ? <Spinner label="Analysing" /> : null}
+              {docs.analysisFailure !== undefined ? (
+                <div className="notice notice-danger" role="alert">
+                  <strong>{docs.analysisFailure.view.title}</strong>
+                  <p>{docs.analysisFailure.view.body}</p>
+                  <p className="muted">{docs.analysisFailure.view.next}</p>
+                </div>
+              ) : null}
+              {source !== undefined ? (
+                <Button
+                  variant={built === undefined ? 'primary' : 'secondary'}
+                  disabled={docs.analysing !== undefined}
+                  onClick={() => void docs.analyse(source)}
+                >
+                  {built === undefined ? 'Analyse' : 'Analyse again'}
+                </Button>
+              ) : null}
+              {built !== undefined && caps.state.phase === 'loading' ? <Skeleton label="Loading rules" rows={2} /> : null}
+              {caps.state.phase === 'error' ? <ProblemNotice problem={caps.state.problem} onRetry={caps.reload} /> : null}
+              {built !== undefined ? (
+                <ul className="cx-rules bare-list">
+                  {rules.map((r) => {
+                    const pct = barPercent(r.confidence);
+                    return (
+                      <li key={r.capabilityId}>
+                        <span>{r.name}</span>
+                        <span className="xoi-bar" aria-hidden="true">
+                          {pct !== undefined ? <span style={{ width: `${pct}%` }} data-low={pct < 80} /> : null}
+                        </span>
+                        <span className="mono">{r.confidence.toFixed(2)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+
+          {step === 1 && open.length > 0 ? (
+            <section className="notice notice-warning cx-input" role="status" aria-labelledby="cx-in-h">
+              <h2 id="cx-in-h">
+                {open.length} {open.length === 1 ? 'thing needs' : 'things need'} your input
+              </h2>
+              <ul className="bare-list">
+                {open.slice(0, 4).map((n) => (
+                  <li key={n.name}>
+                    <strong>{n.name}.</strong> {n.reason}
                   </li>
                 ))}
               </ul>
-            )}
-          </>
-        ) : null}
+              {open.length > 4 ? <p className="small">And {open.length - 4} more. They are listed under Review rules.</p> : null}
+            </section>
+          ) : null}
 
-        {step === 1 ? (
-          <>
-            <h2>Analyse {source?.originalFilename ?? 'the document'}</h2>
-            <p className="muted small">XO reads the document, finds the rules inside and keeps the evidence for each one.</p>
-            {docs.analysing !== undefined ? <Spinner label="Analysing" /> : null}
-            {docs.analysisFailure !== undefined ? (
-              <div className="notice notice-danger" role="alert">
-                <strong>{docs.analysisFailure.view.title}</strong>
-                <p>{docs.analysisFailure.view.body}</p>
-                <p className="muted">{docs.analysisFailure.view.next}</p>
+          {step === 2 ? (
+            <section className="xoi-card">
+              <h2>Test</h2>
+              <p>
+                {counts.approved} approved · {counts.readyForReview} ready for review · {counts.needsAttention} need more information
+              </p>
+              <p className="muted small">
+                You approve every rule before a workflow may use it. Nothing is approved for you. Running test cases against this XO is not available yet; the chat
+                gives fixed preview replies.
+              </p>
+              <div className="row">
+                <Button variant="secondary" onClick={() => props.goTo('rules')}>
+                  Review rules
+                </Button>
+                <Button variant="secondary" onClick={props.onTestInChat}>
+                  Test in chat
+                </Button>
               </div>
-            ) : null}
-            {analysedHere !== undefined ? (
-              <p>
-                <Badge tone="success">Analysed {formatWhen(analysedHere.completedAt ?? analysedHere.createdAt)}</Badge>
-              </p>
-            ) : null}
-            {source !== undefined ? (
-              <Button
-                variant={analysedHere === undefined ? 'primary' : 'secondary'}
-                disabled={docs.analysing !== undefined}
-                onClick={() => void docs.analyse(source)}
-              >
-                {analysedHere === undefined ? 'Analyse' : 'Analyse again'}
-              </Button>
-            ) : null}
-          </>
-        ) : null}
+            </section>
+          ) : null}
 
-        {step === 2 ? (
-          <>
-            <h2>Review the rules</h2>
-            <p className="muted small">You approve every rule before a workflow may use it. Nothing is approved for you.</p>
-            {props.summary !== undefined ? (
-              <p>
-                {props.summary.approved} approved · {props.summary.readyForReview} ready for review · {props.summary.needsAttention} need more information
+          {step === 3 ? (
+            <section className="xoi-card">
+              <h2>Publish</h2>
+              <p className="notice notice-info small">
+                Not available yet. Publishing needs a signed .xo package, and Studio cannot package or sign. Your XO stays in this workspace.
               </p>
-            ) : (
-              <p className="muted small">The rules of this analysis have not loaded.</p>
-            )}
-            <Button variant="secondary" onClick={() => props.goTo('rules')}>
-              Open the rules
-            </Button>
-          </>
-        ) : null}
-
-        {step === 3 ? (
-          <>
-            <h2>Publish</h2>
-            <p className="notice notice-info small">
-              Not available yet. Publishing needs a signed .xo package, and Studio cannot package or sign. Your XO stays in this workspace.
-            </p>
-            {analysedHere !== undefined ? (
-              <Button variant="primary" onClick={() => props.onOpenXo(analysedHere.compilationId)}>
-                Open XO
-              </Button>
-            ) : (
-              <p className="muted small">Analyse a document first; then the XO can be opened.</p>
-            )}
-          </>
-        ) : null}
+              {built !== undefined ? (
+                <Button variant="primary" onClick={() => props.onOpenXo(built.compilationId)}>
+                  Open XO
+                </Button>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
       </div>
 
-      <div className="row between">
-        <Button variant="quiet" disabled={step === 0} onClick={() => go(step - 1)}>
+      <div className="cx-foot">
+        <Button variant="secondary" disabled={step === 0} onClick={() => go(step - 1)}>
           Back
         </Button>
-        {step < STEPS.length - 1 ? (
-          <Button
-            variant="primary"
-            disabled={(step === 0 && picked === undefined) || (step === 1 && analysedHere === undefined)}
-            onClick={() => go(step + 1)}
-          >
-            Next
-          </Button>
-        ) : null}
+        <span className="cx-foot-right">
+          {step === 1 ? (
+            <>
+              <Badge tone="neutral">Preview</Badge>
+              <Button variant="secondary" onClick={props.onTestInChat}>
+                Test in chat
+              </Button>
+            </>
+          ) : null}
+          {step < STEPS.length - 1 ? (
+            <Button variant="primary" disabled={!canContinue} onClick={() => go(step + 1)}>
+              {step === 0 ? 'Continue to Build' : step === 1 ? 'Continue to Test' : 'Continue to Publish'}
+            </Button>
+          ) : null}
+        </span>
       </div>
     </section>
   );

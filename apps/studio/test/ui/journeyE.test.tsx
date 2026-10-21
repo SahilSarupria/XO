@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { chooseFromMenu, openScreen } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -123,8 +123,7 @@ describe('Workspaces: switching keeps every request inside the chosen workspace'
   it('after opening another workspace, its data is requested under that workspace only', async () => {
     const api = new FakeXo();
     const user = await open(api);
-    const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
-    await user.click(within(nav()).getByRole('button', { name: 'Workspaces' }));
+    await chooseFromMenu(user, 'All workspaces');
     await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'New workspace' }));
     await user.type(await screen.findByLabelText(/workspace name/i), 'Second');
     await user.click(screen.getByRole('button', { name: /create workspace/i }));
@@ -132,7 +131,7 @@ describe('Workspaces: switching keeps every request inside the chosen workspace'
     const [first, second] = api.workspaces;
     expect(second?.name).toBe('Second');
     api.calls.length = 0;
-    await user.click(within(nav()).getByRole('button', { name: 'Workspaces' }));
+    await chooseFromMenu(user, 'All workspaces');
     await user.click(await screen.findByRole('button', { name: 'Open Ops' }));
     await screen.findByRole('heading', { name: 'Ops', level: 1 });
     await waitFor(() => expect(api.calls.some((c) => c.path.startsWith(`/workspaces/${first!.workspaceId}/`))).toBe(true));
@@ -229,12 +228,12 @@ describe('visual-acceptance fixes', () => {
     expect(within(filter).getByRole('button', { name: /^running.*0/i })).toBeInTheDocument();
   });
 
-  it('the workspace-name crumb is marked as droppable on narrow screens; the page crumb never is', async () => {
+  it('has no breadcrumb on any page: the design drops it, and the sidebar shows where you are', async () => {
     const user = await open(new FakeXo());
-    await go(user, 'Workflows');
-    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(crumbs).getByText('Ops').closest('li')).toHaveClass('crumb-low');
-    expect(within(crumbs).getByText('Workflows').closest('li')).not.toHaveClass('crumb-low');
-    expect(within(crumbs).getByText('Workspaces').closest('li')).not.toHaveClass('crumb-low');
+    for (const name of ['Workflows', 'Library', 'Activity']) {
+      await go(user, name);
+      expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
+    }
   });
 });

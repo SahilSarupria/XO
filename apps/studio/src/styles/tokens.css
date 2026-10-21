@@ -38,6 +38,7 @@
   --danger-wash: rgba(229, 100, 92, 0.12);
   --info: #8ab4ff;
   --info-wash: rgba(138, 180, 255, 0.1);
+  --violet: #b49cff;
 
   /* type */
   --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -96,4 +97,5 @@
   --danger-wash: rgba(179, 38, 30, 0.1);
   --info: #2a5db0;
   --info-wash: rgba(42, 93, 176, 0.1);
+  --violet: #6f4bd8;
 }

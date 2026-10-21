@@ -11,7 +11,7 @@ import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
 import { ContractsSection } from './ContractsSection';
 import { PlatformSection } from './PlatformSection';
-import { Badge, Breadcrumbs, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
 import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
@@ -26,6 +26,8 @@ import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
 import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
 import { useTheme } from './theme';
+import { AskBar, ChatDrawer } from './ChatDrawer';
+import { WorkspaceMenu } from './WorkspaceMenu';
 import { XoInspector } from './XoInspector';
 import type { FrameLayout } from './AppChrome';
 
@@ -59,7 +61,7 @@ export function WorkspaceView(props: {
   onNewWorkspace: () => void;
   frame: (parts: { nav: ReactNode; rail: ReactNode; content: ReactNode; layout: FrameLayout }) => ReactNode;
 }) {
-  const { client, mode, setMode } = useSession();
+  const { client, mode, setMode, signOut } = useSession();
   const ws = props.workspace.workspaceId;
   const [view, setView, replaceView] = useSectionRoute();
   const [setupView, setSetupView] = useState<SetupView>('documents');
@@ -74,12 +76,17 @@ export function WorkspaceView(props: {
   const [wfSettings, setWfSettings] = useState(false);
   const [xoSubject, setXoSubject] = useState<XoSubject | undefined>();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [theme, setThemeChoice] = useTheme();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!isPaletteShortcut(e)) return;
-      e.preventDefault();
-      setPaletteOpen((o) => !o);
+      if (isPaletteShortcut(e)) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      } else if (e.key.toLowerCase() === 'j' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setDrawerOpen((o) => !o);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -157,7 +164,7 @@ export function WorkspaceView(props: {
     setView('chat');
   }
   /** Adds one question and its fixed reply to a conversation, creating the conversation on the first message. */
-  function sendChat(text: string, attached: readonly string[] = []) {
+  function sendChat(text: string, attached: readonly string[] = [], stay = false) {
     const reply = chatReply(text, chatFacts, attached);
     const id = messageSeq.current;
     messageSeq.current += 2;
@@ -172,7 +179,7 @@ export function WorkspaceView(props: {
     } else {
       setThreads((t) => t.map((x) => (x.id === activeThread ? { ...x, messages: [...x.messages, ...pair] } : x)));
     }
-    setView('chat');
+    if (!stay) setView('chat');
   }
   const latestDocument = [...(loadedValue(sources.state) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.originalFilename;
   const xoList = xoItems(succeeded, loadedValue(sources.state) ?? []);
@@ -271,21 +278,22 @@ export function WorkspaceView(props: {
         </div>
       ) : null}
       <div className="nav-spacer" />
-      <NavItem current={navCurrent} id="settings" icon="settings" hint="Detail level and runtime" onSelect={setView}>
-        Settings
-      </NavItem>
-      <button
-        type="button"
-        className="ws-card"
-        aria-label="Workspaces"
-        aria-current={view === 'workspaces' ? 'page' : undefined}
-        onClick={() => setView('workspaces')}
-      >
-        <span className="ws-name">{props.workspace.name ?? 'Untitled workspace'}</span>
-        <span className="ws-status">
-          <span className="dot" aria-hidden="true" /> Connected
-        </span>
-      </button>
+      <WorkspaceMenu
+        name={props.workspace.name ?? 'Untitled workspace'}
+        workspaces={props.workspaces.map((w) => ({ id: w.workspaceId, name: w.name ?? 'Untitled workspace' }))}
+        activeId={ws}
+        mode={mode}
+        settingsCurrent={view === 'settings'}
+        onSelectWorkspace={(id) => {
+          props.onSelectWorkspace(id);
+          setView('home');
+        }}
+        onManage={() => setView('workspaces')}
+        onNew={props.onNewWorkspace}
+        onSettings={() => setView('settings')}
+        onMode={setMode}
+        onSignOut={signOut}
+      />
     </nav>
   );
 
@@ -295,6 +303,25 @@ export function WorkspaceView(props: {
       <RailButton current={navCurrent === 'work'} label="Workflows" icon="work" onSelect={() => setView('work')} />
       <RailButton current={navCurrent === 'setup'} label="My XOs" icon="xos" onSelect={() => setView('setup')} />
     </>
+  );
+
+  const drawer = (
+    <ChatDrawer
+      open={drawerOpen && view !== 'chat'}
+      onClose={() => setDrawerOpen(false)}
+      onExpand={() => {
+        setDrawerOpen(false);
+        setView('chat');
+      }}
+      thread={threads.find((t) => t.id === activeThread)}
+      xos={xoList}
+      onSend={(text, attached) => sendChat(text, attached, true)}
+      onNew={() => setActiveThread(undefined)}
+      goTo={(t) => {
+        setDrawerOpen(false);
+        goToTarget(t);
+      }}
+    />
   );
 
   if (view === 'graph' || view === 'executions') {
@@ -352,6 +379,10 @@ export function WorkspaceView(props: {
             </main>
           ),
         })}
+        <div className="askbar-float-wrap">
+          <AskBar onOpen={() => setDrawerOpen(true)} floating />
+        </div>
+        {drawer}
       </>
     );
   }
@@ -384,21 +415,8 @@ export function WorkspaceView(props: {
   const content = (
     <main className="page">
       <header className="page-head">
-        <div className="row between page-head-top">
-          <Breadcrumbs
-            items={[
-              { label: 'Workspaces', onSelect: () => setView('workspaces') },
-              ...(view === 'workspaces'
-                ? [{ label: props.workspace.name ?? 'Untitled workspace' }]
-                : [
-                    { label: props.workspace.name ?? 'Untitled workspace', onSelect: () => setView('home'), low: true },
-                    { label: PAGE_LABEL[view] },
-                  ]),
-            ]}
-          />
-          <Badge tone={mode === 'builder' ? 'accent' : 'neutral'}>{mode === 'builder' ? 'Builder mode' : 'User mode'}</Badge>
-        </div>
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
+        {view === 'home' ? null : <AskBar onOpen={() => setDrawerOpen(true)} />}
       </header>
 
       {firstError?.phase === 'error' ? (
@@ -450,7 +468,10 @@ export function WorkspaceView(props: {
           analysisCount={succeeded.length}
           readyForReview={summary?.readyForReview ?? 0}
           goTo={goToTarget}
-          onAsk={sendChat}
+          onAsk={(text) => {
+            sendChat(text, [], true);
+            setDrawerOpen(true);
+          }}
           onOpenRun={(r) => {
             setSelectedWorkflow(r.workflowId);
             setSelectedRun(r.workflowExecutionId);
@@ -631,9 +652,11 @@ export function WorkspaceView(props: {
           workspaceId={ws}
           sources={sources.state}
           compilations={succeeded}
-          summary={summary}
           onChanged={refreshAll}
           goTo={goToTarget}
+          onTestInChat={() => {
+            setDrawerOpen(true);
+          }}
           onOpenXo={(id) => {
             setXoSubject({ kind: 'analysis', id });
             setView('xo');
@@ -669,6 +692,11 @@ export function WorkspaceView(props: {
             setXoSubject({ kind: 'package', id });
             setView('xo');
           }}
+          mine={xoList}
+          onOpenMine={(id) => {
+            setXoSubject({ kind: 'analysis', id });
+            setView('xo');
+          }}
         />
       ) : null}
       {view === 'audit' ? <AuditSection runs={runList} incomplete={decisionsUnknown} /> : null}
@@ -689,7 +717,8 @@ export function WorkspaceView(props: {
   );
   const commands: PaletteCommand[] = [
     { id: 'home', label: 'Go to Home', run: () => setView('home') },
-    { id: 'chat', label: 'Open Chat', run: () => setView('chat') },
+    { id: 'ask', label: 'Ask XO', hint: '⌘J', run: () => setDrawerOpen(true) },
+    { id: 'chat', label: 'Open full chat', run: () => setView('chat') },
     { id: 'work', label: 'Go to Workflows', run: () => setView('work') },
     { id: 'setup', label: 'Go to My XOs', run: () => setView('setup') },
     { id: 'create', label: 'Create XO', run: () => setView('create') },
@@ -704,6 +733,7 @@ export function WorkspaceView(props: {
   return (
     <>
       {props.frame({ nav, rail, content, layout: 'standard' })}
+      {drawer}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </>
   );

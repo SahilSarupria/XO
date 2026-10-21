@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
+import { openMenu, setDetailLevel } from './nav';
 import { FakeXo } from '../fakeXo';
 
 type U = ReturnType<typeof userEvent.setup>;
@@ -12,7 +13,6 @@ const navLabels = () =>
     .getAllByRole('button')
     .filter((b) => b.classList.contains('nav-item'))
     .map((b) => b.querySelector('.nav-label')?.textContent);
-const modeGroup = () => screen.getByRole('group', { name: /detail level/i });
 const goNav = (user: U, name: RegExp | string) => user.click(within(nav()).getByRole('button', { name }));
 
 async function connect(api: FakeXo): Promise<U> {
@@ -38,8 +38,15 @@ async function analysed(api: FakeXo): Promise<U> {
   await screen.findByText(/settlement amount must be recorded/i);
   return user;
 }
-const toBuilder = (user: U) => user.click(within(modeGroup()).getByRole('button', { name: 'Builder' }));
-const toUser = (user: U) => user.click(within(modeGroup()).getByRole('button', { name: 'User' }));
+const toBuilder = (user: U) => setDetailLevel(user, 'builder');
+const toUser = (user: U) => setDetailLevel(user, 'user');
+const modeChoice = async (user: U, name: 'User mode' | 'Builder mode') => {
+  await openMenu(user);
+  const item = screen.getByRole('menuitemradio', { name });
+  const checked = item.getAttribute('aria-checked');
+  await user.keyboard('{Escape}');
+  return checked;
+};
 const writes = (api: FakeXo) => api.calls.filter((c) => c.method !== 'GET');
 
 beforeEach(() => {
@@ -49,12 +56,12 @@ beforeEach(() => {
 
 describe('mode: default, switching and persistence', () => {
   it('starts in User mode with no technical screens, and says so', async () => {
-    await open(new FakeXo());
-    expect(within(modeGroup()).getByRole('button', { name: 'User' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(modeGroup()).getByRole('button', { name: 'Builder' })).toHaveAttribute('aria-pressed', 'false');
-    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
+    const user = await open(new FakeXo());
+    expect(await modeChoice(user, 'User mode')).toBe('true');
+    expect(await modeChoice(user, 'Builder mode')).toBe('false');
+    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log']);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
-    expect(screen.getByText('User mode')).toBeInTheDocument();
+    expect(screen.queryByText(/· Builder/)).not.toBeInTheDocument(); // the card names the mode only when it is Builder
   });
 
   it('Builder mode adds one group of technical screens to the same navigation, and shows the mode', async () => {
@@ -71,10 +78,9 @@ describe('mode: default, switching and persistence', () => {
       'Contracts',
       'Processes',
       'Platform',
-      'Settings',
     ]);
     expect(within(screen.getByRole('group', { name: /builder tools/i })).getAllByRole('button')).toHaveLength(3);
-    expect(screen.getByText('Builder mode')).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: 'Workspace menu' })).getByText(/· Builder/)).toBeInTheDocument();
   });
 
   it('switching modes keeps the workspace and the current screen, and sends no request', async () => {
@@ -98,29 +104,25 @@ describe('mode: default, switching and persistence', () => {
     await toBuilder(user);
     expect(window.localStorage.getItem('xo-studio:mode')).toBe('builder');
     cleanup();
-    await connect(api);
+    const again = await connect(api);
     expect(await screen.findByRole('heading', { name: 'Ops', level: 1 })).toBeInTheDocument();
-    expect(within(modeGroup()).getByRole('button', { name: 'Builder' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await modeChoice(again, 'Builder mode')).toBe('true');
     cleanup();
     window.localStorage.clear();
-    await connect(api);
+    const fresh = await connect(api);
     await screen.findByRole('heading', { name: 'Ops', level: 1 });
-    expect(within(modeGroup()).getByRole('button', { name: 'User' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await modeChoice(fresh, 'User mode')).toBe('true');
   });
 
-  it('the switch is a labelled group of buttons that works from the keyboard', async () => {
+  it('the switch lives in the workspace menu and works from the keyboard', async () => {
     const user = await open(new FakeXo());
-    const builder = within(modeGroup()).getByRole('button', { name: 'Builder' });
+    await user.click(screen.getByRole('button', { name: 'Workspace menu' }));
+    const builder = screen.getByRole('menuitemradio', { name: 'Builder mode' });
     builder.focus();
     await user.keyboard('{Enter}');
-    expect(builder).toHaveAttribute('aria-pressed', 'true');
-    expect(builder).toHaveFocus();
-    await user.keyboard(' ');
-    expect(builder).toHaveAttribute('aria-pressed', 'true');
-    const userBtn = within(modeGroup()).getByRole('button', { name: 'User' });
-    userBtn.focus();
-    await user.keyboard('{Enter}');
-    expect(userBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument(); // choosing closes the menu
+    expect(screen.getByRole('button', { name: 'Workspace menu' })).toHaveFocus() ;
+    expect(await modeChoice(user, 'Builder mode')).toBe('true');
   });
 });
 

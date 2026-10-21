@@ -16,6 +16,15 @@ import { StartWork } from './StartWork';
  * processes ready to start. When there is none of that it says what to do next instead of showing
  * empty cards or placeholder numbers.
  */
+/** "Monday, 19 Oct · Good evening", from the computer's clock. The app does not know the person's name, so it does not use one. */
+export function greeting(now: Date): string {
+  const weekday = now.toLocaleDateString('en-GB', { weekday: 'long' });
+  const date = now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const day = `${weekday}, ${date}`;
+  const h = now.getHours();
+  return `${day} · Good ${h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'}`;
+}
+
 export function HomeSection(props: {
   compilation: Compilation | undefined;
   workflows: readonly Workflow[];
@@ -87,14 +96,29 @@ export function HomeSection(props: {
 
   if (props.loading) {
     return (
-      <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}.`}>
+      <section className="section" aria-labelledby="home-h">
+        <h2 id="home-h" className="visually-hidden">
+          Home
+        </h2>
         <Skeleton label="Loading your workspace" />
-      </Section>
+      </section>
     );
   }
 
   return (
-    <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
+    <section className="section" aria-labelledby="home-h">
+      <h2 id="home-h" className="visually-hidden">
+        Home
+      </h2>
+      <div className="home-top">
+        <p className="home-greeting">{greeting(new Date())}</p>
+        {!props.incomplete && inProgress.length + waitingCount + interrupted.length > 0 ? (
+          <p className="home-pills" aria-label="Right now">
+            {inProgress.length > 0 ? <span className="pill pill-run">{inProgress.length} running</span> : null}
+            {waitingCount + interrupted.length > 0 ? <span className="pill pill-wait">{waitingCount + interrupted.length} awaiting review</span> : null}
+          </p>
+        ) : null}
+      </div>
       <HomeCommandBar onAsk={props.onAsk} chips={chips} onChip={props.goTo} hint="⌘K" />
       <>
           {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
@@ -275,7 +299,7 @@ export function HomeSection(props: {
 
           {props.next.step !== 'done' && !props.incomplete ? <GetStarted next={props.next} /> : null}
       </>
-    </Section>
+    </section>
   );
 }
 

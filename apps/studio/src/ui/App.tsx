@@ -439,26 +439,12 @@ function ConnectScreen(props: ConnectProps) {
 }
 
 function Shell() {
-  const { mode, setMode, signOut } = useSession();
+  const { signOut } = useSession();
+  // Before a workspace is open there is no workspace menu, so Sign out stays reachable here. Inside a workspace it is in the menu.
   const account = (
-    <>
-      <div className="mode-switch">
-        <span className="mode-caption" id="mode-caption">
-          Mode
-        </span>
-        <div className="mode" role="group" aria-label="Detail level" aria-describedby="mode-caption">
-          <button type="button" aria-pressed={mode === 'user'} onClick={() => setMode('user')}>
-            User
-          </button>
-          <button type="button" aria-pressed={mode === 'builder'} onClick={() => setMode('builder')}>
-            Builder
-          </button>
-        </div>
-      </div>
-      <Button variant="quiet" onClick={signOut}>
-        Sign out
-      </Button>
-    </>
+    <Button variant="quiet" onClick={signOut}>
+      Sign out
+    </Button>
   );
   return <WorkspaceHome account={account} />;
 }

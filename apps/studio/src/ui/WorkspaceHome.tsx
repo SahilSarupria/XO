@@ -66,22 +66,6 @@ export function WorkspaceHome(props: { account: ReactNode }) {
     );
   }
 
-  const switcher = (
-    <div className="switcher">
-      <label htmlFor="workspace-select">Workspace</label>
-      <select id="workspace-select" value={active.workspaceId} onChange={(e) => setSelected(e.target.value)}>
-        {workspaces.map((w) => (
-          <option key={w.workspaceId} value={w.workspaceId}>
-            {w.name ?? 'Untitled workspace'}
-          </option>
-        ))}
-      </select>
-      <Button variant="quiet" onClick={() => setCreating(true)}>
-        New workspace
-      </Button>
-    </div>
-  );
-
   return (
     <WorkspaceView
       key={active.workspaceId}
@@ -90,7 +74,7 @@ export function WorkspaceHome(props: { account: ReactNode }) {
       onSelectWorkspace={setSelected}
       onNewWorkspace={() => setCreating(true)}
       frame={(parts) => (
-        <AppChrome switcher={switcher} nav={parts.nav} account={props.account} layout={parts.layout} rail={parts.rail}>
+        <AppChrome nav={parts.nav} layout={parts.layout} rail={parts.rail}>
           {parts.content}
         </AppChrome>
       )}

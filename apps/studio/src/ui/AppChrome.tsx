@@ -6,12 +6,21 @@ import { Icon } from './icons';
  * On narrow screens the panel becomes a drawer opened from a Menu button; it closes when a section is
  * chosen or Escape is pressed. Layout only — it holds no data and grants nothing.
  */
+const COLLAPSE_KEY = 'xo.studio.sidebar';
+function readCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSE_KEY) === 'collapsed';
+  } catch {
+    return false;
+  }
+}
+
 export type FrameLayout = 'standard' | 'rail' | 'bare';
 
 export function AppChrome(props: {
   switcher?: ReactNode;
   nav?: ReactNode;
-  account: ReactNode;
+  account?: ReactNode;
   children: ReactNode;
   /** `rail`: a narrow icon rail (chat). `bare`: no side panel (workflow graph, executions). Default: the full panel. */
   layout?: FrameLayout;
@@ -19,6 +28,18 @@ export function AppChrome(props: {
 }) {
   const layout = props.layout ?? 'standard';
   const [open, setOpen] = useState(false);
+  /** Icons only, expanding while hovered or focused. A convenience kept for next time; the page works without storage. */
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, c ? 'expanded' : 'collapsed');
+      } catch {
+        /* storage unavailable */
+      }
+      return !c;
+    });
+  }
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -43,7 +64,7 @@ export function AppChrome(props: {
   }
 
   return (
-    <div className="app">
+    <div className="app" data-collapsed={collapsed}>
       <div className="mobile-bar">
         <button type="button" className="menu-button" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen((v) => !v)}>
           <Icon name="menu" />
@@ -64,13 +85,27 @@ export function AppChrome(props: {
           if ((e.target as HTMLElement).closest('.nav-item') !== null) setOpen(false);
         }}
       >
-        <p className="brand sidebar-brand">
-          <span className="brand-mark" aria-hidden="true" />
-          XO Studio
-        </p>
+        <div className="sidebar-top">
+          <p className="brand sidebar-brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <span className="brand-text">XO Studio</span>
+          </p>
+          <button
+            type="button"
+            className="sb-toggle"
+            aria-pressed={collapsed}
+            aria-label={collapsed ? 'Keep the sidebar expanded' : 'Collapse the sidebar to icons'}
+            title={collapsed ? 'Keep the sidebar expanded' : 'Collapse to icons. It expands when you point at it.'}
+            onClick={toggleCollapsed}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 5h16v14H4zM9 5v14" />
+            </svg>
+          </button>
+        </div>
         {props.switcher !== undefined ? <div className="sidebar-block">{props.switcher}</div> : null}
         {props.nav}
-        <div className="sidebar-foot">{props.account}</div>
+        {props.account !== undefined ? <div className="sidebar-foot">{props.account}</div> : null}
       </aside>
       <div className="content">{props.children}</div>
     </div>

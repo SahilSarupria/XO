@@ -5,71 +5,14 @@ import type { XoItem } from '../domain/xo';
 import { Badge, Button } from './primitives';
 import '../styles/chat.css';
 
-/**
- * Chat, expanded: thread list, conversation, context. Replies are scripted (see domain/chat) and say so; the trace panel
- * says it is not available because the platform does not report one. Threads live in this session only.
- */
-export function ChatScreen(props: {
-  threads: readonly ChatThread[];
-  activeId: string | undefined;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onSend: (text: string, attached: readonly string[]) => void;
-  xos: readonly XoItem[];
-  goTo: (target: StartTarget) => void;
-}) {
-  const thread = props.threads.find((t) => t.id === props.activeId);
-  const [text, setText] = useState('');
-  const [attached, setAttached] = useState<readonly string[]>([]);
-  const inputId = useId();
+/** The messages of one conversation, as a polite live log. Shared by the full Chat screen and the Ask XO drawer. */
+export function ChatLog(props: { thread: ChatThread | undefined; goTo: (target: StartTarget) => void }) {
+  const { thread } = props;
   const end = useRef<HTMLDivElement>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
-  const query = mentionQuery(text);
-  const suggestions = query === undefined ? [] : matchXos(props.xos, query).filter((x) => !attached.includes(x.label));
-
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' });
   }, [thread?.messages.length]);
-
-  function attach(label: string) {
-    setAttached((a) => (a.includes(label) ? a : [...a, label]));
-    setText((t) => t.replace(/(^|\s)@[\w.-]*$/, '$1'));
-    box.current?.focus(); // the picker closes; keep the person where they were typing
-  }
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const value = text.trim();
-    if (value === '') return;
-    props.onSend(value, attached);
-    setText('');
-    setAttached([]);
-  }
-
-  const today = props.threads;
   return (
-    <div className="chatscreen">
-      <nav className="chat-threads" aria-label="Conversations">
-        <Button variant="secondary" className="chat-new" onClick={props.onNew}>
-          + New chat
-        </Button>
-        {today.length > 0 ? <p className="chat-group">This session</p> : <p className="muted small chat-empty">No conversations yet.</p>}
-        <ul className="bare-list">
-          {[...today].reverse().map((t) => (
-            <li key={t.id}>
-              <button type="button" className="chat-thread" aria-current={t.id === props.activeId ? 'true' : undefined} onClick={() => props.onSelect(t.id)}>
-                {t.title}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      <section className="chat-main" aria-label="Conversation">
-        <header className="chat-head">
-          <h2>{thread?.title ?? 'New chat'}</h2>
-          <span className="chat-chip">session memory</span>
-          <Badge tone="accent">Preview</Badge>
-        </header>
         <div className="chat-log" role="log" aria-live="polite" aria-label="Messages">
           {thread === undefined || thread.messages.length === 0 ? (
             <p className="muted small">Ask for something, or pick a suggestion. Replies in this preview are fixed and do not change anything.</p>
@@ -98,6 +41,35 @@ export function ChatScreen(props: {
           <div ref={end} />
         </div>
 
+  );
+}
+
+/** The message box with @-mention picker and the fixed pills. `autoFocus` puts the cursor in it when it first appears. */
+export function ChatComposer(props: { xos: readonly XoItem[]; onSend: (text: string, attached: readonly string[]) => void; autoFocus?: boolean }) {
+  const [text, setText] = useState('');
+  const [attached, setAttached] = useState<readonly string[]>([]);
+  const inputId = useId();
+  const box = useRef<HTMLTextAreaElement>(null);
+  const query = mentionQuery(text);
+  const suggestions = query === undefined ? [] : matchXos(props.xos, query).filter((x) => !attached.includes(x.label));
+  useEffect(() => {
+    if (props.autoFocus === true) box.current?.focus();
+  }, [props.autoFocus]);
+
+  function attach(label: string) {
+    setAttached((a) => (a.includes(label) ? a : [...a, label]));
+    setText((t) => t.replace(/(^|\s)@[\w.-]*$/, '$1'));
+    box.current?.focus(); // the picker closes; keep the person where they were typing
+  }
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const value = text.trim();
+    if (value === '') return;
+    props.onSend(value, attached);
+    setText('');
+    setAttached([]);
+  }
+  return (
         <form className="chat-composer" onSubmit={submit}>
           {attached.length > 0 ? (
             <p className="chat-attached">
@@ -151,6 +123,50 @@ export function ChatScreen(props: {
             </Button>
           </div>
         </form>
+  );
+}
+
+/**
+ * Chat, expanded: thread list, conversation, context. Replies are scripted (see domain/chat) and say so; the trace panel
+ * says it is not available because the platform does not report one. Threads live in this session only.
+ */
+export function ChatScreen(props: {
+  threads: readonly ChatThread[];
+  activeId: string | undefined;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onSend: (text: string, attached: readonly string[]) => void;
+  xos: readonly XoItem[];
+  goTo: (target: StartTarget) => void;
+}) {
+  const thread = props.threads.find((t) => t.id === props.activeId);
+  const today = props.threads;
+  return (
+    <div className="chatscreen">
+      <nav className="chat-threads" aria-label="Conversations">
+        <Button variant="secondary" className="chat-new" onClick={props.onNew}>
+          + New chat
+        </Button>
+        {today.length > 0 ? <p className="chat-group">This session</p> : <p className="muted small chat-empty">No conversations yet.</p>}
+        <ul className="bare-list">
+          {[...today].reverse().map((t) => (
+            <li key={t.id}>
+              <button type="button" className="chat-thread" aria-current={t.id === props.activeId ? 'true' : undefined} onClick={() => props.onSelect(t.id)}>
+                {t.title}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <section className="chat-main" aria-label="Conversation">
+        <header className="chat-head">
+          <h2>{thread?.title ?? 'New chat'}</h2>
+          <span className="chat-chip">session memory</span>
+          <Badge tone="accent">Preview</Badge>
+        </header>
+        <ChatLog thread={thread} goTo={props.goTo} />
+        <ChatComposer xos={props.xos} onSend={props.onSend} />
       </section>
 
       <aside className="chat-context" aria-label="Context">

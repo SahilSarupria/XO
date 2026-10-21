@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { setDetailLevel } from './nav';
 
 async function connect(api: FakeXo, key = api.validKey) {
   const user = userEvent.setup();
@@ -218,7 +219,7 @@ describe('Builder Mode', () => {
     const callsBefore = api.calls.length;
     expect(screen.queryByText('cap_det')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Builder' }));
+    await setDetailLevel(user, 'builder');
     expect((await screen.findAllByText(/cap_det/)).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/structured-comparison-resolver/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Processes' })).toBeInTheDocument();
@@ -237,7 +238,7 @@ describe('Builder Mode', () => {
     await createWorkspaceAndUpload(user);
     await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
     await screen.findByText(/settlement amount must be recorded/i);
-    await user.click(await screen.findByRole('button', { name: 'Builder' }));
+    await setDetailLevel(user, 'builder');
     await user.click(await screen.findByRole('button', { name: 'Processes' }));
     expect(await screen.findByText('Can run')).toBeInTheDocument();
     // Scoped to the page: the sidebar's "Runs & History" is navigation, not an action.

@@ -15,3 +15,16 @@ export async function openScreen(user: U, name: RegExp | string): Promise<void> 
   if (n === 'Activity') return user.click(screen.getByRole('button', { name: 'Activity' }));
   return user.click(screen.getByRole('button', { name }));
 }
+
+/** The workspace card at the foot of the sidebar opens a menu: switch workspace, Settings, detail level, Sign out. */
+export async function openMenu(user: U): Promise<HTMLElement> {
+  if (screen.queryByRole('menu', { name: 'Workspace menu' }) === null) await user.click(screen.getByRole('button', { name: 'Workspace menu' }));
+  return screen.getByRole('menu', { name: 'Workspace menu' });
+}
+export async function chooseFromMenu(user: U, name: RegExp | string, role: 'menuitem' | 'menuitemradio' = 'menuitem'): Promise<void> {
+  await openMenu(user);
+  await user.click(screen.getByRole(role, { name }));
+}
+export const setDetailLevel = (user: U, mode: 'user' | 'builder') =>
+  chooseFromMenu(user, mode === 'builder' ? 'Builder mode' : 'User mode', 'menuitemradio');
+export const signOutViaMenu = (user: U) => chooseFromMenu(user, 'Sign out');

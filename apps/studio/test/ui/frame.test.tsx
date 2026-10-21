@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
+import { chooseFromMenu } from './nav';
 
 async function open(api: FakeXo) {
   const user = userEvent.setup();
@@ -20,10 +21,12 @@ describe('app frame', () => {
   it('puts workspace, sections and account controls in the left panel, details on the right', async () => {
     await open(new FakeXo());
     const panel = screen.getByRole('complementary', { name: /xo studio/i });
-    expect(within(panel).getByLabelText('Workspace')).toBeInTheDocument();
     expect(within(panel).getByRole('navigation', { name: /workspace sections/i })).toBeInTheDocument();
-    expect(within(panel).getByRole('button', { name: /sign out/i })).toBeInTheDocument();
-    expect(within(panel).getByRole('group', { name: /detail level/i })).toBeInTheDocument();
+    // Workspace, Settings, detail level and Sign out are behind the workspace card, not spread over the sidebar.
+    expect(within(panel).getByRole('button', { name: 'Workspace menu' })).toHaveAttribute('aria-haspopup', 'menu');
+    expect(within(panel).queryByRole('button', { name: /sign out/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('group', { name: /detail level/i })).not.toBeInTheDocument();
+    expect(within(panel).queryByLabelText('Workspace')).not.toBeInTheDocument();
     expect(within(panel).queryByRole('main')).not.toBeInTheDocument();
     expect(screen.getByRole('main')).toContainElement(screen.getByRole('heading', { name: 'Claims Ops' }));
   });
@@ -40,7 +43,7 @@ describe('app frame', () => {
 
   it('opens the panel from Menu on small screens and closes it after choosing a section', async () => {
     const user = await open(new FakeXo());
-    const menu = screen.getByRole('button', { name: /menu/i });
+    const menu = screen.getByRole('button', { name: 'Menu' });
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     await user.click(menu);
     expect(menu).toHaveAttribute('aria-expanded', 'true');
@@ -64,34 +67,31 @@ describe('app frame', () => {
     expect(within(start).getByRole('button', { name: 'Add your first document' })).toBeInTheDocument();
   });
 
-  it('names the sidebar sections as designed, with Settings as the last destination', async () => {
+  it('names the sidebar sections as designed; Settings is in the workspace menu', async () => {
     await open(new FakeXo());
     const nav = screen.getByRole('navigation', { name: /workspace sections/i });
     const labels = within(nav)
       .getAllByRole('button')
       .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log', 'Settings']);
-    expect(labels.at(-1)).toBe('Settings');
+    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log']);
   });
 
-  it('shows where you are in a breadcrumb that follows the page', async () => {
+  it('shows where you are in the sidebar, with no breadcrumb or mode badge, and keeps the page named for screen readers', async () => {
     const user = await open(new FakeXo());
-    const crumbs = () => screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(within(crumbs()).getByText('Home').closest('li')).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument();
+    expect(screen.queryByText('User mode')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Claims Ops', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     await user.click(screen.getByRole('button', { name: 'Workflows' }));
-    const current = within(crumbs()).getByText('Workflows').closest('li');
-    expect(current).toHaveAttribute('aria-current', 'page');
-    // Earlier crumbs are links; the current page is not.
-    expect(within(crumbs()).getByRole('button', { name: 'Claims Ops' })).toBeInTheDocument();
-    expect(within(crumbs()).queryByRole('button', { name: 'Workflows' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Workflows' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Home' })).not.toHaveAttribute('aria-current');
   });
 
   it('Workspaces lists the real workspaces, marks the current one, and can start a new one', async () => {
     const api = new FakeXo();
     const user = await open(api);
-    const nav = screen.getByRole('navigation', { name: /workspace sections/i });
-    await user.click(within(nav).getByRole('button', { name: 'Workspaces' }));
+    await chooseFromMenu(user, 'All workspaces');
     expect(await screen.findByRole('heading', { name: 'Workspaces', level: 2 })).toBeInTheDocument();
     const list = screen.getByRole('list', { name: 'Your workspaces' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
