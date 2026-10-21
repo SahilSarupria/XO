@@ -42,7 +42,12 @@ export interface CapabilityConfidence {
  * as before; a runtime that finds it absent falls back to whatever
  * discovery mechanism it used before this field existed.
  */
-export type CapabilityExecutionMode = 'deterministic_rule' | 'model' | 'hybrid' | 'human_in_the_loop';
+export type CapabilityExecutionMode =
+  | 'deterministic_rule'
+  | 'model'
+  | 'hybrid'
+  | 'human_in_the_loop'
+  | 'external_tool';
 
 /**
  * The strategy a single hybrid step runs as. Deliberately NOT
