@@ -24,6 +24,8 @@ import { WorkflowEditor } from './WorkflowScreen';
 import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
 import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
+import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
+import { useTheme } from './theme';
 import { XoInspector } from './XoInspector';
 import type { FrameLayout } from './AppChrome';
 
@@ -71,6 +73,17 @@ export function WorkspaceView(props: {
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | undefined>();
   const [wfSettings, setWfSettings] = useState(false);
   const [xoSubject, setXoSubject] = useState<XoSubject | undefined>();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [theme, setThemeChoice] = useTheme();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isPaletteShortcut(e)) return;
+      e.preventDefault();
+      setPaletteOpen((o) => !o);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [selectedRun, setSelectedRun] = useState<string | undefined>();
   const threadSeq = useRef(1);
   const messageSeq = useRef(1);
@@ -674,7 +687,26 @@ export function WorkspaceView(props: {
       ) : null}
     </main>
   );
-  return <>{props.frame({ nav, rail, content, layout: 'standard' })}</>;
+  const commands: PaletteCommand[] = [
+    { id: 'home', label: 'Go to Home', run: () => setView('home') },
+    { id: 'chat', label: 'Open Chat', run: () => setView('chat') },
+    { id: 'work', label: 'Go to Workflows', run: () => setView('work') },
+    { id: 'setup', label: 'Go to My XOs', run: () => setView('setup') },
+    { id: 'create', label: 'Create XO', run: () => setView('create') },
+    { id: 'tasks', label: 'Go to Inbox', run: () => setView('tasks') },
+    { id: 'executions', label: 'Go to Executions', run: () => setView('executions') },
+    { id: 'library', label: 'Go to Library', run: () => setView('library') },
+    { id: 'activity', label: 'Go to Activity', run: () => setView('activity') },
+    { id: 'audit', label: 'Go to Audit log', hint: 'Preview', run: () => setView('audit') },
+    { id: 'settings', label: 'Go to Settings', run: () => setView('settings') },
+    { id: 'theme', label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', run: () => setThemeChoice(theme === 'dark' ? 'light' : 'dark') },
+  ];
+  return (
+    <>
+      {props.frame({ nav, rail, content, layout: 'standard' })}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+    </>
+  );
 }
 
 function NavItem(props: {

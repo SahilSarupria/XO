@@ -95,7 +95,7 @@ export function HomeSection(props: {
 
   return (
     <Section id="home-h" title="Home" lede={`You are working in ${props.workspaceName}. Here is what needs you and what you can start.`}>
-      <HomeCommandBar onAsk={props.onAsk} chips={chips} onChip={props.goTo} />
+      <HomeCommandBar onAsk={props.onAsk} chips={chips} onChip={props.goTo} hint="⌘K" />
       <>
           {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
           {!props.incomplete && props.runs.length > 0 ? (

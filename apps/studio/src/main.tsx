@@ -4,8 +4,13 @@ import { App } from './ui/App';
 import { ConfigError } from './shell/ConfigError';
 import { resolveAuthConfig, resolveFromEnvironment } from './shell/config';
 import { ShellProvider, createWebShellServices } from './shell/services';
+import '@fontsource-variable/instrument-sans';
+import '@fontsource-variable/jetbrains-mono';
 import './styles/tokens.css';
 import './styles/app.css';
+import { initTheme } from './ui/theme';
+
+initTheme();
 
 const root = document.getElementById('root');
 if (root === null) throw new Error('Studio root element missing');

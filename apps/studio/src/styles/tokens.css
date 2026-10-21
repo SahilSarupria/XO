@@ -40,8 +40,8 @@
   --info-wash: rgba(138, 180, 255, 0.1);
 
   /* type */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --text-xs: 0.78rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
@@ -69,4 +69,31 @@
   :root {
     --motion: 0ms;
   }
+}
+
+/* Light theme: same names, values chosen so text, status and focus pairs keep their contrast on a light surface. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f6f5f1;
+  --bg-sunken: #ecebe5;
+  --surface-1: #ffffff;
+  --surface-2: #f1f0eb;
+  --surface-3: #e6e4dc;
+  --border: #e0ded5;
+  --border-strong: #c9c6ba;
+  --text: #1b1b19;
+  --text-muted: #55534b;
+  --text-faint: #6b6960;
+  --accent: #1f9d7c;
+  --accent-strong: #0f6f56;
+  --accent-ink: #ffffff;
+  --accent-wash: rgba(31, 157, 124, 0.12);
+  --success: #0f7a5e;
+  --success-wash: rgba(31, 157, 124, 0.14);
+  --warning: #8a5a00;
+  --warning-wash: rgba(200, 140, 20, 0.16);
+  --danger: #b3261e;
+  --danger-wash: rgba(179, 38, 30, 0.1);
+  --info: #2a5db0;
+  --info-wash: rgba(42, 93, 176, 0.1);
 }

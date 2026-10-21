@@ -6,6 +6,7 @@ import { shortDid } from '../domain/xo';
 import { Badge, Button, formatWhen, ProblemNotice, Section } from './primitives';
 import { runTitle } from './RunCard';
 import { useSession, type Mode } from './session';
+import { useTheme, type Theme } from './theme';
 
 const SAMPLE = [
   {
@@ -205,6 +206,7 @@ export function SettingsSection(props: { workspaceName: string }) {
   const { mode, setMode } = useSession();
   const [tab, setTab] = useState<(typeof SETTINGS_TABS)[number]>('Models and runtime');
   const modes: readonly Mode[] = ['user', 'builder'];
+  const [theme, setTheme] = useTheme();
   return (
     <Section id="settings-h" title="Settings" lede={`Workspace: ${props.workspaceName}`}>
       <div className="settings">
@@ -225,6 +227,15 @@ export function SettingsSection(props: { workspaceName: string }) {
               <button key={m} type="button" role="radio" aria-checked={mode === m} className="radio-row" onClick={() => setMode(m)}>
                 <span className="radio-dot" aria-hidden="true" />
                 {m === 'user' ? 'User mode' : 'Builder mode'}
+              </button>
+            ))}
+          </div>
+          <h3>Appearance</h3>
+          <div className="radio-list" role="radiogroup" aria-label="Theme">
+            {(['dark', 'light'] as const satisfies readonly Theme[]).map((t) => (
+              <button key={t} type="button" role="radio" aria-checked={theme === t} className="radio-row" onClick={() => setTheme(t)}>
+                <span className="radio-dot" aria-hidden="true" />
+                {t === 'dark' ? 'Dark theme' : 'Light theme'}
               </button>
             ))}
           </div>
