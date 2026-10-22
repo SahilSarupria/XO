@@ -353,3 +353,16 @@ test('telemetry is structured, low-sensitivity, and never contains prompts, resp
   assert.equal(failed.fields['timedOut'], false);
   assert.equal(failed.fields['httpStatus'], 429);
 });
+
+test('a hostile vendor status string is never logged or embedded; only enum-like tokens survive', async () => {
+  const { logger, records } = capturingLogger();
+  for (const code of [`LEAK_${TEST_API_KEY}`, 'has spaces and \n newline', 'X'.repeat(200)]) {
+    const { provider } = make([errorBody(400, code, 'bad')], { logger });
+    const { failure, error } = await failureOf(provider.complete(baseRequest));
+    assert.equal(failure.providerCode, undefined);
+    assert.ok(!error.message.includes(TEST_API_KEY) && !error.message.includes('newline'));
+  }
+  assert.ok(!JSON.stringify(records).includes(TEST_API_KEY));
+  const ok = make([errorBody(429, 'RESOURCE_EXHAUSTED', 'slow')]);
+  assert.equal((await failureOf(ok.provider.complete(baseRequest))).failure.providerCode, 'RESOURCE_EXHAUSTED');
+});

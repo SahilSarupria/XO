@@ -50,3 +50,30 @@ test('a client-supplied key can never override the server credential or select a
     assert.ok(!result.error.includes('attacker-key') && !result.error.includes('evil.example.com'));
   }
 });
+
+test('header rejection happens BEFORE any server-config/credential resolution', () => {
+  // Server config is invalid (gemini, no key). If credential resolution ran first we would see the config error instead.
+  const result = resolveProvider(fakeRequest({ 'x-xo-api-key': 'attacker-key' }), { XO_INFERENCE_PROVIDER: 'gemini' });
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.error, /controlled by the server/);
+    assert.ok(!/GEMINI_API_KEY/.test(result.error));
+  }
+});
+
+test('XO_INFERENCE_PROVIDER=none disables inference even when every provider key is present', () => {
+  const result = resolveProvider(fakeRequest(), {
+    XO_INFERENCE_PROVIDER: 'none',
+    GEMINI_API_KEY: KEY,
+    ANTHROPIC_API_KEY: 'sk-ant',
+    OPENAI_API_KEY: 'sk-oa',
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.error, /not configured on this server/);
+});
+
+test('configuration errors never echo the server credential, even a malformed one', () => {
+  const result = resolveProvider(fakeRequest(), { XO_INFERENCE_PROVIDER: 'gemini', GEMINI_API_KEY: `${KEY} trailing` });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.ok(!result.error.includes(KEY) && !result.error.includes('trailing'));
+});

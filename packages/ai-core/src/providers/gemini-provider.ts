@@ -368,7 +368,12 @@ export class GeminiProvider implements ModelProvider {
       const parsed = JSON.parse(raw) as { error?: { status?: unknown; code?: unknown; message?: unknown; details?: unknown } };
       const e = parsed.error;
       if (e) {
-        providerCode = typeof e.status === 'string' ? e.status : typeof e.code === 'string' ? e.code : undefined;
+        const rawCode = typeof e.status === 'string' ? e.status : typeof e.code === 'string' ? e.code : undefined;
+        // Vendor-controlled string that is logged and embedded in messages: accept only a short enum-like token, else drop it.
+        providerCode =
+          rawCode !== undefined && /^[A-Za-z0-9_.:-]{1,64}$/.test(rawCode) && redactSecrets(rawCode, secrets) === rawCode
+            ? rawCode
+            : undefined;
         providerMessage = typeof e.message === 'string' ? e.message : '';
         details = Array.isArray(e.details) ? e.details : [];
       }
