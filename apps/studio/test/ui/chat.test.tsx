@@ -117,7 +117,7 @@ describe('Chat inside the app', () => {
     const log = within(panel).getByRole('log', { name: 'Messages' });
     expect(within(log).getByText('what do i have')).toBeInTheDocument();
     expect(await within(log).findByText(/This workspace holds/)).toBeInTheDocument();
-    expect(screen.getByText('Preview')).toBeInTheDocument();
+    expect(screen.getAllByText('Preview').length).toBeGreaterThan(0);
     expect(window.location.hash).not.toBe('#/chat');
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
   });
@@ -140,6 +140,46 @@ describe('Chat inside the app', () => {
     expect(within(await screen.findByRole('log', { name: 'Messages' })).getByText('hello')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ New chat' }));
     expect(screen.getByRole('heading', { name: 'New chat' })).toBeInTheDocument();
+  });
+});
+
+describe('Ask XO chat layout', () => {
+  async function opened() {
+    const api = new FakeXo();
+    const user = userEvent.setup();
+    render(withShell(<App fetchImpl={api.fetch} />));
+    await user.type(screen.getByLabelText(/access key/i), api.validKey);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
+    await user.click(screen.getByRole('button', { name: /create workspace/i }));
+    await screen.findByRole('heading', { name: 'Claims Ops' });
+    await user.click(screen.getByLabelText('Ask XO'));
+    return { user, panel: await screen.findByRole('dialog', { name: 'Ask XO conversation' }) };
+  }
+
+  it('looks like a chat app: conversations sidebar, a welcome with starters, the bar at the bottom, and a preview note', async () => {
+    const { panel } = await opened();
+    const side = within(panel).getByRole('navigation', { name: 'Conversations' });
+    expect(within(side).getByRole('button', { name: /new chat/i })).toBeInTheDocument();
+    expect(within(side).getByText('No conversations yet.')).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'What can XO help with?' })).toBeInTheDocument();
+    expect(within(panel).getByText(/replies here are fixed examples/i)).toBeInTheDocument();
+  });
+
+  it('a starter sends a fixed preview reply; conversations list in the sidebar and can be switched between', async () => {
+    const { user, panel } = await opened();
+    await user.click(within(panel).getByRole('button', { name: 'What do I have in this workspace?' }));
+    expect(await within(panel).findByText(/This workspace holds/)).toBeInTheDocument();
+    const side = within(panel).getByRole('navigation', { name: 'Conversations' });
+    await user.click(within(side).getByRole('button', { name: /new chat/i }));
+    expect(within(panel).getByRole('heading', { name: 'What can XO help with?' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Ask XO'), 'show me the graph{enter}');
+    expect(await within(panel).findByText(/steps in the order XO composed them/)).toBeInTheDocument();
+    const items = within(side).getAllByRole('button').filter((b) => b.classList.contains('askdock-thread'));
+    expect(items).toHaveLength(2);
+    await user.click(items[1]!);
+    expect(await within(panel).findByText(/This workspace holds/)).toBeInTheDocument();
+    expect(items[1]).toHaveAttribute('aria-current', 'true');
   });
 });
 

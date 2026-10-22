@@ -316,6 +316,8 @@ export function WorkspaceView(props: {
     onOpenChange: setDrawerOpen,
     focusTick,
     thread: threads.find((t) => t.id === activeThread),
+    threads,
+    onSelect: setActiveThread,
     xos: xoList,
     onSend: (text, attached) => sendChat(text, attached, true),
     onNew: () => setActiveThread(undefined),

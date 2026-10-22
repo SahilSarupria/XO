@@ -20,6 +20,8 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
         onOpenChange: setOpen,
         focusTick: 0,
         thread: undefined,
+        threads: [],
+        onSelect: () => {},
         xos: [],
         onSend: (t) => props.onSend?.(t),
         onNew: () => {},
@@ -46,7 +48,7 @@ describe('Home command bar', () => {
     await user.type(screen.getByLabelText('Ask XO'), '   {enter}');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByText('Preview')).toBeInTheDocument();
+    expect(screen.getAllByText('Preview').length).toBeGreaterThan(0);
   });
 
   it('quick actions go where their label says', async () => {

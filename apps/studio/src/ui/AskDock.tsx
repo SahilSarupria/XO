@@ -15,6 +15,9 @@ export interface DockProps {
   /** Changes whenever something (⌘J, the palette) asks for the cursor to go to the bar. */
   readonly focusTick: number;
   readonly thread: ChatThread | undefined;
+  /** Every conversation of this session, oldest first, and the one being shown. */
+  readonly threads: readonly ChatThread[];
+  readonly onSelect: (id: string) => void;
   readonly xos: readonly XoItem[];
   readonly onSend: (text: string, attached: readonly string[]) => void;
   readonly onNew: () => void;
@@ -157,42 +160,77 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
 
       {phase !== 'closed' ? (
         <section id="askdock-panel" className="askdock-panel" role="dialog" aria-label="Ask XO conversation" data-phase={phase}>
-          <header className="askdock-head">
-            <button type="button" className="btn btn-quiet askdock-close" onClick={close}>
+          <nav className="askdock-side" aria-label="Conversations">
+            <button type="button" className="askdock-back" onClick={close}>
               <span aria-hidden="true">← </span>Close chat
             </button>
-            <h2>{props.thread?.title ?? 'New chat'}</h2>
-            <span className="chat-chip">session memory</span>
-            <div className="askdock-actions">
-              <button type="button" className="btn btn-quiet" onClick={props.onNew}>
-                New chat
-              </button>
+            <button type="button" className="askdock-new" onClick={props.onNew}>
+              <span aria-hidden="true">+ </span>New chat
+            </button>
+            {props.threads.length === 0 ? (
+              <p className="askdock-note">No conversations yet.</p>
+            ) : (
+              <>
+                <p className="askdock-group">This session</p>
+                <ul className="bare-list askdock-threads">
+                  {[...props.threads].reverse().map((t) => (
+                    <li key={t.id}>
+                      <button type="button" className="askdock-thread" aria-current={t.id === props.thread?.id ? 'true' : undefined} onClick={() => props.onSelect(t.id)}>
+                        {t.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <p className="askdock-note askdock-side-foot">Conversations are kept for this session only.</p>
+          </nav>
+          <div className="askdock-main">
+            <header className="askdock-head">
+              <h2>{props.thread?.title ?? 'New chat'}</h2>
+              <span className="chat-chip">session memory</span>
+              <Badge tone="accent">Preview</Badge>
+            </header>
+            <div className="askdock-body">
+              {props.thread === undefined || props.thread.messages.length === 0 ? (
+                <div className="askdock-welcome">
+                  <h3>What can XO help with?</h3>
+                  <p className="muted">Replies in this preview are fixed and do not change anything. Try one of these:</p>
+                  <div className="askdock-starters">
+                    {['What do I have in this workspace?', 'Show me the workflow graph', 'Create an XO from my documents'].map((q) => (
+                      <button key={q} type="button" className="askdock-starter" onClick={() => props.onSend(q, [])}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <ChatLog thread={props.thread} goTo={props.goTo} />
+              )}
             </div>
-          </header>
-          <div className="askdock-body">
-            <ChatLog thread={props.thread} goTo={props.goTo} />
-          </div>
-          <div className="askdock-foot">
-            {attached.length > 0 ? (
-              <p className="chat-attached askdock-attached">
-                {attached.map((a) => (
-                  <button key={a} type="button" className="chat-tag" aria-label={`Remove ${a}`} onClick={() => setAttached((x) => x.filter((y) => y !== a))}>
-                    @{a} ×
-                  </button>
-                ))}
-              </p>
-            ) : null}
-            {suggestions.length > 0 ? (
-              <ul className="chat-suggest askdock-suggest" role="listbox" aria-label="XOs you can attach">
-                {suggestions.slice(0, 5).map((x) => (
-                  <li key={x.id} role="option" aria-selected="false">
-                    <button type="button" onClick={() => attach(x.label)}>
-                      @{x.label}
+            <div className="askdock-foot">
+              {attached.length > 0 ? (
+                <p className="chat-attached askdock-attached">
+                  {attached.map((a) => (
+                    <button key={a} type="button" className="chat-tag" aria-label={`Remove ${a}`} onClick={() => setAttached((x) => x.filter((y) => y !== a))}>
+                      @{a} ×
                     </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+                  ))}
+                </p>
+              ) : null}
+              {suggestions.length > 0 ? (
+                <ul className="chat-suggest askdock-suggest" role="listbox" aria-label="XOs you can attach">
+                  {suggestions.slice(0, 5).map((x) => (
+                    <li key={x.id} role="option" aria-selected="false">
+                      <button type="button" onClick={() => attach(x.label)}>
+                        @{x.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            <p className="askdock-legal">Preview: XO's replies here are fixed examples. Check anything that matters in the app.</p>
           </div>
         </section>
       ) : null}

@@ -37,26 +37,84 @@
 .askdock-bar.is-docked {
   position: fixed;
   z-index: 60;
-  left: 0;
+  left: 16rem;
   right: 0;
-  bottom: var(--s-5);
-  width: min(52rem, calc(100vw - 2rem));
+  bottom: var(--s-7, 2.75rem);
+  width: min(48rem, calc(100vw - 16rem - 2rem));
   margin: 0 auto;
-  min-height: 3.25rem;
+  min-height: 3.5rem;
+  border-radius: 1.25rem;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
 .askdock-panel {
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
   background: var(--bg);
   animation: dock-open 300ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 .askdock-panel[data-phase='closing'] {
   animation: dock-close 260ms cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
+}
+.askdock-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+  padding: var(--s-4) var(--s-3);
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.askdock-back,
+.askdock-new,
+.askdock-thread {
+  display: block;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0 var(--s-3);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.askdock-back {
+  color: var(--text-muted, var(--muted));
+}
+.askdock-new {
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+}
+.askdock-back:hover,
+.askdock-new:hover,
+.askdock-thread:hover,
+.askdock-thread[aria-current='true'] {
+  background: var(--surface-2);
+}
+.askdock-group,
+.askdock-note {
+  margin: var(--s-3) var(--s-3) 0;
+  font-size: var(--text-sm);
+  color: var(--muted, var(--text-muted));
+}
+.askdock-side-foot {
+  margin-top: auto;
+}
+.askdock-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 .askdock-body {
   flex: 1;
@@ -68,17 +126,56 @@
 .askdock-body .chat-log {
   flex: 0 1 auto;
   overflow: visible;
-  width: min(52rem, 100%);
+  width: min(48rem, 100%);
   max-width: none;
   margin: 0;
-  padding: var(--s-5) var(--s-4) 7rem;
+  padding: var(--s-5) var(--s-4) 9rem;
+}
+.askdock-welcome {
+  align-self: center;
+  width: min(40rem, 100%);
+  padding: 0 var(--s-4) 8rem;
+  text-align: center;
+}
+.askdock-welcome h3 {
+  font-size: var(--text-xl, 1.5rem);
+  margin-bottom: var(--s-2);
+}
+.askdock-starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+.askdock-starter {
+  font: inherit;
+  padding: var(--s-2) var(--s-3);
+  color: var(--text);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.askdock-starter:hover {
+  border-color: var(--border-strong);
+}
+.askdock-legal {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--s-3);
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--muted, var(--text-muted));
 }
 .askdock-foot {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--s-5) + 3.5rem);
-  width: min(52rem, calc(100vw - 2rem));
+  bottom: calc(var(--s-7, 2.75rem) + 3.75rem);
+  width: min(48rem, calc(100% - 2rem));
   margin: 0 auto;
   z-index: 55;
   background: var(--surface-1);
@@ -92,10 +189,6 @@
   align-items: center;
   gap: var(--s-3);
   padding: var(--s-3) var(--s-5);
-  border-bottom: 1px solid var(--border);
-}
-.askdock-close {
-  white-space: nowrap;
 }
 .askdock-head h2 {
   min-width: 0;
@@ -103,16 +196,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.askdock-actions {
-  margin-left: auto;
-  display: flex;
-  gap: var(--s-1);
-  flex: none;
-}
-.askdock-actions .btn {
-  white-space: nowrap;
-  padding: 0 var(--s-2);
 }
 .askdock-attached,
 .askdock-suggest {
@@ -193,4 +276,16 @@
 .askdock-v-floating[data-phase='closed']:not([data-open='true']) {
   visibility: hidden;
   pointer-events: none;
+}
+@media (max-width: 760px) {
+  .askdock-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .askdock-side {
+    display: none;
+  }
+  .askdock-bar.is-docked {
+    left: 0;
+    width: calc(100vw - 2rem);
+  }
 }
