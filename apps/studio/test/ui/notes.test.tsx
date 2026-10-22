@@ -28,7 +28,7 @@ async function withWaitingRun(api: FakeXo): Promise<U> {
   await screen.findByRole('button', { name: /approve this step/i });
   return user;
 }
-const noteBox = () => screen.getByRole('textbox');
+const noteBox = () => screen.getByRole('textbox', { name: /saved with your decision/i });
 
 describe('optional decision notes', () => {
   it('are collapsed by default and never required', async () => {
@@ -50,7 +50,7 @@ describe('optional decision notes', () => {
     expect(posts(api, '/resume')[0]!.body).toMatchObject({ decision: 'approve', data: { note: 'Checked against the March statement' } });
     expect(await screen.findByText(/note from sally: checked against the march statement/i)).toBeInTheDocument();
     // the note box is cleared for the next step
-    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: /saved with your decision/i })).toHaveValue('');
   });
 
   it('survives a reload: shown in Activity from the platform record, not from the browser', async () => {

@@ -26,7 +26,7 @@ import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
 import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
 import { useTheme } from './theme';
-import { AskBar, ChatDrawer } from './ChatDrawer';
+import { AskDock, type DockProps } from './AskDock';
 import { WorkspaceMenu } from './WorkspaceMenu';
 import { XoInspector } from './XoInspector';
 import type { FrameLayout } from './AppChrome';
@@ -77,6 +77,11 @@ export function WorkspaceView(props: {
   const [xoSubject, setXoSubject] = useState<XoSubject | undefined>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [focusTick, setFocusTick] = useState(0);
+  const askFocus = () => {
+    setDrawerOpen(true);
+    setFocusTick((n) => n + 1);
+  };
   const [theme, setThemeChoice] = useTheme();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -86,6 +91,7 @@ export function WorkspaceView(props: {
       } else if (e.key.toLowerCase() === 'j' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setDrawerOpen((o) => !o);
+        setFocusTick((n) => n + 1);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -305,24 +311,20 @@ export function WorkspaceView(props: {
     </>
   );
 
-  const drawer = (
-    <ChatDrawer
-      open={drawerOpen && view !== 'chat'}
-      onClose={() => setDrawerOpen(false)}
-      onExpand={() => {
-        setDrawerOpen(false);
-        setView('chat');
-      }}
-      thread={threads.find((t) => t.id === activeThread)}
-      xos={xoList}
-      onSend={(text, attached) => sendChat(text, attached, true)}
-      onNew={() => setActiveThread(undefined)}
-      goTo={(t) => {
-        setDrawerOpen(false);
-        goToTarget(t);
-      }}
-    />
-  );
+  const dock: DockProps = {
+    open: drawerOpen && view !== 'chat',
+    onOpenChange: setDrawerOpen,
+    focusTick,
+    thread: threads.find((t) => t.id === activeThread),
+    xos: xoList,
+    onSend: (text, attached) => sendChat(text, attached, true),
+    onNew: () => setActiveThread(undefined),
+    onExpand: () => setView('chat'),
+    goTo: (t) => {
+      setDrawerOpen(false);
+      goToTarget(t);
+    },
+  };
 
   if (view === 'graph' || view === 'executions') {
     const wf =
@@ -379,10 +381,13 @@ export function WorkspaceView(props: {
             </main>
           ),
         })}
-        <div className="askbar-float-wrap">
-          <AskBar onOpen={() => setDrawerOpen(true)} floating />
-        </div>
-        {drawer}
+        {drawerOpen ? (
+          <AskDock variant="floating" {...dock} />
+        ) : (
+          <button type="button" className="askdock-launch" aria-label="Ask XO" onClick={askFocus}>
+            Ask XO <kbd className="cmdbar-kbd">⌘J</kbd>
+          </button>
+        )}
       </>
     );
   }
@@ -416,7 +421,7 @@ export function WorkspaceView(props: {
     <main className="page">
       <header className="page-head">
         <h1>{props.workspace.name ?? 'Untitled workspace'}</h1>
-        {view === 'home' ? null : <AskBar onOpen={() => setDrawerOpen(true)} />}
+        {view === 'home' ? null : <AskDock variant="bar" {...dock} />}
       </header>
 
       {firstError?.phase === 'error' ? (
@@ -468,10 +473,7 @@ export function WorkspaceView(props: {
           analysisCount={succeeded.length}
           readyForReview={summary?.readyForReview ?? 0}
           goTo={goToTarget}
-          onAsk={(text) => {
-            sendChat(text, [], true);
-            setDrawerOpen(true);
-          }}
+          dock={dock}
           onOpenRun={(r) => {
             setSelectedWorkflow(r.workflowId);
             setSelectedRun(r.workflowExecutionId);
@@ -654,9 +656,7 @@ export function WorkspaceView(props: {
           compilations={succeeded}
           onChanged={refreshAll}
           goTo={goToTarget}
-          onTestInChat={() => {
-            setDrawerOpen(true);
-          }}
+          onTestInChat={askFocus}
           onOpenXo={(id) => {
             setXoSubject({ kind: 'analysis', id });
             setView('xo');
@@ -717,7 +717,7 @@ export function WorkspaceView(props: {
   );
   const commands: PaletteCommand[] = [
     { id: 'home', label: 'Go to Home', run: () => setView('home') },
-    { id: 'ask', label: 'Ask XO', hint: '⌘J', run: () => setDrawerOpen(true) },
+    { id: 'ask', label: 'Ask XO', hint: '⌘J', run: askFocus },
     { id: 'chat', label: 'Open full chat', run: () => setView('chat') },
     { id: 'work', label: 'Go to Workflows', run: () => setView('work') },
     { id: 'setup', label: 'Go to My XOs', run: () => setView('setup') },
@@ -733,7 +733,6 @@ export function WorkspaceView(props: {
   return (
     <>
       {props.frame({ nav, rail, content, layout: 'standard' })}
-      {drawer}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </>
   );

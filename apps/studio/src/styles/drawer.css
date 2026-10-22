@@ -1,109 +1,153 @@
-/* Ask XO drawer and the bar that opens it. Motion uses the same 260ms as DRAWER_MS in ChatDrawer.tsx. */
-.askbar {
+/* Ask XO: the bar and the conversation that unfolds from it. 260ms matches DOCK_MS in AskDock.tsx. */
+.askdock {
+  position: relative;
+  width: 100%;
+  z-index: 30;
+}
+.askdock-bar {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  width: 100%;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   padding: 0 var(--s-3);
-  font: inherit;
-  color: var(--text-faint);
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  cursor: text;
-  text-align: left;
+  transition: border-radius 260ms, border-color 140ms;
 }
-.askbar:hover {
+.askdock-bar:focus-within,
+.askdock:not([data-phase='closed']) .askdock-bar {
   border-color: var(--border-strong);
 }
-.askbar-text {
+.askdock:not([data-phase='closed']):not([data-phase='closing']) .askdock-bar {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+.askdock-bar .cmdbar-input {
   flex: 1;
-}
-.askbar-float {
-  position: fixed;
-  right: var(--s-4);
-  bottom: var(--s-4);
-  z-index: 30;
   width: auto;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-.drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 40;
-  width: min(31rem, 100vw);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-1);
-  border-left: 1px solid var(--border-strong);
-  box-shadow: -18px 0 50px rgba(0, 0, 0, 0.3);
-  animation: drawer-in 260ms cubic-bezier(0.2, 0, 0, 1) both;
-  transition: width 260ms cubic-bezier(0.2, 0, 0, 1);
-}
-.drawer[data-phase='closing'] {
-  animation: drawer-out 260ms cubic-bezier(0.4, 0, 1, 1) both;
-}
-.drawer[data-phase='expanding'] {
-  width: 100vw;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
-.drawer-head {
+.askdock-bar {
+  min-height: 2.75rem;
+}
+.askdock-v-home .askdock-bar {
+  min-height: 3.5rem;
+}
+.askdock-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  height: min(28rem, 62vh);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-top-color: var(--border);
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  transform-origin: top center;
+  animation: dock-open 260ms cubic-bezier(0.2, 0, 0, 1) both;
+  transition: height 260ms cubic-bezier(0.2, 0, 0, 1);
+}
+.askdock[data-phase='closing'] .askdock-panel {
+  animation: dock-close 260ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+.askdock[data-phase='expanding'] .askdock-panel {
+  height: calc(100vh - 6rem);
+  box-shadow: none;
+}
+.askdock-head {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-4);
   border-bottom: 1px solid var(--border);
 }
-.drawer-head h2 {
+.askdock-head h2 {
+  min-width: 0;
   font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.drawer-actions {
+.askdock-actions {
   margin-left: auto;
   display: flex;
   gap: var(--s-1);
   flex: none;
 }
-.drawer-actions .btn {
+.askdock-actions .btn {
   white-space: nowrap;
   padding: 0 var(--s-2);
 }
-.drawer-head h2 {
-  min-width: 0;
-}
-.drawer-body {
+.askdock-panel .chat-log {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  max-width: none;
+  margin: 0;
+  padding: var(--s-4);
 }
-.drawer-body .chat-log {
-  flex: 1;
-  min-height: 0;
+.askdock-attached,
+.askdock-suggest {
+  padding: var(--s-2) var(--s-4);
+  border-top: 1px solid var(--border);
 }
-@keyframes drawer-in {
+.askdock-v-floating {
+  position: fixed;
+  top: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(40rem, calc(100vw - 2rem));
+  z-index: 45;
+}
+.askdock-launch {
+  position: fixed;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.5rem;
+  padding: 0 var(--s-4);
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+@keyframes dock-open {
   from {
-    transform: translateX(100%);
-    opacity: 0.6;
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.4;
+    transform: translateY(-6px);
   }
   to {
-    transform: none;
+    clip-path: inset(0 0 0 0);
     opacity: 1;
+    transform: none;
   }
 }
-@keyframes drawer-out {
+@keyframes dock-close {
   from {
-    transform: none;
+    clip-path: inset(0 0 0 0);
     opacity: 1;
   }
   to {
-    transform: translateX(100%);
-    opacity: 0.6;
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.4;
+    transform: translateY(-6px);
   }
 }
 .chatscreen {
@@ -118,10 +162,14 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .drawer,
-  .drawer[data-phase='closing'],
+  .askdock-panel,
+  .askdock[data-phase='closing'] .askdock-panel,
   .chatscreen {
     animation-duration: 0.01ms;
     transition-duration: 0.01ms;
   }
+}
+.askdock-bar {
+  width: 100%;
+  box-sizing: border-box;
 }

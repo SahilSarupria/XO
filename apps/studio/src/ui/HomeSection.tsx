@@ -1,6 +1,7 @@
 import type { Progress } from '../domain/review';
 import { homeMetrics } from '../domain/home';
 import { HomeCommandBar, type HomeChip } from './HomeCommandBar';
+import type { DockProps } from './AskDock';
 import { HomeMetrics } from './HomeMetrics';
 import { ActiveWork } from './ActiveWork';
 import { findActiveRun, startReadiness, tidyName } from '../domain/work';
@@ -44,8 +45,8 @@ export function HomeSection(props: {
   analysisCount: number;
   readyForReview: number;
   goTo: (target: StartTarget) => void;
-  /** Opens the conversation screen with this first message. */
-  onAsk: (text: string) => void;
+  /** The Ask XO bar's state, shared with every other screen. */
+  dock: DockProps;
   /** Opens one run on the Executions screen. */
   onOpenRun: (run: WorkflowRun) => void;
   goToActivity: () => void;
@@ -119,7 +120,7 @@ export function HomeSection(props: {
           </p>
         ) : null}
       </div>
-      <HomeCommandBar onAsk={props.onAsk} chips={chips} onChip={props.goTo} hint="⌘K" />
+      <HomeCommandBar dock={props.dock} chips={chips} onChip={props.goTo} />
       <>
           {!props.incomplete && props.runs.length > 0 ? <HomeMetrics metrics={homeMetrics(props.runs)} runs={props.runs} /> : null}
           {!props.incomplete && props.runs.length > 0 ? (

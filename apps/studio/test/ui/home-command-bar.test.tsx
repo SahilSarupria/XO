@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { HomeCommandBar } from '../../src/ui/HomeCommandBar';
 
@@ -8,36 +9,67 @@ const chips = [
   { label: 'Create XO from scratch', target: 'create' as const },
 ];
 
+function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <HomeCommandBar
+      chips={chips}
+      onChip={props.onChip as never}
+      dock={{
+        open,
+        onOpenChange: setOpen,
+        focusTick: 0,
+        thread: undefined,
+        xos: [],
+        onSend: (t) => props.onSend?.(t),
+        onNew: () => {},
+        onExpand: () => {},
+        goTo: () => {},
+      }}
+    />
+  );
+}
+
 describe('Home command bar', () => {
-  it('opens the conversation with what was typed, and clears the bar', async () => {
-    const onAsk = vi.fn();
+  it('sends what was typed and clears the bar', async () => {
+    const onSend = vi.fn();
     const user = userEvent.setup();
-    render(<HomeCommandBar onAsk={onAsk} chips={chips} />);
+    render(<Harness onSend={onSend} />);
     await user.type(screen.getByLabelText('Ask XO'), 'what is waiting for me{enter}');
-    expect(onAsk).toHaveBeenCalledWith('what is waiting for me');
+    expect(onSend).toHaveBeenCalledWith('what is waiting for me');
     expect(screen.getByLabelText('Ask XO')).toHaveValue('');
   });
 
   it('does not send an empty message, and is labelled a preview', async () => {
-    const onAsk = vi.fn();
+    const onSend = vi.fn();
     const user = userEvent.setup();
-    render(<HomeCommandBar onAsk={onAsk} chips={chips} />);
+    render(<Harness onSend={onSend} />);
     await user.type(screen.getByLabelText('Ask XO'), '   {enter}');
     await user.click(screen.getByRole('button', { name: 'Send' }));
-    expect(onAsk).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
     expect(screen.getByText('Preview')).toBeInTheDocument();
   });
 
   it('quick actions go where their label says', async () => {
     const onChip = vi.fn();
     const user = userEvent.setup();
-    render(<HomeCommandBar onAsk={() => {}} chips={chips} onChip={onChip} />);
+    render(<Harness onChip={onChip} />);
     await user.click(screen.getByRole('button', { name: 'Create XO from scratch' }));
     expect(onChip).toHaveBeenCalledWith('create');
   });
 
   it('the Ask mode control is shown as unavailable, not as a working control', () => {
-    render(<HomeCommandBar onAsk={() => {}} chips={chips} />);
+    render(<Harness />);
     expect(screen.getByText('Ask ▾')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('unfolds the conversation from the bar as soon as typing starts, and closes on Escape', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('Ask XO'), 'h');
+    expect(screen.getByRole('region', { name: 'Ask XO conversation' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
   });
 });
