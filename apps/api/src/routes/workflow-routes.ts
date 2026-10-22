@@ -5,7 +5,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import {
+import { requirePermission,
   requirePrincipal,
   requireOwnedWorkspace,
   workspaceCompilationsStore,
@@ -14,6 +14,7 @@ import {
   workspaceWorkflowExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -142,6 +143,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
   // POST /workspaces/:workspaceId/workflows/:workflowId/executions
   async function startExecution(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'start workflow' });
     const workflowId = req.params['workflowId'];
     if (workflowId === undefined || workflowId.length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow id');
 
@@ -161,6 +163,14 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
       input,
       ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
     });
+    if (!replayed) {
+      await recordAudit(req, workspace, dataConfig, {
+        event: 'workflow.started',
+        result: record.status === 'failed' ? 'failed' : record.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
+        target: { kind: 'workflow_run', id: record.workflowExecutionId, label: record.workflowName },
+        detail: { compilationId: record.compilationId, workflowId: record.workflowId, status: record.status },
+      });
+    }
     // A replay created nothing, so it is never a 201. The header lets a client tell a replay from a first response.
     if (replayed) return json(200, await toWorkflowExecutionView(ctx, record), { 'idempotent-replayed': 'true' });
     // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
@@ -218,6 +228,10 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     )
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a non-negative integer');
 
+    await requirePermission(req, workspace, decision !== undefined ? 'review' : 'author', dataConfig, {
+      action: decision !== undefined ? 'resolve workflow human step' : 'recover interrupted workflow run',
+      target: { kind: 'workflow_run', id },
+    });
     const request: ResumeWorkflowRequest = {
       ...(decision !== undefined ? { decision } : {}),
       ...(data !== undefined ? { data } : {}),
@@ -228,6 +242,12 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const ctx = runnerContext(workspace, requirePrincipal(req), req);
     // Ownership of the workflow execution is implicit in the workspace-scoped store: an id from another workspace simply does not exist here (404).
     const record = await resumeWorkflowExecution(ctx, id, request);
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'workflow.resumed',
+      result: decision === 'reject' ? 'rejected' : decision === 'approve' ? 'approved' : 'succeeded',
+      target: { kind: 'workflow_run', id, label: record.workflowName },
+      detail: { ...(decision !== undefined ? { decision } : { recovery: true }), status: record.status },
+    });
     return json(200, await toWorkflowExecutionView(ctx, record));
   }
 

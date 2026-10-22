@@ -4,7 +4,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import {
+import { requirePermission,
   requirePrincipal,
   requireOwnedWorkspace,
   workspaceCompilationsStore,
@@ -12,6 +12,7 @@ import {
   workspaceExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
@@ -59,6 +60,7 @@ function optionalAuthentication(req: ApiRequest): { authentication?: RecordedAut
 export function registerExecutionRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   async function createExecution(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'create execution' });
 
     const bodyResult = await req.json<CreateExecutionBody>();
     if (!bodyResult.ok) throw bodyResult.error;
@@ -172,6 +174,12 @@ export function registerExecutionRoutes(router: Router, workspaceStore: Workspac
         break;
     }
     if (!completed.ok) throw completed.error;
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'execution.created',
+      result: completed.value.status === 'failed' ? 'failed' : completed.value.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
+      target: { kind: 'execution', id: completed.value.executionId },
+      detail: { compilationId, capabilityId, status: completed.value.status },
+    });
 
     // A failed/unresolved/invalid-input execution is still a real,
     // structured, successfully-persisted API response ABOUT that

@@ -6,7 +6,8 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { requireOwnedWorkspace, requirePermission, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -36,6 +37,13 @@ function unwrapOrThrow<T>(result: { ok: true; value: T } | { ok: false; error: X
 async function client(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): Promise<RegistryClient> {
   const workspace = await requireOwnedWorkspace(req, workspaceStore);
   return new RegistryClient(workspaceRegistryStore(workspace, dataConfig));
+}
+
+/** Like `client`, but also returns the resolved workspace and enforces the `publish` permission (for the registry's write routes). */
+async function publishingClient(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig, action: string) {
+  const workspace = await requireOwnedWorkspace(req, workspaceStore);
+  await requirePermission(req, workspace, 'publish', dataConfig, { action });
+  return { workspace, client: new RegistryClient(workspaceRegistryStore(workspace, dataConfig)) };
 }
 
 interface RecordBenchmarkBody {
@@ -105,13 +113,19 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     // unknown workspace *and* carrying a malformed body reports the
     // wrong problem (a 422 from unpackArchive failing on garbage bytes,
     // masking the 404 an unauthorized caller most needs to see).
-    const c = await client(req, workspaceStore, dataConfig);
+    const { workspace, client: c } = await publishingClient(req, workspaceStore, dataConfig, 'publish package');
     const bytes = await req.rawBody();
     if (bytes.length === 0) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be the raw bytes of a .xo archive');
     }
     const unpacked = unwrapOrThrow(await unpackArchive(new Uint8Array(bytes)));
     const published = unwrapOrThrow(await c.publish(unpacked));
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'xo.published',
+      result: 'succeeded',
+      target: { kind: 'xo', id: published.id, label: `${published.manifest.name}@${published.manifest.version}` },
+      detail: { creatorDid: published.manifest.creatorDid, ledgerEntryHash: published.ledgerEntryHash },
+    });
     return json(201, published);
   }
 
@@ -158,7 +172,7 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing package id');
     const body = unwrapOrThrow(await req.json<RecordBenchmarkBody>());
     const input = parseRecordBenchmarkBody(id, body);
-    const c = await client(req, workspaceStore, dataConfig);
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'record benchmark');
     const run = unwrapOrThrow(await c.recordBenchmark(input));
     return json(201, run);
   }
@@ -182,7 +196,7 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   async function createLicense(req: ApiRequest): Promise<ApiResponse> {
     const body = unwrapOrThrow(await req.json<CreateLicenseBody>());
     const input = parseCreateLicenseBody(body);
-    const c = await client(req, workspaceStore, dataConfig);
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'create license');
     const license = unwrapOrThrow(await c.createLicense(input));
     return json(201, license);
   }

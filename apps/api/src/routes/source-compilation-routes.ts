@@ -3,13 +3,14 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import {
+import { callerIdentityId, requirePermission,
   requireOwnedWorkspace,
   workspaceSourcesStore,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -46,6 +47,7 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
 export function registerCompilationRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   async function compile(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'compile source' });
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
 
@@ -77,7 +79,7 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     // completion report's "idempotency and repeat compilation" section
     // for why this (rather than reusing an existing result for the same
     // source digest) is this milestone's deliberate, documented choice.
-    const created = await compilationStore.create(workspace.workspaceId, workspace.identityId, {
+    const created = await compilationStore.create(workspace.workspaceId, callerIdentityId(req), {
       sourceId,
       sourceDigestSha256: source.digestSha256,
     });
@@ -92,6 +94,12 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     const finished = await compilationStore.get(created.value.compilationId);
     if (!finished.ok) throw finished.error;
 
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'compilation.started',
+      result: finished.value.status === 'succeeded' ? 'succeeded' : 'failed',
+      target: { kind: 'compilation', id: finished.value.compilationId, label: source.originalFilename },
+      detail: { sourceId, status: finished.value.status },
+    });
     return json(finished.value.status === 'succeeded' ? 201 : 200, toWireRecord(finished.value));
   }
 
@@ -139,6 +147,7 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
 
   async function approveCapability(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'approve capability' });
     const compilationId = req.params['compilationId'];
     const capabilityId = req.params['capabilityId'];
     if (compilationId === undefined || capabilityId === undefined)
@@ -169,8 +178,14 @@ export function registerCompilationRoutes(router: Router, workspaceStore: Worksp
     }
 
     const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
-    const approved = await approvalStore.approve(compilationId, capabilityId, workspace.workspaceId, workspace.identityId);
+    const approved = await approvalStore.approve(compilationId, capabilityId, workspace.workspaceId, callerIdentityId(req));
     if (!approved.ok) throw approved.error;
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'capability.approved',
+      result: 'approved',
+      target: { kind: 'capability', id: capabilityId },
+      detail: { compilationId },
+    });
 
     return json(200, approved.value);
   }

@@ -4,7 +4,8 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspaceSourcesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { callerIdentityId, requirePermission, requireOwnedWorkspace, workspaceSourcesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { SUPPORTED_EXTENSIONS, inferMediaType, type SourceRecord } from '../sources/source.js';
@@ -52,6 +53,7 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
 export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   async function upload(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'upload source' });
 
     const filename = req.query.get('filename');
     if (filename === null || filename.trim().length === 0) {
@@ -82,13 +84,19 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
 
     const mediaType = inferMediaType(extension, req.headers['content-type']);
     const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
-    const created = await store.create(workspace.workspaceId, workspace.identityId, {
+    const created = await store.create(workspace.workspaceId, callerIdentityId(req), {
       originalFilename: filename,
       mediaType,
       extension,
       bytes: new Uint8Array(bytes),
     });
     if (!created.ok) throw created.error;
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'source.uploaded',
+      result: 'succeeded',
+      target: { kind: 'source', id: created.value.sourceId, label: filename },
+      detail: { bytes: bytes.length, mediaType },
+    });
 
     return json(201, toWireRecord(created.value));
   }
@@ -131,11 +139,13 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
 
   async function deleteSource(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'delete source', target: { kind: 'source', id: req.params['sourceId'] ?? '' } });
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
     const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
     const deleted = await store.delete(sourceId);
     if (!deleted.ok) throw deleted.error;
+    await recordAudit(req, workspace, dataConfig, { event: 'source.deleted', result: 'succeeded', target: { kind: 'source', id: sourceId } });
     return { status: 204 };
   }
 

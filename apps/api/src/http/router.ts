@@ -48,6 +48,18 @@ export class Router {
     this.add('POST', path, handler);
   }
 
+  put(path: string, handler: RouteHandler): void {
+    this.add('PUT', path, handler);
+  }
+
+  patch(path: string, handler: RouteHandler): void {
+    this.add('PATCH', path, handler);
+  }
+
+  delete(path: string, handler: RouteHandler): void {
+    this.add('DELETE', path, handler);
+  }
+
   /**
    * Finds the route matching `method`/`path`, wraps its handler with
    * every registered middleware (outermost-first), and returns that

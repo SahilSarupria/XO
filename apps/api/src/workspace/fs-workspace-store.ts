@@ -3,7 +3,7 @@ import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { BlobStore } from '@xo/storage';
-import { isValidWorkspaceId, type CreateWorkspaceInput, type WorkspaceRecord, type WorkspaceStore } from './workspace.js';
+import { isValidWorkspaceId, type CreateWorkspaceInput, type WorkspacePatch, type WorkspaceRecord, type WorkspaceStore } from './workspace.js';
 
 const RECORD_PREFIX = 'workspaces/by-id/';
 
@@ -51,6 +51,8 @@ export class FsWorkspaceStore implements WorkspaceStore {
       workspaceId,
       identityId,
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.kind !== undefined ? { kind: input.kind } : {}),
+      ...(input.region !== undefined ? { region: input.region } : {}),
       createdAt: new Date().toISOString(),
       storageKeyPrefix: `workspace-data/${workspaceId}/`,
     };
@@ -90,8 +92,35 @@ export class FsWorkspaceStore implements WorkspaceStore {
       const raw = await this.store.get(key);
       if (!raw.ok) continue;
       const record = decodeRecord(raw.value);
-      if (record !== undefined && record.identityId === identityId) records.push(record);
+      if (record !== undefined && (record.identityId === identityId || (record.members ?? []).some((m) => m.identityId === identityId))) records.push(record);
     }
     return ok(records);
+  }
+
+  /** Per-workspace in-process write queue: two concurrent `update`s of one workspace apply one after the other rather than clobbering each other. */
+  private readonly queues = new Map<string, Promise<unknown>>();
+
+  async update(workspaceId: string, patch: WorkspacePatch): Promise<Result<WorkspaceRecord, NotFoundError | XoError>> {
+    const previous = this.queues.get(workspaceId) ?? Promise.resolve();
+    const run = previous.then(() => this.applyUpdate(workspaceId, patch));
+    this.queues.set(
+      workspaceId,
+      run.catch(() => undefined),
+    );
+    return run;
+  }
+
+  private async applyUpdate(workspaceId: string, patch: WorkspacePatch): Promise<Result<WorkspaceRecord, NotFoundError | XoError>> {
+    const current = await this.get(workspaceId);
+    if (!current.ok) return err(current.error);
+    const next: WorkspaceRecord = {
+      ...current.value,
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.region !== undefined ? { region: patch.region } : {}),
+      ...(patch.members !== undefined ? { members: patch.members } : {}),
+    };
+    const put = await this.store.put(recordKey(workspaceId), JSON.stringify(next), { contentType: 'application/json' });
+    if (!put.ok) return err(put.error);
+    return ok(next);
   }
 }

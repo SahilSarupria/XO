@@ -3,7 +3,8 @@ import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
 import { isAuthenticatedPrincipal, type AuthenticatedPrincipal } from '@xo/permissions';
 import type { ApiRequest } from '../http/types.js';
-import type { WorkspaceRecord, WorkspaceStore } from './workspace.js';
+import { roleOf, type WorkspaceRecord, type WorkspaceRole, type WorkspaceStore } from './workspace.js';
+import { assertPermission, WorkspacePermissionDeniedError, type WorkspacePermission } from './permissions.js';
 
 /**
  * The one thing every workspace-*bound* route (package/registry/runtime)
@@ -64,8 +65,8 @@ export async function requireOwnedWorkspace(req: ApiRequest, workspaceStore: Wor
   const found = await workspaceStore.get(workspaceId);
   if (!found.ok) throw found.error; // NotFoundError — unknown or malformed id, fails closed as 404
 
-  if (found.value.identityId !== req.identity.identityId) {
-    // Same workspace exists, but not owned by this caller — reported
+  if (roleOf(found.value, req.identity.identityId) === undefined) {
+    // Same workspace exists, but this caller neither owns it nor is a member of it — reported
     // identically to "doesn't exist" (see `requireOwnedWorkspace`'s own
     // doc comment above): never leak that a given workspace id belongs
     // to someone.
@@ -145,4 +146,56 @@ export function workspaceExecutionsStore(record: WorkspaceRecord, config: Worksp
 /** Seventh sibling — persistent workflow execution records (P0.8), `<dataRootDir>/<workspaceId>/workflow-executions`. */
 export function workspaceWorkflowExecutionsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'workflow-executions'));
+}
+
+/** Eighth sibling — the workspace's tamper-evident audit log, `<dataRootDir>/<workspaceId>/audit`. */
+export function workspaceAuditStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'audit'));
+}
+
+/** Ninth sibling — small per-workspace configuration documents (settings, installs, info requests, ...), `<dataRootDir>/<workspaceId>/state`. */
+export function workspaceStateStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'state'));
+}
+
+/** The authenticated caller's identity id (never read from a request body). */
+export function callerIdentityId(req: ApiRequest): string {
+  if (req.identity === undefined) throw new XoError(ErrorCode.UNKNOWN, 'internal error: no resolved identity');
+  return req.identity.identityId;
+}
+
+/** The caller's role in an already-resolved workspace (the owner is `admin`). */
+export function callerRole(req: ApiRequest, workspace: WorkspaceRecord): WorkspaceRole {
+  const role = req.identity === undefined ? undefined : roleOf(workspace, req.identity.identityId);
+  if (role === undefined) throw new XoError(ErrorCode.UNKNOWN, 'internal error: caller has no role in a workspace it reached');
+  return role;
+}
+
+/**
+ * Require `permission` for the caller in `workspace` (call after `requireOwnedWorkspace`). A refusal is a 403 and is
+ * written to the workspace audit log as `access.denied` before it is thrown — the one place denials are recorded.
+ */
+export async function requirePermission(
+  req: ApiRequest,
+  workspace: WorkspaceRecord,
+  permission: WorkspacePermission,
+  dataConfig: WorkspaceDataConfig,
+  attempted?: { readonly action: string; readonly target?: { readonly kind: string; readonly id: string } },
+): Promise<WorkspaceRole> {
+  const identityId = req.identity?.identityId;
+  if (identityId === undefined) throw new XoError(ErrorCode.UNKNOWN, 'internal error: permission check with no resolved identity');
+  try {
+    return assertPermission(workspace, identityId, permission);
+  } catch (cause) {
+    if (cause instanceof WorkspacePermissionDeniedError) {
+      const { recordAudit } = await import('../audit/record.js');
+      await recordAudit(req, workspace, dataConfig, {
+        event: 'access.denied',
+        result: 'denied',
+        ...(attempted?.target !== undefined ? { target: attempted.target } : {}),
+        detail: { permission, role: cause.role, ...(attempted !== undefined ? { attempted: attempted.action } : {}) },
+      });
+    }
+    throw cause;
+  }
 }

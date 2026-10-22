@@ -4,7 +4,10 @@ import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import type { ApiKeyIdentity } from '../auth/identity.js';
-import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
+import { roleOf, type WorkspaceKind, type WorkspaceRecord, type WorkspaceRole, type WorkspaceStore } from '../workspace/workspace.js';
+import { isKnownRegion, regionLabel } from '../workspace/regions.js';
+import { recordAudit } from '../audit/record.js';
+import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 
 /**
  * `identity -> workspace -> storage namespace` is the whole point of
@@ -40,47 +43,93 @@ function requireIdentity(req: ApiRequest): ApiKeyIdentity {
  * is an opaque logical label, never a filesystem path — see
  * `workspace.ts`'s doc comment).
  */
-function toWireRecord(record: WorkspaceRecord): WorkspaceRecord {
-  return record;
+export interface WorkspaceWire {
+  readonly workspaceId: string;
+  readonly identityId: string;
+  readonly name?: string;
+  readonly kind: WorkspaceKind;
+  readonly region?: string;
+  readonly regionLabel?: string;
+  /** Owner plus members. */
+  readonly memberCount: number;
+  /** The caller's own role in this workspace. */
+  readonly role?: WorkspaceRole;
+  readonly createdAt: string;
+  readonly storageKeyPrefix: string;
+}
+
+/** The member list itself is served by `GET /workspaces/:id/members`; the workspace wire carries only the count and the caller's role. */
+export function toWireRecord(record: WorkspaceRecord, callerIdentityId?: string): WorkspaceWire {
+  const role = callerIdentityId !== undefined ? roleOf(record, callerIdentityId) : undefined;
+  return {
+    workspaceId: record.workspaceId,
+    identityId: record.identityId,
+    ...(record.name !== undefined ? { name: record.name } : {}),
+    kind: record.kind ?? 'team',
+    ...(record.region !== undefined ? { region: record.region, ...(regionLabel(record.region) !== undefined ? { regionLabel: regionLabel(record.region) as string } : {}) } : {}),
+    memberCount: 1 + (record.members?.length ?? 0),
+    ...(role !== undefined ? { role } : {}),
+    createdAt: record.createdAt,
+    storageKeyPrefix: record.storageKeyPrefix,
+  };
 }
 
 interface CreateWorkspaceBody {
   readonly name?: unknown;
+  readonly kind?: unknown;
+  readonly region?: unknown;
   // Deliberately not typed further: any other field (e.g. an attempted
   // `identityId` override) is inert here. See parseCreateBody below.
 }
 
-function parseCreateBody(body: CreateWorkspaceBody): { readonly name?: string } {
+function parseCreateBody(body: CreateWorkspaceBody): { readonly name?: string; readonly kind?: WorkspaceKind; readonly region?: string } {
   if (body.name !== undefined && typeof body.name !== 'string') {
     throw new XoError(ErrorCode.INVALID_ARGUMENT, '"name", if present, must be a string');
   }
-  return body.name !== undefined ? { name: body.name } : {};
+  if (body.kind !== undefined && body.kind !== 'team' && body.kind !== 'personal') {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"kind", if present, must be "team" or "personal"');
+  }
+  if (body.region !== undefined && !isKnownRegion(body.region)) {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"region", if present, must be one of the ids from GET /regions');
+  }
+  return {
+    ...(body.name !== undefined ? { name: body.name } : {}),
+    ...(body.kind !== undefined ? { kind: body.kind } : {}),
+    ...(body.region !== undefined ? { region: body.region } : {}),
+  };
 }
 
-function makeHandlers(workspaceStore: WorkspaceStore) {
+function makeHandlers(workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig | undefined) {
   async function createWorkspace(req: ApiRequest): Promise<ApiResponse> {
     const identity = requireIdentity(req);
 
     // A missing/empty body is fine (name is optional) — only a
     // present-but-unparseable body is a real 400.
     const raw = await req.rawBody();
-    let name: string | undefined;
+    let parsed: { readonly name?: string; readonly kind?: WorkspaceKind; readonly region?: string } = {};
     if (raw.length > 0) {
       const bodyResult = await req.json<CreateWorkspaceBody>();
       if (!bodyResult.ok) throw bodyResult.error;
-      name = parseCreateBody(bodyResult.value).name;
+      parsed = parseCreateBody(bodyResult.value);
     }
 
-    const created = await workspaceStore.create(identity.identityId, name !== undefined ? { name } : {});
+    const created = await workspaceStore.create(identity.identityId, parsed);
     if (!created.ok) throw created.error;
-    return json(201, toWireRecord(created.value));
+    if (dataConfig !== undefined) {
+      await recordAudit(req, created.value, dataConfig, {
+        event: 'workspace.created',
+        result: 'succeeded',
+        target: { kind: 'workspace', id: created.value.workspaceId, ...(created.value.name !== undefined ? { label: created.value.name } : {}) },
+      });
+    }
+    return json(201, toWireRecord(created.value, identity.identityId));
   }
 
   async function listWorkspaces(req: ApiRequest): Promise<ApiResponse> {
     const identity = requireIdentity(req);
     const listed = await workspaceStore.listByIdentity(identity.identityId);
     if (!listed.ok) throw listed.error;
-    return json(200, { workspaces: listed.value.map(toWireRecord) });
+    return json(200, { workspaces: listed.value.map((w) => toWireRecord(w, identity.identityId)) });
   }
 
   async function getWorkspace(req: ApiRequest): Promise<ApiResponse> {
@@ -98,11 +147,11 @@ function makeHandlers(workspaceStore: WorkspaceStore) {
     // id belongs to *someone*, which is exactly the kind of
     // cross-identity leak this milestone exists to prevent. This is
     // the one place in this file ownership is actually enforced.
-    if (found.value.identityId !== identity.identityId) {
+    if (roleOf(found.value, identity.identityId) === undefined) {
       throw new NotFoundError(`workspace "${workspaceId}"`);
     }
 
-    return json(200, toWireRecord(found.value));
+    return json(200, toWireRecord(found.value, identity.identityId));
   }
 
   return { createWorkspace, listWorkspaces, getWorkspace };
@@ -118,8 +167,8 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
-export function registerWorkspaceRoutes(router: Router, workspaceStore: WorkspaceStore): void {
-  const { createWorkspace, listWorkspaces, getWorkspace } = makeHandlers(workspaceStore);
+export function registerWorkspaceRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig?: WorkspaceDataConfig): void {
+  const { createWorkspace, listWorkspaces, getWorkspace } = makeHandlers(workspaceStore, dataConfig);
   router.post('/workspaces', guarded(createWorkspace));
   router.get('/workspaces', guarded(listWorkspaces));
   router.get('/workspaces/:workspaceId', guarded(getWorkspace));
