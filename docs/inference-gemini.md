@@ -45,6 +45,13 @@ if (r.state === 'configured') new AiCapabilityLayer({ providers: [r.provider], p
 - Usage: Gemini output tokens include hidden reasoning tokens. If unreported, `usageKnown=false`. `costUsd` comes from the existing pricing table and is **not** a billing statement (models absent from the table cost 0 there).
 - Output is untrusted: it must still pass XO's validation/authorization gates; it never triggers external effects directly.
 
+## Provider selection and the credential trust boundary
+
+- **API (server): the provider is server policy.** `resolveProvider` uses only `XO_INFERENCE_PROVIDER` + server-held credentials via `resolveInference`. There is no implicit default (the former `anthropic` default is removed). Callers are arbitrary API-key holders, so any `x-xo-provider`, `x-xo-api-key`, `x-xo-base-url`, `x-xo-endpoint` or `x-xo-api-version` header is **rejected** (400, value not echoed) rather than ignored. Reasons: caller-chosen endpoints forward credentials to arbitrary hosts; caller keys bypass operator provider/spend/data-governance choices; headers transit proxy logs; and the API currently has no rate limiting or per-caller quota to contain this. If per-tenant "bring your own key" is ever wanted, it needs a separate design: stored/encrypted per-identity secrets, validation, an endpoint allow-list, quotas and rate limits, and log redaction. It must not be a request header.
+- **Current reality:** the only caller (`POST /workspaces/:id/runtime/execute`) is disabled (501 before any header is read) pending the P1.0 M2 authorization gate. This change makes the factory safe for when it is re-enabled; it does not re-enable it.
+- **CLI (operator):** the caller is the operator on their own machine, so flags remain. Precedence: explicit `--provider` > `XO_INFERENCE_PROVIDER` > legacy `anthropic` default. `XO_INFERENCE_PROVIDER=none` disables inference unless `--provider` is explicit. Prefer env vars over `--api-key` (flags appear in shell history and process listings).
+- Only Gemini is implemented in the server-side resolver; other providers are CLI-only until they get an adapter registered in `createProviderFromConfig`.
+
 ## Health / readiness
 
 `/health` (unauthenticated) is unchanged liveness. `GET /ready` (authenticated) returns inference **configuration** status only: `providerReachable` is always `not_checked`, `inferenceVerified` is always `false`. It never calls Google. Use the opt-in smoke test for a real check.

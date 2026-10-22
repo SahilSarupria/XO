@@ -45,7 +45,13 @@ export function resolveProvider(
   flags: ProviderFlags,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Result<ModelProvider, string> {
-  const providerId = flags.provider ?? 'anthropic';
+  // Precedence: explicit `--provider` (the operator is the caller here) > server/operator config `XO_INFERENCE_PROVIDER` > legacy
+  // default. `XO_INFERENCE_PROVIDER=none` means "inference disabled" and is only overridden by an explicit `--provider`.
+  const configured = env['XO_INFERENCE_PROVIDER']?.trim();
+  if (flags.provider === undefined && configured === 'none') {
+    return err('inference is disabled (XO_INFERENCE_PROVIDER=none) — pass --provider to override explicitly, or unset it');
+  }
+  const providerId = flags.provider ?? (configured !== undefined && configured !== '' ? configured : 'anthropic');
   if (!isSupportedProviderId(providerId)) {
     return err(`unknown --provider "${providerId}" — supported: ${SUPPORTED_PROVIDER_IDS.join(', ')}`);
   }

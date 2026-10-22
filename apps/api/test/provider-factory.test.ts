@@ -1,72 +1,52 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { IncomingHttpHeaders } from 'node:http';
+import { CLIENT_PROVIDER_HEADERS, resolveProvider } from '../src/routes/runtime/provider-factory.js';
 import type { ApiRequest } from '../src/http/types.js';
-import { resolveProvider } from '../src/routes/runtime/provider-factory.js';
 
-function fakeRequest(headers: IncomingHttpHeaders): ApiRequest {
-  return {
-    method: 'POST',
-    path: '/runtime/execute',
-    params: {},
-    query: new URLSearchParams(),
-    headers,
-    rawBody: async () => Buffer.alloc(0),
-    json: async () => ({ ok: false, error: new Error('not used') }) as never,
-  };
-}
+const fakeRequest = (headers: Record<string, string | string[]> = {}): ApiRequest => ({ headers }) as unknown as ApiRequest;
+const KEY = 'AIzaSyTESTKEY0123456789abcdefghijklmno';
+const gemini = { XO_INFERENCE_PROVIDER: 'gemini', GEMINI_API_KEY: KEY };
 
-test('defaults to anthropic when no x-xo-provider header is present', () => {
-  const result = resolveProvider(fakeRequest({}), { ANTHROPIC_API_KEY: 'test-key' });
+test('there is NO implicit default provider: unconfigured server => refusal (not anthropic)', () => {
+  for (const env of [{}, { ANTHROPIC_API_KEY: 'sk-ant', OPENAI_API_KEY: 'sk-oa', GEMINI_API_KEY: KEY }]) {
+    const result = resolveProvider(fakeRequest(), env);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.match(result.error, /not configured on this server/);
+  }
+});
+
+test('server configuration is authoritative: XO_INFERENCE_PROVIDER selects the provider', () => {
+  const result = resolveProvider(fakeRequest(), gemini);
   assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.value.id, 'anthropic');
+  if (result.ok) assert.equal(result.value.id, 'gemini');
 });
 
-test('rejects an unsupported provider id', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'not-real' }), {});
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.match(result.error, /unknown provider/);
+test('invalid server configuration surfaces an actionable error without secrets', () => {
+  const unknown = resolveProvider(fakeRequest(), { XO_INFERENCE_PROVIDER: 'openai', GEMINI_API_KEY: KEY });
+  assert.equal(unknown.ok, false);
+  const noKey = resolveProvider(fakeRequest(), { XO_INFERENCE_PROVIDER: 'gemini' });
+  assert.equal(noKey.ok, false);
+  if (!noKey.ok) assert.match(noKey.error, /GEMINI_API_KEY/);
 });
 
-test('an explicit x-xo-api-key header wins over the environment variable', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'anthropic', 'x-xo-api-key': 'from-header' }), {
-    ANTHROPIC_API_KEY: 'from-env',
-  });
-  assert.equal(result.ok, true);
+test('every client-supplied provider header is rejected, even when it matches or when server config is valid', () => {
+  for (const name of CLIENT_PROVIDER_HEADERS) {
+    const result = resolveProvider(fakeRequest({ [name]: 'anything' }), gemini);
+    assert.equal(result.ok, false, name);
+    if (!result.ok) {
+      assert.ok(result.error.includes(name), name);
+      assert.ok(!result.error.includes('anything'), 'must not echo the supplied value (it may be a credential)');
+    }
+  }
 });
 
-test('falls back to the env var when no header is present', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'openai' }), { OPENAI_API_KEY: 'from-env' });
-  assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.value.id, 'openai');
-});
-
-test('fails cleanly when neither header nor env var supplies a required API key', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'gemini' }), {});
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.match(result.error, /GEMINI_API_KEY/);
-});
-
-test('azure-openai requires both an API key and an endpoint', () => {
-  const missingEndpoint = resolveProvider(fakeRequest({ 'x-xo-provider': 'azure-openai', 'x-xo-api-key': 'key' }), {});
-  assert.equal(missingEndpoint.ok, false);
-  if (!missingEndpoint.ok) assert.match(missingEndpoint.error, /endpoint/);
-
-  const both = resolveProvider(
-    fakeRequest({ 'x-xo-provider': 'azure-openai', 'x-xo-api-key': 'key', 'x-xo-endpoint': 'https://example.openai.azure.com' }),
-    {},
+test('a client-supplied key can never override the server credential or select another provider', () => {
+  const result = resolveProvider(
+    fakeRequest({ 'x-xo-provider': 'anthropic', 'x-xo-api-key': 'attacker-key', 'x-xo-base-url': 'https://evil.example.com' }),
+    gemini,
   );
-  assert.equal(both.ok, true);
-});
-
-test('ollama needs neither a header nor an env var', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': 'ollama' }), {});
-  assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.value.id, 'ollama');
-});
-
-test('a repeated header (array value from node:http) uses the first value', () => {
-  const result = resolveProvider(fakeRequest({ 'x-xo-provider': ['openai', 'anthropic'], 'x-xo-api-key': 'k' }), {});
-  assert.equal(result.ok, true);
-  if (result.ok) assert.equal(result.value.id, 'openai');
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.ok(!result.error.includes('attacker-key') && !result.error.includes('evil.example.com'));
+  }
 });
