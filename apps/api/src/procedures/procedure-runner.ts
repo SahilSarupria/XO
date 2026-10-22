@@ -137,7 +137,7 @@ async function loadRuntime(
     err({ failureClass: 'stale_binding', code: ErrorCode.RUNTIME_PERMISSION_DENIED, message });
   const ref = def.compilationRef;
   if (ref === undefined) return stale('the procedure records no compilation reference');
-  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore));
+  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore), ctx.externalTools);
   if (!registry.ok)
     return stale(`the procedure no longer validates against the registry (${registry.findings.map((f) => f.code).join(', ')})`);
   const compilation = await ctx.compilationStore.get(ref.compilationId);
@@ -217,7 +217,7 @@ export function validateStartInput(def: ProcedureDefinition, rt: Runtime, input:
   def.steps.forEach((step, i) => {
     if (step.kind !== 'capability') return;
     const state = rt.snapshot.steps.find((s) => s.stepId === step.id);
-    const schema = state === undefined ? undefined : schemas.get(state.contractId);
+    const schema = state === undefined ? undefined : (state.externalInputSchema ?? schemas.get(state.contractId));
     const inputBound = (step.inputBindings ?? []).filter((b): b is typeof b & { from: { input: string } } => 'input' in b.from);
     for (const b of inputBound) referenced.add(b.from.input);
     if (schema === undefined) {
@@ -600,7 +600,7 @@ export async function startProcedureExecution(
   // 1. Lifecycle at start (N-7 / N-15): the stored definition is re-verified on read; approval + registry state are recomputed NOW.
   const approvalLookup = await ctx.procedures.getApproval(version.procedureId, version.version);
   if (!approvalLookup.ok) throw approvalLookup.error;
-  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore));
+  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore), ctx.externalTools);
   const lifecycle = computeLifecycle(version, approvalLookup.value, registry);
   if (lifecycle !== 'approved' || approvalLookup.value.kind !== 'ok' || !registry.ok) {
     throw new XoError(

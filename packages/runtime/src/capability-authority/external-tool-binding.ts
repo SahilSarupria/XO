@@ -39,6 +39,8 @@ export class ExternalEffectError extends RuntimeError {
 export interface ExternalToolWiring {
   /** Resolves ONLY contracts the host explicitly configured; `undefined` for every other contract. */
   readonly resolver: BindingResolver;
+  /** What the host configured for a contract (adapter id + input schema), or `undefined` when not configured. Used to bind that configuration into approval state. */
+  describe(contractId: string): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema } | undefined;
   /** Builds the handler for one dispatch. `dispatchKey` is server-derived by the caller. */
   handlerFor(contract: SemanticCapabilityContract, dispatchKey: string): RuntimeCapabilityHandler;
 }
@@ -75,6 +77,11 @@ export function createExternalToolWiring(
 
   return {
     resolver,
+    describe(contractId) {
+      const schema = inputSchemas.get(contractId);
+      const adapterId = dispatcher.adapterIdFor(contractId);
+      return schema === undefined || adapterId === undefined ? undefined : { adapterId, inputSchema: schema };
+    },
     handlerFor(contract, dispatchKey) {
       const handler: RuntimeCapabilityHandler = async (input) => {
         // Contract/input validation precedes dispatch (the handler itself only runs after authorization).

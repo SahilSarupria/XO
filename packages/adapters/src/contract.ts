@@ -54,6 +54,8 @@ export interface DispatchEvidence {
 /** Retained evidence of dispatch attempts. Appending may fail; a failed append means NO dispatch. */
 export interface DispatchLedger {
   read(dispatchKey: string): readonly DispatchEvidence[];
+  /** Every entry for one capability, oldest first. Used to refuse a new dispatch while an earlier one is unreconciled. */
+  readByCapability(capabilityId: string): readonly DispatchEvidence[];
   append(entry: Omit<DispatchEvidence, 'seq'>): void;
 }
 
@@ -61,6 +63,9 @@ export class InMemoryDispatchLedger implements DispatchLedger {
   private readonly entries: DispatchEvidence[] = [];
   read(dispatchKey: string): readonly DispatchEvidence[] {
     return this.entries.filter((e) => e.dispatchKey === dispatchKey);
+  }
+  readByCapability(capabilityId: string): readonly DispatchEvidence[] {
+    return this.entries.filter((e) => e.capabilityId === capabilityId);
   }
   append(entry: Omit<DispatchEvidence, 'seq'>): void {
     this.entries.push(Object.freeze({ ...entry, seq: this.entries.length + 1 }));

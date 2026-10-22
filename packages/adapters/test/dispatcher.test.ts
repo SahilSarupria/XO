@@ -141,6 +141,7 @@ test('a prior attempt with no terminal evidence (e.g. a hung or crashed dispatch
 
 test('evidence that cannot be written before dispatch means NO dispatch; terminal evidence that cannot be written means outcome_unknown', async () => {
   const noWrite: DispatchLedger = {
+    readByCapability: () => [],
     read: () => [],
     append: () => {
       throw new Error('disk full');
@@ -151,6 +152,7 @@ test('evidence that cannot be written before dispatch means NO dispatch; termina
   assert.equal(a.calls.length, 0);
 
   const noRead: DispatchLedger = {
+    readByCapability: () => [],
     read: () => {
       throw new Error('unreadable');
     },
@@ -161,6 +163,7 @@ test('evidence that cannot be written before dispatch means NO dispatch; termina
 
   let n = 0;
   const failsSecond: DispatchLedger = {
+    readByCapability: () => [],
     read: () => [],
     append: () => {
       if (++n === 2) throw new Error('disk full');
@@ -179,4 +182,32 @@ test('the adapter receives a frozen copy of the input; mutating the original aft
   input.v = 2;
   assert.equal(a.calls[0]!.input['v'], 1);
   assert.equal(Object.isFrozen(a.calls[0]!.input), true);
+});
+
+test('an unsettled earlier dispatch to a capability blocks every further dispatch to it (any key) until the host reconciles; other capabilities and settled history are unaffected', async () => {
+  const ledger = new InMemoryDispatchLedger();
+  const a = new Fake('a', (req) => {
+    if (req.dispatchKey === 'k1') throw new Error('dropped');
+    return { kind: 'confirmed_success', output: 1 };
+  });
+  const other = new Fake('b', () => ({ kind: 'confirmed_success', output: 2 }));
+  const d = new ExternalToolDispatcher({
+    adapters: new Map<string, ExternalToolAdapter>([
+      ['cap', a],
+      ['cap2', other],
+    ]),
+    ledger,
+  });
+  assert.equal((await d.dispatch('cap', 'k1', {})).kind, 'outcome_unknown');
+  const blocked = await d.dispatch('cap', 'k2', {});
+  assert.equal(blocked.kind, 'blocked_prior_dispatch');
+  if (blocked.kind === 'blocked_prior_dispatch') assert.equal(blocked.requiresReconciliation, true);
+  assert.equal(a.calls.length, 1, 'no second call to the unreconciled capability');
+  assert.equal((await d.dispatch('cap2', 'k3', {})).kind, 'confirmed_success', 'an unrelated capability is unaffected');
+  // reconciliation is a host action: a ledger without the unsettled evidence allows dispatch again
+  const fresh = new ExternalToolDispatcher({
+    adapters: new Map<string, ExternalToolAdapter>([['cap', a]]),
+    ledger: new InMemoryDispatchLedger(),
+  });
+  assert.equal((await fresh.dispatch('cap', 'k2', {})).kind, 'confirmed_success');
 });

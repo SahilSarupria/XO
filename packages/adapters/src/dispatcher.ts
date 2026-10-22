@@ -92,6 +92,31 @@ export class ExternalToolDispatcher {
       };
     }
 
+    // An earlier dispatch to this capability whose outcome is not settled (unknown, or attempted with no terminal evidence) blocks EVERY
+    // further dispatch to it until the host reconciles (replaces/clears the evidence). There is no automatic reconciliation or recovery.
+    let unsettled: string | undefined;
+    try {
+      const lastByKey = new Map<string, string>();
+      for (const e of this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e.state);
+      for (const [key, state] of lastByKey) {
+        if (state === 'outcome_unknown' || state === 'dispatch_attempted') {
+          unsettled = `${key} (${state})`;
+          break;
+        }
+      }
+    } catch (cause) {
+      return { kind: 'ledger_unavailable', dispatched: false, reason: `evidence ledger unreadable: ${describe(cause)}` };
+    }
+    if (unsettled !== undefined) {
+      return {
+        kind: 'blocked_prior_dispatch',
+        dispatched: false,
+        priorState: 'unreconciled',
+        requiresReconciliation: true,
+        reason: `capability "${capabilityId}" has an unreconciled earlier dispatch ${unsettled}; reconciliation is required before any further dispatch`,
+      };
+    }
+
     try {
       this.ledger.append({ dispatchKey, capabilityId, adapterId: adapter.id, state: 'dispatch_attempted' });
     } catch (cause) {

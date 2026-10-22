@@ -1,4 +1,5 @@
 import { Sha256Hasher } from '@xo/crypto';
+import type { ExternalToolWiring } from '@xo/runtime';
 import { buildSemanticCapabilityContract, normalizeToFallbackKey, type SemanticCapabilityContract } from '@xo/capability-contract';
 import { lowerCapabilitiesToManifest } from '@xo/compiler';
 import type { CapabilityInputSchema } from '@xo/types';
@@ -74,6 +75,8 @@ export interface StepRegistryState {
   readonly bindingId: string;
   readonly stateDigest: string;
   readonly confidence: number;
+  /** M4: present only for a step admitted as `external_tool`; the host-configured input schema (already bound into `stateDigest`). */
+  readonly externalInputSchema?: CapabilityInputSchema;
 }
 
 export interface RegistrySnapshot {
@@ -97,9 +100,31 @@ export function schemasByContract(graph: XoirGraph): ReadonlyMap<string, Capabil
   return out;
 }
 
+/** Key-order-independent JSON text, so the digest depends on the schema's content and not on how the host wrote it. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 const SUPPORTED_CLASSES = new Set(['deterministic_rule', 'human_in_the_loop', 'external_tool']);
 
-export async function validateAgainstRegistry(def: ProcedureDefinition, load: CompilationLoader): Promise<RegistryResult> {
+export async function validateAgainstRegistry(
+  def: ProcedureDefinition,
+  load: CompilationLoader,
+  /**
+   * M4 — explicit host configuration of external_tool adapters. Absent => behaviour is exactly the M2 behaviour. A step is admitted as
+   * `external_tool` ONLY when the standard resolvers leave its capability unresolved AND the host configured an adapter (with an input
+   * schema) for its contract. A capability the standard resolvers bind AND the host configured is a conflict and is refused.
+   */
+  externalTools?: ExternalToolWiring,
+): Promise<RegistryResult> {
   const findings: ProcedureFinding[] = [];
   const add = (code: ProcedureErrorCode, path: string): void => void findings.push({ code, path });
   const capabilitySteps: { step: CapabilityStep; index: number }[] = [];
@@ -124,7 +149,12 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
   for (const { step, index } of capabilitySteps) {
     const at = `/steps/${index}`;
     const projection = compilation.capabilities.find((c) => c.capabilityId === step.capabilityId);
-    if (projection === undefined || projection.status !== 'resolved') {
+    if (projection === undefined) {
+      add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
+      continue;
+    }
+    const configured = externalTools?.describe(projection.contractId);
+    if (projection.status !== 'resolved' && configured === undefined) {
       add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
       continue;
     }
@@ -143,7 +173,39 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
       add('PROC_PERMISSION_DECLARATION_UNRESOLVED', `${at}/capabilityId`);
       continue;
     }
-    const cls = derived.value.implementationClass;
+    let cls = derived.value.implementationClass;
+    let bindingId = derived.value.bindingId;
+    let stateDigest = derived.value.stateDigest;
+    let externalInputSchema: CapabilityInputSchema | undefined;
+    if (configured !== undefined && !cls.startsWith('unresolved:')) {
+      // Configuration conflict: the AUTHORITATIVE derivation (not the stored projection) says the standard resolvers bind this capability.
+      // Refuse rather than choose between the approved standard binding and the adapter.
+      add('PROC_UNSUPPORTED_CAPABILITY_CLASS', `${at}/capabilityId`);
+      continue;
+    }
+    if (configured !== undefined) {
+      const bound = externalTools?.resolver.resolve(built.value);
+      if (bound === undefined || bound.status !== 'resolved') {
+        add('PROC_UNRESOLVED_CAPABILITY', `${at}/capabilityId`);
+        continue;
+      }
+      // The adapter configuration is part of what is approved: changing the adapter or its input schema changes this digest, so an
+      // approval granted for one configuration is stale under another (fail-closed `stale_binding` before anything is dispatched).
+      cls = 'external_tool';
+      bindingId = bound.binding.id;
+      externalInputSchema = configured.inputSchema;
+      stateDigest = String(
+        new Sha256Hasher().hash(
+          canonicalStringify({
+            schema: 'xo.external-step-state.v1',
+            base: derived.value.stateDigest,
+            bindingId,
+            adapterId: configured.adapterId,
+            inputSchema: stableJson(configured.inputSchema),
+          }),
+        ),
+      );
+    }
     if (cls === 'ai_provider') {
       add('PROC_AI_STEP_DISABLED', `${at}/capabilityId`);
       continue;
@@ -165,9 +227,10 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
         contractContentHash: derived.value.contractContentHash,
         declarationFingerprint: derived.value.declarationFingerprint,
         implementationClass: cls,
-        bindingId: derived.value.bindingId,
-        stateDigest: derived.value.stateDigest,
+        bindingId,
+        stateDigest,
         confidence: projection.confidence,
+        ...(externalInputSchema !== undefined ? { externalInputSchema } : {}),
       },
     });
   }
@@ -180,7 +243,7 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
     const declared = new Map(mine.contract.inputs.map((p) => [p.name, p] as const));
     // A parameter is also declared when it names a property of the capability's execution input schema (P1.1 M3 finding: a
     // capability's client-supplied inputs live in that schema and need not appear among its contract `inputs`).
-    const schemaProps = schemas.get(mine.state.contractId)?.properties ?? {};
+    const schemaProps = (mine.state.externalInputSchema ?? schemas.get(mine.state.contractId))?.properties ?? {};
     const bound = new Set<string>();
     (step.inputBindings ?? []).forEach((b, j) => {
       const bp = `/steps/${index}/inputBindings/${j}`;
@@ -208,7 +271,7 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
     // Execution inputs are assembled only from bindings, so an unbound required property can never be supplied; start-time
     // validation already fails such a procedure closed -- approval must not pass it. Same rule, enforced earlier (no inference).
     const boundKeys = new Set([...bound].map((n) => normalizeToFallbackKey(n)));
-    for (const key of schemas.get(mine.state.contractId)?.required ?? []) {
+    for (const key of (mine.state.externalInputSchema ?? schemas.get(mine.state.contractId))?.required ?? []) {
       const path = `/steps/${index}`;
       if (!boundKeys.has(key) && !findings.some((f) => f.code === 'PROC_UNBOUND_REQUIRED_INPUT' && f.path === path))
         add('PROC_UNBOUND_REQUIRED_INPUT', path);

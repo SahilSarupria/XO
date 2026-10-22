@@ -226,11 +226,6 @@ test('M4: reference service — a dropped connection after the effect applied is
     dispatchKey: 'a:3',
   });
   assert.equal(dropped.kind === 'error' && dropped.effectState, 'outcome_unknown');
-  const garbled = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'garbled' }, authz(), {
-    externalTools,
-    dispatchKey: 'a:4',
-  });
-  assert.equal(garbled.kind === 'error' && garbled.effectState, 'outcome_unknown');
   // retry the dropped dispatch under the same key: refused, so the (already applied) effect is not duplicated
   const retry = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'drop' }, authz(), {
     externalTools,
@@ -239,8 +234,21 @@ test('M4: reference service — a dropped connection after the effect applied is
   assert.equal(retry.kind === 'error' && retry.effectState, 'not_dispatched');
   assert.deepEqual(
     service.effects.map((e) => e.dispatchKey),
-    ['a:1', 'a:3', 'a:4'],
+    ['a:1', 'a:3'],
   );
+  // a garbled reply (effect applied, reply unparseable) is unknown too, and the earlier unreconciled drop blocks any further dispatch here
+  const blockedByDrop = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'garbled' }, authz(), {
+    externalTools,
+    dispatchKey: 'a:4',
+  });
+  assert.equal(blockedByDrop.kind === 'error' && blockedByDrop.effectState, 'not_dispatched');
+  assert.equal(blockedByDrop.kind === 'error' && blockedByDrop.reconciliationRequired, true);
+  const fresh = setup(createReferenceAdapter(service));
+  const garbled = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'garbled' }, authz(), {
+    externalTools: fresh.externalTools,
+    dispatchKey: 'g:1',
+  });
+  assert.equal(garbled.kind === 'error' && garbled.effectState, 'outcome_unknown');
 });
 
 test('M4: existing deterministic path is unchanged by the wiring (a non-configured capability still executes through the standard binding)', async () => {

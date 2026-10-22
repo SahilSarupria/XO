@@ -180,7 +180,8 @@ export function registerProcedureRoutes(
   ): Promise<{ lifecycle: ProcedureLifecycle; approval: StoredLookup<ProcedureApprovalRecord>; registry: RegistryResult | undefined }> {
     const approval = await procedures.getApproval(record.procedureId, record.version);
     if (!approval.ok) throw approval.error;
-    const registry = approval.value.kind === 'ok' ? await validateAgainstRegistry(record.definition, load) : undefined;
+    const registry =
+      approval.value.kind === 'ok' ? await validateAgainstRegistry(record.definition, load, options.externalTools) : undefined;
     return { lifecycle: computeLifecycle(record, approval.value, registry), approval: approval.value, registry };
   }
 
@@ -241,7 +242,7 @@ export function registerProcedureRoutes(
       if (!parsed.ok) findings = parsed.findings;
       else {
         procedureHash = parsed.procedureHash;
-        const registry = await validateAgainstRegistry(parsed.definition, stores(workspace).load);
+        const registry = await validateAgainstRegistry(parsed.definition, stores(workspace).load, options.externalTools);
         if (registry.ok) registryStateDigest = registry.snapshot.digest;
         else findings = registry.findings;
       }
@@ -490,7 +491,7 @@ export function registerProcedureRoutes(
     }
 
     // Fresh, authoritative validation against the registry AT APPROVAL TIME. Approval is only reachable with zero blocking findings.
-    const registry = await validateAgainstRegistry(record.definition, load);
+    const registry = await validateAgainstRegistry(record.definition, load, options.externalTools);
     if (!registry.ok) {
       await deny('PROCEDURE_VALIDATION_FAILED');
       throw rejected('procedure does not validate against the registry; it cannot be approved', registry.findings);
