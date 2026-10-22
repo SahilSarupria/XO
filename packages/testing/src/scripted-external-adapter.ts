@@ -2,10 +2,7 @@ import type { AdapterInvokeRequest, AdapterInvokeResult, ExternalToolAdapter } f
 
 /** One scripted reaction: a declared result, a throw, a rejection after a tick, or an arbitrary (malformed) value. */
 export type ScriptedAdapterStep =
-  | { readonly returns: AdapterInvokeResult }
-  | { readonly throws: string }
-  | { readonly rejects: string }
-  | { readonly returnsRaw: unknown };
+  { readonly returns: AdapterInvokeResult } | { readonly throws: string } | { readonly rejects: string } | { readonly returnsRaw: unknown };
 
 /**
  * Deterministic test double for `ExternalToolAdapter`. It performs NO I/O and has no clock.
