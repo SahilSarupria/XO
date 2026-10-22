@@ -9,7 +9,8 @@ import { errorToResponse } from '../http/error-mapping.js';
 import { requireOwnedWorkspace, requirePermission, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
-import { workspaceStateStore } from '../workspace/workspace-context.js';
+import { callerIdentityId, workspaceArchivesStore, workspaceStateStore } from '../workspace/workspace-context.js';
+import { recordPublisher, retainArchive } from '../library/package-meta.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -129,6 +130,9 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
       );
     }
     const published = unwrapOrThrow(await c.publish(unpacked));
+    // Keep the raw archive (the registry keeps only the manifest) so the package can be installed later, and note who published it.
+    await retainArchive(workspaceArchivesStore(workspace, dataConfig), published.id, new Uint8Array(bytes));
+    await recordPublisher(workspaceStateStore(workspace, dataConfig), workspace.workspaceId, published.id, callerIdentityId(req));
     await recordAudit(req, workspace, dataConfig, {
       event: 'xo.published',
       result: 'succeeded',

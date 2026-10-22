@@ -13,7 +13,7 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, workspacePackagesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { requirePermission, requireOwnedWorkspace, workspacePackagesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -160,6 +160,7 @@ export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceS
 
   async function lock(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'lock dependencies' });
     const store = workspacePackagesStore(workspace, dataConfig);
     const inst = new PackageInstaller(store);
 

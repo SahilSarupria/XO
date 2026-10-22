@@ -199,3 +199,8 @@ export async function requirePermission(
     throw cause;
   }
 }
+
+/** Tenth sibling — the raw `.xo` archives a workspace published, kept so a published package can later be installed: `<dataRootDir>/<workspaceId>/archives`. The registry itself only keeps manifests. */
+export function workspaceArchivesStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'archives'));
+}
