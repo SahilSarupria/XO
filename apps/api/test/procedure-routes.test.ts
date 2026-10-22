@@ -104,7 +104,17 @@ function doc(env: Env, over: Record<string, unknown> = {}, stepOver: Record<stri
     version: 1,
     compilationRef: { compilationId: env.compilationId, graphHash: env.graphHash },
     steps: [
-      { id: 's1', kind: 'capability', capabilityId: IDS.flowA, basis: 'source_proven', next: 's2', ...stepOver },
+      {
+        id: 's1',
+        kind: 'capability',
+        capabilityId: IDS.flowA,
+        basis: 'source_proven',
+        next: 's2',
+        // P1.1 M3 closeout (owner decision D5): flowA's execution input schema REQUIRES claim_amount, so approval now requires a
+        // binding for it. The earlier fixture bound nothing for s1 and therefore described a procedure that could never start.
+        inputBindings: [{ param: 'claim amount', from: { input: 'claim_amount' }, bindingStatus: 'proven' }],
+        ...stepOver,
+      },
       { id: 's2', kind: 'capability', capabilityId: IDS.flowB, basis: 'source_proven', inputBindings: bindings },
     ],
     ...over,
@@ -556,8 +566,19 @@ test('OpenAPI documents every M2 route', async () => {
     '/workspaces/{workspaceId}/procedures/{procedureId}/versions/{version}/approve',
   ])
     assert.ok(paths.includes(p), p);
-  // M2 intentionally asserted that no execution route existed. M3 (owner-authorized) adds execution routes, so that assertion was
-  // retired here; the M3 suite pins the execution routes and the absence of cancel/retry routes instead.
+  // P1.1 M3 closeout (owner decision D6): the two NARROWED M2 negative-route assertions are restored. M3 legitimately adds
+  // `/procedures/{procedureId}/versions/{version}/executions`, so the retired regex (`/procedures.*(execut|start)/`) is NOT reinstated; the two
+  // specific pre-M3 route shapes below must still be absent, and the M3 suite pins the real execution routes.
+  assert.equal(
+    paths.some((p) => /\/procedures\/\{procedureId\}\/(executions|start)$/.test(p)),
+    false,
+    'no `/procedures/{procedureId}/executions` or `/procedures/{procedureId}/start` path is documented',
+  );
+  await withEnv(async (env) => {
+    for (const path of [`${base(env)}/procedures/claim-flow/executions`, `${base(env)}/procedures/claim-flow/start`]) {
+      assert.equal((await env.server.request('POST', path, {})).status, 404, path);
+    }
+  });
 });
 
 test('audit fail-closed: if the durable "attempted" evidence cannot be recorded, nothing is authored or approved; validation discloses nothing', async () => {

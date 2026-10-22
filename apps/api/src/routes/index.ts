@@ -30,6 +30,9 @@ export interface RegisterRoutesDeps {
   /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
   readonly auditSink: AuditSink;
   readonly auditAccess: AuditAccessController;
+  /** P1.1 M3 closeout (D2): optional per-step procedure timeout (ms). Absent means no timeout. */
+  readonly procedureStepTimeoutMs?: number;
+  readonly testBeforeStepExecute?: () => Promise<void>;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -46,6 +49,9 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
-  registerProcedureRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerProcedureRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit, {
+    ...(deps.procedureStepTimeoutMs !== undefined ? { stepTimeoutMs: deps.procedureStepTimeoutMs } : {}),
+    ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+  });
   registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
 }

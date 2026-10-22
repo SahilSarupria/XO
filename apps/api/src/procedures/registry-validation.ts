@@ -204,6 +204,15 @@ export async function validateAgainstRegistry(def: ProcedureDefinition, load: Co
     for (const p of mine.contract.inputs) {
       if (p.required === true && !bound.has(p.name)) add('PROC_UNBOUND_REQUIRED_INPUT', `/steps/${index}`);
     }
+    // P1.1 M3 closeout (owner decision D5): a REQUIRED property of the capability's execution input schema must be bound too.
+    // Execution inputs are assembled only from bindings, so an unbound required property can never be supplied; start-time
+    // validation already fails such a procedure closed -- approval must not pass it. Same rule, enforced earlier (no inference).
+    const boundKeys = new Set([...bound].map((n) => normalizeToFallbackKey(n)));
+    for (const key of schemas.get(mine.state.contractId)?.required ?? []) {
+      const path = `/steps/${index}`;
+      if (!boundKeys.has(key) && !findings.some((f) => f.code === 'PROC_UNBOUND_REQUIRED_INPUT' && f.path === path))
+        add('PROC_UNBOUND_REQUIRED_INPUT', path);
+    }
   }
 
   // Condition references to step outputs must name a declared output of a capability step.

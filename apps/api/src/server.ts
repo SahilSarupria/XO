@@ -43,6 +43,10 @@ export interface ServerDeps {
   readonly workspaceStore?: WorkspaceStore;
   /** Directory to build a default `FsWorkspaceStore` from when `workspaceStore` isn't supplied. Defaults to `loadConfig().workspacesDir` (`WORKSPACES_DIR`). */
   readonly workspacesDir?: string;
+  /** P1.1 M3 closeout (D2): per-step procedure timeout in ms. Omitted -> `XO_PROCEDURE_STEP_TIMEOUT_MS`; unset there too -> NO timeout (no default). */
+  readonly procedureStepTimeoutMs?: number;
+  /** TEST-ONLY (D2): delay-only hook awaited inside the timed step work; see ProcedureRunnerContext. */
+  readonly testBeforeStepExecute?: () => Promise<void>;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
   /**
@@ -134,7 +138,17 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     permissionManager,
     ...(deps.auditAccessKinds !== undefined ? { allowedPrincipalKinds: deps.auditAccessKinds } : {}),
   });
-  registerRoutes(router, { workspaceStore, workspaceDataConfig, permissionManager, audit, auditSink, auditAccess });
+  const procedureStepTimeoutMs = deps.procedureStepTimeoutMs ?? loadConfig().procedureStepTimeoutMs;
+  registerRoutes(router, {
+    workspaceStore,
+    workspaceDataConfig,
+    permissionManager,
+    audit,
+    auditSink,
+    auditAccess,
+    ...(procedureStepTimeoutMs !== undefined ? { procedureStepTimeoutMs } : {}),
+    ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+  });
   return router;
 }
 

@@ -15,6 +15,7 @@
     { "path": "../permissions" },
     { "path": "../capability-contract" },
     { "path": "../xoir" },
-    { "path": "../workflow-composer" }
+    { "path": "../workflow-composer" },
+    { "path": "../ai-core" }
   ]
 }
