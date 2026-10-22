@@ -13,6 +13,7 @@ import { registerWorkflowRoutes } from './workflow-routes.js';
 import { registerWorkspaceAdminRoutes } from './workspace-admin-routes.js';
 import { registerSettingsRoutes } from './settings-routes.js';
 import { registerNotificationRoutes } from './notification-routes.js';
+import { registerInboxRoutes } from './inbox-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { openApiDocument } from '../openapi.js';
@@ -35,6 +36,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerWorkspaceAdminRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerSettingsRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
