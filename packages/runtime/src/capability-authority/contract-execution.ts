@@ -29,6 +29,7 @@ import {
   type RuntimeCapabilityExecutionResult,
 } from './runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from './capability-binding-registration.js';
+import type { RuntimeCapabilityHandler } from './runtime-capability-declaration.js';
 
 /**
  * P0.9B Step 4 — the one shared assembly path from a contract to an
@@ -118,6 +119,8 @@ export interface ExecuteResolvedContractRequest {
   readonly context?: PermissionContext;
   /** P1.0 M4 — forwarded to the executor; see `RuntimeExecutionAudit`. */
   readonly audit?: RuntimeExecutionAudit;
+  /** M4 — handler for an `external_tool` binding (see `external-tool-binding.ts`). Without it such a binding is not registerable (fail closed). */
+  readonly externalToolHandler?: RuntimeCapabilityHandler;
 }
 
 /**
@@ -208,6 +211,7 @@ export async function executeResolvedContract(
   const registry = new RuntimeCapabilityRegistry();
   const registered = registerResolvedCapabilityBinding(registry, contract, binding, {
     ...(request.graphHash !== undefined ? { graphHash: request.graphHash } : {}),
+    ...(request.externalToolHandler !== undefined ? { externalToolHandler: request.externalToolHandler } : {}),
     // The authoritative declaration may be STRICTER than the contract copy (e.g. manifest-declared extras); enforce all of it.
     ...(declaration.kind === 'required' ? { additionalRequiredPermissions: declaration.requirements } : {}),
   });

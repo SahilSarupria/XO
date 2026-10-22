@@ -16,6 +16,7 @@
     { "path": "../capability-contract" },
     { "path": "../xoir" },
     { "path": "../workflow-composer" },
-    { "path": "../ai-core" }
+    { "path": "../ai-core" },
+    { "path": "../adapters" }
   ]
 }

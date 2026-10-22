@@ -60,6 +60,7 @@ import {
   startProcedureExecution,
   type ProcedureRunnerContext,
 } from '../procedures/procedure-runner.js';
+import type { ExternalToolWiring } from '@xo/runtime';
 
 /**
  * P1.1 M2 — procedure lifecycle over HTTP (authoring, validation, approval, read). NO execution route exists.
@@ -121,7 +122,11 @@ export function registerProcedureRoutes(
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
   audit: AuditService,
-  options: { readonly stepTimeoutMs?: number; readonly testBeforeStepExecute?: () => Promise<void> } = {},
+  options: {
+    readonly stepTimeoutMs?: number;
+    readonly testBeforeStepExecute?: () => Promise<void>;
+    readonly externalTools?: ExternalToolWiring;
+  } = {},
 ): void {
   const auditCtx = { audit, workspaceStore };
 
@@ -552,6 +557,7 @@ export function registerProcedureRoutes(
       correlationId,
       ...(options.stepTimeoutMs !== undefined ? { stepTimeoutMs: options.stepTimeoutMs } : {}),
       ...(options.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: options.testBeforeStepExecute } : {}),
+      ...(options.externalTools !== undefined ? { externalTools: options.externalTools } : {}),
     };
   }
 

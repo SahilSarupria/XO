@@ -2,7 +2,7 @@
   "name": "@xo/api",
   "version": "0.1.0",
   "private": true,
-  "description": "HTTP service exposing @xo/registry, @xo/package-sdk, @xo/runtime, and (behind an isolated adapter) @xo/compiler over a plain node:http server \u2014 no external framework, see README.md.",
+  "description": "HTTP service exposing @xo/registry, @xo/package-sdk, @xo/runtime, and (behind an isolated adapter) @xo/compiler over a plain node:http server — no external framework, see README.md.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,7 +35,9 @@
     "@xo/xoir": "0.1.0"
   },
   "devDependencies": {
+    "@xo/adapters": "0.1.0",
     "@xo/benchmark": "0.1.0",
+    "@xo/testing": "0.1.0",
     "tsx": "^4.16.0"
   }
 }

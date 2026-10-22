@@ -20,6 +20,7 @@ import { registerRoutes } from './routes/index.js';
 import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { AuditService } from './audit/audit-service.js';
+import type { ExternalToolWiring } from '@xo/runtime';
 
 export interface ServerDeps {
   readonly logger?: Logger;
@@ -47,6 +48,8 @@ export interface ServerDeps {
   readonly procedureStepTimeoutMs?: number;
   /** TEST-ONLY (D2): delay-only hook awaited inside the timed step work; see ProcedureRunnerContext. */
   readonly testBeforeStepExecute?: () => Promise<void>;
+  /** P1.1 M4: explicit host-owned external_tool adapter wiring (programmatic only: no env var, HTTP or manifest path sets it). Absent => external_tool steps cannot execute. */
+  readonly externalTools?: ExternalToolWiring;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
   /**
@@ -148,6 +151,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     auditAccess,
     ...(procedureStepTimeoutMs !== undefined ? { procedureStepTimeoutMs } : {}),
     ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+    ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
   });
   return router;
 }

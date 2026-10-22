@@ -18,6 +18,7 @@ import type { PermissionManager } from '@xo/permissions';
 import type { AuditAccessController, AuditSink } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
+import type { ExternalToolWiring } from '@xo/runtime';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -33,6 +34,7 @@ export interface RegisterRoutesDeps {
   /** P1.1 M3 closeout (D2): optional per-step procedure timeout (ms). Absent means no timeout. */
   readonly procedureStepTimeoutMs?: number;
   readonly testBeforeStepExecute?: () => Promise<void>;
+  readonly externalTools?: ExternalToolWiring;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -52,6 +54,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerProcedureRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit, {
     ...(deps.procedureStepTimeoutMs !== undefined ? { stepTimeoutMs: deps.procedureStepTimeoutMs } : {}),
     ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+    ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
   });
   registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
 }

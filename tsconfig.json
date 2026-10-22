@@ -8,6 +8,7 @@
     { "path": "packages/observability" },
     { "path": "packages/di" },
     { "path": "packages/serialization" },
+    { "path": "packages/adapters" },
     { "path": "packages/testing" },
     { "path": "packages/crypto" },
     { "path": "packages/xoir" },

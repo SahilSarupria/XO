@@ -1,6 +1,7 @@
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import { normalizeToFallbackKey, validateCapabilityInput } from '@xo/capability-contract';
 import { ErrorCode, RuntimeError, XoError } from '@xo/errors';
+import type { ExternalToolWiring } from '@xo/runtime';
 import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
 import {
   EnvironmentId,
@@ -78,7 +79,17 @@ export interface ProcedureRunnerContext {
    * not an execution bypass. Ignored when NODE_ENV is 'production'. Not exposed through HTTP or environment configuration.
    */
   readonly testBeforeStepExecute?: () => Promise<void>;
+  /**
+   * M4 — explicit, host-owned external_tool adapter wiring. DELIBERATELY OPTIONAL with no default: when absent, a step whose capability is an
+   * external_tool never executes (it stays unresolved and the step fails closed before anything is dispatched). Never configurable through
+   * HTTP, the procedure definition, or client input. No retry of an external dispatch exists anywhere in this runner.
+   */
+  readonly externalTools?: ExternalToolWiring;
 }
+
+/** M4 step error codes for external_tool dispatches (strings, so no shared ErrorCode enum is widened). */
+export const EFFECT_OUTCOME_UNKNOWN_CODE = 'XO_EXTERNAL_EFFECT_OUTCOME_UNKNOWN';
+export const EFFECT_CONFIRMED_FAILURE_CODE = 'XO_EXTERNAL_EFFECT_CONFIRMED_FAILURE_NO_EFFECT';
 
 const enc = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
 const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
@@ -429,7 +440,14 @@ async function runStep(
         step.capabilityId,
         input.value,
         { permissionManager: ctx.permissionManager, subject: ctx.principal },
-        { validateInputSchema: false, preflightGraphHash: ContentHash(rt.value.graphHash) },
+        {
+          validateInputSchema: false,
+          preflightGraphHash: ContentHash(rt.value.graphHash),
+          // M4: server-derived, one dispatch per (procedure execution, step). Never taken from the client.
+          ...(ctx.externalTools !== undefined
+            ? { externalTools: ctx.externalTools, dispatchKey: `${holder.current.procedureExecutionId}:${step.id}` }
+            : {}),
+        },
       );
     })(),
     ctx.stepTimeoutMs,
@@ -474,6 +492,14 @@ async function runStep(
     case 'unresolved':
       return fail('capability_error', ErrorCode.WORKFLOW_NOT_EXECUTABLE, executionId, outcome.reason);
     case 'error':
+      // M4: an external dispatch that ended ambiguously is NEVER reported as a plain failure or a success: it gets its own code, and
+      // the message states that reconciliation is required before any further dispatch. No retry, no automatic recovery.
+      if (outcome.effectState === 'outcome_unknown') {
+        return fail('capability_error', EFFECT_OUTCOME_UNKNOWN_CODE, executionId, outcome.errorMessage);
+      }
+      if (outcome.effectState === 'confirmed_failure_no_effect') {
+        return fail('capability_error', EFFECT_CONFIRMED_FAILURE_CODE, executionId, outcome.errorMessage);
+      }
       return fail(
         outcome.errorCode === ErrorCode.RUNTIME_PERMISSION_DENIED ? 'authorization' : 'capability_error',
         outcome.errorCode,
