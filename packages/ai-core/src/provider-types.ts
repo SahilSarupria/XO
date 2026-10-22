@@ -23,6 +23,10 @@ export interface ProviderRequest {
   readonly temperature?: number;
   /** When set, the provider must return output conforming to this JSON Schema-shaped object (mapped to each vendor's own "structured output" / "JSON mode" / "tool forcing" mechanism in that provider's adapter). */
   readonly responseSchema?: Readonly<Record<string, unknown>>;
+  /** Optional correlation id for telemetry. A provider that supports it generates one when absent and echoes it back in `ProviderResponse.meta.requestId`. Never sent to the vendor as prompt content. */
+  readonly requestId?: string;
+  /** Optional caller cancellation. Aborting stops local waiting; it does NOT guarantee the vendor stopped (or will not bill for) the remote inference. */
+  readonly signal?: AbortSignal;
 }
 
 export interface TokenUsage {
@@ -30,11 +34,26 @@ export interface TokenUsage {
   readonly outputTokens: number;
 }
 
+/** Low-sensitivity per-call metadata — never contains prompt/response content or credentials. */
+export interface ProviderCallMeta {
+  readonly providerId: ProviderId;
+  readonly requestId: string;
+  readonly durationMs: number;
+  /** Total HTTP/transport attempts made (1 = no retry). */
+  readonly attempts: number;
+  /** The vendor's own finish/termination string, before normalization (for diagnosis and reproducible benchmarking). */
+  readonly rawFinishReason?: string;
+}
+
 export interface ProviderResponse {
   readonly text: string;
+  /** Token usage as reported by the vendor. When `usageKnown === false` this is a `{0,0}` placeholder, NOT a measurement. */
   readonly usage: TokenUsage;
+  /** `false` when the vendor did not report usage. Absent is treated as `true` (every pre-existing provider reports usage). */
+  readonly usageKnown?: boolean;
   readonly modelUsed: string;
   readonly finishReason: 'stop' | 'length' | 'content_filter' | 'error';
+  readonly meta?: ProviderCallMeta;
 }
 
 export type ProviderStreamEvent =
@@ -58,6 +77,24 @@ export interface ProviderCapabilityDescriptor {
   readonly supportsStructuredOutput: boolean;
   readonly supportsVision: boolean;
   readonly maxContextTokens: number;
+  /**
+   * Optional, finer-grained feature flags so the abstraction never implies every provider supports identical features.
+   * Absent means "not declared" (treat as unknown), not "supported".
+   */
+  readonly features?: ProviderFeatureSupport;
+}
+
+export interface ProviderFeatureSupport {
+  /** A dedicated system-instruction channel (vs. folding system text into a user message). */
+  readonly systemInstructions?: boolean;
+  /** Vendor constrains decoding to a schema (vs. "JSON mode" or prompt-only). Local validation is still required either way. */
+  readonly schemaConstrainedOutput?: boolean;
+  /** Vendor reports token usage on responses. */
+  readonly usageReporting?: boolean;
+  /** Vendor honors `temperature`. */
+  readonly temperature?: boolean;
+  /** Vendor may spend part of `maxOutputTokens` on hidden reasoning ("thinking") tokens. */
+  readonly hiddenReasoningTokens?: boolean;
 }
 
 export interface ModelProvider {

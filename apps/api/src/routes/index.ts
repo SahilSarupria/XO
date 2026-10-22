@@ -17,6 +17,7 @@ import type { PermissionManager } from '@xo/permissions';
 import type { AuditAccessController, AuditSink } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
+import { describeInferenceReadiness } from '@xo/ai-core';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -29,10 +30,15 @@ export interface RegisterRoutesDeps {
   /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
   readonly auditSink: AuditSink;
   readonly auditAccess: AuditAccessController;
+  /** Test seam / explicit injection for `GET /ready`. Defaults to `process.env`. */
+  readonly inferenceEnv?: Readonly<Record<string, string | undefined>>;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   router.get('/health', async () => json(200, { status: 'ok' }));
+  // Authenticated (NOT in auth's EXEMPT_PATHS). Liveness is `/health`; this reports inference *configuration* status only.
+  // It never calls the provider (no billable inference from a probe) and never includes a credential.
+  router.get('/ready', async () => json(200, { status: 'ok', inference: describeInferenceReadiness(deps.inferenceEnv ?? process.env) }));
   router.get('/openapi.json', async () => json(200, openApiDocument));
 
   registerRegistryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);

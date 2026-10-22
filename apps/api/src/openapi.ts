@@ -33,6 +33,20 @@ export const openApiDocument = {
         },
       },
     },
+    '/ready': {
+      get: {
+        summary: 'Readiness: process status plus inference-provider CONFIGURATION status (never calls the provider)',
+        responses: {
+          '200': {
+            description:
+              'status is always "ok" when the process serves requests. inference.state is unconfigured|configured|invalid; "configured" does NOT mean the provider is reachable (providerReachable is always "not_checked") or that inference works (inferenceVerified is always false). Never includes credentials.',
+            content: {
+              'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, inference: { type: 'object' } } } },
+            },
+          },
+        },
+      },
+    },
     '/openapi.json': {
       get: { summary: 'This document', security: [], responses: { '200': { description: 'OK' } } },
     },

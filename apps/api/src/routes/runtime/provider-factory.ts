@@ -74,7 +74,9 @@ export function resolveProvider(
     case 'gemini': {
       const apiKey = apiKeyHeader ?? env['GEMINI_API_KEY'];
       if (!apiKey) return err('gemini provider needs an API key — pass the "x-xo-api-key" header or set GEMINI_API_KEY');
-      return ok(new GeminiProvider({ apiKey, ...(baseUrlHeader !== undefined ? { baseUrl: baseUrlHeader } : {}) }));
+      // Deliberately NOT honouring `x-xo-base-url` here: when the key comes from server env, a caller-chosen base URL
+      // would let any API client redirect the server's Gemini credential to an arbitrary host.
+      return ok(new GeminiProvider({ apiKey }));
     }
     case 'ollama':
       return ok(new OllamaProvider(baseUrlHeader !== undefined ? { baseUrl: baseUrlHeader } : {}));

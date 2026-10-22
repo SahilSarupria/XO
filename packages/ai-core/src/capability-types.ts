@@ -31,6 +31,8 @@ export interface CapabilityResponseMeta {
   readonly modelUsed: string;
   readonly promptVersion: string;
   readonly usage: TokenUsage;
+  /** `false` when the provider did not report token usage (then `usage` is a `{0,0}` placeholder and `costUsd` is NOT a measurement). Absent = known. */
+  readonly usageKnown?: boolean;
   readonly costUsd: number;
   readonly cacheHit: boolean;
   readonly latencyMs: number;

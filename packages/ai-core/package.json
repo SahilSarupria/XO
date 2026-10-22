@@ -24,7 +24,8 @@
     "@xo/errors": "0.1.0",
     "@xo/logger": "0.1.0",
     "@xo/observability": "0.1.0",
-    "@xo/crypto": "0.1.0"
+    "@xo/crypto": "0.1.0",
+    "@xo/config": "0.1.0"
   },
   "devDependencies": {
     "@xo/testing": "0.1.0",

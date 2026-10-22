@@ -7,6 +7,7 @@ import { noopTracer, noopMeter } from '@xo/observability';
 import { CircuitBreaker, type CircuitBreakerOptions } from './circuit-breaker.js';
 import { TokenBucketRateLimiter, type TokenBucketOptions } from './rate-limiter.js';
 import { RetryPolicy, type RetryPolicyOptions } from './retry.js';
+import { getProviderFailure } from './provider-errors.js';
 import { computeCacheKey, InMemoryCapabilityCache, type CapabilityCache } from './cache.js';
 import { CostAccountant, DEFAULT_PRICING_TABLE, type PricingTable } from './cost.js';
 import { selectCandidates, type ModelSelectionPolicy } from './model-selection.js';
@@ -204,7 +205,16 @@ export class AiCapabilityLayer {
 
         const retryPolicy = new RetryPolicy({
           ...this.retryOptions,
-          isRetryable: (error) => !(error instanceof AiError) || error.code !== ErrorCode.AI_CIRCUIT_OPEN,
+          isRetryable: (error) => {
+            if (error instanceof AiError && error.code === ErrorCode.AI_CIRCUIT_OPEN) return false;
+            // Provider adapters that classify their failures already applied their own bounded transport retry
+            // (honouring Retry-After); retrying again here would multiply attempts and risk retry storms. The one
+            // exception is a malformed/schema-invalid body, where a fresh sample can legitimately succeed.
+            // Auth, invalid-request, content-blocked, unsupported-model and quota failures are never retried.
+            const failure = getProviderFailure(error);
+            if (failure) return failure.category === 'malformed_response';
+            return true;
+          },
         });
 
         try {
@@ -213,6 +223,7 @@ export class AiCapabilityLayer {
             return circuitBreaker.execute(async () => {
               const response = await provider.complete({
                 model: candidate.model,
+                requestId: request.traceId,
                 messages,
                 maxOutputTokens: 4096,
                 responseSchema: schema as unknown as Record<string, unknown>,
@@ -249,6 +260,7 @@ export class AiCapabilityLayer {
               modelUsed: outcome.value.response.modelUsed,
               promptVersion: template.version,
               usage: outcome.value.response.usage,
+              ...(outcome.value.response.usageKnown === false ? { usageKnown: false } : {}),
               costUsd: costRecord.costUsd,
               cacheHit: false,
               latencyMs: performance.now() - startedAt,
