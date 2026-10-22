@@ -722,7 +722,16 @@ export async function resumeProcedureExecution(
     const def = version.value.record.definition;
     const approvalLookup = await ctx.procedures.getApproval(record.procedureId, record.version);
     if (!approvalLookup.ok) throw approvalLookup.error;
-    const approval = approvalLookup.value.kind === 'ok' ? approvalLookup.value.record : undefined;
+    // Review finding 1: an execution may only continue under the approval it started with. A missing or malformed approval record must not
+    // silently disable the registry-digest and per-step approved-state checks (both skip when `approval` is undefined): fail closed, before the
+    // human decision is applied.
+    if (approvalLookup.value.kind !== 'ok') {
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        `the procedure approval record is ${approvalLookup.value.kind === 'none' ? 'missing' : 'unreadable'}; nothing was resumed`,
+      );
+    }
+    const approval = approvalLookup.value.record;
     const outcome = await resolveHumanTaskExecution(
       ctx.executionStore,
       ctx.compilationStore,
