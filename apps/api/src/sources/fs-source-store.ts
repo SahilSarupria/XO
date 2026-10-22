@@ -63,6 +63,9 @@ export class FsSourceStore implements SourceStore {
       createdAt: new Date().toISOString(),
       contentStorageKey: contentKey(sourceId),
       status: 'stored',
+      ...(input.origin !== undefined ? { origin: input.origin } : {}),
+      ...(input.ingestNotes !== undefined && input.ingestNotes.length > 0 ? { ingestNotes: input.ingestNotes } : {}),
+      ...(input.stats !== undefined && Object.keys(input.stats).length > 0 ? { stats: input.stats } : {}),
     };
 
     const putMetadata = await this.store.put(metadataKey(sourceId), JSON.stringify(record), { contentType: 'application/json' });

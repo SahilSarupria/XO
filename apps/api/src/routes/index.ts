@@ -5,7 +5,7 @@ import { registerPackageRoutes } from './package-routes.js';
 import { registerRuntimeRoutes } from './runtime/runtime-routes.js';
 import { registerCompilerRoutes } from './compiler/compiler-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
-import { registerSourceRoutes } from './source-routes.js';
+import { registerSourceRoutes, type SourceRouteOptions } from './source-routes.js';
 import { registerCompilationRoutes } from './source-compilation-routes.js';
 import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
@@ -23,6 +23,8 @@ export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
   /** Where workspace-scoped package/registry storage lives — see `workspace/workspace-context.ts`. Not used by `registerWorkspaceRoutes` itself (workspace *metadata* uses its own, separate store — see `config.ts`'s `workspacesDir` vs `workspaceDataDir`). */
   readonly workspaceDataConfig: WorkspaceDataConfig;
+  /** Injection seam for the URL importer (tests only) — see `SourceRouteOptions`. */
+  readonly importFetch?: SourceRouteOptions['fetchDeps'];
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -39,7 +41,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerLibraryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {});
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);

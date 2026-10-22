@@ -21,10 +21,12 @@ import { parseTrustedProxyHops, resolveClientAddress } from './http/client-addre
 import { createSessionAuth, loadSessionAuthConfig, type SessionAuthBundle, type SessionAuthOptions } from './auth/session/index.js';
 import { registerAuthSessionRoutes } from './routes/auth-session-routes.js';
 import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
-import { registerRoutes } from './routes/index.js';
+import { registerRoutes, type RegisterRoutesDeps } from './routes/index.js';
 
 export interface ServerDeps {
   readonly logger?: Logger;
+  /** Test seam: replaces the DNS lookup / HTTPS transport the URL importer uses. Production leaves this unset. */
+  readonly importFetch?: RegisterRoutesDeps['importFetch'];
   /**
    * Injected directly when a caller already has one (e.g.
    * `test-helpers.ts`'s `TestServer`, which provisions a temp-dir-backed
@@ -132,7 +134,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(sessionAuth !== undefined ? { sessions: { store: sessionAuth.sessions, bindings: sessionAuth.bindings } } : {}),
     }),
   );
-  registerRoutes(router, { workspaceStore, workspaceDataConfig });
+  registerRoutes(router, { workspaceStore, workspaceDataConfig, ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}) });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   return router;
 }
