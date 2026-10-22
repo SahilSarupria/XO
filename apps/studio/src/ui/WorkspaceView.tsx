@@ -319,7 +319,6 @@ export function WorkspaceView(props: {
     xos: xoList,
     onSend: (text, attached) => sendChat(text, attached, true),
     onNew: () => setActiveThread(undefined),
-    onExpand: () => setView('chat'),
     goTo: (t) => {
       setDrawerOpen(false);
       goToTarget(t);
@@ -381,9 +380,8 @@ export function WorkspaceView(props: {
             </main>
           ),
         })}
-        {drawerOpen ? (
-          <AskDock variant="floating" {...dock} />
-        ) : (
+        <AskDock variant="floating" {...dock} />
+        {drawerOpen ? null : (
           <button type="button" className="askdock-launch" aria-label="Ask XO" onClick={askFocus}>
             Ask XO <kbd className="cmdbar-kbd">⌘J</kbd>
           </button>

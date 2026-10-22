@@ -111,9 +111,9 @@ describe('Chat inside the app', () => {
     const user = await home();
     const bar = await screen.findByLabelText('Ask XO');
     await user.type(bar, 'w');
-    expect(await screen.findByRole('region', { name: 'Ask XO conversation' })).toBeInTheDocument(); // opened by typing, before any send
+    expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument(); // opened by typing, before any send
     await user.type(bar, 'hat do i have{enter}');
-    const panel = screen.getByRole('region', { name: 'Ask XO conversation' });
+    const panel = screen.getByRole('dialog', { name: 'Ask XO conversation' });
     const log = within(panel).getByRole('log', { name: 'Messages' });
     expect(within(log).getByText('what do i have')).toBeInTheDocument();
     expect(await within(log).findByText(/This workspace holds/)).toBeInTheDocument();
@@ -122,18 +122,24 @@ describe('Chat inside the app', () => {
     expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('the panel grows into the full Chat screen with the same conversation, and the rail leads back', async () => {
+  it('focusing the bar opens the full-screen chat straight away; Close chat returns to the same page with the conversation kept for the Chat screen', async () => {
     const user = await home();
-    await user.type(await screen.findByLabelText('Ask XO'), 'hello{enter}');
-    const panel = await screen.findByRole('region', { name: 'Ask XO conversation' });
-    await user.click(within(panel).getByRole('button', { name: 'Open full chat' }));
+    await user.click(await screen.findByLabelText('Ask XO')); // focus alone is enough
+    expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open full chat' })).not.toBeInTheDocument(); // it is already the full chat
+    await user.type(screen.getByLabelText('Ask XO'), 'hello{enter}');
+    const panel = screen.getByRole('dialog', { name: 'Ask XO conversation' });
+    expect(await within(panel).findByRole('log', { name: 'Messages' })).toHaveTextContent('hello');
+    await user.click(within(panel).getByRole('button', { name: /close chat/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
+    expect(window.location.hash).not.toBe('#/chat');
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'full chat{Enter}');
     await waitFor(() => expect(window.location.hash).toBe('#/chat'));
-    expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
     expect(within(await screen.findByRole('log', { name: 'Messages' })).getByText('hello')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ New chat' }));
     expect(screen.getByRole('heading', { name: 'New chat' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
-    expect(await screen.findByRole('heading', { name: /^workflows$/i })).toBeInTheDocument();
   });
 });
 
@@ -155,12 +161,12 @@ describe('Ask XO from every screen', () => {
     for (const name of ['Library', 'Activity', 'Audit log']) {
       await user.click(screen.getByRole('button', { name }));
       const bar = screen.getByLabelText('Ask XO');
-      expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
       await user.type(bar, 'x');
-      expect(await screen.findByRole('region', { name: 'Ask XO conversation' })).toBeInTheDocument();
+      expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
       await user.keyboard('{Escape}');
-      await waitFor(() => expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
       expect(bar).toHaveFocus(); // the cursor stays in the bar
       await user.clear(bar);
     }
@@ -170,19 +176,19 @@ describe('Ask XO from every screen', () => {
     const user = await app();
     await user.click(screen.getByRole('button', { name: 'Library' }));
     await user.keyboard('{Control>}j{/Control}');
-    const panel = await screen.findByRole('region', { name: 'Ask XO conversation' });
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
     expect(screen.getByLabelText('Ask XO')).toHaveFocus();
     await user.type(screen.getByLabelText('Ask XO'), 'show me the graph{enter}');
     expect(await within(panel).findByText(/steps in the order XO composed them/)).toBeInTheDocument();
     expect(window.location.hash).toBe('#/library');
     await user.keyboard('{Control>}j{/Control}');
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
   });
 
   it('is reachable from the palette too', async () => {
     const user = await app();
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'ask{Enter}');
-    expect(await screen.findByRole('region', { name: 'Ask XO conversation' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
   });
 });

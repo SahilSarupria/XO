@@ -23,7 +23,6 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
         xos: [],
         onSend: (t) => props.onSend?.(t),
         onNew: () => {},
-        onExpand: () => {},
         goTo: () => {},
       }}
     />
@@ -63,13 +62,13 @@ describe('Home command bar', () => {
     expect(screen.getByText('Ask ▾')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('unfolds the conversation from the bar as soon as typing starts, and closes on Escape', async () => {
+  it('opens the full-screen chat as soon as the bar is focused, and closes on Escape', async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText('Ask XO'), 'h');
-    expect(screen.getByRole('region', { name: 'Ask XO conversation' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText('Ask XO'));
+    expect(screen.getByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
-    await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
+    await vi.waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
   });
 });

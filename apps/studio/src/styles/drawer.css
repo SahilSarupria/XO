@@ -15,14 +15,8 @@
   border-radius: var(--radius);
   transition: border-radius 260ms, border-color 140ms;
 }
-.askdock-bar:focus-within,
-.askdock:not([data-phase='closed']) .askdock-bar {
+.askdock-bar:focus-within {
   border-color: var(--border-strong);
-}
-.askdock:not([data-phase='closed']):not([data-phase='closing']) .askdock-bar {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  border-bottom-color: transparent;
 }
 .askdock-bar .cmdbar-input {
   flex: 1;
@@ -40,37 +34,68 @@
 .askdock-v-home .askdock-bar {
   min-height: 3.5rem;
 }
-.askdock-panel {
-  position: absolute;
-  top: 100%;
+.askdock-bar.is-docked {
+  position: fixed;
+  z-index: 60;
   left: 0;
   right: 0;
+  bottom: var(--s-5);
+  width: min(52rem, calc(100vw - 2rem));
+  margin: 0 auto;
+  min-height: 3.25rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+.askdock-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
   display: flex;
   flex-direction: column;
-  height: min(28rem, 62vh);
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-top-color: var(--border);
-  border-radius: 0 0 var(--radius) var(--radius);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-  transform-origin: top center;
-  animation: dock-open 260ms cubic-bezier(0.2, 0, 0, 1) both;
-  transition: height 260ms cubic-bezier(0.2, 0, 0, 1);
+  background: var(--bg);
+  animation: dock-open 300ms cubic-bezier(0.2, 0, 0, 1) both;
 }
-.askdock[data-phase='closing'] .askdock-panel {
+.askdock-panel[data-phase='closing'] {
   animation: dock-close 260ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
 }
-.askdock[data-phase='expanding'] .askdock-panel {
-  height: calc(100vh - 6rem);
-  box-shadow: none;
+.askdock-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+}
+.askdock-body .chat-log {
+  flex: 0 1 auto;
+  overflow: visible;
+  width: min(52rem, 100%);
+  max-width: none;
+  margin: 0;
+  padding: var(--s-5) var(--s-4) 7rem;
+}
+.askdock-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--s-5) + 3.5rem);
+  width: min(52rem, calc(100vw - 2rem));
+  margin: 0 auto;
+  z-index: 55;
+  background: var(--surface-1);
+  border-radius: var(--radius);
+}
+.askdock-foot:empty {
+  display: none;
 }
 .askdock-head {
   display: flex;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-5);
   border-bottom: 1px solid var(--border);
+}
+.askdock-close {
+  white-space: nowrap;
 }
 .askdock-head h2 {
   min-width: 0;
@@ -89,23 +114,18 @@
   white-space: nowrap;
   padding: 0 var(--s-2);
 }
-.askdock-panel .chat-log {
-  flex: 1;
-  min-height: 0;
-  max-width: none;
-  margin: 0;
-  padding: var(--s-4);
-}
 .askdock-attached,
 .askdock-suggest {
   padding: var(--s-2) var(--s-4);
   border-top: 1px solid var(--border);
 }
+/* Left/right auto margins, not a transform: a transformed parent would trap the bar's fixed positioning. */
 .askdock-v-floating {
   position: fixed;
   top: var(--s-3);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
   width: min(40rem, calc(100vw - 2rem));
   z-index: 45;
 }
@@ -129,25 +149,22 @@
 }
 @keyframes dock-open {
   from {
-    clip-path: inset(0 0 100% 0);
-    opacity: 0.4;
-    transform: translateY(-6px);
+    opacity: 0;
+    transform: translateY(-1.5rem) scale(0.985);
   }
   to {
-    clip-path: inset(0 0 0 0);
     opacity: 1;
     transform: none;
   }
 }
 @keyframes dock-close {
   from {
-    clip-path: inset(0 0 0 0);
     opacity: 1;
+    transform: none;
   }
   to {
-    clip-path: inset(0 0 100% 0);
-    opacity: 0.4;
-    transform: translateY(-6px);
+    opacity: 0;
+    transform: translateY(-1.5rem) scale(0.985);
   }
 }
 .chatscreen {
@@ -163,7 +180,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .askdock-panel,
-  .askdock[data-phase='closing'] .askdock-panel,
+  .askdock-panel[data-phase='closing'],
   .chatscreen {
     animation-duration: 0.01ms;
     transition-duration: 0.01ms;
@@ -172,4 +189,8 @@
 .askdock-bar {
   width: 100%;
   box-sizing: border-box;
+}
+.askdock-v-floating[data-phase='closed']:not([data-open='true']) {
+  visibility: hidden;
+  pointer-events: none;
 }
