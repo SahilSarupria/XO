@@ -11,6 +11,8 @@ import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
 import { registerWorkspaceAdminRoutes } from './workspace-admin-routes.js';
+import { registerSettingsRoutes } from './settings-routes.js';
+import { registerNotificationRoutes } from './notification-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { openApiDocument } from '../openapi.js';
@@ -31,6 +33,8 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerCompilerRoutes(router);
   registerWorkspaceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerWorkspaceAdminRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerSettingsRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);

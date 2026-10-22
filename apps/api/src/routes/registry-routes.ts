@@ -8,6 +8,8 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import { requireOwnedWorkspace, requirePermission, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { workspaceStateStore } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -119,6 +121,13 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be the raw bytes of a .xo archive');
     }
     const unpacked = unwrapOrThrow(await unpackArchive(new Uint8Array(bytes)));
+    const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+    if (settings.trust.requireSignedPackages && (unpacked.manifest.signatures ?? []).length === 0) {
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'this workspace requires signed packages (Settings → Trust and signing); the package manifest carries no signatures',
+      );
+    }
     const published = unwrapOrThrow(await c.publish(unpacked));
     await recordAudit(req, workspace, dataConfig, {
       event: 'xo.published',

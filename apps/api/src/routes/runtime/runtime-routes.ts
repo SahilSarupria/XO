@@ -45,7 +45,7 @@ const AI_EXECUTION_ENABLED: boolean = false;
 export const AI_EXECUTION_DISABLED_MESSAGE =
   'AI-assisted execution is disabled: capability authorization is not yet enforced on this path (P1.0). Deterministic execution is unaffected.';
 
-async function bootstrapRuntime(
+export async function bootstrapRuntime(
   store: BlobStore,
 ): Promise<{ readonly runtime: Runtime; readonly installer: PackageInstaller; readonly bootstrapWarnings: readonly string[] }> {
   const installer = new PackageInstaller(store);
