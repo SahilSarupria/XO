@@ -27,6 +27,8 @@ export interface ServerDeps {
   readonly logger?: Logger;
   /** Test seam: replaces the DNS lookup / HTTPS transport the URL importer uses. Production leaves this unset. */
   readonly importFetch?: RegisterRoutesDeps['importFetch'];
+  /** Test seam: replaces how chat turns a provider id into a model provider. */
+  readonly chatProviderFactory?: RegisterRoutesDeps['chatProviderFactory'];
   /**
    * Injected directly when a caller already has one (e.g.
    * `test-helpers.ts`'s `TestServer`, which provisions a temp-dir-backed
@@ -134,7 +136,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(sessionAuth !== undefined ? { sessions: { store: sessionAuth.sessions, bindings: sessionAuth.bindings } } : {}),
     }),
   );
-  registerRoutes(router, { workspaceStore, workspaceDataConfig, ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}) });
+  registerRoutes(router, { workspaceStore, workspaceDataConfig, ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}), ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}) });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   return router;
 }
