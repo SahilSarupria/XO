@@ -10,17 +10,20 @@
  * means updating a route and forgetting the doc is a one-file diff to
  * review, not two.
  */
+import { studioPaths } from './openapi-studio.js';
+
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'XO Platform API',
     version: '0.1.0',
     description:
-      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations. AUTH (P1.0 M1): every route except /health and /openapi.json requires Authorization: Bearer <API key> or, only when the server is configured for OIDC, Bearer <OIDC access token> from the one configured issuer (the verified issuer+subject must have an operator-written binding; unbound subjects get 401). A key authenticates only if its server-side record is bound to a valid principal (kind human|service, stable id, optional orgId); keys issued before M1 have no binding and receive 401 until the operator re-issues them with an explicit --kind (scripts/manage-keys.ts). A principal identifies the initiator for attribution only — it grants NO permission, and capability-level authorization is NOT yet enforced on every execution path (planned P1.0 M2). This document does not describe a production-ready security posture.',
+      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations. AUTH (P1.0 M1): every route except /health and /openapi.json requires Authorization: Bearer <API key> or, only when the server is configured for OIDC, Bearer <OIDC access token> from the one configured issuer (the verified issuer+subject must have an operator-written binding; unbound subjects get 401). A key authenticates only if its server-side record is bound to a valid principal (kind human|service, stable id, optional orgId); keys issued before M1 have no binding and receive 401 until the operator re-issues them with an explicit --kind (scripts/manage-keys.ts). A principal identifies the initiator for attribution only — it grants NO permission, and capability-level authorization is NOT yet enforced on every execution path (planned P1.0 M2). WORKSPACE ROLES: a workspace has an owner (always admin) and members with a role — admin, publisher, reviewer or viewer. Each workspace route documents the permission it needs in x-xo-permission (read, author, publish, review, audit, manage). A caller who is not a member gets 404; a member lacking the permission gets 403 and the attempt is written to the audit log. Workspace roles are separate from, and checked before, capability-level runtime authorization. This document does not describe a production-ready security posture.',
   },
   security: [{ bearerAuth: [] }],
   servers: [{ url: 'http://localhost:4000' }],
   paths: {
+    ...studioPaths,
     '/health': {
       get: {
         summary: 'Liveness check',
