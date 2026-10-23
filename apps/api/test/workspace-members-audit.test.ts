@@ -262,6 +262,7 @@ test('audit export: JSON evidence pack and CSV, admin-only, and the export is it
       assert.equal(pack.workspace.regionLabel, 'India (Mumbai)');
       assert.equal(pack.accessControl.members.length, 4);
       assert.equal(pack.retention.enforcedByServer, false);
+      assert.equal(pack.retention.minimumDays, null, 'no retention period is invented when the operator declared none');
       assert.ok(pack.notices.some((n) => /not a certification/.test(n)));
 
       const csv = await server.request('GET', `/workspaces/${ws}/audit/export?format=csv`);
@@ -299,4 +300,12 @@ test('csv export neutralizes spreadsheet formulas and quotes separators', () => 
 
 test('canonicalJson is key-order independent', () => {
   assert.equal(canonicalJson({ b: 1, a: { d: [1, { z: 1, y: 2 }], c: undefined } }), canonicalJson({ a: { c: undefined, d: [1, { y: 2, z: 1 }] }, b: 1 }));
+});
+
+test('retention is only what the operator declares', async () => {
+  const { declaredRetentionDays } = await import('../src/audit/retention.js');
+  assert.equal(declaredRetentionDays({}), null);
+  assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: '' }), null);
+  assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: '2555' }), 2555);
+  for (const bad of ['0', '-5', '1.5', 'seven years', '99999']) assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: bad }), null, bad);
 });

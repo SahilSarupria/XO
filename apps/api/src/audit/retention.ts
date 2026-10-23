@@ -1,7 +1,14 @@
 /**
- * Audit retention, as a declared minimum. The API has no code path that deletes or truncates audit entries, so the
- * log is retained for at least as long as the storage directory is (indefinitely). "7 years" is the documented
- * *minimum commitment* a deployment is expected to back with durable storage — it is not enforced by the server
- * (the server cannot guarantee its own disk), and the export says so.
+ * Audit retention is an OPERATOR decision, never a number this server invents. The operator declares it with
+ * `XO_API_AUDIT_RETENTION_DAYS` (a positive integer); with nothing declared the API reports `minimumDays: null`
+ * ("no retention policy declared") rather than a default that could be mistaken for a legal commitment.
+ *
+ * Either way the server has no code path that deletes or truncates audit entries, and it cannot guarantee the
+ * durability of its own storage — the declaration is a statement by the operator, surfaced in the audit export.
  */
-export const DEFAULT_AUDIT_RETENTION_DAYS = 7 * 365;
+export function declaredRetentionDays(env: Readonly<Record<string, string | undefined>> = process.env): number | null {
+  const raw = env['XO_API_AUDIT_RETENTION_DAYS'];
+  if (raw === undefined || raw.trim() === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 && n <= 36500 ? n : null;
+}

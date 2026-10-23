@@ -16,7 +16,7 @@ import { REGIONS } from '../workspace/regions.js';
 import { FsAuditLog } from '../audit/fs-audit-log.js';
 import { isAuditEventType, isAuditResult } from '../audit/audit-entry.js';
 import { recordAudit } from '../audit/record.js';
-import { DEFAULT_AUDIT_RETENTION_DAYS } from '../audit/retention.js';
+import { declaredRetentionDays } from '../audit/retention.js';
 import { buildAuditExport, auditExportToCsv } from '../audit/export.js';
 
 /**
@@ -240,7 +240,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
       ...verification,
       appendOnly: true,
       tamperEvident: true,
-      retention: { minimumDays: DEFAULT_AUDIT_RETENTION_DAYS, deletionSupported: false },
+      retention: { minimumDays: declaredRetentionDays(), deletionSupported: false },
     });
   }
 

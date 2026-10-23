@@ -3,7 +3,7 @@ import { regionLabel } from '../workspace/regions.js';
 import { permissionsOf } from '../workspace/permissions.js';
 import type { FsAuditLog } from './fs-audit-log.js';
 import type { AuditEntry, AuditVerification } from './audit-entry.js';
-import { DEFAULT_AUDIT_RETENTION_DAYS } from './retention.js';
+import { declaredRetentionDays } from './retention.js';
 
 /**
  * A self-contained evidence pack for a compliance review (SOC 2 / ISO 27001 style evidence gathering).
@@ -27,7 +27,8 @@ export interface AuditExportPack {
   readonly accessControl: {
     readonly members: readonly { readonly identityId: string; readonly role: string; readonly isOwner: boolean; readonly permissions: readonly string[]; readonly addedAt?: string }[];
   };
-  readonly retention: { readonly minimumDays: number; readonly deletionSupported: false; readonly enforcedByServer: false };
+  /** `minimumDays` is `null` unless the operator declared a policy (`XO_API_AUDIT_RETENTION_DAYS`); the server never invents one. */
+  readonly retention: { readonly minimumDays: number | null; readonly deletionSupported: false; readonly enforcedByServer: false };
   readonly integrity: AuditVerification;
   readonly entries: readonly AuditEntry[];
   readonly notices: readonly string[];
@@ -58,13 +59,13 @@ export async function buildAuditExport(workspace: WorkspaceRecord, log: FsAuditL
         })),
       ],
     },
-    retention: { minimumDays: DEFAULT_AUDIT_RETENTION_DAYS, deletionSupported: false, enforcedByServer: false },
+    retention: { minimumDays: declaredRetentionDays(), deletionSupported: false, enforcedByServer: false },
     integrity,
     entries,
     notices: [
       'This is evidence, not a certification: it does not assert SOC 2 or ISO 27001 compliance.',
       'The hash chain makes partial edits detectable; it cannot detect a complete, internally consistent rewrite unless headHash was recorded elsewhere.',
-      'Retention is a declared minimum; the server does not delete entries but cannot guarantee the durability of its own storage.',
+      'Retention is whatever the operator declared (null = none declared); the server does not delete entries but cannot guarantee the durability of its own storage.',
       'Residency is declarative; the server does not prove where bytes are physically stored.',
     ],
   };
