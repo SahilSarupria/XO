@@ -1,6 +1,6 @@
 # P1.1 M4 — external_tool execution: implementation status (durable evidence + reconciliation slice)
 
-Date: 2026-10-23. Branch `p11/m4-external-tool`. Base head at start of this slice: `15cb969` (verified by clone). PR #7 is reported open/draft/unmerged — **not verifiable from this environment** (no PR/CI API access was used). Nothing was pushed, merged or opened by this slice or by the follow-up finalization slice (§10). Local commits: `f4c30b3` (ledger + reconciliation), `6e870d9` (this doc, first version), `063e8d9` (finalization code, §10); the doc update for §10 is the next commit.
+Date: 2026-10-23. Branch `p11/m4-external-tool`. Base head at start of this slice: `15cb969` (verified by clone). PR #7 is reported open/draft/unmerged — **not verifiable from this environment** (no PR/CI API access was used). Nothing was pushed, merged or opened by this slice or by the follow-up finalization slice (§10). Local commits: `f4c30b3` (ledger + reconciliation), `6e870d9` (this doc, first version), `063e8d9` (finalization code, §10); `25410e4` (§10 doc), `172e8d6` (closure code, §11); the §11 doc update is the next commit.
 
 NOTE ON THIS FILE. `P11_M3_CLOSEOUT_RECORD.md` points to `claude/P11_M4_O7_CORE_IMPLEMENTATION_STATUS.md` as the M4 status document, but that file does **not exist** on `p11/m4-external-tool` at `15cb969` (nor in any branch fetched). It is created here, covering only what this slice can verify. Earlier M4 history is in commits `043317f`, `1878ab8`, `78a6571`.
 
@@ -116,7 +116,7 @@ All of §10 is this implementation's **design decisions**, not requirements reco
   - `createDurableExternalToolWiring({adapters, inputSchemas, evidenceStore})` (runtime) is the supported way to enable external tools: always `BlobDispatchLedger`; **no default store**, missing store ⇒ throws before any dispatch. No overload accepts an in-memory ledger.
   - `apps/api` `buildRouter` refuses `externalTools` whose ledger is not durable when `NODE_ENV=production` (`CONFIG_INVALID_VALUE`, startup aborted).
 - Standard-binding conflicts, missing adapter/schema config and the absence of any AI/model fallback for `external_tool` steps are covered by the pre-existing M4 suites (re-run green).
-- Gap: there is still no config/env path by which an operator selects the evidence directory at server start; a host must construct the wiring in code.
+- The evidence directory is now configurable (§11.3). The shipped entrypoint still enables no adapters.
 
 ### 10.2 Reconciliation authorization
 
@@ -156,3 +156,53 @@ Existing tests changed: two adapter tests, one M4 reference-service test and the
 ### 10.7 Remaining blockers
 
 No shipped host/config path enabling external tools; no shared multi-host ledger backend; approval does not bind input values/extra config; reconcile not id-correlated with audit and no completion audit event; `effect.reconcile` naming vs requested `external_effect.reconcile`; retention is report-only; missing specs above; no remote CI evidence; M3 acceptance outstanding.
+
+## 11. Closure slice (commit `172e8d6`): exact-action binding, audit linkage, freshness, configuration
+
+Same caveats as §10: these are design decisions of this implementation, not recovered requirements (O-2, O-3/Review §5.3, N-3, E-1–E-9, O-4 remain unavailable). Implementation complete for this slice ≠ M4 acceptance ≠ production readiness.
+
+### 11.1 What approval binds (actual semantics)
+
+- **Bound into the approval digest** (per external step, `xo.external-step-state.v2` → registry snapshot digest → procedure approval binding): the contract/permission state, binding id, **adapter id, the input schema (canonical), and a digest of the adapter's `securityConfig`** (canonical JSON of every value the adapter declares, key-order independent). Any change to any of those makes the approval stale (`403`, nothing dispatched). Tested: changed endpoint, account, scope list, removed key, added key, changed schema ⇒ stale and zero adapter calls; the same values in a different key order ⇒ still approved and dispatches. The refusal does not echo config values.
+- **`securityConfig` is an adapter-declared contract.** The binding covers only what the adapter lists there; an adapter with security-relevant configuration that omits it is NOT covered. It must be non-secret (represent credentials by an adapter-computed identifier such as a key id or hash); a config that cannot be canonicalized fails dispatcher construction. Absent = `{}` (the reference adapter and test adapters declare none). XO cannot discover undeclared config.
+- **Input VALUES are NOT bound by the approval, and cannot be in the current model.** A procedure definition has no literal inputs: values arrive per execution (`inputBindings` from the start request or earlier step outputs), after approval. Binding approval to specific values requires a payload-approval flow (a human approving a concrete input digest for one execution), which does not exist and was not invented here. What IS bound per dispatch: the write-ahead evidence entry records `inputFingerprint` (SHA-256 of strict canonical input) and `actionDigest` (capability + adapter identity/config digest + input fingerprint), so what was dispatched is provable after the fact and a reconciling human can compare. Equivalent inputs (key order) give the same digests; any value change gives different ones. **Owner decision needed** if input-level pre-approval is required.
+- **Strict canonicalization** (`canonicalJson`): sorted keys; `undefined`, functions, symbols, bigint, non-finite numbers, Date/Map/class instances, sparse arrays, cycles and depth > 32 are refused (never collapsed to `null`). Input that cannot be canonicalized is refused as `invalid_request` before any claim or adapter call. Errors name the path/kind, never the value. Neither input nor config values are written to the ledger (tested by scanning the evidence files).
+
+### 11.2 Ledger ↔ audit correlation and its limits
+
+- Each **reconciliation ledger entry** records `reconciliation.auditCorrelationId` = the `correlationId` of the audit `procedure.attempted` (outcome `attempted`) event written as the durable precondition for that attempt. Each **dispatch** entry (`dispatch_attempted` and terminal) records `auditCorrelationId` = the run's correlation id, which tags that execution's `procedure.*` events. Format-validated (≤128 chars, audit id charset).
+- **Completion audit:** the existing architecture supports it (`AuditService.finalize`; `procedure.attempted` with outcome `completed` under the same correlation id, metadata `decision`/`effectiveState`/`ledgerOutcome`/`stepId`; no free text, no input). No new audit event type was added. Step audit events (`procedure.step.completed` / `procedure.step.failed`) now carry `effectState` read back from the ledger (`confirmed_success`, `outcome_unknown`, `confirmed_failure_no_effect`, `dispatch_attempted`, or `evidence_unreadable`); absent for steps that did not dispatch externally.
+- **Failure behaviour:** attempt event not durable ⇒ 503, nothing reconciled (unchanged). Completion event fails ⇒ the ledger entry stays (append-only, never rolled back) and the response reports `auditCompletion: "unconfirmed"`; the entry still names the attempt event, so it remains traceable. Tested.
+- **No atomicity is claimed.** Ledger and audit are separate stores written in sequence: attempt (audit) → ledger entry → completion (audit). A crash between steps can leave an attempt event with no ledger entry, or a ledger entry with no completion event; both are detectable by correlation id. There is no cross-store transaction and none was built.
+- The earlier §10.2 statement that reconciliation is "not correlated by id" is superseded by this section.
+
+### 11.3 Durable evidence configuration
+
+- `XO_EXTERNAL_EFFECTS_DIR` → `ApiConfig.externalEffectsDir` (`loadConfig`). **No default** (unset = not configured; control characters abort). `createConfiguredExternalToolWiring(config, {adapters, inputSchemas})` (exported from `@xo/api`) builds the durable wiring over `LocalFsBlobStore(dir)` and **throws if the directory is unset** — before anything can dispatch. The production guard (non-durable ledger refused when `NODE_ENV=production`) is unchanged.
+- The shipped entrypoint (`apps/api/src/index.ts`) still supplies **no adapters**, so setting the variable alone enables nothing; no production entrypoint was invented. Supported scope: **one host, or several processes sharing one local filesystem** (the store's `putIfAbsent` is atomic per filesystem only). Not supported/evidenced: network filesystems, multiple hosts, any shared database. A future backend must meet §10.5.
+
+### 11.4 Freshness semantics and clock assumptions
+
+- The ledger stamps `recordedAt` and the procedure approval stamps `approvedAt`, both `Date.prototype.toISOString()` (UTC, ms) from the host clock. The rule now accepts **only** that exact form (`YYYY-MM-DDTHH:mm:ss.sssZ`, exact round trip); date-only, offsets, missing ms, impossible dates and non-strings are refused. An approval must be **strictly later** than the settlement; **neither** stamp may be later than the dispatcher's clock (a forged/skewed future stamp could otherwise make a stale approval look fresh forever); a no-effect settlement with an unparsable stamp is treated as newest and blocks; an unparsable success never supersedes. Every ambiguous case ⇒ `fresh_approval_required`, nothing dispatched. The dispatcher takes an injectable clock (tests).
+- **Remaining assumptions:** approval store, ledger and dispatcher share one host clock (single host / one shared filesystem); a backwards clock jump is caught only when it makes a stamp appear in the future; same-millisecond approval and settlement are refused (strict `>`). Correct multi-host freshness needs a logical order (e.g. a ledger sequence recorded in the approval, or a store-issued monotonic token), which needs shared infrastructure that does not exist; not built.
+
+### 11.5 Permission identifier
+
+The permission grammar is `^[a-z][a-z0-9]*\.[a-z][a-z0-9]*(-[a-z0-9]+)*$` over a closed domain list: the domain segment cannot contain a hyphen or underscore, so `external-effect.reconcile` and `external_effect.reconcile` are **invalid**, and only registered domains pass. **`effect.reconcile` is retained** (the closest valid id; no taxonomy expansion beyond the single `effect` domain added earlier). Tested in `permission-id.test.ts`.
+
+### 11.6 Tests run (local, after commit `172e8d6`)
+
+| Command                                                                           | Result                                                                                                                                                                    |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cd packages/adapters && npm test`                                                | 50 / 50 (new `action-binding` 7, +2 freshness in `fresh-approval`)                                                                                                        |
+| `cd packages/permissions && npm test`                                             | 147 / 147                                                                                                                                                                 |
+| `cd packages/runtime && npm test`                                                 | 487 / 487                                                                                                                                                                 |
+| `cd apps/api && npm test`                                                         | 434 / 434 (new: 2 config-binding + 1 equivalent-config in `external-tool-procedure-m4`, 3 audit-linkage in `external-effect-durable-m4`, 3 in `external-tools-config-m4`) |
+| `npx tsc -b tsconfig.json`                                                        | exit 0                                                                                                                                                                    |
+| `npx eslint <changed .ts> --max-warnings=0`; `npx prettier --check <changed .ts>` | clean                                                                                                                                                                     |
+
+Not run: CLI suite (no CLI-facing contract changed), other workspaces, full-repo lint, any remote CI. One test in `external-effect-durable-m4` was adjusted (the attempt-event filter now also matches outcome `attempted`, because a completion event of the same type now exists); two harness clocks were set ahead so test approval stamps are not in the dispatcher's future.
+
+### 11.7 Remaining blockers / outstanding acceptance
+
+Input-level pre-approval (needs an owner-decided payload-approval flow); `securityConfig` is adapter-declared; no cross-store atomicity between ledger and audit; multi-host backend and logical-clock freshness absent; entrypoint enables no adapters; retention report-only; missing specs above; no remote CI evidence; M3 acceptance outstanding. M4 acceptance has not been decided by the owner.
