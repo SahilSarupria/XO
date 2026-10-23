@@ -443,6 +443,12 @@ test('a tampered trailing entry is never adopted or overwritten: appends are ref
         head.seq,
         'the head did not move past it',
       );
+      const verify = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{
+        ok: boolean;
+        brokenAt?: { seq: number; reason: string };
+      }>();
+      assert.equal(verify.ok, false);
+      assert.deepEqual(verify.brokenAt, { seq: head.seq + 1, reason: 'bad_hash' });
     } finally {
       await server.stop();
     }
