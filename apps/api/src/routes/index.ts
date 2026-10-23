@@ -16,6 +16,7 @@ import { registerNotificationRoutes } from './notification-routes.js';
 import { registerInboxRoutes } from './inbox-routes.js';
 import { registerLibraryRoutes } from './library-routes.js';
 import { registerChatRoutes, type ChatRouteOptions } from './chat-routes.js';
+import { registerWorkflowDefinitionRoutes } from './workflow-definition-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { openApiDocument } from '../openapi.js';
@@ -44,6 +45,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerLibraryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerWorkflowDefinitionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerChatRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {});
   registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {});
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
