@@ -25,7 +25,13 @@ export interface AuditExportPack {
     readonly createdAt: string;
   };
   readonly accessControl: {
-    readonly members: readonly { readonly identityId: string; readonly role: string; readonly isOwner: boolean; readonly permissions: readonly string[]; readonly addedAt?: string }[];
+    readonly members: readonly {
+      readonly identityId: string;
+      readonly role: string;
+      readonly isOwner: boolean;
+      readonly permissions: readonly string[];
+      readonly addedAt?: string;
+    }[];
   };
   /** `minimumDays` is `null` unless the operator declared a policy (`XO_API_AUDIT_RETENTION_DAYS`); the server never invents one. */
   readonly retention: { readonly minimumDays: number | null; readonly deletionSupported: false; readonly enforcedByServer: false };
@@ -44,12 +50,20 @@ export async function buildAuditExport(workspace: WorkspaceRecord, log: FsAuditL
       workspaceId: workspace.workspaceId,
       ...(workspace.name !== undefined ? { name: workspace.name } : {}),
       kind: workspace.kind ?? 'team',
-      ...(region !== undefined ? { region, ...(regionLabel(region) !== undefined ? { regionLabel: regionLabel(region) as string } : {}) } : {}),
+      ...(region !== undefined
+        ? { region, ...(regionLabel(region) !== undefined ? { regionLabel: regionLabel(region) as string } : {}) }
+        : {}),
       createdAt: workspace.createdAt,
     },
     accessControl: {
       members: [
-        { identityId: workspace.identityId, role: 'admin', isOwner: true, permissions: permissionsOf('admin'), addedAt: workspace.createdAt },
+        {
+          identityId: workspace.identityId,
+          role: 'admin',
+          isOwner: true,
+          permissions: permissionsOf('admin'),
+          addedAt: workspace.createdAt,
+        },
         ...(workspace.members ?? []).map((m) => ({
           identityId: m.identityId,
           role: m.role,
@@ -81,7 +95,9 @@ function csvCell(value: unknown): string {
 export function auditExportToCsv(pack: AuditExportPack): string {
   const header = ['seq', 'at', 'actor', 'actor_role', 'event', 'target_kind', 'target_id', 'target_label', 'result', 'detail', 'hash'];
   const rows = pack.entries.map((e) =>
-    [e.seq, e.at, e.actor.identityId, e.actor.role, e.event, e.target?.kind, e.target?.id, e.target?.label, e.result, e.detail, e.hash].map(csvCell).join(','),
+    [e.seq, e.at, e.actor.identityId, e.actor.role, e.event, e.target?.kind, e.target?.id, e.target?.label, e.result, e.detail, e.hash]
+      .map(csvCell)
+      .join(','),
   );
   return [header.join(','), ...rows].join('\n') + '\n';
 }

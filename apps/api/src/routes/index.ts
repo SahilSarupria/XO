@@ -46,8 +46,18 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerLibraryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerWorkflowDefinitionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerChatRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {});
-  registerSourceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {});
+  registerChatRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {},
+  );
+  registerSourceRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {},
+  );
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);

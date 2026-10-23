@@ -33,7 +33,9 @@ interface AuditEventWire {
 
 async function setup(dirs: Dirs) {
   const server = await TestServer.start(dirs);
-  const created = (await server.request('POST', '/workspaces', { name: 'Aastha', kind: 'team', region: 'in-mumbai' })).json<{ workspaceId: string }>();
+  const created = (await server.request('POST', '/workspaces', { name: 'Aastha', kind: 'team', region: 'in-mumbai' })).json<{
+    workspaceId: string;
+  }>();
   const ws = created.workspaceId;
   const reviewer = await server.issueAdditionalIdentity('meera-reviewer');
   const viewer = await server.issueAdditionalIdentity('rahul-viewer');
@@ -90,14 +92,28 @@ test('members see the workspace in their list; outsiders get 404 everywhere', as
     const { server, ws, viewer, outsider } = await setup(dirs);
     try {
       const list = (await server.request('GET', '/workspaces', undefined, as(viewer))).json<{ workspaces: { workspaceId: string }[] }>();
-      assert.deepEqual(list.workspaces.map((w) => w.workspaceId), [ws]);
+      assert.deepEqual(
+        list.workspaces.map((w) => w.workspaceId),
+        [ws],
+      );
       assert.equal((await server.request('GET', `/workspaces/${ws}`, undefined, as(viewer))).status, 200);
 
-      assert.equal((await server.request('GET', '/workspaces', undefined, as(outsider))).json<{ workspaces: unknown[] }>().workspaces.length, 0);
-      for (const path of [`/workspaces/${ws}`, `/workspaces/${ws}/members`, `/workspaces/${ws}/audit/events`, `/workspaces/${ws}/sources`]) {
+      assert.equal(
+        (await server.request('GET', '/workspaces', undefined, as(outsider))).json<{ workspaces: unknown[] }>().workspaces.length,
+        0,
+      );
+      for (const path of [
+        `/workspaces/${ws}`,
+        `/workspaces/${ws}/members`,
+        `/workspaces/${ws}/audit/events`,
+        `/workspaces/${ws}/sources`,
+      ]) {
         assert.equal((await server.request('GET', path, undefined, as(outsider))).status, 404, path);
       }
-      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'x', role: 'admin' }, as(outsider))).status, 404);
+      assert.equal(
+        (await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'x', role: 'admin' }, as(outsider))).status,
+        404,
+      );
     } finally {
       await server.stop();
     }
@@ -108,14 +124,24 @@ test('member management: validation, duplicates, owner protection, role change, 
   await withDirs(async (dirs) => {
     const { server, ws, viewer } = await setup(dirs);
     try {
-      const list = (await server.request('GET', `/workspaces/${ws}/members`)).json<{ total: number; roleCounts: Record<string, number>; members: { identityId: string; isOwner: boolean }[] }>();
+      const list = (await server.request('GET', `/workspaces/${ws}/members`)).json<{
+        total: number;
+        roleCounts: Record<string, number>;
+        members: { identityId: string; isOwner: boolean }[];
+      }>();
       assert.equal(list.total, 4);
       assert.deepEqual(list.roleCounts, { admin: 1, publisher: 1, reviewer: 1, viewer: 1 });
       assert.equal(list.members[0]?.isOwner, true);
 
       assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'rahul-viewer', role: 'viewer' })).status, 409);
-      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: server.identityId, role: 'viewer' })).status, 409);
-      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'bad id with spaces', role: 'viewer' })).status, 400);
+      assert.equal(
+        (await server.request('POST', `/workspaces/${ws}/members`, { identityId: server.identityId, role: 'viewer' })).status,
+        409,
+      );
+      assert.equal(
+        (await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'bad id with spaces', role: 'viewer' })).status,
+        400,
+      );
       assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'new-one', role: 'superuser' })).status, 400);
 
       assert.equal((await server.request('PATCH', `/workspaces/${ws}/members/${server.identityId}`, { role: 'viewer' })).status, 412);
@@ -127,7 +153,11 @@ test('member management: validation, duplicates, owner protection, role change, 
       assert.equal((await server.request('GET', `/workspaces/${ws}`, undefined, as(viewer))).json<{ role: string }>().role, 'publisher');
 
       assert.equal((await server.request('DELETE', `/workspaces/${ws}/members/rahul-viewer`)).status, 200);
-      assert.equal((await server.request('GET', `/workspaces/${ws}`, undefined, as(viewer))).status, 404, 'a removed member loses access immediately');
+      assert.equal(
+        (await server.request('GET', `/workspaces/${ws}`, undefined, as(viewer))).status,
+        404,
+        'a removed member loses access immediately',
+      );
     } finally {
       await server.stop();
     }
@@ -151,12 +181,18 @@ test('roles are enforced: viewer/reviewer cannot upload or manage; denials are a
     const { server, ws, viewer, reviewer, publisher } = await setup(dirs);
     try {
       const upload = (headers: Record<string, string>) =>
-        server.request('POST', `/workspaces/${ws}/sources?filename=claims.txt`, Buffer.from('claims policy text'), { 'content-type': 'text/plain', ...headers });
+        server.request('POST', `/workspaces/${ws}/sources?filename=claims.txt`, Buffer.from('claims policy text'), {
+          'content-type': 'text/plain',
+          ...headers,
+        });
 
       const denied = await upload(as(viewer));
       assert.equal(denied.status, 403);
       assert.equal((await upload(as(reviewer))).status, 403);
-      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'z', role: 'viewer' }, as(publisher))).status, 403);
+      assert.equal(
+        (await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'z', role: 'viewer' }, as(publisher))).status,
+        403,
+      );
       assert.equal((await server.request('GET', `/workspaces/${ws}/audit/events`, undefined, as(viewer))).status, 403);
 
       const ok = await upload(as(publisher));
@@ -168,7 +204,9 @@ test('roles are enforced: viewer/reviewer cannot upload or manage; denials are a
       assert.ok(who.includes('meera-reviewer:reviewer'));
       assert.ok(events.events.every((e) => e.event === 'access.denied'));
 
-      const uploaded = (await server.request('GET', `/workspaces/${ws}/audit/events?event=source.uploaded`)).json<{ events: AuditEventWire[] }>();
+      const uploaded = (await server.request('GET', `/workspaces/${ws}/audit/events?event=source.uploaded`)).json<{
+        events: AuditEventWire[];
+      }>();
       assert.equal(uploaded.events.length, 1);
       assert.equal(uploaded.events[0]?.actor.identityId, 'pri-publisher', 'the real caller is attributed, not the owner');
       assert.equal(uploaded.events[0]?.actor.role, 'publisher');
@@ -196,20 +234,31 @@ test('audit log: newest-first paging, filters, and a verifiable hash chain', asy
     const { server, ws } = await setup(dirs);
     try {
       for (let i = 0; i < 3; i++) {
-        await server.request('POST', `/workspaces/${ws}/sources?filename=f${i}.txt`, Buffer.from(`doc ${i}`), { 'content-type': 'text/plain' });
+        await server.request('POST', `/workspaces/${ws}/sources?filename=f${i}.txt`, Buffer.from(`doc ${i}`), {
+          'content-type': 'text/plain',
+        });
       }
-      const page1 = (await server.request('GET', `/workspaces/${ws}/audit/events?limit=2`)).json<{ events: AuditEventWire[]; nextBefore?: number }>();
+      const page1 = (await server.request('GET', `/workspaces/${ws}/audit/events?limit=2`)).json<{
+        events: AuditEventWire[];
+        nextBefore?: number;
+      }>();
       assert.equal(page1.events.length, 2);
       assert.ok(page1.events[0]!.seq > page1.events[1]!.seq);
       assert.ok(page1.nextBefore !== undefined);
-      const page2 = (await server.request('GET', `/workspaces/${ws}/audit/events?limit=100&before=${page1.nextBefore}`)).json<{ events: AuditEventWire[] }>();
+      const page2 = (await server.request('GET', `/workspaces/${ws}/audit/events?limit=100&before=${page1.nextBefore}`)).json<{
+        events: AuditEventWire[];
+      }>();
       assert.ok(page2.events.every((e) => e.seq < (page1.nextBefore as number)));
 
       assert.equal((await server.request('GET', `/workspaces/${ws}/audit/events?event=nope`)).status, 400);
       assert.equal((await server.request('GET', `/workspaces/${ws}/audit/events?limit=0`)).status, 400);
       assert.equal((await server.request('GET', `/workspaces/${ws}/audit/events?since=not-a-date`)).status, 400);
 
-      const verified = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean; entries: number; retention: { deletionSupported: boolean } }>();
+      const verified = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{
+        ok: boolean;
+        entries: number;
+        retention: { deletionSupported: boolean };
+      }>();
       assert.equal(verified.ok, true);
       assert.ok(verified.entries >= 7);
       assert.equal(verified.retention.deletionSupported, false);
@@ -232,7 +281,10 @@ test('audit verification detects an edited entry and a removed entry', async () 
       const edited = JSON.parse(original) as { result: string };
       edited.result = 'denied';
       await writeFile(target, JSON.stringify(edited));
-      const bad = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean; brokenAt?: { seq: number; reason: string } }>();
+      const bad = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{
+        ok: boolean;
+        brokenAt?: { seq: number; reason: string };
+      }>();
       assert.equal(bad.ok, false);
       assert.equal(bad.brokenAt?.reason, 'bad_hash');
 
@@ -240,7 +292,10 @@ test('audit verification detects an edited entry and a removed entry', async () 
       assert.equal((await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean }>().ok, true);
 
       await rm(join(entriesDir, files[2]!));
-      const missing = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean; brokenAt?: { reason: string } }>();
+      const missing = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{
+        ok: boolean;
+        brokenAt?: { reason: string };
+      }>();
       assert.equal(missing.ok, false);
       assert.equal(missing.brokenAt?.reason, 'missing_entry');
     } finally {
@@ -299,7 +354,10 @@ test('csv export neutralizes spreadsheet formulas and quotes separators', () => 
 });
 
 test('canonicalJson is key-order independent', () => {
-  assert.equal(canonicalJson({ b: 1, a: { d: [1, { z: 1, y: 2 }], c: undefined } }), canonicalJson({ a: { c: undefined, d: [1, { y: 2, z: 1 }] }, b: 1 }));
+  assert.equal(
+    canonicalJson({ b: 1, a: { d: [1, { z: 1, y: 2 }], c: undefined } }),
+    canonicalJson({ a: { c: undefined, d: [1, { y: 2, z: 1 }] }, b: 1 }),
+  );
 });
 
 test('retention is only what the operator declares', async () => {
@@ -307,5 +365,6 @@ test('retention is only what the operator declares', async () => {
   assert.equal(declaredRetentionDays({}), null);
   assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: '' }), null);
   assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: '2555' }), 2555);
-  for (const bad of ['0', '-5', '1.5', 'seven years', '99999']) assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: bad }), null, bad);
+  for (const bad of ['0', '-5', '1.5', 'seven years', '99999'])
+    assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: bad }), null, bad);
 });

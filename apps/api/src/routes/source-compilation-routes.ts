@@ -3,7 +3,9 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { callerIdentityId, requirePermission,
+import {
+  callerIdentityId,
+  requirePermission,
   requireOwnedWorkspace,
   workspaceSourcesStore,
   workspaceCompilationsStore,

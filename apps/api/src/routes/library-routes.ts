@@ -62,7 +62,13 @@ interface LibraryItem {
   };
 }
 
-function toItem(record: PackageRecord, installed: ReadonlySet<string>, publishers: Readonly<Record<string, string>>, me: { identityId: string; creatorDid?: string }, bench: BenchmarkSummary): LibraryItem {
+function toItem(
+  record: PackageRecord,
+  installed: ReadonlySet<string>,
+  publishers: Readonly<Record<string, string>>,
+  me: { identityId: string; creatorDid?: string },
+  bench: BenchmarkSummary,
+): LibraryItem {
   const m = record.manifest;
   const caps = m.capabilities ?? [];
   return {
@@ -97,7 +103,8 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
   async function listLibrary(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const scope = (req.query.get('scope') ?? 'all') as Scope;
-    if (scope !== 'all' && scope !== 'installed' && scope !== 'mine') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"scope" must be "all", "installed" or "mine"');
+    if (scope !== 'all' && scope !== 'installed' && scope !== 'mine')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"scope" must be "all", "installed" or "mine"');
     const q = req.query.get('q');
     const c = ctx(workspace);
 
@@ -105,7 +112,10 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
     const installedList = await c.installer.listInstalled();
     const installed = new Set(installedList.map((i) => `${i.name}@${i.version}`));
     const publishers = await readPublishers(c.state);
-    const me = { identityId: callerIdentityId(req), ...(req.identity?.creatorDid !== undefined ? { creatorDid: req.identity.creatorDid } : {}) };
+    const me = {
+      identityId: callerIdentityId(req),
+      ...(req.identity?.creatorDid !== undefined ? { creatorDid: req.identity.creatorDid } : {}),
+    };
 
     const items: LibraryItem[] = [];
     for (const record of records) {
@@ -131,7 +141,10 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
     const runs = await c.registry.listBenchmarksForPackage(id);
     const bench = summarizeBenchmarks(runs);
     const installed = new Set((await c.installer.listInstalled()).map((i) => `${i.name}@${i.version}`));
-    const me = { identityId: callerIdentityId(req), ...(req.identity?.creatorDid !== undefined ? { creatorDid: req.identity.creatorDid } : {}) };
+    const me = {
+      identityId: callerIdentityId(req),
+      ...(req.identity?.creatorDid !== undefined ? { creatorDid: req.identity.creatorDid } : {}),
+    };
     const item = toItem(found.value, installed, await readPublishers(c.state), me, bench);
     const manifest = found.value.manifest;
     return json(200, {
@@ -157,8 +170,10 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
     const bodyResult = await req.json<{ packageId?: unknown; force?: unknown }>();
     if (!bodyResult.ok) throw bodyResult.error;
     const { packageId, force } = bodyResult.value ?? {};
-    if (typeof packageId !== 'string' || packageId.length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"packageId" (string) is required');
-    if (force !== undefined && typeof force !== 'boolean') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"force", if present, must be a boolean');
+    if (typeof packageId !== 'string' || packageId.length === 0)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"packageId" (string) is required');
+    if (force !== undefined && typeof force !== 'boolean')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"force", if present, must be a boolean');
 
     const c = ctx(workspace);
     const record = await c.registry.get(packageId);
@@ -166,7 +181,10 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
 
     const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
     if (settings.trust.requireSignedPackages && (record.value.manifest.signatures ?? []).length === 0) {
-      throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this workspace requires signed packages (Settings → Trust and signing); this package carries no signatures');
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'this workspace requires signed packages (Settings → Trust and signing); this package carries no signatures',
+      );
     }
     const bytes = await loadArchive(c.archives, packageId);
     if (bytes === undefined) {
@@ -199,7 +217,11 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
     if (name === undefined || version === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing name/version');
     const result = await ctx(workspace).installer.uninstall(name, version);
     if (!result.ok) throw result.error;
-    await recordAudit(req, workspace, dataConfig, { event: 'xo.uninstalled', result: 'succeeded', target: { kind: 'xo', id: `${name}@${version}`, label: `${name}@${version}` } });
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'xo.uninstalled',
+      result: 'succeeded',
+      target: { kind: 'xo', id: `${name}@${version}`, label: `${name}@${version}` },
+    });
     return json(200, { uninstalled: `${name}@${version}` });
   }
 

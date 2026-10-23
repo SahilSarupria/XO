@@ -177,7 +177,10 @@ export function applySettingsPatch(current: WorkspaceSettings, patch: SettingsPa
     updatedBy,
   };
   if (next.airGapped) {
-    for (const [slot, choice] of [['primary', next.model.primary], ['fallback', next.model.fallback]] as const) {
+    for (const [slot, choice] of [
+      ['primary', next.model.primary],
+      ['fallback', next.model.fallback],
+    ] as const) {
       if (choice !== null && !LOCAL_PROVIDER_IDS.has(choice.provider)) {
         throw new XoError(
           ErrorCode.PRECONDITION_FAILED,

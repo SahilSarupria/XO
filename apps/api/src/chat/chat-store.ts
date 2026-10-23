@@ -103,12 +103,21 @@ export class FsChatStore {
   }
 
   /** Appends messages atomically (all or none). Returns undefined when the thread does not exist or is full. */
-  append(threadId: string, messages: readonly Omit<ChatMessage, 'messageId' | 'at'>[], now: Date, retitle?: string): Promise<ChatThread | undefined> {
+  append(
+    threadId: string,
+    messages: readonly Omit<ChatMessage, 'messageId' | 'at'>[],
+    now: Date,
+    retitle?: string,
+  ): Promise<ChatThread | undefined> {
     return this.locked(threadId, async () => {
       const current = await this.get(threadId);
       if (current === undefined) return undefined;
       if (current.messages.length + messages.length > MAX_MESSAGES_PER_THREAD) return undefined;
-      const added: ChatMessage[] = messages.map((m) => ({ ...m, messageId: `msg_${randomUUID().replace(/-/g, '')}`, at: now.toISOString() }));
+      const added: ChatMessage[] = messages.map((m) => ({
+        ...m,
+        messageId: `msg_${randomUUID().replace(/-/g, '')}`,
+        at: now.toISOString(),
+      }));
       const next: ChatThread = {
         ...current,
         ...(retitle !== undefined ? { title: retitle } : {}),

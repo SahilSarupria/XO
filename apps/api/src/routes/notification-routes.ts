@@ -39,7 +39,11 @@ const RUN_EVENTS: ReadonlySet<string> = new Set(['execution.created', 'workflow.
 export function classify(entry: AuditEntry, settings: WorkspaceSettings): NotificationKind | undefined {
   if (entry.result === 'escalated' && settings.notifications.onEscalation) return 'escalation';
   if (entry.result === 'failed' && RUN_EVENTS.has(entry.event) && settings.notifications.onRunFailure) return 'run_failure';
-  if ((entry.event === 'workflow.started' || entry.event === 'workflow.resumed') && entry.detail?.['status'] === 'succeeded' && settings.notifications.onWorkflowComplete) {
+  if (
+    (entry.event === 'workflow.started' || entry.event === 'workflow.resumed') &&
+    entry.detail?.['status'] === 'succeeded' &&
+    settings.notifications.onWorkflowComplete
+  ) {
     return 'workflow_complete';
   }
   return undefined;
@@ -76,7 +80,8 @@ export function registerNotificationRoutes(router: Router, workspaceStore: Works
     const throughSeq = await readMarker(workspace, identityId);
     const limitRaw = req.query.get('limit');
     const limit = limitRaw === null ? 50 : Number(limitRaw);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"limit" must be an integer from 1 to 200');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"limit" must be an integer from 1 to 200');
 
     const log = new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId);
     const page = await log.list({ limit: 500 });
@@ -115,7 +120,9 @@ export function registerNotificationRoutes(router: Router, workspaceStore: Works
     const bounded = Math.min(throughSeq, head.seq);
     const current = await readMarker(workspace, identityId);
     const next = Math.max(current, bounded); // a read marker only moves forward
-    const put = await workspaceStateStore(workspace, dataConfig).put(readKey(identityId), JSON.stringify({ throughSeq: next }), { contentType: 'application/json' });
+    const put = await workspaceStateStore(workspace, dataConfig).put(readKey(identityId), JSON.stringify({ throughSeq: next }), {
+      contentType: 'application/json',
+    });
     if (!put.ok) throw put.error;
     return json(200, { readThroughSeq: next });
   }

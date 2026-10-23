@@ -10,7 +10,14 @@ import {
   workspaceAuditStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
-import { isWorkspaceRole, WORKSPACE_ROLES, type WorkspaceMember, type WorkspaceRecord, type WorkspaceRole, type WorkspaceStore } from '../workspace/workspace.js';
+import {
+  isWorkspaceRole,
+  WORKSPACE_ROLES,
+  type WorkspaceMember,
+  type WorkspaceRecord,
+  type WorkspaceRole,
+  type WorkspaceStore,
+} from '../workspace/workspace.js';
 import { permissionsOf } from '../workspace/permissions.js';
 import { REGIONS } from '../workspace/regions.js';
 import { FsAuditLog } from '../audit/fs-audit-log.js';
@@ -65,16 +72,14 @@ interface MemberWire {
 function membersWire(workspace: WorkspaceRecord): readonly MemberWire[] {
   return [
     { identityId: workspace.identityId, role: 'admin', isOwner: true, addedAt: workspace.createdAt },
-    ...(workspace.members ?? []).map(
-      (m): MemberWire => ({
-        identityId: m.identityId,
-        role: m.role,
-        isOwner: false,
-        ...(m.displayName !== undefined ? { displayName: m.displayName } : {}),
-        ...(m.email !== undefined ? { email: m.email } : {}),
-        addedAt: m.addedAt,
-      }),
-    ),
+    ...(workspace.members ?? []).map((m): MemberWire => ({
+      identityId: m.identityId,
+      role: m.role,
+      isOwner: false,
+      ...(m.displayName !== undefined ? { displayName: m.displayName } : {}),
+      ...(m.email !== undefined ? { email: m.email } : {}),
+      addedAt: m.addedAt,
+    })),
   ];
 }
 
@@ -86,7 +91,10 @@ function roleCounts(members: readonly MemberWire[]): Record<WorkspaceRole, numbe
 
 export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   // ---- regions (declaration vocabulary)
-  router.get('/regions', guarded(async () => json(200, { regions: REGIONS })));
+  router.get(
+    '/regions',
+    guarded(async () => json(200, { regions: REGIONS })),
+  );
 
   // ---- members + roles
   async function listMembers(req: ApiRequest): Promise<ApiResponse> {
@@ -181,7 +189,9 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
     }
     const existing = (workspace.members ?? []).find((m) => m.identityId === identityId);
     if (existing === undefined) throw new NotFoundError(`member "${identityId}"`);
-    const updated = await workspaceStore.update(workspace.workspaceId, { members: (workspace.members ?? []).filter((m) => m.identityId !== identityId) });
+    const updated = await workspaceStore.update(workspace.workspaceId, {
+      members: (workspace.members ?? []).filter((m) => m.identityId !== identityId),
+    });
     if (!updated.ok) throw updated.error;
     await recordAudit(req, updated.value, dataConfig, {
       event: 'member.removed',
@@ -212,13 +222,16 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
     if (result !== null && !isAuditResult(result)) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown audit result "${result}"`);
     const limitRaw = q.get('limit');
     const limit = limitRaw === null ? undefined : Number(limitRaw);
-    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"limit" must be a positive integer');
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"limit" must be a positive integer');
     const beforeRaw = q.get('before');
     const before = beforeRaw === null ? undefined : Number(beforeRaw);
-    if (before !== undefined && (!Number.isInteger(before) || before < 1)) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"before" must be a positive integer');
+    if (before !== undefined && (!Number.isInteger(before) || before < 1))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"before" must be a positive integer');
     for (const name of ['since', 'until']) {
       const v = q.get(name);
-      if (v !== null && Number.isNaN(Date.parse(v))) throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${name}" must be an ISO-8601 timestamp`);
+      if (v !== null && Number.isNaN(Date.parse(v)))
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${name}" must be an ISO-8601 timestamp`);
     }
     const page = await auditLog(workspace).list({
       ...(event !== null ? { event } : {}),
@@ -261,7 +274,10 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
       return {
         status: 200,
         body: Buffer.from(auditExportToCsv(pack), 'utf8'),
-        headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="audit-${workspace.workspaceId}.csv"` },
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': `attachment; filename="audit-${workspace.workspaceId}.csv"`,
+        },
       };
     }
     return json(200, pack, { 'content-disposition': `attachment; filename="audit-${workspace.workspaceId}.json"` });

@@ -49,12 +49,21 @@ test('library lists everything in the workspace registry (no search term needed)
     assert.deepEqual(all.counts, { all: 2, installed: 0, mine: 1 });
 
     const mine = (await server.request('GET', `${base}/library?scope=mine`)).json<{ items: Item[] }>();
-    assert.deepEqual(mine.items.map((i) => i.id), [a]);
+    assert.deepEqual(
+      mine.items.map((i) => i.id),
+      [a],
+    );
     const mineOther = (await server.request('GET', `${base}/library?scope=mine`, undefined, as(other))).json<{ items: Item[] }>();
-    assert.deepEqual(mineOther.items.map((i) => i.id), [b]);
+    assert.deepEqual(
+      mineOther.items.map((i) => i.id),
+      [b],
+    );
 
     const q = (await server.request('GET', `${base}/library?q=beta`)).json<{ items: Item[] }>();
-    assert.deepEqual(q.items.map((i) => i.name), ['beta_rules']);
+    assert.deepEqual(
+      q.items.map((i) => i.name),
+      ['beta_rules'],
+    );
     assert.equal((await server.request('GET', `${base}/library?scope=weird`)).status, 400);
   });
 });
@@ -65,8 +74,15 @@ test('trust block reports only what records say: unsigned, no benchmarks, never 
     let item = (await server.request('GET', `${base}/library`)).json<{ items: Item[] }>().items[0]!;
     assert.deepEqual(item.trust, { signed: false, signerCount: 0, benchmarked: false, overallScore: null, independentlyVerified: false });
 
-    for (const [category, score] of [['knowledge', 90], ['safety', 96], ['knowledge', 94]] as const) {
-      assert.equal((await server.request('POST', `${base}/registry/packages/${encodeURIComponent(id)}/benchmarks`, { category, score })).status, 201);
+    for (const [category, score] of [
+      ['knowledge', 90],
+      ['safety', 96],
+      ['knowledge', 94],
+    ] as const) {
+      assert.equal(
+        (await server.request('POST', `${base}/registry/packages/${encodeURIComponent(id)}/benchmarks`, { category, score })).status,
+        201,
+      );
     }
     item = (await server.request('GET', `${base}/library`)).json<{ items: Item[] }>().items[0]!;
     assert.equal(item.trust.benchmarked, true);
@@ -89,7 +105,10 @@ test('install from the registry, appears as installed, can be uninstalled; dupli
     assert.equal(first.status, 201, first.bodyText);
 
     const lib = (await server.request('GET', `${base}/library?scope=installed`)).json<{ items: Item[] }>();
-    assert.deepEqual(lib.items.map((i) => i.name), ['delta']);
+    assert.deepEqual(
+      lib.items.map((i) => i.name),
+      ['delta'],
+    );
     assert.equal((await server.request('GET', `${base}/library/installs`)).json<{ installs: unknown[] }>().installs.length, 1);
 
     const dup = await server.request('POST', `${base}/library/installs`, { packageId: id });

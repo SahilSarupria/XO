@@ -161,7 +161,8 @@ export class FsAuditLog {
       if (entry.seq !== seq) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_sequence' } };
       if (entry.prevHash !== prev) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_link' } };
       const { hash, ...rest } = entry;
-      if (computeEntryHash(rest) !== hash) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_hash' } };
+      if (computeEntryHash(rest) !== hash)
+        return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_hash' } };
       prev = hash;
     }
     if (prev !== head.hash) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq: head.seq, reason: 'bad_link' } };

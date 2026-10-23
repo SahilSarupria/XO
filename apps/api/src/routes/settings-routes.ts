@@ -40,7 +40,9 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
 }
 
 /** Which model providers this server has credentials for. Names only — a key is never returned, logged or echoed. */
-export function configuredProviders(env: Readonly<Record<string, string | undefined>> = process.env): readonly { readonly id: string; readonly configured: boolean; readonly local: boolean }[] {
+export function configuredProviders(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): readonly { readonly id: string; readonly configured: boolean; readonly local: boolean }[] {
   const has = (...names: string[]) => names.every((n) => (env[n] ?? '').length > 0);
   const configured: Record<string, boolean> = {
     anthropic: has('ANTHROPIC_API_KEY'),
@@ -65,7 +67,11 @@ export function availableRuntimeLocations(env: Readonly<Record<string, string | 
 /** Says, per setting, whether the server enforces it or merely records it. Nothing here is aspirational. */
 function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings) {
   return {
-    runtime: { enforced: false, note: 'Records where the operator runs this workspace. The server runs on the machine it is deployed on; choosing a location it does not offer is refused.', availableLocations: availableRuntimeLocations() },
+    runtime: {
+      enforced: false,
+      note: 'Records where the operator runs this workspace. The server runs on the machine it is deployed on; choosing a location it does not offer is refused.',
+      availableLocations: availableRuntimeLocations(),
+    },
     model: {
       enforced: true,
       note: 'Used by chat. A provider with no server-side credential is reported unconfigured and chat refuses until it is set up.',
@@ -79,20 +85,32 @@ function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings)
     residency: {
       enforced: false,
       declared: workspace.region ?? null,
-      label: workspace.region !== undefined ? regionLabel(workspace.region) ?? null : null,
+      label: workspace.region !== undefined ? (regionLabel(workspace.region) ?? null) : null,
       note: 'Declarative. It is recorded on the workspace and in audit exports; the server does not prove or control where bytes are physically stored.',
     },
     trust: {
-      requireSignedPackages: { enforced: true, note: 'Registry publish and XO install refuse packages with no signatures. Signature validity is checked by @xo/package-sdk, not here.' },
-      requireCompilerAttestation: { enforced: false, available: false, note: 'This server has no compiler-attestation facility; the option is not offered.' },
+      requireSignedPackages: {
+        enforced: true,
+        note: 'Registry publish and XO install refuse packages with no signatures. Signature validity is checked by @xo/package-sdk, not here.',
+      },
+      requireCompilerAttestation: {
+        enforced: false,
+        available: false,
+        note: 'This server has no compiler-attestation facility; the option is not offered.',
+      },
     },
-    notifications: { enforced: true, delivery: 'in_app', note: 'Preferences filter GET /notifications. There is no email, push or webhook delivery.' },
+    notifications: {
+      enforced: true,
+      delivery: 'in_app',
+      note: 'Preferences filter GET /notifications. There is no email, push or webhook delivery.',
+    },
     settingsRevision: settings.revision,
   };
 }
 
 export function registerSettingsRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
-  const settingsStoreFor = (workspace: WorkspaceRecord) => new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId);
+  const settingsStoreFor = (workspace: WorkspaceRecord) =>
+    new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId);
 
   async function getSettings(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
@@ -112,7 +130,9 @@ export function registerSettingsRoutes(router: Router, workspaceStore: Workspace
     const actor = callerIdentityId(req);
 
     const before = await settingsStoreFor(workspace).get();
-    const next = await settingsStoreFor(workspace).update(patch.expectedRevision, (current) => applySettingsPatch(current, patch, actor, new Date()));
+    const next = await settingsStoreFor(workspace).update(patch.expectedRevision, (current) =>
+      applySettingsPatch(current, patch, actor, new Date()),
+    );
 
     let updatedWorkspace = workspace;
     if (patch.region !== undefined && patch.region !== workspace.region) {

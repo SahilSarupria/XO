@@ -9,9 +9,13 @@ export class StaleSettingsRevisionError extends XoError {
     readonly expected: number,
     readonly actual: number,
   ) {
-    super(ErrorCode.PRECONDITION_FAILED, `settings were changed by someone else (expected revision ${expected}, current is ${actual}); reload and retry`, {
-      context: { expectedRevision: expected, currentRevision: actual, reason: 'stale_revision' },
-    });
+    super(
+      ErrorCode.PRECONDITION_FAILED,
+      `settings were changed by someone else (expected revision ${expected}, current is ${actual}); reload and retry`,
+      {
+        context: { expectedRevision: expected, currentRevision: actual, reason: 'stale_revision' },
+      },
+    );
   }
 }
 
@@ -31,7 +35,10 @@ export class FsSettingsStore {
       throw raw.error;
     }
     try {
-      return { ...DEFAULT_SETTINGS, ...(JSON.parse(new TextDecoder().decode(raw.value)) as Partial<WorkspaceSettings>) } as WorkspaceSettings;
+      return {
+        ...DEFAULT_SETTINGS,
+        ...(JSON.parse(new TextDecoder().decode(raw.value)) as Partial<WorkspaceSettings>),
+      } as WorkspaceSettings;
     } catch {
       throw new XoError(ErrorCode.SERIALIZATION_PARSE_FAILED, 'stored workspace settings are unreadable');
     }
@@ -42,7 +49,8 @@ export class FsSettingsStore {
     const previous = queues.get(this.workspaceId) ?? Promise.resolve();
     const run = previous.then(async () => {
       const current = await this.get();
-      if (expectedRevision !== undefined && expectedRevision !== current.revision) throw new StaleSettingsRevisionError(expectedRevision, current.revision);
+      if (expectedRevision !== undefined && expectedRevision !== current.revision)
+        throw new StaleSettingsRevisionError(expectedRevision, current.revision);
       const next = compute(current);
       const put = await this.store.put(KEY, JSON.stringify(next), { contentType: 'application/json' });
       if (!put.ok) throw put.error;

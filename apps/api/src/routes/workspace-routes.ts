@@ -66,7 +66,12 @@ export function toWireRecord(record: WorkspaceRecord, callerIdentityId?: string)
     identityId: record.identityId,
     ...(record.name !== undefined ? { name: record.name } : {}),
     kind: record.kind ?? 'team',
-    ...(record.region !== undefined ? { region: record.region, ...(regionLabel(record.region) !== undefined ? { regionLabel: regionLabel(record.region) as string } : {}) } : {}),
+    ...(record.region !== undefined
+      ? {
+          region: record.region,
+          ...(regionLabel(record.region) !== undefined ? { regionLabel: regionLabel(record.region) as string } : {}),
+        }
+      : {}),
     memberCount: 1 + (record.members?.length ?? 0),
     ...(role !== undefined ? { role } : {}),
     createdAt: record.createdAt,
@@ -119,7 +124,11 @@ function makeHandlers(workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataC
       await recordAudit(req, created.value, dataConfig, {
         event: 'workspace.created',
         result: 'succeeded',
-        target: { kind: 'workspace', id: created.value.workspaceId, ...(created.value.name !== undefined ? { label: created.value.name } : {}) },
+        target: {
+          kind: 'workspace',
+          id: created.value.workspaceId,
+          ...(created.value.name !== undefined ? { label: created.value.name } : {}),
+        },
       });
     }
     return json(201, toWireRecord(created.value, identity.identityId));

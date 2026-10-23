@@ -68,7 +68,8 @@ function record(value: unknown, where: string): Record<string, unknown> {
 
 function str(o: Record<string, unknown>, key: string, where: string, max = 200): string {
   const v = o[key];
-  if (typeof v !== 'string' || v.trim().length === 0 || v.length > max) bad(`${where}.${key} must be a non-empty string of at most ${max} characters`);
+  if (typeof v !== 'string' || v.trim().length === 0 || v.length > max)
+    bad(`${where}.${key} must be a non-empty string of at most ${max} characters`);
   return v.trim();
 }
 
@@ -77,7 +78,8 @@ export function parseDefinitionInput(body: unknown): DefinitionInput {
   const o = record(body, 'body');
   for (const k of Object.keys(o)) if (!['name', 'nodes', 'edges', 'expectedRevision'].includes(k)) bad(`unknown field "${k}"`);
   const name = str(o, 'name', 'body', 120);
-  if (!Array.isArray(o['nodes']) || o['nodes'].length === 0 || o['nodes'].length > MAX_NODES) bad(`"nodes" must be an array of 1-${MAX_NODES} nodes`);
+  if (!Array.isArray(o['nodes']) || o['nodes'].length === 0 || o['nodes'].length > MAX_NODES)
+    bad(`"nodes" must be an array of 1-${MAX_NODES} nodes`);
   if (!Array.isArray(o['edges']) || o['edges'].length > MAX_EDGES) bad(`"edges" must be an array of at most ${MAX_EDGES} edges`);
 
   const seen = new Set<string>();
@@ -89,11 +91,17 @@ export function parseDefinitionInput(body: unknown): DefinitionInput {
     if (seen.has(id)) bad(`duplicate node id "${id}"`);
     seen.add(id);
     const kind = n['kind'];
-    if (typeof kind !== 'string' || !(NODE_KINDS as readonly string[]).includes(kind)) bad(`nodes[${i}].kind must be one of: ${NODE_KINDS.join(', ')}`);
+    if (typeof kind !== 'string' || !(NODE_KINDS as readonly string[]).includes(kind))
+      bad(`nodes[${i}].kind must be one of: ${NODE_KINDS.join(', ')}`);
     const config = n['config'] === undefined ? {} : record(n['config'], `nodes[${i}].config`);
     if (JSON.stringify(config).length > 4000) bad(`nodes[${i}].config is too large`);
     const label = n['label'] === undefined ? undefined : str(n, 'label', `nodes[${i}]`, 120);
-    return { id, kind: kind as NodeKind, ...(label !== undefined ? { label } : {}), config: validateConfig(kind as NodeKind, config, `nodes[${i}]`) };
+    return {
+      id,
+      kind: kind as NodeKind,
+      ...(label !== undefined ? { label } : {}),
+      config: validateConfig(kind as NodeKind, config, `nodes[${i}]`),
+    };
   });
 
   const edges: DefinitionEdge[] = (o['edges'] as unknown[]).map((raw, i) => {
@@ -118,14 +126,20 @@ function validateConfig(kind: NodeKind, c: Record<string, unknown>, where: strin
     case 'trigger': {
       only(['type']);
       const type = c['type'];
-      if (typeof type !== 'string' || !(TRIGGER_TYPES as readonly string[]).includes(type)) bad(`${where}.config.type must be one of: ${TRIGGER_TYPES.join(', ')}`);
+      if (typeof type !== 'string' || !(TRIGGER_TYPES as readonly string[]).includes(type))
+        bad(`${where}.config.type must be one of: ${TRIGGER_TYPES.join(', ')}`);
       return { type };
     }
     case 'capability': {
       only(['packageName', 'capabilityId', 'memoryScope']);
       const memoryScope = c['memoryScope'] ?? 'none';
-      if (typeof memoryScope !== 'string' || !(MEMORY_SCOPES as readonly string[]).includes(memoryScope)) bad(`${where}.config.memoryScope must be one of: ${MEMORY_SCOPES.join(', ')}`);
-      return { packageName: str(c, 'packageName', `${where}.config`, 200), capabilityId: str(c, 'capabilityId', `${where}.config`, 200), memoryScope };
+      if (typeof memoryScope !== 'string' || !(MEMORY_SCOPES as readonly string[]).includes(memoryScope))
+        bad(`${where}.config.memoryScope must be one of: ${MEMORY_SCOPES.join(', ')}`);
+      return {
+        packageName: str(c, 'packageName', `${where}.config`, 200),
+        capabilityId: str(c, 'capabilityId', `${where}.config`, 200),
+        memoryScope,
+      };
     }
     case 'branch': {
       only(['metric', 'threshold']);
@@ -137,7 +151,8 @@ function validateConfig(kind: NodeKind, c: Record<string, unknown>, where: strin
     case 'action': {
       only(['type']);
       const type = c['type'];
-      if (typeof type !== 'string' || !(ACTION_TYPES as readonly string[]).includes(type)) bad(`${where}.config.type must be one of: ${ACTION_TYPES.join(', ')}`);
+      if (typeof type !== 'string' || !(ACTION_TYPES as readonly string[]).includes(type))
+        bad(`${where}.config.type must be one of: ${ACTION_TYPES.join(', ')}`);
       return { type };
     }
     case 'compile':
@@ -180,12 +195,21 @@ export function analyzeDefinition(input: DefinitionInput): DefinitionAnalysis {
   for (const n of input.nodes) {
     const incoming = inc.get(n.id) ?? [];
     const outgoing = out.get(n.id) ?? [];
-    if (n.kind === 'trigger' && incoming.length > 0) errors.push({ severity: 'error', nodeId: n.id, message: 'A trigger cannot have incoming connections.' });
-    if (n.kind !== 'trigger' && incoming.length === 0) errors.push({ severity: 'error', nodeId: n.id, message: 'This step is not connected to anything upstream.' });
+    if (n.kind === 'trigger' && incoming.length > 0)
+      errors.push({ severity: 'error', nodeId: n.id, message: 'A trigger cannot have incoming connections.' });
+    if (n.kind !== 'trigger' && incoming.length === 0)
+      errors.push({ severity: 'error', nodeId: n.id, message: 'This step is not connected to anything upstream.' });
     if (n.kind === 'branch') {
-      const sides = outgoing.map((e) => e.when).sort().join(',');
+      const sides = outgoing
+        .map((e) => e.when)
+        .sort()
+        .join(',');
       if (outgoing.length !== 2 || sides !== 'gte,lt') {
-        errors.push({ severity: 'error', nodeId: n.id, message: 'A branch needs exactly two outgoing connections: one "gte" (at or above the threshold) and one "lt" (below it).' });
+        errors.push({
+          severity: 'error',
+          nodeId: n.id,
+          message: 'A branch needs exactly two outgoing connections: one "gte" (at or above the threshold) and one "lt" (below it).',
+        });
       }
     } else if (outgoing.some((e) => e.when !== undefined)) {
       errors.push({ severity: 'error', nodeId: n.id, message: '"when" is only valid on connections leaving a branch node.' });
@@ -205,7 +229,8 @@ export function analyzeDefinition(input: DefinitionInput): DefinitionAnalysis {
       if (d === 0) queue.push(e.to);
     }
   }
-  if (visited !== input.nodes.length) errors.push({ severity: 'error', message: 'The connections form a loop; a workflow must flow one way.' });
+  if (visited !== input.nodes.length)
+    errors.push({ severity: 'error', message: 'The connections form a loop; a workflow must flow one way.' });
 
   // Reachability from triggers.
   const reached = new Set<string>();
@@ -216,15 +241,36 @@ export function analyzeDefinition(input: DefinitionInput): DefinitionAnalysis {
     reached.add(id);
     for (const e of out.get(id) ?? []) stack.push(e.to);
   }
-  for (const n of input.nodes) if (!reached.has(n.id) && n.kind !== 'trigger') errors.push({ severity: 'error', nodeId: n.id, message: 'This step cannot be reached from any trigger.' });
+  for (const n of input.nodes)
+    if (!reached.has(n.id) && n.kind !== 'trigger')
+      errors.push({ severity: 'error', nodeId: n.id, message: 'This step cannot be reached from any trigger.' });
   void byId;
 
-  blockers.push({ severity: 'blocker', message: 'This server has no executor for user-authored workflow graphs; only workflows derived from a compilation can run.' });
+  blockers.push({
+    severity: 'blocker',
+    message: 'This server has no executor for user-authored workflow graphs; only workflows derived from a compilation can run.',
+  });
   for (const n of input.nodes) {
-    if (n.kind === 'trigger' && n.config['type'] === 'schedule') blockers.push({ severity: 'blocker', nodeId: n.id, message: 'There is no scheduler; schedule triggers cannot fire.' });
-    if (n.kind === 'trigger' && n.config['type'] === 'document_dropped') blockers.push({ severity: 'blocker', nodeId: n.id, message: 'There is no folder or drop watcher; "document dropped" triggers cannot fire.' });
-    if (n.kind === 'action') blockers.push({ severity: 'blocker', nodeId: n.id, message: `There is no ${String(n.config['type'])} delivery; action steps cannot run.` });
-    if (n.kind === 'capability' && n.config['memoryScope'] !== 'none') blockers.push({ severity: 'blocker', nodeId: n.id, message: 'Capability memory scopes are not part of the runtime; only "none" can be honored.' });
+    if (n.kind === 'trigger' && n.config['type'] === 'schedule')
+      blockers.push({ severity: 'blocker', nodeId: n.id, message: 'There is no scheduler; schedule triggers cannot fire.' });
+    if (n.kind === 'trigger' && n.config['type'] === 'document_dropped')
+      blockers.push({
+        severity: 'blocker',
+        nodeId: n.id,
+        message: 'There is no folder or drop watcher; "document dropped" triggers cannot fire.',
+      });
+    if (n.kind === 'action')
+      blockers.push({
+        severity: 'blocker',
+        nodeId: n.id,
+        message: `There is no ${String(n.config['type'])} delivery; action steps cannot run.`,
+      });
+    if (n.kind === 'capability' && n.config['memoryScope'] !== 'none')
+      blockers.push({
+        severity: 'blocker',
+        nodeId: n.id,
+        message: 'Capability memory scopes are not part of the runtime; only "none" can be honored.',
+      });
   }
   return { errors, blockers, wellFormed: errors.length === 0, runnable: false };
 }

@@ -84,7 +84,7 @@ export function isPublicIPv4(ip: string): boolean {
   const n = ipv4ToInt(ip);
   return !V4_BLOCKS.some(([base, bits]) => {
     const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
-    return ((n & mask) >>> 0) === ((ipv4ToInt(base) & mask) >>> 0);
+    return (n & mask) >>> 0 === (ipv4ToInt(base) & mask) >>> 0;
   });
 }
 
@@ -123,12 +123,13 @@ export function isPublicIPv6(ip: string): boolean {
   const embedded = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
   if (g.every((x) => x === 0)) return false; // ::
   if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return false; // ::1
-  if ((((g[0] as number) & 0xfe00) === 0xfc00)) return false; // fc00::/7 unique local
-  if ((((g[0] as number) & 0xffc0) === 0xfe80)) return false; // fe80::/10 link local
-  if ((((g[0] as number) & 0xff00) === 0xff00)) return false; // multicast
+  if (((g[0] as number) & 0xfe00) === 0xfc00) return false; // fc00::/7 unique local
+  if (((g[0] as number) & 0xffc0) === 0xfe80) return false; // fe80::/10 link local
+  if (((g[0] as number) & 0xff00) === 0xff00) return false; // multicast
   if (g[0] === 0x2001 && g[1] === 0x0db8) return false; // documentation
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return isPublicIPv4(embedded(g[6] as number, g[7] as number)); // IPv4-mapped
-  if (g[0] === 0x0064 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return isPublicIPv4(embedded(g[6] as number, g[7] as number)); // NAT64
+  if (g[0] === 0x0064 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0))
+    return isPublicIPv4(embedded(g[6] as number, g[7] as number)); // NAT64
   if (g[0] === 0x2002) return isPublicIPv4(embedded(g[1] as number, g[2] as number)); // 6to4 embeds an IPv4
   if (g.slice(0, 6).every((x) => x === 0)) return false; // deprecated IPv4-compatible
   return true;
@@ -187,7 +188,9 @@ export const defaultTransport: TransportFn = ({ url, address, timeoutMs, maxByte
         const declared = Number(res.headers['content-length']);
         if (Number.isFinite(declared) && declared > maxBytes) {
           res.destroy();
-          reject(new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`));
+          reject(
+            new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`),
+          );
           return;
         }
         const chunks: Buffer[] = [];
@@ -196,7 +199,9 @@ export const defaultTransport: TransportFn = ({ url, address, timeoutMs, maxByte
           size += c.length;
           if (size > maxBytes) {
             res.destroy();
-            reject(new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`));
+            reject(
+              new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`),
+            );
             return;
           }
           chunks.push(c);
@@ -263,7 +268,8 @@ export async function safeFetch(
     }
     if (res.status !== 200) upstream(`the link returned HTTP ${res.status}`);
     if (res.body.length === 0) refuse('the link returned an empty file');
-    if (res.body.length > policy.maxBytes) refuse(`the file is larger than the ${Math.round(policy.maxBytes / 1024 / 1024)} MB import limit`);
+    if (res.body.length > policy.maxBytes)
+      refuse(`the file is larger than the ${Math.round(policy.maxBytes / 1024 / 1024)} MB import limit`);
     return { finalUrl: url.toString(), contentType: res.headers['content-type'], bytes: res.body };
   }
   return refuse('too many redirects');

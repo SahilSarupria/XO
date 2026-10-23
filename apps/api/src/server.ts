@@ -136,7 +136,12 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(sessionAuth !== undefined ? { sessions: { store: sessionAuth.sessions, bindings: sessionAuth.bindings } } : {}),
     }),
   );
-  registerRoutes(router, { workspaceStore, workspaceDataConfig, ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}), ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}) });
+  registerRoutes(router, {
+    workspaceStore,
+    workspaceDataConfig,
+    ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}),
+    ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}),
+  });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   return router;
 }

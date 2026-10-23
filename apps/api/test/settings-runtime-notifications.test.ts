@@ -22,7 +22,15 @@ async function withDirs<T>(fn: (dirs: { workspacesDir: string; workspaceDataDir:
 }
 
 interface SettingsWire {
-  settings: { revision: number; airGapped: boolean; model: { primary: { provider: string; model: string } | null; fallback: unknown }; trust: { requireSignedPackages: boolean }; residency: { region: string | null }; notifications: Record<string, boolean>; runtime: { location: string } };
+  settings: {
+    revision: number;
+    airGapped: boolean;
+    model: { primary: { provider: string; model: string } | null; fallback: unknown };
+    trust: { requireSignedPackages: boolean };
+    residency: { region: string | null };
+    notifications: Record<string, boolean>;
+    runtime: { location: string };
+  };
   effect: Record<string, any>;
 }
 
@@ -70,7 +78,9 @@ test('PUT applies a partial patch, bumps the revision, updates the workspace reg
       assert.equal(body.settings.model.primary?.provider, 'anthropic');
       assert.deepEqual(body.settings.notifications, { onEscalation: true, onRunFailure: true, onWorkflowComplete: true });
       assert.equal((await server.request('GET', `/workspaces/${ws}`)).json<{ region: string }>().region, 'in-mumbai');
-      const audit = (await server.request('GET', `${base}/audit/events?event=settings.updated`)).json<{ events: { detail: { changed: string[] } }[] }>();
+      const audit = (await server.request('GET', `${base}/audit/events?event=settings.updated`)).json<{
+        events: { detail: { changed: string[] } }[];
+      }>();
       assert.deepEqual(audit.events[0]?.detail.changed.sort(), ['model', 'notifications', 'region']);
     } finally {
       await server.stop();
@@ -89,9 +99,17 @@ test('PUT validation: unknown fields, bad values, unavailable runtime location',
       assert.equal((await put({ model: { primary: { provider: 'skynet', model: 'x' } } })).status, 400);
       assert.equal((await put({ model: { primary: { provider: 'openai', model: 'has space' } } })).status, 400);
       assert.equal((await put({ trust: { requireCompilerAttestation: true } })).status, 400);
-      assert.equal((await put({ runtime: { location: 'cloud' } })).status, 412, 'a location the deployment does not offer is refused, not stored');
+      assert.equal(
+        (await put({ runtime: { location: 'cloud' } })).status,
+        412,
+        'a location the deployment does not offer is refused, not stored',
+      );
       assert.equal((await put({ runtime: { location: 'moon' } })).status, 400);
-      assert.equal((await server.request('GET', `${base}/settings`)).json<SettingsWire>().settings.revision, 0, 'nothing was stored by the failed attempts');
+      assert.equal(
+        (await server.request('GET', `${base}/settings`)).json<SettingsWire>().settings.revision,
+        0,
+        'nothing was stored by the failed attempts',
+      );
     } finally {
       await server.stop();
     }
@@ -102,13 +120,27 @@ test('air-gapped mode refuses off-box providers whichever order the fields arriv
   await withDirs(async (dirs) => {
     const { server, base } = await boot(dirs);
     try {
-      const a = await server.request('PUT', `${base}/settings`, { airGapped: true, model: { primary: { provider: 'openai', model: 'gpt' } } });
+      const a = await server.request('PUT', `${base}/settings`, {
+        airGapped: true,
+        model: { primary: { provider: 'openai', model: 'gpt' } },
+      });
       assert.equal(a.status, 412);
       assert.match(a.bodyText, /air-gapped/);
-      assert.equal((await server.request('PUT', `${base}/settings`, { model: { primary: { provider: 'openai', model: 'gpt' } } })).status, 200);
+      assert.equal(
+        (await server.request('PUT', `${base}/settings`, { model: { primary: { provider: 'openai', model: 'gpt' } } })).status,
+        200,
+      );
       const b = await server.request('PUT', `${base}/settings`, { airGapped: true });
       assert.equal(b.status, 412, 'turning air-gapped on while an off-box model is selected is refused');
-      assert.equal((await server.request('PUT', `${base}/settings`, { airGapped: true, model: { primary: { provider: 'ollama', model: 'llama3' }, fallback: null } })).status, 200);
+      assert.equal(
+        (
+          await server.request('PUT', `${base}/settings`, {
+            airGapped: true,
+            model: { primary: { provider: 'ollama', model: 'llama3' }, fallback: null },
+          })
+        ).status,
+        200,
+      );
     } finally {
       await server.stop();
     }
@@ -182,12 +214,17 @@ test('notifications: derived from the audit log, filtered by settings, with a fo
     const { server, base } = await boot(dirs);
     try {
       // Produce a failure entry through the real compile path: upload then compile an unparseable PDF.
-      const up = await server.request('POST', `${base}/sources?filename=bad.pdf`, Buffer.from('%PDF-not-really'), { 'content-type': 'application/pdf' });
+      const up = await server.request('POST', `${base}/sources?filename=bad.pdf`, Buffer.from('%PDF-not-really'), {
+        'content-type': 'application/pdf',
+      });
       assert.equal(up.status, 201, up.bodyText);
       const src = up.json<{ sourceId: string }>().sourceId;
       await server.request('POST', `${base}/sources/${src}/compile`);
 
-      const first = (await server.request('GET', `${base}/notifications`)).json<{ notifications: { seq: number; kind: string; read: boolean }[]; unread: number }>();
+      const first = (await server.request('GET', `${base}/notifications`)).json<{
+        notifications: { seq: number; kind: string; read: boolean }[];
+        unread: number;
+      }>();
       assert.ok(first.notifications.length >= 1, 'compiling a corrupt PDF must produce a run_failure notification');
       assert.ok(first.notifications.every((n) => n.kind === 'run_failure'));
       assert.equal(first.unread, first.notifications.length);
@@ -198,8 +235,16 @@ test('notifications: derived from the audit log, filtered by settings, with a fo
 
       if (first.notifications.length > 0) {
         const top = first.notifications[0]!.seq;
-        assert.equal((await server.request('POST', `${base}/notifications/read`, { throughSeq: top })).json<{ readThroughSeq: number }>().readThroughSeq, top);
-        assert.equal((await server.request('POST', `${base}/notifications/read`, { throughSeq: 1 })).json<{ readThroughSeq: number }>().readThroughSeq, top, 'marker never moves backwards');
+        assert.equal(
+          (await server.request('POST', `${base}/notifications/read`, { throughSeq: top })).json<{ readThroughSeq: number }>()
+            .readThroughSeq,
+          top,
+        );
+        assert.equal(
+          (await server.request('POST', `${base}/notifications/read`, { throughSeq: 1 })).json<{ readThroughSeq: number }>().readThroughSeq,
+          top,
+          'marker never moves backwards',
+        );
         assert.equal((await server.request('GET', `${base}/notifications`)).json<{ unread: number }>().unread, 0);
       }
       assert.equal((await server.request('POST', `${base}/notifications/read`, { throughSeq: -1 })).status, 400);
@@ -211,11 +256,31 @@ test('notifications: derived from the audit log, filtered by settings, with a fo
 
 test('classify: escalation / failure / completion map to the right setting', () => {
   const entry = (over: Partial<AuditEntry>): AuditEntry =>
-    ({ seq: 1, eventId: 'e', workspaceId: 'w', at: 't', prevHash: 'p', hash: 'h', actor: { identityId: 'a', kind: 'user' }, event: 'execution.created', result: 'succeeded', ...over }) as AuditEntry;
+    ({
+      seq: 1,
+      eventId: 'e',
+      workspaceId: 'w',
+      at: 't',
+      prevHash: 'p',
+      hash: 'h',
+      actor: { identityId: 'a', kind: 'user' },
+      event: 'execution.created',
+      result: 'succeeded',
+      ...over,
+    }) as AuditEntry;
   assert.equal(classify(entry({ result: 'escalated' }), DEFAULT_SETTINGS), 'escalation');
   assert.equal(classify(entry({ result: 'failed' }), DEFAULT_SETTINGS), 'run_failure');
   assert.equal(classify(entry({ result: 'failed', event: 'source.uploaded' }), DEFAULT_SETTINGS), undefined);
-  assert.equal(classify(entry({ event: 'workflow.started', detail: { status: 'succeeded' } }), DEFAULT_SETTINGS), undefined, 'off by default');
-  const on = applySettingsPatch(DEFAULT_SETTINGS, parseSettingsPatch({ notifications: { onWorkflowComplete: true } }, ['this_computer']), 'x', new Date());
+  assert.equal(
+    classify(entry({ event: 'workflow.started', detail: { status: 'succeeded' } }), DEFAULT_SETTINGS),
+    undefined,
+    'off by default',
+  );
+  const on = applySettingsPatch(
+    DEFAULT_SETTINGS,
+    parseSettingsPatch({ notifications: { onWorkflowComplete: true } }, ['this_computer']),
+    'x',
+    new Date(),
+  );
   assert.equal(classify(entry({ event: 'workflow.started', detail: { status: 'succeeded' } }), on), 'workflow_complete');
 });

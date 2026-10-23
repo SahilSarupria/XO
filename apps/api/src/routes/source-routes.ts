@@ -4,7 +4,13 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { callerIdentityId, requirePermission, requireOwnedWorkspace, workspaceSourcesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  callerIdentityId,
+  requirePermission,
+  requireOwnedWorkspace,
+  workspaceSourcesStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import { DocxError, extractDocxText } from '../sources/docx-text.js';
 import { safeFetch, type LookupFn, type TransportFn } from '../sources/safe-fetch.js';
@@ -69,7 +75,12 @@ export interface SourceRouteOptions {
   readonly fetchDeps?: { readonly lookup?: LookupFn; readonly transport?: TransportFn };
 }
 
-export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig, options: SourceRouteOptions = {}): void {
+export function registerSourceRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  options: SourceRouteOptions = {},
+): void {
   const fetchDeps = options.fetchDeps ?? {};
   async function upload(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
@@ -106,7 +117,6 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
     const created = await storeSource(req, workspace, filename, extension, mediaType, new Uint8Array(bytes), { kind: 'upload' });
     return json(201, toWireRecord(created));
   }
-
 
   /**
    * The one place a source is persisted — shared by upload and URL import so both get the same checks, the same
@@ -179,14 +189,21 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'import source from link' });
     const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
     if (settings.airGapped) {
-      throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this workspace is in air-gapped mode: importing from a link is disabled (upload the file instead)');
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'this workspace is in air-gapped mode: importing from a link is disabled (upload the file instead)',
+      );
     }
     const bodyResult = await req.json<{ url?: unknown; filename?: unknown }>();
     if (!bodyResult.ok) throw bodyResult.error;
     const { url, filename: requestedName } = bodyResult.value ?? {};
     if (typeof url !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"url" (string) is required');
-    if (requestedName !== undefined && typeof requestedName !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename", if present, must be a string');
-    if (typeof requestedName === 'string' && (requestedName.includes('/') || requestedName.includes('\\') || requestedName.includes('..'))) {
+    if (requestedName !== undefined && typeof requestedName !== 'string')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename", if present, must be a string');
+    if (
+      typeof requestedName === 'string' &&
+      (requestedName.includes('/') || requestedName.includes('\\') || requestedName.includes('..'))
+    ) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename" must not contain path separators or ".."');
     }
 
@@ -212,7 +229,10 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
       extension = fromType;
     }
     const mediaType = inferMediaType(extension, contentType);
-    const created = await storeSource(req, workspace, name, extension, mediaType, fetched.bytes, { kind: 'url', url: safeOriginLabel(fetched.finalUrl) });
+    const created = await storeSource(req, workspace, name, extension, mediaType, fetched.bytes, {
+      kind: 'url',
+      url: safeOriginLabel(fetched.finalUrl),
+    });
     return json(201, toWireRecord(created));
   }
 
@@ -254,13 +274,20 @@ export function registerSourceRoutes(router: Router, workspaceStore: WorkspaceSt
 
   async function deleteSource(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    await requirePermission(req, workspace, 'author', dataConfig, { action: 'delete source', target: { kind: 'source', id: req.params['sourceId'] ?? '' } });
+    await requirePermission(req, workspace, 'author', dataConfig, {
+      action: 'delete source',
+      target: { kind: 'source', id: req.params['sourceId'] ?? '' },
+    });
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
     const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
     const deleted = await store.delete(sourceId);
     if (!deleted.ok) throw deleted.error;
-    await recordAudit(req, workspace, dataConfig, { event: 'source.deleted', result: 'succeeded', target: { kind: 'source', id: sourceId } });
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'source.deleted',
+      result: 'succeeded',
+      target: { kind: 'source', id: sourceId },
+    });
     return { status: 204 };
   }
 

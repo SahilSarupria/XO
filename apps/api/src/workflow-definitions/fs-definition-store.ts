@@ -10,9 +10,13 @@ const queues = new Map<string, Promise<unknown>>();
 
 export class StaleDefinitionError extends XoError {
   constructor(expected: number, actual: number) {
-    super(ErrorCode.PRECONDITION_FAILED, `this workflow was changed by someone else (expected revision ${expected}, current is ${actual}); reload and retry`, {
-      context: { expectedRevision: expected, currentRevision: actual, reason: 'stale_revision' },
-    });
+    super(
+      ErrorCode.PRECONDITION_FAILED,
+      `this workflow was changed by someone else (expected revision ${expected}, current is ${actual}); reload and retry`,
+      {
+        context: { expectedRevision: expected, currentRevision: actual, reason: 'stale_revision' },
+      },
+    );
   }
 }
 
@@ -86,12 +90,27 @@ export class FsDefinitionStore {
   }
 
   /** Whole-definition replace, guarded by `expectedRevision` (the editor's Save). */
-  replace(id: string, input: DefinitionInput, expectedRevision: number | undefined, by: string, now: Date): Promise<WorkflowDefinition | undefined> {
+  replace(
+    id: string,
+    input: DefinitionInput,
+    expectedRevision: number | undefined,
+    by: string,
+    now: Date,
+  ): Promise<WorkflowDefinition | undefined> {
     return this.locked(id, async () => {
       const current = await this.get(id);
       if (current === undefined) return undefined;
-      if (expectedRevision !== undefined && expectedRevision !== current.revision) throw new StaleDefinitionError(expectedRevision, current.revision);
-      const next: WorkflowDefinition = { ...current, name: input.name, nodes: input.nodes, edges: input.edges, revision: current.revision + 1, updatedAt: now.toISOString(), updatedBy: by };
+      if (expectedRevision !== undefined && expectedRevision !== current.revision)
+        throw new StaleDefinitionError(expectedRevision, current.revision);
+      const next: WorkflowDefinition = {
+        ...current,
+        name: input.name,
+        nodes: input.nodes,
+        edges: input.edges,
+        revision: current.revision + 1,
+        updatedAt: now.toISOString(),
+        updatedBy: by,
+      };
       await this.put(next);
       return next;
     });

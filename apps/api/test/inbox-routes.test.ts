@@ -18,10 +18,15 @@ async function withPendingTask<T>(
         const ws = (await server.request('POST', '/workspaces', { name: 'Inbox' })).json<{ workspaceId: string }>().workspaceId;
         const base = `/workspaces/${ws}`;
         const src = (await server.request('POST', `${base}/sources?filename=policy.pdf`, await readFile(PDF))).json<{ sourceId: string }>();
-        const comp = (await server.request('POST', `${base}/sources/${src.sourceId}/compile`)).json<{ compilationId: string; status: string }>();
+        const comp = (await server.request('POST', `${base}/sources/${src.sourceId}/compile`)).json<{
+          compilationId: string;
+          status: string;
+        }>();
         assert.equal(comp.status, 'succeeded');
         await server.request('POST', `${base}/compilations/${comp.compilationId}/capabilities/${HITL}/approve`);
-        const exec = (await server.request('POST', `${base}/executions`, { compilationId: comp.compilationId, capabilityId: HITL, input: {} })).json<{ executionId: string; status: string }>();
+        const exec = (
+          await server.request('POST', `${base}/executions`, { compilationId: comp.compilationId, capabilityId: HITL, input: {} })
+        ).json<{ executionId: string; status: string }>();
         assert.equal(exec.status, 'waiting_for_human');
         return await fn({ server, base, executionId: exec.executionId, compilationId: comp.compilationId });
       } finally {
@@ -76,13 +81,29 @@ test('ask for more info: reviewers ask, authors answer, the task stays pending, 
     const reviewer = await server.issueAdditionalIdentity('rev');
     const viewer = await server.issueAdditionalIdentity('view');
     const author = await server.issueAdditionalIdentity('auth');
-    for (const [id, role] of [['rev', 'reviewer'], ['view', 'viewer'], ['auth', 'publisher']] as const) {
+    for (const [id, role] of [
+      ['rev', 'reviewer'],
+      ['view', 'viewer'],
+      ['auth', 'publisher'],
+    ] as const) {
       await server.request('POST', `${base}/members`, { identityId: id, role });
     }
-    assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: 'Was there forced entry?' }, as(viewer))).status, 403);
-    assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: '   ' }, as(reviewer))).status, 400);
+    assert.equal(
+      (await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: 'Was there forced entry?' }, as(viewer)))
+        .status,
+      403,
+    );
+    assert.equal(
+      (await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: '   ' }, as(reviewer))).status,
+      400,
+    );
 
-    const asked = await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: 'Was there forced entry?' }, as(reviewer));
+    const asked = await server.request(
+      'POST',
+      `${base}/inbox/${executionId}/info-requests`,
+      { question: 'Was there forced entry?' },
+      as(reviewer),
+    );
     assert.equal(asked.status, 201);
     const requestId = asked.json<{ requestId: string; requestedBy: string }>();
     assert.equal(requestId.requestedBy, 'rev');
@@ -91,12 +112,41 @@ test('ask for more info: reviewers ask, authors answer, the task stays pending, 
     assert.equal(list.items[0]?.openInfoRequests, 1);
     assert.equal(list.items[0]?.state, 'needs_review', 'asking for info never resolves the task');
 
-    assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`, { answer: 'Photos attached' }, as(reviewer))).status, 403, 'a reviewer has no author permission');
-    const answered = await server.request('POST', `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`, { answer: 'Photos attached' }, as(author));
+    assert.equal(
+      (
+        await server.request(
+          'POST',
+          `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`,
+          { answer: 'Photos attached' },
+          as(reviewer),
+        )
+      ).status,
+      403,
+      'a reviewer has no author permission',
+    );
+    const answered = await server.request(
+      'POST',
+      `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`,
+      { answer: 'Photos attached' },
+      as(author),
+    );
     assert.equal(answered.status, 200);
     assert.equal(answered.json<{ answeredBy: string }>().answeredBy, 'auth');
-    assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`, { answer: 'changed' }, as(author))).status, 409);
-    assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests/ir_nope/answer`, { answer: 'x' }, as(author))).status, 404);
+    assert.equal(
+      (
+        await server.request(
+          'POST',
+          `${base}/inbox/${executionId}/info-requests/${requestId.requestId}/answer`,
+          { answer: 'changed' },
+          as(author),
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await server.request('POST', `${base}/inbox/${executionId}/info-requests/ir_nope/answer`, { answer: 'x' }, as(author))).status,
+      404,
+    );
 
     list = (await server.request('GET', `${base}/inbox`)).json<{ items: Item[] }>();
     assert.equal(list.items[0]?.openInfoRequests, 0);
@@ -120,7 +170,9 @@ test('after resolution the task moves to Done with the decision and resolver, an
     assert.equal(list.items[0]?.decision, 'approve');
     assert.equal((list.items[0] as unknown as { resolverIdentityId: string }).resolverIdentityId, 'rev2');
     assert.equal((await server.request('POST', `${base}/inbox/${executionId}/info-requests`, { question: 'too late?' })).status, 412);
-    const audit = (await server.request('GET', `${base}/audit/events?event=human_task.resolved`)).json<{ events: { result: string; actor: { identityId: string } }[] }>();
+    const audit = (await server.request('GET', `${base}/audit/events?event=human_task.resolved`)).json<{
+      events: { result: string; actor: { identityId: string } }[];
+    }>();
     assert.equal(audit.events[0]?.result, 'approved');
     assert.equal(audit.events[0]?.actor.identityId, 'rev2');
   });

@@ -6,7 +6,10 @@ import { TestServer, withTempDir } from './test-helpers.js';
 import { buildFixtureBundle } from './fixtures.js';
 import { envProviderFactory } from '../src/chat/model-provider.js';
 
-const reply = (text: string, model = 'test-model') => ({ kind: 'success' as const, response: { text, usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: model, finishReason: 'stop' as const } });
+const reply = (text: string, model = 'test-model') => ({
+  kind: 'success' as const,
+  response: { text, usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: model, finishReason: 'stop' as const },
+});
 const as = (k: { apiKey: string }) => TestServer.authHeader(k.apiKey);
 
 async function withChat<T>(
@@ -40,16 +43,27 @@ test('threads: create, list, get, delete; auto-title from the first message; pri
     const id = await newThread(server, base);
     const sent = await server.request('POST', `${base}/chats/${id}/messages`, { content: 'What does clause 4.2 say about forced entry?' });
     assert.equal(sent.status, 201, sent.bodyText);
-    const body = sent.json<{ title: string; userMessage: { role: string }; assistantMessage: { role: string; content: string; model: { provider: string; model: string } } }>();
+    const body = sent.json<{
+      title: string;
+      userMessage: { role: string };
+      assistantMessage: { role: string; content: string; model: { provider: string; model: string } };
+    }>();
     assert.equal(body.title, 'What does clause 4.2 say about forced entry?');
     assert.equal(body.assistantMessage.content, 'Hello there');
     assert.deepEqual(body.assistantMessage.model, { provider: 'anthropic', model: 'test-model' });
 
     const listed = (await server.request('GET', `${base}/chats`)).json<{ threads: { threadId: string; messageCount: number }[] }>();
-    assert.deepEqual(listed.threads.map((t) => [t.threadId, t.messageCount]), [[id, 2]]);
+    assert.deepEqual(
+      listed.threads.map((t) => [t.threadId, t.messageCount]),
+      [[id, 2]],
+    );
     assert.equal((await server.request('GET', `${base}/chats/${id}`)).json<{ messages: unknown[] }>().messages.length, 2);
 
-    assert.equal((await server.request('GET', `${base}/chats`, undefined, as(other))).json<{ threads: unknown[] }>().threads.length, 0, 'a colleague does not see my chats');
+    assert.equal(
+      (await server.request('GET', `${base}/chats`, undefined, as(other))).json<{ threads: unknown[] }>().threads.length,
+      0,
+      'a colleague does not see my chats',
+    );
     assert.equal((await server.request('GET', `${base}/chats/${id}`, undefined, as(other))).status, 404);
     assert.equal((await server.request('DELETE', `${base}/chats/${id}`, undefined, as(other))).status, 404);
     assert.equal((await server.request('POST', `${base}/chats/${id}/messages`, { content: 'hi' }, as(other))).status, 404);
@@ -71,7 +85,14 @@ test('the model gets the honest system prompt plus the conversation so far; repl
     assert.equal(second.model, 'm1');
     assert.equal(second.messages[0]?.role, 'system');
     assert.match(second.messages[0]!.content, /CANNOT compile documents/);
-    assert.deepEqual(second.messages.slice(1).map((m) => [m.role, m.content]), [['user', 'one'], ['assistant', 'first'], ['user', 'two']]);
+    assert.deepEqual(
+      second.messages.slice(1).map((m) => [m.role, m.content]),
+      [
+        ['user', 'one'],
+        ['assistant', 'first'],
+        ['user', 'two'],
+      ],
+    );
   });
 });
 
@@ -84,7 +105,13 @@ test('attached XOs must be installed; their capability text reaches the model as
     assert.equal(missing.status, 400);
     assert.equal(p.callLog.length, 0, 'the model was never called for an invalid attachment');
 
-    const pkgId = (await server.request('POST', `${base}/registry/packages`, Buffer.from(await packBundle(buildFixtureBundle({ name: 'burglary_policy' }))))).json<{ id: string }>().id;
+    const pkgId = (
+      await server.request(
+        'POST',
+        `${base}/registry/packages`,
+        Buffer.from(await packBundle(buildFixtureBundle({ name: 'burglary_policy' }))),
+      )
+    ).json<{ id: string }>().id;
     assert.equal((await server.request('POST', `${base}/library/installs`, { packageId: pkgId })).status, 201);
     const ok = await server.request('POST', `${base}/chats/${id}/messages`, { content: 'hi', attach: ['burglary_policy'] });
     assert.equal(ok.status, 201, ok.bodyText);
@@ -118,7 +145,9 @@ test('air-gapped: an off-box provider that has credentials is still not used; a 
   const cloud = new ScriptableTestProvider('anthropic', [reply('from cloud')]);
   const local = new ScriptableTestProvider('ollama', [reply('from local')]);
   await withChat({ anthropic: cloud, ollama: local }, async ({ server, base }) => {
-    await selectModel(server, base, { model: { primary: { provider: 'anthropic', model: 'm' }, fallback: { provider: 'ollama', model: 'l' } } });
+    await selectModel(server, base, {
+      model: { primary: { provider: 'anthropic', model: 'm' }, fallback: { provider: 'ollama', model: 'l' } },
+    });
     await selectModel(server, base, { model: { primary: { provider: 'ollama', model: 'l' }, fallback: null } });
     await selectModel(server, base, { airGapped: true });
     const id = await newThread(server, base);
@@ -133,10 +162,15 @@ test('fallback: when the primary fails the fallback answers; when all fail nothi
   const primary = new ScriptableTestProvider('anthropic', [{ kind: 'failure', error: new Error('boom sk-ant-SECRET') }]);
   const fallback = new ScriptableTestProvider('openai', [reply('rescued', 'g')]);
   await withChat({ anthropic: primary, openai: fallback }, async ({ server, base }) => {
-    await selectModel(server, base, { model: { primary: { provider: 'anthropic', model: 'm' }, fallback: { provider: 'openai', model: 'g' } } });
+    await selectModel(server, base, {
+      model: { primary: { provider: 'anthropic', model: 'm' }, fallback: { provider: 'openai', model: 'g' } },
+    });
     const id = await newThread(server, base);
     const ok = await server.request('POST', `${base}/chats/${id}/messages`, { content: 'hi' });
-    assert.equal(ok.json<{ assistantMessage: { content: string; model: { provider: string } } }>().assistantMessage.model.provider, 'openai');
+    assert.equal(
+      ok.json<{ assistantMessage: { content: string; model: { provider: string } } }>().assistantMessage.model.provider,
+      'openai',
+    );
 
     await selectModel(server, base, { model: { primary: { provider: 'anthropic', model: 'm' }, fallback: null } });
     const id2 = await newThread(server, base);

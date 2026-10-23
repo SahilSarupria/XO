@@ -64,21 +64,35 @@ export class FsInfoRequestStore {
     return this.locked(executionId, async () => {
       const existing = await this.list(executionId);
       if (existing.filter((r) => r.answer === undefined).length >= MAX_OPEN_INFO_REQUESTS) return undefined;
-      const request: InfoRequest = { requestId: `ir_${randomUUID().replace(/-/g, '')}`, question, requestedBy, requestedAt: now.toISOString() };
+      const request: InfoRequest = {
+        requestId: `ir_${randomUUID().replace(/-/g, '')}`,
+        question,
+        requestedBy,
+        requestedAt: now.toISOString(),
+      };
       await this.save(executionId, [...existing, request]);
       return request;
     });
   }
 
   /** `'not_found'` for an unknown request, `'already_answered'` when it already has an answer (an answer is never overwritten). */
-  answer(executionId: string, requestId: string, answer: string, answeredBy: string, now: Date): Promise<InfoRequest | 'not_found' | 'already_answered'> {
+  answer(
+    executionId: string,
+    requestId: string,
+    answer: string,
+    answeredBy: string,
+    now: Date,
+  ): Promise<InfoRequest | 'not_found' | 'already_answered'> {
     return this.locked(executionId, async () => {
       const existing = await this.list(executionId);
       const target = existing.find((r) => r.requestId === requestId);
       if (target === undefined) return 'not_found' as const;
       if (target.answer !== undefined) return 'already_answered' as const;
       const updated: InfoRequest = { ...target, answer, answeredBy, answeredAt: now.toISOString() };
-      await this.save(executionId, existing.map((r) => (r.requestId === requestId ? updated : r)));
+      await this.save(
+        executionId,
+        existing.map((r) => (r.requestId === requestId ? updated : r)),
+      );
       return updated;
     });
   }

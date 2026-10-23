@@ -60,7 +60,12 @@ function summary(t: ChatThread) {
   return { threadId: t.threadId, title: t.title, createdAt: t.createdAt, updatedAt: t.updatedAt, messageCount: t.messages.length };
 }
 
-export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig, options: ChatRouteOptions = {}): void {
+export function registerChatRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  options: ChatRouteOptions = {},
+): void {
   const providerFor = options.providerFactory ?? envProviderFactory();
   const chats = (workspace: WorkspaceRecord) => new FsChatStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId);
 
@@ -83,7 +88,10 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const store = chats(workspace);
     if ((await store.listOwned(callerIdentityId(req))).length >= MAX_THREADS_PER_IDENTITY) {
-      throw new XoError(ErrorCode.PRECONDITION_FAILED, `you have reached the limit of ${MAX_THREADS_PER_IDENTITY} chats; delete some first`);
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        `you have reached the limit of ${MAX_THREADS_PER_IDENTITY} chats; delete some first`,
+      );
     }
     let title = DEFAULT_TITLE;
     const raw = await req.rawBody();
@@ -92,7 +100,8 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
       if (!body.ok) throw body.error;
       const t = body.value?.title;
       if (t !== undefined) {
-        if (typeof t !== 'string' || t.trim().length === 0 || t.length > 120) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"title", if present, must be 1-120 characters');
+        if (typeof t !== 'string' || t.trim().length === 0 || t.length > 120)
+          throw new XoError(ErrorCode.INVALID_ARGUMENT, '"title", if present, must be 1-120 characters');
         title = t.trim();
       }
     }
@@ -123,7 +132,9 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
       const manifest = await installer.getManifest(match.name, match.version);
       if (!manifest.ok) throw manifest.error;
       const caps = (manifest.value.capabilities ?? []).slice(0, 20).map((c) => `- ${c.name}: ${c.description.slice(0, 400)}`);
-      blocks.push(`<xo-reference name="${match.name}" version="${match.version}">\n${caps.join('\n') || '(no declared capabilities)'}\n</xo-reference>`);
+      blocks.push(
+        `<xo-reference name="${match.name}" version="${match.version}">\n${caps.join('\n') || '(no declared capabilities)'}\n</xo-reference>`,
+      );
     }
     return blocks.join('\n');
   }
@@ -139,7 +150,11 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
     }
     let attached: string[] = [];
     if (attach !== undefined) {
-      if (!Array.isArray(attach) || attach.length > MAX_ATTACHED || !attach.every((a) => typeof a === 'string' && a.length > 0 && a.length <= 200)) {
+      if (
+        !Array.isArray(attach) ||
+        attach.length > MAX_ATTACHED ||
+        !attach.every((a) => typeof a === 'string' && a.length > 0 && a.length <= 200)
+      ) {
         throw new XoError(ErrorCode.INVALID_ARGUMENT, `"attach" must be an array of at most ${MAX_ATTACHED} installed XO names`);
       }
       attached = [...new Set(attach as string[])];
@@ -148,9 +163,14 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
     const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
     const candidates = [settings.model.primary, settings.model.fallback].filter((c): c is ModelChoice => c !== null);
     if (candidates.length === 0) {
-      throw new XoError(ErrorCode.PRECONDITION_FAILED, 'no model is selected for this workspace; choose one in Settings → Models and runtime');
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'no model is selected for this workspace; choose one in Settings → Models and runtime',
+      );
     }
-    const usable = candidates.filter((c) => (!settings.airGapped || LOCAL_PROVIDER_IDS.has(c.provider)) && providerFor(c.provider) !== undefined);
+    const usable = candidates.filter(
+      (c) => (!settings.airGapped || LOCAL_PROVIDER_IDS.has(c.provider)) && providerFor(c.provider) !== undefined,
+    );
     if (usable.length === 0) {
       throw new XoError(
         ErrorCode.PRECONDITION_FAILED,
@@ -186,11 +206,15 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
       }
     }
     if (reply === undefined) {
-      throw new XoError(ErrorCode.AI_ALL_PROVIDERS_FAILED, `the model request failed (tried: ${usable.map((c) => c.provider).join(', ')}); nothing was saved`);
+      throw new XoError(
+        ErrorCode.AI_ALL_PROVIDERS_FAILED,
+        `the model request failed (tried: ${usable.map((c) => c.provider).join(', ')}); nothing was saved`,
+      );
     }
 
     const now = new Date();
-    const retitle = thread.title === DEFAULT_TITLE && thread.messages.length === 0 ? content.trim().replace(/\s+/g, ' ').slice(0, 60) : undefined;
+    const retitle =
+      thread.title === DEFAULT_TITLE && thread.messages.length === 0 ? content.trim().replace(/\s+/g, ' ').slice(0, 60) : undefined;
     const saved = await chats(workspace).append(
       thread.threadId,
       [
@@ -206,7 +230,13 @@ export function registerChatRoutes(router: Router, workspaceStore: WorkspaceStor
       result: 'succeeded',
       target: { kind: 'chat', id: thread.threadId },
       // Metadata only: message text is never written to the audit log.
-      detail: { provider: reply.provider, model: reply.model, inputChars: content.length, outputChars: reply.text.length, attachedXos: attached.length },
+      detail: {
+        provider: reply.provider,
+        model: reply.model,
+        inputChars: content.length,
+        outputChars: reply.text.length,
+        attachedXos: attached.length,
+      },
     });
     const [userMessage, assistantMessage] = saved.messages.slice(-2);
     return json(201, { threadId: saved.threadId, title: saved.title, userMessage, assistantMessage });

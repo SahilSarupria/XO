@@ -6,7 +6,12 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, requirePermission, workspaceRegistryStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  requirePermission,
+  workspaceRegistryStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { callerIdentityId, workspaceArchivesStore, workspaceStateStore } from '../workspace/workspace-context.js';

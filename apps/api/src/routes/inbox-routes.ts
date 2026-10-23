@@ -102,7 +102,11 @@ export function registerInboxRoutes(router: Router, workspaceStore: WorkspaceSto
       for (const run of runs.value) {
         for (const step of run.steps) {
           if (step.executionId !== undefined && step.capabilityId !== undefined) {
-            byTask.set(step.executionId, { workflowExecutionId: run.workflowExecutionId, workflowName: run.workflowName, stepIndex: step.order });
+            byTask.set(step.executionId, {
+              workflowExecutionId: run.workflowExecutionId,
+              workflowName: run.workflowName,
+              stepIndex: step.order,
+            });
           }
         }
       }
@@ -221,7 +225,8 @@ export function registerInboxRoutes(router: Router, workspaceStore: WorkspaceSto
       throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this task is already resolved; more information can no longer be requested');
     }
     const created = await s.infoRequests.open(executionId, question, callerIdentityId(req), new Date());
-    if (created === undefined) throw new XoError(ErrorCode.PRECONDITION_FAILED, 'too many unanswered information requests on this task; answer some first');
+    if (created === undefined)
+      throw new XoError(ErrorCode.PRECONDITION_FAILED, 'too many unanswered information requests on this task; answer some first');
     await recordAudit(req, workspace, dataConfig, {
       event: 'human_task.info_requested',
       result: 'succeeded',

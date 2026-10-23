@@ -231,12 +231,18 @@ export function extractDocxText(bytes: Uint8Array): DocxExtraction {
   if (inParagraph) flushParagraph();
   void tableDepth;
 
-  if (sawNumbering) notes.push('Automatic list numbering and bullets are not reproduced: numbered items appear as plain "- " lines, so references like "step 6" may not match the visible numbers.');
+  if (sawNumbering)
+    notes.push(
+      'Automatic list numbering and bullets are not reproduced: numbered items appear as plain "- " lines, so references like "step 6" may not match the visible numbers.',
+    );
   if (sawTextBox) notes.push('Text boxes were read in document order; their position on the page is not preserved.');
   if (/<w:del[ >]/.test(xml)) notes.push('Tracked deletions are excluded; tracked insertions are included as final text.');
 
   // Collapse runs of blank lines but keep paragraph separation.
-  const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const text = lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   if (text.length === 0) throw new DocxError('the document contains no extractable text');
   const words = text.split(/\s+/).filter(Boolean).length;
   return { text, notes, stats: { paragraphs, tableRows, words } };

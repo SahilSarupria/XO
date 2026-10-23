@@ -3,7 +3,13 @@ import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { BlobStore } from '@xo/storage';
-import { isValidWorkspaceId, type CreateWorkspaceInput, type WorkspacePatch, type WorkspaceRecord, type WorkspaceStore } from './workspace.js';
+import {
+  isValidWorkspaceId,
+  type CreateWorkspaceInput,
+  type WorkspacePatch,
+  type WorkspaceRecord,
+  type WorkspaceStore,
+} from './workspace.js';
 
 const RECORD_PREFIX = 'workspaces/by-id/';
 
@@ -92,7 +98,8 @@ export class FsWorkspaceStore implements WorkspaceStore {
       const raw = await this.store.get(key);
       if (!raw.ok) continue;
       const record = decodeRecord(raw.value);
-      if (record !== undefined && (record.identityId === identityId || (record.members ?? []).some((m) => m.identityId === identityId))) records.push(record);
+      if (record !== undefined && (record.identityId === identityId || (record.members ?? []).some((m) => m.identityId === identityId)))
+        records.push(record);
     }
     return ok(records);
   }

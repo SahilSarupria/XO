@@ -13,7 +13,11 @@ const triage = () => ({
     { id: 'compile', kind: 'compile', config: {} },
     { id: 'validate', kind: 'validate', config: {} },
     { id: 'confidence', kind: 'branch', config: { metric: 'confidence', threshold: 0.9 } },
-    { id: 'eligibility', kind: 'capability', config: { packageName: 'burglary-policy', capabilityId: 'evaluateEligibility', memoryScope: 'none' } },
+    {
+      id: 'eligibility',
+      kind: 'capability',
+      config: { packageName: 'burglary-policy', capabilityId: 'evaluateEligibility', memoryScope: 'none' },
+    },
     { id: 'human', kind: 'human_review', config: {} },
   ],
   edges: [
@@ -43,19 +47,36 @@ test('save, load, list: a triage graph round-trips with branch threshold, node k
   await withWs(async ({ server, base }) => {
     const res = await server.request('POST', base, triage());
     assert.equal(res.status, 201, res.bodyText);
-    const d = res.json<{ definitionId: string; revision: number; status: string; analysis: { wellFormed: boolean; runnable: boolean; errors: unknown[] } }>();
+    const d = res.json<{
+      definitionId: string;
+      revision: number;
+      status: string;
+      analysis: { wellFormed: boolean; runnable: boolean; errors: unknown[] };
+    }>();
     assert.equal(d.revision, 1);
     assert.equal(d.status, 'draft');
     assert.equal(d.analysis.wellFormed, true);
     assert.equal(d.analysis.errors.length, 0);
     assert.equal(d.analysis.runnable, false);
 
-    const got = (await server.request('GET', `${base}/${d.definitionId}`)).json<{ nodes: { id: string; config: Record<string, unknown> }[]; edges: { when?: string }[] }>();
+    const got = (await server.request('GET', `${base}/${d.definitionId}`)).json<{
+      nodes: { id: string; config: Record<string, unknown> }[];
+      edges: { when?: string }[];
+    }>();
     assert.equal(got.nodes.find((n) => n.id === 'confidence')?.config['threshold'], 0.9);
     assert.equal(got.nodes.find((n) => n.id === 'eligibility')?.config['memoryScope'], 'none');
-    assert.deepEqual(got.edges.map((e) => e.when).filter(Boolean).sort(), ['gte', 'lt']);
+    assert.deepEqual(
+      got.edges
+        .map((e) => e.when)
+        .filter(Boolean)
+        .sort(),
+      ['gte', 'lt'],
+    );
     const list = (await server.request('GET', base)).json<{ definitions: { definitionId: string; nodeCount: number }[] }>();
-    assert.deepEqual(list.definitions.map((x) => [x.definitionId, x.nodeCount]), [[d.definitionId, 6]]);
+    assert.deepEqual(
+      list.definitions.map((x) => [x.definitionId, x.nodeCount]),
+      [[d.definitionId, 6]],
+    );
   });
 });
 
@@ -81,7 +102,9 @@ test('structural problems are reported (not thrown) and never make a draft runna
   assert.ok(oneSided.errors.some((e) => e.nodeId === 'human' && /not connected/.test(e.message)));
   const noTrigger = analyzeDefinition(parseDefinitionInput({ name: 'x', nodes: [{ id: 'a', kind: 'compile', config: {} }], edges: [] }));
   assert.ok(noTrigger.errors.some((e) => /at least one trigger/.test(e.message)));
-  const stray = analyzeDefinition(parseDefinitionInput({ ...t, edges: t.edges.map((e) => (e.from === 'compile' ? { ...e, when: 'gte' } : e)) }));
+  const stray = analyzeDefinition(
+    parseDefinitionInput({ ...t, edges: t.edges.map((e) => (e.from === 'compile' ? { ...e, when: 'gte' } : e)) }),
+  );
   assert.ok(stray.errors.some((e) => e.nodeId === 'compile' && /only valid on connections leaving a branch/.test(e.message)));
   for (const a of [cyc, oneSided, noTrigger, stray]) assert.equal(a.wellFormed, false);
 });
@@ -91,7 +114,13 @@ test('blockers say exactly why a well-formed graph still cannot run here', () =>
   const withExtras = parseDefinitionInput({
     ...t,
     nodes: [
-      ...t.nodes.map((n) => (n.id === 'claim_pdf' ? { ...n, config: { type: 'schedule' } } : n.id === 'eligibility' ? { ...n, config: { ...n.config, memoryScope: 'workflow' } } : n)),
+      ...t.nodes.map((n) =>
+        n.id === 'claim_pdf'
+          ? { ...n, config: { type: 'schedule' } }
+          : n.id === 'eligibility'
+            ? { ...n, config: { ...n.config, memoryScope: 'workflow' } }
+            : n,
+      ),
       { id: 'notify', kind: 'action', config: { type: 'email' } },
     ],
     edges: [...t.edges, { from: 'human', to: 'notify' }],
@@ -113,16 +142,40 @@ test('input validation rejects unknown fields, bad enums, bad thresholds, duplic
     assert.equal((await post({ ...t, name: '' })).status, 400);
     assert.equal((await post({ ...t, nodes: [] })).status, 400);
     assert.equal((await post({ ...t, nodes: [...t.nodes, { id: 'compile', kind: 'compile', config: {} }] })).status, 400, 'duplicate id');
-    assert.equal((await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'confidence' ? { ...n, config: { metric: 'confidence', threshold: 1.5 } } : n)) })).status, 400);
-    assert.equal((await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'confidence' ? { ...n, config: { metric: 'sentiment', threshold: 0.5 } } : n)) })).status, 400);
+    assert.equal(
+      (
+        await post({
+          ...t,
+          nodes: t.nodes.map((n) => (n.id === 'confidence' ? { ...n, config: { metric: 'confidence', threshold: 1.5 } } : n)),
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await post({
+          ...t,
+          nodes: t.nodes.map((n) => (n.id === 'confidence' ? { ...n, config: { metric: 'sentiment', threshold: 0.5 } } : n)),
+        })
+      ).status,
+      400,
+    );
     assert.equal((await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'compile' ? { ...n, kind: 'shell' } : n)) })).status, 400);
-    assert.equal((await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'compile' ? { ...n, config: { command: 'rm -rf /' } } : n)) })).status, 400, 'no free-form config on fixed nodes');
+    assert.equal(
+      (await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'compile' ? { ...n, config: { command: 'rm -rf /' } } : n)) })).status,
+      400,
+      'no free-form config on fixed nodes',
+    );
     assert.equal((await post({ ...t, edges: [...t.edges, { from: 'compile', to: 'ghost' }] })).status, 400);
     assert.equal((await post({ ...t, edges: [{ from: 'compile', to: 'compile' }] })).status, 400);
     assert.equal((await post({ ...t, nodes: t.nodes.map((n) => (n.id === 'eligibility' ? { ...n, id: 'bad id!' } : n)) })).status, 400);
     const many = Array.from({ length: 51 }, (_, i) => ({ id: `n${i}`, kind: 'compile', config: {} }));
     assert.equal((await post({ name: 'big', nodes: many, edges: [] })).status, 400);
-    assert.equal((await server.request('GET', base)).json<{ definitions: unknown[] }>().definitions.length, 0, 'nothing was stored by the rejected requests');
+    assert.equal(
+      (await server.request('GET', base)).json<{ definitions: unknown[] }>().definitions.length,
+      0,
+      'nothing was stored by the rejected requests',
+    );
   });
 });
 
@@ -151,7 +204,9 @@ test('permissions, deletion and audit', async () => {
     assert.equal((await server.request('DELETE', `${base}/${id}`, undefined, as(viewer))).status, 403);
     assert.equal((await server.request('DELETE', `${base}/${id}`)).status, 200);
     assert.equal((await server.request('GET', `${base}/${id}`)).status, 404);
-    const events = (await server.request('GET', `${wsBase}/audit/events`)).json<{ events: { event: string }[] }>().events.map((e) => e.event);
+    const events = (await server.request('GET', `${wsBase}/audit/events`))
+      .json<{ events: { event: string }[] }>()
+      .events.map((e) => e.event);
     assert.ok(events.includes('workflow.definition_saved') && events.includes('workflow.definition_deleted'));
   });
 });
