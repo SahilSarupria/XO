@@ -12,6 +12,7 @@ export * from './inference-config.js';
 export * from './circuit-breaker.js';
 export * from './rate-limiter.js';
 export * from './cache.js';
+export * from './file-cache.js';
 export * from './cost.js';
 export * from './model-selection.js';
 export * from './router.js';

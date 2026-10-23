@@ -8,7 +8,7 @@ import { CircuitBreaker, type CircuitBreakerOptions } from './circuit-breaker.js
 import { TokenBucketRateLimiter, type TokenBucketOptions } from './rate-limiter.js';
 import { RetryPolicy, type RetryPolicyOptions } from './retry.js';
 import { getProviderFailure } from './provider-errors.js';
-import { computeCacheKey, InMemoryCapabilityCache, type CapabilityCache } from './cache.js';
+import { CACHE_FORMAT_VERSION, computeCacheKey, computeSchemaHash, InMemoryCapabilityCache, type CapabilityCache } from './cache.js';
 import { CostAccountant, DEFAULT_PRICING_TABLE, type PricingTable } from './cost.js';
 import { selectCandidates, type ModelSelectionPolicy } from './model-selection.js';
 import { createDefaultPromptRegistry, type PromptRegistry } from './prompt/index.js';
@@ -168,26 +168,33 @@ export class AiCapabilityLayer {
         return err(error as AiError);
       }
 
-      const cacheKey = computeCacheKey({
-        capability,
-        promptVersion: template.version,
-        input: request.input,
-        excerptText: request.excerpt.text,
-      });
-      const cached = this.cache.get<CapabilityResponse<TOutput>>(cacheKey);
-      if (cached) {
-        this.logger.debug('ai_core cache hit', { capability, traceId: request.traceId });
-        this.meter.createCounter('ai_core_cache_hits_total').add(1, { capability });
-        return ok({ ...cached.value, meta: { ...cached.value.meta, cacheHit: true, latencyMs: performance.now() - startedAt } });
-      }
-
       const candidates = selectCandidates(this.options.policy, capability, new Set(this.providersById.keys()), this.descriptorsById, true);
       if (candidates.length === 0) {
         return err(new AiError(ErrorCode.AI_NO_ELIGIBLE_PROVIDER, `No eligible provider registered for capability "${capability}"`));
       }
 
-      const messages = template.render(request.input, request.excerpt.text);
+      // Identity of everything that determines the answer: prompt version, input, the ordered model candidates that would serve
+      // it, the output schema, and generation settings. Changing any of them yields a different key (never a stale hit).
       const schema = CAPABILITY_OUTPUT_SCHEMAS[capability];
+      const schemaHash = computeSchemaHash(schema);
+      const cacheKey = computeCacheKey({
+        capability,
+        promptVersion: template.version,
+        input: request.input,
+        excerptText: request.excerpt.text,
+        modelIdentity: candidates.map((c) => `${c.providerId}/${c.model}`),
+        schemaHash,
+        generation: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+        formatVersion: CACHE_FORMAT_VERSION,
+      });
+      const cached = await this.readCache<TOutput>(cacheKey, schema);
+      if (cached) {
+        this.logger.debug('ai_core cache hit', { capability, traceId: request.traceId });
+        this.meter.createCounter('ai_core_cache_hits_total').add(1, { capability });
+        return ok(replayedFromCache(cached, cacheKey, performance.now() - startedAt));
+      }
+
+      const messages = template.render(request.input, request.excerpt.text);
       let totalAttempts = 0;
       const failures: unknown[] = [];
 
@@ -225,7 +232,7 @@ export class AiCapabilityLayer {
                 model: candidate.model,
                 requestId: request.traceId,
                 messages,
-                maxOutputTokens: 4096,
+                maxOutputTokens: MAX_OUTPUT_TOKENS,
                 responseSchema: schema as unknown as Record<string, unknown>,
               });
               let parsed: unknown;
@@ -265,9 +272,25 @@ export class AiCapabilityLayer {
               cacheHit: false,
               latencyMs: performance.now() - startedAt,
               attempts: outcome.attempts,
+              provenance: {
+                origin: 'llm',
+                source: 'generated',
+                cacheKey,
+                generation: {
+                  generatedAtMs: Date.now(),
+                  traceId: request.traceId,
+                  providerUsed: candidate.providerId,
+                  modelUsed: outcome.value.response.modelUsed,
+                  promptVersion: template.version,
+                  schemaHash,
+                  usage: outcome.value.response.usage,
+                  ...(outcome.value.response.usageKnown === false ? { usageKnown: false } : {}),
+                  costUsd: costRecord.costUsd,
+                },
+              },
             },
           };
-          this.cache.set(cacheKey, result);
+          await this.writeCache(cacheKey, result);
           this.meter.createCounter('ai_core_requests_total').add(1, { capability, provider: candidate.providerId, status: 'success' });
           span.setStatus('ok');
           return ok(result);
@@ -292,4 +315,80 @@ export class AiCapabilityLayer {
       );
     });
   }
+
+  /** A cache must never break a request: backing-store failures are misses; hits are re-validated against the CURRENT schema. */
+  private async readCache<TOutput>(
+    key: string,
+    schema: Parameters<typeof validateJsonSchema>[0],
+  ): Promise<CapabilityResponse<TOutput> | undefined> {
+    try {
+      const entry = await this.cache.get<CapabilityResponse<TOutput>>(key);
+      if (!entry) return undefined;
+      const value = entry.value;
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        !('output' in value) ||
+        !('meta' in value) ||
+        validateJsonSchema(schema, value.output).length > 0
+      ) {
+        this.logger.warn('ai_core cache entry failed revalidation; treating as miss');
+        return undefined;
+      }
+      return value;
+    } catch (error) {
+      this.logger.warn('ai_core cache read failed; treating as miss', {
+        error: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+      });
+      return undefined;
+    }
+  }
+
+  private async writeCache<TOutput>(key: string, value: CapabilityResponse<TOutput>): Promise<void> {
+    try {
+      await this.cache.set(key, value);
+    } catch (error) {
+      this.logger.warn('ai_core cache write failed; continuing without caching', {
+        error: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+      });
+    }
+  }
+}
+
+const MAX_OUTPUT_TOKENS = 4096;
+
+/** A hit spends nothing now: zero usage/cost/attempts at the top level; the original generation stays visible under `provenance`. */
+function replayedFromCache<TOutput>(cached: CapabilityResponse<TOutput>, cacheKey: string, latencyMs: number): CapabilityResponse<TOutput> {
+  const original = cached.meta.provenance;
+  return {
+    output: cached.output,
+    meta: {
+      ...cached.meta,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      costUsd: 0,
+      attempts: 0,
+      cacheHit: true,
+      latencyMs,
+      ...(original
+        ? { provenance: { ...original, source: 'cache' as const, cacheKey } }
+        : {
+            // Entry written before provenance existed: say so by carrying what we know, without inventing a generation time.
+            provenance: {
+              origin: 'llm' as const,
+              source: 'cache' as const,
+              cacheKey,
+              generation: {
+                generatedAtMs: 0,
+                traceId: 'unknown',
+                providerUsed: cached.meta.providerUsed,
+                modelUsed: cached.meta.modelUsed,
+                promptVersion: cached.meta.promptVersion,
+                schemaHash: 'unknown',
+                usage: cached.meta.usage,
+                costUsd: cached.meta.costUsd,
+              },
+            },
+          }),
+    },
+  };
 }

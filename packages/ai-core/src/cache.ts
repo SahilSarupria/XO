@@ -12,11 +12,25 @@ function canonicalStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalStringify(obj[k])}`).join(',')}}`;
 }
 
+/** Bump when the cached value shape or key construction changes incompatibly; it is part of every key made with it. */
+export const CACHE_FORMAT_VERSION = 2;
+
 export interface CacheKeyInput {
   readonly capability: CapabilityId;
   readonly promptVersion: string;
   readonly input: unknown;
   readonly excerptText: string;
+  /**
+   * What would serve the request: the ORDERED `provider/model` candidate list the routing policy selected. A different model
+   * (or a different fallback chain) is a different identity, so switching models never silently serves an answer another model
+   * produced. Omit only for callers that deliberately want provider-independent keys (the legacy behaviour).
+   */
+  readonly modelIdentity?: readonly string[];
+  /** `computeSchemaHash` of the output schema: a schema change invalidates every entry produced under the old one. */
+  readonly schemaHash?: string;
+  /** Generation settings that can change the answer. */
+  readonly generation?: { readonly maxOutputTokens: number; readonly temperature?: number };
+  readonly formatVersion?: number;
 }
 
 /**
@@ -32,7 +46,14 @@ export interface CacheKeyInput {
  * cache share the identical hashing scheme).
  */
 export function computeCacheKey(input: CacheKeyInput, hasher: Hasher = new Sha256Hasher()): string {
-  return hasher.hash(canonicalStringify(input));
+  // Drop undefined members so that adding an OPTIONAL identity field never changes the key of callers that don't use it.
+  const defined = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+  return hasher.hash(canonicalStringify(defined));
+}
+
+/** Content hash of an output schema (canonical, key-order independent). */
+export function computeSchemaHash(schema: unknown, hasher: Hasher = new Sha256Hasher()): string {
+  return hasher.hash(canonicalStringify(schema));
 }
 
 export interface CacheEntry<T> {
@@ -40,9 +61,21 @@ export interface CacheEntry<T> {
   readonly storedAtMs: number;
 }
 
+export type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * Implementations may be synchronous (in-memory) or asynchronous (disk, shared stores); callers `await` the result. A cache is an
+ * optimisation and must never be required for correctness: a failing/corrupt backing store should behave as a miss.
+ */
 export interface CapabilityCache {
-  get<T>(key: string): CacheEntry<T> | undefined;
-  set<T>(key: string, value: T): void;
+  get<T>(key: string): MaybePromise<CacheEntry<T> | undefined>;
+  set<T>(key: string, value: T): MaybePromise<void>;
+}
+
+/** Optional explicit-invalidation surface. Invalidation is never implicit: nothing is evicted because a model "might" have changed. */
+export interface InvalidatableCapabilityCache extends CapabilityCache {
+  invalidate(key: string): MaybePromise<boolean>;
+  clear(): MaybePromise<number>;
 }
 
 export interface InMemoryCacheOptions {
