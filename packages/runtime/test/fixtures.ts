@@ -26,6 +26,8 @@ export const sampleMetadata: XoMetadata = {
 };
 
 export const contractAnalysisCapability: CapabilityDeclaration = {
+  // Declares a model strategy => an explicit inference node (undeclared capabilities are denied inference by default).
+  execution: { mode: 'model' },
   id: 'contract_analysis',
   name: 'Contract Analysis',
   description: 'Reviews corporate contracts for risk and missing clauses.',
@@ -37,6 +39,8 @@ export const contractAnalysisCapability: CapabilityDeclaration = {
 };
 
 export const clauseLookupCapability: CapabilityDeclaration = {
+  // Declares a model strategy => an explicit inference node (undeclared capabilities are denied inference by default).
+  execution: { mode: 'model' },
   id: 'clause_lookup',
   name: 'Clause Lookup',
   description: 'Looks up individual clause types quickly.',
@@ -48,6 +52,8 @@ export const clauseLookupCapability: CapabilityDeclaration = {
 };
 
 export const fraudDetectionCapability: CapabilityDeclaration = {
+  // Declares a model strategy => an explicit inference node (undeclared capabilities are denied inference by default).
+  execution: { mode: 'model' },
   id: 'fraud_detection',
   name: 'Fraud Detection',
   description: 'Flags anomalous transactions for review.',

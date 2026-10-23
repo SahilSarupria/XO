@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { CapabilityExecutor } from '../src/ai/capability-executor.js';
 import { ScriptedModelProvider } from './fixtures.js';
 import type { ProviderRequest, ProviderStreamEvent } from '@xo/ai-core';
-import type { ModelProvider } from '@xo/ai-core';
+import { InferenceGuard, type InferenceDispatchContext, type ModelProvider } from '@xo/ai-core';
+
+const ctx = (): InferenceDispatchContext => ({ requirement: 'required', nodeId: 'test-node', scope: new InferenceGuard().beginRun() });
 
 function request(overrides: Partial<ProviderRequest> = {}): ProviderRequest {
   return { model: 'test-model', messages: [{ role: 'user', content: 'hi' }], maxOutputTokens: 100, ...overrides };
@@ -13,7 +15,7 @@ test('execute() passes through a successful ProviderResponse unchanged', async (
   const provider = new ScriptedModelProvider();
   provider.setResponse({ text: 'the answer', usage: { inputTokens: 3, outputTokens: 7 }, modelUsed: 'test-model', finishReason: 'stop' });
   const executor = new CapabilityExecutor(provider);
-  const result = await executor.execute(request());
+  const result = await executor.execute(request(), ctx());
   assert.ok(result.ok);
   if (result.ok) assert.equal(result.value.text, 'the answer');
 });
@@ -22,7 +24,7 @@ test('execute() translates a provider throw into a RuntimeError', async () => {
   const provider = new ScriptedModelProvider();
   provider.failNextWith = new Error('provider is down');
   const executor = new CapabilityExecutor(provider);
-  const result = await executor.execute(request());
+  const result = await executor.execute(request(), ctx());
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.error.code, 'XO_RUNTIME_EXECUTION_FAILED');
@@ -34,7 +36,7 @@ test('execute() forwards the exact request to the provider', async () => {
   const provider = new ScriptedModelProvider();
   const executor = new CapabilityExecutor(provider);
   const req = request({ maxOutputTokens: 55 });
-  await executor.execute(req);
+  await executor.execute(req, ctx());
   assert.equal(provider.requests.length, 1);
   assert.equal(provider.requests[0]?.maxOutputTokens, 55);
 });
@@ -47,7 +49,7 @@ test('stream() forwards directly to a provider that implements completeStream', 
   ];
   const executor = new CapabilityExecutor(provider);
   const events: ProviderStreamEvent[] = [];
-  for await (const event of executor.stream(request())) events.push(event);
+  for await (const event of executor.stream(request(), ctx())) events.push(event);
   assert.equal(events.length, 2);
   assert.deepEqual(events[0], { type: 'text_delta', delta: 'hello' });
 });
@@ -73,7 +75,7 @@ test('stream() falls back to a single complete() call, emitted as one text_delta
   };
   const executor = new CapabilityExecutor(provider);
   const events: ProviderStreamEvent[] = [];
-  for await (const event of executor.stream(request())) events.push(event);
+  for await (const event of executor.stream(request(), ctx())) events.push(event);
   assert.deepEqual(events, [
     { type: 'text_delta', delta: 'fallback text' },
     { type: 'done', usage: { inputTokens: 2, outputTokens: 2 }, finishReason: 'stop' },

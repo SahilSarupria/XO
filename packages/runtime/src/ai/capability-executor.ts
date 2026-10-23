@@ -1,4 +1,11 @@
-import type { ModelProvider, ProviderRequest, ProviderResponse, ProviderStreamEvent } from '@xo/ai-core';
+import type {
+  InferenceDenial,
+  InferenceDispatchContext,
+  ModelProvider,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderStreamEvent,
+} from '@xo/ai-core';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import type { RuntimeInstrumentation } from '../observability/instrumentation.js';
@@ -29,11 +36,24 @@ export interface CapabilityExecutorOptions {
  * all in `@xo/ai-core`, all owned by `AiCapabilityLayer`, none reachable
  * from here without going through the six extraction capabilities).
  *
+ * AUTHORITATIVE INFERENCE GATE: every call below requires an `InferenceDispatchContext`
+ * (node declaration + per-run scope) and is authorized by `@xo/ai-core`'s `InferenceGuard`
+ * BEFORE the provider is touched. The parameter is required so a new call site cannot
+ * compile without deciding what authority it runs under. A denied call returns/throws a
+ * structured `inferenceDenialError`; it never falls back to another provider or path.
+ * The granted output-token cap clamps the request; usage is settled against the budget.
+ *
  * Provider selection/config is entirely the caller's concern — this
  * class constructs nothing and selects nothing, matching "use only the
  * public interfaces of ... @xo/ai-core" and "do not duplicate logic from
  * those packages."
  */
+/** Structured, non-retryable outcome for a denied inference call. No provider is contacted and nothing else is substituted. */
+export function inferenceDenialError(denial: InferenceDenial): RuntimeError {
+  const code = denial.reason === 'budget_exhausted' ? ErrorCode.RUNTIME_BUDGET_EXCEEDED : ErrorCode.RUNTIME_PERMISSION_DENIED;
+  return new RuntimeError(code, `Inference denied (${denial.reason}): ${denial.message}`, { context: { inferenceDenial: { ...denial } } });
+}
+
 export class CapabilityExecutor {
   private readonly instrumentation: RuntimeInstrumentation | undefined;
   private readonly now: () => Date;
@@ -46,10 +66,24 @@ export class CapabilityExecutor {
     this.now = options.now ?? (() => new Date());
   }
 
-  async execute(request: ProviderRequest): Promise<Result<ProviderResponse, RuntimeError>> {
+  async execute(request: ProviderRequest, inference: InferenceDispatchContext): Promise<Result<ProviderResponse, RuntimeError>> {
+    const authorization = inference.scope.authorize({
+      requirement: inference.requirement,
+      nodeId: inference.nodeId,
+      providerId: this.provider.id,
+      requestedMaxOutputTokens: request.maxOutputTokens,
+    });
+    if (!authorization.ok) return err(inferenceDenialError(authorization.denial));
+    const { grant } = authorization;
+
     const startedAt = this.now().getTime();
     try {
-      const response = await this.provider.complete(request);
+      const response = await this.provider.complete({ ...request, maxOutputTokens: grant.maxOutputTokens });
+      grant.settle({
+        providerId: this.provider.id,
+        model: response.modelUsed,
+        usage: response.usageKnown === false ? undefined : response.usage,
+      });
       const durationMs = this.now().getTime() - startedAt;
       this.instrumentation?.recordAiCallLatency(durationMs, { provider: this.provider.id, finishReason: response.finishReason });
       this.instrumentation?.recordTokenUsage(
@@ -58,6 +92,7 @@ export class CapabilityExecutor {
       );
       return ok(response);
     } catch (cause) {
+      grant.release();
       const message = cause instanceof Error ? cause.message : 'unknown AI provider error';
       return err(new RuntimeError(ErrorCode.RUNTIME_EXECUTION_FAILED, `AI Capability Layer call failed: ${message}`, { cause }));
     }
@@ -72,13 +107,33 @@ export class CapabilityExecutor {
    * since bypassing `AiCapabilityLayer` means `router.ts` isn't the one
    * doing it for us.
    */
-  async *stream(request: ProviderRequest): AsyncGenerator<ProviderStreamEvent, void, void> {
-    if (this.provider.completeStream) {
-      yield* this.provider.completeStream(request);
-      return;
+  async *stream(request: ProviderRequest, inference: InferenceDispatchContext): AsyncGenerator<ProviderStreamEvent, void, void> {
+    const authorization = inference.scope.authorize({
+      requirement: inference.requirement,
+      nodeId: inference.nodeId,
+      providerId: this.provider.id,
+      requestedMaxOutputTokens: request.maxOutputTokens,
+    });
+    if (!authorization.ok) throw inferenceDenialError(authorization.denial);
+    const { grant } = authorization;
+    const bounded = { ...request, maxOutputTokens: grant.maxOutputTokens };
+    let usage: { inputTokens: number; outputTokens: number } | undefined;
+    try {
+      if (this.provider.completeStream) {
+        for await (const event of this.provider.completeStream(bounded)) {
+          if (event.type === 'done') usage = event.usage;
+          yield event;
+        }
+        return;
+      }
+      const response = await this.provider.complete(bounded);
+      usage = response.usageKnown === false ? undefined : response.usage;
+      yield { type: 'text_delta', delta: response.text };
+      yield { type: 'done', usage: response.usage, finishReason: response.finishReason };
+    } finally {
+      // Completed stream => settle real usage; aborted/failed before `done` => release (nothing measurable).
+      if (usage) grant.settle({ providerId: this.provider.id, model: bounded.model, usage });
+      else grant.release();
     }
-    const response = await this.provider.complete(request);
-    yield { type: 'text_delta', delta: response.text };
-    yield { type: 'done', usage: response.usage, finishReason: response.finishReason };
   }
 }

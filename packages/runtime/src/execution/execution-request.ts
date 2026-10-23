@@ -1,4 +1,5 @@
 import type { HostProfile } from '@xo/package-sdk';
+import type { RunInferenceRestriction } from '@xo/ai-core';
 import type { EnvironmentId, RequestId } from '../ids.js';
 import type { WorkflowGraph } from '../workflow/workflow-graph.js';
 
@@ -84,4 +85,10 @@ export interface ExecutionRequest {
    * `'model'`, a real handler invocation for `'deterministic_rule'`.
    */
   readonly simulate?: boolean;
+  /**
+   * Per-run inference restriction. RESTRICT-ONLY: it may disable inference or tighten token/spend limits for this run (and, for a
+   * workflow, every node that shares this same object). It can never enable inference that a node's declaration or server policy
+   * forbids — the type has no field capable of granting anything.
+   */
+  readonly inference?: RunInferenceRestriction;
 }

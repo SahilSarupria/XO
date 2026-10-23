@@ -1,4 +1,4 @@
-import type { ModelProvider } from '@xo/ai-core';
+import type { ModelProvider, ServerInferencePolicy } from '@xo/ai-core';
 import type { Logger } from '@xo/logger';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import type { CapabilityExecutor } from '../ai/capability-executor.js';
@@ -60,6 +60,8 @@ export interface ExecutionEngineOptions {
   readonly capabilityAuthorityExecutor?: RuntimeCapabilityExecutor;
   /** R6. Forwarded verbatim to `ExecutionPipeline` — see `execution/execution-retry-policy.ts`'s `ExecutionRetryOptions` doc comment. Absent means `maxAttempts: 1` — no retry, every pre-R6 caller's behavior unchanged. */
   readonly retry?: ExecutionRetryOptions;
+  /** Server inference policy; see `ExecutionPipelineOptions.inferencePolicy`. Absent = fail-closed default (undeclared capabilities may not infer). */
+  readonly inferencePolicy?: ServerInferencePolicy;
 }
 
 /**
@@ -123,6 +125,7 @@ export class ExecutionEngine {
       ...(options.minConfidence !== undefined ? { minConfidence: options.minConfidence } : {}),
       ...(options.capabilityAuthorityExecutor !== undefined ? { capabilityAuthorityExecutor: options.capabilityAuthorityExecutor } : {}),
       ...(options.retry !== undefined ? { retry: options.retry } : {}),
+      ...(options.inferencePolicy !== undefined ? { inferencePolicy: options.inferencePolicy } : {}),
     });
     this.defaultTimeoutMs = options.defaultTimeoutMs;
 

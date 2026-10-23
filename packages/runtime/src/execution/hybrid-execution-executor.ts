@@ -1,4 +1,4 @@
-import type { ProviderRequest, ProviderResponse } from '@xo/ai-core';
+import type { InferenceRunScope, ProviderRequest, ProviderResponse } from '@xo/ai-core';
 import { err, ok, type Result } from '@xo/types';
 import type { HybridExecutionStep } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
@@ -102,6 +102,8 @@ export interface HybridExecutionDeps {
 export type HybridProviderRequestBuilder = (effectiveInput: string) => ProviderRequest;
 
 export interface HybridExecutionRequestInputs {
+  /** The run's inference scope: every `'model'` step is authorized against it (a hybrid `'model'` step is, by declaration, an inference node). */
+  readonly inferenceScope: InferenceRunScope;
   /** The capability invocation's own free-text input — already safety-checked/redacted the same as the single-`'model'`-mode path (`ExecutionPipeline.prepare()`'s `effectiveInput`). Used by a step whose `input.kind === 'request'` and `strategy === 'model'`. */
   readonly requestInput: string;
   /** `request.structuredInput ?? {}` — used by a step whose `input.kind === 'request'` and `strategy === 'deterministic_rule'`, identical to `runDeterministicRuleExecution`'s own reading of it. */
@@ -201,7 +203,13 @@ export class HybridExecutionExecutor {
       // 'model'
       const effectiveInput = this.coerceToText(resolvedInput.value);
       const providerRequest = buildProviderRequest(effectiveInput);
-      const raced = await raceCancellation(this.deps.capabilityExecutor.execute(providerRequest));
+      const raced = await raceCancellation(
+        this.deps.capabilityExecutor.execute(providerRequest, {
+          requirement: 'required',
+          nodeId: `${inputs.capabilityId}#${step.stepId}`,
+          scope: inputs.inferenceScope,
+        }),
+      );
       if (raced.cancelled) return { cancelled: true };
       if (!raced.value.ok) return { cancelled: false, result: err(raced.value.error) };
       outputsById.set(step.stepId, raced.value.value.text);

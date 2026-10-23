@@ -212,7 +212,12 @@ export async function runCommand(options: RunOptions, resolveProvider: () => Res
 
   let engine: ExecutionEngine;
   try {
-    engine = new ExecutionEngine(() => runtime.context(), installer, provider, options.model !== undefined ? { model: options.model } : {});
+    engine = new ExecutionEngine(() => runtime.context(), installer, provider, {
+      ...(options.model !== undefined ? { model: options.model } : {}),
+      // Inference policy is operator-controlled. Capabilities that declare a model strategy may infer; capabilities with NO
+      // declaration (packages predating declarations) are denied unless the operator explicitly opts in via the environment.
+      inferencePolicy: { enabled: true, allowUndeclared: process.env['XO_INFERENCE_ALLOW_UNDECLARED'] === 'true' },
+    });
   } catch (cause) {
     return withDeterministicSkipNote(failWith(`could not construct the execution engine: ${(cause as Error).message}`));
   }

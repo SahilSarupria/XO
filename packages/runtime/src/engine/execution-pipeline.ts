@@ -1,3 +1,12 @@
+import {
+  DEFAULT_SERVER_INFERENCE_POLICY,
+  InferenceGuard,
+  type InferenceDispatchContext,
+  type InferenceRunScope,
+  type NodeInferenceDeclaration,
+  type RunInferenceRestriction,
+  type ServerInferencePolicy,
+} from '@xo/ai-core';
 import type { ProviderRequest, ProviderResponse, ProviderStreamEvent } from '@xo/ai-core';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -122,6 +131,13 @@ export interface ExecutionPipelineOptions {
    * means `maxAttempts: 1`, identical to every pre-R6 caller.
    */
   readonly retry?: ExecutionRetryOptions;
+  /**
+   * Server inference policy (kill-switch, provider allow-list, cumulative budget, and whether capabilities with NO inference
+   * declaration may infer). Absent means `DEFAULT_SERVER_INFERENCE_POLICY`: only capabilities that declare a model strategy
+   * (`execution.mode: 'model'`, or a hybrid `'model'` step) may call a provider; an undeclared capability (no `execution` field,
+   * i.e. packages compiled before declarations existed) is DENIED rather than defaulting to an LLM call.
+   */
+  readonly inferencePolicy?: ServerInferencePolicy;
 }
 
 /**
@@ -197,6 +213,9 @@ export class ExecutionPipeline {
   private readonly workflowExecutor: WorkflowExecutor;
   private readonly minConfidence: number | undefined;
   private readonly capabilityAuthorityExecutor: RuntimeCapabilityExecutor | undefined;
+  private readonly inferenceGuard: InferenceGuard;
+  /** Requests sharing one restriction OBJECT (e.g. every node of one workflow) share one run scope, so per-run budgets are cumulative. */
+  private readonly sharedRunScopes = new WeakMap<RunInferenceRestriction, InferenceRunScope>();
   private readonly strategyRouter = new ExecutionStrategyRouter();
   /**
    * R5. Constructed from this same pipeline's own `capabilityExecutor`
@@ -244,12 +263,34 @@ export class ExecutionPipeline {
       capabilityAuthorityExecutor: this.capabilityAuthorityExecutor,
     });
     this.retryPolicy = new ExecutionRetryPolicy(options.retry);
+    this.inferenceGuard = new InferenceGuard(options.inferencePolicy ?? DEFAULT_SERVER_INFERENCE_POLICY);
     this.workflowExecutor = new WorkflowExecutor((request, cancellation) => this.run(request, cancellation), {
       ...(this.instrumentation ? { instrumentation: this.instrumentation } : {}),
       logger: this.logger,
       now: this.now,
       ...options.workflow,
     });
+  }
+
+  private runScopeFor(request: ExecutionRequest): InferenceRunScope {
+    const restriction = request.inference;
+    if (!restriction) return this.inferenceGuard.beginRun();
+    let scope = this.sharedRunScopes.get(restriction);
+    if (!scope) {
+      scope = this.inferenceGuard.beginRun(restriction);
+      this.sharedRunScopes.set(restriction, scope);
+    }
+    return scope;
+  }
+
+  /** The node's inference declaration, derived from its authoritative execution declaration (no parallel field to drift). */
+  private inferenceContextFor(
+    request: ExecutionRequest,
+    capability: { readonly declaration: { readonly id: string; readonly execution?: { readonly mode: string } } },
+  ): InferenceDispatchContext {
+    const mode = capability.declaration.execution?.mode;
+    const requirement: NodeInferenceDeclaration = mode === undefined ? 'undeclared' : mode === 'model' ? 'required' : 'none';
+    return { requirement, nodeId: capability.declaration.id, scope: this.runScopeFor(request) };
   }
 
   async run(request: ExecutionRequest, cancellation: ExecutionCancellation = new ExecutionCancellation()): Promise<ExecutionResult> {
@@ -277,7 +318,15 @@ export class ExecutionPipeline {
       if (cancellation.isCancelled) return this.terminateCancelled(hookCtx, session, executionId, startedAt, cancellation);
       providerResponse = buildSimulatedProviderResponse(providerRequest);
     } else {
-      const dispatch = await this.dispatchModelWithRetry(providerRequest, cancellation, hookCtx, session, executionId, startedAt);
+      const dispatch = await this.dispatchModelWithRetry(
+        providerRequest,
+        this.inferenceContextFor(request, selected),
+        cancellation,
+        hookCtx,
+        session,
+        executionId,
+        startedAt,
+      );
       if (!dispatch.ok) return dispatch.result;
       providerResponse = dispatch.response;
       attempts = dispatch.attempts;
@@ -333,6 +382,7 @@ export class ExecutionPipeline {
    */
   private async dispatchModelWithRetry(
     providerRequest: ProviderRequest,
+    inference: InferenceDispatchContext,
     cancellation: ExecutionCancellation,
     hookCtx: ExecutionHookContext,
     session: ExecutionSession,
@@ -348,7 +398,7 @@ export class ExecutionPipeline {
         return { ok: false, result: this.terminateCancelled(hookCtx, session, executionId, startedAt, cancellation) };
 
       const attemptId = deriveAttemptId(executionId, attempt);
-      const aiOutcome = await this.raceCancellation(this.capabilityExecutor.execute(providerRequest), cancellation);
+      const aiOutcome = await this.raceCancellation(this.capabilityExecutor.execute(providerRequest, inference), cancellation);
       if (aiOutcome.cancelled)
         return { ok: false, result: this.terminateCancelled(hookCtx, session, executionId, startedAt, cancellation) };
       if (aiOutcome.value.ok) return { ok: true, response: aiOutcome.value.value, attempts: attempt };
@@ -444,7 +494,7 @@ export class ExecutionPipeline {
     let finishReason: ProviderResponse['finishReason'] = 'stop';
 
     try {
-      for await (const event of this.capabilityExecutor.stream(providerRequest)) {
+      for await (const event of this.capabilityExecutor.stream(providerRequest, this.inferenceContextFor(request, selected))) {
         if (cancellation.isCancelled) break;
         if (event.type === 'text_delta') content += event.delta;
         else if (event.type === 'done') {
@@ -1082,7 +1132,12 @@ export class ExecutionPipeline {
 
     const hybridOutcome = await hybridExecutor.execute(
       steps,
-      { requestInput: effectiveInput, structuredInput: request.structuredInput ?? {}, capabilityId: selected.declaration.id },
+      {
+        requestInput: effectiveInput,
+        structuredInput: request.structuredInput ?? {},
+        capabilityId: selected.declaration.id,
+        inferenceScope: this.runScopeFor(request),
+      },
       buildProviderRequest,
       // The exact same `raceCancellation` this pipeline already uses around
       // its single AI-provider call in `run()` (see that method's own

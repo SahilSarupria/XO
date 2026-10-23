@@ -9,6 +9,7 @@ export * from './retry.js';
 export * from './provider-errors.js';
 export * from './redaction.js';
 export * from './inference-config.js';
+export * from './inference-policy.js';
 export * from './circuit-breaker.js';
 export * from './rate-limiter.js';
 export * from './cache.js';

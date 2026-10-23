@@ -158,9 +158,12 @@ test('R1: a deterministic_rule capability is denied, not silently run as model m
   });
 });
 
-test('R1: a model-mode (execution absent) capability is completely unaffected â€” continues through the AI Capability Layer exactly as before', async () => {
+test('R1 (legacy opt-in): an UNDECLARED (execution absent) capability still reaches the AI Capability Layer when the server explicitly allows undeclared inference', async () => {
   await withTempInstaller(async (installer) => {
-    const bundle = buildContractLawyerBundle(); // default capabilities (contractAnalysisCapability, clauseLookupCapability) have no `execution` field
+    // The shared fixtures now declare `execution: { mode: 'model' }`; strip it so this test still covers a genuinely undeclared capability.
+    const { execution: _declared, ...undeclaredCapability } = contractAnalysisCapability;
+    void _declared;
+    const bundle = buildContractLawyerBundle({ capabilities: [undeclaredCapability] });
     await installer.install(bundle);
     const registry = await mountBundle(installer, bundle);
     const provider = new ScriptedModelProvider();
@@ -168,6 +171,7 @@ test('R1: a model-mode (execution absent) capability is completely unaffected â€
 
     const engine = new ExecutionEngine(() => buildRuntimeContext(registry), installer, provider, {
       permissionGate: allowAllPermissionGate,
+      inferencePolicy: { enabled: true, allowUndeclared: true },
       capabilityAuthorityExecutor: buildCapabilityAuthorityExecutor(),
     });
 
