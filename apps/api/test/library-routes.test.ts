@@ -72,7 +72,14 @@ test('trust block reports only what records say: unsigned, no benchmarks, never 
   await withWs(async ({ server, base }) => {
     const id = await publish(server, base, 'gamma');
     let item = (await server.request('GET', `${base}/library`)).json<{ items: Item[] }>().items[0]!;
-    assert.deepEqual(item.trust, { signed: false, signerCount: 0, benchmarked: false, overallScore: null, independentlyVerified: false });
+    assert.deepEqual(item.trust, {
+      signed: false,
+      signerCount: 0,
+      signaturesVerified: false,
+      benchmarked: false,
+      overallScore: null,
+      independentlyVerified: false,
+    });
 
     for (const [category, score] of [
       ['knowledge', 90],

@@ -54,8 +54,11 @@ interface LibraryItem {
   readonly installed: boolean;
   readonly madeByMe: boolean;
   readonly trust: {
+    /** The manifest carries signature entries. NOT verified: see `signaturesVerified`. */
     readonly signed: boolean;
     readonly signerCount: number;
+    /** Always false: this server resolves no signer keys, so it never verifies a signature. */
+    readonly signaturesVerified: false;
     readonly benchmarked: boolean;
     readonly overallScore: number | null;
     readonly independentlyVerified: false;
@@ -84,6 +87,7 @@ function toItem(
     trust: {
       signed: (m.signatures ?? []).length > 0,
       signerCount: (m.signatures ?? []).length,
+      signaturesVerified: false,
       benchmarked: bench.runs > 0,
       overallScore: bench.overall,
       independentlyVerified: false,
@@ -183,7 +187,7 @@ export function registerLibraryRoutes(router: Router, workspaceStore: WorkspaceS
     if (settings.trust.requireSignedPackages && (record.value.manifest.signatures ?? []).length === 0) {
       throw new XoError(
         ErrorCode.PRECONDITION_FAILED,
-        'this workspace requires signed packages (Settings → Trust and signing); this package carries no signatures',
+        'this workspace requires signed packages (Settings → Trust and signing); this package carries no signature entries',
       );
     }
     const bytes = await loadArchive(c.archives, packageId);

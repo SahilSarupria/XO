@@ -251,7 +251,7 @@ export const studioPaths = {
     put: {
       summary: 'Update settings (partial patch)',
       description:
-        'Unknown fields are rejected. Settings the deployment cannot honor are refused, not stored: a runtime location the deployment does not offer is 412; air-gapped mode with an off-box model is 412 (checked on the merged result, so field order does not matter). Air-gapped mode blocks URL import and off-box chat providers. requireSignedPackages makes registry publish and install refuse unsigned packages. Region updates the workspace record.',
+        'Unknown fields are rejected. Settings the deployment cannot honor are refused, not stored: a runtime location the deployment does not offer is 412; air-gapped mode with an off-box model is 412 (checked on the merged result, so field order does not matter). Air-gapped mode blocks URL import and off-box chat providers. requireSignedPackages makes registry publish and install refuse a package whose manifest has no signature entries — a presence check only; signature validity is not verified by this server. Region updates the workspace record.',
       'x-xo-permission': 'manage',
       parameters: [WS],
       requestBody: body(
@@ -354,7 +354,7 @@ export const studioPaths = {
     get: {
       summary: 'Packages in this workspace registry, with installed state and recorded trust facts',
       description:
-        'The catalog is this workspace only: there is no cross-organization marketplace, price or rating data. `trust` reports only what records say — signed or not, whether benchmark runs exist, and the mean of the latest score per category. `independentlyVerified` is always false because benchmark runs do not record who ran them.',
+        'The catalog is this workspace only: there is no cross-organization marketplace, price or rating data. `trust` reports only what records say — whether signature entries are present (`signed`), never whether they are valid (`signaturesVerified` is always false: this server resolves no signer keys), whether benchmark runs exist, and the mean of the latest score per category. `independentlyVerified` is always false because benchmark runs do not record who ran them.',
       'x-xo-permission': 'read',
       parameters: [
         WS,
@@ -385,7 +385,7 @@ export const studioPaths = {
     post: {
       summary: 'Install a package from this workspace registry',
       description:
-        'Uses the archive retained at publish time and re-checks its merkle root against the registry record. Refused (412) when requireSignedPackages is on and the package is unsigned, or when the archive was not retained (published before archives were kept — re-publish).',
+        'Uses the archive retained at publish time and re-checks its merkle root against the registry record. Refused (412) when requireSignedPackages is on and the manifest has no signature entries (presence only, not validity), or when the archive was not retained (published before archives were kept — re-publish).',
       'x-xo-permission': 'author',
       parameters: [WS],
       requestBody: body(obj({ packageId: str, force: bool }, ['packageId'])),

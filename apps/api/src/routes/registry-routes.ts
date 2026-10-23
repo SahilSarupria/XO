@@ -131,7 +131,7 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     if (settings.trust.requireSignedPackages && (unpacked.manifest.signatures ?? []).length === 0) {
       throw new XoError(
         ErrorCode.PRECONDITION_FAILED,
-        'this workspace requires signed packages (Settings → Trust and signing); the package manifest carries no signatures',
+        'this workspace requires signed packages (Settings → Trust and signing); the package manifest carries no signature entries',
       );
     }
     const published = unwrapOrThrow(await c.publish(unpacked));

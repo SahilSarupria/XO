@@ -52,6 +52,12 @@ test('defaults, and the effect block states what is enforced vs declared', async
       assert.equal(res.effect['residency'].enforced, false);
       assert.equal(res.effect['airGapped'].enforced, true);
       assert.equal(res.effect['trust'].requireCompilerAttestation.available, false);
+      assert.match(
+        res.effect['trust'].requireSignedPackages.note,
+        /presence check only/,
+        'the setting must not claim to verify signatures',
+      );
+      assert.match(res.effect['trust'].requireSignedPackages.note, /does not verify/);
       assert.deepEqual(res.effect['runtime'].availableLocations, ['this_computer']);
       assert.ok(res.effect['model'].providers.every((p: { id: string; configured: boolean }) => typeof p.configured === 'boolean'));
       assert.ok(!JSON.stringify(res).match(/api[_-]?key"\s*:\s*"/i), 'no credential material is ever returned');

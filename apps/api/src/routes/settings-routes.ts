@@ -91,7 +91,7 @@ function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings)
     trust: {
       requireSignedPackages: {
         enforced: true,
-        note: 'Registry publish and XO install refuse packages with no signatures. Signature validity is checked by @xo/package-sdk, not here.',
+        note: 'Registry publish and XO install refuse a package whose manifest carries NO signature entries. This is a presence check only: this server has no signer-key resolution or trust anchors, so it does not verify that any signature is valid or who made it. Do not treat it as proof of authenticity.',
       },
       requireCompilerAttestation: {
         enforced: false,
