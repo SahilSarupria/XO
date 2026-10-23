@@ -481,6 +481,28 @@ export const studioPaths = {
     },
   },
 
+  '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities/{capabilityId}/preview': {
+    post: {
+      summary: 'Validate / Preview a capability (no execution)',
+      description:
+        'The no-effect half of the Create XO test policy. Rebuilds the contract and resolves the binding from the stored compiled graph, validates the supplied input against the declared schema, and describes what a real run would do. Never executes the capability, writes an execution record or opens a human task, and is allowed on an unapproved capability. `testRunAllowed` and `blockers` say whether a real Test Run would currently be permitted. A Test Run is the ordinary POST /workspaces/{workspaceId}/executions: same approval gate, same authorization, same audit entry — there is no second execution path. A passing preview does not prove the real run will succeed.',
+      'x-xo-permission': 'author',
+      parameters: [WS, pathParam('compilationId'), pathParam('capabilityId')],
+      requestBody: {
+        required: false,
+        content: { 'application/json': { schema: obj({ input: { description: 'The input to check; defaults to {}' } }) } },
+      },
+      responses: {
+        '200': ok(
+          '{ previewOnly: true, approved, testRunAllowed, blockers, preview }',
+          obj({ previewOnly: { type: 'boolean', enum: [true] }, approved: bool, testRunAllowed: bool, blockers: arr(str) }),
+        ),
+        '403': R_403,
+        ...standard(['404', ok('Unknown compilation or capability, or workspace not accessible')]),
+      },
+    },
+  },
+
   '/workspaces/{workspaceId}/workflow-definitions': {
     get: {
       summary: 'List saved workflow drafts',

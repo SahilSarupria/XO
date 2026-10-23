@@ -68,6 +68,8 @@ test('documented permissions match enforcement: a viewer is refused (403) exactl
       p
         .replace('{workspaceId}', ws)
         .replace('{executionId}', 'exec_x')
+        .replace('{compilationId}', 'cmp_x')
+        .replace('{capabilityId}', 'cap_x')
         .replace('{requestId}', 'ir_x')
         .replace('{packageId}', 'sha256%3Ax')
         .replace('{name}', 'n')
