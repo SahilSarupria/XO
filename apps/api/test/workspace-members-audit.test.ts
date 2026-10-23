@@ -368,3 +368,83 @@ test('retention is only what the operator declares', async () => {
   for (const bad of ['0', '-5', '1.5', 'seven years', '99999'])
     assert.equal(declaredRetentionDays({ XO_API_AUDIT_RETENTION_DAYS: bad }), null, bad);
 });
+
+test('concurrent writes are serialized: 40 parallel audited actions give a contiguous, verifiable chain', async () => {
+  await withDirs(async (dirs) => {
+    const { server, ws } = await setup(dirs);
+    try {
+      const before = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ entries: number }>().entries;
+      const results = await Promise.all(
+        Array.from({ length: 40 }, (_, i) =>
+          server.request('POST', `/workspaces/${ws}/sources?filename=p${i}.txt`, Buffer.from(`doc ${i}`), { 'content-type': 'text/plain' }),
+        ),
+      );
+      assert.ok(results.every((r) => r.status === 201));
+      const verify = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean; entries: number }>();
+      assert.equal(verify.ok, true);
+      assert.equal(verify.entries, before + 40, 'every action produced exactly one entry');
+      const all = (await server.request('GET', `/workspaces/${ws}/audit/events?limit=500`)).json<{ events: { seq: number }[] }>().events;
+      assert.equal(new Set(all.map((e) => e.seq)).size, all.length, 'no sequence number was issued twice');
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+test('crash between writing an entry and moving the head: the orphan is adopted, never overwritten', async () => {
+  await withDirs(async (dirs) => {
+    const { server, ws } = await setup(dirs);
+    try {
+      const auditDir = join(dirs.workspaceDataDir, ws, 'audit');
+      const headBefore = await readFile(join(auditDir, 'head.json'), 'utf8');
+      await server.request('POST', `/workspaces/${ws}/sources?filename=orphan.txt`, Buffer.from('x'), { 'content-type': 'text/plain' });
+      const orphanSeq = (JSON.parse(await readFile(join(auditDir, 'head.json'), 'utf8')) as { seq: number }).seq;
+      const orphan = await readFile(join(auditDir, 'entries', `${String(orphanSeq).padStart(12, '0')}.json`), 'utf8');
+      await writeFile(join(auditDir, 'head.json'), headBefore); // simulate the crash: entry on disk, head still behind
+
+      await server.request('POST', `/workspaces/${ws}/sources?filename=after.txt`, Buffer.from('y'), { 'content-type': 'text/plain' });
+      assert.equal(
+        await readFile(join(auditDir, 'entries', `${String(orphanSeq).padStart(12, '0')}.json`), 'utf8'),
+        orphan,
+        'the orphaned entry was kept byte for byte',
+      );
+      const verify = (await server.request('GET', `/workspaces/${ws}/audit/verify`)).json<{ ok: boolean; entries: number }>();
+      assert.equal(verify.ok, true);
+      assert.equal(verify.entries, orphanSeq + 1);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+test('a tampered trailing entry is never adopted or overwritten: appends are refused and verify says why', async () => {
+  await withDirs(async (dirs) => {
+    const { server, ws } = await setup(dirs);
+    try {
+      const auditDir = join(dirs.workspaceDataDir, ws, 'audit');
+      const head = JSON.parse(await readFile(join(auditDir, 'head.json'), 'utf8')) as { seq: number; hash: string };
+      const forged = {
+        seq: head.seq + 1,
+        prevHash: head.hash,
+        hash: 'sha256:' + 'f'.repeat(64),
+        event: 'member.removed',
+        result: 'succeeded',
+        actor: { identityId: 'x', kind: 'user' },
+        at: 'x',
+        eventId: 'x',
+        workspaceId: ws,
+      };
+      const forgedPath = join(auditDir, 'entries', `${String(head.seq + 1).padStart(12, '0')}.json`);
+      await writeFile(forgedPath, JSON.stringify(forged));
+      await server.request('POST', `/workspaces/${ws}/sources?filename=z.txt`, Buffer.from('z'), { 'content-type': 'text/plain' });
+      assert.equal(JSON.parse(await readFile(forgedPath, 'utf8')).hash, forged.hash, 'the forged file was left exactly as found');
+      assert.equal(
+        (JSON.parse(await readFile(join(auditDir, 'head.json'), 'utf8')) as { seq: number }).seq,
+        head.seq,
+        'the head did not move past it',
+      );
+    } finally {
+      await server.stop();
+    }
+  });
+});

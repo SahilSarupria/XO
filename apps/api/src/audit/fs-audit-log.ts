@@ -81,8 +81,30 @@ export class FsAuditLog {
     return head;
   }
 
+  /**
+   * Crash recovery. An append writes the entry first and the head pointer second, so a crash between the two leaves a
+   * valid entry the head does not yet point at. Appending on top of the stale head would overwrite that entry and lose
+   * an event, so before every append the log adopts any such trailing entries — but only if each one is exactly what
+   * the chain requires (right sequence number, links to the current head, hash recomputes). A trailing entry that fails
+   * those checks is never adopted and never overwritten: the append is refused and `verify()` reports it.
+   */
+  private async adoptTrailingEntries(start: Head): Promise<Head> {
+    let head = start;
+    for (;;) {
+      const next = await this.get(head.seq + 1);
+      if (next === undefined) return head;
+      const { hash, ...rest } = next;
+      if (next.seq !== head.seq + 1 || next.prevHash !== head.hash || computeEntryHash(rest) !== hash) {
+        throw new Error(`audit log has an unverifiable entry after seq ${head.seq}; refusing to append (run verify)`);
+      }
+      head = { seq: next.seq, hash };
+      const headPut = await this.store.put(HEAD_KEY, JSON.stringify(head satisfies Head), { contentType: 'application/json' });
+      if (!headPut.ok) throw headPut.error;
+    }
+  }
+
   private async appendLocked(input: AuditEventInput): Promise<AuditEntry> {
-    const head = await this.readHead();
+    const head = await this.adoptTrailingEntries(await this.readHead());
     const unsigned: Omit<AuditEntry, 'hash'> = {
       seq: head.seq + 1,
       eventId: randomUUID(),
@@ -164,6 +186,20 @@ export class FsAuditLog {
       if (computeEntryHash(rest) !== hash)
         return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_hash' } };
       prev = hash;
+    }
+    // An entry sitting beyond the head is either a crash orphan (valid: the next append adopts it) or a forgery/corruption.
+    const trailing = await this.get(head.seq + 1);
+    if (trailing !== undefined) {
+      const { hash, ...rest } = trailing;
+      const reason =
+        trailing.seq !== head.seq + 1
+          ? 'bad_sequence'
+          : trailing.prevHash !== head.hash
+            ? 'bad_link'
+            : computeEntryHash(rest) !== hash
+              ? 'bad_hash'
+              : undefined;
+      if (reason !== undefined) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq: head.seq + 1, reason } };
     }
     if (prev !== head.hash) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq: head.seq, reason: 'bad_link' } };
     return { ok: true, entries: head.seq, headHash: head.hash };
