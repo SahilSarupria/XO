@@ -3,6 +3,7 @@ import { loadConfig, type ConfigSchema } from '@xo/config';
 import type { Logger } from '@xo/logger';
 import type { ModelProvider, ProviderId } from './provider-types.js';
 import type { ModelSelectionPolicy } from './model-selection.js';
+import { InferenceGuard, type InferenceRunScope, type ServerInferencePolicy } from './inference-policy.js';
 import { GEMINI_DEFAULT_MODEL, GeminiProvider } from './providers/gemini-provider.js';
 
 /**
@@ -209,4 +210,32 @@ export function describeInferenceReadiness(env: Env = process.env): InferenceRea
       ...base,
     };
   }
+}
+
+/**
+ * COMPILE-TIME inference limits, deliberately separate from anything the runtime uses: `XO_COMPILER_MAX_TOTAL_TOKENS` and
+ * `XO_COMPILER_MAX_COST_USD` (both optional; `0` forbids all compile-time inference). They are expressed as a `ServerInferencePolicy`
+ * only because that is the existing reusable contract; the resulting scope grants nothing to runtime execution.
+ *
+ * The token limit is the dependable one (reserved up front). The cost limit relies on the pricing table: a model missing from it
+ * prices at 0 and will never trip the cost limit, and cost is not reserved in advance, so concurrent in-flight calls can overshoot it.
+ */
+export const COMPILER_LIMITS_SCHEMA = {
+  compilerMaxTotalTokens: { type: 'number', min: 0, description: 'Cumulative token cap for one compilation.' },
+  compilerMaxCostUsd: { type: 'number', min: 0, description: 'Cumulative USD cap for one compilation (see caveats in docs).' },
+} as const satisfies ConfigSchema;
+
+export function resolveCompilerInferencePolicy(env: Env = process.env): ServerInferencePolicy {
+  const raw = loadConfig(COMPILER_LIMITS_SCHEMA, { env });
+  return {
+    enabled: true,
+    allowUndeclared: false,
+    ...(raw.compilerMaxTotalTokens !== undefined ? { maxTotalTokens: raw.compilerMaxTotalTokens } : {}),
+    ...(raw.compilerMaxCostUsd !== undefined ? { maxCostUsd: raw.compilerMaxCostUsd } : {}),
+  };
+}
+
+/** One fresh scope per compilation: the stable budget scope shared by every call (including concurrent ones) in that compile. */
+export function createCompileInferenceScope(policy: ServerInferencePolicy): InferenceRunScope {
+  return new InferenceGuard(policy).beginRun();
 }

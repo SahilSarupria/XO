@@ -1,5 +1,6 @@
 import { ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
+import { getInferenceDenial } from '@xo/ai-core';
 import type { Logger } from '@xo/logger';
 import { noopLogger } from '@xo/logger';
 import type { ExperienceUnit } from '../semantic/types.js';
@@ -60,6 +61,9 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
       this.logger.warn('AI knowledge extraction unavailable for this unit; falling back to rule-based only', {
         unitId: unit.id,
         error: aiResult.error.message,
+        errorCode: aiResult.error.code,
+        // Distinguishes "inference was refused (budget/policy)" from "provider failed"; the compile continues degraded either way.
+        ...(getInferenceDenial(aiResult.error) ? { inferenceDenied: getInferenceDenial(aiResult.error)?.reason } : {}),
       });
       return ok({ nodes: ruleNodes, edges: ruleResult.value.edges });
     }

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AiCapabilityLayer, ScriptableTestProvider, jsonResponse } from '@xo/ai-core';
+import { AiCapabilityLayer, InferenceGuard, ScriptableTestProvider, jsonResponse } from '@xo/ai-core';
+import type { Logger, LogFields } from '@xo/logger';
 import type { KnowledgeExtractionOutput } from '@xo/ai-core';
 import { AiKnowledgeExtractor } from '../../src/knowledge/ai-extractor.js';
 import { HybridKnowledgeExtractor } from '../../src/knowledge/hybrid-extractor.js';
@@ -85,4 +86,59 @@ test('a unit with isTableQuarantined absent (the default) is unaffected — same
   assert.ok(result.ok);
   if (!result.ok) return;
   assert.ok(result.value.nodes.some((n) => n.isUnitPrimary));
+});
+
+function budgetLayer(maxTotalTokens: number): { layer: AiCapabilityLayer; provider: ScriptableTestProvider } {
+  const output: KnowledgeExtractionOutput = {
+    items: [{ id: 'i1', type: 'concept', statement: 'Confidential Information', domain: 'legal', confidence: 0.85 }],
+    relationships: [],
+  };
+  const provider = new ScriptableTestProvider('anthropic', [{ kind: 'success', response: jsonResponse(output) }]);
+  const layer = new AiCapabilityLayer({
+    providers: [provider],
+    policy: { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'test-model' } }] },
+    retryOptions: { maxAttempts: 1, initialDelayMs: 1, maxDelayMs: 1, backoffMultiplier: 1, sleep: async () => {} },
+    inferenceScope: new InferenceGuard({ enabled: true, allowUndeclared: false, maxTotalTokens }).beginRun(),
+  });
+  return { layer, provider };
+}
+
+function recordingLogger(records: { message: string; fields: LogFields }[]): Logger {
+  const make = (): Logger => ({
+    level: 'trace',
+    trace: () => {},
+    debug: () => {},
+    info: () => {},
+    warn: (message: string, fields?: LogFields) => void records.push({ message, fields: fields ?? {} }),
+    error: () => {},
+    fatal: () => {},
+    child: () => make(),
+  });
+  return make();
+}
+
+test('budget exhaustion degrades to rule-based output, is NOT logged as a provider failure, and never reaches the provider', async () => {
+  const { layer, provider } = budgetLayer(0);
+  const records: { message: string; fields: LogFields }[] = [];
+  const hybrid = new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer), recordingLogger(records));
+  const result = await hybrid.extract(makeUnit());
+  assert.ok(result.ok);
+  if (!result.ok) return;
+  assert.ok(
+    result.value.nodes.some((n) => n.isUnitPrimary),
+    'rule-based output is still produced',
+  );
+  assert.ok(!result.value.nodes.some((n) => n.localId === 'i1'), 'no AI-derived node when inference was denied');
+  assert.equal(provider.callLog.length, 0);
+  const warn = records.find((r) => r.message.includes('falling back'));
+  assert.equal(warn?.fields['inferenceDenied'], 'budget_exhausted');
+  assert.equal(warn?.fields['errorCode'], 'XO_AI_INFERENCE_DENIED');
+  assert.deepEqual(layer.inferenceReport().denials, { budget_exhausted: 1 });
+});
+
+test('an ample budget leaves existing hybrid extraction behaviour unchanged', async () => {
+  const { layer } = budgetLayer(1_000_000);
+  const result = await new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer)).extract(makeUnit());
+  assert.ok(result.ok);
+  if (result.ok) assert.ok(result.value.nodes.some((n) => n.localId === 'i1'));
 });

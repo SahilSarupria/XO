@@ -23,6 +23,8 @@ export interface CapabilityRequest<TInput> {
   readonly input: TInput;
   readonly excerpt: SourceExcerpt;
   readonly traceId: string;
+  /** Cancels the compile step: checked before every attempt and forwarded to the provider. Aborting stops local waiting only; remote work may still be billed. */
+  readonly signal?: AbortSignal;
 }
 
 export interface CapabilityResponseMeta {

@@ -1,4 +1,4 @@
-import type { AiCapabilityLayer } from '@xo/ai-core';
+import { getInferenceDenial, type AiCapabilityLayer } from '@xo/ai-core';
 import type { Logger } from '@xo/logger';
 import { AiReasoningExtractor } from './ai-extractor.js';
 import { HybridReasoningExtractor } from './hybrid-extractor.js';
@@ -57,6 +57,9 @@ export async function extractReasoningGraph(
       options.logger?.warn('Reasoning extraction failed for a unit; it contributes no nodes', {
         unitId: unit.id,
         error: result.error.message,
+        errorCode: result.error.code,
+        // Distinguishes "inference was refused (budget/policy)" from "provider failed"; the compile continues degraded either way.
+        ...(getInferenceDenial(result.error) ? { inferenceDenied: getInferenceDenial(result.error)?.reason } : {}),
       });
     }
     perUnit.push({ unit, extraction });

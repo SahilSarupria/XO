@@ -1,3 +1,4 @@
+import { AiError, ErrorCode } from '@xo/errors';
 import { computeCostUsd, type PricingTable, DEFAULT_PRICING_TABLE } from './cost.js';
 import type { ProviderId, TokenUsage } from './provider-types.js';
 
@@ -145,12 +146,17 @@ export class InferenceRunScope {
     this.run = newLedger(restriction?.maxTotalTokens, restriction?.maxCostUsd);
   }
 
-  authorize(input: AuthorizeInput): AuthorizeResult {
-    const deny = (reason: InferenceDenialReason, message: string): AuthorizeResult => ({
-      ok: false,
-      denial: { reason, message, nodeId: input.nodeId, providerId: input.providerId },
+  /**
+   * Every NON-budget check, with no reservation and no side effects. Lets a caller refuse work that policy forbids even when the
+   * answer would come from a cache (budget deliberately excluded: serving a cached answer spends nothing).
+   */
+  checkPolicy(input: Omit<AuthorizeInput, 'requestedMaxOutputTokens'>): InferenceDenial | undefined {
+    const deny = (reason: InferenceDenialReason, message: string): InferenceDenial => ({
+      reason,
+      message,
+      nodeId: input.nodeId,
+      providerId: input.providerId,
     });
-
     // Order matters only for which reason is reported; every check must pass.
     if (!this.policy.enabled) return deny('server_disabled', 'Inference is disabled by server policy');
     if (this.restriction?.disabled === true) return deny('run_disabled', 'Inference is disabled for this run');
@@ -164,6 +170,21 @@ export class InferenceRunScope {
     if (this.policy.allowedProviders && !this.policy.allowedProviders.includes(input.providerId)) {
       return deny('provider_not_allowed', `Provider "${input.providerId}" is not permitted by server policy`);
     }
+    return undefined;
+  }
+
+  /** What this scope's own ledger has spent/reserved (reporting only; never used for decisions). */
+  snapshot(): { readonly tokensSpent: number; readonly tokensReserved: number; readonly costSpentUsd: number } {
+    return { tokensSpent: this.run.tokensSpent, tokensReserved: this.run.tokensReserved, costSpentUsd: this.run.costSpentUsd };
+  }
+
+  authorize(input: AuthorizeInput): AuthorizeResult {
+    const deny = (reason: InferenceDenialReason, message: string): AuthorizeResult => ({
+      ok: false,
+      denial: { reason, message, nodeId: input.nodeId, providerId: input.providerId },
+    });
+    const policyDenial = this.checkPolicy(input);
+    if (policyDenial) return { ok: false, denial: policyDenial };
 
     // Budgets: tokens are reserved up front (so concurrent calls cannot jointly overshoot) and reconciled on settle.
     const available = Math.min(remainingTokens(this.server), remainingTokens(this.run));
@@ -197,4 +218,16 @@ export class InferenceRunScope {
       },
     };
   }
+}
+
+/** The typed outcome for a denied call: its own error code (NOT a provider failure), carrying the structured denial. */
+export function inferenceDeniedError(denial: InferenceDenial, scope: 'compile' | 'runtime' = 'compile'): AiError {
+  return new AiError(ErrorCode.AI_INFERENCE_DENIED, `Inference denied (${denial.reason}): ${denial.message}`, {
+    context: { inferenceDenial: { ...denial }, scope },
+  });
+}
+
+export function getInferenceDenial(error: unknown): InferenceDenial | undefined {
+  if (!(error instanceof AiError) || error.code !== ErrorCode.AI_INFERENCE_DENIED) return undefined;
+  return (error.context as { inferenceDenial?: InferenceDenial }).inferenceDenial;
 }

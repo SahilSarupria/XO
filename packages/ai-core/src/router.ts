@@ -7,7 +7,14 @@ import { noopTracer, noopMeter } from '@xo/observability';
 import { CircuitBreaker, type CircuitBreakerOptions } from './circuit-breaker.js';
 import { TokenBucketRateLimiter, type TokenBucketOptions } from './rate-limiter.js';
 import { RetryPolicy, type RetryPolicyOptions } from './retry.js';
-import { getProviderFailure } from './provider-errors.js';
+import { getProviderFailure, providerFailure } from './provider-errors.js';
+import {
+  getInferenceDenial,
+  inferenceDeniedError,
+  type InferenceDenial,
+  type InferenceGrant,
+  type InferenceRunScope,
+} from './inference-policy.js';
 import { CACHE_FORMAT_VERSION, computeCacheKey, computeSchemaHash, InMemoryCapabilityCache, type CapabilityCache } from './cache.js';
 import { CostAccountant, DEFAULT_PRICING_TABLE, type PricingTable } from './cost.js';
 import { selectCandidates, type ModelSelectionPolicy } from './model-selection.js';
@@ -15,6 +22,7 @@ import { createDefaultPromptRegistry, type PromptRegistry } from './prompt/index
 import { validateJsonSchema } from './json-schema.js';
 import { CAPABILITY_OUTPUT_SCHEMAS } from './capability-schemas.js';
 import type { CapabilityId, CapabilityRequest, CapabilityResponse } from './capability-types.js';
+import type { TokenUsage } from './provider-types.js';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderId } from './provider-types.js';
 import type { EntityExtractionInput, EntityExtractionOutput } from './capabilities/entities.js';
 import type { KnowledgeExtractionInput, KnowledgeExtractionOutput } from './capabilities/knowledge.js';
@@ -37,6 +45,14 @@ export interface AiCapabilityLayerOptions {
   readonly rateLimiterOptions?: Partial<TokenBucketOptions>;
   /** Per-provider overrides — different vendors have different quotas; falls back to `rateLimiterOptions` (then the built-in default) for any provider not listed here. */
   readonly rateLimiterOptionsByProvider?: Partial<Record<ProviderId, Partial<TokenBucketOptions>>>;
+  /**
+   * COMPILE-TIME inference authority (spend limit + kill-switch). Create it from a dedicated `InferenceGuard(compilePolicy).beginRun()`
+   * per compilation; it shares no state with, and grants nothing to, the runtime's guard. When set, EVERY billable provider call
+   * (first attempts, retries, fallback candidates) reserves budget first and settles after; a denial is a typed
+   * `XO_AI_INFERENCE_DENIED` that is never retried or failed over. Cache hits spend nothing and are not charged.
+   * When omitted, calls are unlimited (the pre-existing behaviour) — supply it wherever spend must be bounded.
+   */
+  readonly inferenceScope?: InferenceRunScope;
 }
 
 const DEFAULT_RETRY_OPTIONS: Omit<RetryPolicyOptions, 'isRetryable'> = {
@@ -64,6 +80,7 @@ export class AiCapabilityLayer {
   private readonly promptRegistry: PromptRegistry;
   private readonly cache: CapabilityCache;
   private readonly costAccountant: CostAccountant;
+  private readonly denials: Partial<Record<InferenceDenial['reason'], number>>;
   private readonly logger: Logger;
   private readonly tracer: Tracer;
   private readonly meter: Meter;
@@ -79,6 +96,7 @@ export class AiCapabilityLayer {
     this.promptRegistry = options.promptRegistry ?? createDefaultPromptRegistry();
     this.cache = options.cache ?? new InMemoryCapabilityCache();
     this.costAccountant = new CostAccountant(options.pricingTable ?? DEFAULT_PRICING_TABLE);
+    this.denials = {};
     this.logger = options.logger ?? noopLogger;
     this.tracer = options.tracer ?? noopTracer;
     this.meter = options.meter ?? noopMeter;
@@ -187,6 +205,16 @@ export class AiCapabilityLayer {
         generation: { maxOutputTokens: MAX_OUTPUT_TOKENS },
         formatVersion: CACHE_FORMAT_VERSION,
       });
+      // Policy (kill-switch / allow-list) applies even to cache hits; BUDGET does not (a hit spends nothing).
+      const policyDenial = this.options.inferenceScope?.checkPolicy({
+        requirement: 'required',
+        nodeId: `compile:${capability}`,
+        providerId: candidates[0]!.providerId,
+      });
+      if (policyDenial) {
+        this.recordDenial(policyDenial);
+        return err(inferenceDeniedError(policyDenial));
+      }
       const cached = await this.readCache<TOutput>(cacheKey, schema);
       if (cached) {
         this.logger.debug('ai_core cache hit', { capability, traceId: request.traceId });
@@ -214,6 +242,7 @@ export class AiCapabilityLayer {
           ...this.retryOptions,
           isRetryable: (error) => {
             if (error instanceof AiError && error.code === ErrorCode.AI_CIRCUIT_OPEN) return false;
+            if (getInferenceDenial(error)) return false; // a denial is final: never retried
             // Provider adapters that classify their failures already applied their own bounded transport retry
             // (honouring Retry-After); retrying again here would multiply attempts and risk retry storms. The one
             // exception is a malformed/schema-invalid body, where a fresh sample can legitimately succeed.
@@ -227,31 +256,57 @@ export class AiCapabilityLayer {
         try {
           const outcome = await retryPolicy.execute(async (attempt) => {
             totalAttempts = attempt;
-            return circuitBreaker.execute(async () => {
-              const response = await provider.complete({
+            if (request.signal?.aborted) {
+              throw providerFailure('aborted', candidate.providerId, 'Compilation cancelled before the provider call', {
                 model: candidate.model,
                 requestId: request.traceId,
-                messages,
-                maxOutputTokens: MAX_OUTPUT_TOKENS,
-                responseSchema: schema as unknown as Record<string, unknown>,
               });
-              let parsed: unknown;
-              try {
-                parsed = JSON.parse(response.text);
-              } catch (cause) {
-                throw new AiError(ErrorCode.AI_SCHEMA_VALIDATION_FAILED, `Provider "${candidate.providerId}" did not return valid JSON`, {
-                  cause,
+            }
+            // Authorize + reserve BEFORE the circuit breaker (a denial must not count as a provider failure) and before every
+            // attempt, so retries and fallback candidates draw on the same budget as first attempts.
+            const grant = this.authorizeCall(capability, candidate.providerId);
+            let settled = false;
+            try {
+              return await circuitBreaker.execute(async () => {
+                const response = await provider.complete({
+                  model: candidate.model,
+                  requestId: request.traceId,
+                  messages,
+                  maxOutputTokens: grant?.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+                  responseSchema: schema as unknown as Record<string, unknown>,
+                  ...(request.signal ? { signal: request.signal } : {}),
                 });
-              }
-              const issues = validateJsonSchema(schema, parsed);
-              if (issues.length > 0) {
-                throw new AiError(
-                  ErrorCode.AI_SCHEMA_VALIDATION_FAILED,
-                  `Provider "${candidate.providerId}" response failed schema validation: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`,
-                );
-              }
-              return { response, output: parsed as TOutput };
-            });
+                // The call completed and was billed whether or not the body turns out to be usable: settle now, with real usage
+                // when the provider reported it (unknown usage is charged at the reservation by the guard).
+                grant?.settle({
+                  providerId: candidate.providerId,
+                  model: response.modelUsed,
+                  usage: response.usageKnown === false ? undefined : response.usage,
+                });
+                settled = true;
+                let parsed: unknown;
+                try {
+                  parsed = JSON.parse(response.text);
+                } catch (cause) {
+                  this.recordDiscardedAttempt(candidate.providerId, response);
+                  throw new AiError(ErrorCode.AI_SCHEMA_VALIDATION_FAILED, `Provider "${candidate.providerId}" did not return valid JSON`, {
+                    cause,
+                  });
+                }
+                const issues = validateJsonSchema(schema, parsed);
+                if (issues.length > 0) {
+                  this.recordDiscardedAttempt(candidate.providerId, response);
+                  throw new AiError(
+                    ErrorCode.AI_SCHEMA_VALIDATION_FAILED,
+                    `Provider "${candidate.providerId}" response failed schema validation: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`,
+                  );
+                }
+                return { response, output: parsed as TOutput };
+              });
+            } finally {
+              // No completed response (provider error, timeout, open circuit, cancellation): nothing measurable to charge.
+              if (!settled) grant?.release();
+            }
           });
 
           const costRecord = this.costAccountant.record(
@@ -295,6 +350,18 @@ export class AiCapabilityLayer {
           span.setStatus('ok');
           return ok(result);
         } catch (error) {
+          const denial = getInferenceDenial(error);
+          if (denial) {
+            // Budget/policy denial is final for the whole request: no retry (handled above), no failover to another candidate,
+            // and not reported as an ordinary provider failure.
+            this.logger.warn('ai_core inference denied; not retrying or failing over', {
+              capability,
+              reason: denial.reason,
+              traceId: request.traceId,
+            });
+            this.meter.createCounter('ai_core_inference_denied_total').add(1, { capability, reason: denial.reason });
+            return err(error as AiError);
+          }
           this.logger.warn('ai_core provider attempt failed, trying next candidate', {
             provider: candidate.providerId,
             capability,
@@ -314,6 +381,47 @@ export class AiCapabilityLayer {
         ),
       );
     });
+  }
+
+  private authorizeCall(capability: CapabilityId, providerId: ProviderId): InferenceGrant | undefined {
+    const scope = this.options.inferenceScope;
+    if (!scope) return undefined;
+    const authorization = scope.authorize({
+      requirement: 'required',
+      nodeId: `compile:${capability}`,
+      providerId,
+      requestedMaxOutputTokens: MAX_OUTPUT_TOKENS,
+    });
+    if (!authorization.ok) {
+      this.recordDenial(authorization.denial);
+      throw inferenceDeniedError(authorization.denial);
+    }
+    return authorization.grant;
+  }
+
+  private recordDenial(denial: InferenceDenial): void {
+    this.denials[denial.reason] = (this.denials[denial.reason] ?? 0) + 1;
+  }
+
+  /** A billed call whose body was unusable still cost money: keep total cost reporting honest (the usable attempt is recorded separately). */
+  private recordDiscardedAttempt(
+    providerId: ProviderId,
+    response: { readonly modelUsed: string; readonly usage: TokenUsage; readonly usageKnown?: boolean },
+  ): void {
+    if (response.usageKnown === false) return;
+    this.costAccountant.record(providerId, response.modelUsed, response.usage);
+  }
+
+  /**
+   * Compile-time inference report for this layer instance: what the budget scope has spent, and how many calls were denied (by
+   * reason). Spend is `undefined` when no `inferenceScope` was supplied (nothing is being limited or measured by the guard).
+   */
+  inferenceReport(): {
+    readonly spend: { readonly tokensSpent: number; readonly costSpentUsd: number } | undefined;
+    readonly denials: Readonly<Partial<Record<InferenceDenial['reason'], number>>>;
+  } {
+    const snap = this.options.inferenceScope?.snapshot();
+    return { spend: snap ? { tokensSpent: snap.tokensSpent, costSpentUsd: snap.costSpentUsd } : undefined, denials: { ...this.denials } };
   }
 
   /** A cache must never break a request: backing-store failures are misses; hits are re-validated against the CURRENT schema. */

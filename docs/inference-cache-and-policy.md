@@ -57,9 +57,53 @@ Three independent authorities must all agree; none can grant what another denies
   _object_ (e.g. every node of one workflow) share one run budget.
 - **Package boundary:** `execution.mode` and hybrid steps are already validated by `@xo/package-sdk`; no new manifest field was added.
 
+## Slice 4: compile-time spend guard (`AiCapabilityLayer`)
+
+**Boundary.** `AiCapabilityLayer` (`@xo/ai-core`) is the only compile-time path into a provider; every compiler extractor reaches a
+provider through it. It takes an optional `inferenceScope` (an `InferenceRunScope`). Create one per compilation from a dedicated
+`InferenceGuard`, e.g. `createCompileInferenceScope(resolveCompilerInferencePolicy(process.env))`. The layer instance plus its scope
+is the stable budget scope; every call, including the four concurrent calls the reasoning extractor makes per unit, shares it.
+This reuses the Slice 3 guard rather than adding a second budget mechanism; it is a **separate instance** from the runtime guard, so
+compile budget grants nothing to runtime execution (a test asserts this) and node declarations are not consulted at compile time.
+
+**Semantics.**
+
+- Authorization and reservation happen before **every billable attempt**: first attempts, schema-validation retries, and fallback
+  to the next candidate provider all draw on the same budget. Tokens are reserved up front (the request's `maxOutputTokens` is
+  clamped to what remains), so concurrent calls cannot jointly exceed the token limit.
+- A completed call is settled with the provider's reported usage **even if the body was unusable** (schema-invalid output is still
+  billed). Unknown usage is charged at the reservation; no cost is invented.
+- Provider error, timeout, open circuit, or cancellation: the reservation is **released** (nothing measurable). Limitation: a
+  timed-out or cancelled call may still be billed by the vendor, so the guard can under-count in those cases.
+- Cache hits are never charged and are served even when the budget is exhausted. Policy (kill-switch / allow-list) is still enforced
+  before the cache, since cached output is LLM-derived.
+- A denial is `XO_AI_INFERENCE_DENIED` (new code, not `AI_ALL_PROVIDERS_FAILED`), carrying `context.inferenceDenial {reason, nodeId:
+"compile:<capability>", providerId}` and `scope: "compile"`. It is never retried and never failed over to another candidate. It is
+  thrown outside the circuit breaker so it cannot count as a provider failure.
+- `CapabilityRequest.signal` is checked before every attempt and forwarded to the provider.
+- `AiCapabilityLayer.inferenceReport()` returns spend and a count of denials by reason for the layer instance.
+- Limits come from `XO_COMPILER_MAX_TOTAL_TOKENS` and `XO_COMPILER_MAX_COST_USD` (`0` forbids all compile-time inference; unset =
+  unlimited). With no `inferenceScope`, behaviour is unchanged (unlimited).
+- Router cost reporting now also records billed-but-discarded (schema-invalid) attempts, so `totalCostUsd()` no longer under-reports retries.
+
+**What the compiler does on denial.** The extractors (`HybridKnowledgeExtractor`, the reasoning and capability extractors) keep
+their existing behaviour of continuing degraded: knowledge falls back to rule-based output, reasoning/capability units contribute
+nothing. The warning log now carries `errorCode` and `inferenceDenied: <reason>` so denial is distinguishable from a provider outage.
+The compile does **not** fail on denial; a caller that must treat exhaustion as fatal should check `inferenceReport().denials`.
+
+## Known limitations
+
+- **Cost limit is weaker than the token limit.** Cost is computed from the pricing table (a model absent from it prices at 0 and never
+  trips the limit) and is not reserved in advance, so concurrent in-flight calls can overshoot it. Use the token limit as the dependable cap.
+- Input tokens are unknown before a call, so a single call can overshoot the token budget by its input size; no further call is then allowed.
+- Failed/timed-out/cancelled calls are released, not charged (possible under-count, above).
+- Per-scope only: nothing aggregates spend across separate compilations or processes.
+- No confidence-gated escalation exists. The hybrid knowledge extractor still calls the model for every unit; "escalation" covered
+  here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.
+- The caller must supply `inferenceScope`; nothing in the compiler constructs the layer, so enforcement is only as good as the entrypoint wiring.
+
 ## Not done yet
 
-- The compiler's `AiCapabilityLayer` does not yet enforce a per-compile spend cap / guard (it has the cache and cost accounting only).
-- Confidence-gated compiler escalation and the LLM workflow-authoring/approval flow (human approval before first production
-  deployment) are the next slices; nothing here lets an LLM-authored workflow deploy.
-- No Studio/UI surface; the API execute route remains disabled.
+- Confidence-gated compiler escalation (deterministic first, escalate only low-confidence residue, review gate for unresolved output).
+- The LLM workflow-authoring and human-approval flow; nothing here lets an LLM-authored workflow deploy.
+- A shared/production cache backend, and any Studio/UI surface. The API execute route remains disabled.
