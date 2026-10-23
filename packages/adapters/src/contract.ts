@@ -42,23 +42,69 @@ export interface ExternalToolAdapter {
   invoke(request: AdapterInvokeRequest): Promise<AdapterInvokeResult>;
 }
 
+export type MaybePromise<T> = T | Promise<T>;
+
+/** Decisions a reconciliation can record. `unresolved` records that someone looked and could not establish the outcome; it settles nothing. */
+export type ReconciliationDecision = 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved';
+
+/**
+ * Who reconciled, why, and what they examined. Written verbatim into the (append-only) evidence entry, so the actor, reason and
+ * evidence examined are retained with the decision. The ACTOR is minted by the host from an authenticated principal — never from
+ * client input — and the adapter package does not decide who is allowed to reconcile (the host/API does, before calling).
+ */
+export interface ReconciliationRecord {
+  readonly actorKind: 'human' | 'service' | 'system';
+  readonly actorId: string;
+  readonly decision: ReconciliationDecision;
+  readonly reason: string;
+  readonly evidenceExamined: string;
+}
+
 export interface DispatchEvidence {
   readonly seq: number;
   readonly dispatchKey: string;
   readonly capabilityId: string;
   readonly adapterId: string;
+  /** The EFFECTIVE state after this entry. For a reconciliation entry: the decision, or (for `unresolved`) the unchanged prior state. */
   readonly state: LedgerEffectState;
   readonly detail?: string;
+  /** Server clock at the moment the ledger accepted the entry. Set by the ledger; a caller-supplied value is ignored. */
+  readonly recordedAt?: string;
+  /** SHA-256 over the canonical JSON of the dispatched input. Identity only: the input itself is NEVER written to the ledger. */
+  readonly inputFingerprint?: string;
+  /** Present only on entries written by a reconciliation. */
+  readonly reconciliation?: ReconciliationRecord;
 }
 
-/** Retained evidence of dispatch attempts. Appending may fail; a failed append means NO dispatch. */
+export type LedgerEntryDraft = Omit<DispatchEvidence, 'seq' | 'recordedAt'>;
+
+/**
+ * Retained evidence of dispatch attempts. Methods may be synchronous (in-memory) or asynchronous (durable); a failed or unconfirmed
+ * write must throw/reject, and a failed write before dispatch means NO dispatch.
+ */
 export interface DispatchLedger {
-  read(dispatchKey: string): readonly DispatchEvidence[];
-  /** Every entry for one capability, oldest first. Used to refuse a new dispatch while an earlier one is unreconciled. */
-  readByCapability(capabilityId: string): readonly DispatchEvidence[];
-  append(entry: Omit<DispatchEvidence, 'seq'>): void;
+  read(dispatchKey: string): MaybePromise<readonly DispatchEvidence[]>;
+  /** Every entry for one capability. Used to refuse a new dispatch while an earlier one is unreconciled. */
+  readByCapability(capabilityId: string): MaybePromise<readonly DispatchEvidence[]>;
+  append(entry: LedgerEntryDraft): MaybePromise<void>;
+  /**
+   * ATOMIC claim of a dispatch key: records the FIRST entry for the key if, and only if, no entry exists for it (one winner among any
+   * number of concurrent callers, including other processes sharing the same durable store). `claimed: false` => another caller
+   * already holds the key and nothing was written. Optional only for legacy single-process ledgers; the dispatcher falls back to
+   * read-then-append, which is NOT concurrency-safe, when it is absent.
+   */
+  claim?(entry: LedgerEntryDraft): MaybePromise<{ readonly claimed: boolean }>;
+  /**
+   * Append iff the key's last entry still has sequence `expectedLastSeq` (compare-and-append). `appended: false` => the evidence moved
+   * since it was read (e.g. a concurrent reconciliation); nothing was written and the caller must re-read. Required for reconciliation.
+   */
+  appendAfter?(dispatchKey: string, expectedLastSeq: number, entry: LedgerEntryDraft): MaybePromise<{ readonly appended: boolean }>;
 }
 
+/**
+ * Volatile, single-process ledger for tests and local development ONLY. Its evidence does not survive a restart, so it must never
+ * back a host that can dispatch consequential effects (use a durable ledger such as {@link BlobDispatchLedger}).
+ */
 export class InMemoryDispatchLedger implements DispatchLedger {
   private readonly entries: DispatchEvidence[] = [];
   read(dispatchKey: string): readonly DispatchEvidence[] {
@@ -67,8 +113,20 @@ export class InMemoryDispatchLedger implements DispatchLedger {
   readByCapability(capabilityId: string): readonly DispatchEvidence[] {
     return this.entries.filter((e) => e.capabilityId === capabilityId);
   }
-  append(entry: Omit<DispatchEvidence, 'seq'>): void {
+  append(entry: LedgerEntryDraft): void {
     this.entries.push(Object.freeze({ ...entry, seq: this.entries.length + 1 }));
+  }
+  claim(entry: LedgerEntryDraft): { readonly claimed: boolean } {
+    if (this.entries.some((e) => e.dispatchKey === entry.dispatchKey)) return { claimed: false };
+    this.append(entry);
+    return { claimed: true };
+  }
+  appendAfter(dispatchKey: string, expectedLastSeq: number, entry: LedgerEntryDraft): { readonly appended: boolean } {
+    const own = this.entries.filter((e) => e.dispatchKey === dispatchKey);
+    const last = own[own.length - 1];
+    if (last === undefined || last.seq !== expectedLastSeq) return { appended: false };
+    this.append(entry);
+    return { appended: true };
   }
   all(): readonly DispatchEvidence[] {
     return [...this.entries];

@@ -3,7 +3,7 @@ import type { CapabilityInputSchema } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import { validateCapabilityInput } from '@xo/capability-contract';
 import type { BindingOutcome, BindingResolver, CapabilityBinding, SemanticCapabilityContract } from '@xo/capability-contract';
-import type { ExternalToolDispatcher } from '@xo/adapters';
+import type { DispatchEvidence, ExternalToolDispatcher, ReconcileOutcome, ReconcileRequest } from '@xo/adapters';
 import type { RuntimeCapabilityHandler } from './runtime-capability-declaration.js';
 
 /**
@@ -43,6 +43,13 @@ export interface ExternalToolWiring {
   describe(contractId: string): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema } | undefined;
   /** Builds the handler for one dispatch. `dispatchKey` is server-derived by the caller. */
   handlerFor(contract: SemanticCapabilityContract, dispatchKey: string): RuntimeCapabilityHandler;
+  /** The ordered, durable evidence of one dispatch (empty if none). Rejects if the ledger is unreadable or corrupt. */
+  evidenceFor(dispatchKey: string): Promise<readonly DispatchEvidence[]>;
+  /**
+   * Records an AUTHORIZED reconciliation decision for an unsettled dispatch. The caller (the API route) must already have authenticated
+   * the actor and checked authority; this never invokes an adapter and never redispatches.
+   */
+  reconcile(request: ReconcileRequest): Promise<ReconcileOutcome>;
 }
 
 export const EXTERNAL_TOOL_RESOLVER_NAME = 'ConfiguredExternalToolBindingResolver';
@@ -82,6 +89,8 @@ export function createExternalToolWiring(
       const adapterId = dispatcher.adapterIdFor(contractId);
       return schema === undefined || adapterId === undefined ? undefined : { adapterId, inputSchema: schema };
     },
+    evidenceFor: (dispatchKey) => dispatcher.evidenceFor(dispatchKey),
+    reconcile: (request) => dispatcher.reconcile(request),
     handlerFor(contract, dispatchKey) {
       const handler: RuntimeCapabilityHandler = async (input) => {
         // Contract/input validation precedes dispatch (the handler itself only runs after authorization).

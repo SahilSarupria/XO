@@ -735,6 +735,129 @@ export function registerProcedureRoutes(
     return json(200, executionView(found.value));
   }
 
+  // ── External-effect evidence + reconciliation (P1.1 M4) ───────────────────────────────────────────────────────────────
+  // The dispatch key is NEVER taken from the client: it is re-derived here exactly as the runner derives it
+  // (`<procedureExecutionId>:<stepId>`), and only for a step that exists on a procedure execution of THIS workspace.
+  async function loadEffectStep(
+    req: ApiRequest,
+    workspace: WorkspaceRecord,
+  ): Promise<{ readonly wiring: ExternalToolWiring; readonly executionId: string; readonly stepId: string; readonly dispatchKey: string }> {
+    const notFound = new NotFoundError('external effect');
+    const executionId = req.params['executionId'];
+    const stepId = req.params['stepId'];
+    if (options.externalTools === undefined || !isValidProcedureExecutionId(executionId) || safeId(stepId) === undefined) throw notFound;
+    const records = new FsProcedureExecutionStore(workspaceProcedureExecutionsStore(workspace, dataConfig), workspace.workspaceId);
+    const found = await records.get(executionId);
+    if (!found.ok) throw found.error;
+    if (!found.value.steps.some((s) => s.stepId === stepId)) throw notFound;
+    return { wiring: options.externalTools, executionId, stepId: stepId as string, dispatchKey: `${executionId}:${stepId as string}` };
+  }
+
+  function effectTarget(workspace: WorkspaceRecord, executionId: string): NonNullable<AuditEventDraft['target']> {
+    return { kind: 'procedure-execution', id: executionId, workspaceId: workspace.workspaceId };
+  }
+
+  async function getExternalEffect(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'read.external-effect', correlationId });
+    await requirePermission(req, workspace, Permissions.procedure.read, { action: 'read.external-effect', correlationId });
+    const step = await loadEffectStep(req, workspace);
+    await audit.requireDurable({
+      type: 'access.attempted',
+      action: 'read.external-effect',
+      outcome: 'attempted',
+      actor: actorFromPrincipal(requirePrincipal(req)),
+      target: effectTarget(workspace, step.executionId),
+      correlationId,
+    });
+    let entries: Awaited<ReturnType<ExternalToolWiring['evidenceFor']>>;
+    try {
+      entries = await step.wiring.evidenceFor(step.dispatchKey);
+    } catch {
+      throw new XoError(ErrorCode.STORAGE_WRITE_FAILED, 'the external-effect evidence ledger is unavailable'); // never echo storage detail
+    }
+    const last = entries[entries.length - 1];
+    return json(200, {
+      stepId: step.stepId,
+      dispatchKey: step.dispatchKey,
+      dispatched: entries.length > 0,
+      ...(last !== undefined
+        ? { effectiveState: last.state, requiresReconciliation: last.state === 'dispatch_attempted' || last.state === 'outcome_unknown' }
+        : {}),
+      entries,
+    });
+  }
+
+  const RECONCILE_DECISIONS: ReadonlySet<unknown> = new Set(['confirmed_success', 'confirmed_failure_no_effect', 'unresolved']);
+
+  async function reconcileExternalEffect(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const action = 'reconcile.external-effect';
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
+    const principal = requirePrincipal(req);
+    // Only an authenticated HUMAN may settle an external outcome: a service principal never reconciles (refused and audited).
+    if (principal.kind !== 'human') {
+      await audit.tryRecord({
+        type: 'procedure.denied',
+        action,
+        outcome: 'denied',
+        actor: actorFromPrincipal(principal),
+        target: effectTarget(workspace, safeId(req.params['executionId']) ?? workspace.workspaceId),
+        correlationId,
+        reasonCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+        metadata: { reason: 'human-principal-required' },
+      });
+      throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, 'reconciling an external effect requires an authenticated human principal');
+    }
+    // The authority to settle an effect is the authority to approve effectful procedures: no new permission is invented here.
+    await requirePermission(req, workspace, Permissions.procedure.approve, { action, correlationId });
+    const body = await readClosedBody(req, ['decision', 'reason', 'evidenceExamined'], false);
+    const decision = body['decision'];
+    const findings: ProcedureFinding[] = [];
+    if (!RECONCILE_DECISIONS.has(decision)) findings.push({ code: 'PROC_INVALID_FIELD', path: '/decision' });
+    if (typeof body['reason'] !== 'string') findings.push({ code: 'PROC_INVALID_FIELD', path: '/reason' });
+    if (body['evidenceExamined'] !== undefined && typeof body['evidenceExamined'] !== 'string')
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/evidenceExamined' });
+    if (findings.length > 0) throw rejectedFindings('request rejected', findings);
+    const step = await loadEffectStep(req, workspace);
+    // PRECONDITION: the attempt is durably recorded first. If that cannot be confirmed, nothing is reconciled (fail closed).
+    await audit.requireDurable({
+      type: 'procedure.attempted',
+      action,
+      outcome: 'attempted',
+      actor: actorFromPrincipal(principal),
+      target: effectTarget(workspace, step.executionId),
+      correlationId,
+      metadata: { decision: decision as string, stepId: step.stepId },
+    });
+    const outcome = await step.wiring.reconcile({
+      dispatchKey: step.dispatchKey,
+      actor: { kind: 'human', id: principal.id },
+      decision: decision as 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved',
+      reason: body['reason'] as string,
+      evidenceExamined: typeof body['evidenceExamined'] === 'string' ? body['evidenceExamined'] : '',
+    });
+    switch (outcome.kind) {
+      case 'recorded':
+        return json(200, { outcome: 'recorded', effectiveState: outcome.state, dispatchKey: step.dispatchKey, redispatchPermitted: false });
+      case 'already_resolved':
+        return json(200, {
+          outcome: 'already_resolved',
+          effectiveState: outcome.state,
+          dispatchKey: step.dispatchKey,
+          redispatchPermitted: false,
+        });
+      case 'conflict':
+        throw new XoError(ErrorCode.ALREADY_EXISTS, outcome.reason);
+      case 'not_found':
+        throw new NotFoundError('dispatch evidence');
+      case 'invalid_request':
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, outcome.reason);
+      case 'ledger_unavailable':
+        throw new XoError(ErrorCode.STORAGE_WRITE_FAILED, 'the external-effect evidence ledger is unavailable; nothing was changed');
+    }
+  }
+
   // ── POST /procedure-executions/:executionId/resume ───────────────────────────────────────────────────────────────────
   async function resume(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
@@ -800,4 +923,9 @@ export function registerProcedureRoutes(
   router.post('/workspaces/:workspaceId/procedures/:procedureId/versions/:version/executions', guarded(start));
   router.get('/workspaces/:workspaceId/procedure-executions/:executionId', guarded(getExecution));
   router.post('/workspaces/:workspaceId/procedure-executions/:executionId/resume', guarded(resume));
+  router.get('/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/external-effect', guarded(getExternalEffect));
+  router.post(
+    '/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/external-effect/reconcile',
+    guarded(reconcileExternalEffect),
+  );
 }

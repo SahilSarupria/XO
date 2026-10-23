@@ -1,4 +1,6 @@
-import type { AdapterInvokeResult, DispatchLedger, ExternalEffectState, ExternalToolAdapter } from './contract.js';
+import { createHash } from 'node:crypto';
+import { reconcileDispatch, type ReconcileOutcome, type ReconcileRequest } from './reconciliation.js';
+import type { AdapterInvokeResult, DispatchEvidence, DispatchLedger, ExternalEffectState, ExternalToolAdapter } from './contract.js';
 
 /**
  * What a dispatch call can end in. The first four never reached the adapter
@@ -60,6 +62,16 @@ export class ExternalToolDispatcher {
     return this.adapters.get(capabilityId)?.id;
   }
 
+  /** The full, ordered evidence for one dispatch key (empty if none). Throws if the ledger is unreadable or corrupt. */
+  async evidenceFor(dispatchKey: string): Promise<readonly DispatchEvidence[]> {
+    return this.ledger.read(dispatchKey);
+  }
+
+  /** Records an authorized reconciliation decision. Never invokes an adapter and never redispatches. See `reconciliation.ts`. */
+  reconcile(request: ReconcileRequest): Promise<ReconcileOutcome> {
+    return reconcileDispatch(this.ledger, request);
+  }
+
   async dispatch(capabilityId: string, dispatchKey: string, input: unknown): Promise<DispatchOutcome> {
     const adapter = this.adapters.get(capabilityId);
     if (adapter === undefined) {
@@ -72,32 +84,20 @@ export class ExternalToolDispatcher {
       return { kind: 'invalid_request', dispatched: false, reason: 'external_tool input must be a plain object' };
     }
 
-    let prior: ReturnType<DispatchLedger['read']>;
+    let prior: readonly DispatchEvidence[];
     try {
-      prior = this.ledger.read(dispatchKey);
+      prior = await this.ledger.read(dispatchKey);
     } catch (cause) {
       return { kind: 'ledger_unavailable', dispatched: false, reason: `evidence ledger unreadable: ${describe(cause)}` };
     }
-    if (prior.length > 0) {
-      const last = prior[prior.length - 1]!;
-      const settled = last.state === 'confirmed_success' || last.state === 'confirmed_failure_no_effect';
-      return {
-        kind: 'blocked_prior_dispatch',
-        dispatched: false,
-        priorState: last.state,
-        requiresReconciliation: !settled,
-        reason: settled
-          ? `dispatch "${dispatchKey}" already ran (${last.state}); a second dispatch under the same key is refused`
-          : `dispatch "${dispatchKey}" has a prior attempt in state ${last.state}; reconciliation is required before any further dispatch`,
-      };
-    }
+    if (prior.length > 0) return blockedByPrior(dispatchKey, prior[prior.length - 1]!);
 
     // An earlier dispatch to this capability whose outcome is not settled (unknown, or attempted with no terminal evidence) blocks EVERY
-    // further dispatch to it until the host reconciles (replaces/clears the evidence). There is no automatic reconciliation or recovery.
+    // further dispatch to it until it is reconciled through `reconcile` (an authorized, recorded decision). There is no automatic recovery.
     let unsettled: string | undefined;
     try {
       const lastByKey = new Map<string, string>();
-      for (const e of this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e.state);
+      for (const e of await this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e.state);
       for (const [key, state] of lastByKey) {
         if (state === 'outcome_unknown' || state === 'dispatch_attempted') {
           unsettled = `${key} (${state})`;
@@ -117,8 +117,38 @@ export class ExternalToolDispatcher {
       };
     }
 
+    // Write-ahead evidence. With an atomic `claim` exactly one concurrent caller wins the key; a loser has NOT dispatched and is blocked.
+    const attempted = {
+      dispatchKey,
+      capabilityId,
+      adapterId: adapter.id,
+      state: 'dispatch_attempted' as const,
+      inputFingerprint: fingerprintOf(input),
+    };
     try {
-      this.ledger.append({ dispatchKey, capabilityId, adapterId: adapter.id, state: 'dispatch_attempted' });
+      if (this.ledger.claim !== undefined) {
+        const claim = await this.ledger.claim(attempted);
+        if (!claim.claimed) {
+          let after: readonly DispatchEvidence[] = [];
+          try {
+            after = await this.ledger.read(dispatchKey);
+          } catch {
+            /* fall through: the claim was lost, which is enough to refuse */
+          }
+          const last = after[after.length - 1];
+          return last !== undefined
+            ? blockedByPrior(dispatchKey, last)
+            : {
+                kind: 'blocked_prior_dispatch',
+                dispatched: false,
+                priorState: 'dispatch_attempted',
+                requiresReconciliation: true,
+                reason: `dispatch "${dispatchKey}" is held by another caller; reconciliation is required before any further dispatch`,
+              };
+        }
+      } else {
+        await this.ledger.append(attempted);
+      }
     } catch (cause) {
       return {
         kind: 'ledger_unavailable',
@@ -139,7 +169,12 @@ export class ExternalToolDispatcher {
     return this.settle(capabilityId, dispatchKey, adapter, normalize(raw));
   }
 
-  private settle(capabilityId: string, dispatchKey: string, adapter: ExternalToolAdapter, result: AdapterInvokeResult): DispatchOutcome {
+  private async settle(
+    capabilityId: string,
+    dispatchKey: string,
+    adapter: ExternalToolAdapter,
+    result: AdapterInvokeResult,
+  ): Promise<DispatchOutcome> {
     const detail =
       result.kind === 'outcome_unknown'
         ? result.reason
@@ -147,15 +182,40 @@ export class ExternalToolDispatcher {
           ? `${result.code}: ${result.message}`
           : undefined;
     try {
-      this.ledger.append({
+      const entry = {
         dispatchKey,
         capabilityId,
         adapterId: adapter.id,
         state: result.kind satisfies ExternalEffectState,
         ...(detail !== undefined ? { detail } : {}),
-      });
+      };
+      if (this.ledger.appendAfter === undefined) {
+        await this.ledger.append(entry);
+      } else {
+        // Compare-and-append: the terminal result is recorded only on top of the evidence this dispatch last saw. If a reconciliation (or
+        // anything else) wrote in the meantime, the two accounts of the same effect disagree: keep BOTH and report unknown rather than pick one.
+        const seen = await this.ledger.read(dispatchKey);
+        const last = seen[seen.length - 1];
+        if (last === undefined) throw new Error('the dispatch_attempted entry is missing');
+        if (last.state !== 'dispatch_attempted') {
+          await this.ledger.appendAfter(dispatchKey, last.seq, {
+            ...entry,
+            state: 'outcome_unknown',
+            detail: `adapter reported ${result.kind} after the evidence had already moved to ${last.state}; the accounts conflict`,
+          });
+          return {
+            kind: 'outcome_unknown',
+            dispatched: true,
+            adapterId: adapter.id,
+            reason: `adapter reported ${result.kind} but the evidence had already been changed (${last.state}); treated as unknown`,
+          };
+        }
+        const appended = await this.ledger.appendAfter(dispatchKey, last.seq, entry);
+        if (!appended.appended) throw new Error('the evidence changed while the result was being recorded');
+      }
     } catch (cause) {
       // The adapter already ran. If the terminal evidence cannot be recorded the result cannot be trusted to be reconstructable: report unknown.
+      // The durable `dispatch_attempted` entry remains, so the key stays blocked (unsettled) after any restart.
       return {
         kind: 'outcome_unknown',
         dispatched: true,
@@ -172,6 +232,35 @@ export class ExternalToolDispatcher {
         return { kind: 'outcome_unknown', dispatched: true, adapterId: adapter.id, reason: result.reason };
     }
   }
+}
+
+function blockedByPrior(dispatchKey: string, last: DispatchEvidence): DispatchOutcome {
+  const settled = last.state === 'confirmed_success' || last.state === 'confirmed_failure_no_effect';
+  return {
+    kind: 'blocked_prior_dispatch',
+    dispatched: false,
+    priorState: last.state,
+    requiresReconciliation: !settled,
+    reason: settled
+      ? `dispatch "${dispatchKey}" already ran (${last.state}); a second dispatch under the same key is refused`
+      : `dispatch "${dispatchKey}" has a prior attempt in state ${last.state}; reconciliation is required before any further dispatch`,
+  };
+}
+
+/** Stable identity of an input: SHA-256 over canonical JSON (sorted keys). The input itself is never persisted. */
+export function fingerprintOf(input: unknown): string {
+  return createHash('sha256').update(canonical(input), 'utf8').digest('hex');
+}
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (typeof v === 'object' && v !== null) {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'null';
 }
 
 function normalize(raw: unknown): AdapterInvokeResult {
