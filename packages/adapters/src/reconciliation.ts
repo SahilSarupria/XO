@@ -26,6 +26,8 @@ export interface ReconcileRequest {
   readonly decision: ReconciliationDecision;
   readonly reason: string;
   readonly evidenceExamined: string;
+  /** Correlation id of the audit event(s) for this attempt; stored on the ledger entry as a reference (not an atomic link). */
+  readonly auditCorrelationId?: string;
 }
 
 export type ReconcileOutcome =
@@ -40,6 +42,8 @@ export type ReconcileOutcome =
 
 export const MAX_RECONCILE_REASON = 1_000;
 export const MAX_RECONCILE_EVIDENCE = 4_000;
+/** Same shape the audit store accepts for ids. */
+const CORRELATION_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
 const DECISIONS: ReadonlySet<string> = new Set(['confirmed_success', 'confirmed_failure_no_effect', 'unresolved']);
 const isSettled = (state: string): boolean => state === 'confirmed_success' || state === 'confirmed_failure_no_effect';
 
@@ -56,6 +60,12 @@ export async function reconcileDispatch(ledger: DispatchLedger, request: Reconci
   const reason = typeof request.reason === 'string' ? request.reason.trim() : '';
   if (reason.length === 0 || reason.length > MAX_RECONCILE_REASON) {
     return { kind: 'invalid_request', reason: `reason is required (1-${MAX_RECONCILE_REASON} characters)` };
+  }
+  if (
+    request.auditCorrelationId !== undefined &&
+    (typeof request.auditCorrelationId !== 'string' || !CORRELATION_RE.test(request.auditCorrelationId))
+  ) {
+    return { kind: 'invalid_request', reason: 'auditCorrelationId is not a valid correlation id' };
   }
   const evidence = typeof request.evidenceExamined === 'string' ? request.evidenceExamined.trim() : '';
   if (evidence.length > MAX_RECONCILE_EVIDENCE) {
@@ -113,6 +123,7 @@ export async function reconcileDispatch(ledger: DispatchLedger, request: Reconci
           decision: request.decision,
           reason,
           evidenceExamined: evidence,
+          ...(request.auditCorrelationId !== undefined ? { auditCorrelationId: request.auditCorrelationId } : {}),
         },
       });
       if (res.appended) return { kind: 'recorded', state: resulting, seq: last.seq + 1 };

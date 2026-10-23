@@ -14,6 +14,9 @@ import {
   type ExternalToolAdapter,
 } from '../src/index.js';
 
+/** Test clock: two hours ahead of the real one, so approval times built with `later()`/FUTURE are not in the dispatcher's future. */
+const skewedClock = (): Date => new Date(Date.now() + 7_200_000);
+
 /**
  * The REAL durable path: every test here runs the dispatcher against a `BlobDispatchLedger` backed by `LocalFsBlobStore` on a real
  * temp directory. A "restart" builds a brand-new store, ledger and dispatcher over the same directory (no shared memory), which is
@@ -56,7 +59,7 @@ async function withDir(fn: (dir: string) => Promise<void>): Promise<void> {
 }
 const boot = (dir: string, adapter: ExternalToolAdapter, cap = 'cap', store: LocalFsBlobStore = new LocalFsBlobStore(dir)) => {
   const ledger = new BlobDispatchLedger(store);
-  return { ledger, dispatcher: new ExternalToolDispatcher({ adapters: new Map([[cap, adapter]]), ledger }) };
+  return { ledger, dispatcher: new ExternalToolDispatcher({ adapters: new Map([[cap, adapter]]), ledger, now: skewedClock }) };
 };
 const human = { kind: 'human', id: 'alice' } as const;
 

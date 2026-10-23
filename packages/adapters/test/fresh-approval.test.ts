@@ -12,6 +12,9 @@ import {
   type ExternalToolAdapter,
 } from '../src/index.js';
 
+/** Test clock: two hours ahead of the real one, so approval times built with `later()`/FUTURE are not in the dispatcher's future. */
+const skewedClock = (): Date => new Date(Date.now() + 7_200_000);
+
 /**
  * P3 (design decision of this implementation, not a recovered requirement): after a dispatch settles as `confirmed_failure_no_effect`,
  * a NEW attempt on the same capability needs a human approval granted AFTER that settlement. Real durable ledger, real temp directory.
@@ -45,7 +48,7 @@ async function withDir(fn: (dir: string) => Promise<void>): Promise<void> {
 }
 const boot = (dir: string, adapter: ExternalToolAdapter) => {
   const ledger = new BlobDispatchLedger(new LocalFsBlobStore(dir));
-  return { ledger, dispatcher: new ExternalToolDispatcher({ adapters: new Map([['cap', adapter]]), ledger }) };
+  return { ledger, dispatcher: new ExternalToolDispatcher({ adapters: new Map([['cap', adapter]]), ledger, now: skewedClock }) };
 };
 
 test('P3: a confirmed no-effect failure cannot be retried without a fresh approval (none, or one older than the settlement)', async () => {
@@ -144,5 +147,41 @@ test('P3: a later confirmed success supersedes an earlier no-effect failure (no 
     assert.equal((await w.dispatcher.dispatch('cap', 'e2:s', {}, { approvedAt: later() })).kind, 'confirmed_success');
     assert.equal((await w.dispatcher.dispatch('cap', 'e3:s', {})).kind, 'confirmed_success');
     assert.equal((await w.ledger.read('e3:s'))[0]!.follows, undefined);
+  });
+});
+
+test('P3 freshness: ambiguous or implausible timestamps never authorize a retry (non-canonical, offset, future approval)', async () => {
+  await withDir(async (dir) => {
+    await boot(dir, new Adapter('a', noEffect)).dispatcher.dispatch('cap', 'e1:s', {});
+    const next = new Adapter('a', success);
+    const w = boot(dir, next);
+    const farFuture = new Date(Date.now() + 10 * 3_600_000).toISOString(); // beyond the dispatcher's clock (two hours ahead)
+    for (const approvedAt of [
+      later().slice(0, 10), // date only
+      later().replace(/\.\d{3}Z$/, 'Z'), // no milliseconds
+      later().replace('Z', '+00:00'), // offset form
+      '2026-13-45T25:61:61.000Z', // impossible
+      farFuture, // later than this host's clock: a skewed or forged stamp must not make a stale approval look fresh
+    ]) {
+      assert.equal((await w.dispatcher.dispatch('cap', 'e2:s', {}, { approvedAt })).kind, 'fresh_approval_required', approvedAt);
+    }
+    assert.equal(next.calls.length, 0);
+    assert.equal((await w.dispatcher.dispatch('cap', 'e2:s', {}, { approvedAt: later() })).kind, 'confirmed_success');
+  });
+});
+
+test("P3 freshness: a settlement stamped in the dispatcher clock's future (clock went backwards) fails closed", async () => {
+  await withDir(async (dir) => {
+    await boot(dir, new Adapter('a', noEffect)).dispatcher.dispatch('cap', 'e1:s', {});
+    const ledger = new BlobDispatchLedger(new LocalFsBlobStore(dir));
+    const behind = new ExternalToolDispatcher({
+      adapters: new Map([['cap', new Adapter('a', success)]]),
+      ledger,
+      now: () => new Date(Date.now() - 3_600_000),
+    });
+    assert.equal(
+      (await behind.dispatch('cap', 'e2:s', {}, { approvedAt: new Date(Date.now() - 1_800_000).toISOString() })).kind,
+      'fresh_approval_required',
+    );
   });
 });

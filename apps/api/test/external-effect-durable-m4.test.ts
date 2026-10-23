@@ -49,8 +49,11 @@ const RECONCILE_ONLY = ALL_RULES.filter((r) => r.id === 'reconcile' || r.id === 
 
 class RefusingSink extends NonProductionAuditSink {
   readonly refuse = new Set<string>();
+  /** Refuse only events with these outcomes (e.g. the completion record, not the attempt precondition). */
+  readonly refuseOutcomes = new Set<string>();
   override async append(draft: Parameters<NonProductionAuditSink['append']>[0]): ReturnType<NonProductionAuditSink['append']> {
-    if (this.refuse.has(draft.type)) return { ok: false, error: new Error('audit sink down'), indeterminate: false } as never;
+    if (this.refuse.has(draft.type) || this.refuseOutcomes.has(draft.outcome))
+      return { ok: false, error: new Error('audit sink down'), indeterminate: false } as never;
     return super.append(draft);
   }
 }
@@ -369,7 +372,9 @@ test('durable e2e: effect.reconcile alone is sufficient to reconcile (and confer
     assert.equal(approveTry.status, 403, 'effect.reconcile confers no procedure approval');
     const ok = await reconcile(env, exec, GOOD);
     assert.equal(ok.status, 200, ok.bodyText);
-    const attempted = env.node.sink.events().filter((e) => e.action === 'reconcile.external-effect' && e.type === 'procedure.attempted');
+    const attempted = env.node.sink
+      .events()
+      .filter((e) => e.action === 'reconcile.external-effect' && e.type === 'procedure.attempted' && e.outcome === 'attempted');
     assert.equal(attempted.length, 1);
     assert.equal(attempted[0]?.metadata?.['decision'], 'confirmed_failure_no_effect');
     const ev = await evidence(env, exec);
@@ -475,5 +480,79 @@ test('durable e2e: reading evidence of an unknown step or without wiring is a 40
       `${base(env)}/procedure-executions/${exec.procedureExecutionId}/steps/zzz/external-effect`,
     );
     assert.equal(res.status, 404);
+  });
+});
+
+test('audit linkage: the ledger reconciliation entry carries the correlation id of the audit attempt AND completion events; no input data in audit', async () => {
+  await withEnv(async (env) => {
+    await publish(env);
+    const exec = await startExec(env, { amount: 7, scenario: 'drop' });
+    const res = await reconcile(env, exec, GOOD);
+    assert.equal(res.status, 200, res.bodyText);
+    const body = res.json<{ auditCorrelationId: string; auditCompletion: string }>();
+    assert.equal(body.auditCompletion, 'recorded');
+    const entry = (await evidence(env, exec)).entries.at(-1)!;
+    assert.equal(entry.reconciliation?.auditCorrelationId, body.auditCorrelationId);
+    const events = env.node.sink
+      .events()
+      .filter((e) => e.correlationId === body.auditCorrelationId && e.action === 'reconcile.external-effect');
+    assert.deepEqual(
+      events.map((e) => `${e.type}/${e.outcome}`),
+      ['procedure.attempted/attempted', 'procedure.attempted/completed'],
+    );
+    const done = events.find((e) => e.outcome === 'completed')!;
+    assert.equal(done.metadata?.['effectiveState'], 'confirmed_failure_no_effect');
+    assert.equal(done.metadata?.['decision'], 'confirmed_failure_no_effect');
+    const text = JSON.stringify(events);
+    assert.ok(!text.includes(GOOD.evidenceExamined) && !text.includes(GOOD.reason), 'free-text evidence/reason are not copied into audit');
+    // Idempotent repeat is also traceable (its own attempt/completion pair, its own correlation id).
+    const again = await reconcile(env, exec, GOOD);
+    assert.equal(again.json<{ outcome: string }>().outcome, 'already_resolved');
+    assert.notEqual(again.json<{ auditCorrelationId: string }>().auditCorrelationId, body.auditCorrelationId);
+  });
+});
+
+test('audit linkage: if the completion audit record cannot be written, the ledger entry stays (append-only), the response says so, and nothing is rolled back or hidden', async () => {
+  await withEnv(async (env) => {
+    await publish(env);
+    const exec = await startExec(env, { amount: 7, scenario: 'drop' });
+    env.node.sink.refuseOutcomes.add('completed');
+    const res = await reconcile(env, exec, GOOD);
+    assert.equal(res.status, 200, res.bodyText);
+    const body = res.json<{ outcome: string; auditCompletion: string; auditCorrelationId: string }>();
+    assert.equal(body.outcome, 'recorded');
+    assert.equal(body.auditCompletion, 'unconfirmed');
+    const entries = (await evidence(env, exec)).entries;
+    assert.equal(entries.at(-1)?.state, 'confirmed_failure_no_effect');
+    assert.equal(entries.at(-1)?.reconciliation?.auditCorrelationId, body.auditCorrelationId);
+    // The attempt event exists, so the ledger entry is still traceable to audit; only the completion record is missing.
+    const events = env.node.sink.events().filter((e) => e.correlationId === body.auditCorrelationId);
+    assert.ok(events.some((e) => e.outcome === 'attempted'));
+    assert.ok(!events.some((e) => e.outcome === 'completed'));
+  });
+});
+
+test('audit linkage: dispatch evidence carries the run correlation id, and step audit events record the final external-effect state (success and ambiguous)', async () => {
+  await withEnv(async (env) => {
+    await publish(env);
+    const ok = await startExec(env, { amount: 5, scenario: 'accept' });
+    const okEntries = (await evidence(env, ok)).entries;
+    const corr = okEntries[0]!.auditCorrelationId;
+    assert.ok(corr, 'the dispatch_attempted entry names the run correlation id');
+    assert.equal(okEntries.at(-1)?.auditCorrelationId, corr);
+    const completed = env.node.sink.events().find((e) => e.type === 'procedure.step.completed' && e.correlationId === corr);
+    assert.equal(completed?.metadata?.['effectState'], 'confirmed_success');
+
+    await reapprove(env);
+    const bad = await startExec(env, { amount: 7, scenario: 'drop' });
+    assert.equal(bad.status, 'failed');
+    const badEntries = (await evidence(env, bad)).entries;
+    const badCorr = badEntries[0]!.auditCorrelationId;
+    assert.ok(badCorr && badCorr !== corr);
+    const failed = env.node.sink.events().find((e) => e.type === 'procedure.step.failed' && e.correlationId === badCorr);
+    assert.equal(failed?.metadata?.['effectState'], 'outcome_unknown');
+    for (const e of env.node.sink.events()) {
+      assert.ok(!JSON.stringify(e.metadata ?? {}).includes('scenario'), 'no input data in audit metadata');
+    }
   });
 });

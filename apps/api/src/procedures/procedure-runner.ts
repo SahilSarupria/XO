@@ -319,12 +319,25 @@ async function emit(
 
 const reasonOf = (c: ProcedureFailureClass): string => `PROCEDURE_${c.toUpperCase()}`;
 
+/** Final external-effect state of this step's dispatch (authoritative: read back from the ledger), or `{}` when the step did not dispatch externally / evidence is unreadable. Carries no input data. */
+async function effectMeta(ctx: ProcedureRunnerContext, holder: Holder, step: { readonly id: string }): Promise<Record<string, string>> {
+  if (ctx.externalTools === undefined) return {};
+  try {
+    const ev = await ctx.externalTools.evidenceFor(`${holder.current.procedureExecutionId}:${step.id}`);
+    const last = ev[ev.length - 1];
+    return last === undefined ? {} : { effectState: last.state };
+  } catch {
+    return { effectState: 'evidence_unreadable' };
+  }
+}
+
 async function failExecution(
   ctx: ProcedureRunnerContext,
   holder: Holder,
   failureClass: ProcedureFailureClass,
   code: string,
   stepId?: string,
+  effect: Record<string, string> = {},
 ): Promise<void> {
   await holder.update((r, now) => ({
     ...withoutKey(r, 'waitingStepId'),
@@ -337,7 +350,7 @@ async function failExecution(
     await emit(ctx, holder.current, 'procedure.step.failed', 'failed', {
       stepId,
       reasonCode: reasonOf(failureClass),
-      metadata: { failureClass },
+      metadata: { failureClass, ...effect },
     });
   await emit(ctx, holder.current, 'procedure.execution.failed', 'failed', {
     reasonCode: reasonOf(failureClass),
@@ -415,7 +428,7 @@ async function runStep(
       ...r,
       steps: replaceStep(r.steps, step.id, { status: 'failed', failureClass, errorCode: code, completedAt: now }),
     }));
-    await failExecution(ctx, holder, failureClass, code, step.id);
+    await failExecution(ctx, holder, failureClass, code, step.id, await effectMeta(ctx, holder, step));
     return { kind: 'failed' };
   };
   // Per-step authorization against a FRESH registry read, before anything is created or executed for this step.
@@ -451,6 +464,7 @@ async function runStep(
                 externalTools: ctx.externalTools,
                 dispatchKey: `${holder.current.procedureExecutionId}:${step.id}`,
                 ...(approval !== undefined ? { approvedAt: approval.approvedAt } : {}),
+                auditCorrelationId: ctx.correlationId,
               }
             : {}),
         },
@@ -473,7 +487,10 @@ async function runStep(
         outputs: { ...r.outputs, [step.id]: outcome.output },
         steps: replaceStep(r.steps, step.id, { status: 'succeeded', completedAt: now }),
       }));
-      await emit(ctx, holder.current, 'procedure.step.completed', 'completed', { stepId: step.id });
+      await emit(ctx, holder.current, 'procedure.step.completed', 'completed', {
+        stepId: step.id,
+        metadata: await effectMeta(ctx, holder, step),
+      });
       return { kind: 'succeeded', output: outcome.output };
     }
     case 'waiting_for_human': {

@@ -80,4 +80,7 @@ test('permissions: effect.reconcile is its own id, valid under the closed domain
   assert.notEqual(Permissions.effect.reconcile, Permissions.procedure.approve);
   assert.equal(parsePermissionId('effect.reconcile').ok, true);
   assert.equal(parsePermissionId('external_effect.reconcile').ok, false, 'underscores and unregistered domains are rejected');
+  // The domain segment is `[a-z][a-z0-9]*` (hyphens are only legal in the ACTION segment) and the domain set is closed, so the hyphenated form is invalid too.
+  assert.equal(parsePermissionId('external-effect.reconcile').ok, false, 'a hyphenated domain does not match the id grammar');
+  assert.equal(parsePermissionId('externaleffect.reconcile').ok, false, 'and an unregistered domain is refused even when well-formed');
 });

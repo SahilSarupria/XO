@@ -197,11 +197,13 @@ export async function validateAgainstRegistry(
       stateDigest = String(
         new Sha256Hasher().hash(
           canonicalStringify({
-            schema: 'xo.external-step-state.v1',
+            schema: 'xo.external-step-state.v2',
             base: derived.value.stateDigest,
             bindingId,
             adapterId: configured.adapterId,
             inputSchema: stableJson(configured.inputSchema),
+            // Digest of the adapter's security-relevant configuration (never the values): any change makes an earlier approval stale.
+            adapterConfigDigest: configured.configDigest,
           }),
         ),
       );

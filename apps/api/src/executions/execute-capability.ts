@@ -273,6 +273,8 @@ export interface ExecuteApprovedCapabilityOptions {
   readonly dispatchKey?: string;
   /** M4 — when the human approval authorizing this execution was granted (ISO-8601). Lets the dispatcher require an approval newer than a confirmed no-effect failure. */
   readonly approvedAt?: string;
+  /** M4 — audit correlation id of the run, recorded on the dispatch evidence so ledger and audit can be joined. */
+  readonly auditCorrelationId?: string;
 }
 
 /**
@@ -353,11 +355,10 @@ export async function executeApprovedCapability(
         effectState: 'not_dispatched',
       };
     }
-    externalToolHandler = options.externalTools.handlerFor(
-      contract,
-      options.dispatchKey,
-      options.approvedAt !== undefined ? { approvedAt: options.approvedAt } : {},
-    );
+    externalToolHandler = options.externalTools.handlerFor(contract, options.dispatchKey, {
+      ...(options.approvedAt !== undefined ? { approvedAt: options.approvedAt } : {}),
+      ...(options.auditCorrelationId !== undefined ? { auditCorrelationId: options.auditCorrelationId } : {}),
+    });
   }
 
   // The declaration is derived ONCE here from the graph being executed and used for BOTH the TOCTOU tie and the decision below,

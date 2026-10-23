@@ -63,6 +63,7 @@ function setup(
     adapters: new Map(capIds.map((c) => [c, adapter])),
     ledger,
     unsafeAllowVolatileLedger: true,
+    now: () => new Date(Date.now() + 7_200_000), // two hours ahead, so FUTURE_APPROVAL is not in the dispatcher's future
   });
   const externalTools = createExternalToolWiring(dispatcher, new Map(capIds.map((c) => [c, SCHEMA])));
   return { ledger, externalTools };

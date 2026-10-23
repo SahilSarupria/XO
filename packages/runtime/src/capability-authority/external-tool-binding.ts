@@ -46,7 +46,9 @@ export interface ExternalToolWiring {
   /** Resolves ONLY contracts the host explicitly configured; `undefined` for every other contract. */
   readonly resolver: BindingResolver;
   /** What the host configured for a contract (adapter id + input schema), or `undefined` when not configured. Used to bind that configuration into approval state. */
-  describe(contractId: string): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema } | undefined;
+  describe(
+    contractId: string,
+  ): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema; readonly configDigest: string } | undefined;
   /** Builds the handler for one dispatch. `dispatchKey` is server-derived by the caller. */
   handlerFor(contract: SemanticCapabilityContract, dispatchKey: string, context?: DispatchContext): RuntimeCapabilityHandler;
   /** The ordered, durable evidence of one dispatch (empty if none). Rejects if the ledger is unreadable or corrupt. */
@@ -94,7 +96,10 @@ export function createExternalToolWiring(
     describe(contractId) {
       const schema = inputSchemas.get(contractId);
       const adapterId = dispatcher.adapterIdFor(contractId);
-      return schema === undefined || adapterId === undefined ? undefined : { adapterId, inputSchema: schema };
+      const configDigest = dispatcher.configDigestFor(contractId);
+      return schema === undefined || adapterId === undefined || configDigest === undefined
+        ? undefined
+        : { adapterId, inputSchema: schema, configDigest };
     },
     evidenceFor: (dispatchKey) => dispatcher.evidenceFor(dispatchKey),
     reconcile: (request) => dispatcher.reconcile(request),

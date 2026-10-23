@@ -836,16 +836,44 @@ export function registerProcedureRoutes(
       decision: decision as 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved',
       reason: body['reason'] as string,
       evidenceExamined: typeof body['evidenceExamined'] === 'string' ? body['evidenceExamined'] : '',
+      // The ledger entry records the id of the audit trail's `procedure.attempted` event above, so each reconciliation entry can be joined to it.
+      auditCorrelationId: correlationId,
     });
+    // Completion audit (existing `finalize` semantics: never throws, never retries). The ledger entry is already written and append-only;
+    // the two stores are NOT written atomically, so a failed completion record is reported, never hidden and never rolled back.
+    const completion = async (effectiveState: string, ledgerOutcome: string): Promise<'recorded' | 'unconfirmed'> => {
+      const fin = await audit.finalize(
+        {
+          type: 'procedure.attempted',
+          action,
+          outcome: 'completed',
+          actor: actorFromPrincipal(principal),
+          target: effectTarget(workspace, step.executionId),
+          correlationId,
+          metadata: { decision: decision as string, effectiveState, ledgerOutcome, stepId: step.stepId },
+        },
+        { correlationId },
+      );
+      return fin.status === 'recorded' ? 'recorded' : 'unconfirmed';
+    };
     switch (outcome.kind) {
       case 'recorded':
-        return json(200, { outcome: 'recorded', effectiveState: outcome.state, dispatchKey: step.dispatchKey, redispatchPermitted: false });
+        return json(200, {
+          outcome: 'recorded',
+          effectiveState: outcome.state,
+          dispatchKey: step.dispatchKey,
+          redispatchPermitted: false,
+          auditCorrelationId: correlationId,
+          auditCompletion: await completion(outcome.state, 'recorded'),
+        });
       case 'already_resolved':
         return json(200, {
           outcome: 'already_resolved',
           effectiveState: outcome.state,
           dispatchKey: step.dispatchKey,
           redispatchPermitted: false,
+          auditCorrelationId: correlationId,
+          auditCompletion: await completion(outcome.state, 'already_resolved'),
         });
       case 'conflict':
         throw new XoError(ErrorCode.ALREADY_EXISTS, outcome.reason);

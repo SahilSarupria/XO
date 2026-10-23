@@ -48,9 +48,14 @@ interface Env {
 }
 const base = (env: Pick<Env, 'workspace'>): string => `/workspaces/${env.workspace.workspaceId}`;
 
-function wiringFor(service: ReferenceService, ledger: InMemoryDispatchLedger, schema: CapabilityInputSchema = SCHEMA): ExternalToolWiring {
+function wiringFor(
+  service: ReferenceService,
+  ledger: InMemoryDispatchLedger,
+  schema: CapabilityInputSchema = SCHEMA,
+  securityConfig?: Readonly<Record<string, unknown>>,
+): ExternalToolWiring {
   const dispatcher = new ExternalToolDispatcher({
-    adapters: new Map([[EXT, createReferenceAdapter(service)]]),
+    adapters: new Map([[EXT, { ...createReferenceAdapter(service), ...(securityConfig !== undefined ? { securityConfig } : {}) }]]),
     ledger,
     unsafeAllowVolatileLedger: true,
   });
@@ -229,21 +234,26 @@ test('M4 e2e: without the explicit adapter configuration an external step can be
   );
 });
 
-test('M4 e2e: adapter configuration is part of what is approved — changing the input schema after approval makes the approval stale (nothing dispatched)', async () => {
-  await withTempDir('xo-m4e2-data-', async (dataDir) => {
-    await withTempDir('xo-m4e2-ws-', async (workspacesDir) => {
+interface AdapterConfig {
+  readonly schema: CapabilityInputSchema;
+  readonly securityConfig?: Readonly<Record<string, unknown>>;
+}
+
+/** Approves a procedure under configuration `a`, then starts an execution on a server wired with configuration `b` (same data directories). */
+async function approveUnderThenRunUnder(a: AdapterConfig, b: AdapterConfig): Promise<{ status: number; body: string; requests: number }> {
+  return withTempDir('xo-m4e2-data-', (dataDir) =>
+    withTempDir('xo-m4e2-ws-', async (workspacesDir) => {
       const service = new ReferenceService();
       const ledger = new InMemoryDispatchLedger();
-      // Same data directory, two servers with DIFFERENT adapter configuration (same adapter id, different input schema).
-      const boot = (schema: CapabilityInputSchema) =>
+      const boot = (c: AdapterConfig) =>
         TestServer.start({
           workspaceDataDir: dataDir,
           workspacesDir,
           auditSink: new NonProductionAuditSink(),
           permissionPolicy: new RuleBasedPolicy([...RULES]),
-          externalTools: wiringFor(service, ledger, schema),
+          externalTools: wiringFor(service, ledger, c.schema, c.securityConfig),
         });
-      const first = await boot(SCHEMA);
+      const first = await boot(a);
       let env: Env;
       try {
         const workspace = (await first.request('POST', '/workspaces', {})).json<WorkspaceRecord>();
@@ -269,17 +279,47 @@ test('M4 e2e: adapter configuration is part of what is approved — changing the
       } finally {
         await first.stop();
       }
-      const changed: CapabilityInputSchema = { ...SCHEMA, properties: { ...SCHEMA.properties, note: { type: 'string' } } };
-      const second = await boot(changed);
+      const second = await boot(b);
       try {
         const res = await second.request('POST', `${base(env)}/procedures/ext-flow/versions/1/executions`, {
           input: { amount: 1, scenario: 'accept' },
         });
-        assert.equal(res.status, 403, res.bodyText);
-        assert.equal(service.requests.length, 0, 'a changed adapter configuration invalidated the approval before any dispatch');
+        return { status: res.status, body: res.bodyText, requests: service.requests.length };
       } finally {
         await second.stop();
       }
-    });
-  });
+    }),
+  );
+}
+
+const CONFIG: Readonly<Record<string, unknown>> = { endpoint: 'https://svc.example', account: 'acct-1', scopes: ['charge'] };
+
+test('M4 e2e: adapter configuration is part of what is approved — changing the input schema after approval makes the approval stale (nothing dispatched)', async () => {
+  const changed: CapabilityInputSchema = { ...SCHEMA, properties: { ...SCHEMA.properties, note: { type: 'string' } } };
+  const r = await approveUnderThenRunUnder({ schema: SCHEMA }, { schema: changed });
+  assert.equal(r.status, 403, r.body);
+  assert.equal(r.requests, 0, 'a changed adapter configuration invalidated the approval before any dispatch');
+});
+
+test('M4 e2e: every security-relevant adapter config value is bound — a changed endpoint/account/scope makes the approval stale; nothing dispatched, config values not echoed', async () => {
+  for (const changed of [
+    { ...CONFIG, endpoint: 'https://svc.evil.example' },
+    { ...CONFIG, account: 'acct-2' },
+    { ...CONFIG, scopes: ['charge', 'refund'] },
+    { endpoint: CONFIG['endpoint'], account: CONFIG['account'] }, // a removed key
+    { ...CONFIG, extra: true }, // an added key
+  ]) {
+    const r = await approveUnderThenRunUnder({ schema: SCHEMA, securityConfig: CONFIG }, { schema: SCHEMA, securityConfig: changed });
+    assert.equal(r.status, 403, `${JSON.stringify(changed)} -> ${r.body}`);
+    assert.equal(r.requests, 0);
+    for (const leaked of ['acct-1', 'acct-2', 'svc.evil.example'])
+      assert.ok(!r.body.includes(leaked), 'the refusal does not echo config values');
+  }
+});
+
+test('M4 e2e: an equivalent configuration (same values, different key order) keeps the approval valid and dispatches', async () => {
+  const reordered = { scopes: ['charge'], account: 'acct-1', endpoint: 'https://svc.example' };
+  const r = await approveUnderThenRunUnder({ schema: SCHEMA, securityConfig: CONFIG }, { schema: SCHEMA, securityConfig: reordered });
+  assert.ok(r.status === 200 || r.status === 201, r.body);
+  assert.equal(r.requests, 1);
 });

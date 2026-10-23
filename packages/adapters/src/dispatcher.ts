@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { CanonicalizationError, canonicalJson, sha256Hex } from './canonical.js';
 import { reconcileDispatch, type ReconcileOutcome, type ReconcileRequest } from './reconciliation.js';
 import type {
   AdapterInvokeResult,
@@ -55,6 +55,21 @@ export interface ExternalToolDispatcherOptions {
    * allow a blind redispatch. Never set it for a consequential adapter (the API server additionally refuses it when NODE_ENV=production).
    */
   readonly unsafeAllowVolatileLedger?: boolean;
+  /** Injectable clock for the freshness rule (tests). Defaults to the host clock. */
+  readonly now?: () => Date;
+}
+
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * Parses ONLY the canonical UTC instant form `YYYY-MM-DDTHH:mm:ss.sssZ` (what `Date.prototype.toISOString` and the ledger/approval stores
+ * write) and requires an exact round trip. Anything else — offsets, date-only, missing milliseconds, impossible dates, non-strings —
+ * is `undefined`: ambiguous timestamps are refused, never interpreted.
+ */
+export function parseInstant(value: unknown): number | undefined {
+  if (typeof value !== 'string' || !INSTANT_RE.test(value)) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) || new Date(ms).toISOString() !== value ? undefined : ms;
 }
 
 const isPlainObject = (v: unknown): v is Readonly<Record<string, unknown>> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -70,6 +85,7 @@ const isPlainObject = (v: unknown): v is Readonly<Record<string, unknown>> => ty
 export class ExternalToolDispatcher {
   private readonly adapters: ReadonlyMap<string, ExternalToolAdapter>;
   private readonly ledger: DispatchLedger;
+  private readonly now: () => Date;
 
   constructor(options: ExternalToolDispatcherOptions) {
     if (options.ledger.durability !== 'durable' && options.unsafeAllowVolatileLedger !== true) {
@@ -78,7 +94,17 @@ export class ExternalToolDispatcher {
       );
     }
     this.adapters = new Map(options.adapters);
+    for (const [capabilityId, adapter] of this.adapters) {
+      try {
+        adapterConfigDigest(adapter);
+      } catch (cause) {
+        throw new Error(
+          `adapter "${adapter.id}" for "${capabilityId}" has a securityConfig that cannot be canonicalized (${describe(cause)}); refused`,
+        );
+      }
+    }
     this.ledger = options.ledger;
+    this.now = options.now ?? (() => new Date());
   }
 
   /** `'durable'` only when the ledger says so; anything else (including an unlabelled ledger) is `'volatile'`. */
@@ -89,6 +115,12 @@ export class ExternalToolDispatcher {
   /** True only for an explicitly configured capability id. */
   isConfigured(capabilityId: string): boolean {
     return this.adapters.has(capabilityId);
+  }
+
+  /** Digest of the configured adapter's security-relevant configuration, or `undefined` when no adapter is configured. */
+  configDigestFor(capabilityId: string): string | undefined {
+    const adapter = this.adapters.get(capabilityId);
+    return adapter === undefined ? undefined : adapterConfigDigest(adapter);
   }
 
   adapterIdFor(capabilityId: string): string | undefined {
@@ -117,6 +149,14 @@ export class ExternalToolDispatcher {
       return { kind: 'invalid_request', dispatched: false, reason: 'external_tool input must be a plain object' };
     }
 
+    let inputFingerprint: string;
+    try {
+      inputFingerprint = fingerprintOf(input);
+    } catch (cause) {
+      const detail = cause instanceof CanonicalizationError ? cause.message : 'unsupported value';
+      return { kind: 'invalid_request', dispatched: false, reason: `external_tool input cannot be canonicalized (${detail})` };
+    }
+
     let prior: readonly DispatchEvidence[];
     try {
       prior = await this.ledger.read(dispatchKey);
@@ -141,7 +181,15 @@ export class ExternalToolDispatcher {
         }
         const target = last.state === 'confirmed_failure_no_effect' ? 'noEffect' : 'other';
         const best = target === 'noEffect' ? newestNoEffect : newestOther;
-        if (best === undefined || (last.recordedAt ?? '') > (best.recordedAt ?? '')) {
+        // Ordering needs parseable instants. An unparsable no-effect settlement is treated as the newest (blocks); an unparsable success never supersedes.
+        const at = parseInstant(last.recordedAt);
+        const bestAt = best === undefined ? undefined : parseInstant(best.recordedAt);
+        const newer =
+          best === undefined ||
+          (target === 'noEffect'
+            ? at === undefined || (bestAt !== undefined && at > bestAt)
+            : at !== undefined && (bestAt === undefined || at > bestAt));
+        if (newer) {
           if (target === 'noEffect') newestNoEffect = last;
           else newestOther = last;
         }
@@ -150,11 +198,18 @@ export class ExternalToolDispatcher {
       // settled dispatch is a confirmed no-effect failure, a new attempt needs a human approval granted AFTER that settlement. Missing or
       // unparsable timestamps cannot establish freshness, so they block.
       if (unsettled === undefined && newestNoEffect !== undefined) {
-        const supersededBySuccess = newestOther !== undefined && (newestOther.recordedAt ?? '') > (newestNoEffect.recordedAt ?? '');
+        const otherAt = newestOther === undefined ? undefined : parseInstant(newestOther.recordedAt);
+        const noEffectAt = parseInstant(newestNoEffect.recordedAt);
+        const supersededBySuccess = otherAt !== undefined && noEffectAt !== undefined && otherAt > noEffectAt;
         if (!supersededBySuccess) {
-          const settledAt = Date.parse(newestNoEffect.recordedAt ?? '');
-          const approvedAt = Date.parse(context.approvedAt ?? '');
-          if (Number.isNaN(settledAt) || Number.isNaN(approvedAt) || !(approvedAt > settledAt)) {
+          // Freshness needs two unambiguous instants on ONE clock: the settlement (ledger clock) and the approval (approval store clock).
+          // Both must parse strictly, neither may lie in the future of this host's clock (a skewed or tampered stamp could make a stale
+          // approval look fresh forever, or a settlement look old), and the approval must be strictly later. Otherwise: refuse.
+          const settledAt = parseInstant(newestNoEffect.recordedAt);
+          const approvedAt = parseInstant(context.approvedAt);
+          const nowMs = this.now().getTime();
+          const usable = settledAt !== undefined && approvedAt !== undefined && settledAt <= nowMs && approvedAt <= nowMs;
+          if (!usable || !(approvedAt > settledAt)) {
             return {
               kind: 'fresh_approval_required',
               dispatched: false,
@@ -184,7 +239,9 @@ export class ExternalToolDispatcher {
       capabilityId,
       adapterId: adapter.id,
       state: 'dispatch_attempted' as const,
-      inputFingerprint: fingerprintOf(input),
+      inputFingerprint,
+      actionDigest: actionDigestOf(capabilityId, adapter, inputFingerprint),
+      ...(context.auditCorrelationId !== undefined ? { auditCorrelationId: context.auditCorrelationId } : {}),
       ...(follows !== undefined ? { follows } : {}),
     };
     try {
@@ -223,18 +280,19 @@ export class ExternalToolDispatcher {
     try {
       raw = await adapter.invoke({ capabilityId, dispatchKey, input: Object.freeze({ ...input }) });
     } catch (cause) {
-      return this.settle(capabilityId, dispatchKey, adapter, {
+      return this.settle(capabilityId, dispatchKey, adapter, context.auditCorrelationId, {
         kind: 'outcome_unknown',
         reason: `adapter threw after dispatch: ${describe(cause)}`,
       });
     }
-    return this.settle(capabilityId, dispatchKey, adapter, normalize(raw));
+    return this.settle(capabilityId, dispatchKey, adapter, context.auditCorrelationId, normalize(raw));
   }
 
   private async settle(
     capabilityId: string,
     dispatchKey: string,
     adapter: ExternalToolAdapter,
+    auditCorrelationId: string | undefined,
     result: AdapterInvokeResult,
   ): Promise<DispatchOutcome> {
     const detail =
@@ -249,6 +307,7 @@ export class ExternalToolDispatcher {
         capabilityId,
         adapterId: adapter.id,
         state: result.kind satisfies ExternalEffectState,
+        ...(auditCorrelationId !== undefined ? { auditCorrelationId } : {}),
         ...(detail !== undefined ? { detail } : {}),
       };
       if (this.ledger.appendAfter === undefined) {
@@ -309,20 +368,21 @@ function blockedByPrior(dispatchKey: string, last: DispatchEvidence): DispatchOu
   };
 }
 
-/** Stable identity of an input: SHA-256 over canonical JSON (sorted keys). The input itself is never persisted. */
+/** Stable identity of an input: SHA-256 over STRICT canonical JSON (sorted keys). Throws `CanonicalizationError` for an unsupported value. The input itself is never persisted. */
 export function fingerprintOf(input: unknown): string {
-  return createHash('sha256').update(canonical(input), 'utf8').digest('hex');
+  return sha256Hex(canonicalJson(input));
 }
-function canonical(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
-  if (typeof v === 'object' && v !== null) {
-    const o = v as Record<string, unknown>;
-    return `{${Object.keys(o)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(v) ?? 'null';
+
+/** Digest of an adapter's security-relevant configuration (`securityConfig`, absent = `{}`). Throws `CanonicalizationError` if it cannot be canonicalized. */
+export function adapterConfigDigest(adapter: ExternalToolAdapter): string {
+  return sha256Hex(canonicalJson({ schema: 'xo.adapter-config.v1', adapterId: adapter.id, config: adapter.securityConfig ?? {} }));
+}
+
+/** The exact action a dispatch key is claimed for: capability + adapter identity/config + input identity. No values are included. */
+export function actionDigestOf(capabilityId: string, adapter: ExternalToolAdapter, inputFingerprint: string): string {
+  return sha256Hex(
+    canonicalJson({ schema: 'xo.external-action.v1', capabilityId, config: adapterConfigDigest(adapter), inputFingerprint }),
+  );
 }
 
 function normalize(raw: unknown): AdapterInvokeResult {

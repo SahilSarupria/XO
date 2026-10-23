@@ -53,6 +53,22 @@ export interface ApiConfig {
    * CLASSIFIES the step as `timeout`; it does not cancel the in-flight capability call (cancellation is out of scope).
    */
   readonly procedureStepTimeoutMs?: number;
+  /**
+   * P1.1 M4 — directory holding the durable external-effect dispatch evidence (`XO_EXTERNAL_EFFECTS_DIR`). UNSET MEANS NOT CONFIGURED: there
+   * is deliberately no default directory, because a default would let a host start dispatching consequential effects on an unplanned
+   * location. It must be a persistent, backed-up volume on ONE filesystem shared by every worker (the ledger's atomicity is single-filesystem
+   * only). Used by {@link createConfiguredExternalToolWiring}; the shipped entrypoint enables no external adapters, so setting it alone
+   * changes nothing there.
+   */
+  readonly externalEffectsDir?: string;
+}
+
+/** Unset/blank -> undefined. A set value must be a plain non-empty path string (no control characters); anything else aborts startup. */
+export function parseExternalEffectsDir(raw: string | undefined): string | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const v = raw.trim();
+  if (/[\u0000-\u001f]/.test(v)) throw new Error('XO_EXTERNAL_EFFECTS_DIR must be a plain directory path');
+  return v;
 }
 
 /** Unset/empty -> undefined (no timeout). A set value must be a positive integer; anything else aborts startup (fail closed). */
@@ -75,6 +91,9 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>> = p
     workspaceDataDir: env['WORKSPACE_DATA_DIR'] ?? '.xo-data/workspace-data',
     ...(parseStepTimeoutMs(env['XO_PROCEDURE_STEP_TIMEOUT_MS']) !== undefined
       ? { procedureStepTimeoutMs: parseStepTimeoutMs(env['XO_PROCEDURE_STEP_TIMEOUT_MS']) as number }
+      : {}),
+    ...(parseExternalEffectsDir(env['XO_EXTERNAL_EFFECTS_DIR']) !== undefined
+      ? { externalEffectsDir: parseExternalEffectsDir(env['XO_EXTERNAL_EFFECTS_DIR']) as string }
       : {}),
   };
 }

@@ -39,6 +39,14 @@ export type AdapterInvokeResult =
  */
 export interface ExternalToolAdapter {
   readonly id: string;
+  /**
+   * Every security-relevant, NON-SECRET configuration value of this adapter (endpoint/host, account or tenant id, region, scopes, mode…),
+   * as plain JSON. It is hashed (canonically) into the approval digest, so changing any value makes an earlier approval stale. NEVER put a
+   * secret here: represent a credential by a non-reversible identifier the adapter computes itself (key id, or a hash of the secret).
+   * Absent means "no security-relevant configuration" — an adapter with such configuration that omits it is NOT covered by approval
+   * binding. A value that cannot be canonicalized fails dispatcher construction (fail closed).
+   */
+  readonly securityConfig?: Readonly<Record<string, unknown>>;
   invoke(request: AdapterInvokeRequest): Promise<AdapterInvokeResult>;
 }
 
@@ -58,6 +66,12 @@ export interface ReconciliationRecord {
   readonly decision: ReconciliationDecision;
   readonly reason: string;
   readonly evidenceExamined: string;
+  /**
+   * Correlation id of the AUDIT event(s) written for this reconciliation attempt (the same `correlationId` as the audit trail's
+   * `procedure.attempted` event for it). A reference only: the ledger and the audit trail are separate stores and are NOT written
+   * atomically together.
+   */
+  readonly auditCorrelationId?: string;
 }
 
 export interface DispatchEvidence {
@@ -75,6 +89,13 @@ export interface DispatchEvidence {
   /** Present only on entries written by a reconciliation. */
   readonly reconciliation?: ReconciliationRecord;
   /**
+   * SHA-256 over canonical {capabilityId, adapterId, adapter security-config digest, input fingerprint}: the exact action this key was
+   * claimed for. Identity only (no input, no config values). Set on the `dispatch_attempted` entry.
+   */
+  readonly actionDigest?: string;
+  /** Correlation id of the procedure-execution audit events for the run that made this dispatch (set on dispatch entries). */
+  readonly auditCorrelationId?: string;
+  /**
    * Present only on a `dispatch_attempted` entry that is a NEW ATTEMPT after an earlier dispatch to the same capability settled as
    * `confirmed_failure_no_effect`: names that earlier dispatch and its confirmed outcome. A reference for audit/recovery, not a link
    * that reopens anything — the earlier key stays settled and is never redispatched.
@@ -89,6 +110,8 @@ export interface DispatchEvidence {
 export interface DispatchContext {
   /** ISO-8601 time the approval authorizing this dispatch was granted. Absent => freshness cannot be established. */
   readonly approvedAt?: string;
+  /** Correlation id of the audit trail for this execution; recorded on the dispatch evidence so ledger and audit can be joined. */
+  readonly auditCorrelationId?: string;
 }
 
 export type LedgerEntryDraft = Omit<DispatchEvidence, 'seq' | 'recordedAt'>;

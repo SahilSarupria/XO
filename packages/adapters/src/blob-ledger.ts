@@ -40,10 +40,12 @@ const ENTRY_KEYS: ReadonlySet<string> = new Set([
   'detail',
   'recordedAt',
   'inputFingerprint',
+  'actionDigest',
+  'auditCorrelationId',
   'reconciliation',
   'follows',
 ]);
-const RECON_KEYS: ReadonlySet<string> = new Set(['actorKind', 'actorId', 'decision', 'reason', 'evidenceExamined']);
+const RECON_KEYS: ReadonlySet<string> = new Set(['actorKind', 'actorId', 'decision', 'reason', 'evidenceExamined', 'auditCorrelationId']);
 
 /**
  * `AtomicBlobStore.putIfAbsent` stages content in a private `<name>.<pid>.<uuid>.tmp` file and then links it to its final name, so a
@@ -79,6 +81,8 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
   if (raw['detail'] !== undefined && typeof raw['detail'] !== 'string') return bad('detail');
   if (raw['recordedAt'] !== undefined && typeof raw['recordedAt'] !== 'string') return bad('recordedAt');
   if (raw['inputFingerprint'] !== undefined && typeof raw['inputFingerprint'] !== 'string') return bad('inputFingerprint');
+  if (raw['actionDigest'] !== undefined && !isStr(raw['actionDigest'])) return bad('actionDigest');
+  if (raw['auditCorrelationId'] !== undefined && !isStr(raw['auditCorrelationId'])) return bad('auditCorrelationId');
   let reconciliation: ReconciliationRecord | undefined;
   if (raw['reconciliation'] !== undefined) {
     const r = raw['reconciliation'];
@@ -88,7 +92,9 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
     if (!isStr(r['actorId'])) return bad('reconciliation.actorId');
     if (typeof r['decision'] !== 'string' || !DECISIONS.has(r['decision'])) return bad('reconciliation.decision');
     if (typeof r['reason'] !== 'string' || typeof r['evidenceExamined'] !== 'string') return bad('reconciliation text');
+    if (r['auditCorrelationId'] !== undefined && !isStr(r['auditCorrelationId'])) return bad('reconciliation.auditCorrelationId');
     reconciliation = {
+      ...(r['auditCorrelationId'] !== undefined ? { auditCorrelationId: r['auditCorrelationId'] as string } : {}),
       actorKind: r['actorKind'],
       actorId: r['actorId'],
       decision: r['decision'] as ReconciliationRecord['decision'],
@@ -112,6 +118,8 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
     ...(raw['detail'] !== undefined ? { detail: raw['detail'] as string } : {}),
     ...(raw['recordedAt'] !== undefined ? { recordedAt: raw['recordedAt'] as string } : {}),
     ...(raw['inputFingerprint'] !== undefined ? { inputFingerprint: raw['inputFingerprint'] as string } : {}),
+    ...(raw['actionDigest'] !== undefined ? { actionDigest: raw['actionDigest'] as string } : {}),
+    ...(raw['auditCorrelationId'] !== undefined ? { auditCorrelationId: raw['auditCorrelationId'] as string } : {}),
     ...(reconciliation !== undefined ? { reconciliation } : {}),
     ...(follows !== undefined ? { follows } : {}),
   });
@@ -144,6 +152,8 @@ export class BlobDispatchLedger implements DispatchLedger {
       ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
       recordedAt: this.now().toISOString(),
       ...(entry.inputFingerprint !== undefined ? { inputFingerprint: entry.inputFingerprint } : {}),
+      ...(entry.actionDigest !== undefined ? { actionDigest: entry.actionDigest } : {}),
+      ...(entry.auditCorrelationId !== undefined ? { auditCorrelationId: entry.auditCorrelationId } : {}),
       ...(entry.reconciliation !== undefined ? { reconciliation: entry.reconciliation } : {}),
       ...(entry.follows !== undefined ? { follows: entry.follows } : {}),
     });
