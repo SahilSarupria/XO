@@ -106,6 +106,14 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
  * README.md's "Testing" section for why that's the approach taken).
  */
 export function buildRouter(deps: ServerDeps = {}): Router {
+  // P1.1 M4: consequential external effects may never run over volatile dispatch evidence in production. Checked FIRST so no other
+  // configuration can mask it; `ledgerDurability` is derived from the ledger itself, never from a flag the host could set independently.
+  if (deps.externalTools !== undefined && process.env['NODE_ENV'] === 'production' && deps.externalTools.ledgerDurability !== 'durable') {
+    throw new XoError(
+      ErrorCode.CONFIG_INVALID_VALUE,
+      'external tools require a durable dispatch-evidence ledger in production (see createDurableExternalToolWiring); startup aborted',
+    );
+  }
   const apiKeyStore = deps.apiKeyStore ?? new FsApiKeyStore(new LocalFsBlobStore(deps.apiKeysDir ?? loadConfig().apiKeysDir));
   const workspaceStore =
     deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));

@@ -60,6 +60,9 @@ const boot = (dir: string, adapter: ExternalToolAdapter, cap = 'cap', store: Loc
 };
 const human = { kind: 'human', id: 'alice' } as const;
 
+/** An approval time later than any settlement made while these tests run. */
+const FUTURE = new Date(Date.now() + 3_600_000).toISOString();
+
 test('1. success: write-ahead evidence precedes the call, success evidence is durable, and survives a restart', async () => {
   await withDir(async (dir) => {
     const seenAtCall: string[] = [];
@@ -295,7 +298,10 @@ test('15. reconciliation of an externally confirmed failure settles it; the same
       'a human clicking retry on the same identity must not redispatch',
     );
     assert.equal(next.calls.length, 0);
-    assert.equal((await w.dispatcher.dispatch('cap', 'k2', {})).kind, 'confirmed_success');
+    // P3: the settled no-effect failure means a new attempt needs a human approval newer than the settlement (none supplied => blocked).
+    assert.equal((await w.dispatcher.dispatch('cap', 'k2', {})).kind, 'fresh_approval_required');
+    assert.equal(next.calls.length, 0);
+    assert.equal((await w.dispatcher.dispatch('cap', 'k2', {}, { approvedAt: FUTURE })).kind, 'confirmed_success');
   });
 });
 
@@ -441,7 +447,7 @@ test('21. a server restart neither erases evidence nor permits a blind redispatc
     );
     const p4 = boot(dir, mk('p4', { kind: 'confirmed_success', output: 1 }));
     assert.equal((await p4.dispatcher.dispatch('cap', 'k', {})).kind, 'blocked_prior_dispatch');
-    assert.equal((await p4.dispatcher.dispatch('cap', 'k-new', {})).kind, 'confirmed_success');
+    assert.equal((await p4.dispatcher.dispatch('cap', 'k-new', {}, { approvedAt: FUTURE })).kind, 'confirmed_success');
     assert.deepEqual(calls, ['p1', 'p4']);
     assert.equal((await p4.dispatcher.evidenceFor('k')).length, 3);
   });

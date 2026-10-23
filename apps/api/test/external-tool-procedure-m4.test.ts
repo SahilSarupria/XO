@@ -49,7 +49,11 @@ interface Env {
 const base = (env: Pick<Env, 'workspace'>): string => `/workspaces/${env.workspace.workspaceId}`;
 
 function wiringFor(service: ReferenceService, ledger: InMemoryDispatchLedger, schema: CapabilityInputSchema = SCHEMA): ExternalToolWiring {
-  const dispatcher = new ExternalToolDispatcher({ adapters: new Map([[EXT, createReferenceAdapter(service)]]), ledger });
+  const dispatcher = new ExternalToolDispatcher({
+    adapters: new Map([[EXT, createReferenceAdapter(service)]]),
+    ledger,
+    unsafeAllowVolatileLedger: true,
+  });
   return createExternalToolWiring(dispatcher, new Map([[EXT, schema]]));
 }
 

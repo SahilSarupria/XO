@@ -90,6 +90,8 @@ export interface ProcedureRunnerContext {
 /** M4 step error codes for external_tool dispatches (strings, so no shared ErrorCode enum is widened). */
 export const EFFECT_OUTCOME_UNKNOWN_CODE = 'XO_EXTERNAL_EFFECT_OUTCOME_UNKNOWN';
 export const EFFECT_CONFIRMED_FAILURE_CODE = 'XO_EXTERNAL_EFFECT_CONFIRMED_FAILURE_NO_EFFECT';
+/** Nothing was dispatched: a prior attempt confirmed no effect, and a new attempt needs a human approval granted after that. */
+export const EFFECT_FRESH_APPROVAL_REQUIRED_CODE = 'XO_EXTERNAL_EFFECT_FRESH_APPROVAL_REQUIRED';
 
 const enc = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
 const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
@@ -445,7 +447,11 @@ async function runStep(
           preflightGraphHash: ContentHash(rt.value.graphHash),
           // M4: server-derived, one dispatch per (procedure execution, step). Never taken from the client.
           ...(ctx.externalTools !== undefined
-            ? { externalTools: ctx.externalTools, dispatchKey: `${holder.current.procedureExecutionId}:${step.id}` }
+            ? {
+                externalTools: ctx.externalTools,
+                dispatchKey: `${holder.current.procedureExecutionId}:${step.id}`,
+                ...(approval !== undefined ? { approvedAt: approval.approvedAt } : {}),
+              }
             : {}),
         },
       );
@@ -496,6 +502,9 @@ async function runStep(
       // the message states that reconciliation is required before any further dispatch. No retry, no automatic recovery.
       if (outcome.effectState === 'outcome_unknown') {
         return fail('capability_error', EFFECT_OUTCOME_UNKNOWN_CODE, executionId, outcome.errorMessage);
+      }
+      if (outcome.freshApprovalRequired === true) {
+        return fail('capability_error', EFFECT_FRESH_APPROVAL_REQUIRED_CODE, executionId, outcome.errorMessage);
       }
       if (outcome.effectState === 'confirmed_failure_no_effect') {
         return fail('capability_error', EFFECT_CONFIRMED_FAILURE_CODE, executionId, outcome.errorMessage);

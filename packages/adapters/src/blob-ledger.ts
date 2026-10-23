@@ -41,6 +41,7 @@ const ENTRY_KEYS: ReadonlySet<string> = new Set([
   'recordedAt',
   'inputFingerprint',
   'reconciliation',
+  'follows',
 ]);
 const RECON_KEYS: ReadonlySet<string> = new Set(['actorKind', 'actorId', 'decision', 'reason', 'evidenceExamined']);
 
@@ -95,6 +96,13 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
       evidenceExamined: r['evidenceExamined'],
     };
   }
+  let follows: DispatchEvidence['follows'];
+  if (raw['follows'] !== undefined) {
+    const f = raw['follows'];
+    if (!isRecord(f) || Object.keys(f).some((k) => k !== 'dispatchKey' && k !== 'outcome')) return bad('follows');
+    if (!isStr(f['dispatchKey']) || f['outcome'] !== 'confirmed_failure_no_effect') return bad('follows');
+    follows = { dispatchKey: f['dispatchKey'], outcome: 'confirmed_failure_no_effect' };
+  }
   return Object.freeze({
     seq,
     dispatchKey: raw['dispatchKey'] as string,
@@ -105,6 +113,7 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
     ...(raw['recordedAt'] !== undefined ? { recordedAt: raw['recordedAt'] as string } : {}),
     ...(raw['inputFingerprint'] !== undefined ? { inputFingerprint: raw['inputFingerprint'] as string } : {}),
     ...(reconciliation !== undefined ? { reconciliation } : {}),
+    ...(follows !== undefined ? { follows } : {}),
   });
 }
 
@@ -114,6 +123,8 @@ export interface BlobDispatchLedgerOptions {
 }
 
 export class BlobDispatchLedger implements DispatchLedger {
+  /** Durable ONLY as far as the injected store is: the caller attests that `store` persists across restarts (LocalFsBlobStore on a real directory does). */
+  readonly durability = 'durable' as const;
   private readonly now: () => Date;
   constructor(
     private readonly store: AtomicBlobStore,
@@ -134,6 +145,7 @@ export class BlobDispatchLedger implements DispatchLedger {
       recordedAt: this.now().toISOString(),
       ...(entry.inputFingerprint !== undefined ? { inputFingerprint: entry.inputFingerprint } : {}),
       ...(entry.reconciliation !== undefined ? { reconciliation: entry.reconciliation } : {}),
+      ...(entry.follows !== undefined ? { follows: entry.follows } : {}),
     });
   }
 

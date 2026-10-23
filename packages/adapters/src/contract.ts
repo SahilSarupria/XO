@@ -74,6 +74,21 @@ export interface DispatchEvidence {
   readonly inputFingerprint?: string;
   /** Present only on entries written by a reconciliation. */
   readonly reconciliation?: ReconciliationRecord;
+  /**
+   * Present only on a `dispatch_attempted` entry that is a NEW ATTEMPT after an earlier dispatch to the same capability settled as
+   * `confirmed_failure_no_effect`: names that earlier dispatch and its confirmed outcome. A reference for audit/recovery, not a link
+   * that reopens anything — the earlier key stays settled and is never redispatched.
+   */
+  readonly follows?: { readonly dispatchKey: string; readonly outcome: 'confirmed_failure_no_effect' };
+}
+
+/**
+ * What the host knows about THIS dispatch that the adapter and the ledger cannot: when the human approval in force was granted.
+ * Used for the fresh-approval rule (see {@link ExternalToolDispatcher}).
+ */
+export interface DispatchContext {
+  /** ISO-8601 time the approval authorizing this dispatch was granted. Absent => freshness cannot be established. */
+  readonly approvedAt?: string;
 }
 
 export type LedgerEntryDraft = Omit<DispatchEvidence, 'seq' | 'recordedAt'>;
@@ -83,6 +98,13 @@ export type LedgerEntryDraft = Omit<DispatchEvidence, 'seq' | 'recordedAt'>;
  * write must throw/reject, and a failed write before dispatch means NO dispatch.
  */
 export interface DispatchLedger {
+  /**
+   * What the ledger promises about surviving a restart. `'durable'` is a promise the ledger's backing store keeps across process
+   * restarts; `'volatile'` (or ABSENT) means evidence can be lost. Absent is treated as volatile (fail closed): a dispatcher refuses to be
+   * built over a non-durable ledger unless the host explicitly opts in (`unsafeAllowVolatileLedger`), and a production server refuses
+   * a volatile ledger even then.
+   */
+  readonly durability?: 'durable' | 'volatile';
   read(dispatchKey: string): MaybePromise<readonly DispatchEvidence[]>;
   /** Every entry for one capability. Used to refuse a new dispatch while an earlier one is unreconciled. */
   readByCapability(capabilityId: string): MaybePromise<readonly DispatchEvidence[]>;
@@ -106,6 +128,7 @@ export interface DispatchLedger {
  * back a host that can dispatch consequential effects (use a durable ledger such as {@link BlobDispatchLedger}).
  */
 export class InMemoryDispatchLedger implements DispatchLedger {
+  readonly durability = 'volatile' as const;
   private readonly entries: DispatchEvidence[] = [];
   read(dispatchKey: string): readonly DispatchEvidence[] {
     return this.entries.filter((e) => e.dispatchKey === dispatchKey);
@@ -114,7 +137,7 @@ export class InMemoryDispatchLedger implements DispatchLedger {
     return this.entries.filter((e) => e.capabilityId === capabilityId);
   }
   append(entry: LedgerEntryDraft): void {
-    this.entries.push(Object.freeze({ ...entry, seq: this.entries.length + 1 }));
+    this.entries.push(Object.freeze({ ...entry, seq: this.entries.length + 1, recordedAt: new Date().toISOString() }));
   }
   claim(entry: LedgerEntryDraft): { readonly claimed: boolean } {
     if (this.entries.some((e) => e.dispatchKey === entry.dispatchKey)) return { claimed: false };

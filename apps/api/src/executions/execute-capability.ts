@@ -60,6 +60,8 @@ export type CapabilityExecutionOutcome =
       /** M4: set only when the failure came from an `external_tool` dispatch (`not_dispatched` = the adapter was never called). Absent for every other failure. */
       readonly effectState?: ExternalEffectFailureState;
       readonly reconciliationRequired?: boolean;
+      /** M4: true when nothing was dispatched because a new attempt after a confirmed no-effect failure needs a fresh human approval. */
+      readonly freshApprovalRequired?: boolean;
     };
 
 /** Same shape as `CapabilityExecutionOutcome`'s failure variants, plus the two real resume terminals — see `resume-human-task.ts`'s doc comment for what `'succeeded'`/`'rejected'` mean here. */
@@ -269,6 +271,8 @@ export interface ExecuteApprovedCapabilityOptions {
   readonly externalTools?: ExternalToolWiring;
   /** M4 — server-derived identity of this dispatch (e.g. procedure execution id + step id). REQUIRED for an `external_tool` binding; one dispatch per key. */
   readonly dispatchKey?: string;
+  /** M4 — when the human approval authorizing this execution was granted (ISO-8601). Lets the dispatcher require an approval newer than a confirmed no-effect failure. */
+  readonly approvedAt?: string;
 }
 
 /**
@@ -349,7 +353,11 @@ export async function executeApprovedCapability(
         effectState: 'not_dispatched',
       };
     }
-    externalToolHandler = options.externalTools.handlerFor(contract, options.dispatchKey);
+    externalToolHandler = options.externalTools.handlerFor(
+      contract,
+      options.dispatchKey,
+      options.approvedAt !== undefined ? { approvedAt: options.approvedAt } : {},
+    );
   }
 
   // The declaration is derived ONCE here from the graph being executed and used for BOTH the TOCTOU tie and the decision below,
@@ -392,6 +400,7 @@ export async function executeApprovedCapability(
             errorMessage: error.message,
             effectState: error.effectState,
             reconciliationRequired: error.reconciliationRequired,
+            freshApprovalRequired: error.freshApprovalRequired,
           }
         : { kind: 'error', errorCode: error.code, errorMessage: error.message };
     }

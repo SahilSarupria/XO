@@ -9,8 +9,8 @@ import { LocalFsBlobStore } from '@xo/storage';
 import { err } from '@xo/types';
 import { ErrorCode, StorageError } from '@xo/errors';
 import type { CapabilityInputSchema } from '@xo/types';
-import { BlobDispatchLedger, ExternalToolDispatcher, type DispatchEvidence } from '@xo/adapters';
-import { createExternalToolWiring, type ExternalToolWiring } from '@xo/runtime';
+import { BlobDispatchLedger, type DispatchEvidence } from '@xo/adapters';
+import { createDurableExternalToolWiring, type ExternalToolWiring } from '@xo/runtime';
 import { TestServer } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, storeFixtureCompilation } from './workflow-fixtures.js';
 import { FsCompilationStore } from '../src/compilations/fs-compilation-store.js';
@@ -40,8 +40,12 @@ const ALL_RULES: readonly PolicyRule[] = [
   grant('approve', Permissions.procedure.approve),
   grant('read', Permissions.procedure.read),
   grant('execute', Permissions.procedure.execute),
+  grant('reconcile', Permissions.effect.reconcile),
 ];
-const NO_APPROVE_AFTER_PUBLISH = ALL_RULES.filter((r) => r.id !== 'approve');
+/** Holds procedure.approve (and everything else) but NOT effect.reconcile. */
+const APPROVE_BUT_NOT_RECONCILE = ALL_RULES.filter((r) => r.id !== 'reconcile');
+/** Holds effect.reconcile and read, but NOT procedure.approve / author / execute. */
+const RECONCILE_ONLY = ALL_RULES.filter((r) => r.id === 'reconcile' || r.id === 'read');
 
 class RefusingSink extends NonProductionAuditSink {
   readonly refuse = new Set<string>();
@@ -84,9 +88,14 @@ interface Env {
 async function bootNode(dirs: Dirs, rules: readonly PolicyRule[] = ALL_RULES): Promise<Node> {
   const service = new ReferenceService();
   const store = new FlakyStore(dirs.ledger);
-  const ledger = new BlobDispatchLedger(store);
-  const dispatcher = new ExternalToolDispatcher({ adapters: new Map([[EXT, createReferenceAdapter(service)]]), ledger });
-  const externalTools: ExternalToolWiring = createExternalToolWiring(dispatcher, new Map([[EXT, SCHEMA]]));
+  // The SUPPORTED host construction path: durable by construction (no in-memory ledger is reachable from here).
+  const ledger = new BlobDispatchLedger(store); // a second view over the same store, for tests that seed or inspect evidence
+  const externalTools: ExternalToolWiring = createDurableExternalToolWiring({
+    adapters: new Map([[EXT, createReferenceAdapter(service)]]),
+    inputSchemas: new Map([[EXT, SCHEMA]]),
+    evidenceStore: store,
+  });
+  assert.equal(externalTools.ledgerDurability, 'durable');
   const sink = new RefusingSink();
   const server = await TestServer.start({
     workspaceDataDir: dirs.data,
@@ -160,6 +169,12 @@ const doc = (env: Env, version = 1): Record<string, unknown> => ({
 async function publish(env: Env): Promise<void> {
   const p = await env.node.server.request('PUT', `${base(env)}/procedures/ext-flow/versions/1`, doc(env));
   assert.equal(p.status, 201, p.bodyText);
+  const a = await env.node.server.request('POST', `${base(env)}/procedures/ext-flow/versions/1/approve`, undefined, human(env.node));
+  assert.equal(a.status, 200, a.bodyText);
+}
+/** A human re-approves the same procedure version (the store replaces the record and stamps a new `approvedAt`). */
+async function reapprove(env: Env): Promise<void> {
+  await new Promise((r) => setTimeout(r, 5));
   const a = await env.node.server.request('POST', `${base(env)}/procedures/ext-flow/versions/1/approve`, undefined, human(env.node));
   assert.equal(a.status, 200, a.bodyText);
 }
@@ -271,6 +286,12 @@ test('durable e2e: authorized human reconciliation (confirmed no effect) is reco
     assert.equal((await reconcile(env, exec, { ...GOOD, decision: 'confirmed_success' })).status, 409);
     assert.equal((await evidence(env, exec)).entries.length, 3);
     // The old identity is never redispatched; a new execution is a new identity and runs exactly once.
+    // P3: without a fresh human approval the new execution is refused (nothing dispatched); a re-approval lets it run once.
+    const stale = await startExec(env, { amount: 9, scenario: 'accept' });
+    assert.equal(stale.status, 'failed');
+    assert.equal(stale.steps[0]?.errorCode, 'XO_EXTERNAL_EFFECT_FRESH_APPROVAL_REQUIRED');
+    assert.equal(env.node.service.effects.length, 0);
+    await reapprove(env);
     const fresh = await startExec(env, { amount: 9, scenario: 'accept' });
     assert.equal(fresh.status, 'completed');
     assert.equal(env.node.service.effects.length, 1);
@@ -300,8 +321,8 @@ test('durable e2e: unauthorized reconciliation is refused, audited, and changes 
     // 1. a SERVICE principal (the server's default key) can never reconcile.
     const asService = await reconcile(env, exec, GOOD, {});
     assert.equal(asService.status, 403, asService.bodyText);
-    // 2. a human WITHOUT procedure.approve is refused (default-deny policy).
-    const strict = await restart(env, NO_APPROVE_AFTER_PUBLISH);
+    // 2. a human WITH procedure.approve but WITHOUT effect.reconcile is refused (default-deny; approval is not reconciliation authority).
+    const strict = await restart(env, APPROVE_BUT_NOT_RECONCILE);
     const noPerm = await env.node.server.request('POST', effectPath(env, exec, '/reconcile'), GOOD, human(strict));
     assert.equal(noPerm.status, 403, noPerm.bodyText);
     // 3. another owner's workspace is a uniform 404; 4. no credentials is 401.
@@ -320,6 +341,40 @@ test('durable e2e: unauthorized reconciliation is refused, audited, and changes 
     const denied = env.node.sink.events().filter((e) => e.action === 'reconcile.external-effect' && e.outcome === 'denied');
     assert.ok(denied.length >= 1, 'a denied reconciliation is audited');
     assert.ok(denied.every((e) => e.type === 'procedure.denied' || e.type === 'access.denied'));
+  });
+});
+
+test('durable e2e: effect.reconcile alone is sufficient to reconcile (and confers no approval); procedure.approve alone is not; successful and denied attempts are both audited', async () => {
+  await withEnv(async (env) => {
+    await publish(env);
+    const exec = await startExec(env, { amount: 7, scenario: 'drop' });
+
+    // procedure.approve (with author/read/execute) but no effect.reconcile: refused, audited, nothing written.
+    await restart(env, APPROVE_BUT_NOT_RECONCILE);
+    const refused = await reconcile(env, exec, GOOD);
+    assert.equal(refused.status, 403, refused.bodyText);
+    assert.equal((await evidence(env, exec)).entries.length, 2);
+    const denied = env.node.sink.events().filter((e) => e.action === 'reconcile.external-effect' && e.outcome === 'denied');
+    assert.equal(denied.length, 1);
+    assert.equal(denied[0]?.metadata?.['permission'], 'effect.reconcile');
+
+    // effect.reconcile without procedure.approve: allowed, audited (attempt precondition), recorded with the human actor.
+    await restart(env, RECONCILE_ONLY);
+    const approveTry = await env.node.server.request(
+      'POST',
+      `${base(env)}/procedures/ext-flow/versions/1/approve`,
+      undefined,
+      human(env.node),
+    );
+    assert.equal(approveTry.status, 403, 'effect.reconcile confers no procedure approval');
+    const ok = await reconcile(env, exec, GOOD);
+    assert.equal(ok.status, 200, ok.bodyText);
+    const attempted = env.node.sink.events().filter((e) => e.action === 'reconcile.external-effect' && e.type === 'procedure.attempted');
+    assert.equal(attempted.length, 1);
+    assert.equal(attempted[0]?.metadata?.['decision'], 'confirmed_failure_no_effect');
+    const ev = await evidence(env, exec);
+    assert.equal(ev.entries.at(-1)?.reconciliation?.actorId, 'test-identity');
+    assert.equal(ev.entries.at(-1)?.reconciliation?.actorKind, 'human');
   });
 });
 

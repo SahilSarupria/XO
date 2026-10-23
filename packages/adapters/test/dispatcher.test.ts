@@ -25,7 +25,7 @@ class Fake implements ExternalToolAdapter {
   }
 }
 const make = (adapter: ExternalToolAdapter, ledger: DispatchLedger = new InMemoryDispatchLedger(), cap = 'cap'): ExternalToolDispatcher =>
-  new ExternalToolDispatcher({ adapters: new Map([[cap, adapter]]), ledger });
+  new ExternalToolDispatcher({ adapters: new Map([[cap, adapter]]), ledger, unsafeAllowVolatileLedger: true });
 
 test('no configured adapter: nothing is dispatched (fail closed), even for an id that resembles a configured one', async () => {
   const a = new Fake('a', () => ({ kind: 'confirmed_success', output: 1 }));
@@ -197,6 +197,7 @@ test('an unsettled earlier dispatch to a capability blocks every further dispatc
       ['cap2', other],
     ]),
     ledger,
+    unsafeAllowVolatileLedger: true,
   });
   assert.equal((await d.dispatch('cap', 'k1', {})).kind, 'outcome_unknown');
   const blocked = await d.dispatch('cap', 'k2', {});
@@ -208,6 +209,7 @@ test('an unsettled earlier dispatch to a capability blocks every further dispatc
   const fresh = new ExternalToolDispatcher({
     adapters: new Map<string, ExternalToolAdapter>([['cap', a]]),
     ledger: new InMemoryDispatchLedger(),
+    unsafeAllowVolatileLedger: true,
   });
   assert.equal((await fresh.dispatch('cap', 'k2', {})).kind, 'confirmed_success');
 });

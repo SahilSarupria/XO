@@ -3,7 +3,9 @@ import type { CapabilityInputSchema } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import { validateCapabilityInput } from '@xo/capability-contract';
 import type { BindingOutcome, BindingResolver, CapabilityBinding, SemanticCapabilityContract } from '@xo/capability-contract';
-import type { DispatchEvidence, ExternalToolDispatcher, ReconcileOutcome, ReconcileRequest } from '@xo/adapters';
+import { BlobDispatchLedger, ExternalToolDispatcher } from '@xo/adapters';
+import type { DispatchContext, DispatchEvidence, ExternalToolAdapter, ReconcileOutcome, ReconcileRequest } from '@xo/adapters';
+import type { AtomicBlobStore } from '@xo/storage';
 import type { RuntimeCapabilityHandler } from './runtime-capability-declaration.js';
 
 /**
@@ -31,18 +33,22 @@ export class ExternalEffectError extends RuntimeError {
     readonly effectState: ExternalEffectFailureState,
     /** True when a prior or current ambiguous attempt must be reconciled before another dispatch. */
     readonly reconciliationRequired: boolean,
+    /** True when nothing was dispatched because a new attempt after a confirmed no-effect failure needs a fresh human approval. */
+    readonly freshApprovalRequired: boolean = false,
   ) {
     super(code, message);
   }
 }
 
 export interface ExternalToolWiring {
+  /** Whether the dispatch evidence behind this wiring survives a restart. A host serving production traffic must refuse anything but `'durable'`. */
+  readonly ledgerDurability: 'durable' | 'volatile';
   /** Resolves ONLY contracts the host explicitly configured; `undefined` for every other contract. */
   readonly resolver: BindingResolver;
   /** What the host configured for a contract (adapter id + input schema), or `undefined` when not configured. Used to bind that configuration into approval state. */
   describe(contractId: string): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema } | undefined;
   /** Builds the handler for one dispatch. `dispatchKey` is server-derived by the caller. */
-  handlerFor(contract: SemanticCapabilityContract, dispatchKey: string): RuntimeCapabilityHandler;
+  handlerFor(contract: SemanticCapabilityContract, dispatchKey: string, context?: DispatchContext): RuntimeCapabilityHandler;
   /** The ordered, durable evidence of one dispatch (empty if none). Rejects if the ledger is unreadable or corrupt. */
   evidenceFor(dispatchKey: string): Promise<readonly DispatchEvidence[]>;
   /**
@@ -84,6 +90,7 @@ export function createExternalToolWiring(
 
   return {
     resolver,
+    ledgerDurability: dispatcher.ledgerDurability,
     describe(contractId) {
       const schema = inputSchemas.get(contractId);
       const adapterId = dispatcher.adapterIdFor(contractId);
@@ -91,7 +98,7 @@ export function createExternalToolWiring(
     },
     evidenceFor: (dispatchKey) => dispatcher.evidenceFor(dispatchKey),
     reconcile: (request) => dispatcher.reconcile(request),
-    handlerFor(contract, dispatchKey) {
+    handlerFor(contract, dispatchKey, context) {
       const handler: RuntimeCapabilityHandler = async (input) => {
         // Contract/input validation precedes dispatch (the handler itself only runs after authorization).
         const schema = inputSchemas.get(contract.id);
@@ -110,7 +117,7 @@ export function createExternalToolWiring(
             ),
           );
         }
-        const outcome = await dispatcher.dispatch(contract.id, dispatchKey, input);
+        const outcome = await dispatcher.dispatch(contract.id, dispatchKey, input, context);
         switch (outcome.kind) {
           case 'confirmed_success':
             return ok(outcome.output);
@@ -141,6 +148,16 @@ export function createExternalToolWiring(
                 outcome.requiresReconciliation,
               ),
             );
+          case 'fresh_approval_required':
+            return err(
+              new ExternalEffectError(
+                ErrorCode.RUNTIME_EXECUTION_FAILED,
+                `external_tool "${contract.id}": not dispatched — ${outcome.reason}`,
+                'not_dispatched',
+                false,
+                true,
+              ),
+            );
           case 'not_configured':
             return err(
               new ExternalEffectError(ErrorCode.RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED, outcome.reason, 'not_dispatched', false),
@@ -154,4 +171,29 @@ export function createExternalToolWiring(
       return handler;
     },
   };
+}
+
+export interface DurableExternalToolWiringOptions {
+  /** Explicit host configuration: capability (contract) id -> adapter. Nothing else can ever be dispatched. */
+  readonly adapters: ReadonlyMap<string, ExternalToolAdapter>;
+  /** REQUIRED per configured capability (see {@link createExternalToolWiring}). */
+  readonly inputSchemas: ReadonlyMap<string, CapabilityInputSchema>;
+  /**
+   * Where dispatch evidence lives. REQUIRED, with no default: the host must name a persistent store (e.g. a `LocalFsBlobStore` on a real,
+   * backed-up directory). Atomicity is only as strong as this store's `putIfAbsent` (a single filesystem for `LocalFsBlobStore`).
+   */
+  readonly evidenceStore: AtomicBlobStore;
+}
+
+/**
+ * The supported way for a host to enable external tools: the evidence ledger is a `BlobDispatchLedger` over the store the host supplies,
+ * so the resulting wiring is durable by construction. There is no overload that accepts an in-memory ledger; tests that need one build
+ * `new ExternalToolDispatcher({ ..., unsafeAllowVolatileLedger: true })` and `createExternalToolWiring` themselves.
+ */
+export function createDurableExternalToolWiring(options: DurableExternalToolWiringOptions): ExternalToolWiring {
+  if (options.evidenceStore === undefined || options.evidenceStore === null) {
+    throw new Error('external tools require an explicit durable evidence store; none was configured');
+  }
+  const dispatcher = new ExternalToolDispatcher({ adapters: options.adapters, ledger: new BlobDispatchLedger(options.evidenceStore) });
+  return createExternalToolWiring(dispatcher, options.inputSchemas);
 }

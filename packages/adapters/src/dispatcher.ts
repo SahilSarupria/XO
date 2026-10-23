@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
 import { reconcileDispatch, type ReconcileOutcome, type ReconcileRequest } from './reconciliation.js';
-import type { AdapterInvokeResult, DispatchEvidence, DispatchLedger, ExternalEffectState, ExternalToolAdapter } from './contract.js';
+import type {
+  AdapterInvokeResult,
+  DispatchContext,
+  DispatchEvidence,
+  DispatchLedger,
+  ExternalEffectState,
+  ExternalToolAdapter,
+} from './contract.js';
 
 /**
  * What a dispatch call can end in. The first four never reached the adapter
@@ -18,6 +25,16 @@ export type DispatchOutcome =
       readonly requiresReconciliation: boolean;
       readonly reason: string;
     }
+  | {
+      /**
+       * An earlier dispatch to this capability settled as `confirmed_failure_no_effect` and no human approval newer than that settlement
+       * was supplied. A new attempt needs a fresh approval; nothing was dispatched.
+       */
+      readonly kind: 'fresh_approval_required';
+      readonly dispatched: false;
+      readonly previousDispatchKey: string;
+      readonly reason: string;
+    }
   | { readonly kind: 'confirmed_success'; readonly dispatched: true; readonly adapterId: string; readonly output: unknown }
   | {
       readonly kind: 'confirmed_failure_no_effect';
@@ -32,6 +49,12 @@ export interface ExternalToolDispatcherOptions {
   /** Explicit configuration: capability (contract) id -> adapter. Nothing else can ever be dispatched. */
   readonly adapters: ReadonlyMap<string, ExternalToolAdapter>;
   readonly ledger: DispatchLedger;
+  /**
+   * TEST / LOCAL USE ONLY. Without it, construction THROWS unless `ledger.durability === 'durable'`, so a dispatcher over an in-memory (or
+   * unlabelled) ledger can never be built by accident. Setting it does not make evidence durable; a restart still loses it, which can
+   * allow a blind redispatch. Never set it for a consequential adapter (the API server additionally refuses it when NODE_ENV=production).
+   */
+  readonly unsafeAllowVolatileLedger?: boolean;
 }
 
 const isPlainObject = (v: unknown): v is Readonly<Record<string, unknown>> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -49,8 +72,18 @@ export class ExternalToolDispatcher {
   private readonly ledger: DispatchLedger;
 
   constructor(options: ExternalToolDispatcherOptions) {
+    if (options.ledger.durability !== 'durable' && options.unsafeAllowVolatileLedger !== true) {
+      throw new Error(
+        'ExternalToolDispatcher requires a durable DispatchLedger (e.g. BlobDispatchLedger over a persistent AtomicBlobStore); a volatile or unlabelled ledger may only be used with an explicit unsafeAllowVolatileLedger opt-in (tests/local only)',
+      );
+    }
     this.adapters = new Map(options.adapters);
     this.ledger = options.ledger;
+  }
+
+  /** `'durable'` only when the ledger says so; anything else (including an unlabelled ledger) is `'volatile'`. */
+  get ledgerDurability(): 'durable' | 'volatile' {
+    return this.ledger.durability === 'durable' ? 'durable' : 'volatile';
   }
 
   /** True only for an explicitly configured capability id. */
@@ -72,7 +105,7 @@ export class ExternalToolDispatcher {
     return reconcileDispatch(this.ledger, request);
   }
 
-  async dispatch(capabilityId: string, dispatchKey: string, input: unknown): Promise<DispatchOutcome> {
+  async dispatch(capabilityId: string, dispatchKey: string, input: unknown, context: DispatchContext = {}): Promise<DispatchOutcome> {
     const adapter = this.adapters.get(capabilityId);
     if (adapter === undefined) {
       return { kind: 'not_configured', dispatched: false, reason: `no adapter is configured for capability "${capabilityId}"` };
@@ -95,13 +128,41 @@ export class ExternalToolDispatcher {
     // An earlier dispatch to this capability whose outcome is not settled (unknown, or attempted with no terminal evidence) blocks EVERY
     // further dispatch to it until it is reconciled through `reconcile` (an authorized, recorded decision). There is no automatic recovery.
     let unsettled: string | undefined;
+    let follows: DispatchEvidence['follows'];
     try {
-      const lastByKey = new Map<string, string>();
-      for (const e of await this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e.state);
-      for (const [key, state] of lastByKey) {
-        if (state === 'outcome_unknown' || state === 'dispatch_attempted') {
-          unsettled = `${key} (${state})`;
+      const lastByKey = new Map<string, DispatchEvidence>();
+      for (const e of await this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e);
+      let newestNoEffect: DispatchEvidence | undefined;
+      let newestOther: DispatchEvidence | undefined;
+      for (const [key, last] of lastByKey) {
+        if (last.state === 'outcome_unknown' || last.state === 'dispatch_attempted') {
+          unsettled = `${key} (${last.state})`;
           break;
+        }
+        const target = last.state === 'confirmed_failure_no_effect' ? 'noEffect' : 'other';
+        const best = target === 'noEffect' ? newestNoEffect : newestOther;
+        if (best === undefined || (last.recordedAt ?? '') > (best.recordedAt ?? '')) {
+          if (target === 'noEffect') newestNoEffect = last;
+          else newestOther = last;
+        }
+      }
+      // Fresh-approval rule (design decision of this implementation, not a recovered requirement): if the capability's most recent
+      // settled dispatch is a confirmed no-effect failure, a new attempt needs a human approval granted AFTER that settlement. Missing or
+      // unparsable timestamps cannot establish freshness, so they block.
+      if (unsettled === undefined && newestNoEffect !== undefined) {
+        const supersededBySuccess = newestOther !== undefined && (newestOther.recordedAt ?? '') > (newestNoEffect.recordedAt ?? '');
+        if (!supersededBySuccess) {
+          const settledAt = Date.parse(newestNoEffect.recordedAt ?? '');
+          const approvedAt = Date.parse(context.approvedAt ?? '');
+          if (Number.isNaN(settledAt) || Number.isNaN(approvedAt) || !(approvedAt > settledAt)) {
+            return {
+              kind: 'fresh_approval_required',
+              dispatched: false,
+              previousDispatchKey: newestNoEffect.dispatchKey,
+              reason: `capability "${capabilityId}" last settled as confirmed_failure_no_effect (${newestNoEffect.dispatchKey}); a new attempt requires a human approval granted after that settlement`,
+            };
+          }
+          follows = { dispatchKey: newestNoEffect.dispatchKey, outcome: 'confirmed_failure_no_effect' };
         }
       }
     } catch (cause) {
@@ -124,6 +185,7 @@ export class ExternalToolDispatcher {
       adapterId: adapter.id,
       state: 'dispatch_attempted' as const,
       inputFingerprint: fingerprintOf(input),
+      ...(follows !== undefined ? { follows } : {}),
     };
     try {
       if (this.ledger.claim !== undefined) {

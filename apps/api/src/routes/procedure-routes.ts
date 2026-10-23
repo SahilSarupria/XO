@@ -809,8 +809,8 @@ export function registerProcedureRoutes(
       });
       throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, 'reconciling an external effect requires an authenticated human principal');
     }
-    // The authority to settle an effect is the authority to approve effectful procedures: no new permission is invented here.
-    await requirePermission(req, workspace, Permissions.procedure.approve, { action, correlationId });
+    // A dedicated authority (default deny): `procedure.approve` does NOT confer it, and `effect.reconcile` does not confer approval.
+    await requirePermission(req, workspace, Permissions.effect.reconcile, { action, correlationId });
     const body = await readClosedBody(req, ['decision', 'reason', 'evidenceExamined'], false);
     const decision = body['decision'];
     const findings: ProcedureFinding[] = [];

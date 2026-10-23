@@ -59,10 +59,17 @@ function setup(
   capIds: readonly string[] = [EXT_FREE, EXT_PERM],
 ) {
   const ledger = new InMemoryDispatchLedger();
-  const dispatcher = new ExternalToolDispatcher({ adapters: new Map(capIds.map((c) => [c, adapter])), ledger });
+  const dispatcher = new ExternalToolDispatcher({
+    adapters: new Map(capIds.map((c) => [c, adapter])),
+    ledger,
+    unsafeAllowVolatileLedger: true,
+  });
   const externalTools = createExternalToolWiring(dispatcher, new Map(capIds.map((c) => [c, SCHEMA])));
   return { ledger, externalTools };
 }
+
+/** An approval time later than any settlement made while these tests run (P3 fresh-approval rule). */
+const FUTURE_APPROVAL = new Date(Date.now() + 3_600_000).toISOString();
 
 test('M4: a declared external_tool alone confers nothing — without explicit wiring the capability is unresolved and the adapter is never called', async () => {
   const adapter = new ScriptedExternalAdapter('a', [{ returns: { kind: 'confirmed_success', output: 1 } }]);
@@ -152,7 +159,11 @@ test('M4: a configured contract that the standard resolvers also bind is a confi
 
 test('M4: a configured adapter without an input schema never binds (fail closed)', async () => {
   const adapter = new ScriptedExternalAdapter('a');
-  const dispatcher = new ExternalToolDispatcher({ adapters: new Map([[EXT_FREE, adapter]]), ledger: new InMemoryDispatchLedger() });
+  const dispatcher = new ExternalToolDispatcher({
+    adapters: new Map([[EXT_FREE, adapter]]),
+    ledger: new InMemoryDispatchLedger(),
+    unsafeAllowVolatileLedger: true,
+  });
   const externalTools = createExternalToolWiring(dispatcher, new Map());
   const out = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 1 }, authz(), { externalTools, dispatchKey: 'k' });
   assert.equal(out.kind, 'unresolved');
@@ -224,12 +235,14 @@ test('M4: reference service — a dropped connection after the effect applied is
   const dropped = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'drop' }, authz(), {
     externalTools,
     dispatchKey: 'a:3',
+    approvedAt: FUTURE_APPROVAL,
   });
   assert.equal(dropped.kind === 'error' && dropped.effectState, 'outcome_unknown');
   // retry the dropped dispatch under the same key: refused, so the (already applied) effect is not duplicated
   const retry = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'drop' }, authz(), {
     externalTools,
     dispatchKey: 'a:3',
+    approvedAt: FUTURE_APPROVAL,
   });
   assert.equal(retry.kind === 'error' && retry.effectState, 'not_dispatched');
   assert.deepEqual(
@@ -240,6 +253,7 @@ test('M4: reference service — a dropped connection after the effect applied is
   const blockedByDrop = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'garbled' }, authz(), {
     externalTools,
     dispatchKey: 'a:4',
+    approvedAt: FUTURE_APPROVAL,
   });
   assert.equal(blockedByDrop.kind === 'error' && blockedByDrop.effectState, 'not_dispatched');
   assert.equal(blockedByDrop.kind === 'error' && blockedByDrop.reconciliationRequired, true);
@@ -247,6 +261,7 @@ test('M4: reference service — a dropped connection after the effect applied is
   const garbled = await executeApprovedCapability(graphJson(), EXT_FREE, { amount: 10, scenario: 'garbled' }, authz(), {
     externalTools: fresh.externalTools,
     dispatchKey: 'g:1',
+    approvedAt: FUTURE_APPROVAL,
   });
   assert.equal(garbled.kind === 'error' && garbled.effectState, 'outcome_unknown');
 });
