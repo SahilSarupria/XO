@@ -14,6 +14,7 @@ import {
   type InferenceDenial,
   type InferenceGrant,
   type InferenceRunScope,
+  estimateInputTokensUpperBound,
 } from './inference-policy.js';
 import { CACHE_FORMAT_VERSION, computeCacheKey, computeSchemaHash, InMemoryCapabilityCache, type CapabilityCache } from './cache.js';
 import { CostAccountant, DEFAULT_PRICING_TABLE, type PricingTable } from './cost.js';
@@ -264,7 +265,12 @@ export class AiCapabilityLayer {
             }
             // Authorize + reserve BEFORE the circuit breaker (a denial must not count as a provider failure) and before every
             // attempt, so retries and fallback candidates draw on the same budget as first attempts.
-            const grant = this.authorizeCall(capability, candidate.providerId);
+            const grant = this.authorizeCall(
+              capability,
+              candidate.providerId,
+              candidate.model,
+              estimateInputTokensUpperBound(messages, JSON.stringify(schema)),
+            );
             let settled = false;
             try {
               return await circuitBreaker.execute(async () => {
@@ -383,7 +389,12 @@ export class AiCapabilityLayer {
     });
   }
 
-  private authorizeCall(capability: CapabilityId, providerId: ProviderId): InferenceGrant | undefined {
+  private authorizeCall(
+    capability: CapabilityId,
+    providerId: ProviderId,
+    model: string,
+    inputTokensUpperBound: number,
+  ): InferenceGrant | undefined {
     const scope = this.options.inferenceScope;
     if (!scope) return undefined;
     const authorization = scope.authorize({
@@ -391,6 +402,8 @@ export class AiCapabilityLayer {
       nodeId: `compile:${capability}`,
       providerId,
       requestedMaxOutputTokens: MAX_OUTPUT_TOKENS,
+      model,
+      inputTokensUpperBound,
     });
     if (!authorization.ok) {
       this.recordDenial(authorization.denial);
@@ -416,6 +429,14 @@ export class AiCapabilityLayer {
    * Compile-time inference report for this layer instance: what the budget scope has spent, and how many calls were denied (by
    * reason). Spend is `undefined` when no `inferenceScope` was supplied (nothing is being limited or measured by the guard).
    */
+  /**
+   * `true` only when an `inferenceScope` is attached AND it can actually limit something (see `InferenceRunScope.isBounded`).
+   * Compiler entrypoints refuse a layer for which this is `false` unless the operator explicitly allowed unbounded inference.
+   */
+  inferenceBounded(): boolean {
+    return this.options.inferenceScope?.isBounded() ?? false;
+  }
+
   inferenceReport(): {
     readonly spend: { readonly tokensSpent: number; readonly costSpentUsd: number } | undefined;
     readonly denials: Readonly<Partial<Record<InferenceDenial['reason'], number>>>;

@@ -208,3 +208,15 @@ test('streaming goes through the same gate', async () => {
     await h.close();
   }
 });
+
+test('a server cost cap refuses a model whose price is unknown instead of treating it as free', async () => {
+  const h = await harness(declaredModel, { enabled: true, allowUndeclared: false, maxCostUsd: 1 });
+  try {
+    const r = await h.engine.execute(req('r11'));
+    assert.equal(reasonOf(r), 'cost_unestimable');
+    assert.notEqual(r.session.status, 'completed');
+    assert.equal(h.provider.requests.length, 0);
+  } finally {
+    await h.close();
+  }
+});

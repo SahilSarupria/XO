@@ -1,10 +1,11 @@
-import type {
-  InferenceDenial,
-  InferenceDispatchContext,
-  ModelProvider,
-  ProviderRequest,
-  ProviderResponse,
-  ProviderStreamEvent,
+import {
+  estimateInputTokensUpperBound,
+  type InferenceDenial,
+  type InferenceDispatchContext,
+  type ModelProvider,
+  type ProviderRequest,
+  type ProviderResponse,
+  type ProviderStreamEvent,
 } from '@xo/ai-core';
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
@@ -72,6 +73,11 @@ export class CapabilityExecutor {
       nodeId: inference.nodeId,
       providerId: this.provider.id,
       requestedMaxOutputTokens: request.maxOutputTokens,
+      model: request.model,
+      inputTokensUpperBound: estimateInputTokensUpperBound(
+        request.messages,
+        request.responseSchema ? JSON.stringify(request.responseSchema) : '',
+      ),
     });
     if (!authorization.ok) return err(inferenceDenialError(authorization.denial));
     const { grant } = authorization;
@@ -113,6 +119,11 @@ export class CapabilityExecutor {
       nodeId: inference.nodeId,
       providerId: this.provider.id,
       requestedMaxOutputTokens: request.maxOutputTokens,
+      model: request.model,
+      inputTokensUpperBound: estimateInputTokensUpperBound(
+        request.messages,
+        request.responseSchema ? JSON.stringify(request.responseSchema) : '',
+      ),
     });
     if (!authorization.ok) throw inferenceDenialError(authorization.denial);
     const { grant } = authorization;

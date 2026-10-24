@@ -132,16 +132,17 @@ test('settle is idempotent; unknown usage is charged at the reservation (never t
   assert.equal(g.budgetSnapshot().costSpentUsd, 0);
 });
 
-test('cost budget: once spend reaches the cap, no further calls', () => {
+test('cost budget: once spend reaches the cap, no further calls (priced model, input bound supplied)', () => {
   const g = guard({ maxCostUsd: 0.001 });
   const scope = g.beginRun();
-  const a = scope.authorize(input());
+  const priced = input({ providerId: 'anthropic', model: 'claude-sonnet-4-6', inputTokensUpperBound: 10 });
+  const a = scope.authorize(priced);
   assert.ok(a.ok);
   if (a.ok) a.grant.settle({ providerId: 'anthropic', model: 'claude-sonnet-4-6', usage: { inputTokens: 10_000, outputTokens: 1000 } });
   assert.ok(g.budgetSnapshot().costSpentUsd > 0.001);
-  assert.equal(denied(scope.authorize(input({ providerId: 'anthropic' }))), 'budget_exhausted');
+  assert.equal(denied(scope.authorize(priced)), 'budget_exhausted');
   g.resetBudget();
-  assert.equal(denied(g.beginRun().authorize(input())), 'granted');
+  assert.equal(denied(g.beginRun().authorize(priced)), 'granted');
 });
 
 test('invalid limits are rejected at construction', () => {

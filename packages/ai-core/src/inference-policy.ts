@@ -1,5 +1,5 @@
 import { AiError, ErrorCode } from '@xo/errors';
-import { computeCostUsd, type PricingTable, DEFAULT_PRICING_TABLE } from './cost.js';
+import { computeCostUsd, findPricing, type PricingTable, DEFAULT_PRICING_TABLE } from './cost.js';
 import type { ProviderId, TokenUsage } from './provider-types.js';
 
 /**
@@ -46,7 +46,14 @@ export interface RunInferenceRestriction {
 }
 
 export type InferenceDenialReason =
-  'server_disabled' | 'run_disabled' | 'node_declares_none' | 'node_undeclared' | 'provider_not_allowed' | 'budget_exhausted';
+  | 'server_disabled'
+  | 'run_disabled'
+  | 'node_declares_none'
+  | 'node_undeclared'
+  | 'provider_not_allowed'
+  | 'budget_exhausted'
+  /** A cost cap is configured but the call's cost cannot be reliably bounded (unknown model price, or no input-size estimate). */
+  | 'cost_unestimable';
 
 export interface InferenceDenial {
   readonly reason: InferenceDenialReason;
@@ -74,6 +81,10 @@ export interface AuthorizeInput {
   readonly nodeId: string;
   readonly providerId: ProviderId;
   readonly requestedMaxOutputTokens: number;
+  /** Required for cost-capped inference: the model whose price bounds the call. */
+  readonly model?: string;
+  /** Required for cost-capped inference: a CONSERVATIVE upper bound on input tokens (see `estimateInputTokensUpperBound`). */
+  readonly inputTokensUpperBound?: number;
 }
 
 export type AuthorizeResult =
@@ -85,6 +96,7 @@ interface Ledger {
   tokensSpent: number;
   tokensReserved: number;
   costSpentUsd: number;
+  costReserved: number;
 }
 
 const newLedger = (maxTokens: number | undefined, maxCostUsd: number | undefined): Ledger => ({
@@ -93,6 +105,7 @@ const newLedger = (maxTokens: number | undefined, maxCostUsd: number | undefined
   tokensSpent: 0,
   tokensReserved: 0,
   costSpentUsd: 0,
+  costReserved: 0,
 });
 
 const remainingTokens = (l: Ledger): number => l.maxTokens - l.tokensSpent - l.tokensReserved;
@@ -174,8 +187,27 @@ export class InferenceRunScope {
   }
 
   /** What this scope's own ledger has spent/reserved (reporting only; never used for decisions). */
-  snapshot(): { readonly tokensSpent: number; readonly tokensReserved: number; readonly costSpentUsd: number } {
-    return { tokensSpent: this.run.tokensSpent, tokensReserved: this.run.tokensReserved, costSpentUsd: this.run.costSpentUsd };
+  snapshot(): {
+    readonly tokensSpent: number;
+    readonly tokensReserved: number;
+    readonly costSpentUsd: number;
+    readonly costReserved: number;
+  } {
+    return {
+      tokensSpent: this.run.tokensSpent,
+      tokensReserved: this.run.tokensReserved,
+      costSpentUsd: this.run.costSpentUsd,
+      costReserved: this.run.costReserved,
+    };
+  }
+
+  /**
+   * `true` when this scope can actually limit something: a finite token or cost limit at server or run level, or inference is
+   * disabled. A scope built from an unlimited policy is NOT bounded (it merely measures).
+   */
+  isBounded(): boolean {
+    const finite = [this.server, this.run].some((l) => Number.isFinite(l.maxTokens) || Number.isFinite(l.maxCostUsd));
+    return finite || !this.policy.enabled || this.restriction?.disabled === true;
   }
 
   authorize(input: AuthorizeInput): AuthorizeResult {
@@ -186,20 +218,45 @@ export class InferenceRunScope {
     const policyDenial = this.checkPolicy(input);
     if (policyDenial) return { ok: false, denial: policyDenial };
 
-    // Budgets: tokens are reserved up front (so concurrent calls cannot jointly overshoot) and reconciled on settle.
-    const available = Math.min(remainingTokens(this.server), remainingTokens(this.run));
-    const costExhausted = this.server.costSpentUsd >= this.server.maxCostUsd || this.run.costSpentUsd >= this.run.maxCostUsd;
-    if (available < 1 || costExhausted) return deny('budget_exhausted', 'Inference budget is exhausted');
+    // Budgets are RESERVED up front (so concurrent calls cannot jointly overshoot) and reconciled on settle.
+    const ledgers = [this.server, this.run];
+    const tokenAvailable = Math.floor(Math.min(remainingTokens(this.server), remainingTokens(this.run)));
+    if (tokenAvailable < 1) return deny('budget_exhausted', 'Inference budget is exhausted');
+    let granted = Math.max(1, Math.min(input.requestedMaxOutputTokens, tokenAvailable));
 
-    const granted = Math.max(1, Math.min(input.requestedMaxOutputTokens, Math.floor(available)));
-    this.server.tokensReserved += granted;
-    this.run.tokensReserved += granted;
+    // Dollar cap: bound the call's cost BEFORE it is made, from the model's price and a conservative input-size bound. An unknown
+    // price is never treated as free, and a call whose cost cannot be bounded is refused rather than allowed to run unmetered.
+    let costReserve = 0;
+    if (ledgers.some((l) => Number.isFinite(l.maxCostUsd))) {
+      const price = input.model !== undefined ? findPricing(this.pricing, input.providerId, input.model) : undefined;
+      if (!price || input.inputTokensUpperBound === undefined) {
+        return deny(
+          'cost_unestimable',
+          `A cost limit is set but the cost of "${input.providerId}/${input.model ?? '?'}" cannot be bounded (${price ? 'no input-size estimate supplied' : 'no price for this model; add it to the pricing table'})`,
+        );
+      }
+      const remainingCost = Math.min(...ledgers.map((l) => l.maxCostUsd - l.costSpentUsd - l.costReserved));
+      const inputCost = (input.inputTokensUpperBound / 1000) * price.inputPerThousand;
+      if (remainingCost <= inputCost) return deny('budget_exhausted', 'Inference cost budget is exhausted');
+      if (price.outputPerThousand > 0) {
+        const affordable = Math.floor(((remainingCost - inputCost) / price.outputPerThousand) * 1000);
+        if (affordable < 1) return deny('budget_exhausted', 'Inference cost budget is exhausted');
+        granted = Math.min(granted, affordable);
+      }
+      costReserve = inputCost + (granted / 1000) * price.outputPerThousand;
+    }
+
+    for (const ledger of ledgers) {
+      ledger.tokensReserved += granted;
+      ledger.costReserved += costReserve;
+    }
     let settled = false;
     const finish = (spent: number, costUsd: number): void => {
       if (settled) return;
       settled = true;
-      for (const ledger of [this.server, this.run]) {
+      for (const ledger of ledgers) {
         ledger.tokensReserved -= granted;
+        ledger.costReserved -= costReserve;
         ledger.tokensSpent += spent;
         ledger.costSpentUsd += costUsd;
       }
@@ -209,15 +266,29 @@ export class InferenceRunScope {
       grant: {
         maxOutputTokens: granted,
         settle: ({ providerId, model, usage }) => {
-          // Unknown usage is charged at the reservation: for BUDGET purposes we assume the worst we allowed, never "free".
-          // (Cost stays 0 because we will not fabricate a price for tokens we cannot count.)
-          const spent = usage ? usage.inputTokens + usage.outputTokens : granted;
-          finish(spent, usage ? computeCostUsd(providerId, model, usage, this.pricing) : 0);
+          // Unknown usage is charged at the reservation for BOTH tokens and (when a cost cap is active) cost: the worst we
+          // allowed, never "free". With no cost cap there is no price bound to charge, so cost stays 0 (nothing is fabricated).
+          finish(
+            usage ? usage.inputTokens + usage.outputTokens : granted,
+            usage ? computeCostUsd(providerId, model, usage, this.pricing) : costReserve,
+          );
         },
         release: () => finish(0, 0),
       },
     };
   }
+}
+
+/**
+ * A deliberately conservative UPPER bound on input tokens, for cost reservation. Every token occupies at least one byte of the
+ * serialized prompt, so UTF-8 byte length bounds the token count for byte-level tokenizers; the fixed margin covers chat-template and
+ * special-token overhead. `extraText` should carry anything else sent as input (e.g. a serialized response schema). It over-estimates
+ * (often several times) by design: the cost of being wrong in this direction is a clamped output cap, not an overspend. It is an
+ * assumption about tokenizers, not a guarantee; a provider that bills input differently (e.g. images, tool definitions) is not covered.
+ */
+export function estimateInputTokensUpperBound(messages: readonly { readonly content: string }[], extraText = ''): number {
+  const bytes = messages.reduce((n, m) => n + Buffer.byteLength(m.content, 'utf8'), Buffer.byteLength(extraText, 'utf8'));
+  return bytes + 512 + messages.length * 16;
 }
 
 /** The typed outcome for a denied call: its own error code (NOT a provider failure), carrying the structured denial. */

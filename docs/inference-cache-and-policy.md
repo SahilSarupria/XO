@@ -91,16 +91,52 @@ their existing behaviour of continuing degraded: knowledge falls back to rule-ba
 nothing. The warning log now carries `errorCode` and `inferenceDenied: <reason>` so denial is distinguishable from a provider outage.
 The compile does **not** fail on denial; a caller that must treat exhaustion as fatal should check `inferenceReport().denials`.
 
+## Slice 5: enforcement at the compile entrypoint, and a dependable cost cap
+
+**P0 — unbounded compile is no longer possible by omission.**
+
+- The compiler functions that accept `aiCore` (`compileSources`, `compilePdfToXoir`, and therefore `compilePdfToPackage`) call
+  `checkCompileInferenceAuthority` **first**, before any work. A layer that cannot limit spend (`AiCapabilityLayer.inferenceBounded()`
+  is false: no scope, or a scope built from an unlimited policy) is refused with `CONFIG_MISSING_KEY`, unless the caller passes
+  `allowUnboundedInference: true`. A layer with a finite limit, or with inference disabled, is accepted. With no `aiCore` the compile
+  is rule-based and unchecked.
+- `resolveCompilerInferencePolicy` is **fail-closed**: with neither `XO_COMPILER_MAX_TOTAL_TOKENS` nor `XO_COMPILER_MAX_COST_USD` it throws,
+  unless the operator explicitly sets `XO_COMPILER_ALLOW_UNBOUNDED_INFERENCE=true`. (This reverses the earlier "unset = unlimited".)
+- `createCompilerAiLayer(env, deps)` is the sanctioned constructor: explicit provider selection + fail-closed limits + a fresh
+  per-compilation scope + optional durable cache (`XO_INFERENCE_CACHE_DIR`). It returns `unconfigured` when no provider is selected, and
+  its `allowUnboundedInference` is true only on explicit opt-in; spread `{ aiCore, allowUnboundedInference }` into the compile options.
+- **Reality check:** today no app constructs an AI layer (the API compile route and the CLI call `compileSources` without `aiCore`).
+  So no production path was unbounded before this change either; this closes the door before one is opened, at the library boundary
+  every future caller must pass through. Anyone can still construct an `AiCapabilityLayer` and call extractors directly, bypassing
+  the entrypoints; the boundary protects the compile pipeline, not arbitrary library use.
+
+**P1 — a dollar cap that actually bounds spend.**
+
+- **Unknown price is not free.** `findPricing` returns `undefined` for an unlisted model (a `'*'` entry is an explicit "all models cost this",
+  used for `ollama` and `deterministic-replay` at $0). Under a cost cap, an unpriced model, or a call with no input-size estimate, is
+  refused as `cost_unestimable` before any provider call. Without a cost cap, unpriced models are unaffected.
+- **Worst-case reservation.** Before a call, the guard reserves `inputBound * inputPrice + grantedOutput * outputPrice`, where
+  `inputBound = estimateInputTokensUpperBound(messages, schema)` (UTF-8 byte length + fixed margin; deliberately over-estimates) and
+  the granted output tokens are clamped so that reservation fits the remaining cap. Concurrent calls each hold their reservation, so
+  in-flight calls cannot jointly exceed the cap. On settle the reservation is replaced by actual cost; on failure it is released.
+- **Unknown usage under a cost cap** is charged the reserved worst-case cost (not $0).
+- The runtime executor passes the model and input bound too, so the same cap semantics apply to runtime server/run cost limits.
+- **Default Gemini consequence:** `gemini-3.5-flash-lite` has no entry in the pricing table, so a cost cap with the default Gemini model
+  is refused until the operator supplies a price. This is intentional: use the token cap, or add a verified price. No price was
+  invented.
+- **Assumptions the bound rests on (not guarantees):** tokens <= UTF-8 bytes of the prompt (+ margin); the provider bills input as
+  text; the provider honours `maxOutputTokens` including hidden reasoning tokens (not verified for every provider); and the pricing
+  table is accurate and current.
+
 ## Known limitations
 
-- **Cost limit is weaker than the token limit.** Cost is computed from the pricing table (a model absent from it prices at 0 and never
-  trips the limit) and is not reserved in advance, so concurrent in-flight calls can overshoot it. Use the token limit as the dependable cap.
-- Input tokens are unknown before a call, so a single call can overshoot the token budget by its input size; no further call is then allowed.
+- **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
+- The TOKEN budget can still be overshot by one call's input size (input tokens are unknown in advance); the COST budget cannot, because it reserves a conservative input bound (Slice 5).
 - Failed/timed-out/cancelled calls are released, not charged (possible under-count, above).
 - Per-scope only: nothing aggregates spend across separate compilations or processes.
 - No confidence-gated escalation exists. The hybrid knowledge extractor still calls the model for every unit; "escalation" covered
   here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.
-- The caller must supply `inferenceScope`; nothing in the compiler constructs the layer, so enforcement is only as good as the entrypoint wiring.
+- The compiler entrypoints now refuse an unbounded layer (Slice 5), but nothing in the apps constructs an AI layer yet: AI-assisted compile is not enabled in the CLI or API today. Enabling it must go through `createCompilerAiLayer`.
 
 ## Not done yet
 

@@ -285,11 +285,17 @@ test('no scope supplied: behaviour is unchanged (unlimited, no denial)', async (
   assert.equal(l.inferenceReport().spend, undefined);
 });
 
-test('resolveCompilerInferencePolicy reads XO_COMPILER_* limits, rejects invalid values, and defaults to unlimited', () => {
-  assert.deepEqual(resolveCompilerInferencePolicy({}), { enabled: true, allowUndeclared: false });
+test('resolveCompilerInferencePolicy is FAIL-CLOSED: no limit and no explicit opt-in is an error, never "unlimited"', () => {
+  assert.throws(() => resolveCompilerInferencePolicy({}), /requires a spend limit.*XO_COMPILER_ALLOW_UNBOUNDED_INFERENCE/s);
+  assert.deepEqual(resolveCompilerInferencePolicy({ XO_COMPILER_ALLOW_UNBOUNDED_INFERENCE: 'true' }), {
+    enabled: true,
+    allowUndeclared: false,
+    explicitlyUnbounded: true,
+  });
   assert.deepEqual(resolveCompilerInferencePolicy({ XO_COMPILER_MAX_TOTAL_TOKENS: '5000', XO_COMPILER_MAX_COST_USD: '0.5' }), {
     enabled: true,
     allowUndeclared: false,
+    explicitlyUnbounded: false,
     maxTotalTokens: 5000,
     maxCostUsd: 0.5,
   });

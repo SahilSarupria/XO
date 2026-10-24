@@ -1,3 +1,4 @@
+import { checkCompileInferenceAuthority } from './inference-authority.js';
 import { err, ok, ContentHash, type Result } from '@xo/types';
 import { ErrorCode, SourceError, type XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -61,6 +62,11 @@ export interface CompileSourcesOptions {
   readonly aiCore?: KnowledgeExtractionOptions['aiCore'] & CapabilityExtractionOptions['aiCore'] & ReasoningExtractionOptions['aiCore'];
   readonly domainHint?: string;
   readonly focusQuestion?: string;
+  /**
+   * Explicit operator opt-in to run `aiCore` with NO spend limit. Absent/false means an unbounded layer is refused (see
+   * `checkCompileInferenceAuthority`). Obtain it from `createCompilerAiLayer`, never default it.
+   */
+  readonly allowUnboundedInference?: boolean;
 }
 
 /**
@@ -121,6 +127,8 @@ export async function compileSources(
   inputs: readonly unknown[],
   options: CompileSourcesOptions = {},
 ): Promise<Result<CompileSourcesResult, XoError>> {
+  const authority = checkCompileInferenceAuthority(options.aiCore, options.allowUnboundedInference, options.logger);
+  if (!authority.ok) return err(authority.error);
   if (inputs.length === 0) {
     return err(new SourceError(ErrorCode.INVALID_ARGUMENT, 'compileSources requires at least one input'));
   }

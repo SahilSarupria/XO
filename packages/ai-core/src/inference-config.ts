@@ -4,6 +4,8 @@ import type { Logger } from '@xo/logger';
 import type { ModelProvider, ProviderId } from './provider-types.js';
 import type { ModelSelectionPolicy } from './model-selection.js';
 import { InferenceGuard, type InferenceRunScope, type ServerInferencePolicy } from './inference-policy.js';
+import { AiCapabilityLayer } from './router.js';
+import { FileCapabilityCache } from './file-cache.js';
 import { GEMINI_DEFAULT_MODEL, GeminiProvider } from './providers/gemini-provider.js';
 
 /**
@@ -223,13 +225,34 @@ export function describeInferenceReadiness(env: Env = process.env): InferenceRea
 export const COMPILER_LIMITS_SCHEMA = {
   compilerMaxTotalTokens: { type: 'number', min: 0, description: 'Cumulative token cap for one compilation.' },
   compilerMaxCostUsd: { type: 'number', min: 0, description: 'Cumulative USD cap for one compilation (see caveats in docs).' },
+  compilerAllowUnboundedInference: {
+    type: 'boolean',
+    default: false,
+    description: 'Explicit operator opt-in to compile-time inference with NO spend limit. Never the result of omitting the limits.',
+  },
 } as const satisfies ConfigSchema;
 
-export function resolveCompilerInferencePolicy(env: Env = process.env): ServerInferencePolicy {
+export interface CompilerInferencePolicy extends ServerInferencePolicy {
+  /** `true` only when the operator explicitly opted in to unlimited compile-time inference. */
+  readonly explicitlyUnbounded: boolean;
+}
+
+/**
+ * FAIL-CLOSED: compile-time inference must be bounded. With neither limit set, this throws unless the operator explicitly sets
+ * `XO_COMPILER_ALLOW_UNBOUNDED_INFERENCE=true`; an omitted variable can never produce an unlimited compile.
+ */
+export function resolveCompilerInferencePolicy(env: Env = process.env): CompilerInferencePolicy {
   const raw = loadConfig(COMPILER_LIMITS_SCHEMA, { env });
+  const limited = raw.compilerMaxTotalTokens !== undefined || raw.compilerMaxCostUsd !== undefined;
+  if (!limited && !raw.compilerAllowUnboundedInference) {
+    throw missing(
+      'Compile-time inference requires a spend limit: set XO_COMPILER_MAX_TOTAL_TOKENS (recommended) and/or XO_COMPILER_MAX_COST_USD, or explicitly set XO_COMPILER_ALLOW_UNBOUNDED_INFERENCE=true to run without one.',
+    );
+  }
   return {
     enabled: true,
     allowUndeclared: false,
+    explicitlyUnbounded: !limited,
     ...(raw.compilerMaxTotalTokens !== undefined ? { maxTotalTokens: raw.compilerMaxTotalTokens } : {}),
     ...(raw.compilerMaxCostUsd !== undefined ? { maxCostUsd: raw.compilerMaxCostUsd } : {}),
   };
@@ -238,4 +261,45 @@ export function resolveCompilerInferencePolicy(env: Env = process.env): ServerIn
 /** One fresh scope per compilation: the stable budget scope shared by every call (including concurrent ones) in that compile. */
 export function createCompileInferenceScope(policy: ServerInferencePolicy): InferenceRunScope {
   return new InferenceGuard(policy).beginRun();
+}
+
+export type CompilerAiResolution =
+  | { readonly state: 'unconfigured' }
+  | {
+      readonly state: 'configured';
+      readonly aiCore: AiCapabilityLayer;
+      /** Forward to the compile entrypoint's `allowUnboundedInference` option; `true` only on explicit operator opt-in. */
+      readonly allowUnboundedInference: boolean;
+      readonly policy: CompilerInferencePolicy;
+    };
+
+/**
+ * THE sanctioned way to obtain a compile-time AI layer from operator configuration. It composes: explicit provider selection
+ * (`XO_INFERENCE_PROVIDER` + credentials), a fail-closed spend policy (`XO_COMPILER_*`), a fresh per-compilation budget scope, and an
+ * optional durable cache (`XO_INFERENCE_CACHE_DIR`). Returns `unconfigured` (compile stays rule-based) when no provider is selected;
+ * throws `ConfigError` for invalid/incomplete configuration, including a missing spend limit.
+ *
+ * Call once per compilation: the returned layer owns that compilation's budget.
+ */
+export function createCompilerAiLayer(env: Env = process.env, deps: InferenceProviderDeps = {}): CompilerAiResolution {
+  const config = resolveInferenceConfig(env);
+  if (config.provider === 'none') return { state: 'unconfigured' };
+  const policy = resolveCompilerInferencePolicy(env);
+  const cacheDirectory = env['XO_INFERENCE_CACHE_DIR']?.trim();
+  const aiCore = new AiCapabilityLayer({
+    providers: [createProviderFromConfig(config, deps)],
+    policy: singleProviderPolicy(config.provider, config.model),
+    inferenceScope: createCompileInferenceScope(policy),
+    ...(cacheDirectory
+      ? {
+          cache: new FileCapabilityCache({
+            directory: cacheDirectory,
+            secrets: [config.apiKey],
+            ...(deps.logger ? { logger: deps.logger } : {}),
+          }),
+        }
+      : {}),
+    ...(deps.logger ? { logger: deps.logger } : {}),
+  });
+  return { state: 'configured', aiCore, allowUnboundedInference: policy.explicitlyUnbounded, policy };
 }
