@@ -51,7 +51,7 @@ test('with no AI extractor configured, produces only rule-based candidates', asy
 });
 
 test('with a working AI extractor, unions rule-based and AI candidates', async () => {
-  const hybrid = new HybridKnowledgeExtractor(makeWorkingAiExtractor());
+  const hybrid = new HybridKnowledgeExtractor(makeWorkingAiExtractor(), undefined, { mode: 'always' });
   const result = await hybrid.extract(makeUnit());
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -120,7 +120,7 @@ function recordingLogger(records: { message: string; fields: LogFields }[]): Log
 test('budget exhaustion degrades to rule-based output, is NOT logged as a provider failure, and never reaches the provider', async () => {
   const { layer, provider } = budgetLayer(0);
   const records: { message: string; fields: LogFields }[] = [];
-  const hybrid = new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer), recordingLogger(records));
+  const hybrid = new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer), recordingLogger(records), { mode: 'always' });
   const result = await hybrid.extract(makeUnit());
   assert.ok(result.ok);
   if (!result.ok) return;
@@ -138,7 +138,7 @@ test('budget exhaustion degrades to rule-based output, is NOT logged as a provid
 
 test('an ample budget leaves existing hybrid extraction behaviour unchanged', async () => {
   const { layer } = budgetLayer(1_000_000);
-  const result = await new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer)).extract(makeUnit());
+  const result = await new HybridKnowledgeExtractor(new AiKnowledgeExtractor(layer), undefined, { mode: 'always' }).extract(makeUnit());
   assert.ok(result.ok);
   if (result.ok) assert.ok(result.value.nodes.some((n) => n.localId === 'i1'));
 });

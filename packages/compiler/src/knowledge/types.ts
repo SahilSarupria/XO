@@ -70,6 +70,19 @@ export type KnowledgeEdgeType = KnownKnowledgeEdgeType | `custom:${string}`;
  * `extractKnowledge` capability doesn't return them) and is `undefined`
  * rather than a guessed value.
  */
+/**
+ * How a candidate was produced. Set ONLY on model-derived candidates; its absence means rule-derived (see the node's `producedBy`).
+ * `source: 'cache'` means the model output was replayed from an earlier generation: no provider call was made for this compile.
+ */
+export interface KnowledgeDerivation {
+  readonly kind: 'llm';
+  readonly source: 'generated' | 'cache';
+  readonly provider?: string;
+  readonly model?: string;
+  /** Why the rule-based result was judged insufficient (`no_candidate` | `low_confidence` | `ambiguous` | `always`). */
+  readonly escalationReason?: string;
+}
+
 export interface KnowledgeProvenance {
   readonly experienceUnitId: string;
   readonly documentPath: string;
@@ -77,6 +90,7 @@ export interface KnowledgeProvenance {
   readonly sectionPath: readonly string[];
   readonly charOffsetRange: readonly [number, number] | undefined;
   readonly confidence: number;
+  readonly derivation?: KnowledgeDerivation;
 }
 
 export interface KnowledgeNode {

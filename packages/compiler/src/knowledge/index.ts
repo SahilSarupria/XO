@@ -9,3 +9,5 @@ export * from './merge.js';
 export * from './relationship-builder.js';
 export * from './graph.js';
 export * from './knowledge-extractor.js';
+export * from './escalation-policy.js';
+export * from './model-validation.js';

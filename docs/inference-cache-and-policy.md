@@ -128,18 +128,83 @@ The compile does **not** fail on denial; a caller that must treat exhaustion as 
   text; the provider honours `maxOutputTokens` including hidden reasoning tokens (not verified for every provider); and the pricing
   table is accurate and current.
 
+## Slice 6: confidence-gated escalation (knowledge hybrid extractor)
+
+**Policy** (`knowledge/escalation-policy.ts`, a pure function over the rule extractor's candidates; the spend guard still decides whether an
+escalated unit may actually call a model, and nothing here retries or routes around a denial):
+
+| Rule-extraction result                                           | Decision                                                  |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| Fragment: fewer than `minContentWords` (4) words                 | Skip (`insufficient_content`): a model has nothing to add |
+| No usable candidate                                              | Escalate (`no_candidate`)                                 |
+| Best usable candidate below `confidenceThreshold` (default 0.75) | Escalate (`low_confidence`)                               |
+| Competing candidates the rules cannot settle                     | Escalate (`ambiguous`)                                    |
+| Usable candidate at/above threshold, no unresolved competition   | Skip (`strong`)                                           |
+| `mode: 'always'`                                                 | Escalate every unit (the previous behaviour)              |
+
+- **Usable** means a clean single phrase (no line break, comma, semicolon or colon inside; at most `maxLabelWords` = 8 words). The rules assign 0.65 to
+  any multi-word capitalized run, even one spanning a line break, so malformed candidates never make a unit look strong.
+- **Competition**: two candidates with the same normalized label or overlapping spans but different types. The rules settle it themselves only
+  when the confidences differ by at least `ambiguityMargin` (0.1) or a fixed specificity order applies (`organization` over `entity`,
+  `definition` over `concept`); otherwise the unit escalates. On the real fixtures this fires rarely (2 of 128 units at threshold 0.7).
+- Configure with the `escalation` option of `extractKnowledgeGraph`/compile options, or `resolveEscalationPolicy(env)`
+  (`XO_COMPILER_ESCALATION_{MODE,CONFIDENCE_THRESHOLD,AMBIGUITY_MARGIN,MIN_CONTENT_WORDS}`).
+- **Behaviour change:** the hybrid extractor previously called the model for every unit. The default is now gated; use `{ mode: 'always' }` for the old behaviour.
+- **Validation:** model output is checked before it is accepted (`knowledge/model-validation.ts`): non-empty bounded labels, confidence in [0, 1],
+  unique ids, no dangling edges, and a deliberately weak grounding check (each label shares a 5-letter word stem with the unit). Any violation rejects the
+  whole result (all-or-nothing); the rule result stands and the rejection is counted. A literal-word grounding check wrongly rejected a legitimate
+  abstraction during development, hence the stem match; it can still reject a purely abstract label (a known false-reject risk) and cannot prove faithfulness.
+- **Provenance:** model-derived candidates carry `provenance.derivation { kind: 'llm', source: 'generated' | 'cache', provider, model, escalationReason }`;
+  rule-derived candidates carry none (their absence plus `extractorName: 'rule-based'` marks them), so rule-only graphs are byte-identical to before.
+- **Repeat calls:** a unit (same id and content) is escalated at most once per extractor instance; repeats are memoized. Retries inside a call are the layer's own bounded policy.
+- **Report:** `HybridKnowledgeExtractor.report()` gives units seen, escalated, skipped, counts by decision reason, outcomes (`accepted`, `cache_hit`, `denied`,
+  `failed`, `rejected_invalid`, `memoized`) and fresh calls attempted; `extractKnowledgeGraph` logs it when an `aiCore` is supplied.
+
+**What the real score distribution looks like** (128 prose units from the three `examples/vertical-test` PDFs). The rule extractor's confidences are
+tiers, not a continuum: the unit-primary node is 0.5 (58 units), 0.6 (35) or 0.7 (35), and never 0.85 (no explicit defined term occurred); entity
+candidates are 0.5 or 0.65. Because of the caps, `best < 0.75` holds for every unit, so a high threshold degenerates to "always escalate". 46 units (36%) are
+fragments of fewer than 4 words (headings, `https:`, empty cells).
+
+**Measurement** (`test/knowledge/escalation-measurement.test.ts`; fixture `escalation-gold.ts`). Gold is 42 real units that I annotated by hand, after
+seeing the rule output, stratified by the gate's own classes, single annotator, not blind. Its stated rules are in the fixture. Read everything below as
+a diagnostic of the gate's _targeting_, not a benchmark. There is no live model offline, so "after" figures use an **oracle that fixes every escalated unit
+perfectly**: they are a ceiling for each policy, **not evidence that a real model would improve anything**.
+
+Rules alone, on the gold units: 41 of 42 units contain at least one error (38 correct entities, 104 false positives, 26 misses; 26 wrong primary nodes).
+
+| Policy                                                     | Calls | Input-token upper bound | Units needing help sent to model | Residual FP / FN / wrong primary | Oracle entity F1 |
+| ---------------------------------------------------------- | ----- | ----------------------- | -------------------------------- | -------------------------------- | ---------------- |
+| Rules only                                                 | 0     | 0                       | 0 / 41                           | 104 / 26 / 26                    | 0.37             |
+| Always (previous behaviour)                                | 42    | 33,866                  | 41 / 41                          | 0 / 0 / 0                        | 1.00             |
+| Gated, threshold 0.60                                      | 10    | 5,952                   | 10 / 41                          | 96 / 20 / 21                     | 0.43             |
+| Gated, threshold 0.65                                      | 11    | 6,491                   | 11 / 41                          | 96 / 20 / 20                     | 0.43             |
+| Gated, threshold 0.70                                      | 22    | 16,361                  | 22 / 41                          | 29 / 7 / 10                      | 0.76             |
+| **Gated, threshold 0.75 (default)**                        | 38    | 31,700                  | 37 / 41                          | 3 / 0 / 2                        | 0.98             |
+| Exploratory, not shipped: 0.70 plus a noisy-candidate rule | 33    | 26,793                  | 33 / 41                          | 5 / 3 / 5                        | 0.94             |
+
+(The token column is an upper-bound proxy for input size, not a price or a measurement of spend.)
+
+What this does and does not show:
+
+- **It does not demonstrate that escalation improves extraction.** No real model was run. It shows only where each policy would send calls and what it would leave behind if the model were perfect.
+- **Rule confidence barely predicts correctness here.** Under a 0.7 threshold, 15 of the 16 units called "strong" still contained an error (26 false positives, 7 misses, 8 wrong primary nodes). Skipping on that signal would leave most of the problems in place; the thresholds 0.60 to 0.70 save many calls and leave a large share of the errors behind.
+- **That is why the default is 0.75**: it skips on confidence only when the extractor's top tier fired (an explicit defined term), and otherwise the dominant, safe saving is the fragment rule. Across all 128 real units, default gating escalates 82 (64%) versus 128 for always, i.e. a 36% reduction in calls, almost all from fragments; a 0.70 threshold would escalate 65 (51%) at the cost shown above. That top tier did not occur in the fixtures, so skipping on it is a design judgement about an explicit cue that the fixtures could not confirm.
+- Precision of the calls is uninformative because the base rate is so high (rules need help on 41 of 42 units, so any policy's calls mostly "needed help").
+- The exploratory noisy-candidate rule improves targeting on this gold, but it was designed after looking at this same data; it is not shipped, and would need an independent gold set before adoption.
+- Needed next: a live-provider run (opt-in, with a budget) on an independent, blind gold set, measuring a real model's precision and recall against the rules, before claiming that escalation improves output.
+
 ## Known limitations
 
 - **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
 - The TOKEN budget can still be overshot by one call's input size (input tokens are unknown in advance); the COST budget cannot, because it reserves a conservative input bound (Slice 5).
 - Failed/timed-out/cancelled calls are released, not charged (possible under-count, above).
 - Per-scope only: nothing aggregates spend across separate compilations or processes.
-- No confidence-gated escalation exists. The hybrid knowledge extractor still calls the model for every unit; "escalation" covered
+- Confidence-gated escalation exists for the knowledge hybrid extractor only (Slice 6). The reasoning and capability extractors still call the model for every unit.
   here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.
 - The compiler entrypoints now refuse an unbounded layer (Slice 5), but nothing in the apps constructs an AI layer yet: AI-assisted compile is not enabled in the CLI or API today. Enabling it must go through `createCompilerAiLayer`.
 
 ## Not done yet
 
-- Confidence-gated compiler escalation (deterministic first, escalate only low-confidence residue, review gate for unresolved output).
+- Escalation gating for the reasoning and capability extractors, and an independent, blind gold set to validate any gate (Slice 6 used a small self-annotated one).
 - The LLM workflow-authoring and human-approval flow; nothing here lets an LLM-authored workflow deploy.
 - A shared/production cache backend, and any Studio/UI surface. The API execute route remains disabled.
