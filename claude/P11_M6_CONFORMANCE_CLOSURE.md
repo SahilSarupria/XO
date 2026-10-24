@@ -98,3 +98,9 @@ Still UNAVAILABLE (not searched again, not invented): O-2, O-3 / Review §5.3, N
 | next      | docs(m6): this record                         | `claude/P11_M6_CONFORMANCE_CLOSURE.md` (new) |
 
 No source, config, lockfile, roadmap or other record was modified.
+
+## 11. Update 2026-10-25 (supersedes statements above; earlier text unchanged)
+
+- **Pushed and CI-verified.** `p11/m6-conformance` was pushed on the owner's instruction to obtain remote CI, and draft PR #8 (base `p11/m5-stdio-mcp`) was opened. The statements "Not pushed" and "No PR opened" at the top, and "Remote CI: UNAVAILABLE" in §3, no longer hold. CI run 40137477393 (head `5e89ab8`, Node 22.x) succeeded on every step. The SDK-backed `apps/mcp` suites are INFERRED passed from the `Test` step; per-suite counts were not observed (the log host is unreachable from this session). Local installation at the repository pins remains impossible here.
+- **Hashes.** The pushed commits are `0ebb905` (test) and `5e89ab8` (this record), re-created by cherry-pick in a credentialed clone. `2b41ab7` and `f3620e3` above name the scratch-clone originals.
+- **Decisions and the overall review** are in `P11_REVIEW_AND_DECISIONS.md`. No milestone is accepted.
