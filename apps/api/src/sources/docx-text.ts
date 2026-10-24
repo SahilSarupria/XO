@@ -105,6 +105,44 @@ function safeCodePoint(cp: number): string | undefined {
   return Number.isInteger(cp) && cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : undefined;
 }
 
+type XmlToken =
+  | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'tag'; readonly name: string; readonly closing: boolean; readonly selfClosing: boolean; readonly attrs: string };
+
+const TAG_NAME = /^[A-Za-z0-9]+:[A-Za-z0-9]+/;
+
+/**
+ * A LINEAR tokenizer: every character is examined a bounded number of times (`indexOf` for '<' and '>', then one
+ * anchored match on the tag's own text). The earlier version was a single lazy regex, which backtracks quadratically
+ * on malformed input such as a long run of `<w:t ` with no closing `>` — 512 KB took ~19 s and the 30 MB inflate cap
+ * would have allowed hours, blocking the API's event loop for everyone. Do not reintroduce a regex over the whole document.
+ * Anything that is not a `prefix:name` element (comments, processing instructions, doctype) is skipped; an unterminated
+ * tag ends the scan.
+ */
+function* xmlTokens(xml: string): Generator<XmlToken> {
+  let i = 0;
+  const n = xml.length;
+  while (i < n) {
+    const lt = xml.indexOf('<', i);
+    if (lt === -1) {
+      yield { kind: 'text', text: xml.slice(i) };
+      return;
+    }
+    if (lt > i) yield { kind: 'text', text: xml.slice(i, lt) };
+    const gt = xml.indexOf('>', lt + 1);
+    if (gt === -1) return;
+    let inner = xml.slice(lt + 1, gt);
+    i = gt + 1;
+    const closing = inner.startsWith('/');
+    if (closing) inner = inner.slice(1);
+    const match = TAG_NAME.exec(inner);
+    if (match === null) continue;
+    const rest = inner.slice(match[0].length);
+    const selfClosing = !closing && rest.endsWith('/');
+    yield { kind: 'tag', name: match[0], closing, selfClosing, attrs: selfClosing ? rest.slice(0, -1) : rest };
+  }
+}
+
 export function extractDocxText(bytes: Uint8Array): DocxExtraction {
   const zip = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const entries = readEntries(zip);
@@ -155,16 +193,15 @@ export function extractDocxText(bytes: Uint8Array): DocxExtraction {
     inParagraph = false;
   };
 
-  const tokens = /<(\/?)([A-Za-z0-9]+:[A-Za-z0-9]+)([^>]*?)(\/?)>|([^<]+)/g;
-  for (let m = tokens.exec(xml); m !== null; m = tokens.exec(xml)) {
-    if (m[5] !== undefined) {
-      if (inText && inDeleted === 0) paraText += decodeXml(m[5]);
+  for (const token of xmlTokens(xml)) {
+    if (token.kind === 'text') {
+      if (inText && inDeleted === 0) paraText += decodeXml(token.text);
       continue;
     }
-    const closing = m[1] === '/';
-    const tag = m[2] as string;
-    const attrs = m[3] ?? '';
-    const selfClosing = m[4] === '/';
+    const closing = token.closing;
+    const tag = token.name;
+    const attrs = token.attrs;
+    const selfClosing = token.selfClosing;
     switch (tag) {
       case 'w:p':
         if (!closing) {

@@ -402,3 +402,90 @@ test('import from link: blocked in air-gapped mode, and for roles without author
     assert.match(res.bodyText, /air-gapped/);
   });
 });
+
+// ---------------------------------------------------------------- parser denial-of-service regressions
+
+test('docx: malformed XML cannot make extraction super-linear (a regex tokenizer took ~19 s on 512 KB)', () => {
+  const shapes: Record<string, string> = {
+    'unterminated tags': '<w:p>' + '<w:t '.repeat(400_000),
+    'bare angle brackets': '<'.repeat(2_000_000),
+    'closing brackets only': '>'.repeat(2_000_000),
+    alternating: '<w:p><'.repeat(300_000),
+    'huge attribute run': `<w:t ${'a="b" '.repeat(300_000)}`,
+    'unterminated entity': `<w:t>${'&amp'.repeat(400_000)}`,
+  };
+  for (const [name, xml] of Object.entries(shapes)) {
+    const archive = zip({ 'word/document.xml': `<w:document ${W}><w:body>${xml}</w:body></w:document>` });
+    const started = Date.now();
+    try {
+      extractDocxText(archive);
+    } catch (cause) {
+      assert.ok(cause instanceof DocxError, `${name}: only a clean DocxError is acceptable`);
+    }
+    assert.ok(Date.now() - started < 2_000, `${name}: took ${Date.now() - started} ms; extraction must be linear in the input`);
+  }
+});
+
+test('docx: a large, well-formed document still extracts completely and quickly', () => {
+  const body = Array.from({ length: 40_000 }, (_, i) => p(`Clause ${i}: the insured shall notify the insurer promptly.`)).join('');
+  const started = Date.now();
+  const out = extractDocxText(docx(body));
+  assert.equal(out.stats.paragraphs, 40_000);
+  assert.ok(out.text.includes('Clause 39999:'));
+  assert.ok(Date.now() - started < 3_000, `took ${Date.now() - started} ms`);
+});
+
+test('url validation: numeric and mapped spellings of private addresses are all refused', () => {
+  for (const bad of [
+    'https://2130706433/a', // decimal 127.0.0.1
+    'https://0x7f000001/a', // hex
+    'https://0177.0.0.1/a', // octal
+    'https://127.1/a', // short form
+    'https://[::ffff:7f00:1]/a', // IPv4-mapped loopback
+    'https://[::ffff:127.0.0.1]/a',
+    'https://[0:0:0:0:0:0:0:1]/a', // long-form ::1
+    'https://localhost./a', // trailing dot
+    'https://LOCALHOST/a',
+    'https://169.254.169.254.nip.io@evil.example/a', // credentials trick
+  ]) {
+    assert.throws(() => validateImportUrl(bad), `${bad} must be refused`);
+  }
+});
+
+test('transport: a server that trickles bytes forever is cut off by the hard deadline, not just the idle timeout', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { createHttpsTransport } = await import('../src/sources/safe-fetch.js');
+  let destroyed = false;
+  const fakeRequest = ((_options: unknown, onResponse: (res: unknown) => void) => {
+    const req = new EventEmitter() as EventEmitter & { end: () => void; destroy: () => void };
+    req.destroy = () => {
+      destroyed = true;
+    };
+    req.end = () => {
+      const res = new EventEmitter() as EventEmitter & { headers: Record<string, string>; statusCode: number; destroy: () => void };
+      res.headers = {};
+      res.statusCode = 200;
+      res.destroy = () => {};
+      onResponse(res);
+      // One byte every 10 ms, forever: never idle for longer than the idle limit.
+      const timer = setInterval(() => res.emit('data', Buffer.from('x')), 10);
+      req.once('close-test', () => clearInterval(timer));
+      setTimeout(() => clearInterval(timer), 1_000).unref();
+    };
+    return req;
+  }) as never;
+  const transport = createHttpsTransport(fakeRequest);
+  const started = Date.now();
+  await assert.rejects(
+    () =>
+      transport({
+        url: new URL('https://example.com/slow'),
+        address: { address: '93.184.216.34', family: 4 },
+        timeoutMs: 100,
+        maxBytes: 10_000_000,
+      }),
+    /took too long/,
+  );
+  assert.ok(Date.now() - started < 600, `cut off after ${Date.now() - started} ms (deadline is 2 x the idle limit)`);
+  assert.equal(destroyed, true, 'the connection was torn down');
+});

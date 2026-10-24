@@ -412,7 +412,7 @@ export const studioPaths = {
     post: {
       summary: 'Import a source document from a link',
       description:
-        'https only, default port, no credentials in the URL. The host is resolved by the server and every address must be public (loopback, private, link-local, metadata and IPv6-embedded private ranges are refused); the connection goes to the vetted address; redirects (max 3) are re-validated per hop; size is capped at 32 MB and time at 15 s. Disabled (412) in air-gapped mode. The stored origin and the audit entry keep host and path only — never the query string.',
+        'https only, default port, no credentials in the URL. The host is resolved by the server and every address must be public (loopback, private, link-local, metadata and IPv6-embedded private ranges are refused); the connection goes to the vetted address; redirects (max 3) are re-validated per hop; size is capped at 32 MB and time at 15 s idle / 30 s total. Disabled (412) in air-gapped mode. The stored origin and the audit entry keep host and path only — never the query string.',
       'x-xo-permission': 'author',
       parameters: [WS],
       requestBody: body(obj({ url: str, filename: str }, ['url'])),

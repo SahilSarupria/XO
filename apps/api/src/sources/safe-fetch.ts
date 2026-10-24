@@ -155,7 +155,11 @@ export function validateImportUrl(raw: string): URL {
   if (url.protocol !== 'https:') refuse('only https:// links can be imported');
   if (url.username !== '' || url.password !== '') refuse('links that embed credentials are not accepted');
   if (url.port !== '' && url.port !== '443') refuse('only the default https port is allowed');
-  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // A trailing dot (`localhost.`) is the same name to the resolver; strip it so the name rules below cannot be sidestepped.
+  const host = url.hostname
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.+$/, '')
+    .toLowerCase();
   if (host === '' || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
     refuse('that host name is not allowed');
   }
@@ -170,57 +174,77 @@ export const defaultLookup: LookupFn = async (hostname) => {
   return found.map((f) => ({ address: f.address, family: f.family === 6 ? 6 : 4 }));
 };
 
-export const defaultTransport: TransportFn = ({ url, address, timeoutMs, maxBytes }) =>
-  new Promise((resolve, reject) => {
-    const hostname = url.hostname.replace(/^\[|\]$/g, '');
-    const req = httpsRequest(
-      {
-        host: address.address, // the vetted address — never re-resolved
-        family: address.family,
-        port: 443,
-        method: 'GET',
-        path: `${url.pathname}${url.search}`,
-        servername: isIP(hostname) === 0 ? hostname : undefined,
-        headers: { host: url.host, accept: '*/*', 'user-agent': 'xo-studio-import/1', 'accept-encoding': 'identity' },
-        timeout: timeoutMs,
-      },
-      (res) => {
-        const declared = Number(res.headers['content-length']);
-        if (Number.isFinite(declared) && declared > maxBytes) {
-          res.destroy();
-          reject(
-            new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`),
-          );
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on('data', (c: Buffer) => {
-          size += c.length;
-          if (size > maxBytes) {
+/**
+ * The real HTTPS transport. `timeoutMs` is the IDLE limit (no bytes for that long); the whole exchange is also bounded by
+ * a hard deadline of twice that, because an idle limit alone lets a server that sends one byte every few seconds hold a
+ * request open forever. `requestFn` is injectable so the deadline is testable without a network.
+ */
+export function createHttpsTransport(requestFn: typeof httpsRequest = httpsRequest): TransportFn {
+  return ({ url, address, timeoutMs, maxBytes }) =>
+    new Promise((resolve, reject) => {
+      const hostname = url.hostname.replace(/^\[|\]$/g, '');
+      let settled = false;
+      const finish = (action: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        action();
+      };
+      const tooLarge = () =>
+        new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`);
+      const req = requestFn(
+        {
+          host: address.address, // the vetted address — never re-resolved
+          family: address.family,
+          port: 443,
+          method: 'GET',
+          path: `${url.pathname}${url.search}`,
+          servername: isIP(hostname) === 0 ? hostname : undefined,
+          headers: { host: url.host, accept: '*/*', 'user-agent': 'xo-studio-import/1', 'accept-encoding': 'identity' },
+          timeout: timeoutMs,
+        },
+        (res) => {
+          const declared = Number(res.headers['content-length']);
+          if (Number.isFinite(declared) && declared > maxBytes) {
             res.destroy();
-            reject(
-              new XoError(ErrorCode.INVALID_ARGUMENT, `the file is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB import limit`),
-            );
+            finish(() => reject(tooLarge()));
             return;
           }
-          chunks.push(c);
-        });
-        res.on('end', () => {
-          const headers: Record<string, string | undefined> = {};
-          for (const [k, v] of Object.entries(res.headers)) headers[k] = Array.isArray(v) ? v[0] : v;
-          resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) });
-        });
-        res.on('error', (e) => reject(new XoError(ErrorCode.IO_ERROR, `download failed: ${e.message}`)));
-      },
-    );
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new XoError(ErrorCode.IO_ERROR, 'the download timed out'));
+          const chunks: Buffer[] = [];
+          let size = 0;
+          res.on('data', (c: Buffer) => {
+            size += c.length;
+            if (size > maxBytes) {
+              res.destroy();
+              finish(() => reject(tooLarge()));
+              return;
+            }
+            chunks.push(c);
+          });
+          res.on('end', () => {
+            const headers: Record<string, string | undefined> = {};
+            for (const [k, v] of Object.entries(res.headers)) headers[k] = Array.isArray(v) ? v[0] : v;
+            finish(() => resolve({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) }));
+          });
+          res.on('error', (e) => finish(() => reject(new XoError(ErrorCode.IO_ERROR, `download failed: ${e.message}`))));
+        },
+      );
+      const deadline = setTimeout(() => {
+        req.destroy();
+        finish(() => reject(new XoError(ErrorCode.IO_ERROR, 'the download took too long')));
+      }, timeoutMs * 2);
+      req.on('timeout', () => {
+        req.destroy();
+        finish(() => reject(new XoError(ErrorCode.IO_ERROR, 'the download timed out')));
+      });
+      req.on('error', (e) =>
+        finish(() => reject(e instanceof XoError ? e : new XoError(ErrorCode.IO_ERROR, `could not download the link: ${e.message}`))),
+      );
+      req.end();
     });
-    req.on('error', (e) => reject(e instanceof XoError ? e : new XoError(ErrorCode.IO_ERROR, `could not download the link: ${e.message}`)));
-    req.end();
-  });
+}
+
+export const defaultTransport: TransportFn = createHttpsTransport();
 
 // ---------------------------------------------------------------- the fetch
 
