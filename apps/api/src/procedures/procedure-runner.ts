@@ -265,6 +265,55 @@ export function validateStartInput(def: ProcedureDefinition, rt: Runtime, input:
 }
 const key_in = (o: object, k: string): boolean => has(o, k);
 
+/** Closed JSON Schema (draft 2020-12 subset) describing exactly the `input` object `validateStartInput` accepts. */
+export interface ProcedureStartInputSchema {
+  readonly type: 'object';
+  readonly properties: Readonly<Record<string, { readonly type: 'string' | 'number' | 'boolean' }>>;
+  readonly required: readonly string[];
+  readonly additionalProperties: false;
+}
+
+/**
+ * P1.1 M5 — the start-input schema, derived from the SAME server-side sources as `validateStartInput` (registry snapshot +
+ * compiled graph; never client text). Fails closed: returns `undefined` — and the procedure is therefore not advertised as a
+ * callable MCP tool — when any input-bound parameter has no contract schema, is undeclared, or one input name would need two
+ * different types. Advertising a schema grants nothing: start still re-checks lifecycle, authorization and input.
+ */
+export function deriveStartInputSchema(def: ProcedureDefinition, rt: Runtime): ProcedureStartInputSchema | undefined {
+  const schemas = schemasByContract(rt.graph);
+  const properties: Record<string, { readonly type: 'string' | 'number' | 'boolean' }> = {};
+  const required = new Set<string>();
+  for (const step of def.steps) {
+    if (step.kind !== 'capability') continue;
+    const state = rt.snapshot.steps.find((s) => s.stepId === step.id);
+    const schema = state === undefined ? undefined : (state.externalInputSchema ?? schemas.get(state.contractId));
+    for (const b of step.inputBindings ?? []) {
+      if (!('input' in b.from)) continue;
+      if (schema === undefined) return undefined;
+      const key = normalizeToFallbackKey(b.param);
+      const declared = has(schema.properties, key) ? schema.properties[key] : undefined;
+      if (declared === undefined) return undefined;
+      const name = b.from.input;
+      if (name === '__proto__' || name === 'constructor' || name === 'prototype') return undefined;
+      const existing = has(properties, name) ? properties[name] : undefined;
+      if (existing !== undefined && existing.type !== declared.type) return undefined;
+      properties[name] = { type: declared.type };
+      if ((schema.required ?? []).includes(key)) required.add(name);
+    }
+  }
+  return { type: 'object', properties, required: [...required].sort(), additionalProperties: false };
+}
+
+/** The start-input schema of an APPROVED procedure version in its CURRENT registry state; `undefined` when it cannot be derived. */
+export async function procedureStartInputSchema(
+  ctx: ProcedureRunnerContext,
+  version: ProcedureVersionRecord,
+  approval: ProcedureApprovalRecord,
+): Promise<ProcedureStartInputSchema | undefined> {
+  const rt = await loadRuntime(ctx, version.definition, approval);
+  return rt.ok ? deriveStartInputSchema(version.definition, rt.value) : undefined;
+}
+
 // ───────────────────────────── record transitions ─────────────────────────────
 
 class Holder {

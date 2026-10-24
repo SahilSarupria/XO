@@ -1,0 +1,34 @@
+{
+  "name": "@xo/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P1.1 M5 — stdio MCP adapter. Exposes APPROVED XO procedure versions as MCP tools; every discovery and invocation is a call to the XO API, which is the sole authority for resolution, permissions, approval and audit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "xo-mcp": "./dist/main.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "start": "node dist/main.js",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@xo/capability-contract": "0.1.0",
+    "@xo/types": "0.1.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@xo/api": "0.1.0",
+    "@xo/audit": "0.1.0",
+    "@xo/permissions": "0.1.0",
+    "@xo/storage": "0.1.0",
+    "@xo/xoir": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

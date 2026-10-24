@@ -60,6 +60,7 @@ import {
   resumeProcedureExecution,
   continueAfterPayloadApproval,
   startProcedureExecution,
+  procedureStartInputSchema,
   type ProcedureRunnerContext,
 } from '../procedures/procedure-runner.js';
 import type { ExternalToolWiring } from '@xo/runtime';
@@ -417,7 +418,13 @@ export function registerProcedureRoutes(
     if (found.value.kind === 'none') throw notFound;
     if (found.value.kind === 'malformed') throw new XoError(ErrorCode.UNKNOWN, 'stored procedure record failed integrity verification');
     const d = await describe(procedures, load, found.value.record);
-    return json(200, view(found.value.record, d, true));
+    // P1.1 M5: an APPROVED version also reports the exact start-input schema (derived server-side from the registry). Read-only
+    // metadata for the stdio MCP adapter; it grants nothing — starting still re-checks lifecycle, authorization and input.
+    const inputSchema =
+      d.lifecycle === 'approved' && d.approval.kind === 'ok'
+        ? await procedureStartInputSchema(runnerContext(workspace, req, newCorrelationId()), found.value.record, d.approval.record)
+        : undefined;
+    return json(200, { ...view(found.value.record, d, true), ...(inputSchema !== undefined ? { inputSchema } : {}) });
   }
 
   // ── POST /procedures/:procedureId/versions/:version/approve ───────────────────────────────────────────────────────────

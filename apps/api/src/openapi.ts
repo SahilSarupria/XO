@@ -317,7 +317,7 @@ export const openApiDocument = {
       get: {
         summary: 'List procedures and their versions with computed lifecycle',
         description:
-          'Requires `procedure.read`. `lifecycle` is computed from persisted facts and the CURRENT registry state: draft | approved | approval_stale | approval_invalid | approval_unverifiable. `executable` is always false in this milestone.',
+          'Requires `procedure.read`. `lifecycle` is computed from persisted facts and the CURRENT registry state: draft | approved | approval_stale | approval_invalid | approval_unverifiable. `executable` is always false in this milestone. P1.1 M5: the detail of an APPROVED version also carries `inputSchema` (closed object schema of the `input` that start accepts, derived server-side from the registry; absent for any other lifecycle). It is read-only metadata for the stdio MCP adapter and grants nothing.',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
           '200': { description: '{ procedures: [{ procedureId, versions: [...] }] }' },

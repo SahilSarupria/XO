@@ -77,6 +77,11 @@ export class TestServer {
     return new TestServer(server, address.port, keysDir, apiKeyStore, apiKey, identityId);
   }
 
+  /** Loopback origin of the running test server (used by the stdio MCP adapter's end-to-end test). */
+  get baseUrl(): string {
+    return `http://127.0.0.1:${this.port}`;
+  }
+
   async stop(): Promise<void> {
     await new Promise<void>((resolve, reject) => this.server.close((cause) => (cause ? reject(cause) : resolve())));
     await rm(this.keysDir, { recursive: true, force: true });

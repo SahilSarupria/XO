@@ -33,6 +33,7 @@
     { "path": "packages/atlas" },
     { "path": "packages/marketplace-world" },
     { "path": "apps/cli" },
-    { "path": "apps/api" }
+    { "path": "apps/api" },
+    { "path": "apps/mcp" }
   ]
 }
