@@ -1,6 +1,45 @@
 # Password sign-in — design (milestone proposal, not implemented)
 
-Status: **DESIGN FOR REVIEW. No code for this exists on any branch.** Password login is approved as an _additional_ authentication method next to Google sign-in. It is a dedicated security workstream: it ships on its own branch, with its own review, and must not change the behaviour of Google sign-in, OIDC or API keys. This document is written against `AUTH_API_CONTRACT.md` as it stands and reuses its primitives instead of inventing parallel ones.
+Status: **IMPLEMENTED (stage A), off by default.** Password sign-in is an _additional_ authentication method next to Google sign-in; it replaces nothing. It lives in `apps/api/src/auth/password/`, behind `XO_API_PASSWORD_AUTH=1`. The sections below keep the original design reasoning; where the implementation differs from the proposal, §0 says so and the text of the relevant section has been corrected.
+
+## 0. Implementation status
+
+**Implemented and tested** (`test/password-auth.test.ts`, 32 in-process tests; `test/password-integration.test.ts`, 4 tests against the built server process; the existing Google/OIDC/API-key suites — 105 tests — pass unmodified):
+
+- Argon2id hashing via `@node-rs/argon2` (prebuilt binaries, no compile step; verified to install and run on Node 22 and against the `node:22-bookworm-slim` base image the Dockerfile uses). Defaults 64 MiB / 3 iterations, tunable but never below OWASP's floor (19 MiB / 2). Hashes are upgraded on the next successful sign-in; a bounded concurrency queue answers 503 instead of hanging.
+- `POST /auth/password/login`, `POST /auth/password/setup`, `POST /auth/password/change`, plus `/auth/refresh` and `/auth/logout` for deployments that have password sign-in but not Google sign-in (same routes, same behaviour).
+- One generic 401 for every sign-in failure; an unknown login name still performs a full verification against a dummy hash; throttling is uniform for names that exist and names that do not.
+- Persisted throttling in three layers (per name+source exponential backoff, per-name soft ceiling that delays but never locks out, global credential-stuffing breaker) plus the existing per-address limiter.
+- Single-use, expiring setup/reset tokens (only a digest stored, superseded by a newer one, bound to the password version, one winner under concurrent redemption, an expired token is deleted when seen).
+- Sessions are ordinary XO session families. A password change, reset, or disable ends every session of the account on its next request or refresh, through a per-request gate (below).
+- Operator CLI `scripts/manage-password-accounts.ts` (`create`, `reset`, `disable`, `enable`, `list`); it never accepts or prints a password.
+- Account-level, hash-chained auth audit log; no password, hash, token or session credential is ever written.
+- Canary tests assert a unique password, token and session credential appear in no response, file, audit entry or process output.
+
+**Differences from the original proposal** (all deliberate):
+
+| Proposal                                                              | Implemented                                                                                                                                                                                 | Why                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| New error code `XO_AUTH_CREDENTIALS_INVALID`                          | Existing `AUTH_TOKEN_INVALID` with the fixed message "login name or password is not correct"                                                                                                | A new code means changing the shared `@xo/errors` package; the existing code already maps to 401 and the fixed message carries the meaning.      |
+| `by-account/` session index to revoke every family on change          | A per-request **gate**: each password session records the account's `passwordVersion`; a mismatch (or a disabled/missing account) revokes the family on its next use                        | Needs no index to keep consistent, nothing to forget to revoke, and takes effect immediately because the gate runs on every request and refresh. |
+| `XO_API_SESSIONS_DIR` / `XO_API_OIDC_BINDINGS_DIR` shared with Google | Password-only deployments use `XO_API_PASSWORD_SESSIONS_DIR` / `XO_API_PASSWORD_BINDINGS_DIR`; when Google is also on the server **refuses to start** unless they name the same directories | The Google config rejects its own variables when Google is off; a mismatch would silently strand password accounts.                              |
+| Optional server-side pepper                                           | Not implemented                                                                                                                                                                             | Key management and rotation are a separate decision; hashes are Argon2id with per-hash salts.                                                    |
+| Change password keeps the calling session                             | The calling session is replaced by a freshly issued one in the response; all older ones (including the old credentials of the caller) end                                                   | Session records are immutable; reissuing is simpler and equally invisible to the person.                                                         |
+| Operator CLI accepts an identity                                      | Same, and it creates the binding itself under the reserved issuer `xo:password`                                                                                                             | Same trust level as `manage-oidc-bindings.ts`.                                                                                                   |
+
+**MFA readiness (no MFA implemented).** Session families record the methods that produced them (`methods: ['pwd']`) and, for password sessions, a credential epoch. A second factor would add `'otp'` (or similar) to `methods` at sign-in, and a sensitive operation could then require a method set — no change to session storage, rotation, revocation or the gate. Nothing in the system currently requires MFA for any operation, so none is enforced.
+
+**Deferred — not implemented, and must not be presented as available:**
+
+- **Self-service "forgot password"** and any email delivery. There is no mail transport; recovery is operator-assisted (§9).
+- **Public registration / "Create account".** By design (§3).
+- **Passkeys / WebAuthn**, **TOTP or any second factor**.
+- **Server-side pepper**, **online breached-password check** (needs outbound network; incompatible with air-gapped mode).
+- **A distributed rate limiter.** Counters are per host (§4.3).
+- **An HTTP route for operators** to create accounts or issue codes. CLI only; an HTTP surface would need its own authorization design.
+- **Studio password screens.** The Studio sign-in/change-password UI is separate frontend work.
+
+**Limitation that must be disclosed to anyone enabling this for real users:** _a person who forgets their password cannot recover the account by themselves; an operator must issue a reset code. An operator who can issue codes can take over any password account; every issuance is written to the auth audit log, which is tamper-evident but not tamper-proof._
 
 ## 1. Goals and non-goals
 
@@ -72,7 +111,7 @@ Consequences worth stating plainly:
 - **Fallback if a new native dependency is unacceptable:** Node's built-in `crypto.scrypt` with `N = 2^17, r = 8, p = 1`. Also OWASP-acceptable, no new dependency, slightly weaker against GPU attackers than Argon2id.
 - Never SHA-\*, bcrypt-with-low-cost, or a home-made construction. No "peppered" fast hash.
 - **Rehash on login** when the stored parameters are weaker than current policy.
-- **Optional pepper:** an HMAC of the (normalized) password under a server secret from the environment, applied before hashing, with a key id stored in the PHC string to allow rotation. Pros: a stolen account directory alone is not crackable. Cons: key management and rotation complexity, and the secret becomes a deployment requirement. Default off; decision in §13-2.
+- **Optional pepper:** an HMAC of the (normalized) password under a server secret from the environment, applied before hashing, with a key id stored in the PHC string to allow rotation. Pros: a stolen account directory alone is not crackable. Cons: key management and rotation complexity, and the secret becomes a deployment requirement. Not implemented in this milestone (§13-2).
 - Verification runs under a **concurrency cap** with a bounded queue. Memory-hard hashing is itself a denial-of-service vector; when the queue is full the API answers 503, not a slow hang.
 
 ### 4.2 Password policy (NIST SP 800-63B)
@@ -100,7 +139,7 @@ Counters for unknown login names are keyed by a **keyed hash** of the name (not 
 ```
 POST /auth/password/login      { loginName, password }       (unauthenticated, rate limited)
   -> 201 { accessCredential, refreshCredential, accessExpiresAt, refreshExpiresAt }
-  -> 401 XO_AUTH_CREDENTIALS_INVALID    one fixed message for ALL of:
+  -> 401 AUTH_TOKEN_INVALID (XO_AUTH_TOKEN_INVALID)  one fixed message for ALL of:
         unknown account · wrong password · disabled account · no active binding · account with no password yet
   -> 429 XO_AUTH_RATE_LIMITED           uniform, same for existing and non-existing names
   -> 503 XO_AUTH_PROVIDER_UNAVAILABLE   store failure or hash queue full (fail closed)
@@ -123,7 +162,7 @@ Reuse `SessionService`'s family minting; do not build a second session system.
 - Add an additive `method: 'google' | 'password'` to the session family record and to the recorded authentication (`credential: 'session', method`). Records without it are read as before; nothing is back-filled.
 - A password session family also stores `accountId` and the account's `passwordVersion` at creation.
 - **Every request** on a password session re-checks, in addition to the existing binding re-read: account is `active`, and the family's `passwordVersion` equals the account's current one. A mismatch **permanently revokes that family** (same behaviour the contract describes for revoked bindings: re-enabling later does not revive old sessions).
-- An index `by-account/<accountId>/<familyId>` lets a password change or disable revoke every family for the account without scanning all sessions.
+- No by-account session index (see §0): the per-request gate makes a stale family revoke itself on its next use, so a password change or disable takes effect on every session without scanning for them.
 - `refresh` re-runs the same checks, so a stolen refresh credential stops working the moment the password changes.
 - **Studio** keeps the access credential in memory and the refresh credential in the OS keychain exactly as for Google. **It never stores the password, in memory beyond the submit, keychain, `localStorage`, `sessionStorage`, logs, or crash reports.** The field uses `type="password"`, correct `autocomplete` attributes, and is cleared after submit.
 - Passwords travel only over TLS. The API refuses password routes over plain HTTP except to loopback for development.
@@ -133,7 +172,7 @@ Reuse `SessionService`'s family minting; do not build a second session system.
 ```
 POST /auth/password/change     (authenticated by an xoas_ session)   { currentPassword, newPassword }
   -> 200  new passwordVersion; every OTHER session family of the account is revoked; the calling session continues
-  -> 401  XO_AUTH_CREDENTIALS_INVALID   (current password wrong; counted by the same throttle as login)
+  -> 401  AUTH_TOKEN_INVALID, same fixed message   (current password wrong; counted by the same throttle as login)
   -> 400  policy violation (message names the rule, never the password)
 ```
 
@@ -184,8 +223,8 @@ Needs, before any code: a verified outbound mail mechanism with its own failure 
 ## 10. Configuration and rollout
 
 - **Off by default.** Enabled only by `XO_API_PASSWORD_AUTH=1`. With it unset, the `/auth/password/*` routes are not registered (404), no account store is touched, and the process behaves identically to today. A test asserts the registered route set and responses are unchanged when off.
-- When on, required: `XO_API_ACCOUNTS_DIR` (default `.xo-data/accounts`, local filesystem, one host), hashing parameters (defaults from measurement), optional `XO_API_PASSWORD_PEPPER`. Any invalid or partial value stops startup naming the variable, never its value — same rule as `auth/session/config.ts`.
-- Requires the session service (`XO_API_GOOGLE_CLIENT_ID` is not required; the session store is). If sessions are not configured, password auth refuses to start.
+- When on: `XO_API_ACCOUNTS_DIR` (default `.xo-data/accounts`, local filesystem, one host), `XO_API_PASSWORD_SESSIONS_DIR` and `XO_API_PASSWORD_BINDINGS_DIR` (must match `XO_API_SESSIONS_DIR` / `XO_API_OIDC_BINDINGS_DIR` when Google sign-in is also on), `XO_API_PASSWORD_ARGON2_MEMORY_KIB`, `XO_API_PASSWORD_ARGON2_TIME_COST`, `XO_API_PASSWORD_HASH_CONCURRENCY`, `XO_API_PASSWORD_HASH_QUEUE_LIMIT`. Any invalid or partial value stops startup naming the variable, never its value — same rule as `auth/session/config.ts`.
+- Does not require Google sign-in: a password-only deployment builds its own session and binding stores and registers `/auth/refresh` and `/auth/logout` itself.
 - Roll-out order: (1) land the code dark, (2) enable for operators in a non-production environment, (3) security review sign-off, (4) enable for named users with the §9 limitation acknowledged in writing.
 
 ## 11. Test plan (all additive; none may modify an existing test)
@@ -208,28 +247,28 @@ Needs, before any code: a verified outbound mail mechanism with its own failure 
 
 ## 12. Threats and residual risks (to be reviewed, not assumed solved)
 
-| Threat                                         | Mitigation in this design                                         | Residual risk                                                                                                              |
-| ---------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Offline cracking of a stolen account directory | Argon2id/scrypt, per-account salt, optional pepper                | A weak chosen password is still weak; pepper adds key management                                                           |
-| Online guessing / credential stuffing          | Four throttling layers, no confirmation oracle                    | Counters are per host; a distributed attack behind a shared proxy address is only capped, not blocked — needs a WAF or IdP |
-| Account enumeration                            | One error, equal work, uniform throttling, no unbound distinction | Timing is statistical; a determined attacker with many samples may still learn something — measured, not guaranteed        |
-| Phishing / password reuse                      | None beyond policy                                                | **Passwords are phishable and reusable. No second factor exists.** Recommend admins keep Google sign-in as the primary     |
-| Session theft after password change            | passwordVersion binding; families revoked                         | Access credentials already issued live up to 15 minutes unless the family is revoked (as today)                            |
-| Operator abuse                                 | All issuance and resets audited                                   | An operator can take over a password account by design; audit is tamper-evident, not tamper-proof                          |
-| Denial of service by locking a known login     | Soft ceiling, no permanent lockout                                | A victim can be slowed for the window                                                                                      |
-| Denial of service by hashing cost              | Length caps before hashing, concurrency cap, bounded queue, 503   | A large botnet can still saturate the host                                                                                 |
-| Secrets in logs/telemetry                      | No body logging on `/auth/*`, canary tests, fixed error strings   | A future logging change could regress — the canary test is the guard                                                       |
-| Single-host storage                            | Same documented boundary as sessions                              | No multi-host support                                                                                                      |
+| Threat                                         | Mitigation in this design                                         | Residual risk                                                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Offline cracking of a stolen account directory | Argon2id, per-hash salt                                           | A weak chosen password is still weak; a stolen directory is attackable offline at the cost of the chosen parameters (no pepper yet) |
+| Online guessing / credential stuffing          | Four throttling layers, no confirmation oracle                    | Counters are per host; a distributed attack behind a shared proxy address is only capped, not blocked — needs a WAF or IdP          |
+| Account enumeration                            | One error, equal work, uniform throttling, no unbound distinction | Timing is statistical; a determined attacker with many samples may still learn something — measured, not guaranteed                 |
+| Phishing / password reuse                      | None beyond policy                                                | **Passwords are phishable and reusable. No second factor exists.** Recommend admins keep Google sign-in as the primary              |
+| Session theft after password change            | passwordVersion binding; families revoked                         | Access credentials already issued live up to 15 minutes unless the family is revoked (as today)                                     |
+| Operator abuse                                 | All issuance and resets audited                                   | An operator can take over a password account by design; audit is tamper-evident, not tamper-proof                                   |
+| Denial of service by locking a known login     | Soft ceiling, no permanent lockout                                | A victim can be slowed for the window                                                                                               |
+| Denial of service by hashing cost              | Length caps before hashing, concurrency cap, bounded queue, 503   | A large botnet can still saturate the host                                                                                          |
+| Secrets in logs/telemetry                      | No body logging on `/auth/*`, canary tests, fixed error strings   | A future logging change could regress — the canary test is the guard                                                                |
+| Single-host storage                            | Same documented boundary as sessions                              | No multi-host support                                                                                                               |
 
-## 13. Decisions needed from the owner before implementation
+## 13. Decisions (resolved)
 
-1. **Hashing library:** accept one new maintained dependency for **Argon2id** (recommended), or stay dependency-free with **scrypt**?
-2. **Pepper:** adopt the optional server-side pepper, or leave it out for the first release?
-3. **Login name:** free-form handle chosen by the operator (proposed), or must it be an email address? (Verification of the address belongs to stage B either way.)
-4. **Who may issue setup/reset tokens in stage A:** operator CLI only (proposed, no new HTTP authorization surface), or also a Studio admin action over HTTP (needs its own authorization and review)?
-5. **On password change:** keep the calling session and revoke the rest (proposed), or revoke everything and force a fresh login?
-6. **MFA:** is a second factor (TOTP) a precondition for enabling passwords for admin-role members, or an accepted residual risk with Google sign-in recommended for admins?
-7. **Stage B:** is there a planned email service? Until there is, the §9 limitation stands and must be disclosed to users.
+1. **Hashing:** Argon2id via `@node-rs/argon2`. Compatibility verified before adoption (no compile step; prebuilt for Linux glibc/musl, macOS, Windows and arm64; installs and runs on the repo's Node and the Docker base image).
+2. **Pepper:** left out of this milestone.
+3. **Login name:** an operator-chosen handle (NFKC-normalized, lower-cased, unique); not a verified email address.
+4. **Who issues setup/reset codes:** operator CLI only; no HTTP issuance route.
+5. **On password change:** every session of the account ends; the caller receives a fresh session in the response.
+6. **MFA:** not a prerequisite; the session model is ready for it (see §0). Google sign-in remains available as the stronger option for administrators.
+7. **Email delivery:** none exists. Self-service recovery (stage B) stays unimplemented until verified delivery and the complete recovery flow are designed; the limitation above stands.
 
 ## 14. Out of scope here, tracked elsewhere
 
