@@ -9,6 +9,7 @@ import { FsSessionStore, type SessionStoreOptions } from './session-store.js';
 import { FsUnboundLog } from './unbound-log.js';
 import { createRateLimiter } from './rate-limiter.js';
 import { SessionAuthService, type SelfSignupEvent, type SessionLimits } from './service.js';
+import type { SessionGate } from './gate.js';
 
 /** Everything the server needs for Google sign-in → XO sessions, wired from one config. */
 export interface SessionAuthBundle {
@@ -32,6 +33,8 @@ export interface SessionAuthOptions {
   readonly challenge?: ChallengeStoreOptions;
   readonly session?: SessionStoreOptions;
   readonly limits?: SessionLimits;
+  /** Method-specific session liveness check (password sessions). Applied on refresh here and on every request by the auth middleware. */
+  readonly gate?: SessionGate;
 }
 
 const MINUTE = 60_000;
@@ -73,6 +76,7 @@ export function createSessionAuth(config: SessionAuthConfig, options: SessionAut
     selfSignup: config.selfSignup,
     selfSignupMaxPerDay: config.selfSignupMaxPerDay,
     onSelfSignupEvent: options.onSelfSignupEvent ?? defaultSignupAlert(),
+    ...(options.gate !== undefined ? { gate: options.gate } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
     ...(codeExchanger !== undefined ? { codeExchanger } : {}),
   });

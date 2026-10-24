@@ -21,8 +21,8 @@ import { assertTrustedUrl } from '../oidc/config.js';
 export const GOOGLE_ISSUER = 'https://accounts.google.com';
 export const GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const GOOGLE_LEGACY_ISSUER = 'accounts.google.com';
-const DEFAULT_SESSIONS_DIR = '.xo-data/sessions';
-const DEFAULT_BINDINGS_DIR = '.xo-data/oidc-bindings';
+export const DEFAULT_SESSIONS_DIR = '.xo-data/sessions';
+export const DEFAULT_BINDINGS_DIR = '.xo-data/oidc-bindings';
 
 export interface SessionAuthConfig {
   readonly clientId: string;

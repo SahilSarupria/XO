@@ -10,7 +10,7 @@
  * means updating a route and forgetting the doc is a one-file diff to
  * review, not two.
  */
-import { studioPaths } from './openapi-studio.js';
+import { passwordAuthPaths, studioPaths } from './openapi-studio.js';
 
 export const openApiDocument = {
   openapi: '3.0.3',
@@ -24,6 +24,7 @@ export const openApiDocument = {
   servers: [{ url: 'http://localhost:4000' }],
   paths: {
     ...studioPaths,
+    ...passwordAuthPaths,
     '/health': {
       get: {
         summary: 'Liveness check',

@@ -45,6 +45,14 @@ interface FamilyRecord {
   readonly subject: string;
   readonly createdAt: string;
   readonly absoluteExpiresAt: string;
+  /**
+   * Password sessions only: the account's `passwordVersion` when this family was created. A family whose epoch no longer
+   * matches its account is dead (see `SessionGate`), which is how a password change ends every other session without
+   * scanning them. Absent on Google sessions.
+   */
+  readonly credentialEpoch?: number;
+  /** Authentication methods that produced this session, e.g. `['pwd']`. A future second factor adds to this list (`['pwd','otp']`) without changing the session model. */
+  readonly methods?: readonly string[];
   readonly revokedAt?: string;
   readonly revokedReason?: string;
 }
@@ -68,6 +76,8 @@ export interface SessionIdentity {
   readonly familyId: string;
   readonly issuer: string;
   readonly subject: string;
+  readonly credentialEpoch?: number;
+  readonly methods?: readonly string[];
 }
 
 export type AuthenticateResult =
@@ -75,6 +85,16 @@ export type AuthenticateResult =
 export type RotateResult =
   | { readonly ok: true; readonly session: SessionIdentity; readonly issued: IssuedSession }
   | { readonly ok: false; readonly reason: SessionFailure };
+
+function identityOf(f: FamilyRecord): SessionIdentity {
+  return {
+    familyId: f.familyId,
+    issuer: f.issuer,
+    subject: f.subject,
+    ...(f.credentialEpoch !== undefined ? { credentialEpoch: f.credentialEpoch } : {}),
+    ...(f.methods !== undefined ? { methods: f.methods } : {}),
+  };
+}
 
 export interface SessionStoreOptions {
   readonly now?: () => number;
@@ -104,7 +124,11 @@ export class FsSessionStore {
   }
 
   /** Start a new session family for a verified `(issuer, subject)`. */
-  async create(issuer: string, subject: string): Promise<IssuedSession & { readonly familyId: string }> {
+  async create(
+    issuer: string,
+    subject: string,
+    extra: { readonly credentialEpoch?: number; readonly methods?: readonly string[] } = {},
+  ): Promise<IssuedSession & { readonly familyId: string }> {
     for (const d of [this.families, this.access, this.refresh, this.refreshUsed]) await ensureDir(d);
     await this.maybeSweep();
     const familyId = sha256Hex(randomCredential('fam_')).slice(0, 32);
@@ -115,6 +139,8 @@ export class FsSessionStore {
       subject,
       createdAt: new Date(created).toISOString(),
       absoluteExpiresAt: new Date(created + FAMILY_MAX_AGE_MS).toISOString(),
+      ...(extra.credentialEpoch !== undefined ? { credentialEpoch: extra.credentialEpoch } : {}),
+      ...(extra.methods !== undefined ? { methods: extra.methods } : {}),
     };
     await writeJsonAtomic(this.families, `${familyId}.json`, family);
     return { familyId, ...(await this.issue(familyId, Math.min(created + this.refreshTtl, created + FAMILY_MAX_AGE_MS))) };
@@ -157,7 +183,7 @@ export class FsSessionStore {
     const family = await this.family(rec.familyId);
     if (family === undefined || !this.live(family)) return { ok: false, reason: 'invalid' };
     if (Date.parse(rec.expiresAt) <= this.now()) return { ok: false, reason: 'expired' };
-    return { ok: true, session: { familyId: family.familyId, issuer: family.issuer, subject: family.subject } };
+    return { ok: true, session: identityOf(family) };
   }
 
   /** Exchange a refresh credential for a new pair. Single-use; presenting a used one revokes the family. */
@@ -181,7 +207,13 @@ export class FsSessionStore {
     const refreshExpiresMs = Math.min(this.now() + this.refreshTtl, Date.parse(family.absoluteExpiresAt));
     const issued = await this.issue(family.familyId, refreshExpiresMs);
     await this.maybeSweep();
-    return { ok: true, session: { familyId: family.familyId, issuer: family.issuer, subject: family.subject }, issued };
+    return { ok: true, session: identityOf(family), issued };
+  }
+
+  /** The identity of a LIVE (not revoked, not expired) family, or `undefined`. Used by routes that act on "the caller's own session". */
+  async describe(familyId: string): Promise<SessionIdentity | undefined> {
+    const family = await this.family(familyId);
+    return family !== undefined && this.live(family) ? identityOf(family) : undefined;
   }
 
   /** Revoke a family (idempotent). */

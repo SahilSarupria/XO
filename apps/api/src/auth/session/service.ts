@@ -7,6 +7,8 @@ import { ChallengeCapReached, type FsChallengeStore } from './challenge-store.js
 import type { FsSessionStore, IssuedSession } from './session-store.js';
 import type { FsUnboundLog } from './unbound-log.js';
 import type { RateLimiter } from './rate-limiter.js';
+import type { SessionGate } from './gate.js';
+import { enforceGate } from './lifecycle.js';
 
 /**
  * The sign-in → XO-session protocol, independent of HTTP:
@@ -93,6 +95,8 @@ export class SessionAuthService {
       /** Operational signal for alerting. Carries counts only, never an identity. */
       readonly onSelfSignupEvent?: (event: SelfSignupEvent) => void;
       readonly now?: () => number;
+      /** Method-specific liveness check for sessions (password sessions). Absent = none beyond the binding check. */
+      readonly gate?: SessionGate;
       /** Absent unless the operator configured the OAuth client secret. */
       readonly codeExchanger?: CodeExchanger;
     },
@@ -224,6 +228,7 @@ export class SessionAuthService {
       await this.deps.sessions.revoke(rotated.session.familyId, 'binding-revoked');
       throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
     }
+    if (this.deps.gate !== undefined) await enforceGate(this.deps.gate, this.deps.sessions, rotated.session);
     return toResponse(rotated.issued);
   }
 

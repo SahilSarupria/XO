@@ -43,6 +43,22 @@ export function isAuditEventType(value: unknown): value is AuditEventType {
   return typeof value === 'string' && (AUDIT_EVENTS as readonly string[]).includes(value);
 }
 
+/** Events written to the ACCOUNT-level auth log (`auth/password/auth-log.ts`), never to a workspace log. */
+export const AUTH_EVENTS = [
+  'auth.account.created',
+  'auth.account.disabled',
+  'auth.account.enabled',
+  'auth.password.login_succeeded',
+  'auth.password.login_failed',
+  'auth.password.throttled',
+  'auth.password.setup_token_issued',
+  'auth.password.reset_token_issued',
+  'auth.password.set',
+  'auth.password.changed',
+  'auth.password.token_rejected',
+] as const;
+export type AuthEventType = (typeof AUTH_EVENTS)[number];
+
 export const AUDIT_RESULTS = ['succeeded', 'failed', 'denied', 'escalated', 'approved', 'rejected'] as const;
 export type AuditResult = (typeof AUDIT_RESULTS)[number];
 
@@ -67,7 +83,7 @@ export interface AuditTarget {
 
 /** What a caller supplies. Everything else (`seq`, time, hashes) is assigned by the log. */
 export interface AuditEventInput {
-  readonly event: AuditEventType;
+  readonly event: AuditEventType | AuthEventType;
   readonly actor: AuditActor;
   readonly target?: AuditTarget;
   readonly result: AuditResult;

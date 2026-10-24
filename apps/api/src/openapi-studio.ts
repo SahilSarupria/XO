@@ -577,3 +577,74 @@ export const studioPaths = {
     },
   },
 } as const;
+
+/**
+ * Password sign-in routes. They exist ONLY when the operator sets `XO_API_PASSWORD_AUTH=1`; with it unset they are 404
+ * like any unknown path. There is deliberately no registration route and no "forgot password" route: accounts and
+ * recovery codes are issued by an operator with `scripts/manage-password-accounts.ts`. See docs/studio/PASSWORD_AUTH_DESIGN.md.
+ */
+const sessionResponse = obj({ accessCredential: str, accessExpiresAt: ts, refreshCredential: str, refreshExpiresAt: ts }, [
+  'accessCredential',
+  'refreshCredential',
+]);
+const R_429_AUTH = ok('Too many attempts. The response is identical whether or not the login name exists.');
+
+export const passwordAuthPaths = {
+  '/auth/password/login': {
+    post: {
+      summary: 'Sign in with a login name and password',
+      description:
+        'Present only when password sign-in is enabled. Every failure is the same 401 with the same body: unknown login name, wrong password, disabled account, account with no password yet, no active binding, over-long password. An unknown name costs the same work as a wrong password. Repeated failures are throttled per login name and source, per login name overall (a delay, never a lockout), and globally against credential stuffing; the correct password is not even checked while a wait is in force. The principal comes only from the operator-written binding, never from this request. The password is never logged or stored; only an Argon2id hash is.',
+      security: [],
+      requestBody: body(
+        obj({ loginName: str, password: { type: 'string', format: 'password', maxLength: 128 } }, ['loginName', 'password']),
+      ),
+      responses: {
+        '201': ok('A session (same shape and lifetime as Google sign-in)', sessionResponse),
+        '400': R_400,
+        '401': ok('login name or password is not correct'),
+        '429': R_429_AUTH,
+        '503': ok('Sign-in is busy (hashing queue full) or its stores are unavailable; nothing was decided'),
+      },
+    },
+  },
+  '/auth/password/setup': {
+    post: {
+      summary: 'Set a password with a single-use setup or reset code',
+      description:
+        'Present only when password sign-in is enabled. The code comes from an operator out of band (there is no email delivery and no self-service recovery). It is single-use, expires (setup 24 h, reset 30 min), is superseded by a newer code for the same account, and is invalidated by any password change. Unknown, used, expired, superseded and mismatched codes are indistinguishable (401). A password that breaks the policy is refused (400) WITHOUT spending the code. Redeeming ends every existing session of the account. No session is issued: sign in afterwards.',
+      security: [],
+      requestBody: body(
+        obj({ token: str, newPassword: { type: 'string', format: 'password', minLength: 12, maxLength: 128 } }, ['token', 'newPassword']),
+      ),
+      responses: {
+        '200': ok('{ passwordSet: true }'),
+        '400': ok('The password breaks the policy (the message names the rule, never the password)'),
+        '401': ok('this code is not valid or has expired'),
+        '429': R_429_AUTH,
+      },
+    },
+  },
+  '/auth/password/change': {
+    post: {
+      summary: 'Change your own password (from a password session)',
+      description:
+        "Present only when password sign-in is enabled. Requires the CURRENT password even though the caller holds a valid session. Every session of the account — including the caller's — ends, and a fresh session is returned so the caller stays signed in on this device. Not available to API keys, OIDC bearers or Google sessions (400).",
+      requestBody: body(
+        obj(
+          {
+            currentPassword: { type: 'string', format: 'password' },
+            newPassword: { type: 'string', format: 'password', minLength: 12, maxLength: 128 },
+          },
+          ['currentPassword', 'newPassword'],
+        ),
+      ),
+      responses: {
+        '200': ok('A fresh session', sessionResponse),
+        '400': ok('Policy violation, same as the current password, or not a password session'),
+        '401': ok('Not signed in, or the current password is not correct'),
+        '429': R_429_AUTH,
+      },
+    },
+  },
+} as const;

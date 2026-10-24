@@ -7,6 +7,8 @@ import { looksLikeJwt, type AccessTokenVerifier } from '../auth/oidc/verifier.js
 import type { IdentityBindingStore } from '../auth/oidc/binding-store.interface.js';
 import { ACCESS_PREFIX, type FsSessionStore } from '../auth/session/session-store.js';
 import { SESSION_PUBLIC_PATHS } from '../auth/session/paths.js';
+import type { SessionGate } from '../auth/session/gate.js';
+import { enforceGate } from '../auth/session/lifecycle.js';
 import type { ApiRequest, Middleware } from './types.js';
 
 /**
@@ -63,6 +65,8 @@ export interface OidcAuthDeps {
 export interface SessionAuthDeps {
   readonly store: FsSessionStore;
   readonly bindings: IdentityBindingStore;
+  /** Method-specific liveness check run after the binding check on every request (password sessions). */
+  readonly gate?: SessionGate;
 }
 
 export interface AuthDeps {
@@ -71,6 +75,8 @@ export interface AuthDeps {
   readonly sessions?: SessionAuthDeps;
   /** Absent => OIDC acceptance is off (the fail-closed default). */
   readonly oidc?: OidcAuthDeps;
+  /** Extra unauthenticated paths, present only when a feature that registers them is enabled (so a disabled feature leaves the exempt set — and every response — unchanged). */
+  readonly extraPublicPaths?: readonly string[];
 }
 
 async function authenticateApiKey(req: ApiRequest, token: string, store: ApiKeyStore, hasher: Sha256Hasher): Promise<void> {
@@ -161,6 +167,9 @@ async function authenticateSession(req: ApiRequest, token: string, sessions: Ses
   });
   if (!principal.ok) throw new AuthError(ErrorCode.AUTH_IDENTITY_UNBOUND, UNBOUND_MESSAGE);
 
+  // Method-specific liveness (e.g. a password session whose password changed or whose account was disabled).
+  if (sessions.gate !== undefined) await enforceGate(sessions.gate, sessions.store, result.session);
+
   req.principal = principal.value;
   req.identity = { identityId: binding.identityId };
   req.authentication = { credential: 'session', issuer: result.session.issuer };
@@ -170,9 +179,10 @@ async function authenticateSession(req: ApiRequest, token: string, sessions: Ses
 /** Builds the auth `Middleware`. Not a singleton: stores are constructed from config or injected by tests. */
 export function createAuthMiddleware(deps: AuthDeps): Middleware {
   const hasher = new Sha256Hasher();
+  const exempt = deps.extraPublicPaths === undefined ? EXEMPT_PATHS : new Set([...EXEMPT_PATHS, ...deps.extraPublicPaths]);
 
   return async (req, next) => {
-    if (EXEMPT_PATHS.has(req.path)) return next();
+    if (exempt.has(req.path)) return next();
 
     const token = extractBearerToken(req);
     if (token === undefined || token.length === 0) {
