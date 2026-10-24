@@ -2009,9 +2009,11 @@ details summary {
   .app[data-collapsed='true'] {
     grid-template-columns: 4.5rem minmax(0, 1fr);
   }
+  /* The icon rail and its hover-expanded panel must sit above the global Ask XO bar (z 30, floating 45) so the bar never
+     covers the expanded items. Stay below the full-screen chat layer and the command palette (z 50) and the workspace menu (z 60). */
   .app[data-collapsed='true'] .sidebar {
     width: 4.5rem;
-    z-index: 20;
+    z-index: 48;
     overflow-x: hidden;
     transition: width 200ms cubic-bezier(0.2, 0, 0, 1), box-shadow 200ms;
   }
