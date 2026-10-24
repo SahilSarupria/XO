@@ -9,7 +9,12 @@ import type { ApiRequest, ApiResponse } from '../../http/types.js';
 import { json } from '../../http/types.js';
 import { errorToResponse, knownStatusCodes } from '../../http/error-mapping.js';
 import { resolveProvider } from './provider-factory.js';
-import { requireOwnedWorkspace, workspacePackagesStore, type WorkspaceDataConfig } from '../../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  requirePermission,
+  workspacePackagesStore,
+  type WorkspaceDataConfig,
+} from '../../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../../workspace/workspace.js';
 import { registerMovedStub } from '../moved-stub.js';
 
@@ -146,6 +151,8 @@ export function registerRuntimeRoutes(router: Router, workspaceStore: WorkspaceS
   async function execute(req: ApiRequest): Promise<ApiResponse> {
     // Ownership first (uniform 404 for a foreign/unknown workspace is preserved).
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    // Workspace role gate, ahead of the disabled switch: whoever re-enables this route inherits a role check instead of an open door.
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'run model-backed execution' });
 
     // P1.0 M1 — AI execution is DISABLED. This route constructs
     // `ExecutionEngine` with no `permissionGate` (allow-all), so a caller

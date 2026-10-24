@@ -186,11 +186,12 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   }
 
   async function recordBenchmark(req: ApiRequest): Promise<ApiResponse> {
+    // The role check comes first: a caller without it learns nothing from how their request body is validated.
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'record benchmark');
     const id = req.params['id'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing package id');
     const body = unwrapOrThrow(await req.json<RecordBenchmarkBody>());
     const input = parseRecordBenchmarkBody(id, body);
-    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'record benchmark');
     const run = unwrapOrThrow(await c.recordBenchmark(input));
     return json(201, run);
   }
@@ -212,9 +213,9 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   }
 
   async function createLicense(req: ApiRequest): Promise<ApiResponse> {
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'create license');
     const body = unwrapOrThrow(await req.json<CreateLicenseBody>());
     const input = parseCreateLicenseBody(body);
-    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'create license');
     const license = unwrapOrThrow(await c.createLicense(input));
     return json(201, license);
   }
