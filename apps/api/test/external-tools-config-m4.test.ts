@@ -12,7 +12,11 @@ import { createConfiguredExternalToolWiring } from '../src/external-tools-host.j
 // The shipped entrypoint enables no adapters; an embedding host that supplies adapters builds its wiring through this helper.
 
 const SCHEMA: CapabilityInputSchema = { type: 'object', properties: {}, required: [] };
-const adapter: ExternalToolAdapter = { id: 'a', invoke: async () => ({ kind: 'confirmed_success', output: 1 }) };
+const adapter: ExternalToolAdapter = {
+  id: 'a',
+  approvalMode: 'definition',
+  invoke: async () => ({ kind: 'confirmed_success', output: 1 }),
+};
 const options = { adapters: new Map([['cap', adapter]]), inputSchemas: new Map([['cap', SCHEMA]]) };
 
 test('config: XO_EXTERNAL_EFFECTS_DIR has no default; unset/blank means not configured; control characters abort', () => {

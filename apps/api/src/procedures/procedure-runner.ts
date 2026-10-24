@@ -91,6 +91,8 @@ export interface ProcedureRunnerContext {
 export const EFFECT_OUTCOME_UNKNOWN_CODE = 'XO_EXTERNAL_EFFECT_OUTCOME_UNKNOWN';
 export const EFFECT_CONFIRMED_FAILURE_CODE = 'XO_EXTERNAL_EFFECT_CONFIRMED_FAILURE_NO_EFFECT';
 /** Nothing was dispatched: a prior attempt confirmed no effect, and a new attempt needs a human approval granted after that. */
+/** Nothing was dispatched: a payload-mode step waits for a human's approval of its exact input (the execution pauses, it does not fail). */
+export const EFFECT_PAYLOAD_APPROVAL_REQUIRED_CODE = 'XO_EXTERNAL_EFFECT_PAYLOAD_APPROVAL_REQUIRED';
 export const EFFECT_FRESH_APPROVAL_REQUIRED_CODE = 'XO_EXTERNAL_EFFECT_FRESH_APPROVAL_REQUIRED';
 
 const enc = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -520,6 +522,25 @@ async function runStep(
       if (outcome.effectState === 'outcome_unknown') {
         return fail('capability_error', EFFECT_OUTCOME_UNKNOWN_CODE, executionId, outcome.errorMessage);
       }
+      if (outcome.payloadApprovalRequired === true) {
+        // PAUSE, not fail: the step waits for a human to approve this exact input for THIS execution and step. Nothing was claimed or
+        // dispatched. The per-step capability record is closed (its input stays readable to the approver); `continue` runs the step again.
+        await ctx.executionStore.complete(executionId, {
+          status: 'failed',
+          errorCode: EFFECT_PAYLOAD_APPROVAL_REQUIRED_CODE,
+          errorMessage: outcome.errorMessage,
+        });
+        await holder.update((r) => ({
+          ...r,
+          status: 'waiting_for_human',
+          waitingStepId: step.id,
+          steps: replaceStep(r.steps, step.id, { status: 'waiting_for_human', executionId, waitingReason: 'payload_approval' }),
+        }));
+        await emit(ctx, holder.current, 'procedure.execution.waiting_for_human', 'allowed', {
+          metadata: { stepId: step.id, reason: 'payload_approval' },
+        });
+        return { kind: 'waiting' };
+      }
       if (outcome.freshApprovalRequired === true) {
         return fail('capability_error', EFFECT_FRESH_APPROVAL_REQUIRED_CODE, executionId, outcome.errorMessage);
       }
@@ -731,6 +752,12 @@ export async function resumeProcedureExecution(
     }
     const waiting = record.steps.find((s) => s.stepId === record.waitingStepId);
     if (waiting?.executionId === undefined) throw new ProcedureConflictError('the waiting step records no human task', 'not_waiting');
+    if (waiting.waitingReason === 'payload_approval') {
+      throw new ProcedureConflictError(
+        'the waiting step awaits a payload approval, not a human task; use the external-effect payload-approval and continue routes',
+        'not_waiting',
+      );
+    }
     if (request.expectedStepExecutionId !== undefined && request.expectedStepExecutionId !== waiting.executionId) {
       throw new ProcedureConflictError(
         '"expectedStepExecutionId" does not match the pending human task; the decision was NOT applied',
@@ -808,6 +835,55 @@ export async function resumeProcedureExecution(
       exec.status === 'rejected' ? 'XO_PROCEDURE_HUMAN_REJECTED' : (exec.errorCode ?? ErrorCode.HITL_RESUME_UNSUPPORTED),
       waiting.stepId,
     );
+    return holder.current;
+  });
+}
+
+/**
+ * Continues a procedure execution that paused because a payload-mode external step needs a human's approval of its exact input. It runs
+ * the SAME step again under the CALLER's own authorization (per-step authorization, registry/approval freshness, schema validation all
+ * re-run), with the same server-derived dispatch key. The payload approval is checked and consumed atomically by the dispatcher; if it is
+ * still missing, mismatched or spent, the step simply pauses again and nothing is dispatched. Never grants or implies an approval.
+ */
+export async function continueAfterPayloadApproval(
+  ctx: ProcedureRunnerContext,
+  procedureExecutionId: string,
+  stepId: string,
+): Promise<ProcedureExecutionRecord> {
+  return withExecutionLock(procedureExecutionId, async () => {
+    const found = await ctx.records.get(procedureExecutionId);
+    if (!found.ok) throw found.error;
+    const record = found.value;
+    const waiting = record.steps.find((s) => s.stepId === stepId);
+    if (record.status !== 'waiting_for_human' || record.waitingStepId !== stepId || waiting?.waitingReason !== 'payload_approval') {
+      throw new ProcedureConflictError('the procedure execution is not waiting for a payload approval on this step', 'not_waiting');
+    }
+    const version = await ctx.procedures.getVersion(record.procedureId, record.version);
+    if (!version.ok) throw version.error;
+    if (version.value.kind !== 'ok' || version.value.record.procedureHash !== record.procedureHash) {
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        'the stored procedure no longer matches the one this execution started with; nothing was continued',
+      );
+    }
+    const approvalLookup = await ctx.procedures.getApproval(record.procedureId, record.version);
+    if (!approvalLookup.ok) throw approvalLookup.error;
+    if (approvalLookup.value.kind !== 'ok') {
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        `the procedure approval record is ${approvalLookup.value.kind === 'none' ? 'missing' : 'unreadable'}; nothing was continued`,
+      );
+    }
+    const holder = new Holder(ctx.records, record);
+    await holder.update((r) => ({
+      ...withoutKey(r, 'waitingStepId'),
+      status: 'running',
+      steps: r.steps.map((s) =>
+        s.stepId === stepId ? (withoutKey({ ...s, status: 'pending' as const }, 'waitingReason') as ProcedureStepState) : s,
+      ),
+    }));
+    await emit(ctx, holder.current, 'procedure.execution.resumed', 'started', { metadata: { stepId, reason: 'payload_approval' } });
+    await drive(ctx, holder, version.value.record.definition, approvalLookup.value.record, stepId);
     return holder.current;
   });
 }

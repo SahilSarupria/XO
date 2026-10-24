@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Permissions, RuleBasedPolicy, type PolicyRule } from '@xo/permissions';
 import { NonProductionAuditSink } from '@xo/audit';
 import type { CapabilityInputSchema } from '@xo/types';
-import { ExternalToolDispatcher, InMemoryDispatchLedger } from '@xo/adapters';
+import { ExternalToolDispatcher, InMemoryDispatchLedger, InMemoryPayloadApprovalStore } from '@xo/adapters';
 import { createExternalToolWiring, type ExternalToolWiring } from '@xo/runtime';
 import { TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, storeFixtureCompilation } from './workflow-fixtures.js';
@@ -53,9 +53,19 @@ function wiringFor(
   ledger: InMemoryDispatchLedger,
   schema: CapabilityInputSchema = SCHEMA,
   securityConfig?: Readonly<Record<string, unknown>>,
+  approvalMode: 'definition' | 'payload' = 'definition',
 ): ExternalToolWiring {
   const dispatcher = new ExternalToolDispatcher({
-    adapters: new Map([[EXT, { ...createReferenceAdapter(service), ...(securityConfig !== undefined ? { securityConfig } : {}) }]]),
+    adapters: new Map([
+      [
+        EXT,
+        {
+          ...createReferenceAdapter(service, 'reference-service', approvalMode),
+          ...(securityConfig !== undefined ? { securityConfig } : {}),
+        },
+      ],
+    ]),
+    payloadApprovals: new InMemoryPayloadApprovalStore(),
     ledger,
     unsafeAllowVolatileLedger: true,
   });
@@ -237,6 +247,7 @@ test('M4 e2e: without the explicit adapter configuration an external step can be
 interface AdapterConfig {
   readonly schema: CapabilityInputSchema;
   readonly securityConfig?: Readonly<Record<string, unknown>>;
+  readonly approvalMode?: 'definition' | 'payload';
 }
 
 /** Approves a procedure under configuration `a`, then starts an execution on a server wired with configuration `b` (same data directories). */
@@ -251,7 +262,7 @@ async function approveUnderThenRunUnder(a: AdapterConfig, b: AdapterConfig): Pro
           workspacesDir,
           auditSink: new NonProductionAuditSink(),
           permissionPolicy: new RuleBasedPolicy([...RULES]),
-          externalTools: wiringFor(service, ledger, c.schema, c.securityConfig),
+          externalTools: wiringFor(service, ledger, c.schema, c.securityConfig, c.approvalMode),
         });
       const first = await boot(a);
       let env: Env;
@@ -322,4 +333,15 @@ test('M4 e2e: an equivalent configuration (same values, different key order) kee
   const r = await approveUnderThenRunUnder({ schema: SCHEMA, securityConfig: CONFIG }, { schema: SCHEMA, securityConfig: reordered });
   assert.ok(r.status === 200 || r.status === 201, r.body);
   assert.equal(r.requests, 1);
+});
+
+test('M4 e2e: the approval mode is part of what is approved — switching an adapter from definition to payload (or back) makes the approval stale; nothing dispatched', async () => {
+  for (const [from, to] of [
+    ['definition', 'payload'],
+    ['payload', 'definition'],
+  ] as const) {
+    const r = await approveUnderThenRunUnder({ schema: SCHEMA, approvalMode: from }, { schema: SCHEMA, approvalMode: to });
+    assert.equal(r.status, 403, `${from} -> ${to}: ${r.body}`);
+    assert.equal(r.requests, 0);
+  }
 });

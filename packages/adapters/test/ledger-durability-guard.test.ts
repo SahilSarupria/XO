@@ -14,7 +14,11 @@ import {
 
 // P1.1 M4 — a dispatcher can never be built over non-durable evidence by accident.
 
-const adapter: ExternalToolAdapter = { id: 'a', invoke: async () => ({ kind: 'confirmed_success', output: 1 }) };
+const adapter: ExternalToolAdapter = {
+  id: 'a',
+  approvalMode: 'definition',
+  invoke: async () => ({ kind: 'confirmed_success', output: 1 }),
+};
 const adapters = new Map([['cap', adapter]]);
 
 test('an in-memory ledger is refused without the explicit opt-in, and nothing can be dispatched through it', () => {

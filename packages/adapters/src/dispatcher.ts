@@ -1,4 +1,6 @@
 import { CanonicalizationError, canonicalJson, sha256Hex } from './canonical.js';
+import { MAX_ACTION_SUMMARY } from './payload-approval.js';
+import type { PayloadApprovalConsumption, PayloadApprovalGrant, PayloadApprovalStore } from './payload-approval.js';
 import { reconcileDispatch, type ReconcileOutcome, type ReconcileRequest } from './reconciliation.js';
 import type {
   AdapterInvokeResult,
@@ -7,6 +9,7 @@ import type {
   DispatchLedger,
   ExternalEffectState,
   ExternalToolAdapter,
+  ApprovalMode,
 } from './contract.js';
 
 /**
@@ -35,6 +38,13 @@ export type DispatchOutcome =
       readonly previousDispatchKey: string;
       readonly reason: string;
     }
+  | {
+      /** Payload mode: no valid, unused approval of this exact action exists for this dispatch. Nothing was claimed or dispatched. */
+      readonly kind: 'payload_approval_required';
+      readonly dispatched: false;
+      readonly actionDigest: string;
+      readonly reason: string;
+    }
   | { readonly kind: 'confirmed_success'; readonly dispatched: true; readonly adapterId: string; readonly output: unknown }
   | {
       readonly kind: 'confirmed_failure_no_effect';
@@ -55,6 +65,11 @@ export interface ExternalToolDispatcherOptions {
    * allow a blind redispatch. Never set it for a consequential adapter (the API server additionally refuses it when NODE_ENV=production).
    */
   readonly unsafeAllowVolatileLedger?: boolean;
+  /**
+   * Required when ANY configured adapter declares `approvalMode: 'payload'` (construction throws otherwise). Must be durable unless
+   * `unsafeAllowVolatileLedger` (tests/local only).
+   */
+  readonly payloadApprovals?: PayloadApprovalStore;
   /** Injectable clock for the freshness rule (tests). Defaults to the host clock. */
   readonly now?: () => Date;
 }
@@ -86,6 +101,7 @@ export class ExternalToolDispatcher {
   private readonly adapters: ReadonlyMap<string, ExternalToolAdapter>;
   private readonly ledger: DispatchLedger;
   private readonly now: () => Date;
+  private readonly payloadApprovals: PayloadApprovalStore | undefined;
 
   constructor(options: ExternalToolDispatcherOptions) {
     if (options.ledger.durability !== 'durable' && options.unsafeAllowVolatileLedger !== true) {
@@ -94,7 +110,16 @@ export class ExternalToolDispatcher {
       );
     }
     this.adapters = new Map(options.adapters);
+    this.payloadApprovals = options.payloadApprovals;
+    let needsPayloadStore = false;
     for (const [capabilityId, adapter] of this.adapters) {
+      // The approval mode is REQUIRED and has no default: a missing or unknown value is a configuration error, never "definition".
+      if ((adapter.approvalMode as unknown) !== 'definition' && (adapter.approvalMode as unknown) !== 'payload') {
+        throw new Error(
+          `adapter "${adapter.id}" for "${capabilityId}" must declare approvalMode 'definition' or 'payload'; none was valid`,
+        );
+      }
+      if (adapter.approvalMode === 'payload') needsPayloadStore = true;
       try {
         adapterConfigDigest(adapter);
       } catch (cause) {
@@ -105,6 +130,13 @@ export class ExternalToolDispatcher {
     }
     this.ledger = options.ledger;
     this.now = options.now ?? (() => new Date());
+    if (needsPayloadStore) {
+      const store = options.payloadApprovals;
+      if (store === undefined) throw new Error('an adapter declares approvalMode "payload" but no payloadApprovals store was configured');
+      if (store.durability !== 'durable' && options.unsafeAllowVolatileLedger !== true) {
+        throw new Error('payload approvals require a durable PayloadApprovalStore (or the explicit unsafeAllowVolatileLedger test opt-in)');
+      }
+    }
   }
 
   /** `'durable'` only when the ledger says so; anything else (including an unlabelled ledger) is `'volatile'`. */
@@ -130,6 +162,134 @@ export class ExternalToolDispatcher {
   /** The full, ordered evidence for one dispatch key (empty if none). Throws if the ledger is unreadable or corrupt. */
   async evidenceFor(dispatchKey: string): Promise<readonly DispatchEvidence[]> {
     return this.ledger.read(dispatchKey);
+  }
+
+  /** The host-declared approval mode of a configured capability's adapter, or `undefined` when none is configured. */
+  approvalModeFor(capabilityId: string): ApprovalMode | undefined {
+    return this.adapters.get(capabilityId)?.approvalMode;
+  }
+
+  /**
+   * The exact action `input` would dispatch, as identities plus the human-readable summary shown to a payload approver. Throws
+   * `CanonicalizationError` for an input that cannot be canonicalized; `undefined` when no adapter is configured.
+   */
+  previewAction(
+    capabilityId: string,
+    input: unknown,
+  ):
+    | {
+        readonly adapterId: string;
+        readonly approvalMode: ApprovalMode;
+        readonly inputFingerprint: string;
+        readonly actionDigest: string;
+        readonly actionSummary: string;
+      }
+    | undefined {
+    const adapter = this.adapters.get(capabilityId);
+    if (adapter === undefined) return undefined;
+    const inputFingerprint = fingerprintOf(input);
+    const actionDigest = actionDigestOf(capabilityId, adapter, inputFingerprint);
+    return {
+      adapterId: adapter.id,
+      approvalMode: adapter.approvalMode,
+      inputFingerprint,
+      actionDigest,
+      actionSummary: summaryFor(adapter, capabilityId, input, actionDigest),
+    };
+  }
+
+  /**
+   * Records a human's payload approval for ONE dispatch key. The caller (the API) has already authenticated the human and checked the
+   * dedicated permission. Refused unless: the capability is payload-mode; the approver supplied the digest AND the summary the server
+   * computed for the actual input (so they approved what was shown); and the key has no dispatch evidence yet (an approval can never
+   * unblock, re-open or follow an existing dispatch). Never dispatches.
+   */
+  async grantPayloadApproval(request: {
+    readonly dispatchKey: string;
+    readonly capabilityId: string;
+    readonly input: unknown;
+    readonly expectedActionDigest: string;
+    readonly expectedActionSummary: string;
+    readonly approver: { readonly kind: 'human'; readonly id: string };
+    readonly auditCorrelationId?: string;
+  }): Promise<
+    | { readonly kind: 'granted'; readonly grant: PayloadApprovalGrant }
+    | {
+        readonly kind: 'refused';
+        readonly reason:
+          | 'not_configured'
+          | 'not_payload_mode'
+          | 'invalid_request'
+          | 'digest_mismatch'
+          | 'summary_mismatch'
+          | 'already_dispatched'
+          | 'store_unavailable';
+        readonly message: string;
+      }
+  > {
+    const adapter = this.adapters.get(request.capabilityId);
+    if (adapter === undefined)
+      return { kind: 'refused', reason: 'not_configured', message: 'no adapter is configured for this capability' };
+    if (adapter.approvalMode !== 'payload' || this.payloadApprovals === undefined) {
+      return { kind: 'refused', reason: 'not_payload_mode', message: 'this adapter does not use payload-level approval' };
+    }
+    if (typeof request.dispatchKey !== 'string' || request.dispatchKey.length === 0) {
+      return { kind: 'refused', reason: 'invalid_request', message: 'a dispatch key is required' };
+    }
+    let preview: ReturnType<ExternalToolDispatcher['previewAction']>;
+    try {
+      preview = this.previewAction(request.capabilityId, request.input);
+    } catch {
+      return { kind: 'refused', reason: 'invalid_request', message: 'the input cannot be canonicalized' };
+    }
+    if (preview === undefined)
+      return { kind: 'refused', reason: 'not_configured', message: 'no adapter is configured for this capability' };
+    if (request.expectedActionDigest !== preview.actionDigest) {
+      return {
+        kind: 'refused',
+        reason: 'digest_mismatch',
+        message: 'the supplied digest is not the digest of the actual input; nothing was approved',
+      };
+    }
+    if (request.expectedActionSummary !== preview.actionSummary) {
+      return {
+        kind: 'refused',
+        reason: 'summary_mismatch',
+        message: 'the supplied action summary is not the one shown for the actual input; nothing was approved',
+      };
+    }
+    try {
+      if ((await this.ledger.read(request.dispatchKey)).length > 0) {
+        return {
+          kind: 'refused',
+          reason: 'already_dispatched',
+          message: 'this dispatch already has evidence; an approval cannot change or follow it',
+        };
+      }
+      const grant = await this.payloadApprovals.grant({
+        dispatchKey: request.dispatchKey,
+        capabilityId: request.capabilityId,
+        adapterId: adapter.id,
+        actionDigest: preview.actionDigest,
+        actionSummary: preview.actionSummary,
+        approver: request.approver,
+        ...(request.auditCorrelationId !== undefined ? { auditCorrelationId: request.auditCorrelationId } : {}),
+      });
+      return { kind: 'granted', grant };
+    } catch (cause) {
+      return { kind: 'refused', reason: 'store_unavailable', message: `the approval could not be recorded: ${describe(cause)}` };
+    }
+  }
+
+  /** Grants for one dispatch key with their use (read-only). Throws if the store is unreadable or corrupt. */
+  async payloadApprovalsFor(
+    dispatchKey: string,
+  ): Promise<readonly { readonly grant: PayloadApprovalGrant; readonly consumption: PayloadApprovalConsumption | undefined }[]> {
+    const store = this.payloadApprovals;
+    if (store === undefined) return [];
+    const out = [];
+    for (const grant of await store.grantsFor(dispatchKey)) out.push({ grant, consumption: await store.consumptionOf(grant.approvalId) });
+    return out;
   }
 
   /** Records an authorized reconciliation decision. Never invokes an adapter and never redispatches. See `reconciliation.ts`. */
@@ -169,6 +329,7 @@ export class ExternalToolDispatcher {
     // further dispatch to it until it is reconciled through `reconcile` (an authorized, recorded decision). There is no automatic recovery.
     let unsettled: string | undefined;
     let follows: DispatchEvidence['follows'];
+    let floor: { readonly previousKey: string; readonly settledAt: number | undefined } | undefined;
     try {
       const lastByKey = new Map<string, DispatchEvidence>();
       for (const e of await this.ledger.readByCapability(capabilityId)) lastByKey.set(e.dispatchKey, e);
@@ -201,24 +362,7 @@ export class ExternalToolDispatcher {
         const otherAt = newestOther === undefined ? undefined : parseInstant(newestOther.recordedAt);
         const noEffectAt = parseInstant(newestNoEffect.recordedAt);
         const supersededBySuccess = otherAt !== undefined && noEffectAt !== undefined && otherAt > noEffectAt;
-        if (!supersededBySuccess) {
-          // Freshness needs two unambiguous instants on ONE clock: the settlement (ledger clock) and the approval (approval store clock).
-          // Both must parse strictly, neither may lie in the future of this host's clock (a skewed or tampered stamp could make a stale
-          // approval look fresh forever, or a settlement look old), and the approval must be strictly later. Otherwise: refuse.
-          const settledAt = parseInstant(newestNoEffect.recordedAt);
-          const approvedAt = parseInstant(context.approvedAt);
-          const nowMs = this.now().getTime();
-          const usable = settledAt !== undefined && approvedAt !== undefined && settledAt <= nowMs && approvedAt <= nowMs;
-          if (!usable || !(approvedAt > settledAt)) {
-            return {
-              kind: 'fresh_approval_required',
-              dispatched: false,
-              previousDispatchKey: newestNoEffect.dispatchKey,
-              reason: `capability "${capabilityId}" last settled as confirmed_failure_no_effect (${newestNoEffect.dispatchKey}); a new attempt requires a human approval granted after that settlement`,
-            };
-          }
-          follows = { dispatchKey: newestNoEffect.dispatchKey, outcome: 'confirmed_failure_no_effect' };
-        }
+        if (!supersededBySuccess) floor = { previousKey: newestNoEffect.dispatchKey, settledAt: noEffectAt };
       }
     } catch (cause) {
       return { kind: 'ledger_unavailable', dispatched: false, reason: `evidence ledger unreadable: ${describe(cause)}` };
@@ -233,6 +377,90 @@ export class ExternalToolDispatcher {
       };
     }
 
+    const actionDigest = actionDigestOf(capabilityId, adapter, inputFingerprint);
+
+    // Freshness needs two unambiguous instants on ONE clock: the settlement (ledger clock) and the approval (approval/grant clock). Both
+    // must parse strictly, neither may lie in the future of this host's clock (a skewed or forged stamp could make a stale approval look
+    // fresh forever, or a settlement look old), and the approval must be strictly later. Otherwise: refuse.
+    const isFresh = (approvedAtText: string | undefined): boolean => {
+      if (floor === undefined) return true;
+      const approvedAt = parseInstant(approvedAtText);
+      const nowMs = this.now().getTime();
+      return (
+        floor.settledAt !== undefined &&
+        approvedAt !== undefined &&
+        floor.settledAt <= nowMs &&
+        approvedAt <= nowMs &&
+        approvedAt > floor.settledAt
+      );
+    };
+
+    // PAYLOAD MODE (host-declared, never downgraded): dispatch needs a human approval of THIS exact action for THIS dispatch key — same
+    // canonical digest (so any input/config change invalidates it), unused, and (after a no-effect failure) granted after that settlement.
+    // It is checked only AFTER the key/capability blocks above, so an approval can never unblock an ambiguous or settled outcome. The
+    // approval is consumed atomically in the authoritative store BEFORE the claim; a consumed-but-unclaimed approval is spent (fail closed).
+    let effectiveApprovedAt = context.approvedAt;
+    let payloadApprovalId: string | undefined;
+    if (adapter.approvalMode === 'payload') {
+      const store = this.payloadApprovals;
+      if (store === undefined) {
+        return { kind: 'payload_approval_required', dispatched: false, actionDigest, reason: 'no payload approval store is configured' };
+      }
+      try {
+        const grants = await store.grantsFor(dispatchKey);
+        let chosen: PayloadApprovalGrant | undefined;
+        let sawDigest = false;
+        let sawUnused = false;
+        for (const g of grants.slice().reverse()) {
+          if (g.actionDigest !== actionDigest || g.capabilityId !== capabilityId || g.adapterId !== adapter.id) continue;
+          sawDigest = true;
+          if ((await store.consumptionOf(g.approvalId)) !== undefined) continue;
+          sawUnused = true;
+          if (!isFresh(g.grantedAt)) continue;
+          chosen = g;
+          break;
+        }
+        if (chosen === undefined) {
+          const why = !sawDigest
+            ? grants.length === 0
+              ? 'no payload approval exists for this dispatch'
+              : 'no payload approval matches this exact action (the input or adapter configuration differs from what was approved)'
+            : !sawUnused
+              ? 'the matching payload approval has already been used'
+              : 'the matching payload approval predates the last confirmed no-effect failure; a newer approval is required';
+          return { kind: 'payload_approval_required', dispatched: false, actionDigest, reason: why };
+        }
+        const used = await store.consume(chosen.approvalId, dispatchKey);
+        if (!used.consumed) {
+          return {
+            kind: 'payload_approval_required',
+            dispatched: false,
+            actionDigest,
+            reason: 'the payload approval was consumed by another caller',
+          };
+        }
+        effectiveApprovedAt = chosen.grantedAt;
+        payloadApprovalId = chosen.approvalId;
+      } catch (cause) {
+        return {
+          kind: 'ledger_unavailable',
+          dispatched: false,
+          reason: `payload approval store unavailable, so nothing was dispatched: ${describe(cause)}`,
+        };
+      }
+    }
+    if (floor !== undefined) {
+      if (!isFresh(effectiveApprovedAt)) {
+        return {
+          kind: 'fresh_approval_required',
+          dispatched: false,
+          previousDispatchKey: floor.previousKey,
+          reason: `capability "${capabilityId}" last settled as confirmed_failure_no_effect (${floor.previousKey}); a new attempt requires a human approval granted after that settlement`,
+        };
+      }
+      follows = { dispatchKey: floor.previousKey, outcome: 'confirmed_failure_no_effect' };
+    }
+
     // Write-ahead evidence. With an atomic `claim` exactly one concurrent caller wins the key; a loser has NOT dispatched and is blocked.
     const attempted = {
       dispatchKey,
@@ -240,7 +468,9 @@ export class ExternalToolDispatcher {
       adapterId: adapter.id,
       state: 'dispatch_attempted' as const,
       inputFingerprint,
-      actionDigest: actionDigestOf(capabilityId, adapter, inputFingerprint),
+      actionDigest,
+      approvalMode: adapter.approvalMode,
+      ...(payloadApprovalId !== undefined ? { payloadApprovalId } : {}),
       ...(context.auditCorrelationId !== undefined ? { auditCorrelationId: context.auditCorrelationId } : {}),
       ...(follows !== undefined ? { follows } : {}),
     };
@@ -375,7 +605,14 @@ export function fingerprintOf(input: unknown): string {
 
 /** Digest of an adapter's security-relevant configuration (`securityConfig`, absent = `{}`). Throws `CanonicalizationError` if it cannot be canonicalized. */
 export function adapterConfigDigest(adapter: ExternalToolAdapter): string {
-  return sha256Hex(canonicalJson({ schema: 'xo.adapter-config.v1', adapterId: adapter.id, config: adapter.securityConfig ?? {} }));
+  return sha256Hex(
+    canonicalJson({
+      schema: 'xo.adapter-config.v1',
+      adapterId: adapter.id,
+      config: adapter.securityConfig ?? {},
+      approvalMode: adapter.approvalMode,
+    }),
+  );
 }
 
 /** The exact action a dispatch key is claimed for: capability + adapter identity/config + input identity. No values are included. */
@@ -383,6 +620,21 @@ export function actionDigestOf(capabilityId: string, adapter: ExternalToolAdapte
   return sha256Hex(
     canonicalJson({ schema: 'xo.external-action.v1', capabilityId, config: adapterConfigDigest(adapter), inputFingerprint }),
   );
+}
+
+const CONTROL = /[\u0000-\u001f\u007f]/;
+/** Adapter-provided summary when valid, otherwise a generic, value-free one. A throwing/oversized/odd summarizer never blocks approval. */
+function summaryFor(adapter: ExternalToolAdapter, capabilityId: string, input: unknown, actionDigest: string): string {
+  try {
+    const text = adapter.summarize?.(Object.freeze({ ...(input as Record<string, unknown>) }));
+    if (typeof text === 'string') {
+      const t = text.trim();
+      if (t.length > 0 && t.length <= MAX_ACTION_SUMMARY && !CONTROL.test(t)) return t;
+    }
+  } catch {
+    /* fall through to the generic summary */
+  }
+  return `External action via adapter "${adapter.id}" for capability "${capabilityId}" (action digest ${actionDigest.slice(0, 12)})`;
 }
 
 function normalize(raw: unknown): AdapterInvokeResult {

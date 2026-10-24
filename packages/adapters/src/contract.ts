@@ -37,8 +37,27 @@ export type AdapterInvokeResult =
  * failure or ambiguity (timeouts, dropped connections, malformed replies) is
  * `outcome_unknown`, or a throw/rejection, which the dispatcher maps to it.
  */
+/**
+ * How an action through this adapter must be approved. DECLARED BY THE HOST per adapter (an interim policy source, owner-approved,
+ * until the unavailable O-2 effect-classification spec exists — it does not claim O-2 compliance). REQUIRED, with NO default: a missing or
+ * invalid value fails dispatcher construction. The runtime enforces it and never downgrades `payload` to `definition`.
+ *  - `definition`: the procedure/adapter/schema/security-config approval suffices; the host's policy explicitly permits variable inputs.
+ *  - `payload`: a human must approve the exact canonical input digest + action summary for the specific execution and step; dispatch needs
+ *    a matching, valid, unused approval (single use). For consequential or irreversible effects.
+ * The host owns the choice and its rationale (document it where the adapter is configured).
+ */
+export type ApprovalMode = 'definition' | 'payload';
+
 export interface ExternalToolAdapter {
   readonly id: string;
+  /** See {@link ApprovalMode}. Part of the adapter-config digest, so changing it invalidates earlier approvals. */
+  readonly approvalMode: ApprovalMode;
+  /**
+   * OPTIONAL human-readable summary of what this input would do, shown to the payload approver and stored with the approval. Host-controlled
+   * text: it may contain business values the approver needs to see (an amount, a recipient) and is kept out of audit/logs, but it is stored in
+   * the approval record — never include secrets. Absent or throwing/invalid => a generic summary (capability, adapter, digest prefix).
+   */
+  summarize?(input: Readonly<Record<string, unknown>>): string;
   /**
    * Every security-relevant, NON-SECRET configuration value of this adapter (endpoint/host, account or tenant id, region, scopes, mode…),
    * as plain JSON. It is hashed (canonically) into the approval digest, so changing any value makes an earlier approval stale. NEVER put a
@@ -95,6 +114,10 @@ export interface DispatchEvidence {
   readonly actionDigest?: string;
   /** Correlation id of the procedure-execution audit events for the run that made this dispatch (set on dispatch entries). */
   readonly auditCorrelationId?: string;
+  /** The adapter's host-declared approval mode at dispatch time (records that the host's policy permitted this path). */
+  readonly approvalMode?: ApprovalMode;
+  /** For a payload-mode dispatch: the (single-use) payload approval consumed for it. */
+  readonly payloadApprovalId?: string;
   /**
    * Present only on a `dispatch_attempted` entry that is a NEW ATTEMPT after an earlier dispatch to the same capability settled as
    * `confirmed_failure_no_effect`: names that earlier dispatch and its confirmed outcome. A reference for audit/recovery, not a link

@@ -11,7 +11,11 @@ import { createDurableExternalToolWiring, createExternalToolWiring } from '../sr
 // P1.1 M4 — the supported host construction path is durable by construction; an in-memory wiring is visibly volatile.
 
 const SCHEMA: CapabilityInputSchema = { type: 'object', properties: {}, required: [] };
-const adapter: ExternalToolAdapter = { id: 'a', invoke: async () => ({ kind: 'confirmed_success', output: 1 }) };
+const adapter: ExternalToolAdapter = {
+  id: 'a',
+  approvalMode: 'definition',
+  invoke: async () => ({ kind: 'confirmed_success', output: 1 }),
+};
 
 test('createDurableExternalToolWiring: durable, evidence lands in the supplied store and survives a rebuilt wiring (restart)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xo-rt-durable-'));

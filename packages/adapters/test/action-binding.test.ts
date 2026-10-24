@@ -24,6 +24,7 @@ import {
  */
 class Adapter implements ExternalToolAdapter {
   readonly calls: AdapterInvokeRequest[] = [];
+  readonly approvalMode = 'definition' as const;
   constructor(
     readonly id: string,
     readonly securityConfig?: Readonly<Record<string, unknown>>,

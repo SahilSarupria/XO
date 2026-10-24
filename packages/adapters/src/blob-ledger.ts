@@ -42,6 +42,8 @@ const ENTRY_KEYS: ReadonlySet<string> = new Set([
   'inputFingerprint',
   'actionDigest',
   'auditCorrelationId',
+  'approvalMode',
+  'payloadApprovalId',
   'reconciliation',
   'follows',
 ]);
@@ -83,6 +85,9 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
   if (raw['inputFingerprint'] !== undefined && typeof raw['inputFingerprint'] !== 'string') return bad('inputFingerprint');
   if (raw['actionDigest'] !== undefined && !isStr(raw['actionDigest'])) return bad('actionDigest');
   if (raw['auditCorrelationId'] !== undefined && !isStr(raw['auditCorrelationId'])) return bad('auditCorrelationId');
+  if (raw['approvalMode'] !== undefined && raw['approvalMode'] !== 'definition' && raw['approvalMode'] !== 'payload')
+    return bad('approvalMode');
+  if (raw['payloadApprovalId'] !== undefined && !isStr(raw['payloadApprovalId'])) return bad('payloadApprovalId');
   let reconciliation: ReconciliationRecord | undefined;
   if (raw['reconciliation'] !== undefined) {
     const r = raw['reconciliation'];
@@ -120,6 +125,8 @@ function parseEntry(raw: unknown, where: string): DispatchEvidence {
     ...(raw['inputFingerprint'] !== undefined ? { inputFingerprint: raw['inputFingerprint'] as string } : {}),
     ...(raw['actionDigest'] !== undefined ? { actionDigest: raw['actionDigest'] as string } : {}),
     ...(raw['auditCorrelationId'] !== undefined ? { auditCorrelationId: raw['auditCorrelationId'] as string } : {}),
+    ...(raw['approvalMode'] !== undefined ? { approvalMode: raw['approvalMode'] as 'definition' | 'payload' } : {}),
+    ...(raw['payloadApprovalId'] !== undefined ? { payloadApprovalId: raw['payloadApprovalId'] as string } : {}),
     ...(reconciliation !== undefined ? { reconciliation } : {}),
     ...(follows !== undefined ? { follows } : {}),
   });
@@ -154,6 +161,8 @@ export class BlobDispatchLedger implements DispatchLedger {
       ...(entry.inputFingerprint !== undefined ? { inputFingerprint: entry.inputFingerprint } : {}),
       ...(entry.actionDigest !== undefined ? { actionDigest: entry.actionDigest } : {}),
       ...(entry.auditCorrelationId !== undefined ? { auditCorrelationId: entry.auditCorrelationId } : {}),
+      ...(entry.approvalMode !== undefined ? { approvalMode: entry.approvalMode } : {}),
+      ...(entry.payloadApprovalId !== undefined ? { payloadApprovalId: entry.payloadApprovalId } : {}),
       ...(entry.reconciliation !== undefined ? { reconciliation: entry.reconciliation } : {}),
       ...(entry.follows !== undefined ? { follows: entry.follows } : {}),
     });

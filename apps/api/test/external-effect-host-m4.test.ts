@@ -16,7 +16,11 @@ import { PackageTrustPolicy } from '@xo/package-sdk';
 // The API entrypoint (src/index.ts) does not enable external tools at all: only an embedding host passes `externalTools`.
 
 const SCHEMA: CapabilityInputSchema = { type: 'object', properties: {}, required: [] };
-const adapter: ExternalToolAdapter = { id: 'a', invoke: async () => ({ kind: 'confirmed_success', output: 1 }) };
+const adapter: ExternalToolAdapter = {
+  id: 'a',
+  approvalMode: 'definition',
+  invoke: async () => ({ kind: 'confirmed_success', output: 1 }),
+};
 
 async function inProduction<T>(fn: () => T | Promise<T>): Promise<T> {
   const prior = process.env['NODE_ENV'];

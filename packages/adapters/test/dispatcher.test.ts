@@ -12,6 +12,7 @@ import {
 /** Local deterministic fake (this package's tests must not depend on @xo/testing, which depends on this package). */
 class Fake implements ExternalToolAdapter {
   readonly calls: AdapterInvokeRequest[] = [];
+  readonly approvalMode = 'definition' as const;
   constructor(
     readonly id: string,
     private readonly behave: (req: AdapterInvokeRequest) => Promise<unknown> | unknown,

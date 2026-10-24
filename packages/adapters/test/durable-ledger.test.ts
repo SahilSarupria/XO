@@ -25,6 +25,7 @@ const skewedClock = (): Date => new Date(Date.now() + 7_200_000);
 
 class Adapter implements ExternalToolAdapter {
   readonly calls: AdapterInvokeRequest[] = [];
+  readonly approvalMode = 'definition' as const;
   constructor(
     readonly id: string,
     private readonly behave: (req: AdapterInvokeRequest) => Promise<unknown> | unknown,

@@ -137,6 +137,12 @@ export const Permissions = {
    */
   effect: {
     reconcile: PermissionId('effect.reconcile'),
+    /**
+     * P1.1 M4 — granting PAYLOAD-LEVEL approval: a human approving ONE exact external action (canonical input digest + action summary) for
+     * one execution and step. Distinct from `procedure.approve` (approving a procedure) and from `effect.reconcile` (settling an outcome).
+     * Hyphens are legal in the action segment, so this reads like `ai.external-provider`.
+     */
+    payloadApprove: PermissionId('effect.payload-approve'),
   },
   audit: {
     read: PermissionId('audit.read'),

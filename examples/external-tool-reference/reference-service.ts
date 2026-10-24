@@ -42,9 +42,14 @@ export class ReferenceService {
 }
 
 /** Adapter over the reference service. Reports `confirmed_failure_no_effect` ONLY for the service's explicit rejection. */
-export function createReferenceAdapter(service: ReferenceService, id = 'reference-service'): ExternalToolAdapter {
+export function createReferenceAdapter(
+  service: ReferenceService,
+  id = 'reference-service',
+  approvalMode: 'definition' | 'payload' = 'definition',
+): ExternalToolAdapter {
   return {
     id,
+    approvalMode,
     async invoke(request: AdapterInvokeRequest): Promise<AdapterInvokeResult> {
       let reply: unknown;
       try {

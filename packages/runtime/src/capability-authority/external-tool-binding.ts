@@ -3,8 +3,15 @@ import type { CapabilityInputSchema } from '@xo/types';
 import { ErrorCode, RuntimeError } from '@xo/errors';
 import { validateCapabilityInput } from '@xo/capability-contract';
 import type { BindingOutcome, BindingResolver, CapabilityBinding, SemanticCapabilityContract } from '@xo/capability-contract';
-import { BlobDispatchLedger, ExternalToolDispatcher } from '@xo/adapters';
-import type { DispatchContext, DispatchEvidence, ExternalToolAdapter, ReconcileOutcome, ReconcileRequest } from '@xo/adapters';
+import { BlobDispatchLedger, BlobPayloadApprovalStore, ExternalToolDispatcher } from '@xo/adapters';
+import type {
+  ApprovalMode,
+  DispatchContext,
+  DispatchEvidence,
+  ExternalToolAdapter,
+  ReconcileOutcome,
+  ReconcileRequest,
+} from '@xo/adapters';
 import type { AtomicBlobStore } from '@xo/storage';
 import type { RuntimeCapabilityHandler } from './runtime-capability-declaration.js';
 
@@ -35,6 +42,8 @@ export class ExternalEffectError extends RuntimeError {
     readonly reconciliationRequired: boolean,
     /** True when nothing was dispatched because a new attempt after a confirmed no-effect failure needs a fresh human approval. */
     readonly freshApprovalRequired: boolean = false,
+    /** True when nothing was dispatched because payload-level approval (a human's approval of this exact input) is missing, mismatched or spent. */
+    readonly payloadApprovalRequired: boolean = false,
   ) {
     super(code, message);
   }
@@ -46,9 +55,14 @@ export interface ExternalToolWiring {
   /** Resolves ONLY contracts the host explicitly configured; `undefined` for every other contract. */
   readonly resolver: BindingResolver;
   /** What the host configured for a contract (adapter id + input schema), or `undefined` when not configured. Used to bind that configuration into approval state. */
-  describe(
-    contractId: string,
-  ): { readonly adapterId: string; readonly inputSchema: CapabilityInputSchema; readonly configDigest: string } | undefined;
+  describe(contractId: string):
+    | {
+        readonly adapterId: string;
+        readonly inputSchema: CapabilityInputSchema;
+        readonly configDigest: string;
+        readonly approvalMode: ApprovalMode;
+      }
+    | undefined;
   /** Builds the handler for one dispatch. `dispatchKey` is server-derived by the caller. */
   handlerFor(contract: SemanticCapabilityContract, dispatchKey: string, context?: DispatchContext): RuntimeCapabilityHandler;
   /** The ordered, durable evidence of one dispatch (empty if none). Rejects if the ledger is unreadable or corrupt. */
@@ -58,6 +72,12 @@ export interface ExternalToolWiring {
    * the actor and checked authority; this never invokes an adapter and never redispatches.
    */
   reconcile(request: ReconcileRequest): Promise<ReconcileOutcome>;
+  /** The exact action `input` would dispatch (digest + summary), for a payload approver. Throws `CanonicalizationError` on an unsupported input. */
+  previewAction: ExternalToolDispatcher['previewAction'];
+  /** Records a human's payload approval for one dispatch key (see `ExternalToolDispatcher.grantPayloadApproval`). Never dispatches. */
+  grantPayloadApproval: ExternalToolDispatcher['grantPayloadApproval'];
+  /** Payload approvals recorded for one dispatch key, with their use. */
+  payloadApprovalsFor: ExternalToolDispatcher['payloadApprovalsFor'];
 }
 
 export const EXTERNAL_TOOL_RESOLVER_NAME = 'ConfiguredExternalToolBindingResolver';
@@ -99,10 +119,13 @@ export function createExternalToolWiring(
       const configDigest = dispatcher.configDigestFor(contractId);
       return schema === undefined || adapterId === undefined || configDigest === undefined
         ? undefined
-        : { adapterId, inputSchema: schema, configDigest };
+        : { adapterId, inputSchema: schema, configDigest, approvalMode: dispatcher.approvalModeFor(contractId) as ApprovalMode };
     },
     evidenceFor: (dispatchKey) => dispatcher.evidenceFor(dispatchKey),
     reconcile: (request) => dispatcher.reconcile(request),
+    previewAction: (capabilityId, input) => dispatcher.previewAction(capabilityId, input),
+    grantPayloadApproval: (request) => dispatcher.grantPayloadApproval(request),
+    payloadApprovalsFor: (dispatchKey) => dispatcher.payloadApprovalsFor(dispatchKey),
     handlerFor(contract, dispatchKey, context) {
       const handler: RuntimeCapabilityHandler = async (input) => {
         // Contract/input validation precedes dispatch (the handler itself only runs after authorization).
@@ -163,6 +186,17 @@ export function createExternalToolWiring(
                 true,
               ),
             );
+          case 'payload_approval_required':
+            return err(
+              new ExternalEffectError(
+                ErrorCode.RUNTIME_EXECUTION_FAILED,
+                `external_tool "${contract.id}": not dispatched — ${outcome.reason}`,
+                'not_dispatched',
+                false,
+                false,
+                true,
+              ),
+            );
           case 'not_configured':
             return err(
               new ExternalEffectError(ErrorCode.RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED, outcome.reason, 'not_dispatched', false),
@@ -199,6 +233,11 @@ export function createDurableExternalToolWiring(options: DurableExternalToolWiri
   if (options.evidenceStore === undefined || options.evidenceStore === null) {
     throw new Error('external tools require an explicit durable evidence store; none was configured');
   }
-  const dispatcher = new ExternalToolDispatcher({ adapters: options.adapters, ledger: new BlobDispatchLedger(options.evidenceStore) });
+  const dispatcher = new ExternalToolDispatcher({
+    adapters: options.adapters,
+    ledger: new BlobDispatchLedger(options.evidenceStore),
+    // Payload approvals live in the same durable store as the dispatch evidence (separate prefix); atomic consumption uses its `putIfAbsent`.
+    payloadApprovals: new BlobPayloadApprovalStore(options.evidenceStore),
+  });
   return createExternalToolWiring(dispatcher, options.inputSchemas);
 }

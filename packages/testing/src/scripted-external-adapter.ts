@@ -12,6 +12,8 @@ export type ScriptedAdapterStep =
  */
 export class ScriptedExternalAdapter implements ExternalToolAdapter {
   readonly calls: AdapterInvokeRequest[] = [];
+  /** Test adapters use definition-level approval; tests of payload mode build their own adapter. */
+  readonly approvalMode = 'definition' as const;
   private readonly script: ScriptedAdapterStep[];
 
   constructor(

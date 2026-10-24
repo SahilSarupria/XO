@@ -62,6 +62,8 @@ export type CapabilityExecutionOutcome =
       readonly reconciliationRequired?: boolean;
       /** M4: true when nothing was dispatched because a new attempt after a confirmed no-effect failure needs a fresh human approval. */
       readonly freshApprovalRequired?: boolean;
+      /** M4: true when nothing was dispatched because a payload-mode step has no valid, unused human approval of its exact input. */
+      readonly payloadApprovalRequired?: boolean;
     };
 
 /** Same shape as `CapabilityExecutionOutcome`'s failure variants, plus the two real resume terminals — see `resume-human-task.ts`'s doc comment for what `'succeeded'`/`'rejected'` mean here. */
@@ -402,6 +404,7 @@ export async function executeApprovedCapability(
             effectState: error.effectState,
             reconciliationRequired: error.reconciliationRequired,
             freshApprovalRequired: error.freshApprovalRequired,
+            payloadApprovalRequired: error.payloadApprovalRequired,
           }
         : { kind: 'error', errorCode: error.code, errorMessage: error.message };
     }

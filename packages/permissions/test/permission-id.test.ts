@@ -84,3 +84,11 @@ test('permissions: effect.reconcile is its own id, valid under the closed domain
   assert.equal(parsePermissionId('external-effect.reconcile').ok, false, 'a hyphenated domain does not match the id grammar');
   assert.equal(parsePermissionId('externaleffect.reconcile').ok, false, 'and an unregistered domain is refused even when well-formed');
 });
+
+test('permissions: effect.payload-approve is valid, its own capability, and distinct from procedure.approve and effect.reconcile', () => {
+  assert.equal(Permissions.effect.payloadApprove, 'effect.payload-approve');
+  assert.notEqual(Permissions.effect.payloadApprove, Permissions.procedure.approve);
+  assert.notEqual(Permissions.effect.payloadApprove, Permissions.effect.reconcile);
+  assert.equal(parsePermissionId('effect.payload-approve').ok, true);
+  assert.equal(parsePermissionId('effect.payload_approve').ok, false, 'underscores are not legal in the action segment');
+});

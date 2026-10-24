@@ -51,12 +51,14 @@ import {
 import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/idempotency-http.js';
 import {
   FsProcedureExecutionStore,
+  ProcedureConflictError,
   isValidProcedureExecutionId,
   type ProcedureExecutionRecord,
 } from '../procedures/procedure-execution.js';
 import {
   rejectedFindings,
   resumeProcedureExecution,
+  continueAfterPayloadApproval,
   startProcedureExecution,
   type ProcedureRunnerContext,
 } from '../procedures/procedure-runner.js';
@@ -886,6 +888,215 @@ export function registerProcedureRoutes(
     }
   }
 
+  // ── Payload-level approval (P1.1 M4; interim host-declared per-adapter policy, NOT an O-2 compliance claim) ─────────────────────────
+  // A payload-mode external step PAUSES (`waiting_for_human`, waitingReason `payload_approval`) with nothing dispatched. A human holding the
+  // dedicated `effect.payload-approve` permission (never `procedure.approve`; services refused) approves the exact input digest + summary the
+  // server computed from the step's real input. The initiator then continues the run under their OWN authorization; the dispatcher consumes
+  // the approval atomically. Input values are never logged or returned by these routes (only the adapter-produced summary and digest).
+  async function loadPayloadWait(
+    req: ApiRequest,
+    workspace: WorkspaceRecord,
+  ): Promise<{
+    readonly step: Awaited<ReturnType<typeof loadEffectStep>>;
+    readonly waiting: boolean;
+    readonly input: unknown;
+    readonly capabilityId: string;
+  }> {
+    const step = await loadEffectStep(req, workspace);
+    const records = new FsProcedureExecutionStore(workspaceProcedureExecutionsStore(workspace, dataConfig), workspace.workspaceId);
+    const found = await records.get(step.executionId);
+    if (!found.ok) throw found.error;
+    const state = found.value.steps.find((x) => x.stepId === step.stepId);
+    if (state === undefined) throw new NotFoundError('external effect');
+    const waiting =
+      found.value.status === 'waiting_for_human' && found.value.waitingStepId === step.stepId && state.waitingReason === 'payload_approval';
+    let input: unknown;
+    if (waiting && state.executionId !== undefined) {
+      const exec = await new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)).get(state.executionId);
+      if (exec.ok) input = exec.value.input;
+    }
+    return { step, waiting, input, capabilityId: state.capabilityId };
+  }
+
+  /** Only an authenticated human holding `effect.payload-approve` may see or grant a payload approval. */
+  async function requirePayloadApprover(req: ApiRequest, workspace: WorkspaceRecord, correlationId: string, action: string) {
+    const principal = requirePrincipal(req);
+    if (principal.kind !== 'human') {
+      await audit.tryRecord({
+        type: 'procedure.denied',
+        action,
+        outcome: 'denied',
+        actor: actorFromPrincipal(principal),
+        target: effectTarget(workspace, safeId(req.params['executionId']) ?? workspace.workspaceId),
+        correlationId,
+        reasonCode: ErrorCode.RUNTIME_PERMISSION_DENIED,
+        metadata: { reason: 'human-principal-required' },
+      });
+      throw new XoError(ErrorCode.RUNTIME_PERMISSION_DENIED, 'payload approval requires an authenticated human principal');
+    }
+    await requirePermission(req, workspace, Permissions.effect.payloadApprove, { action, correlationId });
+    return principal;
+  }
+
+  async function getPayloadApproval(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const action = 'read.external-payload';
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
+    const principal = await requirePayloadApprover(req, workspace, correlationId, action);
+    const wait = await loadPayloadWait(req, workspace);
+    await audit.requireDurable({
+      type: 'access.attempted',
+      action,
+      outcome: 'attempted',
+      actor: actorFromPrincipal(principal),
+      target: effectTarget(workspace, wait.step.executionId),
+      correlationId,
+    });
+    let preview: ReturnType<ExternalToolWiring['previewAction']>;
+    try {
+      preview = wait.waiting ? wait.step.wiring.previewAction(wait.capabilityId, wait.input) : undefined;
+    } catch {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'the pending input cannot be canonicalized');
+    }
+    let approvals: Awaited<ReturnType<ExternalToolWiring['payloadApprovalsFor']>>;
+    try {
+      approvals = await wait.step.wiring.payloadApprovalsFor(wait.step.dispatchKey);
+    } catch {
+      throw new XoError(ErrorCode.STORAGE_WRITE_FAILED, 'the payload-approval store is unavailable');
+    }
+    return json(200, {
+      stepId: wait.step.stepId,
+      dispatchKey: wait.step.dispatchKey,
+      awaitingApproval: wait.waiting,
+      ...(preview !== undefined
+        ? {
+            adapterId: preview.adapterId,
+            approvalMode: preview.approvalMode,
+            actionDigest: preview.actionDigest,
+            actionSummary: preview.actionSummary,
+          }
+        : {}),
+      approvals: approvals.map(({ grant, consumption }) => ({
+        approvalId: grant.approvalId,
+        approver: grant.approver,
+        grantedAt: grant.grantedAt,
+        actionDigest: grant.actionDigest,
+        consumed: consumption !== undefined,
+        ...(consumption !== undefined ? { consumedAt: consumption.consumedAt } : {}),
+      })),
+    });
+  }
+
+  async function grantPayloadApproval(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const action = 'approve.external-payload';
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
+    const principal = await requirePayloadApprover(req, workspace, correlationId, action);
+    const body = await readClosedBody(req, ['inputDigest', 'actionSummary'], false);
+    const findings: ProcedureFinding[] = [];
+    if (typeof body['inputDigest'] !== 'string' || body['inputDigest'].length === 0)
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/inputDigest' });
+    if (typeof body['actionSummary'] !== 'string' || body['actionSummary'].length === 0)
+      findings.push({ code: 'PROC_INVALID_FIELD', path: '/actionSummary' });
+    if (findings.length > 0) throw rejectedFindings('request rejected', findings);
+    const wait = await loadPayloadWait(req, workspace);
+    // PRECONDITION: the attempt is durably recorded first (digest PREFIX only: audit metadata never carries input values or long opaque blobs).
+    await audit.requireDurable({
+      type: 'procedure.attempted',
+      action,
+      outcome: 'attempted',
+      actor: actorFromPrincipal(principal),
+      target: effectTarget(workspace, wait.step.executionId),
+      correlationId,
+      metadata: { stepId: wait.step.stepId, digestPrefix: (body['inputDigest'] as string).slice(0, 12) },
+    });
+    if (!wait.waiting) {
+      throw new ProcedureConflictError(
+        'the step is not waiting for a payload approval (an approval cannot be granted in advance)',
+        'not_waiting',
+      );
+    }
+    const result = await wait.step.wiring.grantPayloadApproval({
+      dispatchKey: wait.step.dispatchKey,
+      capabilityId: wait.capabilityId,
+      input: wait.input,
+      expectedActionDigest: body['inputDigest'] as string,
+      expectedActionSummary: body['actionSummary'] as string,
+      approver: { kind: 'human', id: principal.id },
+      auditCorrelationId: correlationId,
+    });
+    if (result.kind === 'refused') {
+      switch (result.reason) {
+        case 'digest_mismatch':
+        case 'summary_mismatch':
+        case 'invalid_request':
+          throw new XoError(ErrorCode.INVALID_ARGUMENT, result.message);
+        case 'store_unavailable':
+          throw new XoError(ErrorCode.STORAGE_WRITE_FAILED, 'the payload-approval store is unavailable; nothing was approved');
+        default:
+          throw new ProcedureConflictError(result.message, 'not_waiting');
+      }
+    }
+    // Completion audit: never throws, never retried; the grant is already recorded (immutable) — no cross-store atomicity is claimed.
+    const fin = await audit.finalize(
+      {
+        type: 'procedure.attempted',
+        action,
+        outcome: 'completed',
+        actor: actorFromPrincipal(principal),
+        target: effectTarget(workspace, wait.step.executionId),
+        correlationId,
+        metadata: { stepId: wait.step.stepId, digestPrefix: result.grant.actionDigest.slice(0, 12), approvalMode: 'payload' },
+      },
+      { correlationId },
+    );
+    return json(201, {
+      outcome: 'granted',
+      approvalId: result.grant.approvalId,
+      grantedAt: result.grant.grantedAt,
+      actionDigest: result.grant.actionDigest,
+      dispatchKey: wait.step.dispatchKey,
+      auditCorrelationId: correlationId,
+      auditCompletion: fin.status === 'recorded' ? 'recorded' : 'unconfirmed',
+    });
+  }
+
+  async function continuePayloadStep(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const action = 'continue.external-payload';
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
+    await requirePermission(req, workspace, Permissions.procedure.execute, { action, correlationId });
+    const principal = requirePrincipal(req);
+    await readClosedBody(req, [], false);
+    const step = await loadEffectStep(req, workspace);
+    const ctx = runnerContext(workspace, req, correlationId);
+    await audit.requireDurable({
+      type: 'procedure.attempted',
+      action,
+      outcome: 'attempted',
+      actor: actorFromPrincipal(principal),
+      target: effectTarget(workspace, step.executionId),
+      correlationId,
+      metadata: { stepId: step.stepId },
+    });
+    try {
+      return json(200, executionView(await continueAfterPayloadApproval(ctx, step.executionId, step.stepId)));
+    } catch (cause) {
+      if (cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED) {
+        await audit.tryRecord({
+          type: 'procedure.denied',
+          action,
+          outcome: 'denied',
+          actor: actorFromPrincipal(principal),
+          target: effectTarget(workspace, step.executionId),
+          correlationId,
+          reasonCode: cause.code,
+        });
+      }
+      throw cause;
+    }
+  }
+
   // ── POST /procedure-executions/:executionId/resume ───────────────────────────────────────────────────────────────────
   async function resume(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
@@ -955,5 +1166,11 @@ export function registerProcedureRoutes(
   router.post(
     '/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/external-effect/reconcile',
     guarded(reconcileExternalEffect),
+  );
+  router.get('/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/payload-approval', guarded(getPayloadApproval));
+  router.post('/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/payload-approval', guarded(grantPayloadApproval));
+  router.post(
+    '/workspaces/:workspaceId/procedure-executions/:executionId/steps/:stepId/payload-approval/continue',
+    guarded(continuePayloadStep),
   );
 }
