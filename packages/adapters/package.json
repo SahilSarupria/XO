@@ -1,0 +1,28 @@
+{
+  "name": "@xo/adapters",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P1.1 M4: external_tool adapter contract and fail-closed dispatcher. Pure: no network, no clock, no retries. An adapter is reachable only through an explicit configured binding; every dispatch leaves write-ahead evidence, and an ambiguous outcome is reported as outcome_unknown, never as success.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  },
+  "dependencies": {
+    "@xo/storage": "0.1.0"
+  }
+}

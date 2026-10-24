@@ -31,6 +31,8 @@ export interface ProcedureStepState {
   readonly completedAt?: string;
   readonly failureClass?: ProcedureFailureClass;
   readonly errorCode?: string;
+  /** Why a `waiting_for_human` step is waiting, when it is not a human task: a payload-mode external step awaiting a human's approval of its exact input. */
+  readonly waitingReason?: 'payload_approval';
 }
 
 export interface ProcedureExecutionRecord {

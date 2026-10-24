@@ -122,3 +122,4 @@ export * from './capability-authority/runtime-capability-registry.js';
 export * from './capability-authority/runtime-capability-executor.js';
 export * from './capability-authority/capability-binding-registration.js';
 export * from './capability-authority/contract-execution.js';
+export * from './capability-authority/external-tool-binding.js';

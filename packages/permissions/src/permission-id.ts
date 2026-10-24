@@ -130,6 +130,20 @@ export const Permissions = {
     execute: PermissionId('procedure.execute'),
     read: PermissionId('procedure.read'),
   },
+  /**
+   * P1.1 M4 — settling the recorded outcome of an external effect XO could not observe. Deliberately NOT `procedure.approve`: approving
+   * a procedure and deciding what really happened in an outside system are different authorities. (Named `effect.reconcile` because the
+   * id grammar allows no underscore and the domain set is closed; this is the owner's `external_effect.reconcile` in the registry's form.)
+   */
+  effect: {
+    reconcile: PermissionId('effect.reconcile'),
+    /**
+     * P1.1 M4 — granting PAYLOAD-LEVEL approval: a human approving ONE exact external action (canonical input digest + action summary) for
+     * one execution and step. Distinct from `procedure.approve` (approving a procedure) and from `effect.reconcile` (settling an outcome).
+     * Hyphens are legal in the action segment, so this reads like `ai.external-provider`.
+     */
+    payloadApprove: PermissionId('effect.payload-approve'),
+  },
   audit: {
     read: PermissionId('audit.read'),
     purge: PermissionId('audit.purge'),

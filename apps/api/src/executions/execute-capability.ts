@@ -7,7 +7,15 @@ import {
   type CapabilityBinding,
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
-import { authorizeContractExecution, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
+import {
+  authorizeContractExecution,
+  executeResolvedContract,
+  resolveContractBinding,
+  ExternalEffectError,
+  NATIVE_CAPABILITY_REQUESTER,
+  type ExternalEffectFailureState,
+  type ExternalToolWiring,
+} from '@xo/runtime';
 import { authorizeCapabilityExecution, type PermissionDeclaration } from '@xo/permissions';
 import type { ExecutionAuthorization } from './authorization.js';
 import { declaredPermissionsForNode } from './authorization.js';
@@ -45,7 +53,18 @@ export type CapabilityExecutionOutcome =
     }
   | { readonly kind: 'unresolved'; readonly status: 'unresolved' | 'ambiguous' | 'denied'; readonly reason: string }
   | { readonly kind: 'invalid_input'; readonly issues: readonly { readonly path: string; readonly message: string }[] }
-  | { readonly kind: 'error'; readonly errorCode: string; readonly errorMessage: string };
+  | {
+      readonly kind: 'error';
+      readonly errorCode: string;
+      readonly errorMessage: string;
+      /** M4: set only when the failure came from an `external_tool` dispatch (`not_dispatched` = the adapter was never called). Absent for every other failure. */
+      readonly effectState?: ExternalEffectFailureState;
+      readonly reconciliationRequired?: boolean;
+      /** M4: true when nothing was dispatched because a new attempt after a confirmed no-effect failure needs a fresh human approval. */
+      readonly freshApprovalRequired?: boolean;
+      /** M4: true when nothing was dispatched because a payload-mode step has no valid, unused human approval of its exact input. */
+      readonly payloadApprovalRequired?: boolean;
+    };
 
 /** Same shape as `CapabilityExecutionOutcome`'s failure variants, plus the two real resume terminals — see `resume-human-task.ts`'s doc comment for what `'succeeded'`/`'rejected'` mean here. */
 export type CapabilityResumeOutcome =
@@ -81,7 +100,7 @@ type RebuildResult =
  * field it actually needs — the input/decision-data schema — via
  * `lowerCapabilitiesToManifest`, in `findInputSchema` below).
  */
-function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: string): RebuildResult {
+function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: string, externalTools?: ExternalToolWiring): RebuildResult {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok)
     return { ok: false, outcome: { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message } };
@@ -98,7 +117,27 @@ function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: str
   // somehow become ambiguous/denied since the original execution is
   // caught here, honestly, rather than assumed still valid because it
   // resolved once before.
+  // M4: an EXPLICITLY configured external_tool binding applies ONLY to a contract the standard resolvers do not bind. It never overrides one
+  // (that would silently change what was approved), a configured contract that the standard resolvers also bind is a configuration conflict
+  // and fails closed, and a configured-but-unresolvable contract fails closed. A declared `external_tool` alone confers nothing.
   const bindingOutcome = resolveContractBinding(contract);
+  const configured = externalTools?.resolver.resolve(contract);
+  if (configured !== undefined) {
+    if (bindingOutcome.status === 'resolved') {
+      return {
+        ok: false,
+        outcome: {
+          kind: 'unresolved',
+          status: 'ambiguous',
+          reason: `contract "${contract.id}" is bound by the standard resolvers AND configured as an external_tool adapter — refusing to choose`,
+        },
+      };
+    }
+    if (configured.status !== 'resolved') {
+      return { ok: false, outcome: { kind: 'unresolved', status: configured.status, reason: configured.reason } };
+    }
+    return { ok: true, value: { contract, binding: configured.binding } };
+  }
   if (bindingOutcome.status !== 'resolved') {
     return { ok: false, outcome: { kind: 'unresolved', status: bindingOutcome.status, reason: bindingOutcome.reason } };
   }
@@ -227,6 +266,17 @@ export interface ExecuteApprovedCapabilityOptions {
   readonly preflightDeclarationFingerprint?: string;
   /** The graph content hash a preflight authorized. If the graph loaded here has a different content hash, execution is refused (see `preflightCapabilityAuthorization` for what the hash does and does not detect). */
   readonly preflightGraphHash?: ContentHash;
+  /**
+   * M4 — explicit external_tool configuration (host-owned; never derived from the graph, package or client input). Absent => an
+   * `external_tool` contract cannot execute at all (it stays unresolved). Present => only contracts the dispatcher was configured for resolve.
+   */
+  readonly externalTools?: ExternalToolWiring;
+  /** M4 — server-derived identity of this dispatch (e.g. procedure execution id + step id). REQUIRED for an `external_tool` binding; one dispatch per key. */
+  readonly dispatchKey?: string;
+  /** M4 — when the human approval authorizing this execution was granted (ISO-8601). Lets the dispatcher require an approval newer than a confirmed no-effect failure. */
+  readonly approvedAt?: string;
+  /** M4 — audit correlation id of the run, recorded on the dispatch evidence so ledger and audit can be joined. */
+  readonly auditCorrelationId?: string;
 }
 
 /**
@@ -293,9 +343,25 @@ export async function executeApprovedCapability(
     };
   }
 
-  const rebuilt = rebuildContractAndBinding(compiledGraphJson, capabilityId);
+  const rebuilt = rebuildContractAndBinding(compiledGraphJson, capabilityId, options.externalTools);
   if (!rebuilt.ok) return rebuilt.outcome as CapabilityExecutionOutcome;
   const { contract, binding } = rebuilt.value;
+
+  let externalToolHandler: ReturnType<ExternalToolWiring['handlerFor']> | undefined;
+  if (binding.implementationClass === 'external_tool') {
+    if (options.externalTools === undefined || options.dispatchKey === undefined || options.dispatchKey.length === 0) {
+      return {
+        kind: 'error',
+        errorCode: ErrorCode.RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED,
+        errorMessage: 'external_tool execution requires explicit adapter wiring and a server-derived dispatch key — refused',
+        effectState: 'not_dispatched',
+      };
+    }
+    externalToolHandler = options.externalTools.handlerFor(contract, options.dispatchKey, {
+      ...(options.approvedAt !== undefined ? { approvedAt: options.approvedAt } : {}),
+      ...(options.auditCorrelationId !== undefined ? { auditCorrelationId: options.auditCorrelationId } : {}),
+    });
+  }
 
   // The declaration is derived ONCE here from the graph being executed and used for BOTH the TOCTOU tie and the decision below,
   // so the declaration that is checked against a preflight is the declaration that is authorized and enforced.
@@ -326,8 +392,22 @@ export async function executeApprovedCapability(
       permissionDeclaration: declaration,
       input,
       graphHash: loadedGraphHash,
+      ...(externalToolHandler !== undefined ? { externalToolHandler } : {}),
     });
-    if (!execResult.ok) return { kind: 'error', errorCode: execResult.error.code, errorMessage: execResult.error.message };
+    if (!execResult.ok) {
+      const error = execResult.error;
+      return error instanceof ExternalEffectError
+        ? {
+            kind: 'error',
+            errorCode: error.code,
+            errorMessage: error.message,
+            effectState: error.effectState,
+            reconciliationRequired: error.reconciliationRequired,
+            freshApprovalRequired: error.freshApprovalRequired,
+            payloadApprovalRequired: error.payloadApprovalRequired,
+          }
+        : { kind: 'error', errorCode: error.code, errorMessage: error.message };
+    }
 
     const output = execResult.value.output;
     const isEscalation =

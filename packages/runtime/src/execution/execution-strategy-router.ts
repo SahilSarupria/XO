@@ -59,13 +59,14 @@ import type { CapabilityExecutionMode } from '@xo/types';
  * (`RUNTIME_CAPABILITY_AUTHORITY_NOT_CONFIGURED`) to "mode not known at
  * all".
  */
-export type ExecutionStrategyName = 'deterministic_rule' | 'model' | 'hybrid' | 'human_in_the_loop';
+export type ExecutionStrategyName = 'deterministic_rule' | 'model' | 'hybrid' | 'human_in_the_loop' | 'external_tool';
 
 const REGISTERED_STRATEGIES: ReadonlySet<ExecutionStrategyName> = new Set<ExecutionStrategyName>([
   'deterministic_rule',
   'model',
   'hybrid',
   'human_in_the_loop',
+  'external_tool',
 ]);
 
 export class ExecutionStrategyRouter {

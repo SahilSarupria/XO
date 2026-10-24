@@ -1,6 +1,7 @@
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import { normalizeToFallbackKey, validateCapabilityInput } from '@xo/capability-contract';
 import { ErrorCode, RuntimeError, XoError } from '@xo/errors';
+import type { ExternalToolWiring } from '@xo/runtime';
 import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
 import {
   EnvironmentId,
@@ -78,7 +79,21 @@ export interface ProcedureRunnerContext {
    * not an execution bypass. Ignored when NODE_ENV is 'production'. Not exposed through HTTP or environment configuration.
    */
   readonly testBeforeStepExecute?: () => Promise<void>;
+  /**
+   * M4 — explicit, host-owned external_tool adapter wiring. DELIBERATELY OPTIONAL with no default: when absent, a step whose capability is an
+   * external_tool never executes (it stays unresolved and the step fails closed before anything is dispatched). Never configurable through
+   * HTTP, the procedure definition, or client input. No retry of an external dispatch exists anywhere in this runner.
+   */
+  readonly externalTools?: ExternalToolWiring;
 }
+
+/** M4 step error codes for external_tool dispatches (strings, so no shared ErrorCode enum is widened). */
+export const EFFECT_OUTCOME_UNKNOWN_CODE = 'XO_EXTERNAL_EFFECT_OUTCOME_UNKNOWN';
+export const EFFECT_CONFIRMED_FAILURE_CODE = 'XO_EXTERNAL_EFFECT_CONFIRMED_FAILURE_NO_EFFECT';
+/** Nothing was dispatched: a prior attempt confirmed no effect, and a new attempt needs a human approval granted after that. */
+/** Nothing was dispatched: a payload-mode step waits for a human's approval of its exact input (the execution pauses, it does not fail). */
+export const EFFECT_PAYLOAD_APPROVAL_REQUIRED_CODE = 'XO_EXTERNAL_EFFECT_PAYLOAD_APPROVAL_REQUIRED';
+export const EFFECT_FRESH_APPROVAL_REQUIRED_CODE = 'XO_EXTERNAL_EFFECT_FRESH_APPROVAL_REQUIRED';
 
 const enc = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
 const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
@@ -126,7 +141,7 @@ async function loadRuntime(
     err({ failureClass: 'stale_binding', code: ErrorCode.RUNTIME_PERMISSION_DENIED, message });
   const ref = def.compilationRef;
   if (ref === undefined) return stale('the procedure records no compilation reference');
-  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore));
+  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore), ctx.externalTools);
   if (!registry.ok)
     return stale(`the procedure no longer validates against the registry (${registry.findings.map((f) => f.code).join(', ')})`);
   const compilation = await ctx.compilationStore.get(ref.compilationId);
@@ -206,7 +221,7 @@ export function validateStartInput(def: ProcedureDefinition, rt: Runtime, input:
   def.steps.forEach((step, i) => {
     if (step.kind !== 'capability') return;
     const state = rt.snapshot.steps.find((s) => s.stepId === step.id);
-    const schema = state === undefined ? undefined : schemas.get(state.contractId);
+    const schema = state === undefined ? undefined : (state.externalInputSchema ?? schemas.get(state.contractId));
     const inputBound = (step.inputBindings ?? []).filter((b): b is typeof b & { from: { input: string } } => 'input' in b.from);
     for (const b of inputBound) referenced.add(b.from.input);
     if (schema === undefined) {
@@ -306,12 +321,25 @@ async function emit(
 
 const reasonOf = (c: ProcedureFailureClass): string => `PROCEDURE_${c.toUpperCase()}`;
 
+/** Final external-effect state of this step's dispatch (authoritative: read back from the ledger), or `{}` when the step did not dispatch externally / evidence is unreadable. Carries no input data. */
+async function effectMeta(ctx: ProcedureRunnerContext, holder: Holder, step: { readonly id: string }): Promise<Record<string, string>> {
+  if (ctx.externalTools === undefined) return {};
+  try {
+    const ev = await ctx.externalTools.evidenceFor(`${holder.current.procedureExecutionId}:${step.id}`);
+    const last = ev[ev.length - 1];
+    return last === undefined ? {} : { effectState: last.state };
+  } catch {
+    return { effectState: 'evidence_unreadable' };
+  }
+}
+
 async function failExecution(
   ctx: ProcedureRunnerContext,
   holder: Holder,
   failureClass: ProcedureFailureClass,
   code: string,
   stepId?: string,
+  effect: Record<string, string> = {},
 ): Promise<void> {
   await holder.update((r, now) => ({
     ...withoutKey(r, 'waitingStepId'),
@@ -324,7 +352,7 @@ async function failExecution(
     await emit(ctx, holder.current, 'procedure.step.failed', 'failed', {
       stepId,
       reasonCode: reasonOf(failureClass),
-      metadata: { failureClass },
+      metadata: { failureClass, ...effect },
     });
   await emit(ctx, holder.current, 'procedure.execution.failed', 'failed', {
     reasonCode: reasonOf(failureClass),
@@ -402,7 +430,7 @@ async function runStep(
       ...r,
       steps: replaceStep(r.steps, step.id, { status: 'failed', failureClass, errorCode: code, completedAt: now }),
     }));
-    await failExecution(ctx, holder, failureClass, code, step.id);
+    await failExecution(ctx, holder, failureClass, code, step.id, await effectMeta(ctx, holder, step));
     return { kind: 'failed' };
   };
   // Per-step authorization against a FRESH registry read, before anything is created or executed for this step.
@@ -429,7 +457,19 @@ async function runStep(
         step.capabilityId,
         input.value,
         { permissionManager: ctx.permissionManager, subject: ctx.principal },
-        { validateInputSchema: false, preflightGraphHash: ContentHash(rt.value.graphHash) },
+        {
+          validateInputSchema: false,
+          preflightGraphHash: ContentHash(rt.value.graphHash),
+          // M4: server-derived, one dispatch per (procedure execution, step). Never taken from the client.
+          ...(ctx.externalTools !== undefined
+            ? {
+                externalTools: ctx.externalTools,
+                dispatchKey: `${holder.current.procedureExecutionId}:${step.id}`,
+                ...(approval !== undefined ? { approvedAt: approval.approvedAt } : {}),
+                auditCorrelationId: ctx.correlationId,
+              }
+            : {}),
+        },
       );
     })(),
     ctx.stepTimeoutMs,
@@ -449,7 +489,10 @@ async function runStep(
         outputs: { ...r.outputs, [step.id]: outcome.output },
         steps: replaceStep(r.steps, step.id, { status: 'succeeded', completedAt: now }),
       }));
-      await emit(ctx, holder.current, 'procedure.step.completed', 'completed', { stepId: step.id });
+      await emit(ctx, holder.current, 'procedure.step.completed', 'completed', {
+        stepId: step.id,
+        metadata: await effectMeta(ctx, holder, step),
+      });
       return { kind: 'succeeded', output: outcome.output };
     }
     case 'waiting_for_human': {
@@ -474,6 +517,36 @@ async function runStep(
     case 'unresolved':
       return fail('capability_error', ErrorCode.WORKFLOW_NOT_EXECUTABLE, executionId, outcome.reason);
     case 'error':
+      // M4: an external dispatch that ended ambiguously is NEVER reported as a plain failure or a success: it gets its own code, and
+      // the message states that reconciliation is required before any further dispatch. No retry, no automatic recovery.
+      if (outcome.effectState === 'outcome_unknown') {
+        return fail('capability_error', EFFECT_OUTCOME_UNKNOWN_CODE, executionId, outcome.errorMessage);
+      }
+      if (outcome.payloadApprovalRequired === true) {
+        // PAUSE, not fail: the step waits for a human to approve this exact input for THIS execution and step. Nothing was claimed or
+        // dispatched. The per-step capability record is closed (its input stays readable to the approver); `continue` runs the step again.
+        await ctx.executionStore.complete(executionId, {
+          status: 'failed',
+          errorCode: EFFECT_PAYLOAD_APPROVAL_REQUIRED_CODE,
+          errorMessage: outcome.errorMessage,
+        });
+        await holder.update((r) => ({
+          ...r,
+          status: 'waiting_for_human',
+          waitingStepId: step.id,
+          steps: replaceStep(r.steps, step.id, { status: 'waiting_for_human', executionId, waitingReason: 'payload_approval' }),
+        }));
+        await emit(ctx, holder.current, 'procedure.execution.waiting_for_human', 'allowed', {
+          metadata: { stepId: step.id, reason: 'payload_approval' },
+        });
+        return { kind: 'waiting' };
+      }
+      if (outcome.freshApprovalRequired === true) {
+        return fail('capability_error', EFFECT_FRESH_APPROVAL_REQUIRED_CODE, executionId, outcome.errorMessage);
+      }
+      if (outcome.effectState === 'confirmed_failure_no_effect') {
+        return fail('capability_error', EFFECT_CONFIRMED_FAILURE_CODE, executionId, outcome.errorMessage);
+      }
       return fail(
         outcome.errorCode === ErrorCode.RUNTIME_PERMISSION_DENIED ? 'authorization' : 'capability_error',
         outcome.errorCode,
@@ -574,7 +647,7 @@ export async function startProcedureExecution(
   // 1. Lifecycle at start (N-7 / N-15): the stored definition is re-verified on read; approval + registry state are recomputed NOW.
   const approvalLookup = await ctx.procedures.getApproval(version.procedureId, version.version);
   if (!approvalLookup.ok) throw approvalLookup.error;
-  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore));
+  const registry = await validateAgainstRegistry(def, compilationLoaderFromStore(ctx.compilationStore), ctx.externalTools);
   const lifecycle = computeLifecycle(version, approvalLookup.value, registry);
   if (lifecycle !== 'approved' || approvalLookup.value.kind !== 'ok' || !registry.ok) {
     throw new XoError(
@@ -679,6 +752,12 @@ export async function resumeProcedureExecution(
     }
     const waiting = record.steps.find((s) => s.stepId === record.waitingStepId);
     if (waiting?.executionId === undefined) throw new ProcedureConflictError('the waiting step records no human task', 'not_waiting');
+    if (waiting.waitingReason === 'payload_approval') {
+      throw new ProcedureConflictError(
+        'the waiting step awaits a payload approval, not a human task; use the external-effect payload-approval and continue routes',
+        'not_waiting',
+      );
+    }
     if (request.expectedStepExecutionId !== undefined && request.expectedStepExecutionId !== waiting.executionId) {
       throw new ProcedureConflictError(
         '"expectedStepExecutionId" does not match the pending human task; the decision was NOT applied',
@@ -756,6 +835,55 @@ export async function resumeProcedureExecution(
       exec.status === 'rejected' ? 'XO_PROCEDURE_HUMAN_REJECTED' : (exec.errorCode ?? ErrorCode.HITL_RESUME_UNSUPPORTED),
       waiting.stepId,
     );
+    return holder.current;
+  });
+}
+
+/**
+ * Continues a procedure execution that paused because a payload-mode external step needs a human's approval of its exact input. It runs
+ * the SAME step again under the CALLER's own authorization (per-step authorization, registry/approval freshness, schema validation all
+ * re-run), with the same server-derived dispatch key. The payload approval is checked and consumed atomically by the dispatcher; if it is
+ * still missing, mismatched or spent, the step simply pauses again and nothing is dispatched. Never grants or implies an approval.
+ */
+export async function continueAfterPayloadApproval(
+  ctx: ProcedureRunnerContext,
+  procedureExecutionId: string,
+  stepId: string,
+): Promise<ProcedureExecutionRecord> {
+  return withExecutionLock(procedureExecutionId, async () => {
+    const found = await ctx.records.get(procedureExecutionId);
+    if (!found.ok) throw found.error;
+    const record = found.value;
+    const waiting = record.steps.find((s) => s.stepId === stepId);
+    if (record.status !== 'waiting_for_human' || record.waitingStepId !== stepId || waiting?.waitingReason !== 'payload_approval') {
+      throw new ProcedureConflictError('the procedure execution is not waiting for a payload approval on this step', 'not_waiting');
+    }
+    const version = await ctx.procedures.getVersion(record.procedureId, record.version);
+    if (!version.ok) throw version.error;
+    if (version.value.kind !== 'ok' || version.value.record.procedureHash !== record.procedureHash) {
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        'the stored procedure no longer matches the one this execution started with; nothing was continued',
+      );
+    }
+    const approvalLookup = await ctx.procedures.getApproval(record.procedureId, record.version);
+    if (!approvalLookup.ok) throw approvalLookup.error;
+    if (approvalLookup.value.kind !== 'ok') {
+      throw new XoError(
+        ErrorCode.RUNTIME_PERMISSION_DENIED,
+        `the procedure approval record is ${approvalLookup.value.kind === 'none' ? 'missing' : 'unreadable'}; nothing was continued`,
+      );
+    }
+    const holder = new Holder(ctx.records, record);
+    await holder.update((r) => ({
+      ...withoutKey(r, 'waitingStepId'),
+      status: 'running',
+      steps: r.steps.map((s) =>
+        s.stepId === stepId ? (withoutKey({ ...s, status: 'pending' as const }, 'waitingReason') as ProcedureStepState) : s,
+      ),
+    }));
+    await emit(ctx, holder.current, 'procedure.execution.resumed', 'started', { metadata: { stepId, reason: 'payload_approval' } });
+    await drive(ctx, holder, version.value.record.definition, approvalLookup.value.record, stepId);
     return holder.current;
   });
 }

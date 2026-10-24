@@ -61,7 +61,7 @@ function isCompatibilityDeclaration(value: unknown): value is CompatibilityDecla
  * this is the schema-validation half of the same taxonomy widening,
  * not a new validation rule.
  */
-const EXECUTION_MODES = ['deterministic_rule', 'model', 'hybrid', 'human_in_the_loop'];
+const EXECUTION_MODES = ['deterministic_rule', 'model', 'hybrid', 'human_in_the_loop', 'external_tool'];
 const HYBRID_STEP_STRATEGIES = ['deterministic_rule', 'model'];
 const INPUT_PROPERTY_TYPES = ['string', 'number', 'boolean'];
 

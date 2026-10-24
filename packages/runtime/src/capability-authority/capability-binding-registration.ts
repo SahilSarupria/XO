@@ -51,6 +51,14 @@ export interface RegisterResolvedBindingOptions {
    * exactly like `contractId`/`bindingId`/`sourceXoirNodeIds` below.
    */
   readonly graphHash?: ContentHash;
+  /**
+   * M4 — the ONLY way an `external_tool` binding becomes registerable: the
+   * caller supplies the handler (built from an explicitly configured
+   * dispatcher, see `external-tool-binding.ts`). Without it an
+   * `external_tool` binding is rejected exactly as before. Ignored for every
+   * other implementation class.
+   */
+  readonly externalToolHandler?: RuntimeCapabilityHandler;
 }
 
 /** `implementationClass`es this bridge can directly register, because `@xo/capability-contract`'s own resolvers for both attach a pure, synchronous `evaluate` callable (see `CapabilityBinding.evaluate`'s doc comment). `'human_in_the_loop'` bindings register and gate identically to `'deterministic_rule'` ones — same wrapping, same confidence/permission enforcement at execution time (`RuntimeCapabilityExecutor`) — the only difference is what `evaluate` itself returns: a `'human_in_the_loop'` binding's `evaluate` never performs the underlying action, only produces an escalation record (see `ActionEscalationBindingResolver`). Every other `implementationClass` remains rejected below, unchanged. */
@@ -158,7 +166,8 @@ export function registerResolvedCapabilityBinding(
   binding: CapabilityBinding,
   options: RegisterResolvedBindingOptions = {},
 ): Result<void, RuntimeError> {
-  if (!REGISTERABLE_IMPLEMENTATION_CLASSES.has(binding.implementationClass)) {
+  const externalToolHandler = binding.implementationClass === 'external_tool' ? options.externalToolHandler : undefined;
+  if (!REGISTERABLE_IMPLEMENTATION_CLASSES.has(binding.implementationClass) && externalToolHandler === undefined) {
     return err(
       new RuntimeError(
         ErrorCode.RUNTIME_CAPABILITY_DECLARATION_INVALID,
@@ -181,7 +190,7 @@ export function registerResolvedCapabilityBinding(
       outputContract: {
         description: `{matched: boolean, ruleSourceNodeId?: string, outcome?: string} — see binding "${binding.id}"'s derivation for the underlying rule set.`,
       },
-      handler: wrapEvaluatorAsHandler(binding),
+      handler: externalToolHandler ?? wrapEvaluatorAsHandler(binding),
       contractId: contract.id,
       bindingId: binding.id,
       sourceXoirNodeIds: contract.sourceXoirNodeIds,
