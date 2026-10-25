@@ -33,3 +33,4 @@ apps/*/test/**/*.js.map
 
 # Runtime data written by tests and local servers
 **/.xo-data/
+.eval-output/

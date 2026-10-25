@@ -208,3 +208,31 @@ What this does and does not show:
 - Escalation gating for the reasoning and capability extractors, and an independent, blind gold set to validate any gate (Slice 6 used a small self-annotated one).
 - The LLM workflow-authoring and human-approval flow; nothing here lets an LLM-authored workflow deploy.
 - A shared/production cache backend, and any Studio/UI surface. The API execute route remains disabled.
+
+## Running the live (real-model) evaluation
+
+Status: **pending**. The offline parts were run; the real-model arms need an API key and network access to `generativelanguage.googleapis.com`.
+
+Windows (PowerShell, from the repository root, on the branch that contains this commit):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\escalation-eval\run.ps1 -DryRun     # checks everything, spends nothing
+powershell -ExecutionPolicy Bypass -File .\scripts\escalation-eval\run.ps1             # prompts for the key (hidden), then runs
+```
+
+macOS/Linux/Windows with Node directly: set `GEMINI_API_KEY` for the session and run `node scripts/escalation-eval/run.mjs`.
+
+What it does, in order: preflight (Node >= 22.15, key, budget), connectivity check, `npm ci`, `npm run typecheck`, then the opt-in test in
+`packages/compiler/test/knowledge/escalation-eval.test.ts`, then `summarize.mjs`. All arms share one layer, one budget scope and one cache, so a
+unit's model answer is generated once (about 43 calls, roughly 70k tokens) and replayed for every other arm. The default hard cap is 150,000
+tokens (`-BudgetTokens`); once spent, further calls are refused, and any denial or provider failure makes the summary declare the run invalid.
+`-MinIntervalMs` (default 6000) spaces out provider calls for free-tier rate limits. Outputs go to `.eval-output/<timestamp>/` (git-ignored):
+`report.json` and `report.summary.md`, neither of which contains the key, prompts or document text.
+
+**Data warning.** The evaluated units come from `examples/vertical-test/*.pdf`; `burglary-policy.pdf` and `Aastha.pdf` appear to contain real
+personal data and an internal operations document. The run sends that text to Google, and on the free tier Google may use submitted content to
+improve its products (per its pricing page when this was written; confirm current terms). Use a paid-tier key or do not run it if that is not
+acceptable. The script requires you to type `SEND` (or pass `-AcknowledgeDataLeavesThisMachine`).
+
+The summary applies the pre-registered criteria in the test header mechanically (selection on dev only, held-out once). Do not edit the labels or
+criteria after seeing results. The offline "plumbing" test uses a scripted provider and its reports are marked `scripted` and bannered as not real evidence.
