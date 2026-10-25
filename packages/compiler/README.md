@@ -200,11 +200,11 @@ Every page of a paginated source ends in exactly one state, recorded in
 `CompileSourcesResult.sources[].coverage` and, as counts, on the XOIR
 manifest (`sourceQuality`):
 
-| State         | Meaning                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------- |
-| `extracted`   | text was read and compiled                                                                                    |
-| `ocr`         | recovered by OCR (no OCR engine ships yet; nothing produces this state today)                                 |
-| `excluded`    | left out for a recorded reason that proves it empty (only `blank_page`: no content stream and no image)        |
+| State         | Meaning                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `extracted`   | text was read and compiled                                                                                         |
+| `ocr`         | recovered by OCR (no OCR engine ships yet; nothing produces this state today)                                      |
+| `excluded`    | left out for a recorded reason that proves it empty (only `blank_page`: no content stream and no image)            |
 | `unaccounted` | may carry content the compiler did not read: `requires_ocr_unavailable`, `no_extractable_text`, `page_load_failed` |
 
 Any unaccounted page makes the source quality state `partial`: the

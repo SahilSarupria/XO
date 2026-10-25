@@ -24,7 +24,9 @@ test('an all-text PDF is fully extracted and complete', () => {
 });
 
 test('an image-only (scanned) page is unaccounted: requires_ocr_unavailable, never silently dropped', () => {
-  const { report } = coverageOf({ pages: [{ contentOps: TEXT }, { contentOps: '', rawContent: 'q 612 0 0 792 0 0 cm /Im1 Do Q', image: true }] });
+  const { report } = coverageOf({
+    pages: [{ contentOps: TEXT }, { contentOps: '', rawContent: 'q 612 0 0 792 0 0 cm /Im1 Do Q', image: true }],
+  });
   assert.equal(report.extractedPages, 1);
   assert.equal(report.unaccountedPages, 1);
   assert.equal(report.complete, false);
@@ -69,7 +71,11 @@ test('summarizeCoverage rejects an exclusion without an excludable reason and a 
   assert.throws(() => summarizeCoverage([{ page: 1, status: 'excluded' }]), /excluded without a valid exclusion reason/);
   assert.throws(() => summarizeCoverage([{ page: 1, status: 'excluded', reason: 'requires_ocr_unavailable' }]), /valid exclusion reason/);
   assert.throws(
-    () => summarizeCoverage([{ page: 1, status: 'extracted' }, { page: 1, status: 'extracted' }]),
+    () =>
+      summarizeCoverage([
+        { page: 1, status: 'extracted' },
+        { page: 1, status: 'extracted' },
+      ]),
     /more than once/,
   );
 });

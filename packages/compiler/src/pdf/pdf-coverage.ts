@@ -18,7 +18,12 @@ import type { LoadedPdfDocument, LoadedPdfPage } from './pdf-loader.js';
  */
 export function classifyPdfPage(page: LoadedPdfPage): PageCoverageEntry {
   if (page.loadFailure !== undefined) {
-    return { page: page.pageNumber, status: 'unaccounted', reason: 'page_load_failed', detail: `${page.loadFailure.code}: ${page.loadFailure.message}` };
+    return {
+      page: page.pageNumber,
+      status: 'unaccounted',
+      reason: 'page_load_failed',
+      detail: `${page.loadFailure.code}: ${page.loadFailure.message}`,
+    };
   }
   if (!page.requiresOcr) return { page: page.pageNumber, status: 'extracted' };
   if (page.isBlank) return { page: page.pageNumber, status: 'excluded', reason: 'blank_page' };
@@ -30,7 +35,12 @@ export function classifyPdfPage(page: LoadedPdfPage): PageCoverageEntry {
       detail: 'page is image-based with no extractable text and no OCR engine is configured',
     };
   }
-  return { page: page.pageNumber, status: 'unaccounted', reason: 'no_extractable_text', detail: 'page draws content but yields no readable text' };
+  return {
+    page: page.pageNumber,
+    status: 'unaccounted',
+    reason: 'no_extractable_text',
+    detail: 'page draws content but yields no readable text',
+  };
 }
 
 export function computePdfCoverage(document: LoadedPdfDocument): CoverageReport {

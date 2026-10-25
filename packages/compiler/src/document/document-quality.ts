@@ -1,7 +1,14 @@
 import type { Diagnostic } from '@xo/xoir';
 import type { DocumentBlock, DocumentSection, ParsedDocument } from './types.js';
 import { findSuspiciousTokens } from './text-legibility.js';
-import { accountedContentPages, coverageCounts, coverageDiagnostics, SOURCE_COVERAGE_PASS_NAME, type CoverageCounts, type CoverageReport } from './page-coverage.js';
+import {
+  accountedContentPages,
+  coverageCounts,
+  coverageDiagnostics,
+  SOURCE_COVERAGE_PASS_NAME,
+  type CoverageCounts,
+  type CoverageReport,
+} from './page-coverage.js';
 
 /**
  * Phase 0's "Make Source Extraction Trustworthy" lifecycle, expressed as

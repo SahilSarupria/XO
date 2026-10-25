@@ -15,8 +15,9 @@ test('A1-01 regression: a fully scanned PDF is blocked, not vacuously trusted', 
   const result = await compileSources([pdf({ pages: [SCAN, SCAN, SCAN] }, 'scan.pdf')]);
   assert.equal(result.ok, false, 'nothing readable means nothing to compile');
   if (result.ok) return;
-  const sources = (result.error.context as { sources?: readonly { qualityState?: string; unitCount: number; coverage?: { unaccountedPages: number } }[] })
-    .sources!;
+  const sources = (
+    result.error.context as { sources?: readonly { qualityState?: string; unitCount: number; coverage?: { unaccountedPages: number } }[] }
+  ).sources!;
   assert.equal(sources[0]!.qualityState, 'blocked');
   assert.equal(sources[0]!.unitCount, 0);
   assert.equal(sources[0]!.coverage!.unaccountedPages, 3);
@@ -67,7 +68,9 @@ test('WS1-02 end to end: one page with an unsupported filter makes the document 
 });
 
 test('non-paginated sources are unaffected: no coverage, same trusted outcome as before', async () => {
-  const result = await compileSources([{ kind: 'document', text: '# Claims\nContact the claims department within 30 days of any loss event.', sourcePath: 'a.txt' }]);
+  const result = await compileSources([
+    { kind: 'document', text: '# Claims\nContact the claims department within 30 days of any loss event.', sourcePath: 'a.txt' },
+  ]);
   assert.ok(result.ok, result.ok ? undefined : JSON.stringify(result.error));
   if (!result.ok) return;
   assert.equal(result.value.sources[0]!.qualityState, 'trusted');
@@ -84,7 +87,12 @@ test('unread pages never alter what the readable pages compile to: same node kin
   assert.equal(partial.value.sources[0]!.qualityState, 'partial');
   // Node ids and hashes embed the source id (which hashes the bytes), so compare what the nodes SAY.
   const content = (r: typeof complete): string[] =>
-    r.ok ? r.value.graph.allNodes().map((n) => `${n.kind}:${JSON.stringify(n.properties)}`).sort() : [];
+    r.ok
+      ? r.value.graph
+          .allNodes()
+          .map((n) => `${n.kind}:${JSON.stringify(n.properties)}`)
+          .sort()
+      : [];
   assert.ok(content(complete).length > 0, 'the comparison must not be vacuous');
   assert.deepEqual(content(partial), content(complete));
 });

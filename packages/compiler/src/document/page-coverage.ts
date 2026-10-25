@@ -22,11 +22,7 @@ import type { Diagnostic } from '@xo/xoir';
 export type PageCoverageStatus = 'extracted' | 'ocr' | 'excluded' | 'unaccounted';
 
 /** Machine-readable reasons. Free text goes in `detail`, never here, so consumers can switch on this. */
-export type PageCoverageReason =
-  | 'blank_page'
-  | 'requires_ocr_unavailable'
-  | 'no_extractable_text'
-  | 'page_load_failed';
+export type PageCoverageReason = 'blank_page' | 'requires_ocr_unavailable' | 'no_extractable_text' | 'page_load_failed';
 
 /** The only reasons under which a page may be `excluded`: each one asserts the page holds no content. */
 export const EXCLUDABLE_REASONS: ReadonlySet<PageCoverageReason> = new Set<PageCoverageReason>(['blank_page']);

@@ -66,7 +66,9 @@ test('a summary diagnostic reports the count; none is emitted when nothing is un
   assert.equal(diag!.severity, 'info');
   assert.match(diag!.message, /^3 sentence\(s\)/);
 
-  const clean = await compileSources([{ kind: 'document', text: '# Claims\nClaims must be reported within 30 days of the loss event.', sourcePath: 'c.txt' }]);
+  const clean = await compileSources([
+    { kind: 'document', text: '# Claims\nClaims must be reported within 30 days of the loss event.', sourcePath: 'c.txt' },
+  ]);
   assert.ok(clean.ok);
   if (!clean.ok) return;
   assert.deepEqual(clean.value.unclassified, []);

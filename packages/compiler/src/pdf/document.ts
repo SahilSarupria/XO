@@ -302,12 +302,7 @@ export class PdfDocument {
   }
 }
 
-function failedPage(
-  pageNumber: number,
-  mediaBox: readonly [number, number, number, number],
-  rotate: number,
-  cause: unknown,
-): RawPdfPage {
+function failedPage(pageNumber: number, mediaBox: readonly [number, number, number, number], rotate: number, cause: unknown): RawPdfPage {
   const code = cause instanceof PdfError ? String(cause.code) : 'PDF_PAGE_LOAD_FAILED';
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
