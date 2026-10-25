@@ -54,7 +54,7 @@ jobs:
         run: |
           npx prettier --version
           npx prettier --check . > /tmp/pcheck.txt 2>&1 || true
-          head -c 3000 /tmp/pcheck.txt | tr '\n' '|' | sed 's/%/%25/g' | while read -r line; do echo "::error title=prettier::$line"; done
+          echo "::error title=prettier::$(head -c 3000 /tmp/pcheck.txt | tr '\n' '|' | sed 's/%/%25/g')"
           npm run format:check
 
       - name: Test
