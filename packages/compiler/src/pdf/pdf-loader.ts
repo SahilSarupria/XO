@@ -16,6 +16,12 @@ export interface LoadedPdfPage {
   readonly textRuns: readonly TextRun[];
   /** True if this page has no extractable text (or is dominated by a full-page image) — a scanned page that needs an OCR pass this compiler frontend does not itself perform. */
   readonly requiresOcr: boolean;
+  /** True when the page holds no content at all: empty content streams and no image. Only such a page may be excluded from coverage as blank. */
+  readonly isBlank: boolean;
+  /** True when the page's resources hold any image XObject (a scan or figure). Distinguishes "needs OCR" from "draws something that is not text". */
+  readonly hasImage: boolean;
+  /** Set when this page could not be loaded; the failure is isolated to the page (WS1-02) and the coverage ledger records it as unaccounted. */
+  readonly loadFailure?: { readonly code: string; readonly message: string };
   /**
    * The same per-font `/ToUnicode` / base-encoding-plus-`/Differences`
    * resolver `plainText` above was decoded through (see `font-encoding.ts`).
@@ -41,20 +47,52 @@ export interface PdfLoader {
   load(bytes: Uint8Array, sourcePath: string): Result<LoadedPdfDocument, PdfError>;
 }
 
+const NO_FONT_ENCODING: FontEncoding = { codeByteWidth: 1, decode: (bytes) => Buffer.from(bytes).toString('latin1') };
+
 function toLoadedPage(raw: RawPdfPage, doc: PdfDocument): LoadedPdfPage {
-  const textRuns = extractTextRuns(raw.contentBytes);
-  const resolveFontEncoding = buildFontEncodingResolver(raw.resources, (value) => doc.resolve(value));
-  const plainText = textRunsToPlainText(textRuns, resolveFontEncoding);
-  const hasText = plainText.trim().length > 0;
-  return {
+  const base = {
     pageNumber: raw.pageNumber,
     sourceObjectNumber: raw.objectNumber,
     mediaBox: raw.mediaBox,
     rotate: raw.rotate,
-    plainText,
-    textRuns,
-    requiresOcr: !hasText || (raw.hasFullPageImageXObject && plainText.trim().length < 20),
-    resolveFontEncoding,
+  };
+  if (raw.loadFailure !== undefined) return failedLoadedPage(base, raw.loadFailure);
+  try {
+    const textRuns = extractTextRuns(raw.contentBytes);
+    const resolveFontEncoding = buildFontEncodingResolver(raw.resources, (value) => doc.resolve(value));
+    const plainText = textRunsToPlainText(textRuns, resolveFontEncoding);
+    const hasText = plainText.trim().length > 0;
+    return {
+      ...base,
+      plainText,
+      textRuns,
+      requiresOcr: !hasText || (raw.hasFullPageImageXObject && plainText.trim().length < 20),
+      isBlank: !hasText && raw.isContentEmpty && !raw.hasImageXObject,
+      hasImage: raw.hasImageXObject,
+      resolveFontEncoding,
+    };
+  } catch (cause) {
+    // WS1-02: one malformed page must not reject the customer's whole document.
+    return failedLoadedPage(base, {
+      code: cause instanceof PdfError ? String(cause.code) : 'PDF_PAGE_LOAD_FAILED',
+      message: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
+}
+
+function failedLoadedPage(
+  base: Pick<LoadedPdfPage, 'pageNumber' | 'sourceObjectNumber' | 'mediaBox' | 'rotate'>,
+  failure: { readonly code: string; readonly message: string },
+): LoadedPdfPage {
+  return {
+    ...base,
+    plainText: '',
+    textRuns: [],
+    requiresOcr: false,
+    isBlank: false,
+    hasImage: false,
+    loadFailure: failure,
+    resolveFontEncoding: () => NO_FONT_ENCODING,
   };
 }
 

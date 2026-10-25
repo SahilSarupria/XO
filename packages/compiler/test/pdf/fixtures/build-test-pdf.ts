@@ -4,6 +4,12 @@ export interface TestPageSpec {
   /** Content-stream operators as a raw string — the fixture builder wraps this in `BT ... ET` if it doesn't already contain one, and FlateDecode-compresses it, exactly like a real PDF writer would. */
   readonly contentOps: string;
   readonly mediaBox?: readonly [number, number, number, number];
+  /** Adds a page-sized image XObject to the page's resources, like a scanned page. */
+  readonly image?: boolean;
+  /** If set, written verbatim as the content stream (no `BT ... ET` wrapping), so a test can build a genuinely empty page with `''`. */
+  readonly rawContent?: string;
+  /** If set, the content stream declares this `/Filter` name but holds plain bytes — an unsupported filter (e.g. `LZWDecode`) makes just this page fail to load. */
+  readonly contentFilter?: string;
 }
 
 export interface TestPdfSpec {
@@ -56,6 +62,12 @@ export function buildTestPdf(spec: TestPdfSpec): Uint8Array {
   const infoObjNum = 3;
   const firstPageObjNum = 4;
 
+  const fontObjNumEarly = firstPageObjNum + pageCount * 2;
+  const imageObjNumByPage = new Map<number, number>();
+  spec.pages.forEach((page, i) => {
+    if (page.image === true) imageObjNumByPage.set(i, fontObjNumEarly + 1 + imageObjNumByPage.size);
+  });
+
   beginObject(1);
   push(`<< /Type /Catalog /Pages ${pagesObjNum} 0 R >>\n`);
   endObject();
@@ -80,15 +92,22 @@ export function buildTestPdf(spec: TestPdfSpec): Uint8Array {
     const mediaBoxStr = page.mediaBox ? `[${page.mediaBox.join(' ')}]` : undefined;
 
     beginObject(pageObjNum);
-    push(`<< /Type /Page /Parent ${pagesObjNum} 0 R /Contents ${contentObjNum} 0 R${mediaBoxStr ? ` /MediaBox ${mediaBoxStr}` : ''} >>\n`);
+    const imageObjNum = imageObjNumByPage.get(i);
+    const resourcesStr =
+      imageObjNum !== undefined ? ` /Resources << /Font << /F1 ${fontObjNumEarly} 0 R >> /XObject << /Im1 ${imageObjNum} 0 R >> >>` : '';
+    push(
+      `<< /Type /Page /Parent ${pagesObjNum} 0 R /Contents ${contentObjNum} 0 R${mediaBoxStr ? ` /MediaBox ${mediaBoxStr}` : ''}${resourcesStr} >>\n`,
+    );
     endObject();
 
-    const rawOps = page.contentOps.includes('BT') ? page.contentOps : `BT ${page.contentOps} ET`;
-    const compressed = deflateSync(Buffer.from(rawOps, 'latin1'));
+    const rawOps =
+      page.rawContent !== undefined ? page.rawContent : page.contentOps.includes('BT') ? page.contentOps : `BT ${page.contentOps} ET`;
+    const unsupportedFilter = page.contentFilter;
+    const compressed = unsupportedFilter !== undefined ? Buffer.from(rawOps, 'latin1') : deflateSync(Buffer.from(rawOps, 'latin1'));
     const declaredLength = spec.corruptLength && i === 0 ? compressed.length + 1000 : compressed.length;
 
     beginObject(contentObjNum);
-    push(`<< /Length ${declaredLength} /Filter /FlateDecode >>\nstream\n`);
+    push(`<< /Length ${declaredLength} /Filter /${unsupportedFilter ?? 'FlateDecode'} >>\nstream\n`);
     pushBytes(compressed);
     push('\nendstream\n');
     endObject();
@@ -99,8 +118,16 @@ export function buildTestPdf(spec: TestPdfSpec): Uint8Array {
   push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\n');
   endObject();
 
+  for (const [, imageObjNum] of imageObjNumByPage) {
+    beginObject(imageObjNum);
+    push('<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /BitsPerComponent 1 /ColorSpace /DeviceGray /Length 4 >>\nstream\n');
+    push('\0\0\0\0');
+    push('\nendstream\n');
+    endObject();
+  }
+
   const xrefOffset = offset;
-  const totalObjects = fontObjNum + 1;
+  const totalObjects = fontObjNum + 1 + imageObjNumByPage.size;
   push(`xref\n0 ${totalObjects}\n`);
   push('0000000000 65535 f \n');
   for (let i = 1; i < totalObjects; i += 1) {

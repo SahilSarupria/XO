@@ -8,3 +8,4 @@ export * from './section-builder.js';
 export * from './document-parser.js';
 export * from './text-legibility.js';
 export * from './document-quality.js';
+export * from './page-coverage.js';

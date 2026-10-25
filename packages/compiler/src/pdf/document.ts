@@ -27,6 +27,17 @@ export interface RawPdfPage {
   readonly hasFullPageImageXObject: boolean;
   /** This page's (possibly inherited) resolved `/Resources` dictionary — carried through so a font-aware text decoder (`font-encoding.ts`) can look up the `/Font` entry a given text run's `fontName` refers to. Sub-entries (e.g. individual font dictionaries) may still be unresolved references; the consumer resolves them via the same `PdfDocument`. */
   readonly resources: PdfDictionary | undefined;
+  /** True if this page's resources hold ANY image XObject (not only a full-page one). Used by the coverage ledger to tell a genuinely blank page from a page whose content is pictorial. */
+  readonly hasImageXObject: boolean;
+  /** True when the page's content streams decode to nothing but whitespace (or the page has no `/Contents`). Together with `hasImageXObject: false` this is the only condition under which a page may be recorded as `excluded: blank_page`. */
+  readonly isContentEmpty: boolean;
+  /**
+   * Set when this one page could not be built (an unsupported stream filter, a malformed
+   * content stream, an unresolvable page-tree node). The failure is isolated to the page:
+   * the rest of the document still loads, and the coverage ledger records this page as
+   * unaccounted instead of the whole document being rejected (WS1-02, CRD-03).
+   */
+  readonly loadFailure?: { readonly code: string; readonly message: string };
 }
 
 const DEFAULT_MEDIA_BOX: readonly [number, number, number, number] = [0, 0, 612, 792]; // US Letter, the PDF spec's fallback default
@@ -218,14 +229,27 @@ export class PdfDocument {
 
       if (isLeafPage) {
         pageNumber += 1;
-        pages.push(this.buildPage(pageNumber, node, mediaBox, rotate, resources));
+        try {
+          pages.push(this.buildPage(pageNumber, node, mediaBox, rotate, resources));
+        } catch (cause) {
+          pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
+        }
         return;
       }
 
       const kidsValue = this.dictGet(node, 'Kids');
       if (kidsValue !== undefined && isArray(kidsValue)) {
         for (const kidRef of kidsValue.items) {
-          const kid = this.resolve(kidRef);
+          let kid: PdfValue;
+          try {
+            kid = this.resolve(kidRef);
+          } catch (cause) {
+            // An unresolvable page-tree entry is accounted for as one failed page rather than
+            // vanishing: the document becomes `partial`, it is not silently shortened.
+            pageNumber += 1;
+            pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
+            continue;
+          }
           if (isDictionary(kid)) walk(kid, mediaBox, rotate, resources);
         }
       }
@@ -272,8 +296,65 @@ export class PdfDocument {
       contentBytes,
       hasFullPageImageXObject: hasSuspiciouslyFullPageImage(this, resources, mediaBox),
       resources,
+      hasImageXObject: hasAnyImage(this, resources),
+      isContentEmpty: isWhitespaceOnly(contentBytes),
     };
   }
+}
+
+function failedPage(
+  pageNumber: number,
+  mediaBox: readonly [number, number, number, number],
+  rotate: number,
+  cause: unknown,
+): RawPdfPage {
+  const code = cause instanceof PdfError ? String(cause.code) : 'PDF_PAGE_LOAD_FAILED';
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return {
+    pageNumber,
+    objectNumber: -1,
+    mediaBox,
+    rotate,
+    contentBytes: new Uint8Array(0),
+    hasFullPageImageXObject: false,
+    resources: undefined,
+    hasImageXObject: false,
+    isContentEmpty: false,
+    loadFailure: { code, message },
+  };
+}
+
+function isWhitespaceOnly(bytes: Uint8Array): boolean {
+  for (const b of bytes) {
+    // space, \t, \n, \r, \f, NUL are the PDF whitespace characters (ISO 32000-1 §7.2.2)
+    if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d && b !== 0x0c && b !== 0x00) return false;
+  }
+  return true;
+}
+
+function hasAnyImage(doc: PdfDocument, resources: PdfDictionary | undefined): boolean {
+  if (!resources) return false;
+  const xObjectsValue = resources.entries.get('XObject');
+  if (xObjectsValue === undefined) return false;
+  let xObjects: PdfValue;
+  try {
+    xObjects = doc.resolve(xObjectsValue);
+  } catch {
+    return true; // unreadable XObject table: assume pictorial content may exist (fail closed)
+  }
+  if (!isDictionary(xObjects)) return false;
+  for (const value of xObjects.entries.values()) {
+    let resolved: PdfValue;
+    try {
+      resolved = doc.resolve(value);
+    } catch {
+      return true;
+    }
+    if (!isStream(resolved)) continue;
+    const subtype = resolved.dictionary.entries.get('Subtype');
+    if (subtype !== undefined && isName(subtype) && subtype.name === 'Image') return true;
+  }
+  return false;
 }
 
 function concatWithNewlines(parts: readonly Uint8Array[]): Uint8Array {

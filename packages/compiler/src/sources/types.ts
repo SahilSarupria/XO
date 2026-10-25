@@ -1,4 +1,5 @@
 import type { ParsedDocument } from '../document/types.js';
+import type { CoverageReport } from '../document/page-coverage.js';
 
 /**
  * The set of source families this package's frontends currently know
@@ -33,6 +34,12 @@ export interface DocumentSourceContent {
   readonly documentTitle: string | undefined;
   /** Best-effort flattened text of the whole source — never fed back into the pipeline itself (that's what `parsed` is for), only useful for logging, hashing, and debugging. */
   readonly plainText: string;
+  /**
+   * Per-page accounting (WS1-01, CRD-03). Present for paginated sources (PDF). Absent means the
+   * source has no page structure to account for (HTML, structured data, plain text), which is
+   * NOT the same as "complete": quality assessment treats absence as nothing to check.
+   */
+  readonly coverage?: CoverageReport;
 }
 
 /**
