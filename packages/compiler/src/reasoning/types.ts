@@ -122,7 +122,23 @@ export interface ReasoningEdge {
   readonly provenance: readonly KnowledgeProvenance[];
 }
 
+/**
+ * WS1-04 / CRD-04: a sentence that LOOKS decision-bearing (see `decision-cues.ts`) but that no
+ * deterministic rule pattern could parse. Surfaced for human review so a missed rule is visible
+ * instead of silently absent. It is never promoted to a node or capability automatically, and it
+ * always carries its source span.
+ */
+export interface UnclassifiedSentence {
+  readonly text: string;
+  /** Cue families that made the detector flag it (e.g. `obligation`, `deadline`), sorted. */
+  readonly cues: readonly string[];
+  readonly sourceUnitId: string;
+  readonly provenance: KnowledgeProvenance;
+}
+
 export interface ReasoningGraph {
   readonly nodes: readonly ReasoningNode[];
   readonly edges: readonly ReasoningEdge[];
+  /** Decision-bearing sentences the rule patterns did not parse, in document order. Absent only when a custom `extractor` was supplied that does not report them. */
+  readonly unclassified?: readonly UnclassifiedSentence[];
 }

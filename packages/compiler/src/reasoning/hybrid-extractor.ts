@@ -46,6 +46,9 @@ export class HybridReasoningExtractor implements ReasoningExtractor {
     return ok({
       nodes: [...ruleResult.value.nodes, ...aiResult.value.nodes],
       edges: [...ruleResult.value.edges, ...aiResult.value.edges],
+      // AI candidates carry no sentence offsets, so they cannot be matched back to individual
+      // sentences; the list stays "what the deterministic rules could not parse".
+      ...(ruleResult.value.unclassified !== undefined ? { unclassified: ruleResult.value.unclassified } : {}),
     });
   }
 }

@@ -7,6 +7,7 @@ import { chunkDocument } from '../semantic/semantic-chunker.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import { assessDocumentQuality, type SourceQualityState } from '../document/document-quality.js';
 import type { CoverageReport } from '../document/page-coverage.js';
+import type { UnclassifiedSentence } from '../reasoning/types.js';
 import { extractKnowledgeGraph, type KnowledgeExtractionOptions } from '../knowledge/knowledge-extractor.js';
 import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../capabilities/capability-extractor.js';
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
@@ -60,6 +61,14 @@ export interface SourceCompilationReport {
 export interface CompileSourcesResult extends CompiledXoirResult {
   /** One entry per input, in input order — always present even for inputs that contributed zero units, so a caller can see exactly what happened to every source it submitted (Stage 8 §14's "must not silently pass through"). */
   readonly sources: readonly SourceCompilationReport[];
+  /**
+   * WS1-04 / CRD-04: sentences that look decision-bearing (obligation, limit, deadline, exclusion,
+   * condition) but that no deterministic rule pattern parsed, in document order, each with its
+   * source span. A review list, not a rule list: nothing here is promoted automatically. Empty
+   * means "the detector found none", which is a statement about the detector's lexicon, not a
+   * guarantee that no rule was missed.
+   */
+  readonly unclassified: readonly UnclassifiedSentence[];
 }
 
 export interface CompileSourcesOptions {
@@ -308,7 +317,25 @@ export async function compileSources(
     );
   }
 
-  return ok({ ...compiled.value, diagnostics: [...qualityDiagnostics, ...compiled.value.diagnostics], sources: sourceReports });
+  const unclassified = reasoning.unclassified ?? [];
+  const reviewDiagnostics: Diagnostic[] =
+    unclassified.length > 0
+      ? [
+          {
+            severity: 'info',
+            passName: 'reasoning-coverage',
+            code: 'reasoning/unclassified-decision-sentences',
+            message: `${unclassified.length} sentence(s) look decision-bearing but matched no rule pattern. They are listed for review and were not turned into rules.`,
+          },
+        ]
+      : [];
+
+  return ok({
+    ...compiled.value,
+    diagnostics: [...qualityDiagnostics, ...reviewDiagnostics, ...compiled.value.diagnostics],
+    sources: sourceReports,
+    unclassified,
+  });
 }
 
 /** Single-source convenience wrapper over `compileSources` — the common case (one PDF, one HTML page, ...) without the caller needing to think about the array/merge machinery at all. */
