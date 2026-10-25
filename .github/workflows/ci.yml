@@ -51,11 +51,7 @@ jobs:
         run: npm run lint
 
       - name: Format check
-        run: |
-          npx prettier --version
-          npx prettier --check . > /tmp/pcheck.txt 2>&1 || true
-          echo "::error title=prettier::$(head -c 3000 /tmp/pcheck.txt | tr '\n' '|' | sed 's/%/%25/g')"
-          npm run format:check
+        run: npm run format:check
 
       - name: Test
         run: npm test

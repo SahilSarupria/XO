@@ -110,12 +110,10 @@ function describe(entry: PageCoverageEntry): string {
 export function coverageDiagnostics(report: CoverageReport, sourceId: string): Diagnostic[] {
   return report.entries
     .filter((entry) => entry.status === 'unaccounted')
-    .map(
-      (entry): Diagnostic => ({
-        severity: 'warning',
-        passName: SOURCE_COVERAGE_PASS_NAME,
-        code: `source-coverage/${entry.reason ?? 'unaccounted'}`,
-        message: `Source "${sourceId}" (page ${entry.page}): not read by the compiler — ${describe(entry)}. Content on this page is absent from every capability derived from this source.`,
-      }),
-    );
+    .map((entry): Diagnostic => ({
+      severity: 'warning',
+      passName: SOURCE_COVERAGE_PASS_NAME,
+      code: `source-coverage/${entry.reason ?? 'unaccounted'}`,
+      message: `Source "${sourceId}" (page ${entry.page}): not read by the compiler — ${describe(entry)}. Content on this page is absent from every capability derived from this source.`,
+    }));
 }
