@@ -256,6 +256,11 @@ replay from the cache, and the run fails (with a content-free message) if any un
    Without both variables the real-cache test is skipped; the scripted-provider tests in the same file still run (they prove the mechanics only). A placeholder API
    key is used if `GEMINI_API_KEY` is unset, because a cache hit never reaches the provider.
 
+   The same run also writes **`review.html`**, a single offline page for the reviewer (no network, nothing sent anywhere): the reviewer opens it in a browser,
+   picks a verdict per suggestion (Part 1) and yes/no per expected term (Part 2), and presses "Download my answers", which saves the filled `adjudication.csv` and
+   `gold.csv`. The reviewer never needs to open a CSV. Like the CSVs, the page contains source document text, so keep it on the machine and do not share it
+   outside the review. Record who reviewed (it should not be the gate's author) next to the score.
+
 2. `adjudication.csv`: the model's accepted candidates only (answers rejected by validation are not included), shuffled with a fixed seed and given opaque ids.
    Columns `id, split, unit_text, candidate_text, verdict`. There is no source, type, confidence or unit-id column. Fill `verdict` with exactly one of:
    `valid` (a correct, supported knowledge term), `duplicate` (restates another candidate for the same unit), `unsupported` (not backed by the unit text), `trivial`

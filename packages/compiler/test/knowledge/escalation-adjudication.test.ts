@@ -12,6 +12,7 @@ import {
   assertPureReplay,
   loadEvalRows,
   renderKit,
+  renderReviewHtml,
   runHybridOverRows,
   type KitRow,
 } from './escalation-adjudication-kit.js';
@@ -63,6 +64,7 @@ test(
     await mkdir(realOut!, { recursive: true });
     await writeFile(join(realOut!, 'adjudication.csv'), kit.adjudicationCsv, 'utf8');
     await writeFile(join(realOut!, 'gold.csv'), kit.goldCsv, 'utf8');
+    await writeFile(join(realOut!, 'review.html'), renderReviewHtml(kit), 'utf8');
     assert.equal(replay.fetchAttempts, 0);
     assert.equal(replay.report.providerCalls, 0);
   },
@@ -262,6 +264,37 @@ test('SCORER: blank verdicts are PROVISIONAL, a bad verdict is rejected', async 
     assert.equal(rejected.status, 2);
     assert.match(rejected.stderr, /verdict must be one of valid \| duplicate \| unsupported \| trivial/);
     assert.ok(!/noted/.test(rejected.stderr), 'errors never echo candidate text');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('REVIEW PAGE (scripted data): offline, self-contained, data embedded safely, same rows as the CSVs', async () => {
+  const { rows, dir, live } = await populatedKit();
+  try {
+    const kit = renderKit(rows, live.modelLabels);
+    // Hostile text must never become markup: inject script-like content into a candidate and a unit.
+    const hostile = renderReviewHtml({
+      reviewCandidates: [{ id: 'C001', split: 'dev', unitText: '</script><img src=x onerror=alert(1)>', candidate: '<b>"quoted"</b>' }],
+      reviewGoldTerms: [],
+    });
+    assert.ok(!/<img src=x/.test(hostile) && !hostile.includes('</script><img'), 'embedded data cannot close the script element');
+    const html = renderReviewHtml(kit);
+    assert.ok(!/(https?:)?\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(html.replace(/<!doctype html>/i, '')), 'no external URL of any kind');
+    assert.ok(!/<script[^>]+src=|<link[^>]+href=|@import|fetch\(|XMLHttpRequest|sendBeacon/.test(html), 'no network or external resource');
+    const m = /<script id="data" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
+    assert.ok(m);
+    const embedded = JSON.parse(m![1]!) as { candidates: unknown[]; gold: unknown[]; verdicts: string[] };
+    assert.equal(embedded.candidates.length, kit.reviewCandidates.length);
+    assert.equal(embedded.gold.length, kit.stats.goldTerms.dev + kit.stats.goldTerms.held);
+    assert.deepEqual(embedded.verdicts, [...VERDICTS]);
+    assert.equal(kit.reviewCandidates.length, kit.stats.modelCandidates.dev + kit.stats.modelCandidates.held);
+    // The CSV rows and the page rows are the same rows in the same order.
+    const idsInCsv = kit.adjudicationCsv.match(/^C\d{3},/gm)?.map((x) => x.slice(0, -1));
+    assert.deepEqual(
+      idsInCsv,
+      kit.reviewCandidates.map((c) => c.id),
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

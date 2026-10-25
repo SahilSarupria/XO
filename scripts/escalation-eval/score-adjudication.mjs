@@ -174,6 +174,9 @@ if (!result.complete)
 for (const split of SPLITS)
   if (result.splits[split].inconsistentModelCoversWithoutValidCandidates)
     result.notes.push(`${split}: model_covers has "yes" cells but no candidate was judged valid; check the adjudication.`);
+result.notes.push(
+  'This is candidate-quality evidence only. It does not evaluate the pre-registered gating criteria: confidence gating stays NOT SUPPORTED.',
+);
 result.notes.push('Single run, small set, adjudicator verdicts only as good as the adjudicator. Do not tune on the held-out split.');
 
 // ---- markdown (numbers only) -----------------------------------------------------------------------------------------
