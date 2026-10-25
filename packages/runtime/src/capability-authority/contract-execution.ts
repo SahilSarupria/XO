@@ -100,7 +100,9 @@ export const MIN_EXECUTION_CONFIDENCE = 0.7;
 
 /** The floor actually enforced: the platform floor, or a higher caller-supplied one. A lower, NaN or non-numeric request is ignored. */
 export function effectiveMinConfidence(requested?: number): number {
-  return typeof requested === 'number' && Number.isFinite(requested) ? Math.max(MIN_EXECUTION_CONFIDENCE, requested) : MIN_EXECUTION_CONFIDENCE;
+  return typeof requested === 'number' && Number.isFinite(requested)
+    ? Math.max(MIN_EXECUTION_CONFIDENCE, requested)
+    : MIN_EXECUTION_CONFIDENCE;
 }
 
 /**
