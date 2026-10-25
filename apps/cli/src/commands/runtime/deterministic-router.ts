@@ -2,7 +2,6 @@ import type { PackageInstaller } from '@xo/package-sdk';
 import {
   CapabilityRegistry,
   executeResolvedContract,
-  MIN_EXECUTION_CONFIDENCE,
   type RuntimeExecutionAudit,
   resolveContractBinding,
   type MountedPackage,
@@ -90,7 +89,7 @@ export type ExecutionSourceKind = 'authoritative_declaration' | 'knowledge_graph
  * per-package, but R3's ask was only that it be *explicit*, not that it
  * be configurable yet — see the report's "not implemented" list.
  */
-export const MIN_DETERMINISTIC_EXECUTION_CONFIDENCE = MIN_EXECUTION_CONFIDENCE;
+export const MIN_DETERMINISTIC_EXECUTION_CONFIDENCE = 0.7;
 
 interface ExecutionSource {
   readonly kind: ExecutionSourceKind;

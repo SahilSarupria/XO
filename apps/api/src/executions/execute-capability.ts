@@ -7,7 +7,7 @@ import {
   type CapabilityBinding,
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
-import { authorizeContractExecution, confidenceFloorApplies, effectiveMinConfidence, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
+import { authorizeContractExecution, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
 import { authorizeCapabilityExecution, type PermissionDeclaration } from '@xo/permissions';
 import type { ExecutionAuthorization } from './authorization.js';
 import { declaredPermissionsForNode } from './authorization.js';
@@ -168,19 +168,6 @@ export async function preflightCapabilityAuthorization(
     const contractResult = buildSemanticCapabilityContract(graph, XoirNodeId(capabilityId));
     if (!contractResult.ok) return { kind: 'error', errorCode: contractResult.error.code, errorMessage: contractResult.error.message };
     const contract = contractResult.value;
-
-    // CRD-02: for automated (resolved, non-human) bindings the floor is part of the same refuse-before-any-record preflight, so a
-    // sub-floor capability never creates an execution record. The boundary re-enforces it regardless.
-    const minConfidence = effectiveMinConfidence();
-    const preflightBinding = resolveContractBinding(contract);
-    const floorGoverns = preflightBinding.status === 'resolved' && confidenceFloorApplies(preflightBinding.binding);
-    if (floorGoverns && !(contract.confidence >= minConfidence)) {
-      return {
-        kind: 'denied',
-        errorCode: ErrorCode.RUNTIME_CONFIDENCE_BELOW_THRESHOLD,
-        errorMessage: `capability "${capabilityId}" has confidence ${contract.confidence}, below the platform minimum of ${minConfidence}`,
-      };
-    }
 
     const declaration = declaredPermissionsForNode(graph, contract.id);
     const decision = await authorizeContractExecution(contract, {
