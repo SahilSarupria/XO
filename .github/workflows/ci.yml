@@ -53,7 +53,8 @@ jobs:
       - name: Format check
         run: |
           npx prettier --version
-          npx prettier --check . 2>&1 | grep '\[warn\]' | sed 's/\[warn\] //' | while read f; do echo "::error file=$f::prettier-diff"; done || true
+          npx prettier --check . > /tmp/pcheck.txt 2>&1 || true
+          head -c 3000 /tmp/pcheck.txt | tr '\n' '|' | sed 's/%/%25/g' | while read -r line; do echo "::error title=prettier::$line"; done
           npm run format:check
 
       - name: Test
