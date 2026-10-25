@@ -14,10 +14,7 @@ type NodeJson = { id: string; metadata?: { confidence: number }; confidence?: nu
 
 async function withFloorEnv(
   confidences: Readonly<Record<string, number>>,
-  fn: (
-    run: (cap: string, input: Record<string, unknown>) => Promise<{ status: number; json<T>(): T }>,
-    count: () => Promise<number>,
-  ) => Promise<void>,
+  fn: (run: (cap: string, input: Record<string, unknown>) => Promise<{ status: number; json<T>(): T }>, count: () => Promise<number>) => Promise<void>,
 ): Promise<void> {
   await withTempDir('xo-floor-data-', async (dataDir) => {
     await withTempDir('xo-floor-ws-', async (workspacesDir) => {

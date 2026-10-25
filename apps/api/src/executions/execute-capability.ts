@@ -7,14 +7,7 @@ import {
   type CapabilityBinding,
   type SemanticCapabilityContract,
 } from '@xo/capability-contract';
-import {
-  authorizeContractExecution,
-  confidenceFloorApplies,
-  effectiveMinConfidence,
-  executeResolvedContract,
-  resolveContractBinding,
-  NATIVE_CAPABILITY_REQUESTER,
-} from '@xo/runtime';
+import { authorizeContractExecution, confidenceFloorApplies, effectiveMinConfidence, executeResolvedContract, resolveContractBinding, NATIVE_CAPABILITY_REQUESTER } from '@xo/runtime';
 import { authorizeCapabilityExecution, type PermissionDeclaration } from '@xo/permissions';
 import type { ExecutionAuthorization } from './authorization.js';
 import { declaredPermissionsForNode } from './authorization.js';
