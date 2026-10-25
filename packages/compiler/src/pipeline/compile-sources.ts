@@ -6,6 +6,8 @@ import { createManifest, type SourceQualityInfo } from '@xo/xoir';
 import { chunkDocument } from '../semantic/semantic-chunker.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import { assessDocumentQuality, type SourceQualityState } from '../document/document-quality.js';
+import type { CoverageReport } from '../document/page-coverage.js';
+import type { UnclassifiedSentence } from '../reasoning/types.js';
 import { extractKnowledgeGraph, type KnowledgeExtractionOptions } from '../knowledge/knowledge-extractor.js';
 import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../capabilities/capability-extractor.js';
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
@@ -37,6 +39,8 @@ export interface SourceCompilationReport {
    * non-`document`-kind source, which the quality pass never runs
    * against (there is no extracted text to assess).
    *
+   * - `'partial'`: the readable pages were extracted, but at least one page was not read
+   *   (`coverage` lists which and why); not approvable without a recorded human waiver.
    * - `'trusted'` / `'degraded'`: semantic extraction ran normally; a
    *   `'degraded'` source additionally carries per-token findings in
    *   `CompileSourcesResult.diagnostics`.
@@ -46,11 +50,25 @@ export interface SourceCompilationReport {
    *   promoting corrupted tokens into capability/knowledge candidates.
    */
   readonly qualityState?: SourceQualityState;
+  /**
+   * Page-by-page accounting (WS1-01, CRD-03) for paginated sources: which pages were extracted,
+   * OCR'd, excluded (with reason) or left unaccounted. Absent for sources with no page structure.
+   * A `'partial'` `qualityState` means `coverage.unaccountedPages > 0`.
+   */
+  readonly coverage?: CoverageReport;
 }
 
 export interface CompileSourcesResult extends CompiledXoirResult {
   /** One entry per input, in input order — always present even for inputs that contributed zero units, so a caller can see exactly what happened to every source it submitted (Stage 8 §14's "must not silently pass through"). */
   readonly sources: readonly SourceCompilationReport[];
+  /**
+   * WS1-04 / CRD-04: sentences that look decision-bearing (obligation, limit, deadline, exclusion,
+   * condition) but that no deterministic rule pattern parsed, in document order, each with its
+   * source span. A review list, not a rule list: nothing here is promoted automatically. Empty
+   * means "the detector found none", which is a statement about the detector's lexicon, not a
+   * guarantee that no rule was missed.
+   */
+  readonly unclassified: readonly UnclassifiedSentence[];
 }
 
 export interface CompileSourcesOptions {
@@ -168,9 +186,14 @@ export async function compileSources(
       continue;
     }
 
-    const quality = assessDocumentQuality(source.content.parsed, source.sourceId);
+    const quality = assessDocumentQuality(source.content.parsed, source.sourceId, source.content.coverage);
+    const coverage = source.content.coverage;
     qualityDiagnostics.push(...quality.diagnostics);
-    sourceQualityByDocumentPath.set(source.sourceId, { state: quality.state, suspiciousTokenRatio: quality.suspiciousTokenRatio });
+    sourceQualityByDocumentPath.set(source.sourceId, {
+      state: quality.state,
+      suspiciousTokenRatio: quality.suspiciousTokenRatio,
+      ...(quality.coverage !== undefined ? { coverage: quality.coverage } : {}),
+    });
 
     if (quality.state === 'blocked') {
       sourceReports.push({
@@ -180,6 +203,7 @@ export async function compileSources(
         semanticExtractionAvailable: true,
         unitCount: 0,
         qualityState: quality.state,
+        ...(coverage !== undefined ? { coverage } : {}),
       });
       options.logger?.warn(
         'Source quality check blocked semantic extraction — extracted text was not trustworthy enough to feed into semantic extraction',
@@ -201,6 +225,7 @@ export async function compileSources(
       semanticExtractionAvailable: true,
       unitCount: experienceDocument.units.length,
       qualityState: quality.state,
+      ...(coverage !== undefined ? { coverage } : {}),
     });
   }
 
@@ -292,7 +317,25 @@ export async function compileSources(
     );
   }
 
-  return ok({ ...compiled.value, diagnostics: [...qualityDiagnostics, ...compiled.value.diagnostics], sources: sourceReports });
+  const unclassified = reasoning.unclassified ?? [];
+  const reviewDiagnostics: Diagnostic[] =
+    unclassified.length > 0
+      ? [
+          {
+            severity: 'info',
+            passName: 'reasoning-coverage',
+            code: 'reasoning/unclassified-decision-sentences',
+            message: `${unclassified.length} sentence(s) look decision-bearing but matched no rule pattern. They are listed for review and were not turned into rules.`,
+          },
+        ]
+      : [];
+
+  return ok({
+    ...compiled.value,
+    diagnostics: [...qualityDiagnostics, ...reviewDiagnostics, ...compiled.value.diagnostics],
+    sources: sourceReports,
+    unclassified,
+  });
 }
 
 /** Single-source convenience wrapper over `compileSources` — the common case (one PDF, one HTML page, ...) without the caller needing to think about the array/merge machinery at all. */

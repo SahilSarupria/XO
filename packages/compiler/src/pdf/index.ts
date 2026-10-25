@@ -9,3 +9,4 @@ export * from './content-stream.js';
 export * from './text-runs-to-plain-text.js';
 export * from './document.js';
 export * from './pdf-loader.js';
+export * from './pdf-coverage.js';

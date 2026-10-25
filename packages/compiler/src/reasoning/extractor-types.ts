@@ -2,7 +2,7 @@ import type { Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { ExperienceUnit } from '../semantic/types.js';
 import type { KnowledgeProvenance } from '../knowledge/types.js';
-import type { ReasoningEdgeType, ReasoningNodeType } from './types.js';
+import type { ReasoningEdgeType, ReasoningNodeType, UnclassifiedSentence } from './types.js';
 import type { StructuredAction, StructuredCondition, StructuredExceptionCondition } from '@xo/capability-contract';
 
 export interface CandidateReasoningNode {
@@ -35,6 +35,8 @@ export interface CandidateReasoningEdgeRef {
 export interface ReasoningExtractionResult {
   readonly nodes: readonly CandidateReasoningNode[];
   readonly edges: readonly CandidateReasoningEdgeRef[];
+  /** Decision-bearing sentences this extractor could not parse (WS1-04). Optional so existing extractors and test doubles remain valid. */
+  readonly unclassified?: readonly UnclassifiedSentence[];
 }
 
 export interface ReasoningExtractor {

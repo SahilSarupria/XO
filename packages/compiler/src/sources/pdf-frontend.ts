@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, SourceError } from '@xo/errors';
 import { NodePdfLoader, type PdfLoader } from '../pdf/pdf-loader.js';
+import { computePdfCoverage } from '../pdf/pdf-coverage.js';
 import { parseDocument } from '../document/document-parser.js';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource } from './types.js';
@@ -74,7 +75,13 @@ export class PdfSourceFrontend implements SourceFrontend<PdfSourceInput> {
       sourceId,
       sourceType: 'pdf',
       sourcePath: input.sourcePath,
-      content: { kind: 'document', parsed, documentTitle: loaded.value.metadata.title, plainText },
+      content: {
+        kind: 'document',
+        parsed,
+        documentTitle: loaded.value.metadata.title,
+        plainText,
+        coverage: computePdfCoverage(loaded.value),
+      },
       metadata,
       semanticExtractionAvailable: true,
     });

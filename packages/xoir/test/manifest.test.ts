@@ -122,3 +122,29 @@ test('manifest.sourceQuality round-trips through serialization and does not affe
   assert.ok(nodeAfter.ok);
   if (nodeAfter.ok) assert.equal(nodeAfter.value.hash, hashBefore);
 });
+
+test("manifest.sourceQuality carries the 'partial' state and per-page coverage counts through serialization, without touching any node hash", () => {
+  const quality = {
+    'src-1': {
+      state: 'partial' as const,
+      suspiciousTokenRatio: 0,
+      coverage: { totalPages: 3, extractedPages: 2, ocrPages: 0, excludedPages: 0, unaccountedPages: 1 },
+    },
+  };
+  const plain = XoirGraph.create(XoirGraphId('g1'), 1, createManifest({ schemaVersion: 1, now: () => '2026-01-01T00:00:00.000Z' }));
+  const withQuality = XoirGraph.create(
+    XoirGraphId('g1'),
+    1,
+    createManifest({ schemaVersion: 1, sourceQuality: quality, now: () => '2026-01-01T00:00:00.000Z' }),
+  );
+  const a = plain.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' } });
+  const b = withQuality.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' } });
+  assert.ok(a.ok && b.ok);
+  if (!a.ok || !b.ok) return;
+  assert.equal(a.value.hash, b.value.hash);
+
+  const restored = fromJson(toJson(withQuality));
+  assert.ok(restored.ok);
+  if (!restored.ok) return;
+  assert.deepEqual(restored.value.manifest?.sourceQuality, quality);
+});

@@ -1,15 +1,30 @@
 import type { Diagnostic } from '@xo/xoir';
 import type { DocumentBlock, DocumentSection, ParsedDocument } from './types.js';
 import { findSuspiciousTokens } from './text-legibility.js';
+import {
+  accountedContentPages,
+  coverageCounts,
+  coverageDiagnostics,
+  SOURCE_COVERAGE_PASS_NAME,
+  type CoverageCounts,
+  type CoverageReport,
+} from './page-coverage.js';
 
 /**
  * Phase 0's "Make Source Extraction Trustworthy" lifecycle, expressed as
  * a type: SOURCE -> EXTRACTED (Stage 1/2 already ran) -> QUALITY CHECK
- * (this module) -> one of these three states -> semantic extraction
+ * (this module) -> one of these four states -> semantic extraction
  * (Stage 3+) only when the state permits it. See `compile-sources.ts`
  * for where this gates the pipeline.
+ *
+ * - `trusted`   every page accounted for, text legible.
+ * - `degraded`  all pages read, but some tokens look like layout artifacts.
+ * - `partial`   (CRD-03) the readable pages compile, but at least one page was not read. Content
+ *               from the unread pages is absent, so capabilities from this source are not
+ *               approvable without a recorded human waiver.
+ * - `blocked`   nothing trustworthy to extract from; semantic extraction does not run.
  */
-export type SourceQualityState = 'trusted' | 'degraded' | 'blocked';
+export type SourceQualityState = 'trusted' | 'degraded' | 'partial' | 'blocked';
 
 export interface DocumentQualityReport {
   readonly state: SourceQualityState;
@@ -17,6 +32,8 @@ export interface DocumentQualityReport {
   readonly suspiciousTokens: number;
   /** `suspiciousTokens / totalTokens`, `0` for a document with no tokens at all (vacuously trusted — there is nothing to distrust). */
   readonly suspiciousTokenRatio: number;
+  /** Per-page counts when the source had page structure; `undefined` otherwise. The page-by-page entries stay on the `CoverageReport` the caller already holds. */
+  readonly coverage?: CoverageCounts;
   /** One entry per suspicious token found, plus a trailing summary diagnostic when `state !== 'trusted'`. Shaped as `@xo/xoir#Diagnostic` (this package's existing pass-diagnostic convention — see `pipeline/validate-pass.ts`) even though this check runs upstream of XOIR construction, so a caller can merge these directly into a `CompiledXoirResult.diagnostics` array without translation. */
   readonly diagnostics: readonly Diagnostic[];
 }
@@ -73,7 +90,7 @@ function collectBlocks(section: DocumentSection, acc: DocumentBlock[]): void {
  * `if (sourceType === 'pdf')` branch anywhere in this module or its
  * caller.
  */
-export function assessDocumentQuality(parsed: ParsedDocument, sourceId: string): DocumentQualityReport {
+export function assessDocumentQuality(parsed: ParsedDocument, sourceId: string, coverage?: CoverageReport): DocumentQualityReport {
   const blocks: DocumentBlock[] = [];
   collectBlocks(parsed.root, blocks);
 
@@ -99,17 +116,53 @@ export function assessDocumentQuality(parsed: ParsedDocument, sourceId: string):
   }
 
   const suspiciousTokenRatio = totalTokens === 0 ? 0 : suspiciousTokens / totalTokens;
+
+  // CRD-03: page accounting. A paginated source with no page read at all has nothing to trust,
+  // however clean the (empty) text looks — this is the A1-01 hole, where a fully scanned PDF was
+  // vacuously "trusted" because quality was judged only on the tokens that survived.
+  const nothingRead = coverage !== undefined && accountedContentPages(coverage) === 0;
   const state: SourceQualityState =
-    suspiciousTokenRatio > BLOCKED_RATIO_THRESHOLD ? 'blocked' : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD ? 'degraded' : 'trusted';
+    nothingRead || suspiciousTokenRatio > BLOCKED_RATIO_THRESHOLD
+      ? 'blocked'
+      : coverage !== undefined && !coverage.complete
+        ? 'partial'
+        : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD
+          ? 'degraded'
+          : 'trusted';
+
+  if (coverage !== undefined) diagnostics.push(...coverageDiagnostics(coverage, sourceId));
 
   if (state !== 'trusted') {
     diagnostics.push({
       severity: state === 'blocked' ? 'error' : 'warning',
-      passName: SOURCE_QUALITY_PASS_NAME,
+      passName: nothingRead || state === 'partial' ? SOURCE_COVERAGE_PASS_NAME : SOURCE_QUALITY_PASS_NAME,
       code: `source-quality/${state}`,
-      message: `Source "${sourceId}" marked ${state}: ${suspiciousTokens}/${totalTokens} tokens (${(suspiciousTokenRatio * 100).toFixed(1)}%) show extraction-corruption signals.${state === 'blocked' ? ' Semantic extraction was not run for this source — see the accompanying per-token diagnostics for what was found untrustworthy.' : ''}`,
+      message: summaryMessage(state, sourceId, { suspiciousTokens, totalTokens, suspiciousTokenRatio }, coverage, nothingRead),
     });
   }
 
-  return { state, totalTokens, suspiciousTokens, suspiciousTokenRatio, diagnostics };
+  return {
+    state,
+    totalTokens,
+    suspiciousTokens,
+    suspiciousTokenRatio,
+    ...(coverage !== undefined ? { coverage: coverageCounts(coverage) } : {}),
+    diagnostics,
+  };
+}
+
+function summaryMessage(
+  state: SourceQualityState,
+  sourceId: string,
+  tokens: { readonly suspiciousTokens: number; readonly totalTokens: number; readonly suspiciousTokenRatio: number },
+  coverage: CoverageReport | undefined,
+  nothingRead: boolean,
+): string {
+  if (nothingRead && coverage !== undefined) {
+    return `Source "${sourceId}" marked blocked: none of its ${coverage.totalPages} page(s) could be read (${coverage.unaccountedPages} unaccounted, ${coverage.excludedPages} blank). Semantic extraction was not run for this source.`;
+  }
+  if (state === 'partial' && coverage !== undefined) {
+    return `Source "${sourceId}" marked partial: ${coverage.unaccountedPages} of ${coverage.totalPages} page(s) were not read (${coverage.extractedPages} extracted, ${coverage.ocrPages} OCR'd, ${coverage.excludedPages} excluded). Capabilities from this source are not approvable without a recorded human waiver.`;
+  }
+  return `Source "${sourceId}" marked ${state}: ${tokens.suspiciousTokens}/${tokens.totalTokens} tokens (${(tokens.suspiciousTokenRatio * 100).toFixed(1)}%) show extraction-corruption signals.${state === 'blocked' ? ' Semantic extraction was not run for this source — see the accompanying per-token diagnostics for what was found untrustworthy.' : ''}`;
 }

@@ -8,3 +8,4 @@ export * from './hybrid-extractor.js';
 export * from './merge.js';
 export * from './edge-builder.js';
 export * from './reasoning-extractor.js';
+export * from './decision-cues.js';

@@ -160,19 +160,20 @@ the operators differ.
 
 ### Known limitations (real, not hidden)
 
-- **No cross-reference _streams_** (PDF 1.5+'s alternative to the classic
-  xref table, itself a compressed object stream). Most PDFs produced by
-  common consumer tools (word processors, "Print to PDF") still use the
-  classic table; PDFs from some newer/incremental-save-heavy toolchains
-  may not parse until this is added.
-- **No font encoding / `ToUnicode` CMap / CID font support.** Text bytes
-  are decoded as raw Latin-1 (`text-runs-to-plain-text.ts`'s
-  `decodeRunText`). This is correct for the common case (simple,
-  non-embedded fonts with standard encodings) and **wrong** for PDFs
-  using embedded CID-keyed fonts with custom byte-to-glyph mappings —
-  those will decode to garbled text rather than throwing, which is the
-  most important open correctness gap before this loader should be
-  trusted on an arbitrary real-world legal PDF corpus.
+- **Cross-reference streams and object streams are supported** (PDF 1.5+;
+  `xref.ts`, `PdfDocument`'s `/Type /ObjStm` handling), and a damaged
+  xref table is rebuilt by scanning (`rebuild-xref.ts`). This replaces an
+  earlier limitation that said they were not.
+- **Font encoding is handled per font** (`font-encoding.ts`: `/ToUnicode`
+  CMaps, base encodings plus `/Differences`, 2-byte composite fonts).
+  Remaining gap: composite fonts without a `/ToUnicode` map use a
+  documented 2-byte approximation and can still decode to wrong text for
+  unusual custom encodings. This replaces an earlier limitation that said
+  font encoding was not supported at all.
+- **Only `FlateDecode` stream filters are supported.** A stream using any
+  other filter (LZW, ASCII85, ...) makes that one page fail to load. Since
+  WS1-02 the failure is isolated to the page and recorded in the coverage
+  ledger (below); it no longer rejects the document.
 - **No text-rendering-matrix composition.** `content-stream.ts` tracks
   the text line matrix's translation (`Td`/`TD`/`Tm`/`T*`) but not
   character/word spacing, horizontal scaling, or an enclosing `cm`'s
@@ -187,10 +188,42 @@ the operators differ.
   `text-runs-to-plain-text.ts`'s doc comment for why this is the more
   correct default, not just an easier one).
 
-None of the above are silent — each surfaces either as a thrown/returned
-`PdfError` (unsupported filter, cross-reference stream, encryption) or is
+None of the above are silent — each surfaces as a returned `PdfError`
+(encryption, a malformed file), as a per-page `loadFailure` plus a
+coverage-ledger entry (an unsupported filter or malformed page), or is
 explicitly documented as a fidelity gap (encoding, positioning) rather
 than asserted to be solved.
+
+### Page coverage ledger (WS1-01, CRD-03)
+
+Every page of a paginated source ends in exactly one state, recorded in
+`CompileSourcesResult.sources[].coverage` and, as counts, on the XOIR
+manifest (`sourceQuality`):
+
+| State         | Meaning                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `extracted`   | text was read and compiled                                                                                         |
+| `ocr`         | recovered by OCR (no OCR engine ships yet; nothing produces this state today)                                      |
+| `excluded`    | left out for a recorded reason that proves it empty (only `blank_page`: no content stream and no image)            |
+| `unaccounted` | may carry content the compiler did not read: `requires_ocr_unavailable`, `no_extractable_text`, `page_load_failed` |
+
+Any unaccounted page makes the source quality state `partial`: the
+readable pages still compile, a per-page warning names each unread page,
+and the source is not approvable without a recorded human waiver (the
+approval-time enforcement belongs to the trust workstream and is not yet
+implemented). A source with no readable page is `blocked`. Before this
+ledger a fully scanned PDF was reported `trusted`, because quality was
+judged only on the tokens that survived.
+
+### Unclassified decision-bearing sentences (WS1-04, CRD-04)
+
+The rule-pattern parser is a closed set of patterns. Sentences it cannot
+parse used to disappear. `CompileSourcesResult.unclassified` now lists
+those that look decision-bearing (obligations, limits, deadlines,
+eligibility, exclusions; `reasoning/decision-cues.ts`), each with its
+source span. It is a review list only: nothing in it becomes a rule or a
+capability automatically. An empty list means the detector found none, not
+that no rule was missed.
 
 ## Stage 2: Document Parser (`src/document/`)
 

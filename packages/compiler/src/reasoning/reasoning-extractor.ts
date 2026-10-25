@@ -6,7 +6,7 @@ import type { ReasoningExtractor } from './extractor-types.js';
 import { mergeReasoningNodes, type PerUnitReasoningExtraction } from './merge.js';
 import { buildReasoningEdges } from './edge-builder.js';
 import type { ExperienceDocument } from '../semantic/types.js';
-import type { ReasoningGraph } from './types.js';
+import type { ReasoningGraph, UnclassifiedSentence } from './types.js';
 
 export interface ReasoningExtractionOptions {
   /** When supplied, `HybridReasoningExtractor` additionally calls `@xo/ai-core`'s `extractReasoning`/`extractDecisionGraph`/`extractConstraints` per unit; when omitted, extraction is rule-based only (still a correct, if narrower, graph — see `rule-pattern-parser.ts`'s supported pattern list). */
@@ -50,6 +50,8 @@ export async function extractReasoningGraph(
     );
 
   const perUnit: PerUnitReasoningExtraction[] = [];
+  const unclassified: UnclassifiedSentence[] = [];
+  const seenUnclassified = new Set<string>();
   for (const unit of experienceDocument.units) {
     const result = await extractor.extract(unit);
     const extraction = result.ok ? result.value : { nodes: [], edges: [] };
@@ -60,10 +62,17 @@ export async function extractReasoningGraph(
       });
     }
     perUnit.push({ unit, extraction });
+    for (const item of extraction.unclassified ?? []) {
+      // Units can overlap (and the same text can recur); report each source span once.
+      const key = `${item.provenance.documentPath}\u0000${item.provenance.charOffsetRange?.join('-') ?? ''}\u0000${item.text}`;
+      if (seenUnclassified.has(key)) continue;
+      seenUnclassified.add(key);
+      unclassified.push(item);
+    }
   }
 
   const mergeResult = mergeReasoningNodes(perUnit);
   const edges = buildReasoningEdges(perUnit, mergeResult);
 
-  return { nodes: mergeResult.nodes, edges };
+  return { nodes: mergeResult.nodes, edges, unclassified };
 }

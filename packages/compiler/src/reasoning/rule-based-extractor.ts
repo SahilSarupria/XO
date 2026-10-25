@@ -11,6 +11,8 @@ import type {
   ReasoningExtractor,
 } from './extractor-types.js';
 import { buildStructuredSemantics } from './structured-semantics.js';
+import { findDecisionCues } from './decision-cues.js';
+import type { UnclassifiedSentence } from './types.js';
 
 interface Paragraph {
   readonly text: string;
@@ -106,12 +108,26 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
+    const unclassified: UnclassifiedSentence[] = [];
 
     const sentences = splitSentencesByParagraph(unit.content);
     for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
       const sentence = sentences[sentenceIndex]!;
       const parsed = parseSentence(sentence.text);
-      if (parsed.candidates.length === 0) continue;
+      if (parsed.candidates.length === 0) {
+        // WS1-04: a sentence the patterns rejected is reported when it looks decision-bearing,
+        // never silently dropped. It is a review item only; nothing downstream consumes it as a rule.
+        const cues = findDecisionCues(sentence.text);
+        if (cues.length > 0) {
+          unclassified.push({
+            text: sentence.text.trim(),
+            cues,
+            sourceUnitId: unit.id,
+            provenance: baseProvenance(unit, unit.confidence, [sentence.startOffset, sentence.endOffset]),
+          });
+        }
+        continue;
+      }
 
       const labelToLocalId = new Map<string, string>();
       parsed.candidates.forEach((candidate: ParsedReasoningCandidate, candidateIndex: number) => {
@@ -159,6 +175,6 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
       }
     }
 
-    return ok({ nodes, edges });
+    return ok({ nodes, edges, unclassified });
   }
 }
