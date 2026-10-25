@@ -23,46 +23,66 @@ export class WireParseError extends Error {
 
 type Json = Record<string, unknown>;
 
-function obj(v: unknown, path: string): Json {
+export function obj(v: unknown, path: string): Json {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new WireParseError(path, 'object');
   return v as Json;
 }
-function str(v: unknown, path: string): string {
+export function str(v: unknown, path: string): string {
   if (typeof v !== 'string') throw new WireParseError(path, 'string');
   return v;
 }
-function optStr(v: unknown, path: string): string | undefined {
+export function optStr(v: unknown, path: string): string | undefined {
   return v === undefined ? undefined : str(v, path);
 }
-function num(v: unknown, path: string): number {
+export function num(v: unknown, path: string): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new WireParseError(path, 'number');
   return v;
 }
-function bool(v: unknown, path: string): boolean {
+export function bool(v: unknown, path: string): boolean {
   if (typeof v !== 'boolean') throw new WireParseError(path, 'boolean');
   return v;
 }
-function arr(v: unknown, path: string): unknown[] {
+export function arr(v: unknown, path: string): unknown[] {
   if (!Array.isArray(v)) throw new WireParseError(path, 'array');
   return v;
 }
-function strArr(v: unknown, path: string): string[] {
+export function strArr(v: unknown, path: string): string[] {
   return arr(v, path).map((x, i) => str(x, `${path}[${i}]`));
 }
 
 // ---------------------------------------------------------------- workspace
+export type WorkspaceRole = 'admin' | 'publisher' | 'reviewer' | 'viewer';
+export const WORKSPACE_ROLES: readonly WorkspaceRole[] = ['admin', 'publisher', 'reviewer', 'viewer'];
+
 export interface Workspace {
   readonly workspaceId: string;
   readonly name?: string;
   readonly createdAt: string;
+  /** Absent on a server that predates workspace metadata. */
+  readonly kind?: 'team' | 'personal';
+  readonly region?: string;
+  readonly regionLabel?: string;
+  /** Owner plus members. */
+  readonly memberCount?: number;
+  /** The caller's own role here. Used to decide what to OFFER; the server still enforces every action. */
+  readonly role?: WorkspaceRole;
 }
 export function parseWorkspace(v: unknown, path = 'workspace'): Workspace {
   const o = obj(v, path);
   const name = optStr(o['name'], `${path}.name`);
+  const kind = optStr(o['kind'], `${path}.kind`);
+  const region = optStr(o['region'], `${path}.region`);
+  const regionLabel = optStr(o['regionLabel'], `${path}.regionLabel`);
+  const role = optStr(o['role'], `${path}.role`);
   return {
     workspaceId: str(o['workspaceId'], `${path}.workspaceId`),
     ...(name !== undefined ? { name } : {}),
     createdAt: str(o['createdAt'], `${path}.createdAt`),
+    ...(kind === 'team' || kind === 'personal' ? { kind } : {}),
+    ...(region !== undefined ? { region } : {}),
+    ...(regionLabel !== undefined ? { regionLabel } : {}),
+    ...(o['memberCount'] !== undefined ? { memberCount: num(o['memberCount'], `${path}.memberCount`) } : {}),
+    ...(role !== undefined && (WORKSPACE_ROLES as readonly string[]).includes(role) ? { role: role as WorkspaceRole } : {}),
   };
 }
 export function parseWorkspaceList(v: unknown): Workspace[] {
@@ -601,7 +621,10 @@ export function parseRegistryRecord(v: unknown, path = 'record'): RegistryPackag
       };
     }),
     signatureCount: sigs.length,
-    components: Object.entries(comps).map(([kind, e]) => ({ kind, path: str(obj(e, `${path}.manifest.components.${kind}`)['path'], `${path}.manifest.components.${kind}.path`) })),
+    components: Object.entries(comps).map(([kind, e]) => ({
+      kind,
+      path: str(obj(e, `${path}.manifest.components.${kind}`)['path'], `${path}.manifest.components.${kind}.path`),
+    })),
   };
 }
 export function parseBenchmarkRun(v: unknown, path = 'run'): BenchmarkRun {

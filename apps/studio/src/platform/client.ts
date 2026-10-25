@@ -28,7 +28,56 @@ import {
   type Workflow,
   type WorkflowRun,
   type Workspace,
+  type WorkspaceRole,
 } from './wire';
+import {
+  parseAnalysis,
+  parseAuditPage,
+  parseAuditVerification,
+  parseCapabilityPreview,
+  parseChatList,
+  parseChatReply,
+  parseChatSummaryBody,
+  parseChatThread,
+  parseDraft,
+  parseDraftList,
+  parseInboxDetail,
+  parseInboxList,
+  parseInfoRequest,
+  parseInstalled,
+  parseInstalls,
+  parseLibraryDetail,
+  parseLibraryList,
+  parseMemberEnvelope,
+  parseMemberList,
+  parseNotificationFeed,
+  parseRegions,
+  parseRuntimeStatus,
+  parseSettingsView,
+  type AuditPage,
+  type AuditVerification,
+  type CapabilityPreview,
+  type ChatReply,
+  type ChatSummary,
+  type ChatThreadFull,
+  type DraftAnalysis,
+  type DraftEdge,
+  type DraftNode,
+  type InboxDetail,
+  type InboxList,
+  type InfoRequest,
+  type Install,
+  type LibraryDetail,
+  type LibraryList,
+  type Member,
+  type MemberList,
+  type NotificationFeed,
+  type Region,
+  type RuntimeStatus,
+  type SettingsView,
+  type WorkflowDraft,
+  type WorkflowDraftSummary,
+} from './wire-studio';
 
 /**
  * Every way a call to the platform can end that is not a success. These are kept
@@ -87,6 +136,7 @@ export interface XoClientOptions {
 /** Extensions the API accepts at upload (apps/api/src/sources/source.ts SUPPORTED_EXTENSIONS). */
 export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = [
   '.pdf',
+  '.docx',
   '.html',
   '.htm',
   '.json',
@@ -118,7 +168,7 @@ export class XoClient {
     method: string,
     path: string,
     parse: (body: unknown) => T,
-    init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>> },
+    init?: { body?: BodyInit; contentType?: string; headers?: Readonly<Record<string, string>>; raw?: boolean },
   ): Promise<Result<T>> {
     const token = await this.bearer();
     if (!token.ok) {
@@ -163,7 +213,7 @@ export class XoClient {
     }
 
     try {
-      return ok(parse(body));
+      return ok(parse(init?.raw === true ? text : body));
     } catch (cause) {
       const detail = cause instanceof WireParseError ? cause.message : 'unreadable response';
       return fail({
@@ -190,8 +240,190 @@ export class XoClient {
   listWorkspaces(): Promise<Result<Workspace[]>> {
     return this.call('GET', '/workspaces', parseWorkspaceList);
   }
-  createWorkspace(name: string): Promise<Result<Workspace>> {
-    return this.call('POST', '/workspaces', (b) => parseWorkspace(b), this.json({ name }));
+  createWorkspace(name: string, options: { kind?: 'team' | 'personal'; region?: string } = {}): Promise<Result<Workspace>> {
+    return this.call('POST', '/workspaces', (b) => parseWorkspace(b), this.json({ name, ...options }));
+  }
+  listRegions(): Promise<Result<Region[]>> {
+    return this.call('GET', '/regions', parseRegions);
+  }
+
+  // ---- members and roles
+  listMembers(ws: string): Promise<Result<MemberList>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/members`, parseMemberList);
+  }
+  addMember(ws: string, input: { identityId: string; role: WorkspaceRole; displayName?: string; email?: string }): Promise<Result<Member>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/members`, parseMemberEnvelope, this.json(input));
+  }
+  changeMemberRole(ws: string, identityId: string, role: WorkspaceRole): Promise<Result<Member>> {
+    return this.call('PATCH', `/workspaces/${enc(ws)}/members/${enc(identityId)}`, parseMemberEnvelope, this.json({ role }));
+  }
+  removeMember(ws: string, identityId: string): Promise<Result<{ removed: string }>> {
+    return this.call('DELETE', `/workspaces/${enc(ws)}/members/${enc(identityId)}`, (b) => ({
+      removed: String((b as { removed?: unknown })?.removed ?? identityId),
+    }));
+  }
+
+  // ---- audit log
+  listAudit(ws: string, q: { event?: string; result?: string; limit?: number; before?: number } = {}): Promise<Result<AuditPage>> {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v !== undefined) params.set(k, String(v));
+    const qs = params.toString();
+    return this.call('GET', `/workspaces/${enc(ws)}/audit/events${qs === '' ? '' : `?${qs}`}`, parseAuditPage);
+  }
+  verifyAudit(ws: string): Promise<Result<AuditVerification>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/audit/verify`, parseAuditVerification);
+  }
+  /** The exported bytes exactly as the server produced them (JSON evidence pack or CSV): never re-serialized here. */
+  exportAudit(ws: string, format: 'json' | 'csv'): Promise<Result<string>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/audit/export?format=${format}`, (b) => String(b), { raw: true });
+  }
+
+  // ---- settings and runtime status
+  getSettings(ws: string): Promise<Result<SettingsView>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/settings`, parseSettingsView);
+  }
+  updateSettings(ws: string, patch: Record<string, unknown>): Promise<Result<SettingsView>> {
+    return this.call('PUT', `/workspaces/${enc(ws)}/settings`, parseSettingsView, this.json(patch));
+  }
+  getRuntimeStatus(ws: string): Promise<Result<RuntimeStatus>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/runtime/status`, parseRuntimeStatus);
+  }
+
+  // ---- notifications
+  listNotifications(ws: string): Promise<Result<NotificationFeed>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/notifications`, parseNotificationFeed);
+  }
+  markNotificationsRead(ws: string, throughSeq: number): Promise<Result<{ readThroughSeq: number }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/notifications/read`,
+      (b) => ({ readThroughSeq: Number((b as { readThroughSeq?: unknown })?.readThroughSeq) }),
+      this.json({ throughSeq }),
+    );
+  }
+
+  // ---- inbox
+  listInbox(ws: string, state?: 'needs_review' | 'done'): Promise<Result<InboxList>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/inbox${state !== undefined ? `?state=${state}` : ''}`, parseInboxList);
+  }
+  getInboxItem(ws: string, executionId: string): Promise<Result<InboxDetail>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/inbox/${enc(executionId)}`, parseInboxDetail);
+  }
+  requestMoreInfo(ws: string, executionId: string, question: string): Promise<Result<InfoRequest>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/inbox/${enc(executionId)}/info-requests`,
+      (b) => parseInfoRequest(b),
+      this.json({ question }),
+    );
+  }
+  answerInfoRequest(ws: string, executionId: string, requestId: string, answer: string): Promise<Result<InfoRequest>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/inbox/${enc(executionId)}/info-requests/${enc(requestId)}/answer`,
+      (b) => parseInfoRequest(b),
+      this.json({ answer }),
+    );
+  }
+
+  // ---- library
+  listLibrary(ws: string, q: { q?: string; scope?: 'all' | 'installed' | 'mine' } = {}): Promise<Result<LibraryList>> {
+    const params = new URLSearchParams();
+    if (q.q !== undefined && q.q.trim() !== '') params.set('q', q.q.trim());
+    if (q.scope !== undefined) params.set('scope', q.scope);
+    const qs = params.toString();
+    return this.call('GET', `/workspaces/${enc(ws)}/library${qs === '' ? '' : `?${qs}`}`, parseLibraryList);
+  }
+  getLibraryPackage(ws: string, packageId: string): Promise<Result<LibraryDetail>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/library/packages/${enc(packageId)}`, parseLibraryDetail);
+  }
+  listInstalls(ws: string): Promise<Result<Install[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/library/installs`, parseInstalls);
+  }
+  installPackage(ws: string, packageId: string): Promise<Result<Install>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/library/installs`, parseInstalled, this.json({ packageId }));
+  }
+  uninstallPackage(ws: string, name: string, version: string): Promise<Result<{ uninstalled: string }>> {
+    return this.call('DELETE', `/workspaces/${enc(ws)}/library/installs/${enc(name)}/${enc(version)}`, (b) => ({
+      uninstalled: String((b as { uninstalled?: unknown })?.uninstalled ?? `${name}@${version}`),
+    }));
+  }
+
+  // ---- sources: link import
+  importSourceFromUrl(ws: string, url: string, filename?: string): Promise<Result<Source>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/sources/import`,
+      (b) => parseSource(b),
+      this.json({ url, ...(filename !== undefined ? { filename } : {}) }),
+    );
+  }
+
+  // ---- chat (persisted, private to the caller)
+  listChats(ws: string): Promise<Result<ChatSummary[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/chats`, parseChatList);
+  }
+  createChat(ws: string, title?: string): Promise<Result<ChatSummary>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/chats`, parseChatSummaryBody, this.json(title !== undefined ? { title } : {}));
+  }
+  getChat(ws: string, threadId: string): Promise<Result<ChatThreadFull>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/chats/${enc(threadId)}`, parseChatThread);
+  }
+  deleteChat(ws: string, threadId: string): Promise<Result<{ deleted: string }>> {
+    return this.call('DELETE', `/workspaces/${enc(ws)}/chats/${enc(threadId)}`, (b) => ({
+      deleted: String((b as { deleted?: unknown })?.deleted ?? threadId),
+    }));
+  }
+  sendChatMessage(ws: string, threadId: string, content: string, attach: readonly string[] = []): Promise<Result<ChatReply>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/chats/${enc(threadId)}/messages`,
+      parseChatReply,
+      this.json({ content, ...(attach.length > 0 ? { attach } : {}) }),
+    );
+  }
+
+  // ---- workflow drafts (saved graphs). Saving is real; running a draft is NOT offered: the API has no executor for them.
+  listDrafts(ws: string): Promise<Result<WorkflowDraftSummary[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-definitions`, parseDraftList);
+  }
+  getDraft(ws: string, definitionId: string): Promise<Result<WorkflowDraft>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-definitions/${enc(definitionId)}`, parseDraft);
+  }
+  createDraft(
+    ws: string,
+    draft: { name: string; nodes: readonly DraftNode[]; edges: readonly DraftEdge[] },
+  ): Promise<Result<WorkflowDraft>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-definitions`, parseDraft, this.json(draft));
+  }
+  /** `expectedRevision` is the revision the editor loaded; a newer saved draft is refused with a `stale_revision` problem and kept. */
+  saveDraft(
+    ws: string,
+    definitionId: string,
+    draft: { name: string; nodes: readonly DraftNode[]; edges: readonly DraftEdge[]; expectedRevision: number },
+  ): Promise<Result<WorkflowDraft>> {
+    return this.call('PUT', `/workspaces/${enc(ws)}/workflow-definitions/${enc(definitionId)}`, parseDraft, this.json(draft));
+  }
+  deleteDraft(ws: string, definitionId: string): Promise<Result<{ deleted: string }>> {
+    return this.call('DELETE', `/workspaces/${enc(ws)}/workflow-definitions/${enc(definitionId)}`, (b) => ({
+      deleted: String((b as { deleted?: unknown })?.deleted ?? definitionId),
+    }));
+  }
+  validateDraft(
+    ws: string,
+    draft: { name: string; nodes: readonly DraftNode[]; edges: readonly DraftEdge[] },
+  ): Promise<Result<DraftAnalysis>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-definitions/validate`, (b) => parseAnalysis(b), this.json(draft));
+  }
+
+  // ---- capability preview (no execution, no record, no approval). A Test Run is the ordinary createExecution above.
+  previewCapability(ws: string, compilationId: string, capabilityId: string, input: unknown): Promise<Result<CapabilityPreview>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/compilations/${enc(compilationId)}/capabilities/${enc(capabilityId)}/preview`,
+      parseCapabilityPreview,
+      this.json({ input }),
+    );
   }
 
   // ---- sources (context)
