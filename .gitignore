@@ -33,3 +33,6 @@ apps/*/test/**/*.js.map
 
 # Runtime data written by tests and local servers
 **/.xo-data/
+
+# Studio local workspace state and generated compile outputs (never source)
+.xo-studio/
