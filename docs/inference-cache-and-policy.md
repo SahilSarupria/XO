@@ -238,6 +238,40 @@ What this does and does not show:
 - The exploratory noisy-candidate rule improves targeting on this gold, but it was designed after looking at this same data; it is not shipped, and would need an independent gold set before adoption.
 - Needed next: a live-provider run (opt-in, with a budget) on an independent, blind gold set, measuring a real model's precision and recall against the rules, before claiming that escalation improves output.
 
+### Local adjudication of the model's candidates (no provider calls)
+
+The live evaluation's recall gain is unverified because nobody has judged the model's candidates. The adjudication kit lets a person do that on their own
+machine, against the cache the live run already filled. **It makes no provider call:** the extractor runs with a fetch that throws, so every model answer must
+replay from the cache, and the run fails (with a content-free message) if any unit is not covered or any provider attempt would have been made.
+
+1. Generate the CSVs (Windows PowerShell, repository root; set `XO_GEMINI_MODEL` too if the live run used a non-default model):
+
+   ```powershell
+   $env:XO_EVAL_CACHE_DIR = "C:\path\to\the\live-run\cache"
+   $env:XO_ADJUDICATION_OUT = "$PWD\.eval-output\adjudication"
+   cd packages\compiler
+   node --import tsx --test test\knowledge\escalation-adjudication.test.ts
+   ```
+
+   Without both variables the real-cache test is skipped; the scripted-provider tests in the same file still run (they prove the mechanics only). A placeholder API
+   key is used if `GEMINI_API_KEY` is unset, because a cache hit never reaches the provider.
+
+2. `adjudication.csv`: the model's accepted candidates only (answers rejected by validation are not included), shuffled with a fixed seed and given opaque ids.
+   Columns `id, split, unit_text, candidate_text, verdict`. There is no source, type, confidence or unit-id column. Fill `verdict` with exactly one of:
+   `valid` (a correct, supported knowledge term), `duplicate` (restates another candidate for the same unit), `unsupported` (not backed by the unit text), `trivial`
+   (correct but not worth keeping). Leave a row blank only if it is not yet judged.
+3. `gold.csv`: `split, unit_id, gold_term, rule_covers, model_covers`. `rule_covers` is filled automatically with a **strict** match (normalized equality, not the
+   containment match the evaluation used). Fill `model_covers` with `yes` or `no`: does any candidate you judged `valid` cover that gold term? (`unit_id` is the source file and
+   the first characters of the unit, so you can find it in `adjudication.csv`, whose `unit_text` is the full unit.) Do not edit the gold terms.
+4. Score: `node scripts/escalation-eval/score-adjudication.mjs adjudication.csv gold.csv [outPrefix]`. It writes `<outPrefix>.json` and `.md` (default
+   `adjudication-score.*` next to the input) with aggregates only, per split: model-candidate count and % valid/duplicate/unsupported/trivial; gold terms covered by
+   rules, by a valid model candidate, and the union; strict recall for rules vs rules + valid model; valid candidates per 100 model candidates, and newly covered gold
+   terms per 100 model candidates. Blank cells make the result PROVISIONAL (stated in the outputs); an invalid verdict is an error.
+
+Rules for using it honestly: the adjudicator should be **someone other than the gate's author** (ideally not the gold annotator either); keep the dev and held-out
+splits separate; **do not tune anything on the held-out split**. It remains a single model, a single run and 43 units, so it can show whether the recall gain
+survives a human check, not that the model is production-accurate.
+
 ## Known limitations
 
 - **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
