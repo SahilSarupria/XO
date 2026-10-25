@@ -32,12 +32,15 @@ const out = (s = '') => {
 };
 const f = (n) => (typeof n === 'number' ? n.toFixed(3) : String(n));
 
+// Provider calls = responses actually obtained from the provider (including answers later rejected by validation and zero-item
+// answers). Reports written before `providerCalls` existed fall back to accepted + rejected, which UNDERCOUNTS zero-item answers.
+const providerCallsOf = (a) => (typeof a.providerCalls === 'number' ? a.providerCalls : a.freshModelCalls + a.rejectedInvalid);
 function row(name, a) {
   const c = a.counts;
-  return `| ${name} | ${f(a.prf.precision)} | ${f(a.prf.recall)} | ${f(a.prf.f1)} | ${c.fp} | ${c.missed} | ${a.escalated}/${a.escalated + a.skipped} | ${a.freshModelCalls} | ${a.cacheReplays} | ${a.denied} | ${a.rejectedInvalid} | ${a.failed} |`;
+  return `| ${name} | ${f(a.prf.precision)} | ${f(a.prf.recall)} | ${f(a.prf.f1)} | ${c.fp} | ${c.missed} | ${a.escalated}/${a.escalated + a.skipped} | ${providerCallsOf(a)} | ${a.cacheReplays} | ${a.denied} | ${a.rejectedInvalid} | ${a.failed} |`;
 }
 const HEAD =
-  '| Arm | Precision | Recall | F1 | False pos. | Missed gold | Units escalated | Fresh model calls | Cache replays | Budget-denied | Rejected invalid | Provider failed |\n|---|---|---|---|---|---|---|---|---|---|---|---|';
+  '| Arm | Precision | Recall | F1 | False pos. | Missed gold | Units escalated | Provider calls | Cache replays | Budget-denied | Rejected invalid | Provider failed |\n|---|---|---|---|---|---|---|---|---|---|---|---|';
 
 if (report.scripted === true) {
   out('# !!! SCRIPTED-PROVIDER REPORT: NOT REAL-MODEL EVIDENCE !!!');
@@ -67,6 +70,18 @@ if (rejected.length > 0) {
   out(
     `> NOTE: model output was rejected by compile-side validation in: ${rejected.map(([n, a]) => `${n} (${a.rejectedInvalid})`).join(', ')}. Those units fell back to rule-only. A high count means the grounding check may be too strict, or the model output was unusable.`,
   );
+  // Fixed rejection codes only (the report never contains labels, unit text or model output).
+  const distinctUnits = new Map();
+  for (const [n, a] of rejected) {
+    const byCode = Object.entries(a.report?.rejections ?? {})
+      .map(([c, k]) => `${c}=${k}`)
+      .join(', ');
+    out(`> - ${n}: ${byCode || 'no codes recorded (report predates rejection codes)'}`);
+    for (const u of a.report?.rejectedUnits ?? []) distinctUnits.set(u.unitId, u.codes.join('|'));
+  }
+  // A shared answer replayed in several arms is the same rejection; list each distinct unit once.
+  if (distinctUnits.size > 0)
+    out(`> Distinct rejected units (${distinctUnits.size}): ${[...distinctUnits].map(([id, c]) => `${id}[${c}]`).join('; ')}`);
   out();
 }
 
@@ -149,8 +164,15 @@ if (report.spend) {
   );
 } else out('- No spend recorded.');
 out(`- Budget denials (whole run): ${JSON.stringify(report.denials ?? {})}`);
-const fresh = Object.values(R).reduce((n, x) => n + x.freshModelCalls, 0);
-out(`- Fresh model calls counted across arms: ${fresh}`);
+const providerCalls = Object.values(R).reduce((n, x) => n + providerCallsOf(x), 0);
+out(`- Provider calls counted across arms (responses obtained from the provider, incl. rejected and zero-item answers): ${providerCalls}`);
+const allRejections = {};
+for (const x of Object.values(R))
+  for (const [c, k] of Object.entries(x.report?.rejections ?? {})) allRejections[c] = (allRejections[c] ?? 0) + k;
+if (Object.keys(allRejections).length > 0)
+  out(
+    `- Validation rejection codes (summed over arms; a shared answer replayed in several arms is counted in each): ${JSON.stringify(allRejections)}`,
+  );
 out();
 out('## Limits that still apply');
 out(

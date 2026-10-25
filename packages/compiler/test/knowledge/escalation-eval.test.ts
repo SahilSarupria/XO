@@ -175,7 +175,7 @@ test('MODEL-FREE: rule-only baseline, rule-confidence calibration (dev), and gat
 
   // Gate behaviour on DEV: what each threshold escalates, and the error it leaves in SKIPPED units (rule output only; no model involved).
   const gateDev = [0.6, 0.65, 0.7, 0.75, 0.85].map((t) => {
-    const policy = { ...DEFAULT_ESCALATION_POLICY, confidenceThreshold: t };
+    const policy = { ...DEFAULT_ESCALATION_POLICY, mode: 'gated' as const, confidenceThreshold: t };
     const dec = dev.map((r) => ({ r, d: decideEscalation(r.unit, r.ruleNodes, policy) }));
     const skipped = dec.filter((x) => !x.d.escalate).map((x) => x.r);
     const left = sum(skipped, ruleLabels);
@@ -190,7 +190,9 @@ test('MODEL-FREE: rule-only baseline, rule-confidence calibration (dev), and gat
   });
 
   // Competing candidates and fragments on the full eval set (diagnostic).
-  const competing = rows.filter((r) => decideEscalation(r.unit, r.ruleNodes, DEFAULT_ESCALATION_POLICY).reason === 'ambiguous').length;
+  const competing = rows.filter(
+    (r) => decideEscalation(r.unit, r.ruleNodes, { ...DEFAULT_ESCALATION_POLICY, mode: 'gated' }).reason === 'ambiguous',
+  ).length;
   const malformedAnywhere = rows.filter((r) =>
     r.ruleNodes.some((n) => !n.isUnitPrimary && !isUsableLabel(n.label, DEFAULT_ESCALATION_POLICY.maxLabelWords)),
   ).length;
@@ -221,6 +223,9 @@ interface StrategyResult {
   readonly prf: { precision: number; recall: number; f1: number };
   readonly escalated: number;
   readonly skipped: number;
+  /** Responses actually obtained from the provider (`report.providerCalls`), including rejected and zero-item answers. */
+  readonly providerCalls: number;
+  /** Accepted answers that were fresh provider calls (excludes rejected and zero-item-replay cases): kept for older summaries. */
   readonly freshModelCalls: number;
   readonly cacheReplays: number;
   readonly denied: number;
@@ -283,6 +288,7 @@ export async function runProtocol(
       prf: prf(counts),
       escalated: rep.escalated,
       skipped: rep.skipped,
+      providerCalls: rep.providerCalls,
       freshModelCalls: rep.outcomes.accepted ?? 0,
       cacheReplays: rep.outcomes.cache_hit ?? 0,
       denied: rep.outcomes.denied ?? 0,
@@ -369,18 +375,22 @@ test('PLUMBING ONLY (scripted provider, not real-model evidence): shared cache, 
     call += 1;
     fresh += 1;
     const word = (content.match(/[A-Za-z]{5,}/g) ?? ['policy'])[0]!;
+    // Mix of shapes so accounting is exercised: mostly valid, some zero-item answers, some rejected by compile-side validation.
+    const n = call;
+    const output =
+      n % 7 === 3
+        ? { items: [], relationships: [] }
+        : n % 11 === 5
+          ? {
+              items: [{ id: 'i1', type: 'concept', statement: 'Quantum chromodynamics lattice', domain: 'x', confidence: 0.8 }],
+              relationships: [],
+            }
+          : { items: [{ id: 'i1', type: 'concept', statement: `${word} noted`, domain: 'x', confidence: 0.8 }], relationships: [] };
     const body = {
       candidates: [
         {
           content: {
-            parts: [
-              {
-                text: JSON.stringify({
-                  items: [{ id: 'i1', type: 'concept', statement: `${word} noted`, domain: 'x', confidence: 0.8 }],
-                  relationships: [],
-                }),
-              },
-            ],
+            parts: [{ text: JSON.stringify(output) }],
           },
           finishReason: 'STOP',
         },
@@ -404,11 +414,27 @@ test('PLUMBING ONLY (scripted provider, not real-model evidence): shared cache, 
     // Optional: dump this SCRIPTED report so the results summarizer can be tested offline. It is not real-model evidence.
     if (process.env['XO_EVAL_PLUMBING_REPORT_PATH'])
       await writeFile(process.env['XO_EVAL_PLUMBING_REPORT_PATH'], JSON.stringify(out, null, 2));
-    // Fresh provider calls happen ONLY in the two `always` arms (one per escalated unit, dev and held-out are different units); every
+    // Provider calls happen ONLY in the two `always` arms (one per escalated unit, dev and held-out are different units); every
     // other arm (rules-only, all gated thresholds, the held-out gated arms) must replay the shared cache and never call again.
-    const freshIn = (name: string): number => out.results[name]!.freshModelCalls + out.results[name]!.rejectedInvalid;
-    assert.equal(fresh, freshIn('dev:always') + freshIn('held:always'), 'only the always arms may spend; gated arms reuse cached answers');
-    assert.ok(out.results['dev:gated@0.75']!.cacheReplays + out.results['dev:gated@0.75']!.rejectedInvalid >= 0);
+    // `providerCalls` (not accepted + rejected) is the count: zero-item answers are provider calls too (the old sum missed them).
+    const callsIn = (name: string): number => out.results[name]!.providerCalls;
+    assert.equal(fresh, callsIn('dev:always') + callsIn('held:always'), 'only the always arms may spend; gated arms reuse cached answers');
+    assert.equal(
+      fresh,
+      Object.values(out.results).reduce((n, x) => n + x.providerCalls, 0),
+      'providerCalls summed over every arm equals the scripted fetch call count exactly',
+    );
+    for (const name of Object.keys(out.results).filter((k) => k !== 'dev:always' && k !== 'held:always'))
+      assert.equal(callsIn(name), 0, `${name} must replay the cache with no provider call`);
+    assert.ok(
+      Object.values(out.results).some((x) => x.report.rejectedUnits.length > 0),
+      'the scripted run must exercise at least one validation rejection so its codes are recorded',
+    );
+    const allCodes = JSON.stringify(
+      Object.values(out.results).map((x) => [x.report.rejections, x.report.rejectedUnits.map((u) => u.codes)]),
+    );
+    assert.ok(!/Quantum|chromodynamics/.test(JSON.stringify(out)), 'no model output or label text in the report');
+    assert.ok(/ungrounded_label/.test(allCodes));
     assert.equal(out.results['dev:rules-only']!.escalated, 0);
     assert.ok(out.results['held:always'] && out.results['held:rules-only'] && out.results['held:gated@0.75']);
     assert.equal(out.estimatedCostUsd, 'unavailable', 'no prices supplied: cost must be reported unavailable, not invented');

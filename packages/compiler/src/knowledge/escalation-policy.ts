@@ -2,56 +2,57 @@ import type { ExperienceUnit } from '../semantic/types.js';
 import type { CandidateKnowledgeNode } from './extractor-types.js';
 
 /**
- * Confidence-gated escalation: decides, from the deterministic rule-based result ALONE, whether a unit is worth a model call.
- * The goal is not to call the model less; it is to spend inference only where it has a defensible chance of improving the output.
+ * Escalation policy for the knowledge hybrid extractor: decides, per unit, whether a model call is made.
  *
- * This is a pure function over `CandidateKnowledgeNode[]` (it knows nothing about providers or budgets). Whether an escalated unit
- * is actually allowed to call a model is decided afterwards, by the compile-scoped spend guard in `@xo/ai-core`; this module never
+ * DEFAULT (`mode: 'always'`): escalate EVERY unit that has content (>= `minContentWords` words, default 1, i.e. only empty or
+ * whitespace-only units are skipped). No rule confidence and no candidate competition ever suppresses a call by default.
+ *
+ * Why: the live evaluation (docs/inference-cache-and-policy.md, "Slice 6") found confidence-based gating NOT SUPPORTED. At the
+ * default 0.75 threshold the gate escalated every unit anyway (21/21 dev, 22/22 held-out), identical to always-escalate; at 0.60/0.65
+ * it escalated 8/21 dev units and lost recall (F1 .648, recall .848, outside the pre-registered 0.02 tolerance). The rules' own
+ * confidences are heuristic priors, not validity, so they are not a basis for skipping inference.
+ *
+ * `mode: 'gated'` is retained ONLY as an explicit opt-in and is EXPERIMENTAL, NOT SUPPORTED by evidence. Its decision order is
+ * (first match wins): fragment skip -> no usable candidate -> best usable below threshold -> unresolved competing candidates -> strong.
+ * No heuristic was extended after the evaluation, and `minContentWords` values above 1 are UNVALIDATED.
+ *
+ * This is a pure function over `CandidateKnowledgeNode[]` (it knows nothing about providers or budgets). Whether an escalated unit is
+ * actually allowed to call a model is decided afterwards by the compile-scoped spend guard in `@xo/ai-core`; this module never
  * bypasses it.
- *
- * Decision order (first match wins):
- *  1. `always` mode                                  -> escalate (legacy behaviour: every unit)
- *  2. too little text for a model to add anything    -> skip   (`insufficient_content`)
- *  3. no usable candidate                            -> escalate (`no_candidate`)
- *  4. best usable candidate below the threshold      -> escalate (`low_confidence`)
- *  5. competing candidates the rules cannot settle   -> escalate (`ambiguous`)
- *  6. otherwise                                       -> skip   (`strong`)
- *
- * "Usable" matters because rule confidences are heuristic priors, not validity: the capitalized-run detector assigns 0.65 to a
- * multi-word run even when it spans a line break or a comma (e.g. "Trust Clause\n\nCyber Risk Exclusion Clause"). Such a run is
- * never allowed to make a unit look strong.
  */
 export interface EscalationPolicyConfig {
-  /** `'always'` restores the pre-gating behaviour (every unit escalates). */
+  /** `'always'` (DEFAULT): escalate every unit with enough content. `'gated'`: EXPERIMENTAL, NOT SUPPORTED by evidence; explicit opt-in only. */
   readonly mode: 'gated' | 'always';
-  /** A usable candidate must reach this confidence for the unit to count as strong. */
+  /** Gated mode only (experimental): a usable candidate must reach this confidence for the unit to count as strong. */
   readonly confidenceThreshold: number;
-  /** Competing candidates whose confidences differ by at least this much are resolved deterministically in favour of the higher one. */
+  /** Gated mode only (experimental): competing candidates whose confidences differ by at least this much are resolved in favour of the higher one. */
   readonly ambiguityMargin: number;
-  /** Units with fewer words than this are never escalated: there is nothing for a model to add. */
+  /**
+   * Units with fewer words than this are never escalated. Default 1 skips only empty/whitespace-only units. Larger values are opt-in
+   * and UNVALIDATED: no evaluation supports any particular fragment cut-off.
+   */
   readonly minContentWords: number;
-  /** A candidate label with more words than this is treated as malformed (not usable). */
+  /** Diagnostics and gated mode: a candidate label with more words than this is treated as malformed (not usable). */
   readonly maxLabelWords: number;
 }
 
 /**
- * Defaults come from measurement on the repository's real fixtures — see `docs/inference-cache-and-policy.md` ("Slice 6").
- * The rule extractor's confidences form tiers (0.5 / 0.6 / 0.65 / 0.7 for heuristic output, 0.85 only for an explicit defined term).
- * On 42 hand-annotated real units the heuristic tiers were wrong almost everywhere (41/42 units had an error), including 15 of 16
- * units that a 0.7 threshold would have called "strong". So the default treats ONLY the top tier (>= 0.75) as strong: a unit is
- * skipped on confidence alone when an explicit cue fired. Lowering the threshold saves more calls but, in that data, leaves
- * substantially more errors behind (see the sweep). That top tier did not occur in the fixtures, so skipping on it is a
- * design judgement about a cue, not something the fixtures could confirm.
+ * Default: escalate every non-empty unit. Confidence gating is NOT SUPPORTED by the live evaluation (see the header of this file and
+ * `docs/inference-cache-and-policy.md`), so no confidence or competition signal suppresses a call unless a caller explicitly opts in
+ * to `mode: 'gated'`. The remaining thresholds only matter in that experimental mode and for report diagnostics.
  */
 export const DEFAULT_ESCALATION_POLICY: EscalationPolicyConfig = {
-  mode: 'gated',
+  mode: 'always',
   confidenceThreshold: 0.75,
   ambiguityMargin: 0.1,
-  minContentWords: 4,
+  minContentWords: 1,
   maxLabelWords: 8,
 };
 
 export type EscalationReason = 'always' | 'insufficient_content' | 'no_candidate' | 'low_confidence' | 'ambiguous' | 'strong';
+
+/** What the experimental gate WOULD decide from the rule output alone. Diagnostic only: never affects a call unless `mode` is `'gated'`. */
+export type RuleTier = 'no_candidate' | 'low_confidence' | 'strong';
 
 export interface EscalationDecision {
   readonly escalate: boolean;
@@ -59,6 +60,8 @@ export interface EscalationDecision {
   /** Human-readable, content-free explanation (no unit text) suitable for logs. */
   readonly detail: string;
   readonly bestUsableConfidence: number | undefined;
+  /** Diagnostic counts source (content-free): the rule-confidence tier of this unit, and whether unresolved competing candidates exist. */
+  readonly diagnostics?: { readonly ruleTier: RuleTier; readonly competing: boolean };
 }
 
 export function validateEscalationPolicy(config: EscalationPolicyConfig): EscalationPolicyConfig {
@@ -151,9 +154,7 @@ export function decideEscalation(
   ruleNodes: readonly CandidateKnowledgeNode[],
   config: EscalationPolicyConfig = DEFAULT_ESCALATION_POLICY,
 ): EscalationDecision {
-  if (config.mode === 'always')
-    return { escalate: true, reason: 'always', detail: 'escalation mode is "always"', bestUsableConfidence: undefined };
-
+  // Fragment skip applies in every mode. With the default minContentWords of 1 it only skips empty/whitespace-only units.
   const words = wordCount(unit.content);
   if (words < config.minContentWords) {
     return {
@@ -166,39 +167,52 @@ export function decideEscalation(
 
   const usable = ruleNodes.filter((n) => isUsableLabel(n.label, config.maxLabelWords));
   const bestUsable = usable.length === 0 ? undefined : Math.max(...usable.map((n) => n.confidence));
-
   const substantive = usable.filter((n) => !n.isUnitPrimary);
-  if (bestUsable === undefined || (substantive.length === 0 && bestUsable < config.confidenceThreshold)) {
+  const unresolved = competingPairs(usable).filter(([a, b]) => !resolvedDeterministically(a, b, config.ambiguityMargin));
+  const ruleTier: RuleTier =
+    bestUsable === undefined || (substantive.length === 0 && bestUsable < config.confidenceThreshold)
+      ? 'no_candidate'
+      : bestUsable < config.confidenceThreshold
+        ? 'low_confidence'
+        : 'strong';
+  const diagnostics = { ruleTier, competing: unresolved.length > 0 } as const;
+
+  if (config.mode === 'always')
+    return { escalate: true, reason: 'always', detail: 'escalation mode is "always"', bestUsableConfidence: bestUsable, diagnostics };
+
+  // ---- EXPERIMENTAL gated mode (NOT SUPPORTED by evidence; explicit opt-in only) ----
+  if (ruleTier === 'no_candidate') {
     return {
       escalate: true,
       reason: 'no_candidate',
       detail: 'no usable rule candidate reaches the threshold',
       bestUsableConfidence: bestUsable,
+      diagnostics,
     };
   }
-  if (bestUsable < config.confidenceThreshold) {
+  if (ruleTier === 'low_confidence') {
     return {
       escalate: true,
       reason: 'low_confidence',
       detail: `best usable confidence ${bestUsable} < threshold ${config.confidenceThreshold}`,
       bestUsableConfidence: bestUsable,
+      diagnostics,
     };
   }
-
-  const unresolved = competingPairs(usable).filter(([a, b]) => !resolvedDeterministically(a, b, config.ambiguityMargin));
   if (unresolved.length > 0) {
     return {
       escalate: true,
       reason: 'ambiguous',
       detail: `${unresolved.length} competing candidate pair(s) the rules cannot settle (margin ${config.ambiguityMargin})`,
       bestUsableConfidence: bestUsable,
+      diagnostics,
     };
   }
-
   return {
     escalate: false,
     reason: 'strong',
     detail: `usable candidate at ${bestUsable} >= threshold ${config.confidenceThreshold}, no unresolved competition`,
     bestUsableConfidence: bestUsable,
+    diagnostics,
   };
 }

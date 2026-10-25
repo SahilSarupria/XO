@@ -13,8 +13,9 @@ import {
   validateEscalationPolicy,
   type EscalationPolicyConfig,
   type EscalationReason,
+  type RuleTier,
 } from './escalation-policy.js';
-import { validateModelExtraction } from './model-validation.js';
+import { MODEL_REJECTION_CODES, validateModelExtraction, type ModelRejectionCode } from './model-validation.js';
 
 export type EscalationOutcome = 'accepted' | 'cache_hit' | 'denied' | 'failed' | 'rejected_invalid' | 'memoized';
 
@@ -26,19 +27,39 @@ export interface EscalationReport {
   readonly byReason: Readonly<Partial<Record<EscalationReason, number>>>;
   /** What happened to the units that escalated. `denied` = refused by the compile spend guard/policy; `failed` = provider error. */
   readonly outcomes: Readonly<Partial<Record<EscalationOutcome, number>>>;
-  /** Fresh provider calls attempted by this extractor (escalated units minus memoized repeats and cache hits). */
+  /** Fresh model calls ATTEMPTED by this extractor (escalated units minus memoized repeats). Includes cache replays, denied and failed calls; NOT a provider-call count: use `providerCalls`. */
   readonly modelCallsAttempted: number;
+  /**
+   * Responses actually OBTAINED from the provider (source `generated`), counted when they occur, including answers later rejected by
+   * validation and answers with zero items. Cache replays, memoized repeats, denied calls and failed calls are NOT provider calls.
+   */
+  readonly providerCalls: number;
+  /** Validation rejections by fixed code: the number of rejected units that had at least one violation of that code. Counts only. */
+  readonly rejections: Readonly<Partial<Record<ModelRejectionCode, number>>>;
+  /** Per rejected unit: its id and the DISTINCT fixed codes (in code-set order). No labels, text or model output. */
+  readonly rejectedUnits: readonly { readonly unitId: string; readonly codes: readonly ModelRejectionCode[] }[];
+  /**
+   * Content-free DIAGNOSTICS about the rule output, computed in every mode. They NEVER affect a call unless `mode: 'gated'` is
+   * explicitly opted in (experimental, NOT SUPPORTED by evidence). `ruleTiers` counts what the experimental gate would have classed
+   * each (non-fragment) unit as; `unitsWithCompetingCandidates` counts units with competing candidates the rules cannot settle.
+   */
+  readonly diagnostics: {
+    readonly ruleTiers: Readonly<Record<RuleTier, number>>;
+    readonly unitsWithCompetingCandidates: number;
+  };
 }
 
 /**
  * The extractor Stage 4 uses by default. `RuleBasedKnowledgeExtractor` ALWAYS runs first (it never fails, and its unit-primary node
- * is what `relationship-builder.ts` needs regardless). An optional AI extractor runs only when `decideEscalation` says the rule
- * result is missing, weak, or ambiguous (see `escalation-policy.ts`); `mode: 'always'` restores the older "every unit" behaviour.
+ * is what `relationship-builder.ts` needs regardless). An optional AI extractor runs for every unit with content by default
+ * (`mode: 'always'`); confidence gating (`mode: 'gated'`) is an explicit, EXPERIMENTAL opt-in that the live evaluation did NOT support
+ * (see `escalation-policy.ts`). Confidence-tier and competing-pair diagnostics are reported as counts and never affect a call by default.
  *
  * Every escalation goes through the injected `AiKnowledgeExtractor` -> `AiCapabilityLayer`, i.e. the compile-scoped spend guard:
  *  - a denial (budget exhausted, kill-switch, unpriceable cost) is logged with `inferenceDenied: <reason>`, counted as `denied`, and
  *    the unit keeps its rule-based result. Nothing here retries, re-routes, or otherwise works around a denial.
- *  - model output is validated (`model-validation.ts`) before it is accepted; an invalid result is rejected whole.
+ *  - model output is validated (`model-validation.ts`) before it is accepted; an invalid result is rejected whole, and only fixed
+ *    rejection CODES are recorded or logged (never labels, ids, unit text, prompts or model output).
  *  - a unit (same id and content) is escalated at most once per extractor instance; repeats reuse the first outcome without a call.
  *    Retries inside one call are the layer's own bounded retry policy; this class adds none.
  * If AI is unavailable for any reason, the unit falls back to rule-based candidates alone — the spec's "lower confidence but correct".
@@ -49,7 +70,11 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
   private readonly logger: Logger;
   private readonly policy: EscalationPolicyConfig;
   private readonly memo = new Map<string, Promise<Result<ExtractionResult, XoError>>>();
-  private readonly counters = { unitsSeen: 0, escalated: 0, skipped: 0, modelCallsAttempted: 0 };
+  private readonly counters = { unitsSeen: 0, escalated: 0, skipped: 0, modelCallsAttempted: 0, providerCalls: 0 };
+  private readonly rejections: Partial<Record<ModelRejectionCode, number>> = {};
+  private readonly rejectedUnits: { unitId: string; codes: ModelRejectionCode[] }[] = [];
+  private readonly ruleTiers: Record<RuleTier, number> = { no_candidate: 0, low_confidence: 0, strong: 0 };
+  private competingUnits = 0;
   private readonly byReason: Partial<Record<EscalationReason, number>> = {};
   private readonly outcomes: Partial<Record<EscalationOutcome, number>> = {};
 
@@ -63,7 +88,14 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
   }
 
   report(): EscalationReport {
-    return { ...this.counters, byReason: { ...this.byReason }, outcomes: { ...this.outcomes } };
+    return {
+      ...this.counters,
+      byReason: { ...this.byReason },
+      outcomes: { ...this.outcomes },
+      rejections: { ...this.rejections },
+      rejectedUnits: this.rejectedUnits.map((r) => ({ unitId: r.unitId, codes: [...r.codes] })),
+      diagnostics: { ruleTiers: { ...this.ruleTiers }, unitsWithCompetingCandidates: this.competingUnits },
+    };
   }
 
   async extract(unit: ExperienceUnit): Promise<Result<ExtractionResult, XoError>> {
@@ -84,6 +116,10 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
     this.counters.unitsSeen += 1;
     const decision = decideEscalation(unit, ruleNodes, this.policy);
     this.byReason[decision.reason] = (this.byReason[decision.reason] ?? 0) + 1;
+    if (decision.diagnostics) {
+      this.ruleTiers[decision.diagnostics.ruleTier] += 1;
+      if (decision.diagnostics.competing) this.competingUnits += 1;
+    }
     if (!decision.escalate) {
       this.counters.skipped += 1;
       return ok(ruleOnly);
@@ -102,6 +138,9 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
         return call;
       })();
     const aiResult = await pending;
+    // Call accounting happens once per distinct call (the creator, not memoized repeats), BEFORE validation, so an answer that is later
+    // rejected, or that holds zero items, still counts as the provider response it was. Denied/failed calls carry no response.
+    if (!existing && aiResult.ok && callSource(aiResult.value) === 'generated') this.counters.providerCalls += 1;
 
     if (!aiResult.ok) {
       const denial = getInferenceDenial(aiResult.error);
@@ -119,12 +158,17 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
 
     const violations = validateModelExtraction(unit, aiResult.value);
     if (violations.length > 0) {
-      if (!existing) this.bump('rejected_invalid');
+      const codes = MODEL_REJECTION_CODES.filter((c) => violations.includes(c));
+      if (!existing) {
+        this.bump('rejected_invalid');
+        for (const c of codes) this.rejections[c] = (this.rejections[c] ?? 0) + 1;
+        this.rejectedUnits.push({ unitId: unit.id, codes: [...codes] });
+      }
       this.logger.warn('Model-derived knowledge failed validation; rejected (rule-based result kept)', {
         unitId: unit.id,
         escalationReason: decision.reason,
         violationCount: violations.length,
-        violations: violations.slice(0, 5),
+        rejectionCodes: codes,
       });
       return ok(ruleOnly);
     }
@@ -137,11 +181,22 @@ export class HybridKnowledgeExtractor implements KnowledgeExtractor {
         ...(n.provenance.derivation ? { derivation: { ...n.provenance.derivation, escalationReason: decision.reason } } : {}),
       },
     }));
-    if (!existing) this.bump(aiNodes.some((n) => n.provenance.derivation?.source === 'cache') ? 'cache_hit' : 'accepted');
+    if (!existing) this.bump(callSource(aiResult.value) === 'cache' ? 'cache_hit' : 'accepted');
     return ok({ nodes: [...ruleNodes, ...aiNodes], edges: [...ruleResult.value.edges, ...aiResult.value.edges] });
   }
 
   private bump(outcome: EscalationOutcome): void {
     this.outcomes[outcome] = (this.outcomes[outcome] ?? 0) + 1;
   }
+}
+
+/**
+ * Where a model answer came from. Prefers the explicit `modelCall` on the result (present even for zero-item answers); falls back to
+ * node derivations for a custom extractor that does not set it. `undefined` = unknown, and unknown is never counted as a provider call.
+ */
+function callSource(result: ExtractionResult): 'generated' | 'cache' | undefined {
+  if (result.modelCall) return result.modelCall.source;
+  const sources = result.nodes.map((n) => n.provenance.derivation?.source);
+  if (sources.includes('cache')) return 'cache';
+  return sources.includes('generated') ? 'generated' : undefined;
 }
