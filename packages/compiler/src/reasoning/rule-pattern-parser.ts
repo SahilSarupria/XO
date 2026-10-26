@@ -742,6 +742,103 @@ function stripLeadingClauseNumber(text: string): string {
  * rather than each leading-cue pattern needing its own copy of the same
  * stripping logic.
  */
+// --- WS1 recall: liability exclusions and quantified policy terms -----------
+//
+// Found by the synthetic insurance dev corpus (examples/insurance-dev-corpus): realistic policy wording
+// states limits, deductibles, waiting periods, co-payments and liability exclusions in shapes the
+// patterns above never matched ("A co-payment of 10% applies...", "Room rent is limited to 1%...",
+// "The Insurer is not liable for..."). Both parsers are LOWEST priority (they run after every pattern
+// above, so no sentence that parsed before parses differently) and reuse existing node types, so
+// they add visibility and provenance, never new executability: `policy` lowers to a constraint with
+// no decision-table outcome, exactly like the `must` obligations.
+
+const LIABILITY_EXCLUSION_PHRASES = [
+  'is not liable for',
+  'are not liable for',
+  'not liable for',
+  'no benefit is payable',
+  'is not payable',
+  'are not payable',
+  'will not pay',
+  'will not cover',
+  'is forfeited',
+  'are forfeited',
+];
+
+function parseLiabilityExclusion(sentence: string): ParseResult {
+  const lower = sentence.toLowerCase();
+  const matched = LIABILITY_EXCLUSION_PHRASES.find((phrase) => indexOfPhraseBoundary(lower, phrase) !== -1);
+  if (!matched) return EMPTY_RESULT;
+  const action = clean(sentence);
+  if (action.length === 0) return EMPTY_RESULT;
+  return {
+    candidates: [
+      {
+        nodeType: 'prohibition',
+        canonicalLabel: action,
+        action,
+        exceptionConditions: [],
+        confidence: 0.7,
+        matchedPattern: 'prohibition:liability-exclusion',
+      },
+    ],
+    edges: [],
+  };
+}
+
+/** Phrases that mark a sentence as stating a numeric term of the cover. A digit in the sentence is also required. */
+const QUANTIFIED_TERM_CUES = [
+  'deductible',
+  'excess of',
+  'excess applies',
+  'co-payment',
+  'co-pay',
+  'coinsurance',
+  'co-insurance',
+  'waiting period',
+  'is limited to',
+  'are limited to',
+  'limited to',
+  'up to',
+  'maximum payable',
+  'maximum of',
+  'not exceed',
+  'no claim discount',
+  'only after',
+  'require approval',
+  'requires approval',
+  'entitled to',
+  'entitles the',
+];
+
+function containsDigit(text: string): boolean {
+  for (const ch of text) if (ch >= '0' && ch <= '9') return true;
+  return false;
+}
+
+function parseQuantifiedTerm(sentence: string): ParseResult {
+  const lower = sentence.toLowerCase();
+  if (!containsDigit(sentence)) return EMPTY_RESULT;
+  if (sentence.trim().endsWith('?')) return EMPTY_RESULT;
+  const cue = QUANTIFIED_TERM_CUES.find((phrase) => indexOfPhraseBoundary(lower, phrase) !== -1);
+  if (!cue) return EMPTY_RESULT;
+  const text = clean(sentence);
+  if (text.split(/\s+/).length < 4) return EMPTY_RESULT;
+  return {
+    candidates: [
+      {
+        nodeType: 'policy',
+        canonicalLabel: text,
+        action: text,
+        exceptionConditions: [],
+        confidence: 0.65,
+        matchedPattern: 'policy:quantified-term',
+      },
+    ],
+    edges: [],
+  };
+}
+
 export function parseSentence(sentence: string): ParseResult {
   const trimmed = sentence.trim();
   if (trimmed.length === 0) return EMPTY_RESULT;
@@ -760,6 +857,8 @@ export function parseSentence(sentence: string): ParseResult {
     parseJustification,
     parseSatisfiesRequirement,
     parseStandaloneOverride,
+    parseLiabilityExclusion,
+    parseQuantifiedTerm,
   ];
   for (const parser of parsers) {
     const result = parser(withoutClauseNumber);

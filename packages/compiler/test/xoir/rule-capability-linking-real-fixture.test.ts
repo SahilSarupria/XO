@@ -388,15 +388,23 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // their sections, sourceConfidence 0.5, no corruption. `exactLabelEdges`
   // (113) is unchanged by either pass — neither adds new exact-label
   // evidence on this fixture.
+  //
+  // 25 -> 28 under WS1 recall (CR milestone): the quantified-term and liability-exclusion patterns
+  // (`rule-pattern-parser.ts`, lowest priority) add `policy`/`prohibition` constraint nodes for
+  // limit, deductible, waiting-period and "not liable for" clauses, which enlarges the pool
+  // `same_unit_term_overlap` draws shared-term evidence from. `exactLabelEdges` also moved, 108 -> 127: the
+  // additions are references to domain concepts from the new nodes' text (Deductible +3, Cover +2, Damage +2,
+  // Flood, Loss, Insured, Sum Insured, and schedule labels such as "Water Damage Limit"), verified by diffing the
+  // matched-label histogram before and after; no closed-class function word appears among them (the Layer 3 guard).
   assert.equal(
     sameUnitEdges.length,
-    25,
-    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements on this fixture (see comment above); verified via controlled revert to be free of corruption",
+    28,
+    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1's quantified-term patterns on this fixture (see comment above)",
   );
   assert.equal(
     exactLabelEdges.length,
-    108,
-    'exact_label edge count reflects Layer 3\'s removal of 5 spurious "Before"-substring links (see comment above); verified to be a false-positive-only change, not a loss of genuine evidence',
+    127,
+    'exact_label edge count: Layer 3 removed 5 spurious "Before"-substring links; WS1 recall then added 19 references to domain concepts from the new nodes (see comment above)',
   );
 
   // Human-in-the-Loop Execution Class Lowering milestone: `resolvedCount`

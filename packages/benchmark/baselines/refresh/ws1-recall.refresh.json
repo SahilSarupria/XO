@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "refreshedAt": "2026-10-26T00:00:00Z",
+  "scope": "CR WS1 recall",
+  "suites": [
+    {
+      "suiteId": "vertical-fixtures",
+      "fromReportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
+      "toReportSha256": "d66311a80f8746dd0bf95ce14bcfba9eea8f2f6109c327c1bb5a6ed90d84f1a9",
+      "evaluationVersion": {
+        "from": "p0.9c-1",
+        "to": "p0.9c-1"
+      },
+      "reason": "CR WS1 recall: two lowest-priority rule patterns (quantified policy terms, liability exclusions) and header-bound table-row review items add constraint/prohibition nodes for limit, deductible, waiting-period and \"not liable\" clauses. The compile (and, for commercial-property-policy, capabilities) stage outputs of commercial-property-policy and burglary-policy-schedule changed; no metric value moved and no expectation changed.",
+      "dispositions": [
+        {
+          "differenceId": "metric|burglary-policy-schedule|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "the observed node population grew because the new recall patterns (and, for burglary-policy, header-bound table-row review items) add constraint/prohibition nodes; coverage stays 100%, so this is a population change, not a failure"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "the observed node population grew because the new recall patterns (and, for burglary-policy, header-bound table-row review items) add constraint/prohibition nodes; coverage stays 100%, so this is a population change, not a failure"
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|compile",
+          "disposition": "accepted",
+          "reason": "compile/capabilities stage output of this case gained nodes from the new recall patterns (packages/compiler/src/reasoning/rule-pattern-parser.ts); every metric value is unchanged (see the CHANGELOG entry), so the change is additive and not a semantic regression"
+        },
+        {
+          "differenceId": "output|commercial-property-policy|capabilities",
+          "disposition": "accepted",
+          "reason": "compile/capabilities stage output of this case gained nodes from the new recall patterns (packages/compiler/src/reasoning/rule-pattern-parser.ts); every metric value is unchanged (see the CHANGELOG entry), so the change is additive and not a semantic regression"
+        },
+        {
+          "differenceId": "output|commercial-property-policy|compile",
+          "disposition": "accepted",
+          "reason": "compile/capabilities stage output of this case gained nodes from the new recall patterns (packages/compiler/src/reasoning/rule-pattern-parser.ts); every metric value is unchanged (see the CHANGELOG entry), so the change is additive and not a semantic regression"
+        }
+      ],
+      "declaredGoldenChanges": [],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — CR WS1 recall refresh",
+      "predecessorRetainedAs": "baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json",
+      "counts": {
+        "semantic_regression": 3,
+        "semantic_improvement": 0,
+        "expected_metric_addition": 0,
+        "golden_expectation_change": 0,
+        "configuration_change": 0,
+        "population_change": 2,
+        "evaluation_version_change": 0,
+        "representation_only": 0,
+        "known_historical_drift": 0,
+        "not_comparable": 0
+      },
+      "decision": "review_required"
+    }
+  ]
+}

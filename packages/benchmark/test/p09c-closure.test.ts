@@ -54,15 +54,20 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
   assert.deepEqual(hist.map((e) => sha256Hex('') && e.reportSha256.slice(0, 16)).sort(), ['1b98f1acd213e750', 'ea4d33081f6b990e']);
   for (const e of hist) assert.equal(sha256Hex(await readFile(join(PKG, e.reportFile), 'utf8')), e.reportSha256, e.reportFile);
   const vh = hist.find((e) => e.suiteId === 'vertical-fixtures')!;
-  assert.equal(vh.knownDrift.length, 6, 'historical known_historical_drift records are not rewritten');
+  // The six P0.9C-closure records are never rewritten; later controlled refreshes only APPEND declared drift
+  // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md).
+  assert.equal(vh.knownDrift.length, 9, 'the six closure drift records are kept; three WS1 recall records were appended');
+  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall/.test(d.reason)));
   assert.equal(vh.declaredGoldenChanges.length, 3);
   assert.equal(hist.find((e) => e.suiteId === 'runtime-mechanics')!.knownDrift.length, 0);
-  for (const e of entries.filter((x) => x.status === 'accepted'))
-    assert.ok(
-      hist.some((h) => h.reportFile === e.predecessor),
-      `${e.suiteId}: predecessor is a retained historical entry`,
-    );
-  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 2);
+  for (const e of entries.filter((x) => x.status === 'accepted')) {
+    // after the P0.9C closure a later refresh archives the previously accepted report instead of a historical entry
+    const retained = hist.some((h) => h.reportFile === e.predecessor);
+    const laterRefresh = e.refreshRecord !== 'baselines/refresh/p09c-final.refresh.json' && e.predecessor?.startsWith('baselines/archive/');
+    assert.ok(retained || laterRefresh, `${e.suiteId}: predecessor is retained`);
+  }
+  // the two P0.9C predecessors plus the accepted vertical-fixtures report superseded by the CR WS1 recall refresh
+  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 3);
 });
 
 test('the refresh record is auditable: both suites refreshed together, every difference accounted for, no regression, evaluation version unchanged', async () => {

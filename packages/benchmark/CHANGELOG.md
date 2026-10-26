@@ -4,6 +4,28 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## CR WS1 recall — vertical-fixtures baseline refresh
+
+**Context.** The CR milestone's WS1 added two lowest-priority rule patterns to
+`packages/compiler/src/reasoning/rule-pattern-parser.ts` (quantified policy terms such as deductible, excess,
+co-payment, waiting period and "limited to"; liability exclusions such as "is not liable for"), plus header-bound
+table-row statements on the review list. They add `policy`/`prohibition` constraint nodes only: no new
+executable capability class, no lowering change.
+
+**Effect on the benchmark.** Every metric value of `vertical-fixtures` is unchanged. The `compile` stage output of
+`commercial-property-policy` and `burglary-policy-schedule`, and the `capabilities` stage output of
+`commercial-property-policy`, changed (more nodes), and the observed node population grew with
+`observedSourceRefCoverage` still 100%.
+
+**Refresh.** Controlled refresh of the accepted `vertical-fixtures` baseline, validated by `validateRefreshRecord`
+(`baselines/refresh/ws1-recall.refresh.json`, every difference dispositioned). The superseded accepted report is
+retained as `baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json`; evaluation version unchanged
+(`p0.9c-1`); `runtime-mechanics` is untouched. The three output differences are also recorded as `knownDrift` on the
+historical entry so the historical audit stays explained.
+
+**Not evidence of quality.** The patterns were tuned against a synthetic corpus the same team wrote
+(`examples/insurance-dev-corpus`, CRD-06); they raise recall there, and nothing here claims customer-level accuracy.
+
 ## P0.9 Beta — Layer 0 (PDF text-integrity fix)
 
 **Context.** The P0.9 Aastha audit found character-level corruption in extracted text from `Aastha.pdf` (e.g.

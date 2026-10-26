@@ -48,11 +48,9 @@ test('error-analysis anchor: these decision-bearing sentences are NOT parsed by 
   // If a future pattern starts parsing one of these, this test should be updated deliberately:
   // that is real recall progress, and the sentence then leaves the unclassified list.
   const unparsed = [
-    'The deductible for water damage is $500 per occurrence.',
-    'Waiting period of 90 days applies before any benefit is payable.',
     'The insurer shall acknowledge each claim within 5 business days.',
-    'Coverage is limited to a maximum of $250,000 per policy year.',
-    'The policyholder is entitled to cancel within 14 days of purchase.',
+    'The handler shall register each claim within 1 working day of receipt.',
+    'Claim forms received after the closing date shall be treated as late submissions by the assessor.',
   ];
   for (const sentence of unparsed) {
     assert.equal(parseSentence(sentence).candidates.length, 0, `parser unexpectedly handles: ${sentence}`);
@@ -72,4 +70,29 @@ test('WS1-03: rows without a header, with too few cells, or with no decision-bea
   assert.equal(tableRowStatement(undefined, ['Buildings', '1000000']), undefined);
   assert.equal(tableRowStatement(['Name', 'Colour'], ['Roof', 'Red']), undefined);
   assert.equal(tableRowStatement(['Coverage', 'Limit'], ['Buildings', '']), undefined);
+});
+
+test('WS1 recall: quantified policy terms and liability exclusions are parsed (lowest priority, existing node types)', () => {
+  const policy = [
+    'A co-payment of 10% applies to every claim for insured persons above the age of 60.',
+    'The Insured must pay a deductible of 500 per claim before the Insurer pays any amount.',
+    'Room rent is limited to 1% of the sum insured per day.',
+    'Maternity expenses will be covered after a waiting period of 9 months.',
+    'Claims above 50000 require approval from the claims manager and a loss-adjuster assessment.',
+  ];
+  for (const sentence of policy) {
+    const result = parseSentence(sentence);
+    assert.ok(result.candidates.length > 0, `not parsed: ${sentence}`);
+  }
+  const quantified = parseSentence('A co-payment of 10% applies to every claim for insured persons above the age of 60.');
+  assert.equal(quantified.candidates[0]!.nodeType, 'policy');
+  assert.equal(quantified.candidates[0]!.matchedPattern, 'policy:quantified-term');
+  const excl = parseSentence('The Insurer is not liable for damage occurring while the driver is under the influence of alcohol.');
+  assert.equal(excl.candidates[0]!.nodeType, 'prohibition');
+  assert.equal(excl.candidates[0]!.matchedPattern, 'prohibition:liability-exclusion');
+});
+
+test('WS1 recall: the new patterns need a number and never fire on plain description', () => {
+  assert.equal(parseSentence('The policy limits are described in the schedule attached to this document.').candidates.length, 0);
+  assert.equal(parseSentence('Is the excess of the policy shown here?').candidates.length, 0);
 });

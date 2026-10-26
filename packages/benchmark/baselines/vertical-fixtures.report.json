@@ -204,8 +204,8 @@
         "id": "observedSourceRefCoverage",
         "stage": "compile",
         "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-        "numerator": 484,
-        "denominator": 484,
+        "numerator": 489,
+        "denominator": 489,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -241,7 +241,7 @@
         "breakdown": {
           "in_population.capability_extractor.attributed": 52,
           "in_population.knowledge_extractor.attributed": 361,
-          "not_judged.reasoning_extractor.unattributed": 52,
+          "not_judged.reasoning_extractor.unattributed": 57,
           "not_judged.rule_minted_capability.unattributed": 19
         }
       },
@@ -524,7 +524,7 @@
       "nodeCountsByKind": {
         "capability": 71,
         "concept": 339,
-        "constraint": 49,
+        "constraint": 54,
         "decision_node": 1,
         "heuristic": 24
       },
@@ -1104,12 +1104,12 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 217,
+            "nodeCount": 218,
             "total": {
               "producers": {
                 "rule-based": 208
               },
-              "unattributed": 9
+              "unattributed": 10
             },
             "byKind": {
               "capability": {
@@ -1128,7 +1128,7 @@
                 "producers": {
                   "rule-based": 2
                 },
-                "unattributed": 7
+                "unattributed": 8
               },
               "heuristic": {
                 "producers": {},
@@ -1157,7 +1157,7 @@
         }
       },
       "fingerprints": {
-        "compile": "cecd292133db5979",
+        "compile": "86f0a7be27a7e683",
         "capabilities": "68b51db9da6c7125",
         "workflows": "633ade63efbe8e94",
         "execution": "4f53cda18c2baa0c"
@@ -1166,7 +1166,7 @@
         "nodeCountsByKind": {
           "capability": 7,
           "concept": 200,
-          "constraint": 9,
+          "constraint": 10,
           "heuristic": 1
         },
         "capabilities": {
@@ -1262,8 +1262,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 217,
-          "denominator": 217,
+          "numerator": 218,
+          "denominator": 218,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1284,7 +1284,7 @@
           "breakdown": {
             "in_population.capability_extractor.attributed": 6,
             "in_population.knowledge_extractor.attributed": 202,
-            "not_judged.reasoning_extractor.unattributed": 8,
+            "not_judged.reasoning_extractor.unattributed": 9,
             "not_judged.rule_minted_capability.unattributed": 1
           }
         },
@@ -1460,12 +1460,12 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 144,
+            "nodeCount": 148,
             "total": {
               "producers": {
                 "rule-based": 84
               },
-              "unattributed": 60
+              "unattributed": 64
             },
             "byKind": {
               "capability": {
@@ -1484,7 +1484,7 @@
                 "producers": {
                   "rule-based": 13
                 },
-                "unattributed": 20
+                "unattributed": 24
               },
               "heuristic": {
                 "producers": {},
@@ -1513,8 +1513,8 @@
         }
       },
       "fingerprints": {
-        "compile": "c41e544e619f27c5",
-        "capabilities": "765dc5f5b21e5a85",
+        "compile": "8e350edb80cb585d",
+        "capabilities": "8beff447055aa41f",
         "workflows": "ea89c30d6a73d9c2",
         "execution": "1a16e6d6abe790e5"
       },
@@ -1522,7 +1522,7 @@
         "nodeCountsByKind": {
           "capability": 33,
           "concept": 55,
-          "constraint": 33,
+          "constraint": 37,
           "heuristic": 23
         },
         "capabilities": {
@@ -1683,8 +1683,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 144,
-          "denominator": 144,
+          "numerator": 148,
+          "denominator": 148,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1705,7 +1705,7 @@
           "breakdown": {
             "in_population.capability_extractor.attributed": 16,
             "in_population.knowledge_extractor.attributed": 68,
-            "not_judged.reasoning_extractor.unattributed": 43,
+            "not_judged.reasoning_extractor.unattributed": 47,
             "not_judged.rule_minted_capability.unattributed": 17
           }
         },

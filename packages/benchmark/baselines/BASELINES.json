@@ -54,7 +54,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
+      "reportSha256": "d66311a80f8746dd0bf95ce14bcfba9eea8f2f6109c327c1bb5a6ed90d84f1a9",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -181,12 +181,16 @@
       "knownDrift": [],
       "declaredGoldenChanges": [],
       "declaredPopulationChanges": [],
-      "refreshRecord": "baselines/refresh/p09c-final.refresh.json",
-      "predecessor": "baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json",
+      "refreshRecord": "baselines/refresh/ws1-recall.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json",
       "history": [
         {
           "step": "P0.9C final closure",
           "note": "accepted baseline: byte-identical to the final evaluation (reproduced by 3 separate runs); refreshed together with the other suite's baseline; predecessor baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json retained unchanged (sha256 ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406); evaluation version unchanged (p0.9c-1)."
+        },
+        {
+          "step": "CR WS1 recall refresh",
+          "note": "accepted baseline refreshed from 5e741c155cc8 to d66311a80f87; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
         }
       ]
     },
@@ -402,6 +406,24 @@
           "stage": "capabilities",
           "reason": "intentional post-baseline P0.9A/P0.9B change to capability output; observed summaries identical",
           "evidence": "Step 1 CHANGELOG; not re-verified at field level (hash only)"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "compile",
+          "reason": "CR WS1 recall patterns (and table-row review items) added nodes to this case's output; every metric value is unchanged",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "capabilities",
+          "reason": "CR WS1 recall patterns (and table-row review items) added nodes to this case's output; every metric value is unchanged",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "stage": "compile",
+          "reason": "CR WS1 recall patterns (and table-row review items) added nodes to this case's output; every metric value is unchanged",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
         }
       ],
       "declaredGoldenChanges": [
