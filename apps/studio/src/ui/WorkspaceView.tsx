@@ -29,7 +29,7 @@ import { useSession } from './session';
 import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
 import { Icon, type IconName } from './icons';
 import { XosSection } from './XosSection';
-import { LibrarySection } from './DesignSections';
+import { LibraryScreen } from './LibraryScreen';
 import { AuditScreen } from './AuditScreen';
 import { SettingsScreen, type Tab as SettingsTab } from './SettingsScreen';
 import { ChatScreen } from './ChatScreen';
@@ -702,8 +702,8 @@ export function WorkspaceView(props: {
         )
       ) : null}
       {view === 'library' ? (
-        <LibrarySection
-          workspaceId={ws}
+        <LibraryScreen
+          workspace={props.workspace}
           goTo={goToTarget}
           onOpenPackage={(id) => {
             setXoSubject({ kind: 'package', id });

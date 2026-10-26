@@ -36,26 +36,37 @@ const runs = [
   { id: 'b2', packageId: 'pkg-1', category: 'reasoning_quality', score: 0.8, runAt: '2026-09-03T00:00:00Z', challengeable: true },
 ];
 
-describe('Library registry search', () => {
-  it('searches the real registry, shows only recorded facts, and opens the package in the inspector', async () => {
-    const api = new FakeXo();
+describe('Library and the package inspector', () => {
+  function seed(api: FakeXo) {
     api.registryPackages.push(pkg);
     api.benchmarkRuns.push(...runs);
+    api.studio.library.push({
+      id: 'pkg-1',
+      name: 'burglary-policy',
+      version: '1.2.0',
+      creatorDid: pkg.manifest.creatorDid,
+      publishedAt: pkg.publishedAt,
+      summary: 'Flags excluded losses.',
+      capabilities: [{ id: 'cap-a', name: 'Check exclusions' }],
+      madeByMe: false,
+      signed: true,
+      overallScore: null,
+      byCategory: {},
+      installable: true,
+    });
+  }
+
+  it('lists the registry without a search, shows only recorded facts, and opens the package in the inspector', async () => {
+    const api = new FakeXo();
+    seed(api);
     const user = await signedIn(api);
     await user.click(screen.getByRole('button', { name: 'Library' }));
-    const search = screen.getByRole('button', { name: 'Search registry' });
-    expect(search).toBeDisabled();
-    await user.type(screen.getByLabelText('Search the library'), 'burglary');
-    await user.click(search);
     const grid = screen.getByRole('list', { name: 'XOs' });
-    const card = (await within(grid).findByText('1 capability declared')).closest('li')!;
+    const card = (await within(grid).findByText('Flags excluded losses.')).closest('li')!;
     expect(within(card).getByText('burglary-policy')).toBeInTheDocument();
     expect(within(card).getByText('In your registry')).toBeInTheDocument();
-    expect(within(card).queryByText(/verified|★|₹|\$/i)).not.toBeInTheDocument();
-    // Samples stay labelled as samples, with Install unavailable.
-    expect(within(grid).getAllByText('Sample').length).toBeGreaterThan(0);
-    expect(within(grid).getAllByRole('button', { name: 'Install' })[0]).toHaveAttribute('aria-disabled', 'true');
-    await user.click(screen.getByRole('button', { name: 'My company' }));
+    expect(within(card).getByText(/Signature entries present \(1\) — not checked/)).toBeInTheDocument();
+    expect(within(card).queryByText(/★|₹|\$/)).not.toBeInTheDocument();
     expect(within(grid).queryByText('Sample')).not.toBeInTheDocument();
 
     await user.click(within(card).getByRole('button', { name: 'Open burglary-policy' }));
@@ -71,17 +82,17 @@ describe('Library registry search', () => {
     expect(within(xo).getByText('Check exclusions')).toBeInTheDocument();
   });
 
-  it('says so when the registry has nothing, and shows a failure instead of an empty list', async () => {
+  it('says so when the library has nothing for a search, and shows a failure instead of an empty list', async () => {
     const api = new FakeXo();
     const user = await signedIn(api);
     await user.click(screen.getByRole('button', { name: 'Library' }));
     await user.type(screen.getByLabelText('Search the library'), 'nothing');
-    await user.click(screen.getByRole('button', { name: 'Search registry' }));
-    expect(await screen.findByText(/registry has nothing for “nothing”/)).toBeInTheDocument();
-    api.failing.add('/registry/search?q=boom');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText('Nothing matches “nothing”')).toBeInTheDocument();
+    api.failing.add('/library?q=boom');
     await user.clear(screen.getByLabelText('Search the library'));
     await user.type(screen.getByLabelText('Search the library'), 'boom');
-    await user.click(screen.getByRole('button', { name: 'Search registry' }));
+    await user.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });

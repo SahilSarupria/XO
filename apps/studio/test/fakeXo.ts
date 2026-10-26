@@ -218,12 +218,12 @@ export class FakeXo {
     if (headers['Authorization'] !== `Bearer ${this.validKey}`) return err(401, 'XO_AUTH_KEY_INVALID', 'invalid API key');
 
     let m: RegExpMatchArray | null;
+    if (method === 'GET' && [...this.failing].some((suffix) => path.endsWith(suffix)))
+      return err(500, 'XO_INTERNAL', 'temporarily unavailable');
     const studio = this.studio.handle(method, path, body as unknown as Record<string, unknown>, reply, err, {
       approvedIds: this.approvals,
     });
     if (studio !== undefined) return studio;
-    if (method === 'GET' && [...this.failing].some((suffix) => path.endsWith(suffix)))
-      return err(500, 'XO_INTERNAL', 'temporarily unavailable');
 
     // ---- registry (read-only): search needs a non-empty q; inspect returns the record plus its recorded benchmark runs
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/registry\/search\?q=(.*)$/))) {

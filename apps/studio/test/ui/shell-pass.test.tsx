@@ -72,18 +72,19 @@ describe('sidebar collapse', () => {
 });
 
 describe('Library, Audit log and Home as designed', () => {
-  it('Library has the six filters and labels samples; Made by me is empty with no analysis', async () => {
+  it('Library filters are All, Installed and Made by me; with nothing published it says so instead of showing invented entries', async () => {
     const user = await open();
     await user.click(screen.getByRole('button', { name: 'Library' }));
-    const filters = screen.getByRole('group', { name: 'Filter by area' });
+    const filters = screen.getByRole('group', { name: 'Filter the library' });
     expect(
       within(filters)
         .getAllByRole('button')
-        .map((b) => b.textContent),
-    ).toEqual(['All', 'Insurance', 'Legal', 'Finance', 'Made by me', 'My company']);
-    expect(screen.getAllByText('Sample').length).toBe(5);
-    await user.click(within(filters).getByRole('button', { name: 'Made by me' }));
-    expect(screen.getByText('Nothing matches.')).toBeInTheDocument();
+        .map((b) => b.textContent?.replace(/\s*\d+$/, '')),
+    ).toEqual(['All', 'Installed', 'Made by me']);
+    expect(await screen.findByText('No XOs here yet')).toBeInTheDocument();
+    expect(screen.queryByText('Sample')).not.toBeInTheDocument(); // nothing fabricated next to real entries
+    await user.click(within(filters).getByRole('button', { name: /Made by me/ }));
+    expect(screen.getByText('No XOs here yet')).toBeInTheDocument();
   });
   it('Audit log reads the platform log: filter chips, export as evidence, real Roles and Integrity, no invented retention', async () => {
     const user = await open();
