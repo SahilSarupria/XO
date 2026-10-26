@@ -50,6 +50,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: TEMP diagnose prettier
+        continue-on-error: true
+        run: |
+          npx prettier --version
+          LIST=$(npx prettier --list-different . | tr '\n' ' ')
+          echo "::error title=prettier::$LIST"
+
       - name: Format check
         run: npm run format:check
 
