@@ -149,9 +149,98 @@ export function decodeStream(stream: PdfStream): Uint8Array {
         }
         bytes = applyPredictor(bytes, decodeParmsFor(stream, i, names.length));
         break;
+      case 'ASCII85Decode':
+      case 'A85':
+        bytes = decodeAscii85(bytes);
+        break;
+      case 'ASCIIHexDecode':
+      case 'AHx':
+        bytes = decodeAsciiHex(bytes);
+        break;
+      case 'RunLengthDecode':
+      case 'RL':
+        bytes = decodeRunLength(bytes);
+        break;
       default:
         throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `Unsupported stream filter "${name}"`);
     }
   });
   return bytes;
+}
+
+const isPdfSpace = (b: number): boolean => b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09 || b === 0x0c || b === 0x00;
+
+/** ASCII85Decode (PDF 32000-1 §7.4.3): 5 chars -> 4 bytes, `z` = four zero bytes, `~>` ends the data. */
+export function decodeAscii85(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  const group: number[] = [];
+  const flush = (count: number): void => {
+    // A short final group of n chars (n >= 2) is padded with 'u' and yields n-1 bytes.
+    const padded = group.concat(new Array<number>(5 - count).fill(84));
+    let value = 0;
+    for (const d of padded) value = value * 85 + d;
+    const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    out.push(...bytes.slice(0, count - 1));
+  };
+  let i = 0;
+  // An optional leading `<~` is tolerated.
+  while (i < input.length && isPdfSpace(input[i]!)) i++;
+  if (input[i] === 0x3c && input[i + 1] === 0x7e) i += 2;
+  for (; i < input.length; i++) {
+    const c = input[i]!;
+    if (isPdfSpace(c)) continue;
+    if (c === 0x7e) break; // '~' -> end-of-data marker
+    if (c === 0x7a && group.length === 0) {
+      out.push(0, 0, 0, 0);
+      continue;
+    }
+    if (c < 0x21 || c > 0x75) throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCII85Decode: invalid character 0x${c.toString(16)}`);
+    group.push(c - 0x21);
+    if (group.length === 5) {
+      flush(5);
+      group.length = 0;
+    }
+  }
+  if (group.length === 1) throw new PdfError(ErrorCode.PDF_MALFORMED, 'ASCII85Decode: dangling single character in final group');
+  if (group.length > 1) flush(group.length);
+  return Uint8Array.from(out);
+}
+
+/** ASCIIHexDecode (§7.4.2): hex pairs, whitespace ignored, `>` ends the data, a final odd digit is padded with 0. */
+export function decodeAsciiHex(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let high = -1;
+  for (const c of input) {
+    if (isPdfSpace(c)) continue;
+    if (c === 0x3e) break;
+    const v = c >= 0x30 && c <= 0x39 ? c - 0x30 : c >= 0x41 && c <= 0x46 ? c - 0x37 : c >= 0x61 && c <= 0x66 ? c - 0x57 : -1;
+    if (v < 0) throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCIIHexDecode: invalid character 0x${c.toString(16)}`);
+    if (high < 0) high = v;
+    else {
+      out.push(high * 16 + v);
+      high = -1;
+    }
+  }
+  if (high >= 0) out.push(high * 16);
+  return Uint8Array.from(out);
+}
+
+/** RunLengthDecode (§7.4.5): length byte n: 0-127 copy n+1 literal bytes, 129-255 repeat the next byte 257-n times, 128 = EOD. */
+export function decodeRunLength(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let i = 0;
+  while (i < input.length) {
+    const n = input[i++]!;
+    if (n === 128) break;
+    if (n < 128) {
+      const end = i + n + 1;
+      if (end > input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: literal run overruns the data');
+      for (; i < end; i++) out.push(input[i]!);
+    } else {
+      if (i >= input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: repeat run missing its byte');
+      const b = input[i++]!;
+      for (let k = 0; k < 257 - n; k++) out.push(b);
+    }
+  }
+  return Uint8Array.from(out);
 }
