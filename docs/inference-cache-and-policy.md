@@ -277,6 +277,31 @@ Rules for using it honestly: the adjudicator should be **someone other than the 
 splits separate; **do not tune anything on the held-out split**. It remains a single model, a single run and 43 units, so it can show whether the recall gain
 survives a human check, not that the model is production-accurate.
 
+#### Adjudication result (AI-adjudicated, NOT independent human review)
+
+Run on the live run's own cache (43 entries, replayed with a throwing fetch: 0 provider attempts, 0 provider calls, cache unchanged; dev 21 cache hits, held 21 cache hits
+plus 1 answer rejected by validation as `ungrounded_label`, matching the original `report.json`). Claude judged all 97 accepted model candidates and 79 gold terms with
+rules fixed beforehand and applied identically to both splits. **Provenance: one AI adjudicator, not independent of the evaluation, no human check.** Treat as a second
+look, not ground truth. The filled CSVs contain document text and are not stored in the repository.
+
+- Verdict rules: `valid` = supported by the unit text, correct, and a distinct piece of knowledge worth keeping; `trivial` = bare generic noun phrase, table header or form label, boilerplate, or truncated fragment; `unsupported` = adds meaning the text does not state, or is wrong; `duplicate` = restates another candidate for the same unit.
+- Gold coverage: `yes` only when a valid candidate names the term as its own item (its subject, the value it assigns, or a delimited list element); a term inside a compound noun or an undifferentiated string is `no`. This is looser than the rules' strict equality, so it mildly favours the model.
+
+| Split | Model candidates | valid      | duplicate | unsupported | trivial    |
+| ----- | ---------------- | ---------- | --------- | ----------- | ---------- |
+| dev   | 54               | 46 (85.2%) | 0         | 1 (1.9%)    | 7 (13.0%)  |
+| held  | 43               | 26 (60.5%) | 1 (2.3%)  | 3 (7.0%)    | 13 (30.2%) |
+
+| Split | Gold terms | Covered by rules (strict) | By valid model | Union | Strict recall rules / rules + valid model |
+| ----- | ---------- | ------------------------- | -------------- | ----- | ----------------------------------------- |
+| dev   | 46         | 19                        | 33             | 38    | 0.413 / 0.826                             |
+| held  | 33         | 10                        | 27             | 30    | 0.303 / 0.909                             |
+
+Reading it: most of the model's candidates are sentence-style statements, and about three quarters are valid knowledge items, so the earlier "false positive" count mostly
+reflects that the gold lists named terms only, not that the output is wrong. The recall gain holds up under a stricter match than the original containment match (a lenient
+containment count over valid candidates is 44/46 dev and 28/33 held). The weak spot is held-out: 30% of candidates are trivial (form headers and labels) and 3 are unsupported,
+so the model adds noise on form-like units. This does not evaluate the gating criteria; confidence gating remains NOT SUPPORTED. 43 units, one run, one adjudicator.
+
 ## Known limitations
 
 - **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
