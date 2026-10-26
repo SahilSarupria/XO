@@ -129,8 +129,9 @@ the operators differ.
   recovery, not a heuristic guess) when the xref table is missing,
   malformed, or points at garbage — the same class of recovery real-world
   PDF readers perform on damaged files.
-- Decodes `FlateDecode`-compressed streams via `node:zlib`. Any other
-  filter (`LZWDecode`, `ASCII85Decode`, `DCTDecode`, ...) raises
+- Decodes `FlateDecode` (via `node:zlib`), `ASCII85Decode`,
+  `ASCIIHexDecode` and `RunLengthDecode` streams. Any other
+  filter (`LZWDecode`, `DCTDecode`, ...) raises
   `PDF_UNSUPPORTED_FEATURE` explicitly rather than silently producing
   wrong bytes.
 - Walks the page tree (`/Root/Pages/Kids`) with correct attribute
@@ -170,8 +171,8 @@ the operators differ.
   documented 2-byte approximation and can still decode to wrong text for
   unusual custom encodings. This replaces an earlier limitation that said
   font encoding was not supported at all.
-- **Only `FlateDecode` stream filters are supported.** A stream using any
-  other filter (LZW, ASCII85, ...) makes that one page fail to load. Since
+- **Only `FlateDecode`, `ASCII85Decode`, `ASCIIHexDecode` and `RunLengthDecode` stream filters are supported.** A stream using any
+  other filter (LZW, ...) makes that one page fail to load. Since
   WS1-02 the failure is isolated to the page and recorded in the coverage
   ledger (below); it no longer rejects the document.
 - **No text-rendering-matrix composition.** `content-stream.ts` tracks
@@ -224,6 +225,14 @@ eligibility, exclusions; `reasoning/decision-cues.ts`), each with its
 source span. It is a review list only: nothing in it becomes a rule or a
 capability automatically. An empty list means the detector found none, not
 that no rule was missed.
+
+Rows of a detected table (three or more aligned columns) join that list as
+header-bound statements such as `Coverage: Buildings; Limit: 1000000; Excess: 1000`
+when a decision-bearing column (limit, excess, deductible, waiting period, ...)
+has a value (WS1-03, `tableRowStatement`). Table rows are still kept out of the
+rule patterns, so this is visibility, not extraction. Two-column grids are not
+detected as tables: a first attempt swallowed a warranty grid in
+`burglary-policy.pdf` that is extracted today, so it was reverted.
 
 ## Stage 2: Document Parser (`src/document/`)
 

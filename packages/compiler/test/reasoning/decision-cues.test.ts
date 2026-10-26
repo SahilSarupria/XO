@@ -58,3 +58,18 @@ test('error-analysis anchor: these decision-bearing sentences are NOT parsed by 
     assert.equal(parseSentence(sentence).candidates.length, 0, `parser unexpectedly handles: ${sentence}`);
   }
 });
+
+import { tableRowStatement } from '../../src/reasoning/decision-cues.js';
+
+test('WS1-03: a table row becomes header-bound facts when a decision-bearing column has a value', () => {
+  const row = tableRowStatement(['Coverage', 'Limit', 'Excess'], ['Buildings', '1000000', '1000']);
+  assert.ok(row);
+  assert.equal(row!.text, 'Coverage: Buildings; Limit: 1000000; Excess: 1000');
+  assert.ok(row!.cues.includes('limit'));
+});
+
+test('WS1-03: rows without a header, with too few cells, or with no decision-bearing column are not reported', () => {
+  assert.equal(tableRowStatement(undefined, ['Buildings', '1000000']), undefined);
+  assert.equal(tableRowStatement(['Name', 'Colour'], ['Roof', 'Red']), undefined);
+  assert.equal(tableRowStatement(['Coverage', 'Limit'], ['Buildings', '']), undefined);
+});

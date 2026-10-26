@@ -15,7 +15,15 @@ export type SemanticType = KnownSemanticType | `custom:${string}`;
 
 /** Known relationship kinds an Experience Unit can have to another (the compiler spec's example list). Open-ended via `custom:<name>`, matching `@xo/xoir`'s `XoirEdgeKind` — these become XOIR edges once Stage 10 runs, but are computed here, before any XOIR graph exists. */
 export type KnownRelationType =
-  'depends_on' | 'references' | 'extends' | 'contradicts' | 'defines' | 'explains' | 'requires' | 'implements' | 'supports';
+  | 'depends_on'
+  | 'references'
+  | 'extends'
+  | 'contradicts'
+  | 'defines'
+  | 'explains'
+  | 'requires'
+  | 'implements'
+  | 'supports';
 export type RelationType = KnownRelationType | `custom:${string}`;
 
 export interface ExperienceUnitRelationship {
@@ -82,8 +90,17 @@ export interface ExperienceUnit {
   readonly structuredFields?: readonly StructuredFieldValue[];
   /** P0.9A area C: see `unit-builder.ts`'s `DraftExperienceUnit.isTableQuarantined` doc comment — identical meaning, carried through unchanged by `relationship-builder.ts`. */
   readonly isTableQuarantined?: boolean;
+  /** WS1-03: for a table-row unit, its own cells and the header row of the contiguous table it belongs to (absent for the header itself or a table without one). Lets the reasoning stage read a row as header-bound facts instead of loose cell text. */
+  readonly tableRow?: TableRowContext;
   /** P0.9A area E (Specification Recovery): see `unit-builder.ts`'s `DraftExperienceUnit.listKind` doc comment. Present only when this unit's sole constituent block is a `ListItemBlock`; absent otherwise (a unit spanning multiple merged blocks, or a non-list unit, makes no single ordered/unordered claim). */
   readonly listKind?: 'ordered' | 'unordered';
+}
+
+/** WS1-03: a table row with the header row of its table, when the table has one. */
+export interface TableRowContext {
+  readonly cells: readonly string[];
+  /** The first row of the contiguous run of table rows; undefined when this row IS that first row. */
+  readonly header?: readonly string[];
 }
 
 export interface RelationshipGraph {

@@ -3,7 +3,7 @@ import { AMBIGUITY_CONFIDENCE_THRESHOLD, type BoundaryAmbiguityResolver } from '
 import { classifyBlock } from './semantic-type-classifier.js';
 import { synthesizeTitle } from './title.js';
 import { computeExperienceUnitId } from './unit-id.js';
-import type { ExperienceUnitHierarchy, ExperienceUnitId, ExperienceUnitProvenance, SemanticType } from './types.js';
+import type { ExperienceUnitHierarchy, ExperienceUnitId, ExperienceUnitProvenance, SemanticType, TableRowContext } from './types.js';
 
 /** A unit as built by this module — everything except `relationships`/`documentReferences`, which need the *whole document's* units and section headings and so are computed afterward, in relationship-builder.ts. */
 export interface DraftExperienceUnit {
@@ -37,6 +37,8 @@ export interface DraftExperienceUnit {
    * this milestone's own preferred architecture.
    */
   readonly isTableQuarantined?: boolean;
+  /** WS1-03: see `ExperienceUnit.tableRow`. Set only for a single-table-row group. */
+  readonly tableRow?: TableRowContext;
   /**
    * P0.9A area E (Specification Recovery). Set only when this group's
    * single block is a `ListItemBlock` (list items are always their own
@@ -55,6 +57,14 @@ export interface DraftExperienceUnit {
    * same treatment `isTableQuarantined` already gets.
    */
   readonly listKind: 'ordered' | 'unordered' | undefined;
+}
+
+/** Header = first row of the contiguous run of `table_row` blocks that ends at `index`; the header row itself has none. */
+function tableRowContext(blocks: readonly DocumentBlock[], index: number, row: DocumentBlock & { kind: 'table_row' }): TableRowContext {
+  let start = index;
+  while (start > 0 && blocks[start - 1]?.kind === 'table_row') start -= 1;
+  const first = blocks[start];
+  return start < index && first?.kind === 'table_row' ? { cells: row.cells, header: first.cells } : { cells: row.cells };
 }
 
 function textOf(block: DocumentBlock): string {
@@ -224,6 +234,7 @@ export async function buildExperienceUnitsForSection(
       headingTitle: isSectionAnchor ? section.heading!.text : undefined,
       structuredFields,
       isTableQuarantined: group.blocks.every((b) => b.kind === 'table_row'),
+      ...(soleBlock?.kind === 'table_row' ? { tableRow: tableRowContext(section.blocks, group.startIndex, soleBlock) } : {}),
       listKind,
     };
   });

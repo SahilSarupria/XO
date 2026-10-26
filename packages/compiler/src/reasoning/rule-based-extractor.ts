@@ -11,7 +11,7 @@ import type {
   ReasoningExtractor,
 } from './extractor-types.js';
 import { buildStructuredSemantics } from './structured-semantics.js';
-import { findDecisionCues } from './decision-cues.js';
+import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
 
 interface Paragraph {
@@ -109,6 +109,21 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
     const unclassified: UnclassifiedSentence[] = [];
+
+    // WS1-03: a table row is read as header-bound facts and, when decision-bearing, reported for review.
+    // Rows stay out of the rule patterns (their cell text is not prose), so this is visibility, not extraction.
+    if (unit.tableRow !== undefined) {
+      const row = tableRowStatement(unit.tableRow.header, unit.tableRow.cells);
+      if (row !== undefined) {
+        unclassified.push({
+          text: row.text,
+          cues: row.cues,
+          sourceUnitId: unit.id,
+          provenance: baseProvenance(unit, unit.confidence, [0, unit.content.length]),
+        });
+      }
+      return ok({ nodes, edges, unclassified });
+    }
 
     const sentences = splitSentencesByParagraph(unit.content);
     for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
