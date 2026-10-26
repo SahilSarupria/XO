@@ -264,7 +264,10 @@ export class XoClient {
   }
 
   // ---- audit log
-  listAudit(ws: string, q: { event?: string; result?: string; limit?: number; before?: number } = {}): Promise<Result<AuditPage>> {
+  listAudit(
+    ws: string,
+    q: { event?: string; result?: string; since?: string; limit?: number; before?: number } = {},
+  ): Promise<Result<AuditPage>> {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) if (v !== undefined) params.set(k, String(v));
     const qs = params.toString();

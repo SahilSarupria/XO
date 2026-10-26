@@ -1,12 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { Result } from '../platform/client';
-import type { RegistryPackage, WorkflowRun } from '../platform/wire';
+import type { RegistryPackage } from '../platform/wire';
 import type { StartTarget } from '../domain/start';
 import { shortDid, type XoItem } from '../domain/xo';
-import { Badge, Button, formatWhen, ProblemNotice } from './primitives';
-import { runTitle } from './RunCard';
-import { useSession, type Mode } from './session';
-import { useTheme, type Theme } from './theme';
+import { Badge, Button, ProblemNotice } from './primitives';
+import { useSession } from './session';
 
 const SAMPLE = [
   {
@@ -150,13 +148,17 @@ export function LibrarySection(props: {
           </button>
         ))}
       </div>
-      {searched !== undefined && !searched.result.ok ? <ProblemNotice problem={searched.result.problem} onRetry={() => void search()} /> : null}
+      {searched !== undefined && !searched.result.ok ? (
+        <ProblemNotice problem={searched.result.problem} onRetry={() => void search()} />
+      ) : null}
       {searched?.result.ok === true && searched.result.value.length === 0 ? (
         <p className="muted small" role="status">
           The registry has nothing for “{searched.query}”.
         </p>
       ) : null}
-      {searched === undefined ? <p className="muted small">The registry can only be searched, not listed. Type what you need and choose Search registry.</p> : null}
+      {searched === undefined ? (
+        <p className="muted small">The registry can only be searched, not listed. Type what you need and choose Search registry.</p>
+      ) : null}
       <ul className="xo-grid bare-list" aria-label="XOs">
         {shown.map((c) => (
           <li key={c.key} className="xo-card">
@@ -186,210 +188,9 @@ export function LibrarySection(props: {
         {shown.length === 0 ? <li className="muted small">Nothing matches.</li> : null}
       </ul>
       <p className="muted small">
-        Cards marked Sample are examples, not registry entries. Scores, ratings, prices and “verified” are not available because the registry does not provide them.
+        Cards marked Sample are examples, not registry entries. Scores, ratings, prices and “verified” are not available because the
+        registry does not provide them.
       </p>
-    </section>
-  );
-}
-
-const RESULT: Record<string, { text: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
-  succeeded: { text: 'Completed', tone: 'success' },
-  failed: { text: 'Failed', tone: 'danger' },
-  rejected: { text: 'Declined', tone: 'danger' },
-  waiting_for_human: { text: 'Escalated', tone: 'warning' },
-  interrupted: { text: 'Stopped', tone: 'warning' },
-  running: { text: 'Running', tone: 'neutral' },
-  created: { text: 'Started', tone: 'neutral' },
-};
-
-const ROLES = ['Admin', 'Publisher', 'Reviewer', 'Viewer'] as const;
-
-/**
- * Audit log, as designed. The table lists what the platform's run records show. It is not a tamper-evident audit record,
- * and the filters beyond "All events" and "Runs", the export, the roles and the integrity statement are not available yet.
- */
-export function AuditSection(props: { runs: readonly WorkflowRun[]; incomplete: boolean }) {
-  const rows = useMemo(() => [...props.runs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [props.runs]);
-  return (
-    <section className="section" aria-labelledby="audit-h">
-      <header className="section-head">
-        <h2 id="audit-h">Audit log</h2>
-        <div className="section-actions">
-          <Button variant="secondary" aria-disabled title="Exporting is not available yet">
-            Export for SOC 2
-          </Button>
-        </div>
-      </header>
-      <div className="chips-row" role="group" aria-label="Filter events">
-        <button type="button" className="chip" aria-pressed="true">
-          All events
-        </button>
-        {['Publishing', 'Access denied'].map((f) => (
-          <button key={f} type="button" className="chip" aria-disabled="true" title={`${f} events are not recorded yet`}>
-            {f}
-          </button>
-        ))}
-        <button type="button" className="chip" aria-pressed="false" aria-disabled="true" title="Runs are the only events recorded, so this equals All events">
-          Runs
-        </button>
-        <button type="button" className="chip" aria-disabled="true" title="Choosing a period is not available yet">
-          Last 7 days ▾
-        </button>
-      </div>
-      {props.incomplete ? (
-        <p className="notice notice-warning small">Run history could not be fully loaded, so this list may be incomplete.</p>
-      ) : null}
-      <div className="audit-grid">
-        <div className="table" role="table" aria-label="Run events">
-          <div className="table-head" role="row">
-            <span role="columnheader">Time</span>
-            <span role="columnheader">Who</span>
-            <span role="columnheader">Event</span>
-            <span role="columnheader">Target</span>
-            <span role="columnheader">Result</span>
-          </div>
-          {rows.length === 0 ? <p className="muted small table-empty">No runs recorded yet.</p> : null}
-          {rows.map((r) => {
-            const res = RESULT[r.status] ?? { text: r.status, tone: 'neutral' as const };
-            return (
-              <div key={r.workflowExecutionId} className="table-row" role="row">
-                <span role="cell" className="mono muted small">
-                  {formatWhen(r.updatedAt)}
-                </span>
-                <span role="cell">{r.initiator?.id ?? 'Unknown'}</span>
-                <span role="cell">Ran process</span>
-                <span role="cell">{runTitle(r)}</span>
-                <span role="cell">
-                  <Badge tone={res.tone}>{res.text}</Badge>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <aside className="audit-side" aria-label="Roles and integrity">
-          <section className="xoi-card" aria-labelledby="roles-h">
-            <div className="row between">
-              <h3 id="roles-h">Roles</h3>
-              <Badge tone="neutral">Not available yet</Badge>
-            </div>
-            <ul className="bare-list audit-roles" aria-disabled="true">
-              {ROLES.map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-            <Button variant="quiet" aria-disabled title="Inviting members is not available yet">
-              + Invite member
-            </Button>
-          </section>
-          <section className="xoi-card" aria-labelledby="integ-h">
-            <h3 id="integ-h">Integrity</h3>
-            <p className="muted small">
-              Not available yet. This list is built from run history. It is not append-only or tamper-evident, and no retention period is recorded, so it is not an audit
-              record.
-            </p>
-          </section>
-        </aside>
-      </div>
-    </section>
-  );
-}
-
-const SETTINGS_TABS = ['General', 'Models and runtime', 'Data and residency', 'Trust and signing', 'Notifications'] as const;
-
-function Unavailable(props: { children: string }) {
-  return <p className="notice notice-info small">{props.children}</p>;
-}
-
-/** Settings, as designed. Detail level and theme are real; everything the platform does not offer yet is shown disabled and says so. */
-export function SettingsSection(props: { workspaceName: string }) {
-  const { mode, setMode } = useSession();
-  const [tab, setTab] = useState<(typeof SETTINGS_TABS)[number]>('General');
-  const modes: readonly Mode[] = ['user', 'builder'];
-  const [theme, setTheme] = useTheme();
-  return (
-    <section className="section" aria-labelledby="settings-h">
-      <h2 id="settings-h" className="visually-hidden">
-        Settings
-      </h2>
-      <div className="settings">
-        <div className="settings-nav" role="tablist" aria-label="Settings sections">
-          <p className="settings-title" aria-hidden="true">
-            Settings
-          </p>
-          {SETTINGS_TABS.map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="settings-body" role="tabpanel" aria-label={tab}>
-          {tab === 'General' ? (
-            <>
-              <h3>Detail level</h3>
-              <p className="muted small">
-                User mode keeps to plain language. Builder mode adds technical screens. Neither changes what you are allowed to do.
-              </p>
-              <div className="radio-list" role="radiogroup" aria-label="Detail level">
-                {modes.map((m) => (
-                  <button key={m} type="button" role="radio" aria-checked={mode === m} className="radio-row" onClick={() => setMode(m)}>
-                    <span className="radio-dot" aria-hidden="true" />
-                    {m === 'user' ? 'User mode' : 'Builder mode'}
-                  </button>
-                ))}
-              </div>
-              <h3>Appearance</h3>
-              <div className="radio-list" role="radiogroup" aria-label="Theme">
-                {(['dark', 'light'] as const satisfies readonly Theme[]).map((t) => (
-                  <button key={t} type="button" role="radio" aria-checked={theme === t} className="radio-row" onClick={() => setTheme(t)}>
-                    <span className="radio-dot" aria-hidden="true" />
-                    {t === 'dark' ? 'Dark theme' : 'Light theme'}
-                  </button>
-                ))}
-              </div>
-              <h3>Workspace</h3>
-              <p>{props.workspaceName}</p>
-            </>
-          ) : null}
-          {tab === 'Models and runtime' ? (
-            <>
-              <h3>Where XOs run</h3>
-              <Unavailable>Not configurable in Studio yet. These are set when the platform starts.</Unavailable>
-              <div className="radio-list" aria-disabled="true">
-                {['This computer', 'Private server', 'Cloud'].map((x) => (
-                  <div key={x} className="radio-row" data-off="true">
-                    <span className="radio-dot" aria-hidden="true" />
-                    {x}
-                  </div>
-                ))}
-              </div>
-              <h3>Model</h3>
-              <div className="radio-list" aria-disabled="true">
-                <div className="radio-row" data-off="true">
-                  Model choice is not available yet
-                </div>
-                <div className="radio-row" data-off="true">
-                  Fallback model is not available yet
-                </div>
-              </div>
-              <div className="radio-row" data-off="true" aria-disabled="true">
-                <span>
-                  Air-gapped mode <span className="muted small">· Not available yet</span>
-                </span>
-              </div>
-              <h3>Data residency</h3>
-              <div className="radio-row" data-off="true" aria-disabled="true">
-                Not available yet
-              </div>
-            </>
-          ) : null}
-          {tab !== 'General' && tab !== 'Models and runtime' ? (
-            <>
-              <h3>{tab}</h3>
-              <Unavailable>Not available yet. Studio has no settings for this, and shows none rather than imitate them.</Unavailable>
-            </>
-          ) : null}
-        </div>
-      </div>
     </section>
   );
 }

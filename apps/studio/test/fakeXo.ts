@@ -50,7 +50,11 @@ class ApprovalSet extends Set<string> {
   }
 }
 
+import { StudioFake } from './fakeStudio';
+
 export class FakeXo {
+  /** The Studio-backend routes (members, audit, settings, library, chat, drafts, preview, link import). Admin caller by default. */
+  studio = new StudioFake();
   validKey = 'xoak_good';
   workspaces: Array<{ workspaceId: string; name: string; createdAt: string }> = [];
   sources: Array<{ sourceId: string; originalFilename: string; byteSize: number }> = [];
@@ -214,6 +218,10 @@ export class FakeXo {
     if (headers['Authorization'] !== `Bearer ${this.validKey}`) return err(401, 'XO_AUTH_KEY_INVALID', 'invalid API key');
 
     let m: RegExpMatchArray | null;
+    const studio = this.studio.handle(method, path, body as unknown as Record<string, unknown>, reply, err, {
+      approvedIds: this.approvals,
+    });
+    if (studio !== undefined) return studio;
     if (method === 'GET' && [...this.failing].some((suffix) => path.endsWith(suffix)))
       return err(500, 'XO_INTERNAL', 'temporarily unavailable');
 
@@ -406,11 +414,12 @@ export class FakeXo {
           '/workspaces/{workspaceId}/sources': { get: { summary: 'List sources' }, post: { summary: 'Upload a source' } },
         },
       });
-    if (method === 'GET' && path === '/workspaces') return reply(200, { workspaces: this.workspaces });
+    if (method === 'GET' && path === '/workspaces')
+      return reply(200, { workspaces: this.workspaces.map((w) => ({ ...w, ...this.studio.workspaceMeta() })) });
     if (method === 'POST' && path === '/workspaces') {
       const w = { workspaceId: this.id('ws'), name: body.name ?? '', createdAt: new Date().toISOString() };
       this.workspaces.push(w);
-      return reply(201, w);
+      return reply(201, { ...w, ...this.studio.workspaceMeta() });
     }
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/sources$/)))
       return reply(200, {

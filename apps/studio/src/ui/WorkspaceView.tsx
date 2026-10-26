@@ -11,14 +11,27 @@ import { WorkSection } from './WorkSection';
 import { ProcessesSection } from './ProcessesSection';
 import { ContractsSection } from './ContractsSection';
 import { PlatformSection } from './PlatformSection';
-import { Badge, Button, EmptyState, formatWhen, ProblemNotice, Section as PageSection, Skeleton, SubNav, useLoad, loadedValue } from './primitives';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  formatWhen,
+  ProblemNotice,
+  Section as PageSection,
+  Skeleton,
+  SubNav,
+  useLoad,
+  loadedValue,
+} from './primitives';
 import { WorkspacesSection } from './WorkspacesSection';
 import { ReviewSection } from './ReviewSection';
 import { useSession } from './session';
 import { BUILDER_SECTIONS, isBuilderSection, useSectionRoute, type Section } from './sectionRoute';
 import { Icon, type IconName } from './icons';
 import { XosSection } from './XosSection';
-import { AuditSection, LibrarySection, SettingsSection } from './DesignSections';
+import { LibrarySection } from './DesignSections';
+import { AuditScreen } from './AuditScreen';
+import { SettingsScreen, type Tab as SettingsTab } from './SettingsScreen';
 import { ChatScreen } from './ChatScreen';
 import { WorkflowEditor } from './WorkflowScreen';
 import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
@@ -65,6 +78,7 @@ export function WorkspaceView(props: {
   const ws = props.workspace.workspaceId;
   const [view, setView, replaceView] = useSectionRoute();
   const [setupView, setSetupView] = useState<SetupView>('documents');
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('General');
   const [pickedCompilation, setPickedCompilation] = useState<string | undefined>();
   /** A Builder-only screen that was asked for in User mode: explained on Home instead of silently dropped. */
   const [blocked, setBlocked] = useState<Section | undefined>();
@@ -187,7 +201,8 @@ export function WorkspaceView(props: {
     }
     if (!stay) setView('chat');
   }
-  const latestDocument = [...(loadedValue(sources.state) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.originalFilename;
+  const latestDocument = [...(loadedValue(sources.state) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    ?.originalFilename;
   const xoList = xoItems(succeeded, loadedValue(sources.state) ?? []);
 
   function refreshAll() {
@@ -345,7 +360,9 @@ export function WorkspaceView(props: {
                   {workflows.state.phase === 'loading' ? (
                     <Skeleton label="Loading workflows" />
                   ) : (
-                    <EmptyState title="No workflow to show yet">Add a document and let XO analyse it. The processes it finds can be opened here.</EmptyState>
+                    <EmptyState title="No workflow to show yet">
+                      Add a document and let XO analyse it. The processes it finds can be opened here.
+                    </EmptyState>
                   )}
                   <div className="row">
                     <Button variant="secondary" onClick={() => setView('work')}>
@@ -699,8 +716,16 @@ export function WorkspaceView(props: {
           }}
         />
       ) : null}
-      {view === 'audit' ? <AuditSection runs={runList} incomplete={decisionsUnknown} /> : null}
-      {view === 'settings' ? <SettingsSection workspaceName={props.workspace.name ?? 'Untitled workspace'} /> : null}
+      {view === 'audit' ? (
+        <AuditScreen
+          workspace={props.workspace}
+          onManageMembers={() => {
+            setSettingsTab('Members');
+            setView('settings');
+          }}
+        />
+      ) : null}
+      {view === 'settings' ? <SettingsScreen key={settingsTab} workspace={props.workspace} initialTab={settingsTab} /> : null}
       {view === 'platform' && mode === 'builder' ? (
         <>
           <XosSection
@@ -728,7 +753,11 @@ export function WorkspaceView(props: {
     { id: 'activity', label: 'Go to Activity', run: () => setView('activity') },
     { id: 'audit', label: 'Go to Audit log', hint: 'Preview', run: () => setView('audit') },
     { id: 'settings', label: 'Go to Settings', run: () => setView('settings') },
-    { id: 'theme', label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', run: () => setThemeChoice(theme === 'dark' ? 'light' : 'dark') },
+    {
+      id: 'theme',
+      label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
+      run: () => setThemeChoice(theme === 'dark' ? 'light' : 'dark'),
+    },
   ];
   return (
     <>
@@ -778,7 +807,14 @@ function NavItem(props: {
 
 function RailButton(props: { current: boolean; label: string; icon: IconName; onSelect: () => void }) {
   return (
-    <button type="button" className="rail-btn" aria-label={props.label} title={props.label} aria-current={props.current ? 'page' : undefined} onClick={props.onSelect}>
+    <button
+      type="button"
+      className="rail-btn"
+      aria-label={props.label}
+      title={props.label}
+      aria-current={props.current ? 'page' : undefined}
+      onClick={props.onSelect}
+    >
       <Icon name={props.icon} />
     </button>
   );

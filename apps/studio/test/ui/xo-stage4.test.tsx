@@ -100,7 +100,10 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     ['1 Add sources', '2 Build', '3 Test', '4 Publish'].forEach((t, i) => expect(items[i]!.textContent).toContain(t));
     expect(items[0]).toHaveAttribute('aria-current', 'step');
     expect(screen.getByRole('button', { name: 'Continue to Build' })).toBeDisabled();
-    await user.upload(screen.getByLabelText('Choose a document to upload'), new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }));
+    await user.upload(
+      screen.getByLabelText('Choose a document to upload'),
+      new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
+    );
     await user.click(await screen.findByRole('radio', { name: /procedure\.pdf/ }));
     expect(screen.getByText(/pasting a link is not available yet/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue to Build' }));
@@ -127,14 +130,14 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     expect(await screen.findByRole('button', { name: 'Open procedure' })).toBeInTheDocument();
   });
 
-  it('refuses a Word document and does not move on', async () => {
+  it('refuses an unsupported file and does not move on (Word .docx is supported; legacy .doc is not)', async () => {
     const user = await signedIn(new FakeXo(), false);
     await openScreen(user, 'Setup');
     await user.click(screen.getByRole('button', { name: 'XOs' }));
     expect(screen.getByText('No XOs yet')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '+ Create XO' }));
-    await user.upload(screen.getByLabelText('Choose a document to upload'), new File(['x'], 'rules.docx'));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Word documents are not supported yet/);
+    await user.upload(screen.getByLabelText('Choose a document to upload'), new File(['x'], 'rules.doc'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Older \.doc files are not supported: save it as \.docx or PDF first/);
     expect(screen.getByRole('button', { name: 'Continue to Build' })).toBeDisabled();
   });
 });

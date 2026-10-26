@@ -195,6 +195,15 @@ export function describeProblem(p: ApiProblem): ProblemView {
         next: 'Check the key and try again, or ask your administrator for a new one.',
       };
     case 'forbidden':
+      // The platform names a workspace-role refusal in its own words ("role ... does not have the ... permission in this workspace").
+      // That one is unambiguous, so say it plainly; every other 403 stays deliberately unspecific.
+      if (/does not have the "[a-z]+" permission in this workspace/.test(p.message)) {
+        return {
+          title: 'Your role does not allow this',
+          body: 'Your role in this workspace does not include that action, so XO did not do it. Nothing was changed.',
+          next: 'Ask a workspace admin if you need access.',
+        };
+      }
       // 403 covers more than one cause (e.g. the rule is not approved, or the account is not allowed). Studio does not guess which.
       return {
         title: 'XO refused this action',

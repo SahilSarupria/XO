@@ -31,7 +31,7 @@ export function useDocuments(props: { workspaceId: string; onChanged: () => void
     // A convenience check only; the API enforces the same allowlist authoritatively.
     if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(ext)) {
       setUploadProblem(
-        `XO can read: ${SUPPORTED_UPLOAD_EXTENSIONS.join(', ')}. “${file.name}” is not one of those. Word documents are not supported yet.`,
+        `XO can read: ${SUPPORTED_UPLOAD_EXTENSIONS.join(', ')}. “${file.name}” is not one of those.${ext === '.doc' ? ' Older .doc files are not supported: save it as .docx or PDF first.' : ''}`,
       );
       if (fileInput.current) fileInput.current.value = '';
       return;
