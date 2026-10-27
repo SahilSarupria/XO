@@ -372,7 +372,10 @@ test('real pipeline (all 8 cases): the three paths are built from the same graph
 test('the package-boundary view is real, not a copy of the live view: tampering with a lowered contract in the observation is detected', async () => {
   const l = await loadSuiteFile(join(PKG, 'suites', 'vertical-fixtures.suite.json'));
   assert.ok(l.ok);
-  const obs = await observeCase(l.suite.cases.find((c) => c.caseId === 'synthetic-claim-rules')!, { sourceRoot: l.sourceRoot });
+  const obs = await observeCase(
+    l.suite.cases.find((c) => c.caseId === 'synthetic-claim-rules')!,
+    { sourceRoot: l.sourceRoot },
+  );
   const [live, , pkg] = obs.paths!;
   assert.ok(
     pkg!.capabilities.some((c) => c.contractEmbedded === true),
