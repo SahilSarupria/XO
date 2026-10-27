@@ -11,7 +11,7 @@ The insurer shall acknowledge each claim within 5 business days.
 
 This claim form has 3 pages.
 
-The insurer shall settle each undisputed claim within 30 days of the final document.`;
+The insurer shall settle each undisputed claim promptly and in good faith.`;
 
 test('WS1-04: decision-bearing sentences no rule pattern parsed are reported with their source span, in document order', async () => {
   const result = await compileSources([{ kind: 'document', text: TEXT, sourcePath: 'claims.txt' }]);
@@ -22,7 +22,7 @@ test('WS1-04: decision-bearing sentences no rule pattern parsed are reported wit
   assert.deepEqual(texts, [
     'The handler shall register each claim within 1 working day of receipt.',
     'The insurer shall acknowledge each claim within 5 business days.',
-    'The insurer shall settle each undisputed claim within 30 days of the final document.',
+    'The insurer shall settle each undisputed claim promptly and in good faith.',
   ]);
   for (const item of result.value.unclassified) {
     assert.ok(item.cues.length > 0);

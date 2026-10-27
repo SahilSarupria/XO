@@ -1,3 +1,4 @@
+import { parseStructuredCondition } from '@xo/capability-contract';
 import type { ReasoningNodeType } from './types.js';
 
 /**
@@ -421,6 +422,108 @@ function parsePassiveExclusion(sentence: string): ParseResult {
     ],
     edges: [],
   };
+}
+
+// --- Normalised executable rules: threshold routing and day-based deadlines --------------------
+//
+// The two shapes that dominate insurance operating procedures and that the existing deterministic engine
+// can already evaluate (`StructuredComparisonBindingResolver`: numeric comparison; "within N days of <field>"):
+//
+//   threshold  "Claims above 10000 must be referred to a senior adjuster for approval."
+//              -> condition "the claim amount exceeds 10000", outcome "must be referred to ..."
+//   deadline   "Claim documents must be submitted within 15 days after discharge from hospital."
+//              -> condition "the action is completed within 15 days of discharge from hospital"
+//
+// Each emits an ordinary `rule` candidate whose condition is re-validated by the SAME parser the runtime
+// resolver uses (`parseStructuredCondition`); a sentence whose normalised condition does not parse is not
+// emitted (falls through to the constraint patterns). The existing minter then gives a clean rule its own
+// capability, so nothing here widens what the runtime can execute: it only lets common sentences reach the
+// grammar that was already there. The deadline's `field` is the event phrase, supplied at run time as a day
+// count; hours and working days are not in the grammar and fall through.
+
+/** Money-bearing subjects whose bare "above N" means an amount ("Claims above 10000"). */
+const AMOUNT_SUBJECTS: ReadonlySet<string> = new Set(['claim', 'loss', 'payment', 'settlement', 'invoice', 'payout', 'refund', 'premium']);
+
+function singular(word: string): string {
+  const w = word.toLowerCase();
+  if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
+  if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+function normalisedRule(
+  condition: string,
+  outcome: string,
+  matchedPattern: string,
+  confidence: number,
+  originalSentence: string,
+): ParseResult {
+  if (parseStructuredCondition(condition) === undefined) return EMPTY_RESULT;
+  const text = clean(originalSentence);
+  return {
+    candidates: [
+      {
+        nodeType: 'rule',
+        canonicalLabel: text,
+        condition,
+        action: outcome,
+        rationale: text,
+        exceptionConditions: [],
+        confidence,
+        matchedPattern,
+      },
+    ],
+    edges: [],
+  };
+}
+
+const THRESHOLD_ROUTING =
+  /^(?<subject>[A-Za-z][A-Za-z -]{0,40}?)\s+(?:with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+)?(?:above|over|exceeding|greater than|more than)\s+(?<num>\d[\d,]*(?:\.\d+)?)(?<pct>%)?\s+(?<rest>(?:must|shall|require|requires|are to|is to)\s+.+)$/i;
+const THRESHOLD_UP_TO =
+  /^(?:[A-Za-z][A-Za-z ]{0,30}?)\s+may\s+(?<verb>accept|approve|settle|pay|process)\s+(?<obj>[a-z][a-z ]{0,30}?)\s+with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+up to\s+(?<num>\d[\d,]*(?:\.\d+)?)\s+(?<rest>without\s+.+)$/i;
+
+function parseThresholdRule(sentence: string): ParseResult {
+  const text = clean(sentence);
+  const up = THRESHOLD_UP_TO.exec(text);
+  if (up?.groups) {
+    const { verb, obj, field, num, rest } = up.groups as Record<string, string>;
+    return normalisedRule(
+      `the ${field!.trim().toLowerCase()} is at most ${num}`,
+      `${verb} ${obj} ${rest}`,
+      'rule:normalized-threshold-up-to',
+      0.75,
+      sentence,
+    );
+  }
+  const m = THRESHOLD_ROUTING.exec(text);
+  if (!m?.groups) return EMPTY_RESULT;
+  const { subject, field, num, pct, rest } = m.groups as Record<string, string | undefined>;
+  const head = singular(subject!.trim().split(/\s+/).pop()!);
+  let fieldPhrase: string | undefined;
+  if (field !== undefined) fieldPhrase = field.trim().toLowerCase();
+  else if (pct !== undefined) fieldPhrase = `${head} percentage`;
+  else if (AMOUNT_SUBJECTS.has(head)) fieldPhrase = `${head} amount`;
+  if (fieldPhrase === undefined) return EMPTY_RESULT; // never guess what "above N" measures
+  return normalisedRule(`the ${fieldPhrase} exceeds ${num}`, rest!.trim(), 'rule:normalized-threshold', 0.75, sentence);
+}
+
+const DEADLINE_RULE =
+  /^(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\s+(?<modal>must|shall)\s+(?<verb>(?!not\b).+?)\s+within\s+(?<n>\d+)\s+(?<unit>days?|months?|years?)\s+(?:of|after|from)\s+(?<event>[a-z][a-z' -]{1,60})$/i;
+
+function parseDeadlineRule(sentence: string): ParseResult {
+  const m = DEADLINE_RULE.exec(clean(sentence));
+  if (!m?.groups) return EMPTY_RESULT;
+  const { actor, modal, verb, n, unit, event } = m.groups as Record<string, string>;
+  const eventPhrase = event!.trim().replace(/^the\s+/i, '');
+  if (eventPhrase.split(/\s+/).length > 6) return EMPTY_RESULT; // too long to be a reference phrase
+  const plural = unit!.toLowerCase().endsWith('s') ? unit!.toLowerCase() : `${unit!.toLowerCase()}s`;
+  return normalisedRule(
+    `the action is completed within ${n} ${plural} of ${eventPhrase}`,
+    `${actor!.trim()} ${modal!.toLowerCase()} ${verb!.trim()}`,
+    'rule:normalized-deadline',
+    0.75,
+    sentence,
+  );
 }
 
 // --- Pattern: warranty obligation ("Warranted that X." / "Warranted X.") ---
@@ -849,6 +952,8 @@ export function parseSentence(sentence: string): ParseResult {
     parseSubjectTo,
     parseRule,
     parseTrailingConditional,
+    parseThresholdRule,
+    parseDeadlineRule,
     parseWarranty,
     parseProhibition,
     parsePassiveExclusion,

@@ -398,13 +398,13 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // matched-label histogram before and after; no closed-class function word appears among them (the Layer 3 guard).
   assert.equal(
     sameUnitEdges.length,
-    28,
+    29,
     "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1's quantified-term patterns on this fixture (see comment above)",
   );
   assert.equal(
     exactLabelEdges.length,
-    127,
-    'exact_label edge count: Layer 3 removed 5 spurious "Before"-substring links; WS1 recall then added 19 references to domain concepts from the new nodes (see comment above)',
+    128,
+    'exact_label edge count: Layer 3 removed 5 spurious "Before"-substring links; WS1 recall then added 20 references to domain concepts from the new nodes (see comment above)',
   );
 
   // Human-in-the-Loop Execution Class Lowering milestone: `resolvedCount`
@@ -420,16 +420,16 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   const resolvedCount = lowered.outcomes.filter((o) => o.status === 'resolved').length;
   assert.equal(
     resolvedCount,
-    20,
-    'total resolved capability count reflects the Human-in-the-Loop milestone (+1) and Layer 2B (+2 deterministic_rule) on top of the Problem B.1 baseline (17)',
+    22,
+    'total resolved capability count: Problem B.1 baseline (17), +1 Human-in-the-Loop, +2 deterministic_rule (Layer 2B), +2 deterministic_rule from WS1 normalised deadline/threshold rules (day-based notification and submission deadlines)',
   );
 
   const deterministicRuleCount = lowered.declarations.filter((d) => d.execution?.mode === 'deterministic_rule').length;
   const humanInTheLoopCount = lowered.declarations.filter((d) => d.execution?.mode === 'human_in_the_loop').length;
   assert.equal(
     deterministicRuleCount,
-    19,
-    'the deterministic_rule resolution count is the Problem B.1 baseline (17) plus Layer 2B\'s two new "Record..." capabilities, both deterministically resolvable',
+    21,
+    'the deterministic_rule resolution count is the Problem B.1 baseline (17), plus Layer 2B\'s two "Record..." capabilities, plus two WS1 normalised-rule capabilities',
   );
   assert.equal(
     humanInTheLoopCount,

@@ -489,6 +489,7 @@ test('the declared golden changes in the manifest match the Step 3 / Step 4 hist
   assert.ok(l.ok);
   assert.deepEqual(e.declaredGoldenChanges.map((g) => g.caseId).sort(), [
     'aastha-operations',
+    'commercial-property-policy',
     'openapi-operation-data-flow',
     'structured-operation-data-flow',
   ]);
@@ -556,7 +557,7 @@ test('AUDIT (historical): every difference between each historical baseline and 
       version: out['vertical-fixtures']!.counts['evaluation_version_change'],
       repr: out['vertical-fixtures']!.counts['representation_only'],
     },
-    { added: 26, golden: 3, drift: 8, version: 1, repr: 7 },
+    { added: 26, golden: 11, drift: 10, version: 1, repr: 7 },
   );
 });
 

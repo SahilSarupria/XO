@@ -148,7 +148,12 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
       parsed.candidates.forEach((candidate: ParsedReasoningCandidate, candidateIndex: number) => {
         const localId = `${sentenceIndex}:${candidateIndex}`;
         labelToLocalId.set(candidate.canonicalLabel, localId);
-        const confidence = Math.min(unit.confidence, candidate.confidence);
+        // A normalised rule matched an exact grammar over the whole sentence and its condition was re-validated by
+        // the runtime's own parser, so the paragraph-type classifier's uncertainty about the surrounding unit does
+        // not cap it. Every other pattern keeps the conservative min().
+        const confidence = candidate.matchedPattern.startsWith('rule:normalized-')
+          ? candidate.confidence
+          : Math.min(unit.confidence, candidate.confidence);
         const structuredSemantics = buildStructuredSemantics({
           nodeType: candidate.nodeType,
           ...(candidate.condition !== undefined ? { condition: candidate.condition } : {}),

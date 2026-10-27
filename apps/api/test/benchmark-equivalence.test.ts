@@ -113,7 +113,7 @@ test('the benchmark observer and the shipped API execution route agree on execut
               {
                 id: 'unres',
                 kind: 'capability',
-                target: { contains: 'Notify the Insurer of a loss within' },
+                target: { contains: 'Assess whether reasonable precautions' },
                 input: {},
                 expect: { outcome: 'not_executable' },
               },
@@ -147,7 +147,7 @@ test('the benchmark observer and the shipped API execution route agree on execut
         assert.equal(hitl.json<{ status: string }>().status, 'waiting_for_human');
         assert.equal(observedOutcome('hitl'), 'waiting_for_human');
 
-        const unresolved = caps.find((c) => c.name.startsWith('Notify the Insurer of a loss within'))!;
+        const unresolved = caps.find((c) => c.name.startsWith('Assess whether reasonable precautions'))!;
         assert.equal(unresolved.status, 'unresolved');
         assert.equal(observedOutcome('unres'), 'not_executable');
       } finally {

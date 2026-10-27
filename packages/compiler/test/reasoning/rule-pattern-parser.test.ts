@@ -71,12 +71,44 @@ test('policy: "Must be over 18."', () => {
 // §4.1/§4.3/§4.4/§6.1/§6.2 and previously produced zero candidates —
 // not merely a low-confidence one.
 test('M1.2: subject-prefixed "must" obligation — "The Insured must notify..." (real policy §4.1)', () => {
-  const result = parseSentence('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  // (a day-based deadline version of this sentence is now a normalised executable rule — see the WS1 test below)
+  const result = parseSentence('The Insured must notify the Insurer of a loss as soon as reasonably practicable after the loss.');
   assert.equal(result.candidates.length, 1);
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'policy');
   assert.equal(c.matchedPattern, 'policy:subject-must-obligation');
-  assert.equal(c.action, 'must notify the Insurer of a loss within 7 days after becoming aware of the loss');
+  assert.equal(c.action, 'must notify the Insurer of a loss as soon as reasonably practicable after the loss');
+});
+
+test('WS1: a day-based deadline obligation is normalised to an executable rule (supersedes the M1.2 constraint for this shape)', () => {
+  const result = parseSentence('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  assert.equal(result.candidates.length, 1);
+  const c = result.candidates[0]!;
+  assert.equal(c.nodeType, 'rule');
+  assert.equal(c.matchedPattern, 'rule:normalized-deadline');
+  assert.equal(c.condition, 'the action is completed within 7 days of becoming aware of the loss');
+  assert.equal(c.action, 'The Insured must notify the Insurer of a loss');
+});
+
+test('WS1: threshold routing is normalised; an amountless or unmeasurable subject is not guessed at', () => {
+  const claims = parseSentence('Claims above 10000 must be referred to a senior adjuster for approval.');
+  assert.equal(claims.candidates[0]!.condition, 'the claim amount exceeds 10000');
+  assert.equal(claims.candidates[0]!.matchedPattern, 'rule:normalized-threshold');
+  const risks = parseSentence('Risks with a sum insured above 500000 must be referred to the underwriting manager.');
+  assert.equal(risks.candidates[0]!.condition, 'the sum insured exceeds 500000');
+  const upTo = parseSentence('Underwriters may accept risks with a sum insured up to 500000 without referral.');
+  assert.equal(upTo.candidates[0]!.condition, 'the sum insured is at most 500000');
+  assert.equal(upTo.candidates[0]!.action, 'accept risks without referral');
+  // "Widgets above 10 must be recounted": nothing says what is being measured, so no rule is invented.
+  assert.notEqual(
+    parseSentence('Widgets above 10 must be recounted by the warehouse team.').candidates[0]?.matchedPattern,
+    'rule:normalized-threshold',
+  );
+});
+
+test('WS1: hours and working days are outside the grammar and fall back to the obligation constraint', () => {
+  const r = parseSentence('The policyholder must report an accident to the Insurer within 24 hours of the accident.');
+  assert.equal(r.candidates[0]?.matchedPattern, 'policy:subject-must-obligation');
 });
 
 test('M1.2: subject-prefixed "must" obligation — "The Insured must provide..." (real policy §4.3)', () => {

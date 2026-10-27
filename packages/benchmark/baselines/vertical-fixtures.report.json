@@ -31,9 +31,9 @@
         "id": "capabilityRecall",
         "stage": "capabilities",
         "definition": "expected capabilities discovered (identity matched) / expected capabilities",
-        "numerator": 41,
-        "denominator": 46,
-        "ratio": 0.891304,
+        "numerator": 42,
+        "denominator": 47,
+        "ratio": 0.893617,
         "measured": true,
         "missing": [
           {
@@ -86,27 +86,27 @@
         "id": "crossPathConsistency",
         "stage": "capabilities",
         "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-        "numerator": 355,
-        "denominator": 355,
+        "numerator": 370,
+        "denominator": 370,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "live_vs_package.binding.match": 23,
+          "live_vs_package.binding.match": 25,
           "live_vs_package.binding.not_comparable": 19,
-          "live_vs_package.contract_embedded.match": 42,
-          "live_vs_package.contract_embedded.not_comparable": 29,
-          "live_vs_package.contract_hash.match": 42,
-          "live_vs_package.execution_outcome.match": 14,
+          "live_vs_package.contract_embedded.match": 44,
+          "live_vs_package.contract_embedded.not_comparable": 28,
+          "live_vs_package.contract_hash.match": 44,
+          "live_vs_package.execution_outcome.match": 17,
           "live_vs_package.execution_outcome.not_comparable": 2,
-          "live_vs_package.execution_outcome.not_exercised": 8,
-          "live_vs_package.execution_provenance.match": 14,
+          "live_vs_package.execution_outcome.not_exercised": 7,
+          "live_vs_package.execution_provenance.match": 17,
           "live_vs_package.graph_hash.not_comparable": 7,
-          "live_vs_serialized.binding.match": 71,
-          "live_vs_serialized.capability_present.match": 71,
-          "live_vs_serialized.contract_hash.match": 71,
+          "live_vs_serialized.binding.match": 72,
+          "live_vs_serialized.capability_present.match": 72,
+          "live_vs_serialized.contract_hash.match": 72,
           "live_vs_serialized.graph_hash.match": 7
         }
       },
@@ -126,9 +126,9 @@
         "id": "executionClassAccuracy",
         "stage": "capabilities",
         "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
-        "numerator": 33,
-        "denominator": 37,
-        "ratio": 0.891892,
+        "numerator": 34,
+        "denominator": 38,
+        "ratio": 0.894737,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -159,19 +159,19 @@
           }
         ],
         "breakdown": {
-          "deterministic_rule->deterministic_rule": 10,
+          "deterministic_rule->deterministic_rule": 12,
           "human_in_the_loop->human_in_the_loop": 16,
           "human_in_the_loop->not_executable": 4,
-          "not_executable->not_executable": 7
+          "not_executable->not_executable": 6
         }
       },
       {
         "id": "executionCorrectness",
         "stage": "execution",
         "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-        "numerator": 29,
-        "denominator": 30,
-        "ratio": 0.966667,
+        "numerator": 31,
+        "denominator": 32,
+        "ratio": 0.96875,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -188,24 +188,24 @@
         "id": "executionProvenanceAgreement",
         "stage": "execution",
         "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-        "numerator": 18,
-        "denominator": 18,
+        "numerator": 21,
+        "denominator": 21,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "state.match": 18,
-          "state.not_exercised": 8
+          "state.match": 21,
+          "state.not_exercised": 7
         }
       },
       {
         "id": "observedSourceRefCoverage",
         "stage": "compile",
         "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-        "numerator": 489,
-        "denominator": 489,
+        "numerator": 490,
+        "denominator": 490,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -242,35 +242,35 @@
           "in_population.capability_extractor.attributed": 52,
           "in_population.knowledge_extractor.attributed": 361,
           "not_judged.reasoning_extractor.unattributed": 57,
-          "not_judged.rule_minted_capability.unattributed": 19
+          "not_judged.rule_minted_capability.unattributed": 20
         }
       },
       {
         "id": "provenanceChainCoverage",
         "stage": "capabilities",
         "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-        "numerator": 71,
-        "denominator": 71,
+        "numerator": 72,
+        "denominator": 72,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "binding.resolved": 42,
-          "binding.unresolved": 29,
-          "link.hash_deterministic.ok": 71,
-          "link.nodes_resolve.ok": 71,
-          "link.refs_carried.ok": 71,
-          "link.source_resolves.ok": 71
+          "binding.resolved": 44,
+          "binding.unresolved": 28,
+          "link.hash_deterministic.ok": 72,
+          "link.nodes_resolve.ok": 72,
+          "link.refs_carried.ok": 72,
+          "link.source_resolves.ok": 72
         }
       },
       {
         "id": "provenanceCompleteness",
         "stage": "compile",
         "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
-        "numerator": 59,
-        "denominator": 59,
+        "numerator": 60,
+        "denominator": 60,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -281,9 +281,9 @@
         "id": "resolutionAccuracy",
         "stage": "capabilities",
         "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
-        "numerator": 33,
-        "denominator": 34,
-        "ratio": 0.970588,
+        "numerator": 34,
+        "denominator": 35,
+        "ratio": 0.971429,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -300,9 +300,9 @@
         "id": "semanticCorrectness",
         "stage": "compile",
         "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
-        "numerator": 28,
-        "denominator": 29,
-        "ratio": 0.965517,
+        "numerator": 29,
+        "denominator": 30,
+        "ratio": 0.966667,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -312,9 +312,9 @@
         "id": "semanticPrecision",
         "stage": "compile",
         "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
-        "numerator": 22,
-        "denominator": 24,
-        "ratio": 0.916667,
+        "numerator": 23,
+        "denominator": 25,
+        "ratio": 0.92,
         "measured": true,
         "missing": [],
         "unexpected": [
@@ -338,9 +338,9 @@
         "id": "semanticRecall",
         "stage": "compile",
         "definition": "expected semantic facts located AND correct / expected semantic facts",
-        "numerator": 28,
-        "denominator": 30,
-        "ratio": 0.933333,
+        "numerator": 29,
+        "denominator": 31,
+        "ratio": 0.935484,
         "measured": true,
         "missing": [
           {
@@ -522,27 +522,27 @@
     ],
     "observed": {
       "nodeCountsByKind": {
-        "capability": 71,
+        "capability": 72,
         "concept": 339,
-        "constraint": 54,
+        "constraint": 53,
         "decision_node": 1,
-        "heuristic": 24
+        "heuristic": 25
       },
       "capabilities": {
-        "total": 71,
+        "total": 72,
         "byResolution": {
-          "resolved": 42,
-          "unresolved": 29
+          "resolved": 44,
+          "unresolved": 28
         },
         "byExecutionClass": {
-          "deterministic_rule": 23,
+          "deterministic_rule": 25,
           "human_in_the_loop": 19,
-          "not_executable": 29
+          "not_executable": 28
         }
       },
       "workflows": {
         "total": 23,
-        "totalSteps": 71,
+        "totalSteps": 72,
         "byExecutability": {
           "executable_candidate": 9,
           "not_executable_yet": 13,
@@ -550,11 +550,11 @@
         }
       },
       "executions": {
-        "total": 30,
+        "total": 32,
         "byOutcome": {
           "invalid_input": 4,
-          "not_executable": 4,
-          "succeeded": 14,
+          "not_executable": 3,
+          "succeeded": 17,
           "waiting_for_human": 2,
           "workflow:not_executable_yet": 4,
           "workflow:waiting_for_human": 2
@@ -1460,19 +1460,19 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 148,
+            "nodeCount": 149,
             "total": {
               "producers": {
                 "rule-based": 84
               },
-              "unattributed": 64
+              "unattributed": 65
             },
             "byKind": {
               "capability": {
                 "producers": {
                   "rule-based": 16
                 },
-                "unattributed": 17
+                "unattributed": 18
               },
               "concept": {
                 "producers": {
@@ -1484,11 +1484,11 @@
                 "producers": {
                   "rule-based": 13
                 },
-                "unattributed": 24
+                "unattributed": 23
               },
               "heuristic": {
                 "producers": {},
-                "unattributed": 23
+                "unattributed": 24
               }
             }
           }
@@ -1513,33 +1513,33 @@
         }
       },
       "fingerprints": {
-        "compile": "8e350edb80cb585d",
-        "capabilities": "8beff447055aa41f",
-        "workflows": "ea89c30d6a73d9c2",
-        "execution": "1a16e6d6abe790e5"
+        "compile": "db9c2a8ccc7a901c",
+        "capabilities": "0809c73b5c1f01c8",
+        "workflows": "b75969d188329659",
+        "execution": "76d286ea062f51e0"
       },
       "observed": {
         "nodeCountsByKind": {
-          "capability": 33,
+          "capability": 34,
           "concept": 55,
-          "constraint": 37,
-          "heuristic": 23
+          "constraint": 36,
+          "heuristic": 24
         },
         "capabilities": {
-          "total": 33,
+          "total": 34,
           "byResolution": {
-            "resolved": 20,
-            "unresolved": 13
+            "resolved": 22,
+            "unresolved": 12
           },
           "byExecutionClass": {
-            "deterministic_rule": 19,
+            "deterministic_rule": 21,
             "human_in_the_loop": 1,
-            "not_executable": 13
+            "not_executable": 12
           }
         },
         "workflows": {
           "total": 3,
-          "totalSteps": 33,
+          "totalSteps": 34,
           "byExecutability": {
             "executable_candidate": 1,
             "not_executable_yet": 1,
@@ -1547,11 +1547,10 @@
           }
         },
         "executions": {
-          "total": 17,
+          "total": 19,
           "byOutcome": {
             "invalid_input": 2,
-            "not_executable": 1,
-            "succeeded": 11,
+            "succeeded": 14,
             "waiting_for_human": 1,
             "workflow:not_executable_yet": 1,
             "workflow:waiting_for_human": 1
@@ -1563,9 +1562,9 @@
           "id": "capabilityRecall",
           "stage": "capabilities",
           "definition": "expected capabilities discovered (identity matched) / expected capabilities",
-          "numerator": 16,
-          "denominator": 18,
-          "ratio": 0.888889,
+          "numerator": 17,
+          "denominator": 19,
+          "ratio": 0.894737,
           "measured": true,
           "missing": [
             {
@@ -1598,27 +1597,27 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 181,
-          "denominator": 181,
+          "numerator": 196,
+          "denominator": 196,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "live_vs_package.binding.match": 19,
+            "live_vs_package.binding.match": 21,
             "live_vs_package.binding.not_comparable": 1,
-            "live_vs_package.contract_embedded.match": 20,
-            "live_vs_package.contract_embedded.not_comparable": 13,
-            "live_vs_package.contract_hash.match": 20,
-            "live_vs_package.execution_outcome.match": 11,
+            "live_vs_package.contract_embedded.match": 22,
+            "live_vs_package.contract_embedded.not_comparable": 12,
+            "live_vs_package.contract_hash.match": 22,
+            "live_vs_package.execution_outcome.match": 14,
             "live_vs_package.execution_outcome.not_comparable": 1,
-            "live_vs_package.execution_outcome.not_exercised": 3,
-            "live_vs_package.execution_provenance.match": 11,
+            "live_vs_package.execution_outcome.not_exercised": 2,
+            "live_vs_package.execution_provenance.match": 14,
             "live_vs_package.graph_hash.not_comparable": 1,
-            "live_vs_serialized.binding.match": 33,
-            "live_vs_serialized.capability_present.match": 33,
-            "live_vs_serialized.contract_hash.match": 33,
+            "live_vs_serialized.binding.match": 34,
+            "live_vs_serialized.capability_present.match": 34,
+            "live_vs_serialized.contract_hash.match": 34,
             "live_vs_serialized.graph_hash.match": 1
           }
         },
@@ -1638,25 +1637,25 @@
           "id": "executionClassAccuracy",
           "stage": "capabilities",
           "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
-          "numerator": 12,
-          "denominator": 12,
+          "numerator": 13,
+          "denominator": 13,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "deterministic_rule->deterministic_rule": 8,
+            "deterministic_rule->deterministic_rule": 10,
             "human_in_the_loop->human_in_the_loop": 1,
-            "not_executable->not_executable": 3
+            "not_executable->not_executable": 2
           }
         },
         {
           "id": "executionCorrectness",
           "stage": "execution",
           "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-          "numerator": 17,
-          "denominator": 17,
+          "numerator": 19,
+          "denominator": 19,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1667,24 +1666,24 @@
           "id": "executionProvenanceAgreement",
           "stage": "execution",
           "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-          "numerator": 13,
-          "denominator": 13,
+          "numerator": 16,
+          "denominator": 16,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "state.match": 13,
-            "state.not_exercised": 4
+            "state.match": 16,
+            "state.not_exercised": 3
           }
         },
         {
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 148,
-          "denominator": 148,
+          "numerator": 149,
+          "denominator": 149,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1706,35 +1705,35 @@
             "in_population.capability_extractor.attributed": 16,
             "in_population.knowledge_extractor.attributed": 68,
             "not_judged.reasoning_extractor.unattributed": 47,
-            "not_judged.rule_minted_capability.unattributed": 17
+            "not_judged.rule_minted_capability.unattributed": 18
           }
         },
         {
           "id": "provenanceChainCoverage",
           "stage": "capabilities",
           "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-          "numerator": 33,
-          "denominator": 33,
+          "numerator": 34,
+          "denominator": 34,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "binding.resolved": 20,
-            "binding.unresolved": 13,
-            "link.hash_deterministic.ok": 33,
-            "link.nodes_resolve.ok": 33,
-            "link.refs_carried.ok": 33,
-            "link.source_resolves.ok": 33
+            "binding.resolved": 22,
+            "binding.unresolved": 12,
+            "link.hash_deterministic.ok": 34,
+            "link.nodes_resolve.ok": 34,
+            "link.refs_carried.ok": 34,
+            "link.source_resolves.ok": 34
           }
         },
         {
           "id": "provenanceCompleteness",
           "stage": "compile",
           "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
-          "numerator": 31,
-          "denominator": 31,
+          "numerator": 32,
+          "denominator": 32,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1745,8 +1744,8 @@
           "id": "resolutionAccuracy",
           "stage": "capabilities",
           "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
-          "numerator": 12,
-          "denominator": 12,
+          "numerator": 13,
+          "denominator": 13,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1757,9 +1756,9 @@
           "id": "semanticCorrectness",
           "stage": "compile",
           "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
-          "numerator": 21,
-          "denominator": 22,
-          "ratio": 0.954545,
+          "numerator": 22,
+          "denominator": 23,
+          "ratio": 0.956522,
           "measured": true,
           "missing": [],
           "unexpected": [],
@@ -1769,9 +1768,9 @@
           "id": "semanticPrecision",
           "stage": "compile",
           "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
-          "numerator": 21,
-          "denominator": 23,
-          "ratio": 0.913043,
+          "numerator": 22,
+          "denominator": 24,
+          "ratio": 0.916667,
           "measured": true,
           "missing": [],
           "unexpected": [
@@ -1793,9 +1792,9 @@
           "id": "semanticRecall",
           "stage": "compile",
           "definition": "expected semantic facts located AND correct / expected semantic facts",
-          "numerator": 21,
-          "denominator": 22,
-          "ratio": 0.954545,
+          "numerator": 22,
+          "denominator": 23,
+          "ratio": 0.956522,
           "measured": true,
           "missing": [],
           "unexpected": [],
@@ -1941,6 +1940,12 @@
           "dimension": "capability",
           "outcome": "found",
           "ref": "cap_rule_c493de1cb1b111140a468ed462199746"
+        },
+        {
+          "id": "c4.1-notify-deadline-rule",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_1671b6073862612abe5f9b6bf25eb11c"
         },
         {
           "id": "c4.1-notify-within-7-days",
@@ -2142,17 +2147,27 @@
           "outcome": "passed"
         },
         {
+          "id": "det-notify-deadline-met",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "det-notify-deadline-missed",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "det-notify-verb-capability",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
           "id": "inv-missing-input",
           "dimension": "execution",
           "outcome": "passed"
         },
         {
           "id": "inv-wrong-type",
-          "dimension": "execution",
-          "outcome": "passed"
-        },
-        {
-          "id": "unres-notify-obligation",
           "dimension": "execution",
           "outcome": "passed"
         },
@@ -2217,6 +2232,12 @@
           "dimension": "fact",
           "outcome": "found",
           "ref": "rn_792c16746245f610d4b6513f2f50314a"
+        },
+        {
+          "id": "r4.1-notify-within-7-days",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_75fa279fccaad13076a782530288f084"
         },
         {
           "id": "r6.4-materially-incorrect-claim",

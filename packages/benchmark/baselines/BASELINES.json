@@ -54,7 +54,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "d66311a80f8746dd0bf95ce14bcfba9eea8f2f6109c327c1bb5a6ed90d84f1a9",
+      "reportSha256": "8aa29895b30a46302bced0e0348934d8074f0fc0329e447866218c3e3b2d7e2f",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -118,7 +118,7 @@
               "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
             }
           ],
-          "expectationsFingerprint": "fc7333250a689842",
+          "expectationsFingerprint": "754a88e1ff8edd61",
           "goldenState": "recorded"
         },
         {
@@ -190,7 +190,7 @@
         },
         {
           "step": "CR WS1 recall refresh",
-          "note": "accepted baseline refreshed from 5e741c155cc8 to d66311a80f87; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
+          "note": "accepted baseline refreshed from 5e741c155cc8 to 8aa29895b30a; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
         }
       ]
     },
@@ -424,6 +424,18 @@
           "stage": "compile",
           "reason": "CR WS1 recall patterns (and table-row review items) added nodes to this case's output; every metric value is unchanged",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "execution",
+          "reason": "CR WS1 recall: the new executable (normalised) rule capabilities add executions/workflows to this case's output; every metric value is unchanged",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "workflows",
+          "reason": "CR WS1 recall: the new executable (normalised) rule capabilities add executions/workflows to this case's output; every metric value is unchanged",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
         }
       ],
       "declaredGoldenChanges": [
@@ -459,6 +471,23 @@
             "producerAttributionCorrectness"
           ],
           "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "fromFingerprint": "fc7333250a689842",
+          "toFingerprint": "754a88e1ff8edd61",
+          "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30",
+          "affectedMetrics": [
+            "capabilityRecall",
+            "executionClassAccuracy",
+            "executionCorrectness",
+            "resolutionAccuracy",
+            "semanticCorrectness",
+            "semanticPrecision",
+            "semanticRecall"
+          ],
+          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (every affected metric improved; none regressed)"
         }
       ],
       "history": [

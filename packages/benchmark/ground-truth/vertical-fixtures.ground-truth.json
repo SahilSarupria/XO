@@ -175,6 +175,12 @@
         },
         {
           "category": "fact",
+          "id": "r4.1-notify-within-7-days",
+          "identity": "explicit",
+          "source": "clause 4.1 (page 1)"
+        },
+        {
+          "category": "fact",
           "id": "r6.4-materially-incorrect-claim",
           "identity": "explicit",
           "source": "clause 6.4 (page 1)"
@@ -427,7 +433,15 @@
           "identity": "strongly_evidenced",
           "assertions": "derived",
           "source": "clause 4.1",
-          "note": "an obligation with no decision structure; 'unresolved / not_executable' follows XO's execution-class semantics, not a source statement."
+          "note": "the verb-derived capability for the obligation, exactly named. Its sentence states a day-based deadline that XO now normalises to a temporal rule linked to it, so 'resolved / deterministic_rule' follows XO's execution-class semantics, not a source statement (it was unresolved before the deadline normalisation). A dedicated rule capability is c4.1-notify-deadline-rule."
+        },
+        {
+          "category": "capability",
+          "id": "c4.1-notify-deadline-rule",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 4.1",
+          "note": "the clause states a day-based deadline (7 days after becoming aware of the loss); XO normalises it to a temporal rule and mints a dedicated capability named after the sentence. 'resolved / deterministic_rule' follows XO's execution-class semantics for a rule with a compilable temporal condition."
         },
         {
           "category": "capability",
@@ -590,10 +604,22 @@
         },
         {
           "category": "execution",
-          "id": "unres-notify-obligation",
+          "id": "det-notify-verb-capability",
           "identity": "strongly_evidenced",
           "assertions": "derived",
-          "source": "clause 4.1 (obligation, unresolved by XO's execution-class semantics)"
+          "source": "clause 4.1 (the verb-derived capability evaluates the linked deadline rule at 3 days: within the 7-day deadline)"
+        },
+        {
+          "category": "execution",
+          "id": "det-notify-deadline-met",
+          "identity": "derived",
+          "source": "clause 4.1 (deadline rule evaluated at 3 days: within the 7-day deadline)"
+        },
+        {
+          "category": "execution",
+          "id": "det-notify-deadline-missed",
+          "identity": "derived",
+          "source": "clause 4.1 (deadline rule evaluated at 30 days: outside the 7-day deadline)"
         },
         {
           "category": "execution",
@@ -632,7 +658,7 @@
           "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
         }
       ],
-      "expectationsFingerprint": "fc7333250a689842"
+      "expectationsFingerprint": "754a88e1ff8edd61"
     },
     {
       "caseId": "aastha-operations",

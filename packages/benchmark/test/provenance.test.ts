@@ -298,17 +298,14 @@ test('real pipeline (all 8 cases): every compiled capability has a connected cha
       }
     }
   }
-  assert.equal(compiledCaps, 71, 'capabilities across the 7 compiled cases');
+  assert.equal(compiledCaps, 72, 'capabilities across the 7 compiled cases');
   assert.ok(executed >= 20, `executions judged: ${executed}`);
 });
 
 test('ExperienceUnit limitation is recorded, not worked around: the observed ref carries no unit id, and no benchmark-only mapping exists', async () => {
   const l = await loadSuiteFile(join(PKG, 'suites', 'vertical-fixtures.suite.json'));
   assert.ok(l.ok);
-  const obs = await observeCase(
-    l.suite.cases.find((c) => c.caseId === 'synthetic-claim-rules')!,
-    { sourceRoot: l.sourceRoot },
-  );
+  const obs = await observeCase(l.suite.cases.find((c) => c.caseId === 'synthetic-claim-rules')!, { sourceRoot: l.sourceRoot });
   for (const n of obs.nodes)
     for (const r of n.sourceRefs)
       assert.deepEqual(

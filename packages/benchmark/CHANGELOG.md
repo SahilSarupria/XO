@@ -12,6 +12,13 @@ co-payment, waiting period and "limited to"; liability exclusions such as "is no
 table-row statements on the review list. They add `policy`/`prohibition` constraint nodes only: no new
 executable capability class, no lowering change.
 
+**Second step (normalised executable rules).** Threshold-routing ("Claims above N must…", "… up to N without …") and
+deadline ("must … within N days of <event>") sentences are now lowered to the existing structured-condition grammar,
+so they mint deterministic, evidence-grounded capabilities (confidence 0.75). This is a deliberate golden change:
+`commercial-property-policy` expectations moved `fc7333250a689842` → `754a88e1ff8edd61` (clause 4.1 now resolves to an
+exact-named, deterministic capability). `semanticRecall` is 29/31, and the `execution` and `workflows` outputs of that
+case also changed and are recorded as declared drift. No metric regressed.
+
 **Effect on the benchmark.** Every metric value of `vertical-fixtures` is unchanged. The `compile` stage output of
 `commercial-property-policy` and `burglary-policy-schedule`, and the `capabilities` stage output of
 `commercial-property-policy`, changed (more nodes), and the observed node population grew with
