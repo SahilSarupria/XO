@@ -51,7 +51,10 @@ jobs:
         run: npm run lint
 
       - name: Format check
-        run: npm run format:check 2>&1 | tee /tmp/fc.txt || (grep -E 'warn' /tmp/fc.txt | sed 's/^/FMT /' ; echo "FMTVER $(npx prettier --version)"; exit 1)
+        run: |
+          npm run format:check > /tmp/fc.txt 2>&1 && exit 0
+          echo "::error title=FMT::$(grep warn /tmp/fc.txt | tr '\n' ' ') V=$(npx prettier --version)"
+          exit 1
 
       - name: Test
         run: npm test
