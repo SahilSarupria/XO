@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import { can, whyNot } from '../domain/access';
 import { normalizeNote } from '../domain/work';
 import { NoteField } from './NoteField';
 import { buildInputFromContract, coerceFieldValue, describeExecution, suggestedFieldsFromFailure } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
-import type { Execution, InputContract } from '../platform/wire';
+import type { Execution, InputContract, WorkspaceRole } from '../platform/wire';
 import { Badge, Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
 
@@ -11,7 +12,7 @@ import { useSession } from './session';
  * How one execution is shown. A failure is a failure, a paused human task is a prompt for a
  * person, and nothing here ever turns a non-success into a success.
  */
-export function ExecutionOutcome(props: { workspaceId: string; execution: Execution; onChanged: () => void }) {
+export function ExecutionOutcome(props: { workspaceId: string; execution: Execution; onChanged: () => void; role?: WorkspaceRole }) {
   const { client, mode } = useSession();
   const e = props.execution;
   const view = describeExecution(e);
@@ -35,6 +36,8 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
   }
 
   const pending = e.status === 'waiting_for_human' && e.humanTask?.status === 'pending';
+  const canDecide = can(props.role, 'review');
+  const decideHint = canDecide ? undefined : whyNot(props.role, 'review', 'approving or rejecting');
   return (
     <div className="outcome">
       <p>
@@ -49,10 +52,20 @@ export function ExecutionOutcome(props: { workspaceId: string; execution: Execut
           <p>This step needs a person. Choose what should happen:</p>
           <NoteField value={noteText} onChange={setNoteText} disabled={deciding} />
           <div className="row">
-            <Button variant="primary" disabled={deciding || noteCheck.error !== undefined} onClick={() => void decide('approve')}>
+            <Button
+              variant="primary"
+              disabled={deciding || !canDecide || noteCheck.error !== undefined}
+              title={decideHint}
+              onClick={() => void decide('approve')}
+            >
               Approve this step
             </Button>
-            <Button variant="danger" disabled={deciding || noteCheck.error !== undefined} onClick={() => void decide('reject')}>
+            <Button
+              variant="danger"
+              disabled={deciding || !canDecide || noteCheck.error !== undefined}
+              title={decideHint}
+              onClick={() => void decide('reject')}
+            >
               Reject this step
             </Button>
           </div>

@@ -132,6 +132,18 @@ export class StudioFake {
   chatReply: string | { fail: number; code: string; message: string } = 'Here is an answer.';
   drafts: FakeDraft[] = [];
   infoRequests = new Map<string, FakeInfo[]>();
+  /** Human tasks the platform's inbox reports (a test seeds these alongside the matching execution/run). */
+  inbox: Array<{
+    executionId: string;
+    title: string;
+    state: 'needs_review' | 'done';
+    decision?: string;
+    resolvedAt?: string;
+    resolverIdentityId?: string;
+    capabilityId?: string;
+    compilationId?: string;
+    sourceFilename?: string;
+  }> = [];
   importResult: { originalFilename: string } | { fail: number; code: string; message: string } = { originalFilename: 'terms.txt' };
   /** Result of a capability preview, keyed by capability id; a default "resolved, not approved" preview otherwise. */
   previews = new Map<string, Record<string, unknown>>();
@@ -330,6 +342,64 @@ export class StudioFake {
     if (method === 'POST' && rest === '/notifications/read') {
       for (const x of this.notifications) if (x.seq <= Number(body['throughSeq'])) x.read = true;
       return reply(200, { readThroughSeq: Number(body['throughSeq']) });
+    }
+
+    // ---- inbox
+    const inboxItem = (t: (typeof this.inbox)[number]) => ({
+      executionId: t.executionId,
+      state: t.state,
+      title: t.title,
+      capabilityId: t.capabilityId ?? 'cap_x',
+      compilationId: t.compilationId ?? 'cmp_x',
+      ...(t.sourceFilename !== undefined ? { sourceFilename: t.sourceFilename } : {}),
+      requestedAt: '2026-10-22T09:00:00.000Z',
+      ...(t.resolvedAt !== undefined ? { resolvedAt: t.resolvedAt } : {}),
+      ...(t.decision !== undefined ? { decision: t.decision } : {}),
+      ...(t.resolverIdentityId !== undefined ? { resolverIdentityId: t.resolverIdentityId } : {}),
+      openInfoRequests: (this.infoRequests.get(t.executionId) ?? []).filter((r) => r.answer === undefined).length,
+    });
+    if (method === 'GET' && rest === '/inbox') {
+      const state = q.get('state');
+      const items = this.inbox.filter((t) => state === null || t.state === state).map(inboxItem);
+      return reply(200, {
+        items,
+        counts: {
+          needsReview: this.inbox.filter((t) => t.state === 'needs_review').length,
+          done: this.inbox.filter((t) => t.state === 'done').length,
+        },
+      });
+    }
+    if ((m = rest.match(/^\/inbox\/([^/]+)$/)) && method === 'GET') {
+      const t = this.inbox.find((x) => x.executionId === m![1]);
+      if (t === undefined) return err(404, 'XO_NOT_FOUND', 'human task not found');
+      return reply(200, { ...inboxItem(t), input: {}, escalation: {}, infoRequests: this.infoRequests.get(t.executionId) ?? [] });
+    }
+    if (method === 'POST' && (m = rest.match(/^\/inbox\/([^/]+)\/info-requests$/))) {
+      const d = deny('review', 'request more information');
+      if (d) return d;
+      const t = this.inbox.find((x) => x.executionId === m![1]);
+      if (t === undefined) return err(404, 'XO_NOT_FOUND', 'human task not found');
+      if (t.state === 'done')
+        return err(412, 'XO_PRECONDITION_FAILED', 'this task is already resolved; more information can no longer be requested');
+      const info: FakeInfo = {
+        requestId: `ir_${++this.n}`,
+        question: String(body['question']),
+        requestedBy: 'owner',
+        requestedAt: new Date().toISOString(),
+      };
+      this.infoRequests.set(t.executionId, [...(this.infoRequests.get(t.executionId) ?? []), info]);
+      this.note('human_task.info_requested', 'succeeded', { kind: 'human_task', id: t.executionId });
+      return reply(201, info);
+    }
+    if (method === 'POST' && (m = rest.match(/^\/inbox\/([^/]+)\/info-requests\/([^/]+)\/answer$/))) {
+      const d = deny('author', 'answer information request');
+      if (d) return d;
+      const list = this.infoRequests.get(m[1]!) ?? [];
+      const target = list.find((r) => r.requestId === m![2]);
+      if (target === undefined) return err(404, 'XO_NOT_FOUND', 'information request not found');
+      if (target.answer !== undefined) return err(409, 'XO_ALREADY_EXISTS', 'this information request already has an answer');
+      Object.assign(target, { answer: String(body['answer']), answeredBy: 'owner', answeredAt: new Date().toISOString() });
+      return reply(200, target);
     }
 
     // ---- library

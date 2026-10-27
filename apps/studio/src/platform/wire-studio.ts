@@ -335,6 +335,7 @@ export interface InboxItem {
   readonly requestedAt: string;
   readonly resolvedAt?: string;
   readonly decision?: string;
+  readonly resolverIdentityId?: string;
   readonly openInfoRequests: number;
   readonly workflowName?: string;
 }
@@ -345,6 +346,7 @@ export function parseInboxItem(v: unknown, path = 'item'): InboxItem {
   const sourceFilename = optStr(o['sourceFilename'], `${path}.sourceFilename`);
   const resolvedAt = optStr(o['resolvedAt'], `${path}.resolvedAt`);
   const decision = optStr(o['decision'], `${path}.decision`);
+  const resolver = optStr(o['resolverIdentityId'], `${path}.resolverIdentityId`);
   const wf = o['workflow'] === undefined ? undefined : obj(o['workflow'], `${path}.workflow`);
   return {
     executionId: str(o['executionId'], `${path}.executionId`),
@@ -357,6 +359,7 @@ export function parseInboxItem(v: unknown, path = 'item'): InboxItem {
     requestedAt: str(o['requestedAt'], `${path}.requestedAt`),
     ...(resolvedAt !== undefined ? { resolvedAt } : {}),
     ...(decision !== undefined ? { decision } : {}),
+    ...(resolver !== undefined ? { resolverIdentityId: resolver } : {}),
     openInfoRequests: num(o['openInfoRequests'], `${path}.openInfoRequests`),
     ...(wf !== undefined ? { workflowName: str(wf['workflowName'], `${path}.workflow.workflowName`) } : {}),
   };

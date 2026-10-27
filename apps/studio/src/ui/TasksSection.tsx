@@ -12,7 +12,10 @@ import {
 } from '../domain/work';
 import type { Capability, Execution, WorkflowRun } from '../platform/wire';
 import { ActionNoticeView, Confirmation, useGuardedAction, type ActionNotice } from './actions';
-import { Badge, Button, EmptyState, formatWhen } from './primitives';
+import { can, whyNot } from '../domain/access';
+import type { WorkspaceRole } from '../platform/wire';
+import { Badge, Button, EmptyState, formatWhen, loadedValue, useLoad } from './primitives';
+import { DoneList, InfoThread, NotificationsPanel } from './InboxExtras';
 import { NoteField } from './NoteField';
 import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
@@ -35,7 +38,18 @@ export function TasksSection(props: {
   incomplete: boolean;
   onOpenActivity?: () => void;
   onChanged: () => void;
+  /** The caller's role, used only to decide what to offer; the platform enforces every action. */
+  role?: WorkspaceRole;
 }) {
+  const { client } = useSession();
+  const [tab, setTab] = useState<'needs' | 'done'>('needs');
+  const [pickedDone, setPickedDone] = useState<string | undefined>();
+  // The platform's view of the same human tasks: open questions per item and the Done list. If it cannot be loaded (an older
+  // platform, or a failure) the screen simply works without those extras rather than claiming anything about them.
+  const inbox = useLoad(() => client.listInbox(props.workspaceId), [client, props.workspaceId, props.runs, props.executions]);
+  const meta = loadedValue(inbox.state);
+  const openQuestions = new Map((meta?.items ?? []).map((i) => [i.executionId, i.openInfoRequests]));
+  const doneItems = (meta?.items ?? []).filter((i) => i.state === 'done');
   const tasks = pendingTasks(props.runs);
   const interrupted = recoverableRuns(props.runs);
   const single = useMemo(
@@ -60,6 +74,7 @@ export function TasksSection(props: {
       sub: `${r.workflowName} \u00b7 step ${(r.currentStepIndex ?? 0) + 1} of ${r.steps.length}`,
       badge: `Step ${(r.currentStepIndex ?? 0) + 1} of ${r.steps.length}`,
       run: r,
+      ...(r.currentStepExecutionId !== undefined ? { executionId: r.currentStepExecutionId } : {}),
     })),
     ...interrupted.map((r): InboxItem => ({
       key: `stopped:${r.workflowExecutionId}`,
@@ -70,7 +85,14 @@ export function TasksSection(props: {
     })),
     ...single.map((e): InboxItem => {
       const title = tidyName(names.get(e.capabilityId) ?? 'A rule from an earlier analysis');
-      return { key: `rule:${e.executionId}`, title, sub: `Started ${formatWhen(e.requestedAt)}`, badge: 'Needs a decision', execution: e };
+      return {
+        key: `rule:${e.executionId}`,
+        title,
+        sub: `Started ${formatWhen(e.requestedAt)}`,
+        badge: 'Needs a decision',
+        execution: e,
+        executionId: e.executionId,
+      };
     }),
   ];
   const selected = items.find((i) => i.key === picked) ?? items[0];
@@ -80,15 +102,23 @@ export function TasksSection(props: {
     <div className="ib" role="region" aria-label="Inbox">
       <div className="ib-list">
         <p className="ib-title">Inbox</p>
-        <p className="ib-chips">
-          <span className="ib-chip">Needs review {items.length}</span>
-        </p>
+        <div className="ib-chips" role="group" aria-label="Inbox view">
+          <button type="button" className="ib-chip" aria-pressed={tab === 'needs'} onClick={() => setTab('needs')}>
+            Needs review {items.length}
+          </button>
+          {meta !== undefined ? (
+            <button type="button" className="ib-chip" aria-pressed={tab === 'done'} onClick={() => setTab('done')}>
+              Done {meta.counts.done}
+            </button>
+          ) : null}
+        </div>
         {banner !== undefined ? (
           <p className="notice notice-warning" role="alert">
             {banner}
           </p>
         ) : null}
-        {items.length > 0 ? (
+        {tab === 'done' ? <DoneList items={doneItems} picked={pickedDone ?? doneItems[0]?.executionId} onPick={setPickedDone} /> : null}
+        {tab === 'needs' && items.length > 0 ? (
           <ul className="ib-rows" aria-label="Waiting for a person">
             {items.map((i) => (
               <li key={i.key}>
@@ -99,13 +129,18 @@ export function TasksSection(props: {
                   onClick={() => setPicked(i.key)}
                 >
                   <span className="ib-row-title">{i.title}</span>
-                  <span className="ib-row-sub">{i.sub}</span>
+                  <span className="ib-row-sub">
+                    {i.sub}
+                    {i.executionId !== undefined && (openQuestions.get(i.executionId) ?? 0) > 0
+                      ? ` · ${openQuestions.get(i.executionId)} open ${openQuestions.get(i.executionId) === 1 ? 'question' : 'questions'}`
+                      : ''}
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
         ) : null}
-        {justDecided.length > 0 ? (
+        {tab === 'needs' && justDecided.length > 0 ? (
           <>
             <h2 className="ib-sub">Just decided</h2>
             <ul className="ib-rows">
@@ -118,9 +153,16 @@ export function TasksSection(props: {
             </ul>
           </>
         ) : null}
+        <NotificationsPanel workspaceId={props.workspaceId} />
       </div>
       <div className="ib-detail">
-        {selected === undefined ? (
+        {tab === 'done' ? (
+          <DoneDetail
+            workspaceId={props.workspaceId}
+            role={props.role}
+            item={doneItems.find((d) => d.executionId === (pickedDone ?? doneItems[0]?.executionId))}
+          />
+        ) : selected === undefined ? (
           props.incomplete ? (
             <p className="notice notice-warning small" role="status">
               Decisions could not be loaded, so XO cannot tell whether anything is waiting. Use Retry above.
@@ -150,6 +192,7 @@ export function TasksSection(props: {
                 inbox
                 workspaceId={props.workspaceId}
                 run={selected.run}
+                role={props.role}
                 notes={props.notes}
                 onChanged={props.onChanged}
                 onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
@@ -162,8 +205,22 @@ export function TasksSection(props: {
             ) : null}
             {selected.execution !== undefined ? (
               <div className="ib-card">
-                <ExecutionOutcome workspaceId={props.workspaceId} execution={selected.execution} onChanged={props.onChanged} />
+                <ExecutionOutcome
+                  workspaceId={props.workspaceId}
+                  execution={selected.execution}
+                  role={props.role}
+                  onChanged={props.onChanged}
+                />
               </div>
+            ) : null}
+            {selected.executionId !== undefined ? (
+              <InfoThread
+                key={selected.executionId}
+                workspaceId={props.workspaceId}
+                executionId={selected.executionId}
+                role={props.role}
+                onChanged={inbox.reload}
+              />
             ) : null}
           </>
         )}
@@ -180,6 +237,8 @@ interface InboxItem {
   readonly run?: WorkflowRun;
   readonly stopped?: WorkflowRun;
   readonly execution?: Execution;
+  /** The platform's human-task id for this item, when it has one (what questions are attached to). */
+  readonly executionId?: string;
 }
 
 export function DecisionCard(props: {
@@ -190,6 +249,7 @@ export function DecisionCard(props: {
   onFinished?: (run: WorkflowRun) => void;
   /** Inbox layout: the title is shown by the pane header, and the buttons read Approve / Reject (same accessible names). */
   inbox?: boolean;
+  role?: WorkspaceRole;
 }) {
   const { client } = useSession();
   const [run, setRun] = useState(props.run);
@@ -286,6 +346,8 @@ export function DecisionCard(props: {
   }
 
   const pending = busy || settling;
+  const canDecide = can(props.role, 'review');
+  const decideHint = canDecide ? undefined : whyNot(props.role, 'review', 'approving or rejecting');
   return (
     <div className={props.inbox === true ? 'ib-card' : 'card-main'}>
       {props.inbox === true ? null : <h3>{runTitle(run)}</h3>}
@@ -301,10 +363,24 @@ export function DecisionCard(props: {
           </p>
           <NoteField value={noteText} onChange={setNoteText} disabled={busy} />
           <div className="row">
-            <Button variant="primary" pending={pending} aria-label="Approve this step" onClick={() => decide('approve')}>
+            <Button
+              variant="primary"
+              pending={pending}
+              disabled={!canDecide}
+              title={decideHint}
+              aria-label="Approve this step"
+              onClick={() => decide('approve')}
+            >
               {props.inbox === true ? 'Approve' : 'Approve this step'}
             </Button>
-            <Button variant="danger" pending={pending} aria-label="Reject and stop" onClick={() => decide('reject')}>
+            <Button
+              variant="danger"
+              pending={pending}
+              disabled={!canDecide}
+              title={decideHint}
+              aria-label="Reject and stop"
+              onClick={() => decide('reject')}
+            >
               {props.inbox === true ? 'Reject' : 'Reject and stop'}
             </Button>
           </div>
@@ -314,5 +390,34 @@ export function DecisionCard(props: {
       <ActionNoticeView notice={notice} />
       <RunSummary run={run} {...(props.notes !== undefined ? { notes: props.notes } : {})} />
     </div>
+  );
+}
+
+function DoneDetail(props: {
+  workspaceId: string;
+  role: WorkspaceRole | undefined;
+  item: import('../platform/wire-studio').InboxItem | undefined;
+}) {
+  const i = props.item;
+  if (i === undefined)
+    return <EmptyState title="Nothing has been decided yet">Decisions you and your team make will be listed here.</EmptyState>;
+  return (
+    <>
+      <div className="ib-head">
+        <h2>{i.title}</h2>
+        <Badge tone={i.decision === 'approve' ? 'success' : i.decision === 'reject' ? 'danger' : 'neutral'}>
+          {i.decision === 'approve' ? 'Approved' : i.decision === 'reject' ? 'Rejected' : 'Decided'}
+        </Badge>
+      </div>
+      <div className="ib-card">
+        <p className="small">
+          {i.resolverIdentityId !== undefined ? `Decided by ${i.resolverIdentityId}` : 'Decided'}
+          {i.resolvedAt !== undefined ? ` · ${formatWhen(i.resolvedAt)}` : ''}
+        </p>
+        {i.sourceFilename !== undefined ? <p className="muted small">From {i.sourceFilename}</p> : null}
+        {i.confidence !== undefined ? <p className="muted small">XO&apos;s confidence in this rule when it asked: {i.confidence}</p> : null}
+      </div>
+      <InfoThread key={i.executionId} workspaceId={props.workspaceId} executionId={i.executionId} role={props.role} resolved />
+    </>
   );
 }

@@ -540,6 +540,7 @@ export function WorkspaceView(props: {
           caps={capList ?? []}
           notes={notes}
           incomplete={decisionsUnknown}
+          role={props.workspace.role}
           onOpenActivity={() => setView('activity')}
           onChanged={refreshAll}
         />
