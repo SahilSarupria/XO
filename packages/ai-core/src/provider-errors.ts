@@ -20,7 +20,8 @@ export type ProviderFailureCategory =
   | 'unsupported_feature' // request needs a feature this provider/model lacks; never retried
   | 'malformed_response' // unparseable, schema-invalid or otherwise unusable body
   | 'empty_response' // success status but no usable text
-  | 'content_blocked'; // vendor safety/policy filter blocked the output; never retried
+  | 'content_blocked' // vendor safety/policy filter blocked the output; never retried
+  | 'output_truncated'; // the vendor stopped at the output-token limit; the body is incomplete and deterministic to reproduce, so never retried
 
 const RETRYABLE_AT_TRANSPORT: ReadonlySet<ProviderFailureCategory> = new Set(['rate_limited', 'timeout', 'transient']);
 

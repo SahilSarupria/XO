@@ -9,6 +9,13 @@ export interface CircuitBreakerOptions {
   readonly cooldownMs: number;
   /** How many consecutive successes while `half_open` are required before fully closing again. */
   readonly successThreshold?: number;
+  /**
+   * Decides whether a thrown error counts as a provider-health failure. Default: every error counts (the original behavior).
+   * An error for which this returns `false` leaves the breaker's state untouched: it neither advances the consecutive-failure
+   * count nor resets it nor counts as a success (e.g. a caller's bad request, a schema rejection or a cancellation says
+   * nothing about whether the provider is up). The error is still rethrown to the caller.
+   */
+  readonly isFailure?: (error: unknown) => boolean;
   readonly clock?: Clock;
 }
 
@@ -29,10 +36,12 @@ export class CircuitBreaker {
   private openedAtMs: number | undefined;
   private readonly clock: Clock;
   private readonly successThreshold: number;
+  private readonly isFailure: (error: unknown) => boolean;
 
   constructor(private readonly options: CircuitBreakerOptions) {
     this.clock = options.clock ?? new SystemClock();
     this.successThreshold = options.successThreshold ?? 1;
+    this.isFailure = options.isFailure ?? (() => true);
   }
 
   getState(): CircuitState {
@@ -52,7 +61,7 @@ export class CircuitBreaker {
       this.onSuccess();
       return result;
     } catch (error) {
-      this.onFailure();
+      if (this.isFailure(error)) this.onFailure();
       throw error;
     }
   }

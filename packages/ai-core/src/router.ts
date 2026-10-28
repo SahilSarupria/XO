@@ -24,7 +24,7 @@ import { validateJsonSchema } from './json-schema.js';
 import { CAPABILITY_OUTPUT_SCHEMAS } from './capability-schemas.js';
 import type { CapabilityId, CapabilityRequest, CapabilityResponse } from './capability-types.js';
 import type { TokenUsage } from './provider-types.js';
-import type { ModelProvider, ProviderCapabilityDescriptor, ProviderId } from './provider-types.js';
+import type { ModelProvider, ProviderCapabilityDescriptor, ProviderId, ProviderResponse } from './provider-types.js';
 import type { EntityExtractionInput, EntityExtractionOutput } from './capabilities/entities.js';
 import type { KnowledgeExtractionInput, KnowledgeExtractionOutput } from './capabilities/knowledge.js';
 import type { ReasoningExtractionInput, ReasoningExtractionOutput } from './capabilities/reasoning.js';
@@ -147,7 +147,11 @@ export class AiCapabilityLayer {
   private getOrCreateCircuitBreaker(providerId: ProviderId): CircuitBreaker {
     let breaker = this.circuitBreakers.get(providerId);
     if (!breaker) {
-      breaker = new CircuitBreaker(this.circuitBreakerOptions);
+      // Count only provider-health failures; a caller-supplied `isFailure` wins over the router's default predicate.
+      breaker = new CircuitBreaker({
+        ...this.circuitBreakerOptions,
+        isFailure: this.circuitBreakerOptions.isFailure ?? countsAgainstBreaker,
+      });
       this.circuitBreakers.set(providerId, breaker);
     }
     return breaker;
@@ -187,7 +191,9 @@ export class AiCapabilityLayer {
         return err(error as AiError);
       }
 
-      const candidates = selectCandidates(this.options.policy, capability, new Set(this.providersById.keys()), this.descriptorsById, true);
+      const eligible = selectCandidates(this.options.policy, capability, new Set(this.providersById.keys()), this.descriptorsById, true);
+      // `allowFallback: false` pins the call to the first eligible candidate: no failover to another provider/model.
+      const candidates = this.options.policy.allowFallback === false ? eligible.slice(0, 1) : eligible;
       if (candidates.length === 0) {
         return err(new AiError(ErrorCode.AI_NO_ELIGIBLE_PROVIDER, `No eligible provider registered for capability "${capability}"`));
       }
@@ -203,7 +209,7 @@ export class AiCapabilityLayer {
         excerptText: request.excerpt.text,
         modelIdentity: candidates.map((c) => `${c.providerId}/${c.model}`),
         schemaHash,
-        generation: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+        generation: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: PINNED_TEMPERATURE },
         formatVersion: CACHE_FORMAT_VERSION,
       });
       // Policy (kill-switch / allow-list) applies even to cache hits; BUDGET does not (a hit spends nothing).
@@ -239,6 +245,8 @@ export class AiCapabilityLayer {
           continue;
         }
 
+        // A vendor `finishReason: 'error'` is treated as transient and retried at most ONCE per candidate.
+        let finishErrorRetried = false;
         const retryPolicy = new RetryPolicy({
           ...this.retryOptions,
           isRetryable: (error) => {
@@ -249,7 +257,14 @@ export class AiCapabilityLayer {
             // exception is a malformed/schema-invalid body, where a fresh sample can legitimately succeed.
             // Auth, invalid-request, content-blocked, unsupported-model and quota failures are never retried.
             const failure = getProviderFailure(error);
-            if (failure) return failure.category === 'malformed_response';
+            if (failure) {
+              if (failure.category === 'malformed_response') return true;
+              if (routerFinishErrors.has(error as object) && !finishErrorRetried) {
+                finishErrorRetried = true;
+                return true;
+              }
+              return false;
+            }
             return true;
           },
         });
@@ -279,6 +294,7 @@ export class AiCapabilityLayer {
                   requestId: request.traceId,
                   messages,
                   maxOutputTokens: grant?.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+                  temperature: PINNED_TEMPERATURE,
                   responseSchema: schema as unknown as Record<string, unknown>,
                   ...(request.signal ? { signal: request.signal } : {}),
                 });
@@ -290,6 +306,14 @@ export class AiCapabilityLayer {
                   usage: response.usageKnown === false ? undefined : response.usage,
                 });
                 settled = true;
+                // An incomplete or filtered body is never parsed, however valid-looking: truncated JSON can be well-formed yet
+                // silently missing items. The call was billed, so it is still counted; none of these trip the breaker (see
+                // `countsAgainstBreaker`), and only a vendor `error` finish is retried (once).
+                const finishFailure = finishReasonFailure(candidate.providerId, candidate.model, request.traceId, response);
+                if (finishFailure) {
+                  this.recordDiscardedAttempt(candidate.providerId, response);
+                  throw finishFailure;
+                }
                 let parsed: unknown;
                 try {
                   parsed = JSON.parse(response.text);
@@ -485,6 +509,58 @@ export class AiCapabilityLayer {
 }
 
 const MAX_OUTPUT_TOKENS = 4096;
+
+/** Extraction must be as repeatable as the vendor allows: every provider call is made at temperature 0 (part of the cache identity). */
+const PINNED_TEMPERATURE = 0;
+
+/** Errors the router itself raised for a vendor `finishReason: 'error'`, so the retry policy can tell them from adapter-classified transients (which already had their bounded transport retry). */
+const routerFinishErrors = new WeakSet<object>();
+
+function finishReasonFailure(providerId: ProviderId, model: string, requestId: string, response: ProviderResponse): AiError | undefined {
+  const ctx = { model, requestId };
+  switch (response.finishReason) {
+    case 'length':
+      return providerFailure(
+        'output_truncated',
+        providerId,
+        `Provider "${providerId}" stopped at the output-token limit; the response is incomplete and was discarded`,
+        ctx,
+      );
+    case 'content_filter':
+      return providerFailure(
+        'content_blocked',
+        providerId,
+        `Provider "${providerId}" filtered the output; the response was discarded`,
+        ctx,
+      );
+    case 'error': {
+      const failure = providerFailure(
+        'transient',
+        providerId,
+        `Provider "${providerId}" ended generation abnormally (finishReason: error)`,
+        ctx,
+      );
+      routerFinishErrors.add(failure);
+      return failure;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Circuit-breaker predicate: only evidence about provider HEALTH counts — transient / timeout / rate-limited provider failures
+ * and unclassified errors (e.g. a thrown `TypeError`). Everything the caller or the content caused — auth, invalid request,
+ * quota, unsupported model/feature, content blocked, truncation, abort, malformed/schema-invalid output, and inference
+ * denials — leaves the breaker untouched.
+ */
+function countsAgainstBreaker(error: unknown): boolean {
+  if (getInferenceDenial(error)) return false;
+  if (error instanceof AiError && error.code === ErrorCode.AI_SCHEMA_VALIDATION_FAILED) return false;
+  const failure = getProviderFailure(error);
+  if (failure) return failure.category === 'transient' || failure.category === 'timeout' || failure.category === 'rate_limited';
+  return true;
+}
 
 /** A hit spends nothing now: zero usage/cost/attempts at the top level; the original generation stays visible under `provenance`. */
 function replayedFromCache<TOutput>(cached: CapabilityResponse<TOutput>, cacheKey: string, latencyMs: number): CapabilityResponse<TOutput> {

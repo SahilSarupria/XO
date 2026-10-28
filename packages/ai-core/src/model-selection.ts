@@ -10,6 +10,12 @@ export interface ModelSelectionRule {
 
 export interface ModelSelectionPolicy {
   readonly rules: readonly ModelSelectionRule[];
+  /**
+   * Whether the router may fail over to the next candidate after the first fails. Default `true` (the original behavior).
+   * `false` pins the call to the FIRST eligible candidate: when it fails, the request fails (`AI_ALL_PROVIDERS_FAILED`)
+   * instead of silently being answered by another provider/model.
+   */
+  readonly allowFallback?: boolean;
 }
 
 export interface SelectedCandidate {

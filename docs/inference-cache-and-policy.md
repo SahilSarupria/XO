@@ -1,4 +1,4 @@
-# Inference cache (Slice 1) and inference policy (Slice 3)
+# Inference cache (Slice 1), inference policy (Slice 3) and inference-safety closure (Slice 7)
 
 Goal: LLM output is a **build-time proposal**; the validated artifact is what runs. Runtime execution is deterministic and
 free unless a node explicitly declares inference _and_ server policy, per-run policy and budget all allow it.
@@ -193,11 +193,60 @@ What this does and does not show:
 - The exploratory noisy-candidate rule improves targeting on this gold, but it was designed after looking at this same data; it is not shipped, and would need an independent gold set before adoption.
 - Needed next: a live-provider run (opt-in, with a budget) on an independent, blind gold set, measuring a real model's precision and recall against the rules, before claiming that escalation improves output.
 
+## Slice 7: inference-safety closure (`@xo/ai-core`)
+
+Closes the transport and routing gaps that remained after Slices 1-6. Gemini is the reference implementation and its adapter is unchanged.
+
+- **Shared transport (`providers/http-transport.ts`).** The generic part of Gemini's request path, used by the Anthropic, OpenAI, Azure
+  OpenAI and Ollama adapters: per-request timeout (default 30 s, also covering the body read), caller-signal propagation with timeout vs caller
+  abort distinguished, HTTP status to `ProviderFailureCategory`, `Retry-After` parsing (a wait above `maxRetryAfterMs`, default 15 s, fails fast
+  instead of sleeping), and a **bounded transport retry** (default 2 retries, 500 ms to 8 s backoff, abort-aware sleep, only
+  `isTransportRetryable` categories). The router does not retry classified provider failures, so this retry is the only thing that retries a 503
+  or 429; without it a transient vendor error would fail the request. A pre-aborted signal makes zero network calls.
+- **Adapters throw `providerFailure(...)` only.** No raw vendor body ever appears in a message: vendor text goes to `context.providerMessage`
+  only after redaction (the configured key, Google-key and auth-header patterns, plus `sk-...` and `Bearer ...` shapes) and truncation to 300
+  characters. Missing or odd `choices` / `content` / `usage` can no longer raise a `TypeError`: usage becomes `usageKnown: false`, empty output
+  `empty_response`, a refusal or content filter `content_blocked`, an output-token stop `finishReason: 'length'`. Wire formats and descriptors are
+  unchanged; Ollama is still `supportsStructuredOutput: false` (never router-eligible).
+- **New category `output_truncated`** (additive; never transport-retried, never router-retried): the router's rejection of a `length` finish.
+- **Router finish-reason guard.** After the call is settled and before `JSON.parse`: `length` is rejected as `output_truncated`,
+  `content_filter` as `content_blocked`, `error` as a transient failure retried **once**. Truncated JSON can be well-formed yet silently missing
+  items, so a valid-looking body does not rescue it. The billed attempt is still charged (settled against the `InferenceRunScope`, recorded in cost).
+  `length` and `content_filter` are deterministic and are not retried. For the Gemini adapter, `content_filter`/`error` are thrown earlier by the
+  adapter (unchanged); a Gemini `MAX_TOKENS` with parseable JSON now reaches this guard and is rejected, which it previously was not.
+- **Circuit breaker predicate.** `CircuitBreakerOptions.isFailure?(error)`; default counts every error (unchanged). The router counts only
+  `transient`, `timeout`, `rate_limited` provider failures and unclassified errors. Auth, permission, invalid request, quota, unsupported
+  model/feature, content blocked, truncation, abort, `malformed_response`, `empty_response`, `AI_SCHEMA_VALIDATION_FAILED` and inference denials
+  leave the breaker untouched (neither counted nor reset). A caller-supplied `circuitBreakerOptions.isFailure` takes precedence.
+- **Fallback control.** `ModelSelectionPolicy.allowFallback?: boolean` (default `true` = unchanged). `false` uses only the first eligible
+  candidate: when it fails the request fails with `AI_ALL_PROVIDERS_FAILED`; no other provider is called. `singleProviderPolicy()` sets it to
+  `false` explicitly. The cache identity uses the effective candidate list.
+- **Temperature pinned to 0.** The router sends `temperature: 0` on every provider call (first attempt, retry, fallback) and records it in the
+  cache key's `generation`. `CACHE_FORMAT_VERSION` is now **3**. **This invalidates every existing durable (`FileCapabilityCache`) entry**:
+  v2 entries are treated as misses (not errors) and are regenerated once, at real cost. In-memory caches are unaffected across restarts.
+- **Tests.** `test/providers/adapter-conformance.test.ts` runs one contract over all five adapters (Gemini included) with a scripted `fetchImpl`
+  and fake timers; `test/providers/http-transport.test.ts` covers helper-specific behavior; `test/router-safety.test.ts` covers the router items.
+
 ## Known limitations
 
+- **No adapter other than Gemini has been verified against a real vendor.** The new conformance suite proves each adapter behaves per this
+  contract against scripted responses, not that the scripted shapes match what the vendors actually return today.
+- **Pinning `temperature: 0` can be rejected by some models.** Several vendor model families (for example some reasoning models) accept only a
+  default temperature, or require `max_completion_tokens` instead of `max_tokens`; the adapters keep their existing wire format, so such a model
+  would fail with `invalid_request` (not retried, not counted by the breaker). Choose models accordingly or revisit before enabling them.
+- **No router-level total deadline.** Each HTTP attempt is bounded, and so is the number of attempts, but the worst-case wall time of one
+  `extract*` call (retries x adapters x fallback candidates, plus backoff) is not capped as a whole.
+- **No policy validator.** `ModelSelectionPolicy` is not validated at construction (unknown providers, missing `modelByProvider` entries and
+  empty `providerOrder` are silently skipped at selection time).
+- **No per-provider schema-dialect verification.** The output schema is translated per vendor (Gemini subset, OpenAI strict `json_schema`,
+  prompt-embedded for Anthropic) but the translation is not verified against each vendor's accepted dialect; local validation is the backstop.
+- **Adapter-thrown `content_blocked` / `empty_response` are released, not charged.** Those failures are raised inside the adapter, so the
+  router never sees usage and cannot bill the call (Gemini behaves the same). Only the router-detected finish reasons (`length`, `content_filter`
+  and `error` returned by a provider) are charged as billed-but-discarded.
+- **App wiring.** Nothing in the apps constructs an AI layer or an inference scope yet; this slice changes `@xo/ai-core` only.
 - **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
 - The TOKEN budget can still be overshot by one call's input size (input tokens are unknown in advance); the COST budget cannot, because it reserves a conservative input bound (Slice 5).
-- Failed/timed-out/cancelled calls are released, not charged (possible under-count, above).
+- Failed/timed-out/cancelled calls are released, not charged (possible under-count, above); see Slice 7 for which finish-reason failures are charged.
 - Per-scope only: nothing aggregates spend across separate compilations or processes.
 - Confidence-gated escalation exists for the knowledge hybrid extractor only (Slice 6). The reasoning and capability extractors still call the model for every unit.
   here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.

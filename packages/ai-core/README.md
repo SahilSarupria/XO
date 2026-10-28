@@ -70,38 +70,58 @@ providers/
 4. For each candidate, in order: check its rate limiter (skip to the next
    candidate if exhausted, without ever attempting the call), then run
    the call through that provider's circuit breaker and a `RetryPolicy`.
-5. Parse the response as JSON and validate it against the capability's
-   `JsonSchema`. A parse failure or schema-validation failure is a
-   retryable error, same as a network error.
+5. Check the finish reason, then parse the response as JSON and validate
+   it against the capability's `JsonSchema`. A truncated (`length`) or
+   filtered (`content_filter`) response is rejected without parsing and not
+   retried; a vendor `error` finish is retried once; a parse failure or
+   schema-validation failure is a retryable error. Every provider call is
+   made at `temperature: 0`.
 6. On success: record cost via `CostAccountant`, populate the cache,
    return `{ output, meta }`.
 7. If every candidate is exhausted: `AI_ALL_PROVIDERS_FAILED`.
 
 ## Cross-cutting behaviors, and where to find their tests
 
-| Behavior                       | Module                                                            | Tests                                                           |
-| ------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------- |
-| Provider abstraction           | `provider-types.ts`                                               | exercised throughout `router.test.ts`                           |
-| Capability routing             | `router.ts`, `model-selection.ts`                                 | `router.test.ts`, `model-selection.test.ts`                     |
-| Retries                        | `retry.ts`                                                        | `retry.test.ts`                                                 |
-| Fallbacks                      | `router.ts`                                                       | `router.test.ts` ("falls back to the next provider...")         |
-| Streaming                      | `provider-types.ts`'s `completeStream`                            | `deterministic-replay-provider.test.ts`                         |
-| Structured outputs             | `json-schema.ts`, `capability-schemas.ts`                         | `json-schema.test.ts`                                           |
-| Schema validation              | `router.ts`'s post-parse validation step                          | `router.test.ts` ("fails schema validation...")                 |
-| Prompt versioning              | `prompt/prompt-registry.ts`                                       | `prompt-registry.test.ts`                                       |
-| Caching                        | `cache.ts`                                                        | `cache.test.ts`, `router.test.ts`                               |
-| Telemetry                      | `router.ts`'s `Tracer`/`Meter` calls (reuses `@xo/observability`) | exercised, not separately asserted on — see "Known limitations" |
-| Cost accounting                | `cost.ts`                                                         | `cost.test.ts`, `router.test.ts`                                |
-| Rate limiting                  | `rate-limiter.ts`                                                 | `rate-limiter.test.ts`, `router.test.ts`                        |
-| Circuit breakers               | `circuit-breaker.ts`                                              | `circuit-breaker.test.ts`, `router.test.ts`                     |
-| Deterministic replay for tests | `providers/deterministic-replay-provider.ts`                      | `deterministic-replay-provider.test.ts`                         |
-| Mock providers                 | `providers/scriptable-test-provider.ts`                           | used throughout `router.test.ts`                                |
-| Provider capability discovery  | `AiCapabilityLayer#describeProviders()`                           | `router.test.ts`                                                |
-| Model selection policies       | `model-selection.ts`                                              | `model-selection.test.ts`                                       |
-| Future multimodal models       | `ProviderCapabilityDescriptor.supportsVision`                     | descriptor-only today — see "Known limitations"                 |
+| Behavior                                                  | Module                                                            | Tests                                                                       |
+| --------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Provider abstraction                                      | `provider-types.ts`                                               | exercised throughout `router.test.ts`                                       |
+| Capability routing                                        | `router.ts`, `model-selection.ts`                                 | `router.test.ts`, `model-selection.test.ts`                                 |
+| Retries                                                   | `retry.ts`                                                        | `retry.test.ts`                                                             |
+| Fallbacks                                                 | `router.ts`                                                       | `router.test.ts` ("falls back to the next provider...")                     |
+| Streaming                                                 | `provider-types.ts`'s `completeStream`                            | `deterministic-replay-provider.test.ts`                                     |
+| Structured outputs                                        | `json-schema.ts`, `capability-schemas.ts`                         | `json-schema.test.ts`                                                       |
+| Schema validation                                         | `router.ts`'s post-parse validation step                          | `router.test.ts` ("fails schema validation...")                             |
+| Prompt versioning                                         | `prompt/prompt-registry.ts`                                       | `prompt-registry.test.ts`                                                   |
+| Caching                                                   | `cache.ts`                                                        | `cache.test.ts`, `router.test.ts`                                           |
+| Telemetry                                                 | `router.ts`'s `Tracer`/`Meter` calls (reuses `@xo/observability`) | exercised, not separately asserted on — see "Known limitations"             |
+| Cost accounting                                           | `cost.ts`                                                         | `cost.test.ts`, `router.test.ts`                                            |
+| Rate limiting                                             | `rate-limiter.ts`                                                 | `rate-limiter.test.ts`, `router.test.ts`                                    |
+| Circuit breakers                                          | `circuit-breaker.ts` (health-only failure predicate)              | `circuit-breaker.test.ts`, `router.test.ts`, `router-safety.test.ts`        |
+| Adapter transport (timeout, abort, retry, redaction)      | `providers/http-transport.ts`                                     | `providers/adapter-conformance.test.ts`, `providers/http-transport.test.ts` |
+| Finish-reason guard, fallback control, pinned temperature | `router.ts`, `model-selection.ts`                                 | `router-safety.test.ts`                                                     |
+| Deterministic replay for tests                            | `providers/deterministic-replay-provider.ts`                      | `deterministic-replay-provider.test.ts`                                     |
+| Mock providers                                            | `providers/scriptable-test-provider.ts`                           | used throughout `router.test.ts`                                            |
+| Provider capability discovery                             | `AiCapabilityLayer#describeProviders()`                           | `router.test.ts`                                                            |
+| Model selection policies                                  | `model-selection.ts`                                              | `model-selection.test.ts`                                                   |
+| Future multimodal models                                  | `ProviderCapabilityDescriptor.supportsVision`                     | descriptor-only today — see "Known limitations"                             |
 
 ## Known limitations (real, not hidden)
 
+- **Transport safety is now shared, but still unverified live.** The
+  Anthropic, OpenAI, Azure OpenAI and Ollama adapters use
+  `providers/http-transport.ts` (per-request timeout, caller-abort, status
+  classification, bounded transport retry, secret redaction) and are held to
+  the same contract as Gemini by `adapter-conformance.test.ts` (scripted
+  `fetch`, fake timers). That proves the contract against scripted
+  responses only, not against what each vendor really returns.
+- **Still deferred:** a router-level total deadline for one capability call
+  (retries x candidates are bounded, wall time overall is not), a
+  `ModelSelectionPolicy` validator, per-provider verification of the
+  output-schema dialect, and wiring an AI layer into the apps.
+- **`temperature: 0` is pinned on every call**, and the cache format
+  version is now 3: existing durable (file) cache entries are treated as
+  misses and regenerated once. Some model families reject a non-default
+  temperature or `max_tokens`; the adapters keep their existing wire format.
 - **The five real provider adapters (OpenAI, Anthropic, Gemini, Azure
   OpenAI, Ollama) are NOT live-verified.** The sandbox this package was
   built in has no network access and no API credentials for any vendor.

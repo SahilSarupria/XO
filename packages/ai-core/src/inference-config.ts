@@ -167,7 +167,7 @@ export function resolveInference(env: Env = process.env, deps: InferenceProvider
 
 /** A routing policy with exactly one provider and one model: no fallback chain by construction. */
 export function singleProviderPolicy(providerId: ProviderId, model: string): ModelSelectionPolicy {
-  return { rules: [{ capability: '*', providerOrder: [providerId], modelByProvider: { [providerId]: model } }] };
+  return { rules: [{ capability: '*', providerOrder: [providerId], modelByProvider: { [providerId]: model } }], allowFallback: false };
 }
 
 /** Rendering that is safe to log/print: never includes the credential. */

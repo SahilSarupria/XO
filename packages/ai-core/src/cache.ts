@@ -12,8 +12,13 @@ function canonicalStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalStringify(obj[k])}`).join(',')}}`;
 }
 
-/** Bump when the cached value shape or key construction changes incompatibly; it is part of every key made with it. */
-export const CACHE_FORMAT_VERSION = 2;
+/**
+ * Bump when the cached value shape or key construction changes incompatibly; it is part of every key made with it.
+ * v3: the router pins `temperature: 0` on every provider call (and records it in the key's generation settings). Bumping the
+ * version invalidates every durable (`FileCapabilityCache`) entry written under v2: those answers were generated at the
+ * vendor's default temperature and are re-generated once.
+ */
+export const CACHE_FORMAT_VERSION = 3;
 
 export interface CacheKeyInput {
   readonly capability: CapabilityId;
