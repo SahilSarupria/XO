@@ -204,8 +204,8 @@ export function CreateXo(props: {
                 {counts.approved} approved · {counts.readyForReview} ready for review · {counts.needsAttention} need more information
               </p>
               <p className="muted small">
-                You approve every rule before a workflow may use it. Nothing is approved for you. Running test cases against this XO is not
-                available yet; the chat answers with the workspace’s selected model and does not run this XO.
+                You approve every rule before a workflow may use it. Nothing is approved for you. A Preview and Test Run for each rule is
+                available under Contracts in Builder mode; the chat answers with the workspace’s selected model and does not run this XO.
               </p>
               <div className="row">
                 <Button variant="secondary" onClick={() => props.goTo('rules')}>

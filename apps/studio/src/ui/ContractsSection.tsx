@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import type { Capability, Workflow } from '../platform/wire';
+import type { Capability, Workflow, WorkspaceRole } from '../platform/wire';
+import { CapabilityTestPanel } from './CapabilityTestPanel';
 import { Badge, Button, EmptyState, loadedValue, Section, Skeleton, type LoadState } from './primitives';
 
 const STATUS_TONE: Record<Capability['status'], 'success' | 'warning' | 'danger'> = {
@@ -16,6 +17,11 @@ const STATUS_TONE: Record<Capability['status'], 'success' | 'warning' | 'danger'
  */
 export function ContractsSection(props: {
   caps: LoadState<Capability[]>;
+  workspaceId: string;
+  /** The compilation these capabilities belong to; Preview and Test Run need it. */
+  compilationId: string | undefined;
+  role: WorkspaceRole | undefined;
+  onChanged: () => void;
   workflows: readonly Workflow[];
   /** A capability another Builder screen asked to look at (opened and scrolled into view). */
   focus: string | undefined;
@@ -60,6 +66,11 @@ export function ContractsSection(props: {
                 used={usedBy(c.capabilityId)}
                 focused={props.focus === c.capabilityId}
                 goToProcesses={props.goToProcesses}
+                test={
+                  props.compilationId === undefined
+                    ? undefined
+                    : { workspaceId: props.workspaceId, compilationId: props.compilationId, role: props.role, onChanged: props.onChanged }
+                }
               />
             ))}
           </ul>
@@ -69,7 +80,13 @@ export function ContractsSection(props: {
   );
 }
 
-function ContractCard(props: { cap: Capability; used: number; focused: boolean; goToProcesses: () => void }) {
+function ContractCard(props: {
+  cap: Capability;
+  used: number;
+  focused: boolean;
+  goToProcesses: () => void;
+  test: { workspaceId: string; compilationId: string; role: WorkspaceRole | undefined; onChanged: () => void } | undefined;
+}) {
   const c = props.cap;
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -153,6 +170,12 @@ function ContractCard(props: { cap: Capability; used: number; focused: boolean; 
             <span className="muted small">Not used in any process yet.</span>
           )}
         </div>
+        {props.test !== undefined ? (
+          <details>
+            <summary>Preview and Test Run</summary>
+            <CapabilityTestPanel cap={c} {...props.test} />
+          </details>
+        ) : null}
         <details>
           <summary>Capability record</summary>
           <pre className="code" tabIndex={0} aria-label={`Raw record for ${c.name}`}>

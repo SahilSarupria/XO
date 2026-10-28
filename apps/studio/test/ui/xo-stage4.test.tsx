@@ -124,7 +124,7 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
     expect(await screen.findByText('Notify the Insurer')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue to Test' }));
     expect(screen.getByText(/You approve every rule/)).toBeInTheDocument();
-    expect(screen.getByText(/Running test cases against this XO is not available yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Preview and Test Run for each rule is available under Contracts/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue to Publish' }));
     expect(screen.getByText(/Not available yet. Publishing needs a signed \.xo package/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Open XO' }));

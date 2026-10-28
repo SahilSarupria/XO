@@ -627,6 +627,10 @@ export function WorkspaceView(props: {
       {view === 'contracts' && mode === 'builder' ? (
         <ContractsSection
           caps={caps.state}
+          workspaceId={ws}
+          compilationId={activeCompilation?.compilationId}
+          role={props.workspace.role}
+          onChanged={refreshAll}
           workflows={workflowList}
           focus={focusedCapability}
           goToSources={() => goToTarget('rules')}
