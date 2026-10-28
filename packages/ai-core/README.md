@@ -99,6 +99,8 @@ providers/
 | Circuit breakers                                          | `circuit-breaker.ts` (health-only failure predicate)              | `circuit-breaker.test.ts`, `router.test.ts`, `router-safety.test.ts`        |
 | Adapter transport (timeout, abort, retry, redaction)      | `providers/http-transport.ts`                                     | `providers/adapter-conformance.test.ts`, `providers/http-transport.test.ts` |
 | Finish-reason guard, fallback control, pinned temperature | `router.ts`, `model-selection.ts`                                 | `router-safety.test.ts`                                                     |
+| Total deadline / cancellation scope                       | `call-scope.ts`, `router.ts`                                      | `router-deadline.test.ts`                                                   |
+| Policy validation                                         | `policy-validation.ts`                                            | `policy-validation.test.ts`                                                 |
 | Deterministic replay for tests                            | `providers/deterministic-replay-provider.ts`                      | `deterministic-replay-provider.test.ts`                                     |
 | Mock providers                                            | `providers/scriptable-test-provider.ts`                           | used throughout `router.test.ts`                                            |
 | Provider capability discovery                             | `AiCapabilityLayer#describeProviders()`                           | `router.test.ts`                                                            |
@@ -114,13 +116,18 @@ providers/
   the same contract as Gemini by `adapter-conformance.test.ts` (scripted
   `fetch`, fake timers). That proves the contract against scripted
   responses only, not against what each vendor really returns.
-- **Still deferred:** a router-level total deadline for one capability call
-  (retries x candidates are bounded, wall time overall is not), a
-  `ModelSelectionPolicy` validator, per-provider verification of the
-  output-schema dialect, and wiring an AI layer into the apps.
+- **Total deadline and policy validation exist now (deadline is opt-in).**
+  `totalDeadlineMs` bounds retries, backoff and fallback for one capability
+  call; a late provider response is discarded (never cached) but its usage is
+  still charged. `ModelSelectionPolicy` is validated at construction
+  (structural errors throw `ConfigError`; suspicious-but-legal findings are in
+  `layer.policyWarnings`). See `docs/inference-cache-and-policy.md`, Slice 8.
+- **Still deferred:** per-provider verification of the output-schema dialect,
+  live (opt-in) verification of each adapter, and wiring an AI layer into the
+  apps.
 - **`temperature: 0` is pinned on every call**, and the cache format
-  version is now 3: existing durable (file) cache entries are treated as
-  misses and regenerated once. Some model families reject a non-default
+  version is now 3: existing durable (file) cache entries are never
+  looked up again (new keys) and are regenerated once; old files stay on disk. Some model families reject a non-default
   temperature or `max_tokens`; the adapters keep their existing wire format.
 - **The five real provider adapters (OpenAI, Anthropic, Gemini, Azure
   OpenAI, Ollama) are NOT live-verified.** The sandbox this package was

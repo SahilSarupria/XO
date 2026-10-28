@@ -223,9 +223,47 @@ Closes the transport and routing gaps that remained after Slices 1-6. Gemini is 
   `false` explicitly. The cache identity uses the effective candidate list.
 - **Temperature pinned to 0.** The router sends `temperature: 0` on every provider call (first attempt, retry, fallback) and records it in the
   cache key's `generation`. `CACHE_FORMAT_VERSION` is now **3**. **This invalidates every existing durable (`FileCapabilityCache`) entry**:
-  v2 entries are treated as misses (not errors) and are regenerated once, at real cost. In-memory caches are unaffected across restarts.
+  the version is part of the key hash, so v3 lookups never touch a v2 file (they are simply different keys) and each answer is regenerated
+  once, at real cost. The v2 files are not deleted or evicted: they remain on disk as orphans until an operator clears the directory
+  (`FileCapabilityCache#clear()` removes them). The envelope version check is a second line of defence only. In-memory caches are unaffected.
 - **Tests.** `test/providers/adapter-conformance.test.ts` runs one contract over all five adapters (Gemini included) with a scripted `fetchImpl`
   and fake timers; `test/providers/http-transport.test.ts` covers helper-specific behavior; `test/router-safety.test.ts` covers the router items.
+
+## Slice 8: router total deadline and policy validation (`@xo/ai-core`)
+
+- **Total deadline (`AiCapabilityLayerOptions.totalDeadlineMs`, opt-in).** Absent = no deadline (unchanged). A positive integer bounds the
+  _inference phase_ of one capability call: every retry, backoff sleep and fallback candidate, measured from the cache miss. Cache hits are
+  never subject to it (they spend nothing), and the timer is not started for them. Invalid values (zero, negative, fractional, above 2^31-1)
+  throw `ConfigError` at construction.
+- **Cancellation scope (`call-scope.ts`).** One scope per call combines the deadline and the caller's `request.signal`. Providers receive the
+  scope's signal (only when a deadline or caller signal exists, so the provider request is otherwise byte-for-byte what it was). A provider that
+  honours it stops its HTTP work; a provider that ignores it cannot hold the call: the router stops _waiting_ at once (`race`), and router
+  backoff (default or injected sleep) ends immediately.
+- **Outcome.** `AI_ALL_PROVIDERS_FAILED` (existing code, so downstream mapping is unchanged) with `context.callCancellation` of `'deadline'` or
+  `'caller_abort'` (read with `getCallCancellation(error)`), plus `deadlineMs`, `attempts`, `failureCount`. Cancellation ends the whole call: no
+  retry, no failover to the next candidate, no rate-limit token spent. The prior pre-aborted-signal behaviour (zero provider calls,
+  `AI_ALL_PROVIDERS_FAILED`) is preserved; only the message and context changed, and an abort no longer iterates the remaining candidates.
+- **Late responses cannot change cache or mislead billing.** A response that arrives after cancellation is never returned and never cached.
+  Billing is reconciled instead of dropped: when cancellation interrupts an in-flight provider call, the budget reservation is _held_ (not
+  released) until that call's outcome arrives; then a late success is settled with its real usage (unknown usage is charged at the
+  reservation) and added to `totalCostUsd()`, while a late failure releases the reservation (no usage to charge: the same documented under-count
+  as any failed call). If a provider never settles, the reservation stays held for the life of the scope: conservative by design, and the sign
+  of a provider that ignores its abort signal. Late settlement can therefore change `inferenceReport()` and `totalCostUsd()` after the call returned.
+- **Commit point.** Once a validated answer is accepted, the timer is stopped and cancellation no longer applies: an already-paid-for answer is
+  not turned into a failure because the deadline passed while it was being costed or written to the cache.
+- **Circuit breaker.** A deadline or caller abort never counts against the breaker (the caller's budget says nothing about provider health). A
+  provider's own per-attempt timeout (adapter `timeoutMs`) still counts as a `timeout`, so choose it below the total deadline.
+- **Policy validator (`validateModelSelectionPolicy`, `assertValidModelSelectionPolicy`).** Runs in the `AiCapabilityLayer` constructor.
+  _Errors_ (construction throws `ConfigError`, listing every one with a path): non-object policy or rule, unknown keys (a misspelt
+  `allowFallback` would silently keep failover on), non-boolean `allowFallback`, invalid or duplicate capability, empty/invalid/duplicate
+  `providerOrder`, a listed provider with no (own-property) model, malformed model or id (empty, whitespace/control characters, over-long).
+  _Warnings_ (never thrown; `layer.policyWarnings` and the logger): no rules, capabilities with no rule and no wildcard, model entries for
+  providers not in `providerOrder`, listed providers that are unregistered or lack structured output, and a rule with no eligible provider. Legal
+  shapes that previously worked (including `{ rules: [] }` with no providers) still construct and fail at call time with `AI_NO_ELIGIBLE_PROVIDER`.
+- **Behaviour changes to note.** (1) A policy that was silently misrouting (typo'd key, missing model, duplicate provider/rule) now refuses to
+  construct. (2) Caller abort stops the candidate loop instead of walking it. (3) Provider requests carry a `signal` member only when a deadline or
+  caller signal exists.
+- **Tests.** `test/router-deadline.test.ts` (scripted providers, fake timers, no network) and `test/policy-validation.test.ts`.
 
 ## Known limitations
 
@@ -234,10 +272,11 @@ Closes the transport and routing gaps that remained after Slices 1-6. Gemini is 
 - **Pinning `temperature: 0` can be rejected by some models.** Several vendor model families (for example some reasoning models) accept only a
   default temperature, or require `max_completion_tokens` instead of `max_tokens`; the adapters keep their existing wire format, so such a model
   would fail with `invalid_request` (not retried, not counted by the breaker). Choose models accordingly or revisit before enabling them.
-- **No router-level total deadline.** Each HTTP attempt is bounded, and so is the number of attempts, but the worst-case wall time of one
-  `extract*` call (retries x adapters x fallback candidates, plus backoff) is not capped as a whole.
-- **No policy validator.** `ModelSelectionPolicy` is not validated at construction (unknown providers, missing `modelByProvider` entries and
-  empty `providerOrder` are silently skipped at selection time).
+- **The total deadline is opt-in** (`totalDeadlineMs`); with none configured the worst-case wall time of one `extract*` call (retries x adapters x
+  fallback candidates, plus backoff) is still uncapped. It covers the inference phase only (not prompt resolution or the cache read), and a provider
+  that ignores its abort signal keeps its budget reservation held after the call has returned (Slice 8).
+- **Policy validation is structural and registry-aware only.** It does not check that a model id exists at the vendor, that a model accepts
+  `temperature: 0`, or that the model is priced for cost-capped runs.
 - **No per-provider schema-dialect verification.** The output schema is translated per vendor (Gemini subset, OpenAI strict `json_schema`,
   prompt-embedded for Anthropic) but the translation is not verified against each vendor's accepted dialect; local validation is the backstop.
 - **Adapter-thrown `content_blocked` / `empty_response` are released, not charged.** Those failures are raised inside the adapter, so the
@@ -246,7 +285,7 @@ Closes the transport and routing gaps that remained after Slices 1-6. Gemini is 
 - **App wiring.** Nothing in the apps constructs an AI layer or an inference scope yet; this slice changes `@xo/ai-core` only.
 - **Cost cap depends on the pricing table being right.** See Slice 5: unknown prices are refused, but a _wrong_ price in `DEFAULT_PRICING_TABLE` (documented as illustrative, not current vendor pricing) produces a wrong bound. Operators must supply a maintained table.
 - The TOKEN budget can still be overshot by one call's input size (input tokens are unknown in advance); the COST budget cannot, because it reserves a conservative input bound (Slice 5).
-- Failed/timed-out/cancelled calls are released, not charged (possible under-count, above); see Slice 7 for which finish-reason failures are charged.
+- Failed/timed-out calls are released, not charged (possible under-count, above); see Slice 7 for which finish-reason failures are charged and Slice 8 for cancelled calls (a late response is charged).
 - Per-scope only: nothing aggregates spend across separate compilations or processes.
 - Confidence-gated escalation exists for the knowledge hybrid extractor only (Slice 6). The reasoning and capability extractors still call the model for every unit.
   here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.
