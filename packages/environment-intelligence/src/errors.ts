@@ -23,6 +23,11 @@ export const DiscoveryErrorCode = {
   AUTHORIZATION_REQUIRED: 'EI_AUTHORIZATION_REQUIRED',
   /** Authorization was explicitly refused (nothing was read). */
   AUTHORIZATION_DENIED: 'EI_AUTHORIZATION_DENIED',
+  /**
+   * C1: a connector reported success for a protected operation but the framework did not observe the expected authorization
+   * decision being honoured for it (the expected permission was never spent, or something else was). Nothing was advanced.
+   */
+  AUTHORIZATION_UNVERIFIED: 'EI_AUTHORIZATION_UNVERIFIED',
   /** No connector exists for this source type. */
   UNSUPPORTED_SOURCE: 'EI_UNSUPPORTED_SOURCE',
   /** The connector exists but does not implement this operation. */

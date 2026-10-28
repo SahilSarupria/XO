@@ -23,7 +23,15 @@ export type AuditOutcome = 'attempted' | 'denied' | 'failed' | 'cancelled' | 'co
 
 /** Which protected operation an event describes. */
 export type AuditOperation =
-  'detect' | 'validate_connection' | 'discover' | 'acquire_content' | 'declare_sources' | 'revoke_evidence' | 'purge_evidence';
+  | 'detect'
+  | 'validate_connection'
+  | 'discover'
+  | 'acquire_content'
+  | 'incremental_sync'
+  | 'health'
+  | 'declare_sources'
+  | 'revoke_evidence'
+  | 'purge_evidence';
 
 /**
  * - `attempt`:    write-ahead record, accepted BEFORE protected evidence is read.
@@ -174,6 +182,8 @@ const OPERATIONS: ReadonlySet<string> = new Set([
   'validate_connection',
   'discover',
   'acquire_content',
+  'incremental_sync',
+  'health',
   'declare_sources',
   'revoke_evidence',
   'purge_evidence',

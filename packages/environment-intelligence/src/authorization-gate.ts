@@ -13,7 +13,7 @@ import {
 import { err, ok, type Result } from '@xo/types';
 import type { AuthorityKind, AuthorizationDecision, AuthorizationPort, AuthorizationRequest } from './authorization.js';
 import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError } from './errors.js';
-import { authorityOf, bindingOf, consumeDecision } from './trusted-decision.js';
+import { authorityOf, bindingOf, consumeDecision, markHonoured } from './trusted-decision.js';
 
 /** What the enforcement point learned about an honoured allow. Everything here is derived from trusted sources, never from a port-supplied field. */
 export interface TrustedGrant {
@@ -137,6 +137,7 @@ export async function requireAuthorization(
     if (binding === undefined) {
       // Only the legacy, unbound DEVELOPMENT decision may lack a binding. A platform decision is always bound.
       if (authority === 'platform') return err(denied(request, authority, 'unbound_platform_decision'));
+      markHonoured(decision);
       return ok({ decision, authority, principal: who.value, grant: {} });
     }
     if (!consumeDecision(decision)) return err(denied(request, authority, 'decision_replayed'));
@@ -156,6 +157,7 @@ export async function requireAuthorization(
         }),
       );
     }
+    markHonoured(decision);
     return ok({
       decision,
       authority,

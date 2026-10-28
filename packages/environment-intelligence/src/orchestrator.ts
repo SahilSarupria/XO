@@ -1,14 +1,21 @@
 import { err, ok, type Result } from '@xo/types';
-import type {
-  AcquisitionOutcome,
-  AcquisitionRequest,
-  Connector,
-  ConnectorContext,
-  DetectedSource,
-  DiscoveryOutcome,
-  DiscoveryRequest,
-  DiscoveryScopeBase,
+import {
+  MAX_SYNC_CURSOR_LENGTH,
+  type AcquisitionOutcome,
+  type AcquisitionRequest,
+  type Connector,
+  type ConnectorContext,
+  type ConnectorOperation,
+  type DetectedSource,
+  type DiscoveryOutcome,
+  type DiscoveryRequest,
+  type DiscoveryScopeBase,
+  type HealthReport,
+  type HealthRequest,
+  type SyncOutcome,
+  type SyncRequest,
 } from './connector.js';
+import { evidenceIdentityProblem, identityMismatch, runEnforced } from './connector-enforcement.js';
 import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError } from './errors.js';
 import type { Evidence } from './evidence.js';
 import type { EnvironmentInventory } from './inventory.js';
@@ -101,9 +108,13 @@ async function discoverSourceCore<TScope extends DiscoveryScopeBase>(
       }),
     );
   }
-  const detected = await connector.detectSource(request, ctx);
+  // C1: the connector's own success is not enough. The framework must have observed the expected authorization honoured, and the
+  // identity the connector claims (which connector detected it, what type it is) is checked against what the framework knows.
+  const detected = await runEnforced(connector, 'detect', ctx, (c) => connector.detectSource(request, c), { audited: false });
   if (!detected.ok) return detected;
   const source = detected.value;
+  if (source.detectedBy !== connector.descriptor.id || source.sourceType !== request.sourceType)
+    return err(identityMismatch('detected_source'));
   const now = (): string => ctx.clock.now().toISOString();
   const connectorId = connector.descriptor.id;
 
@@ -142,17 +153,32 @@ async function discoverSourceCore<TScope extends DiscoveryScopeBase>(
     return ok({ record: rec, plan, evidence: [], stoppedBecause: error });
   };
 
-  const validation = await connector.validateConnection(request, ctx);
+  // C1: `authorization_granted` / `connection_validated` are applied only after the framework observed the list permission being
+  // spent for validation. A connector that skips authorization fails here with a typed error and the source stays unvalidated.
+  const validation = await runEnforced(connector, 'validate_connection', ctx, (c) => connector.validateConnection(request, c), {
+    audited: false,
+  });
   if (!validation.ok) return stop(validation.error);
+  if (validation.value.sourceId !== source.sourceId) return stop(identityMismatch('validated_source'));
   const granted = applyOrFail(deps, source.sourceId, 'authorization_granted', now());
   if (!granted.ok) return granted;
   const validated = applyOrFail(deps, source.sourceId, 'connection_validated', now());
   if (!validated.ok) return validated;
 
-  const discovery = await connector.discover(request, ctx);
+  const discovery = await runEnforced(connector, 'discover', ctx, (c) => connector.discover(request, c), {
+    audited: true,
+    sourceId: source.sourceId,
+    evidenceOf: (v: DiscoveryOutcome) => v.evidence,
+    expectedSourceIds: [source.sourceId],
+  });
   if (!discovery.ok) {
     const e = discovery.error;
-    if (e.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED || e.code === DiscoveryErrorCode.AUTHORIZATION_DENIED) return stop(e);
+    if (
+      e.code === DiscoveryErrorCode.AUTHORIZATION_REQUIRED ||
+      e.code === DiscoveryErrorCode.AUTHORIZATION_DENIED ||
+      e.code === DiscoveryErrorCode.AUTHORIZATION_UNVERIFIED
+    )
+      return stop(e);
     const failed = applyOrFail(
       deps,
       source.sourceId,
@@ -164,6 +190,12 @@ async function discoverSourceCore<TScope extends DiscoveryScopeBase>(
     return ok({ record: failed.value, plan, evidence: [], stoppedBecause: e });
   }
   const outcome = discovery.value;
+  const foreign =
+    outcome.sources.some((s) => s.sourceId !== source.sourceId || s.detectedBy !== connectorId) ||
+    outcome.scans.some((sc) => sc.sourceId !== source.sourceId)
+      ? identityMismatch('discovery_source')
+      : evidenceIdentityProblem(outcome.evidence, { connectorId, principal: who.value, sourceIds: [source.sourceId] });
+  if (foreign !== undefined) return stop(foreign);
   for (const scan of outcome.scans) deps.inventory.recordScan(scan.sourceId, scan.contentFingerprint, now());
   const done = applyOrFail(deps, source.sourceId, outcome.status === 'complete' ? 'acquisition_succeeded' : 'acquisition_partial', now());
   if (!done.ok) return done;
@@ -300,28 +332,23 @@ async function registerDeclaredSourcesCore(
 }
 
 /**
- * Content acquisition for already-validated sources. Separately gated: the
- * connector asks the authorization gate for a read permission distinct from
- * the listing permission. A denial here does not alter the source's base
- * lifecycle (listing still succeeded); it is returned to the caller.
- *
- * M2.1: a source that was detected, listed and validated is only a CANDIDATE.
- * `axes.authorization === 'granted'` records that LISTING was authorized; it
- * never stands in for the read decision, which the connector requests again,
- * for `filesystem.read`, bound to this caller and this scope.
+ * Shared preconditions of every operation that reads protected content from an already-validated source (acquire, sync, health).
+ * Identity first (so an unauthenticated caller cannot learn which sources exist), then the durable-state guard, then the inventory:
+ * the source must be matched to a registered connector that DECLARES the operation, and its axes must show authorization granted
+ * and connection validated. A revoked or denied source therefore blocks every one of them, for every connector.
  */
-export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
+function resolveProtectedSource<TScope extends DiscoveryScopeBase>(
   deps: DiscoveryDeps,
-  request: AcquisitionRequest & { readonly scope: TScope },
+  sourceId: SourceId,
+  operation: ConnectorOperation,
+  unsupportedMessage: string,
   ctx: ConnectorContext,
-): Promise<Result<AcquisitionOutcome, DiscoveryError>> {
-  // M2.1: identity before any inventory lookup, so an unauthenticated caller cannot learn which sources exist.
+): Result<{ readonly connector: Connector<TScope>; readonly principal: NonNullable<ConnectorContext['principal']> }, DiscoveryError> {
   const who = requireAuthenticatedPrincipal(ctx.principal);
   if (!who.ok) return who;
-  // C0.4: a non-operational durable store refuses before any lookup, audit attempt or read.
   const stateGuard = requireOperationalState(ctx);
   if (!stateGuard.ok) return stateGuard;
-  const record = deps.inventory.get(request.sourceId);
+  const record = deps.inventory.get(sourceId);
   if (record === undefined || record.connectorId === undefined) {
     return err(discoveryError(DiscoveryErrorCode.INVALID_TRANSITION, 'source is not in the inventory or has no matched connector', {}));
   }
@@ -335,12 +362,125 @@ export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
   const connector = deps.registry.get(record.connectorId) as Connector<TScope> | undefined;
   if (connector === undefined)
     return err(discoveryError(DiscoveryErrorCode.UNSUPPORTED_SOURCE, 'matched connector is no longer registered'));
-  if (connector.descriptor.operations.acquire_content !== 'supported') {
+  if (connector.descriptor.operations[operation] !== 'supported') {
+    return err(discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, unsupportedMessage, { connector: connector.descriptor.id }));
+  }
+  return ok({ connector, principal: ctx.principal as NonNullable<ConnectorContext['principal']> });
+}
+
+/**
+ * Content acquisition for already-validated sources. Separately gated: the
+ * connector asks the authorization gate for a read permission distinct from
+ * the listing permission. A denial here does not alter the source's base
+ * lifecycle (listing still succeeded); it is returned to the caller.
+ *
+ * M2.1: a source that was detected, listed and validated is only a CANDIDATE.
+ * `axes.authorization === 'granted'` records that LISTING was authorized; it
+ * never stands in for the read decision, which the connector requests again,
+ * for `filesystem.read`, bound to this caller and this scope.
+ *
+ * C1: the framework verifies that the READ permission (not the list permission) was spent for this call and that an accepted
+ * attempt and terminal audit record exist, before the result is returned (`runEnforced`).
+ */
+export async function acquireSourceContent<TScope extends DiscoveryScopeBase>(
+  deps: DiscoveryDeps,
+  request: AcquisitionRequest & { readonly scope: TScope },
+  ctx: ConnectorContext,
+): Promise<Result<AcquisitionOutcome, DiscoveryError>> {
+  const resolved = resolveProtectedSource<TScope>(
+    deps,
+    request.sourceId,
+    'acquire_content',
+    'connector does not support content acquisition',
+    ctx,
+  );
+  if (!resolved.ok) return resolved;
+  const { connector } = resolved.value;
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
+  const outcome = await runEnforced(connector, 'acquire_content', ctx, (c) => connector.acquireContent(request, c), {
+    audited: true,
+    sourceId: request.sourceId,
+    evidenceOf: (v: AcquisitionOutcome) => v.evidence,
+    expectedSourceIds: [request.sourceId],
+  });
+  return outcome;
+}
+
+const SYNC_CURSOR = /^[\x21-\x7e]+$/;
+const validCursor = (cursor: unknown): boolean =>
+  typeof cursor === 'string' && cursor.length >= 1 && cursor.length <= MAX_SYNC_CURSOR_LENGTH && SYNC_CURSOR.test(cursor);
+
+/**
+ * C1 - incremental synchronization, for connectors that DECLARE `incremental_sync: 'supported'` (none of the shipped ones do; the
+ * filesystem connector stays unsupported). Gated exactly like acquisition: the source must be authorized and validated (a revoked
+ * source is refused), the connector must spend its declared sync permission, and an accepted attempt and terminal audit record must
+ * exist before the result is returned. The cursor is opaque, bounded and NOT persisted by Environment Intelligence in C1: the caller
+ * holds it, and replaying the same cursor must give the same result.
+ */
+export async function syncSource<TScope extends DiscoveryScopeBase>(
+  deps: DiscoveryDeps,
+  request: SyncRequest<TScope>,
+  ctx: ConnectorContext,
+): Promise<Result<SyncOutcome, DiscoveryError>> {
+  const resolved = resolveProtectedSource<TScope>(
+    deps,
+    request.sourceId,
+    'incremental_sync',
+    'connector does not support incremental sync',
+    ctx,
+  );
+  if (!resolved.ok) return resolved;
+  const { connector } = resolved.value;
+  const who = requireAuthenticatedPrincipal(ctx.principal);
+  if (!who.ok) return who;
+  if (request.cursor !== undefined && !validCursor(request.cursor))
+    return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the sync cursor is not acceptable', { field: 'cursor' }));
+  if (connector.incrementalSync === undefined) {
     return err(
-      discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'connector does not support content acquisition', {
+      discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'connector does not support incremental sync', {
         connector: connector.descriptor.id,
       }),
     );
   }
-  return connector.acquireContent(request, ctx);
+  const sync = connector.incrementalSync.bind(connector);
+  const outcome = await runEnforced(connector, 'incremental_sync', ctx, (c) => sync(request, c), {
+    audited: true,
+    sourceId: request.sourceId,
+    evidenceOf: (v: SyncOutcome) => v.evidence,
+    expectedSourceIds: [request.sourceId],
+  });
+  if (!outcome.ok) return outcome;
+  if (outcome.value.nextCursor !== undefined && !validCursor(outcome.value.nextCursor))
+    return err(
+      discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the connector returned a cursor that is not acceptable', { field: 'nextCursor' }),
+    );
+  return outcome;
+}
+
+/**
+ * C1 - health probe, for connectors that DECLARE `health: 'supported'` (none of the shipped ones do). A probe is itself an
+ * authorized operation, so it is gated like acquisition (an authorized, validated source; the declared permission spent) and keeps
+ * denial-only audit like detect/validate. It returns no evidence and changes no source state in C1.
+ */
+export async function checkSourceHealth<TScope extends DiscoveryScopeBase>(
+  deps: DiscoveryDeps,
+  request: HealthRequest<TScope>,
+  ctx: ConnectorContext,
+): Promise<Result<HealthReport, DiscoveryError>> {
+  const resolved = resolveProtectedSource<TScope>(deps, request.sourceId, 'health', 'connector does not support health checks', ctx);
+  if (!resolved.ok) return resolved;
+  const { connector } = resolved.value;
+  if (connector.health === undefined) {
+    return err(
+      discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, 'connector does not support health checks', {
+        connector: connector.descriptor.id,
+      }),
+    );
+  }
+  const probe = connector.health.bind(connector);
+  const report = await runEnforced(connector, 'health', ctx, (c) => probe(request, c), { audited: false });
+  if (!report.ok) return report;
+  if (report.value.sourceId !== request.sourceId) return err(identityMismatch('health_source'));
+  return report;
 }

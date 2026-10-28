@@ -103,6 +103,8 @@ Deferred: segment rotation and checkpointed startup (the whole log is read at op
 
 In: contracts, inventory/state machine, one local filesystem adapter, evidence model, environment model with relationships, candidate processes, explainer, tests, demo. Out: any remote/SaaS connector, credentials handling, incremental sync/health, LLM interpretation, XOIR projection, opportunity scoring, persistence, UI.
 
+C1 (connector contract, framework-verified authorization/audit, optional sync/health contracts): see `c1-connector-contract.md`.
+
 ## 10. Owned files
 
 `packages/environment-intelligence/**`, `docs/environment-intelligence/**`. Additive shared edits: one project reference in root `tsconfig.json`; `package-lock.json` (workspace entry — regenerate on merge conflict).

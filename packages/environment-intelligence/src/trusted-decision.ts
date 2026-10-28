@@ -41,6 +41,8 @@ import type { AuthorityKind, AuthorizationDecision } from './authorization.js';
 const registry = new WeakMap<object, Exclude<AuthorityKind, 'none'>>();
 const bindings = new WeakMap<object, DecisionBinding>();
 const consumed = new WeakSet<object>();
+/** C1: decisions the enforcement point actually HONOURED (passed every check for the request it was enforcing). */
+const honoured = new WeakSet<object>();
 
 /** What a decision answered. Compared by the gate against the live request; never read from the decision's own fields. */
 export interface DecisionBinding {
@@ -88,6 +90,16 @@ export function consumeDecision(decision: object): boolean {
   if (consumed.has(decision)) return false;
   consumed.add(decision);
   return true;
+}
+
+/** INTERNAL - the enforcement point records that it honoured this decision. Only `requireAuthorization` calls this. */
+export function markHonoured(decision: object): void {
+  honoured.add(decision);
+}
+
+/** INTERNAL - true only for a decision `requireAuthorization` honoured. Lets the framework verify a connector really spent its permission. */
+export function wasHonoured(decision: unknown): boolean {
+  return typeof decision === 'object' && decision !== null && honoured.has(decision);
 }
 
 /** Development/demo decisions without a binding. Always `development_unverified`; never `platform`. Reusable (legacy). */

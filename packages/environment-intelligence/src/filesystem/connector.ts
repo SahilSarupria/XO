@@ -56,7 +56,12 @@ const DESCRIPTOR: ConnectorDescriptor = {
   configFields: [
     { name: 'root', description: 'Absolute path of the one directory approved for discovery.', required: true, secret: false },
   ],
-  requiredPermissions: { validate_connection: PERMISSION_LIST, discover: PERMISSION_LIST, acquire_content: PERMISSION_READ },
+  requiredPermissions: {
+    detect: PERMISSION_LIST,
+    validate_connection: PERMISSION_LIST,
+    discover: PERMISSION_LIST,
+    acquire_content: PERMISSION_READ,
+  },
   operations: {
     detect: 'supported',
     validate_connection: 'supported',
@@ -167,7 +172,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     // M2.2: a denial is auditable (no content involved). Best-effort: the denial already blocks the operation.
     if (!decided.ok) {
       await auditDenial(ctx, {
-        operation: operation as 'detect' | 'validate_connection' | 'discover' | 'acquire_content',
+        operation,
         connectorId: FILESYSTEM_CONNECTOR_ID,
         permission,
         scope,
