@@ -131,7 +131,7 @@
           "note": "The disclaimer says the document is synthetic and 'must never be treated' as real rules; it states no task. Not ground truth."
         }
       ],
-      "expectationsFingerprint": "e3f18bb648927dce"
+      "expectationsFingerprint": "0a3003db9bfe87de"
     },
     {
       "caseId": "commercial-property-policy",
@@ -604,13 +604,6 @@
         },
         {
           "category": "execution",
-          "id": "det-notify-verb-capability",
-          "identity": "strongly_evidenced",
-          "assertions": "derived",
-          "source": "clause 4.1 (the verb-derived capability evaluates the linked deadline rule at 3 days: within the 7-day deadline)"
-        },
-        {
-          "category": "execution",
           "id": "det-notify-deadline-met",
           "identity": "derived",
           "source": "clause 4.1 (deadline rule evaluated at 3 days: within the 7-day deadline)"
@@ -658,7 +651,7 @@
           "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
         }
       ],
-      "expectationsFingerprint": "754a88e1ff8edd61"
+      "expectationsFingerprint": "314740b17040053f"
     },
     {
       "caseId": "aastha-operations",

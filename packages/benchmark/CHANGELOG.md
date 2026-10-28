@@ -19,6 +19,15 @@ so they mint deterministic, evidence-grounded capabilities (confidence 0.75). Th
 exact-named, deterministic capability). `semanticRecall` is 29/31, and the `execution` and `workflows` outputs of that
 case also changed and are recorded as declared drift. No metric regressed.
 
+**Third step (confidence floor merged).** The CRD-02 floor (0.7) now applies on every automated execution path.
+Explicit IF/THEN rules whose condition parses in the runtime grammar keep their pattern confidence (0.8) rather than being
+capped by the paragraph classifier. The heading-derived bundle capability ("Claim Assessment", 0.65) and the verb-derived
+capability for clause 4.1 are sub-floor and refused by design, so the suite now exercises the real rule capabilities
+("Deny The Claim"; "Must Notify The Insurer Of A Loss Within 7 Days"). `synthetic-claim-rules` golden
+`e3f18bb648927dce` → `0a3003db9bfe87de` (same inputs and expected outputs, different target) and `commercial-property-policy`
+→ `314740b17040053f` (the redundant `det-notify-verb-capability` execution was removed). Execution and compile output
+changes are recorded as declared drift.
+
 **Effect on the benchmark.** Every metric value of `vertical-fixtures` is unchanged. The `compile` stage output of
 `commercial-property-policy` and `burglary-policy-schedule`, and the `capabilities` stage output of
 `commercial-property-policy`, changed (more nodes), and the observed node population grew with

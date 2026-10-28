@@ -86,8 +86,8 @@
         "id": "crossPathConsistency",
         "stage": "capabilities",
         "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-        "numerator": 370,
-        "denominator": 370,
+        "numerator": 368,
+        "denominator": 368,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -99,10 +99,10 @@
           "live_vs_package.contract_embedded.match": 44,
           "live_vs_package.contract_embedded.not_comparable": 28,
           "live_vs_package.contract_hash.match": 44,
-          "live_vs_package.execution_outcome.match": 17,
+          "live_vs_package.execution_outcome.match": 16,
           "live_vs_package.execution_outcome.not_comparable": 2,
           "live_vs_package.execution_outcome.not_exercised": 7,
-          "live_vs_package.execution_provenance.match": 17,
+          "live_vs_package.execution_provenance.match": 16,
           "live_vs_package.graph_hash.not_comparable": 7,
           "live_vs_serialized.binding.match": 72,
           "live_vs_serialized.capability_present.match": 72,
@@ -169,9 +169,9 @@
         "id": "executionCorrectness",
         "stage": "execution",
         "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-        "numerator": 31,
-        "denominator": 32,
-        "ratio": 0.96875,
+        "numerator": 30,
+        "denominator": 31,
+        "ratio": 0.967742,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -188,15 +188,15 @@
         "id": "executionProvenanceAgreement",
         "stage": "execution",
         "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-        "numerator": 21,
-        "denominator": 21,
+        "numerator": 20,
+        "denominator": 20,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "state.match": 21,
+          "state.match": 20,
           "state.not_exercised": 7
         }
       },
@@ -550,11 +550,11 @@
         }
       },
       "executions": {
-        "total": 32,
+        "total": 31,
         "byOutcome": {
           "invalid_input": 4,
           "not_executable": 3,
-          "succeeded": 17,
+          "succeeded": 16,
           "waiting_for_human": 2,
           "workflow:not_executable_yet": 4,
           "workflow:waiting_for_human": 2
@@ -1513,10 +1513,10 @@
         }
       },
       "fingerprints": {
-        "compile": "db9c2a8ccc7a901c",
-        "capabilities": "0809c73b5c1f01c8",
+        "compile": "9dadb17c19d25a2f",
+        "capabilities": "1cc19078f5ebc077",
         "workflows": "b75969d188329659",
-        "execution": "76d286ea062f51e0"
+        "execution": "0ea71eb3a58cdadb"
       },
       "observed": {
         "nodeCountsByKind": {
@@ -1547,10 +1547,10 @@
           }
         },
         "executions": {
-          "total": 19,
+          "total": 18,
           "byOutcome": {
             "invalid_input": 2,
-            "succeeded": 14,
+            "succeeded": 13,
             "waiting_for_human": 1,
             "workflow:not_executable_yet": 1,
             "workflow:waiting_for_human": 1
@@ -1597,8 +1597,8 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 196,
-          "denominator": 196,
+          "numerator": 194,
+          "denominator": 194,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1610,10 +1610,10 @@
             "live_vs_package.contract_embedded.match": 22,
             "live_vs_package.contract_embedded.not_comparable": 12,
             "live_vs_package.contract_hash.match": 22,
-            "live_vs_package.execution_outcome.match": 14,
+            "live_vs_package.execution_outcome.match": 13,
             "live_vs_package.execution_outcome.not_comparable": 1,
             "live_vs_package.execution_outcome.not_exercised": 2,
-            "live_vs_package.execution_provenance.match": 14,
+            "live_vs_package.execution_provenance.match": 13,
             "live_vs_package.graph_hash.not_comparable": 1,
             "live_vs_serialized.binding.match": 34,
             "live_vs_serialized.capability_present.match": 34,
@@ -1654,8 +1654,8 @@
           "id": "executionCorrectness",
           "stage": "execution",
           "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-          "numerator": 19,
-          "denominator": 19,
+          "numerator": 18,
+          "denominator": 18,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1666,15 +1666,15 @@
           "id": "executionProvenanceAgreement",
           "stage": "execution",
           "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-          "numerator": 16,
-          "denominator": 16,
+          "numerator": 15,
+          "denominator": 15,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "state.match": 16,
+            "state.match": 15,
             "state.not_exercised": 3
           }
         },
@@ -2153,11 +2153,6 @@
         },
         {
           "id": "det-notify-deadline-missed",
-          "dimension": "execution",
-          "outcome": "passed"
-        },
-        {
-          "id": "det-notify-verb-capability",
           "dimension": "execution",
           "outcome": "passed"
         },
@@ -3665,10 +3660,10 @@
         }
       },
       "fingerprints": {
-        "compile": "4b54ae8b4720ed21",
-        "capabilities": "36776cc6e5380c66",
+        "compile": "623167f3fa5546c0",
+        "capabilities": "2e005b128a33dea2",
         "workflows": "cf4e40f69eb1ba66",
-        "execution": "be73017e79523202"
+        "execution": "0c902a386273f202"
       },
       "observed": {
         "nodeCountsByKind": {

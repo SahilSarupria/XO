@@ -83,7 +83,7 @@ test('REAL pipeline, exact expectations: the synthetic claim-rules document is e
           {
             id: 'over',
             kind: 'capability',
-            target: { equals: 'Claim Assessment' },
+            target: { equals: 'Deny The Claim' },
             input: { claim_assessment_amount: 15000 },
             expect: { outcome: 'succeeded', output: { matched: true, outcome: 'deny the claim' } },
           },

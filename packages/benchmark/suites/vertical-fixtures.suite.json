@@ -163,7 +163,7 @@
           "id": "over-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -180,7 +180,7 @@
           "id": "at-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -196,7 +196,7 @@
           "id": "below-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -1368,22 +1368,6 @@
           },
           "input": {
             "claim_amount": "lots"
-          }
-        },
-        {
-          "id": "det-notify-verb-capability",
-          "kind": "capability",
-          "target": {
-            "equals": "Notify the Insurer of a loss within"
-          },
-          "expect": {
-            "outcome": "succeeded",
-            "output": {
-              "matched": true
-            }
-          },
-          "input": {
-            "becoming_aware_loss": 3
           }
         },
         {

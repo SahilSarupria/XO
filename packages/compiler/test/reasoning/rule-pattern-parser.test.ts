@@ -473,3 +473,18 @@ test('clause number: provenance offsets still cover the ORIGINAL numbered senten
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]!.condition, 'the claim amount exceeds INR 10,000');
 });
+
+test('an explicit IF/THEN rule keeps the pattern confidence in the extractor even when its paragraph is classified weakly', async () => {
+  const { compileSources } = await import('../../src/pipeline/compile-sources.js');
+  const r = await compileSources([
+    {
+      kind: 'document',
+      text: '# Rules\n\n## Claim Assessment\n\nIf the claim assessment amount exceeds 10000, then deny the claim.',
+      sourcePath: 'r.md',
+    },
+  ]);
+  assert.ok(r.ok);
+  const rule = r.value.graph.allNodes().find((n) => n.kind === 'decision_node');
+  assert.ok(rule);
+  assert.equal(rule.metadata.confidence, 0.8);
+});

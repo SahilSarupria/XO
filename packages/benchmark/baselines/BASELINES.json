@@ -54,7 +54,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "8aa29895b30a46302bced0e0348934d8074f0fc0329e447866218c3e3b2d7e2f",
+      "reportSha256": "6a9b7431e4a093584ca057cea0c2afbbb9a4d1803cc40e36a4c007b098befd01",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -118,7 +118,7 @@
               "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
             }
           ],
-          "expectationsFingerprint": "754a88e1ff8edd61",
+          "expectationsFingerprint": "314740b17040053f",
           "goldenState": "recorded"
         },
         {
@@ -174,7 +174,7 @@
               "sha256": "3d6e8087f6dd3ea7330427827c79c0343481b761fa1a249b3c238cda4496acac"
             }
           ],
-          "expectationsFingerprint": "e3f18bb648927dce",
+          "expectationsFingerprint": "0a3003db9bfe87de",
           "goldenState": "recorded"
         }
       ],
@@ -190,7 +190,7 @@
         },
         {
           "step": "CR WS1 recall refresh",
-          "note": "accepted baseline refreshed from 5e741c155cc8 to 8aa29895b30a; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
+          "note": "accepted baseline refreshed from 5e741c155cc8 to 6a9b7431e4a0; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
         }
       ]
     },
@@ -428,13 +428,31 @@
         {
           "caseId": "commercial-property-policy",
           "stage": "execution",
-          "reason": "CR WS1 recall: the new executable (normalised) rule capabilities add executions/workflows to this case's output; every metric value is unchanged",
+          "reason": "CR WS1 recall: new executable (normalised) rule capabilities add executions and workflows to this case's output; every metric value that moved is covered by the declared golden change",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
         },
         {
           "caseId": "commercial-property-policy",
           "stage": "workflows",
-          "reason": "CR WS1 recall: the new executable (normalised) rule capabilities add executions/workflows to this case's output; every metric value is unchanged",
+          "reason": "CR WS1 recall: new executable (normalised) rule capabilities add executions and workflows to this case's output; every metric value that moved is covered by the declared golden change",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "compile",
+          "reason": "CR WS1 recall: explicit IF/THEN rules whose condition parses in the runtime grammar keep their pattern confidence (0.8) instead of the paragraph classifier's; node confidence changed, no metric moved",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "capabilities",
+          "reason": "CR WS1 recall: explicit IF/THEN rules whose condition parses in the runtime grammar keep their pattern confidence (0.8) instead of the paragraph classifier's; capability confidence changed, no metric moved",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "execution",
+          "reason": "CR WS1 recall / confidence floor: executions are exercised through the rule capability 'Deny The Claim' (0.8) instead of the heading bundle (0.65, below the 0.7 floor); declared golden change",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
         }
       ],
@@ -475,7 +493,7 @@
         {
           "caseId": "commercial-property-policy",
           "fromFingerprint": "fc7333250a689842",
-          "toFingerprint": "754a88e1ff8edd61",
+          "toFingerprint": "314740b17040053f",
           "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30",
           "affectedMetrics": [
@@ -488,6 +506,17 @@
             "semanticRecall"
           ],
           "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (every affected metric improved; none regressed)"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "fromFingerprint": "e3f18bb648927dce",
+          "toFingerprint": "0a3003db9bfe87de",
+          "reason": "the CRD-02 confidence floor (0.7) is enforced on every automated execution path. The heading-derived 'Claim Assessment' bundle capability scores 0.65 and is now refused, so the rule is exercised through its real rule capability 'Deny The Claim' (0.8, grounded explicit IF/THEN). Same inputs, same expected outputs.",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh (confidence-floor merge); the heading bundle remains in the capabilities golden",
+          "affectedMetrics": [
+            "executionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (no metric regressed)"
         }
       ],
       "history": [

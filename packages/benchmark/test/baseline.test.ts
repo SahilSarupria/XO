@@ -492,6 +492,7 @@ test('the declared golden changes in the manifest match the Step 3 / Step 4 hist
     'commercial-property-policy',
     'openapi-operation-data-flow',
     'structured-operation-data-flow',
+    'synthetic-claim-rules',
   ]);
   for (const g of e.declaredGoldenChanges) {
     assert.equal(expectationsFingerprint(l.suite.cases.find((c) => c.caseId === g.caseId)!), g.toFingerprint, g.caseId);
@@ -557,7 +558,7 @@ test('AUDIT (historical): every difference between each historical baseline and 
       version: out['vertical-fixtures']!.counts['evaluation_version_change'],
       repr: out['vertical-fixtures']!.counts['representation_only'],
     },
-    { added: 26, golden: 11, drift: 10, version: 1, repr: 7 },
+    { added: 26, golden: 12, drift: 13, version: 1, repr: 7 },
   );
 });
 

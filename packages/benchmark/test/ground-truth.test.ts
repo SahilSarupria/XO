@@ -199,8 +199,8 @@ test('historical expectations are unchanged except the recorded corrections: Ste
   const movedSincePost3 = suite.cases.filter((c) => expectationsFingerprint(c) !== POST_STEP3[c.caseId]).map((c) => c.caseId);
   assert.deepEqual(
     movedSincePost3,
-    ['commercial-property-policy', 'structured-operation-data-flow', 'openapi-operation-data-flow'],
-    'only the two Step 4 cases and, under the CR WS1 recall refresh (normalised deadline rule for clause 4.1), commercial-property-policy moved after Step 3',
+    ['synthetic-claim-rules', 'commercial-property-policy', 'structured-operation-data-flow', 'openapi-operation-data-flow'],
+    'only the two Step 4 cases and, under the CR WS1 recall refresh (normalised executable rules; executions retargeted at confidence-floor-clearing capabilities), synthetic-claim-rules and commercial-property-policy moved after Step 3',
   );
   assert.equal(fp('structured-operation-data-flow'), 'b294e8d762ce826c');
   assert.equal(
