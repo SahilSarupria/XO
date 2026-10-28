@@ -625,6 +625,7 @@ export function WorkspaceView(props: {
           ) : setupView === 'documents' ? (
             <ContextSection
               workspaceId={ws}
+              role={props.workspace.role}
               sources={sources.state}
               compilations={compilations.state.phase === 'ready' ? compilations.state.value : []}
               onChanged={refreshAll}
@@ -670,6 +671,7 @@ export function WorkspaceView(props: {
       {view === 'create' ? (
         <CreateXo
           workspaceId={ws}
+          role={props.workspace.role}
           sources={sources.state}
           compilations={succeeded}
           onChanged={refreshAll}

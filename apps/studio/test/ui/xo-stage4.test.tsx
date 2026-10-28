@@ -116,7 +116,7 @@ describe('Create XO wizard and the inspector for an analysed document', () => {
       new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
     );
     await user.click(await screen.findByRole('radio', { name: /procedure\.pdf/ }));
-    expect(screen.getByText(/pasting a link is not available yet/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Link to a document')).toBeInTheDocument(); // link/text import replaced the placeholder
     await user.click(screen.getByRole('button', { name: 'Continue to Build' }));
     expect(screen.getByRole('button', { name: 'Continue to Test' })).toBeDisabled(); // not analysed yet
     await user.click(screen.getByRole('button', { name: 'Analyse' }));

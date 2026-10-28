@@ -7,6 +7,8 @@ import type { Compilation, Source } from '../platform/wire';
 import { Badge, Button, formatBytes, ProblemNotice, Skeleton, Spinner, useLoad, type LoadState } from './primitives';
 import { useSession } from './session';
 import { useDocuments } from './useDocuments';
+import { AddByLinkOrText } from './AddByLinkOrText';
+import type { WorkspaceRole } from '../platform/wire';
 import '../styles/xo.css';
 
 const STEPS = ['Add sources', 'Build', 'Test', 'Publish'] as const;
@@ -18,6 +20,7 @@ const STEPS = ['Add sources', 'Build', 'Test', 'Publish'] as const;
  */
 export function CreateXo(props: {
   workspaceId: string;
+  role?: WorkspaceRole | undefined;
   sources: LoadState<Source[]>;
   compilations: readonly Compilation[];
   onChanged: () => void;
@@ -111,7 +114,7 @@ export function CreateXo(props: {
             <Button variant="quiet" disabled={docs.uploading} onClick={() => docs.fileInput.current?.click()}>
               {docs.uploading ? 'Uploading…' : 'Drop files, or choose a file'}
             </Button>
-            <p className="muted small">Pasting a link is not available yet.</p>
+            <AddByLinkOrText role={props.role} importLink={docs.importLink} addText={docs.addText} />
           </div>
           {typeof docs.uploadProblem === 'string' ? (
             <div className="notice notice-warning" role="alert">
@@ -134,7 +137,11 @@ export function CreateXo(props: {
             <section className="xoi-card" aria-labelledby="cx-do-h">
               <div className="row between">
                 <h2 id="cx-do-h">What this XO can do</h2>
-                {built !== undefined ? <span className="mono muted small">{rules.length} {rules.length === 1 ? 'rule' : 'rules'} found</span> : null}
+                {built !== undefined ? (
+                  <span className="mono muted small">
+                    {rules.length} {rules.length === 1 ? 'rule' : 'rules'} found
+                  </span>
+                ) : null}
               </div>
               {docs.analysing !== undefined ? <Spinner label="Analysing" /> : null}
               {docs.analysisFailure !== undefined ? (
@@ -197,8 +204,8 @@ export function CreateXo(props: {
                 {counts.approved} approved · {counts.readyForReview} ready for review · {counts.needsAttention} need more information
               </p>
               <p className="muted small">
-                You approve every rule before a workflow may use it. Nothing is approved for you. Running test cases against this XO is not available yet; the chat
-                gives fixed preview replies.
+                You approve every rule before a workflow may use it. Nothing is approved for you. Running test cases against this XO is not
+                available yet; the chat gives fixed preview replies.
               </p>
               <div className="row">
                 <Button variant="secondary" onClick={() => props.goTo('rules')}>
@@ -215,7 +222,8 @@ export function CreateXo(props: {
             <section className="xoi-card">
               <h2>Publish</h2>
               <p className="notice notice-info small">
-                Not available yet. Publishing needs a signed .xo package, and Studio cannot package or sign. Your XO stays in this workspace.
+                Not available yet. Publishing needs a signed .xo package, and Studio cannot package or sign. Your XO stays in this
+                workspace.
               </p>
               {built !== undefined ? (
                 <Button variant="primary" onClick={() => props.onOpenXo(built.compilationId)}>

@@ -14,16 +14,19 @@ import {
 } from './primitives';
 import { useSession } from './session';
 import { useDocuments } from './useDocuments';
+import { AddByLinkOrText } from './AddByLinkOrText';
+import type { WorkspaceRole } from '../platform/wire';
 
 export function ContextSection(props: {
   workspaceId: string;
+  role?: WorkspaceRole | undefined;
   sources: LoadState<Source[]>;
   compilations: Compilation[];
   onChanged: () => void;
   onAnalysed: (c: Compilation) => void;
 }) {
   const { mode } = useSession();
-  const { fileInput, uploading, uploadProblem, analysing, analysisFailure, onFiles, analyse } = useDocuments(props);
+  const { fileInput, uploading, uploadProblem, analysing, analysisFailure, onFiles, analyse, importLink, addText } = useDocuments(props);
 
   const sources = props.sources.phase === 'ready' ? props.sources.value : [];
   const latestBySource = new Map<string, Compilation>();
@@ -54,6 +57,7 @@ export function ContextSection(props: {
       }
     >
       <p className="muted small">Uploaded files are treated as untrusted data: they are stored, hashed and read — never run.</p>
+      <AddByLinkOrText role={props.role} importLink={importLink} addText={addText} />
       {typeof uploadProblem === 'string' ? (
         <div className="notice notice-warning" role="alert">
           {uploadProblem}
