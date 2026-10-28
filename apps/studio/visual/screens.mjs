@@ -9,6 +9,8 @@ import { SYNTHETIC, TIMEOUTS, VIEWPORTS } from './visual.config.mjs';
 
 const wait = { timeout: TIMEOUTS.uiMs };
 
+/** The Inbox has no heading: it is a labelled region with its own title. */
+const inbox = (page) => page.getByRole('region', { name: 'Inbox', exact: true });
 const heading = (page, name, level = 2) => page.getByRole('heading', { level, name, exact: true });
 
 async function settle(page) {
@@ -37,7 +39,7 @@ async function signIn(page, baseUrl, key) {
     throw new InfraError('Studio did not show its sign-in screen.');
   }
   await field.fill(key); // tracing is never enabled, so this value is not recorded anywhere
-  await page.getByRole('button', { name: 'Connect' }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   try {
     await page.locator('.app').waitFor({ state: 'visible', ...wait });
   } catch {
@@ -159,7 +161,7 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
     });
 
     await screen(rec, viewport, 'tasks', page, async () => {
-      await goTo(page, viewport, 'Runs & History', heading(page, 'Tasks'));
+      await goTo(page, viewport, 'Inbox', inbox(page));
       rec.submit(viewport, 'tasks', await shoot(page));
     });
 
@@ -168,7 +170,7 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
       await page.goBack();
       await expectVisible(page, heading(page, 'Workflows'), 'Back to Workflows');
       await page.goForward();
-      await expectVisible(page, heading(page, 'Tasks'), 'Forward to Tasks');
+      await expectVisible(page, inbox(page), 'Forward to Inbox');
     });
 
     if (!mobile) {
@@ -177,7 +179,8 @@ async function populated(browser, baseUrl, keys, viewport, rec) {
         rec.submit(viewport, 'activity', await shoot(page));
       });
       await screen(rec, viewport, 'setup-documents', page, async () => {
-        await goTo(page, viewport, 'Sources', heading(page, 'Context'));
+        // My XOs opens on its Documents view.
+        await goTo(page, viewport, 'My XOs', heading(page, 'Context'));
         rec.submit(viewport, 'setup-documents', await shoot(page));
       });
       await screen(rec, viewport, 'setup-rules', page, async () => {
