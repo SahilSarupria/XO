@@ -9,8 +9,8 @@ import { setDetailLevel } from './nav';
 type U = ReturnType<typeof userEvent.setup>;
 const nav = () => screen.getByRole('navigation', { name: /workspace sections/i });
 
-async function contracts(api: FakeXo): Promise<{ user: U; card: HTMLElement }> {
-  api.publishContract = true;
+async function contracts(api: FakeXo, publish = true): Promise<{ user: U; card: HTMLElement }> {
+  api.publishContract = publish;
   const user = userEvent.setup();
   render(withShell(<App fetchImpl={api.fetch} />));
   await user.type(screen.getByLabelText(/access key/i), api.validKey);
@@ -29,6 +29,14 @@ async function contracts(api: FakeXo): Promise<{ user: U; card: HTMLElement }> {
   await user.click(within(card).getByText('Preview and Test Run', { selector: 'summary' }));
   return { user, card };
 }
+async function fill(user: U, card: HTMLElement, amount = '120', loss = 'fire') {
+  const a = within(card).getByLabelText(/^claim_amount/);
+  await user.clear(a);
+  await user.type(a, amount);
+  const l = within(card).getByLabelText(/^loss/);
+  await user.clear(l);
+  await user.type(l, loss);
+}
 const posts = (api: FakeXo, re: RegExp) => api.calls.filter((c) => c.method === 'POST' && re.test(c.path));
 
 describe('Capability Preview and Test Run', () => {
@@ -36,6 +44,7 @@ describe('Capability Preview and Test Run', () => {
     const api = new FakeXo();
     const { user, card } = await contracts(api);
     expect(within(card).getByRole('button', { name: 'Test Run' })).toBeDisabled();
+    await fill(user, card);
     await user.click(within(card).getByRole('button', { name: 'Preview' }));
     const result = await within(card).findByRole('region', { name: 'Preview result' });
     expect(within(result).getByText('Preview only')).toBeInTheDocument();
@@ -52,6 +61,7 @@ describe('Capability Preview and Test Run', () => {
     const { user, card } = await contracts(api);
     await user.click(within(card).getByRole('button', { name: 'Approve this rule' }));
     await waitFor(() => expect(api.approvals.size).toBe(1));
+    await fill(user, card);
     await user.click(within(card).getByRole('button', { name: 'Preview' }));
     await within(card).findByRole('region', { name: 'Preview result' });
     const run = within(card).getByRole('button', { name: 'Test Run' });
@@ -67,17 +77,18 @@ describe('Capability Preview and Test Run', () => {
     const api = new FakeXo();
     api.approvals.all = true;
     const { user, card } = await contracts(api);
+    await fill(user, card);
     await user.click(within(card).getByRole('button', { name: 'Preview' }));
     await within(card).findByRole('region', { name: 'Preview result' });
     await waitFor(() => expect(within(card).getByRole('button', { name: 'Test Run' })).toBeEnabled());
-    await user.type(within(card).getByLabelText(/Sample input/), ' ');
+    await user.type(within(card).getByLabelText(/^loss/), 'x');
     expect(within(card).getByRole('button', { name: 'Test Run' })).toBeDisabled();
     expect(within(card).getByText(/Preview again to enable a Test Run/)).toBeInTheDocument();
   });
 
-  it('rejects input that is not a JSON object before asking the platform', async () => {
+  it('JSON fallback: with no published contract the input is a JSON box, and rejects non-objects before asking the platform', async () => {
     const api = new FakeXo();
-    const { user, card } = await contracts(api);
+    const { user, card } = await contracts(api, false);
     const box = within(card).getByLabelText(/Sample input/);
     await user.clear(box);
     await user.click(box);
@@ -100,8 +111,22 @@ describe('Capability Preview and Test Run', () => {
     api.studio.role = 'viewer';
     api.studio.reportedRole = 'admin';
     const { user, card } = await contracts(api);
+    await fill(user, card);
     await user.click(within(card).getByRole('button', { name: 'Preview' }));
     expect(await within(card).findByRole('alert')).toBeInTheDocument();
     expect(within(card).queryByRole('region', { name: 'Preview result' })).not.toBeInTheDocument();
+  });
+
+  it('generates a form from the published contract, checks required details locally, and sends only typed values', async () => {
+    const api = new FakeXo();
+    const { user, card } = await contracts(api);
+    expect(within(card).queryByLabelText(/Sample input/)).not.toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Preview' }));
+    expect(within(card).getAllByRole('alert').length).toBe(2); // claim_amount and loss are required
+    expect(posts(api, /\/preview$/)).toHaveLength(0);
+    await fill(user, card, '120.5', 'fire');
+    await user.click(within(card).getByRole('button', { name: 'Preview' }));
+    await within(card).findByRole('region', { name: 'Preview result' });
+    expect(posts(api, /\/preview$/)).toHaveLength(1);
   });
 });

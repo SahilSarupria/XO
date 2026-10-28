@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { can, whyNot } from '../domain/access';
+import { buildInputFromContract } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Execution, WorkspaceRole } from '../platform/wire';
 import type { CapabilityPreview } from '../platform/wire-studio';
+import { ContractFields } from './ContractFields';
 import { Badge, Button, ProblemNotice } from './primitives';
 import { ExecutionOutcome } from './runs';
 import { useSession } from './session';
@@ -32,26 +34,47 @@ export function CapabilityTestPanel(props: {
 }) {
   const { client } = useSession();
   const { cap } = props;
+  const contract = cap.inputContract;
   const [text, setText] = useState('{}');
+  const [values, setValuesState] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<{ result: CapabilityPreview; forInput: string } | undefined>();
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [busy, setBusy] = useState<'preview' | 'approve' | 'run' | undefined>();
   const [ran, setRan] = useState<Execution | undefined>();
-  const parsed = parseInput(text);
+  // With a published contract the form is the input; the key identifies exactly what a preview was run for.
+  const built = contract !== undefined ? buildInputFromContract(contract, values) : undefined;
+  const parsed: ReturnType<typeof parseInput> =
+    contract === undefined
+      ? parseInput(text)
+      : built !== undefined && built.ok
+        ? { ok: true, input: built.input }
+        : { ok: false, error: 'Fill in the required details.' };
+  const inputKey = parsed.ok ? JSON.stringify(parsed.input) : undefined;
+  const setValue = (name: string, v: string) => {
+    setValuesState((cur) => ({ ...cur, [name]: v }));
+    setFieldErrors((cur) => {
+      const { [name]: _drop, ...rest } = cur;
+      return rest;
+    });
+  };
   const canAuthor = can(props.role, 'author');
   const canReview = can(props.role, 'review');
-  const fresh = preview !== undefined && preview.forInput === text;
+  const fresh = preview !== undefined && inputKey !== undefined && preview.forInput === inputKey;
   const approved = cap.approved || preview?.result.approved === true;
   const runnable = fresh && preview.result.approved && preview.result.testRunAllowed && parsed.ok;
 
   async function doPreview() {
-    if (!parsed.ok) return;
+    if (!parsed.ok) {
+      if (built !== undefined && !built.ok) setFieldErrors({ ...built.errors });
+      return;
+    }
     setBusy('preview');
     setProblem(undefined);
     setRan(undefined);
     const r = await client.previewCapability(props.workspaceId, props.compilationId, cap.capabilityId, parsed.input);
     setBusy(undefined);
-    if (r.ok) setPreview({ result: r.value, forInput: text });
+    if (r.ok) setPreview({ result: r.value, forInput: JSON.stringify(parsed.input) });
     else setProblem(r.problem);
   }
   async function approve() {
@@ -80,18 +103,28 @@ export function CapabilityTestPanel(props: {
   return (
     <div className="run-panel" aria-label={`Preview and Test Run for ${cap.name}`}>
       <h4>Preview and Test Run</h4>
-      <label htmlFor={`${id}-input`}>Sample input (JSON object)</label>
-      <textarea id={`${id}-input`} rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-invalid={!parsed.ok} />
-      {!parsed.ok ? (
-        <p className="danger-text small" role="alert">
-          {parsed.error}
-        </p>
-      ) : null}
+      {contract !== undefined ? (
+        <>
+          <p className="muted small">Details this rule takes, from its published input contract. The platform still checks them.</p>
+          <ContractFields contract={contract} idPrefix={id} values={values} errors={fieldErrors} onChange={setValue} />
+        </>
+      ) : (
+        <>
+          <p className="muted small">This rule has no published input contract, so the input is a JSON object the platform will check.</p>
+          <label htmlFor={`${id}-input`}>Sample input (JSON object)</label>
+          <textarea id={`${id}-input`} rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-invalid={!parsed.ok} />
+          {!parsed.ok ? (
+            <p className="danger-text small" role="alert">
+              {parsed.error}
+            </p>
+          ) : null}
+        </>
+      )}
       <div className="row">
         <Button
           variant="secondary"
           pending={busy === 'preview'}
-          disabled={!parsed.ok || !canAuthor || busy !== undefined}
+          disabled={(contract === undefined && !parsed.ok) || !canAuthor || busy !== undefined}
           onClick={() => void doPreview()}
         >
           Preview

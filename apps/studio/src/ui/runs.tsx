@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { can, whyNot } from '../domain/access';
 import { normalizeNote } from '../domain/work';
+import { ContractFields } from './ContractFields';
 import { NoteField } from './NoteField';
 import { buildInputFromContract, coerceFieldValue, describeExecution, suggestedFieldsFromFailure } from '../domain/review';
 import type { ApiProblem } from '../platform/client';
@@ -130,9 +131,6 @@ export function RunPanel(props: RunPanelProps) {
 function GuidedRunPanel(props: RunPanelProps & { contract: InputContract }) {
   const { client } = useSession();
   const { contract } = props;
-  const names = Object.keys(contract.properties).sort(
-    (a, b) => Number(contract.required.includes(b)) - Number(contract.required.includes(a)) || a.localeCompare(b),
-  );
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -160,49 +158,13 @@ function GuidedRunPanel(props: RunPanelProps & { contract: InputContract }) {
       <p className="notice notice-info small">
         These are the details XO says this rule takes. XO still checks them when you run, and tells you if anything is wrong.
       </p>
-      {names.length === 0 ? <p className="small">This rule takes no details.</p> : null}
-      {names.map((name) => {
-        const def = contract.properties[name]!;
-        const required = contract.required.includes(name);
-        const id = `contract-${props.capabilityId}-${name}`;
-        const err = errors[name];
-        return (
-          <div className="field" key={name}>
-            <label htmlFor={id}>
-              {name}{' '}
-              <span className="muted small">
-                · {required ? 'required' : 'optional'} · {def.type === 'boolean' ? 'true or false' : def.type}
-              </span>
-            </label>
-            {def.type === 'boolean' ? (
-              <select
-                id={id}
-                value={values[name] ?? ''}
-                onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
-                aria-invalid={err !== undefined}
-              >
-                <option value="">{required ? 'Choose…' : 'Not set'}</option>
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-            ) : (
-              <input
-                id={id}
-                value={values[name] ?? ''}
-                inputMode={def.type === 'number' ? 'decimal' : 'text'}
-                onChange={(e) => setValues((v) => ({ ...v, [name]: e.target.value }))}
-                aria-invalid={err !== undefined}
-                aria-describedby={err !== undefined ? `${id}-err` : undefined}
-              />
-            )}
-            {err !== undefined ? (
-              <p id={`${id}-err`} className="danger-text small" role="alert">
-                {err}
-              </p>
-            ) : null}
-          </div>
-        );
-      })}
+      <ContractFields
+        contract={contract}
+        idPrefix={`contract-${props.capabilityId}`}
+        values={values}
+        errors={errors}
+        onChange={(name, value) => setValues((v) => ({ ...v, [name]: value }))}
+      />
       <div className="row">
         <Button variant="primary" disabled={busy} onClick={() => void run()}>
           {busy ? 'Running…' : 'Run'}
