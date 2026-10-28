@@ -346,6 +346,7 @@ export function WorkspaceView(props: {
                 <WorkflowEditor
                   key={wf.workflowId}
                   workspaceId={ws}
+                  role={props.workspace.role}
                   workflows={workflowList}
                   workflow={wf}
                   onSelectWorkflow={setSelectedWorkflow}

@@ -17,7 +17,10 @@ async function analysed(api: FakeXo): Promise<U> {
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
   await user.click(screen.getByRole('button', { name: /^my xos/i }));
-  await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }));
+  await user.upload(
+    document.getElementById('file-upload') as HTMLInputElement,
+    new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
+  );
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   return user;
@@ -42,10 +45,10 @@ describe('Workflow graph', () => {
     expect(screen.getByRole('button', { name: /^workflows$/i, hidden: false })).toBeInTheDocument(); // breadcrumb back
   });
 
-  it('shows what is not available as unavailable: save, adding nodes, memory scope, editing', async () => {
+  it('shows what is not available as unavailable: adding nodes, memory scope, node editing; Save is real', async () => {
     const user = await analysed(new FakeXo());
     await openGraph(user);
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(); // saves a draft copy
     const palette = screen.getByRole('complementary', { name: 'Node palette' });
     for (const name of ['Document dropped', 'Schedule', 'Branch', 'Human review', 'Webhook / Email'])
       expect(within(palette).getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
@@ -86,7 +89,9 @@ describe('Workflow graph', () => {
     await openGraph(user);
     expect(await screen.findByText('Ready')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /run/i }));
-    await waitFor(() => expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1));
+    await waitFor(() =>
+      expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1),
+    );
     const start = api.calls.find((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))!;
     expect(start.headers?.['Idempotency-Key']).toBeTruthy();
   });

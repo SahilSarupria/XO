@@ -5,7 +5,11 @@ import { latestExecutionByCapability } from '../domain/review';
 import type { Capability, Execution, Workflow, WorkflowRun } from '../platform/wire';
 import type { XoItem } from '../domain/xo';
 import { ActionNoticeView } from './actions';
+import { can } from '../domain/access';
+import type { WorkspaceRole } from '../platform/wire';
 import { Badge, Button, EmptyState } from './primitives';
+import { useWorkflowDraft } from './useWorkflowDraft';
+import { WorkflowDraftPanel } from './WorkflowDraftPanel';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
 import { ExecutionsPane } from './ExecutionsPane';
@@ -49,9 +53,10 @@ export function WorkflowBar(props: {
   );
 }
 
-/** Read-only workflow graph with the node palette and an inspector. Editing, saving and branching are not available yet. */
+/** Read-only workflow graph with the node palette and an inspector, plus a saveable draft copy. Editing nodes and running drafts are not available. */
 export function WorkflowEditor(props: {
   workspaceId: string;
+  role?: WorkspaceRole | undefined;
   workflows: readonly Workflow[];
   workflow: Workflow;
   onSelectWorkflow: (id: string) => void;
@@ -69,6 +74,7 @@ export function WorkflowEditor(props: {
 }) {
   const { mode } = useSession();
   const w = props.workflow;
+  const draft = useWorkflowDraft(props.workspaceId, w, props.caps);
   const { start, busy, notice, ready, active } = useStartWorkflow({ ...props, workflow: w });
   const status = workflowStatus({
     executable: w.executable,
@@ -84,9 +90,14 @@ export function WorkflowEditor(props: {
 
   const actions = (
     <>
-      <button type="button" className="btn btn-secondary" aria-disabled="true" title="Editing is not available yet, so there is nothing to save">
+      <Button
+        variant="secondary"
+        pending={draft.saving}
+        disabled={!can(props.role, 'author') || draft.name.trim() === ''}
+        onClick={() => void draft.save()}
+      >
         Save
-      </button>
+      </Button>
       <Button
         variant="primary"
         pending={busy}
@@ -101,12 +112,23 @@ export function WorkflowEditor(props: {
 
   return (
     <div className="wf">
-      <WorkflowBar workflow={w} tab={props.tab} onTab={props.onTab} onBack={props.onBack} status={status} actions={props.tab === 'executions' ? undefined : actions} />
+      <WorkflowBar
+        workflow={w}
+        tab={props.tab}
+        onTab={props.onTab}
+        onBack={props.onBack}
+        status={status}
+        actions={props.tab === 'executions' ? undefined : actions}
+      />
       <div className="wf-notes" id="wf-run-why" hidden={props.tab === 'executions'}>
         {active !== undefined ? (
           <p className="small">
             {describeRun(active).summary}{' '}
-            <button type="button" className="chat-link" onClick={active.status === 'waiting_for_human' || active.status === 'interrupted' ? props.goToTasks : props.goToActivity}>
+            <button
+              type="button"
+              className="chat-link"
+              onClick={active.status === 'waiting_for_human' || active.status === 'interrupted' ? props.goToTasks : props.goToActivity}
+            >
               {active.status === 'waiting_for_human' || active.status === 'interrupted' ? 'Continue in Inbox' : 'See progress'}
             </button>
           </p>
@@ -120,61 +142,95 @@ export function WorkflowEditor(props: {
       ) : props.tab === 'settings' ? (
         <WorkflowSettings workflow={w} workflows={props.workflows} onSelectWorkflow={props.onSelectWorkflow} builder={mode === 'builder'} />
       ) : (
-        <div className="wf-editor">
-          <Palette caps={props.caps} workflow={w} onPick={(capabilityId) => setSelectedId(layout.nodes.find((n) => n.capabilityId === capabilityId)?.id)} />
-          <section className="wf-canvas" aria-label="Workflow graph">
-            {layout.nodes.length === 0 ? (
-              <EmptyState title="This process has no steps">XO did not compose any steps for it.</EmptyState>
-            ) : (
-              <div className="wf-scroll">
-                <div className="wf-stage" style={{ width: layout.width * zoom, height: layout.height * zoom }}>
-                  <div style={{ width: layout.width, height: layout.height, transform: `scale(${zoom})`, transformOrigin: '0 0', position: 'relative' }}>
-                    <svg className="wf-edges" width={layout.width} height={layout.height} aria-hidden="true">
-                      {layout.edges.map((e) => (
-                        <path key={e.id} d={e.path} />
-                      ))}
-                    </svg>
-                    <ol className="wf-nodes" aria-label="Steps in the order they run">
-                      {layout.nodes.map((n) => (
-                        <li key={n.id} style={{ left: n.x, top: n.y, width: NODE_W, height: NODE_H }}>
-                          <button
-                            type="button"
-                            className="wf-node"
-                            data-kind={n.kind}
-                            aria-pressed={selected?.id === n.id}
-                            onClick={() => setSelectedId(n.id)}
-                          >
-                            <span className="wf-dot" aria-hidden="true" />
-                            <span className="wf-node-name" title={n.name}>{tidyName(n.name, 40)}</span>
-                            <span className="wf-node-sub">{n.kind === 'human' ? 'person decides' : 'capability'}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
+        <>
+          <div className="wf-editor">
+            <Palette
+              caps={props.caps}
+              workflow={w}
+              onPick={(capabilityId) => setSelectedId(layout.nodes.find((n) => n.capabilityId === capabilityId)?.id)}
+            />
+            <section className="wf-canvas" aria-label="Workflow graph">
+              {layout.nodes.length === 0 ? (
+                <EmptyState title="This process has no steps">XO did not compose any steps for it.</EmptyState>
+              ) : (
+                <div className="wf-scroll">
+                  <div className="wf-stage" style={{ width: layout.width * zoom, height: layout.height * zoom }}>
+                    <div
+                      style={{
+                        width: layout.width,
+                        height: layout.height,
+                        transform: `scale(${zoom})`,
+                        transformOrigin: '0 0',
+                        position: 'relative',
+                      }}
+                    >
+                      <svg className="wf-edges" width={layout.width} height={layout.height} aria-hidden="true">
+                        {layout.edges.map((e) => (
+                          <path key={e.id} d={e.path} />
+                        ))}
+                      </svg>
+                      <ol className="wf-nodes" aria-label="Steps in the order they run">
+                        {layout.nodes.map((n) => (
+                          <li key={n.id} style={{ left: n.x, top: n.y, width: NODE_W, height: NODE_H }}>
+                            <button
+                              type="button"
+                              className="wf-node"
+                              data-kind={n.kind}
+                              aria-pressed={selected?.id === n.id}
+                              onClick={() => setSelectedId(n.id)}
+                            >
+                              <span className="wf-dot" aria-hidden="true" />
+                              <span className="wf-node-name" title={n.name}>
+                                {tidyName(n.name, 40)}
+                              </span>
+                              <span className="wf-node-sub">{n.kind === 'human' ? 'person decides' : 'capability'}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
                   </div>
                 </div>
+              )}
+              <div className="wf-zoom">
+                <button
+                  type="button"
+                  className="wf-zbtn"
+                  aria-label="Zoom in"
+                  onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.2).toFixed(1)))}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  className="wf-zbtn"
+                  aria-label="Zoom out"
+                  onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.2).toFixed(1)))}
+                >
+                  −
+                </button>
+                <button type="button" className="wf-zbtn wf-fit" onClick={() => setZoom(1)}>
+                  Fit
+                </button>
+                <span className="wf-count">
+                  {layout.nodes.length} {layout.nodes.length === 1 ? 'node' : 'nodes'}
+                </span>
+                <span className="wf-count" title="Nodes cannot be edited yet; Save stores a draft copy">
+                  Read-only
+                </span>
               </div>
-            )}
-            <div className="wf-zoom">
-              <button type="button" className="wf-zbtn" aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.2).toFixed(1)))}>
-                +
-              </button>
-              <button type="button" className="wf-zbtn" aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.2).toFixed(1)))}>
-                −
-              </button>
-              <button type="button" className="wf-zbtn wf-fit" onClick={() => setZoom(1)}>
-                Fit
-              </button>
-              <span className="wf-count">
-                {layout.nodes.length} {layout.nodes.length === 1 ? 'node' : 'nodes'}
-              </span>
-              <span className="wf-count" title="Editing, saving and branching are not available yet">
-                Read-only
-              </span>
-            </div>
-          </section>
-          <Inspector node={selected} caps={props.caps} executions={props.executions} workflow={w} xoLabel={xo?.label} builder={mode === 'builder'} />
-        </div>
+            </section>
+            <Inspector
+              node={selected}
+              caps={props.caps}
+              executions={props.executions}
+              workflow={w}
+              xoLabel={xo?.label}
+              builder={mode === 'builder'}
+            />
+          </div>
+          <WorkflowDraftPanel draft={draft} role={props.role} />
+        </>
       )}
     </div>
   );
@@ -277,7 +333,12 @@ function Inspector(props: {
   );
 }
 
-function WorkflowSettings(props: { workflow: Workflow; workflows: readonly Workflow[]; onSelectWorkflow: (id: string) => void; builder: boolean }) {
+function WorkflowSettings(props: {
+  workflow: Workflow;
+  workflows: readonly Workflow[];
+  onSelectWorkflow: (id: string) => void;
+  builder: boolean;
+}) {
   const w = props.workflow;
   return (
     <div className="wf-settings">
