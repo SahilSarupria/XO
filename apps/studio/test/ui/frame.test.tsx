@@ -97,6 +97,9 @@ describe('app frame', () => {
     expect(within(list).getAllByRole('listitem')).toHaveLength(1);
     expect(within(list).getByText('Current')).toBeInTheDocument();
     expect(within(list).queryByRole('button', { name: /^open/i })).not.toBeInTheDocument();
+    expect(within(list).getByText('Your role:')).toBeInTheDocument();
+    expect(within(list).getByText('Members:')).toBeInTheDocument();
+    expect(within(list).queryByText('Declared region:')).not.toBeInTheDocument(); // none declared, so nothing is invented
     await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'New workspace' }));
     expect(await screen.findByLabelText(/workspace name/i)).toBeInTheDocument();
   });

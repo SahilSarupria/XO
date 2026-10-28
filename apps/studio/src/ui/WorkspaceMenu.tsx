@@ -4,6 +4,8 @@ import type { Mode } from './session';
 export interface MenuWorkspace {
   readonly id: string;
   readonly name: string;
+  /** The caller's role there, shown as a hint beside the name. */
+  readonly role?: string;
 }
 
 /**
@@ -86,7 +88,14 @@ export function WorkspaceMenu(props: {
         </span>
       </button>
       {open ? (
-        <div ref={menu} className="ws-menu" role="menu" aria-label="Workspace menu" style={{ left: pos.left, bottom: pos.bottom }} onKeyDown={onKey}>
+        <div
+          ref={menu}
+          className="ws-menu"
+          role="menu"
+          aria-label="Workspace menu"
+          style={{ left: pos.left, bottom: pos.bottom }}
+          onKeyDown={onKey}
+        >
           <p className="ws-menu-label" aria-hidden="true">
             Workspaces
           </p>
@@ -103,6 +112,12 @@ export function WorkspaceMenu(props: {
                 {w.id === props.activeId ? '✓' : ''}
               </span>
               {w.name}
+              {w.role !== undefined ? (
+                <span className="muted small" aria-hidden="true">
+                  {' '}
+                  · {w.role}
+                </span>
+              ) : null}
             </button>
           ))}
           <button type="button" role="menuitem" className="ws-menu-item" onClick={run(props.onNew)}>
@@ -119,7 +134,14 @@ export function WorkspaceMenu(props: {
             Detail level
           </p>
           {(['user', 'builder'] as const).map((m) => (
-            <button key={m} type="button" role="menuitemradio" aria-checked={props.mode === m} className="ws-menu-item" onClick={run(() => props.onMode(m))}>
+            <button
+              key={m}
+              type="button"
+              role="menuitemradio"
+              aria-checked={props.mode === m}
+              className="ws-menu-item"
+              onClick={run(() => props.onMode(m))}
+            >
               <span className="ws-menu-tick" aria-hidden="true">
                 {props.mode === m ? '✓' : ''}
               </span>

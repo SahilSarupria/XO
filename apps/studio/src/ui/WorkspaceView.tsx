@@ -34,6 +34,7 @@ import { AuditScreen } from './AuditScreen';
 import { SettingsScreen, type Tab as SettingsTab } from './SettingsScreen';
 import { ChatScreen } from './ChatScreen';
 import { WorkflowEditor } from './WorkflowScreen';
+import { roleLabel } from '../domain/access';
 import { useChat } from './useChat';
 import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
@@ -275,7 +276,11 @@ export function WorkspaceView(props: {
       <div className="nav-spacer" />
       <WorkspaceMenu
         name={props.workspace.name ?? 'Untitled workspace'}
-        workspaces={props.workspaces.map((w) => ({ id: w.workspaceId, name: w.name ?? 'Untitled workspace' }))}
+        workspaces={props.workspaces.map((w) => ({
+          id: w.workspaceId,
+          name: w.name ?? 'Untitled workspace',
+          ...(w.role !== undefined ? { role: roleLabel(w.role) } : {}),
+        }))}
         activeId={ws}
         mode={mode}
         settingsCurrent={view === 'settings'}

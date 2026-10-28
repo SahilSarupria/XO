@@ -1,3 +1,4 @@
+import { roleLabel } from '../domain/access';
 import type { Workspace } from '../platform/wire';
 import { Badge, Button, EmptyState, formatWhen, Section } from './primitives';
 
@@ -37,6 +38,14 @@ export function WorkspacesSection(props: {
                     {active ? <Badge tone="accent">Current</Badge> : null}
                   </div>
                   <p className="muted small">Created {formatWhen(w.createdAt)}</p>
+                  <dl className="muted small" aria-label={`${name} details`}>
+                    {w.kind !== undefined ? <WsFact label="Type" value={w.kind === 'personal' ? 'Personal (one person)' : 'Team'} /> : null}
+                    {w.region !== undefined || w.regionLabel !== undefined ? (
+                      <WsFact label="Declared region" value={w.regionLabel ?? w.region ?? ''} />
+                    ) : null}
+                    {w.memberCount !== undefined ? <WsFact label="Members" value={String(w.memberCount)} /> : null}
+                    {w.role !== undefined ? <WsFact label="Your role" value={roleLabel(w.role)} /> : null}
+                  </dl>
                   {!active ? (
                     <div className="row">
                       <Button variant="secondary" aria-label={`Open ${name}`} onClick={() => props.onSelect(w.workspaceId)}>
@@ -51,5 +60,14 @@ export function WorkspacesSection(props: {
         </ul>
       )}
     </Section>
+  );
+}
+
+function WsFact(props: { label: string; value: string }) {
+  return (
+    <div className="row">
+      <dt>{props.label}:</dt>
+      <dd>{props.value}</dd>
+    </div>
   );
 }
