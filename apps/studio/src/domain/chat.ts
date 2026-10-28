@@ -1,71 +1,12 @@
-import { scriptedReply, type ScriptedReply } from './home';
+import type { ChatSummary } from '../platform/wire-studio';
 
-/**
- * The conversation screen. Replies are fixed, chosen by keyword, and point at real places in Studio (see scriptedReply).
- * The only facts a reply may state are counts the platform actually returned; a reply never says it did something,
- * never produces content about the person's documents, and never claims to have read an attached XO.
- */
-export interface ChatMessage {
-  readonly id: number;
-  readonly from: 'you' | 'xo';
-  readonly text: string;
-  readonly action?: ScriptedReply['action'];
-  /** XOs the person attached to this message (shown as chips; the preview does not read them). */
-  readonly attached?: readonly string[];
-}
-
-export interface ChatThread {
+/** An installed XO that can be attached to a message with "@name". The API takes installed XO names. */
+export interface Attachable {
   readonly id: string;
-  readonly title: string;
-  readonly messages: readonly ChatMessage[];
+  readonly label: string;
 }
 
-/** Counts straight from the platform's lists; undefined = not loaded, so nothing is claimed. */
-export interface ChatFacts {
-  readonly documents: number | undefined;
-  readonly analyses: number | undefined;
-  readonly processes: number | undefined;
-  readonly runs: number | undefined;
-}
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-export function threadTitle(firstMessage: string): string {
-  const t = firstMessage.replace(/\s+/g, ' ').trim();
-  return t.length <= 36 ? t : `${t.slice(0, 35).trimEnd()}…`;
-}
-
-export function chatReply(input: string, facts: ChatFacts, attached: readonly string[] = []): ScriptedReply {
-  const q = input.toLowerCase();
-  const note =
-    attached.length === 0
-      ? ''
-      : ` You attached ${attached.join(', ')}; this preview shows attachments for context only and does not read them.`;
-  if (/(status|summary|overview|what do i have|what have i got)/.test(q)) {
-    const known = [
-      facts.documents !== undefined ? plural(facts.documents, 'document') : undefined,
-      facts.analyses !== undefined ? plural(facts.analyses, 'analysis', 'analyses') : undefined,
-      facts.processes !== undefined ? plural(facts.processes, 'process', 'processes') : undefined,
-      facts.runs !== undefined ? plural(facts.runs, 'recorded run') : undefined,
-    ].filter((x): x is string => x !== undefined);
-    return {
-      text:
-        known.length === 0
-          ? `This workspace has not finished loading, so I cannot count anything yet.${note}`
-          : `This workspace holds ${known.join(', ')}.${note}`,
-    };
-  }
-  if (/(graph|inspect|diagram|steps)/.test(q)) {
-    return { text: `The graph shows a process's steps in the order XO composed them.${note}`, action: { label: 'Open workflow graph', target: 'graph' } };
-  }
-  if (/(create|build|new xo|from scratch)/.test(q)) {
-    return { text: `You can build an XO from your documents step by step.${note}`, action: { label: 'Create an XO', target: 'create' } };
-  }
-  const base = scriptedReply(input);
-  return note === '' ? base : { ...base, text: `${base.text}${note}` };
-}
-
-/** `@bur` -> the XO names that start with it (case-insensitive); only when the caret is inside an @-word. */
+/** `@bur` -> the XO names that contain it (case-insensitive); only when the caret is inside an @-word. */
 export function mentionQuery(text: string): string | undefined {
   const m = /(?:^|\s)@([\w.-]*)$/.exec(text);
   return m === null ? undefined : (m[1] ?? '');
@@ -74,4 +15,44 @@ export function mentionQuery(text: string): string | undefined {
 export function matchXos<T extends { readonly label: string }>(xos: readonly T[], query: string): T[] {
   const q = query.toLowerCase();
   return xos.filter((x) => x.label.toLowerCase().includes(q));
+}
+
+export interface ChatGroup {
+  readonly label: string;
+  readonly threads: readonly ChatSummary[];
+}
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+/** Threads grouped by local calendar day of their last update, newest first: Today, Yesterday, then the date. */
+export function groupByDay(threads: readonly ChatSummary[], now: Date = new Date()): ChatGroup[] {
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const groups = new Map<string, { label: string; threads: ChatSummary[] }>();
+  for (const t of [...threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+    const d = new Date(t.updatedAt);
+    const key = Number.isNaN(d.getTime()) ? 'unknown' : dayKey(d);
+    const label =
+      key === 'unknown'
+        ? 'Earlier'
+        : key === dayKey(now)
+          ? 'Today'
+          : key === dayKey(yesterday)
+            ? 'Yesterday'
+            : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    const g = groups.get(key) ?? { label, threads: [] };
+    g.threads.push(t);
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
+export type ChatHint = 'settings' | 'nothing_saved' | 'gone' | undefined;
+
+/** What to add to the platform's own message for the chat refusals that have a next step. */
+export function chatHint(p: { readonly status?: number }): ChatHint {
+  if (p.status === 412) return 'settings';
+  if (p.status === 502) return 'nothing_saved';
+  if (p.status === 404) return 'gone';
+  return undefined;
 }

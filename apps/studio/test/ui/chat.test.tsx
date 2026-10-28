@@ -1,234 +1,193 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatThread } from '../../src/domain/chat';
-import { ChatScreen } from '../../src/ui/ChatScreen';
+import { ChatComposer, ChatLog } from '../../src/ui/ChatScreen';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
 
 const xos = [
-  { id: 'c1', label: 'burglary-policy', sourceId: 's1', at: '2026-10-01T00:00:00Z' },
-  { id: 'c2', label: 'my-claims-rules', sourceId: 's2', at: '2026-10-02T00:00:00Z' },
+  { id: 'burglary-policy', label: 'burglary-policy' },
+  { id: 'my-claims-rules', label: 'my-claims-rules' },
 ];
-const thread: ChatThread = {
-  id: 't1',
-  title: 'Compile burglary-policy',
-  messages: [
-    { id: 1, from: 'you', text: 'hello' },
-    { id: 2, from: 'xo', text: 'Ask for something.', action: { label: 'Open Tasks', target: 'tasks' } },
-  ],
-};
 
-function Harness(props: { onSend?: (t: string, a: readonly string[]) => void; goTo?: (t: string) => void; threads?: ChatThread[] }) {
-  const [id, setId] = useState<string | undefined>(props.threads?.[0]?.id);
-  return (
-    <ChatScreen
-      threads={props.threads ?? []}
-      activeId={id}
-      onSelect={setId}
-      onNew={() => setId(undefined)}
-      onSend={props.onSend ?? (() => {})}
-      xos={xos}
-      goTo={(props.goTo ?? (() => {})) as never}
-    />
-  );
-}
-
-describe('Chat screen', () => {
-  it('shows the conversation as a polite live log, with replies marked as preview replies', () => {
-    render(<Harness threads={[thread]} />);
+describe('ChatLog and ChatComposer', () => {
+  it('shows saved messages as a polite live log and names the model that answered', () => {
+    render(
+      <ChatLog
+        thread={{
+          threadId: 't1',
+          title: 'Hello',
+          updatedAt: '2026-10-28T10:00:00Z',
+          messageCount: 2,
+          messages: [
+            { messageId: 'm1', role: 'user', content: 'hello', at: '2026-10-28T10:00:00Z', attachedXos: ['burglary-policy'] },
+            {
+              messageId: 'm2',
+              role: 'assistant',
+              content: 'Hi there.',
+              at: '2026-10-28T10:00:01Z',
+              model: { provider: 'anthropic', model: 'test-model' },
+            },
+          ],
+        }}
+      />,
+    );
     const log = screen.getByRole('log', { name: 'Messages' });
     expect(log).toHaveAttribute('aria-live', 'polite');
     expect(within(log).getByText('hello')).toBeInTheDocument();
-    expect(within(log).getByText(/XO preview reply/)).toBeInTheDocument();
-    expect(screen.getByText('Preview')).toBeInTheDocument();
-    expect(screen.getByText('session memory')).toBeInTheDocument();
+    expect(within(log).getByText('@burglary-policy')).toBeInTheDocument();
+    expect(within(log).getByText('Answered by anthropic · test-model')).toBeInTheDocument();
   });
 
-  it('lists only real conversations and real XOs, and is honest that there is no trace', () => {
-    render(<Harness />);
-    expect(screen.getByText('No conversations yet.')).toBeInTheDocument();
-    const ctx = screen.getByRole('complementary', { name: 'Context' });
-    expect(within(ctx).getByText('burglary-policy')).toBeInTheDocument();
-    expect(within(ctx).getByText(/Not available yet/)).toBeInTheDocument();
-    expect(screen.queryByText(/extract|build-xoir|session 1\./i)).not.toBeInTheDocument();
-  });
-
-  it('sends on Enter, keeps Shift+Enter for a new line, and ignores empty messages', async () => {
-    const onSend = vi.fn();
+  it('sends on Enter, keeps Shift+Enter for a new line, ignores empty messages, and clears only after a successful send', async () => {
+    const onSend = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
     const user = userEvent.setup();
-    render(<Harness onSend={onSend} />);
+    render(<ChatComposer xos={xos} onSend={onSend} />);
     const box = screen.getByLabelText('Message');
     await user.type(box, '{enter}');
     expect(onSend).not.toHaveBeenCalled();
     await user.type(box, 'line one{Shift>}{enter}{/Shift}line two{enter}');
     expect(onSend).toHaveBeenCalledWith('line one\nline two', []);
-    expect(box).toHaveValue('');
+    expect(box).toHaveValue('line one\nline two'); // the platform did not save it: the text stays so it can be resent
+    await user.keyboard('{enter}');
+    await waitFor(() => expect(box).toHaveValue(''));
   });
 
-  it('attaches an XO by typing @, shows it as a removable chip, and sends it with the message', async () => {
-    const onSend = vi.fn();
+  it('attaches an installed XO by typing @, shows it as a removable chip, and sends it with the message', async () => {
+    const onSend = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
-    render(<Harness onSend={onSend} />);
+    render(<ChatComposer xos={xos} onSend={onSend} />);
     await user.type(screen.getByLabelText('Message'), 'check this @bur');
     await user.click(within(screen.getByRole('listbox', { name: 'XOs you can attach' })).getByRole('button', { name: '@burglary-policy' }));
     expect(screen.getByRole('button', { name: 'Remove burglary-policy' })).toBeInTheDocument();
     await user.keyboard('{enter}');
     expect(onSend).toHaveBeenCalledWith('check this', ['burglary-policy']);
-    expect(screen.queryByRole('button', { name: 'Remove burglary-policy' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove burglary-policy' })).not.toBeInTheDocument());
   });
 
-  it('a reply action goes to the screen it names', async () => {
-    const goTo = vi.fn();
-    const user = userEvent.setup();
-    render(<Harness threads={[thread]} goTo={goTo} />);
-    await user.click(screen.getByRole('button', { name: 'Open Tasks →' }));
-    expect(goTo).toHaveBeenCalledWith('tasks');
-  });
-
-  it('controls that do nothing yet are announced as unavailable, not left looking live', () => {
-    render(<Harness />);
-    for (const name of ['Attach', 'Ask ▾', 'Runtime ▾']) expect(screen.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
+  it('controls that do nothing are announced as unavailable', () => {
+    render(<ChatComposer xos={xos} onSend={async () => true} />);
+    for (const name of ['Attach', 'Ask ▾', 'Runtime ▾'])
+      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
   });
 });
 
-describe('Chat inside the app', () => {
-  async function home() {
-    const api = new FakeXo();
-    const user = userEvent.setup();
-    render(withShell(<App fetchImpl={api.fetch} />));
-    await user.type(screen.getByLabelText(/access key/i), api.validKey);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
-    await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Claims Ops' });
-    return user;
-  }
+async function home(api: FakeXo) {
+  const user = userEvent.setup();
+  render(withShell(<App fetchImpl={api.fetch} />));
+  await user.type(screen.getByLabelText(/access key/i), api.validKey);
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
+  await user.click(screen.getByRole('button', { name: /create workspace/i }));
+  await screen.findByRole('heading', { name: 'Claims Ops' });
+  return user;
+}
+const posts = (api: FakeXo, re: RegExp) => api.calls.filter((c) => c.method === 'POST' && re.test(c.path));
 
-  it('Home: typing unfolds the conversation from the bar, and Enter gets a fixed preview reply without leaving Home', async () => {
-    const user = await home();
-    const bar = await screen.findByLabelText('Ask XO');
-    await user.type(bar, 'w');
-    expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument(); // opened by typing, before any send
-    await user.type(bar, 'hat do i have{enter}');
-    const panel = screen.getByRole('dialog', { name: 'Ask XO conversation' });
+describe('Ask XO is backed by the platform', () => {
+  it('creates a saved thread on the first message, shows the model that answered, and keeps the conversation after closing', async () => {
+    const api = new FakeXo();
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'what is an XO{enter}');
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
     const log = within(panel).getByRole('log', { name: 'Messages' });
-    expect(within(log).getByText('what do i have')).toBeInTheDocument();
-    expect(await within(log).findByText(/This workspace holds/)).toBeInTheDocument();
-    expect(screen.getAllByText('Preview').length).toBeGreaterThan(0);
+    expect(await within(log).findByText('Here is an answer.')).toBeInTheDocument();
+    expect(within(log).getByText('Answered by anthropic · test-model')).toBeInTheDocument();
+    expect(posts(api, /\/chats$/)).toHaveLength(1);
+    expect(posts(api, /\/messages$/)).toHaveLength(1);
+    expect(within(panel).getByText('Today')).toBeInTheDocument();
+    expect(within(panel).getAllByText(/private to you/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Preview')).not.toBeInTheDocument();
     expect(window.location.hash).not.toBe('#/chat');
-    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('focusing the bar opens the full-screen chat straight away; Close chat returns to the same page with the conversation kept for the Chat screen', async () => {
-    const user = await home();
-    await user.click(await screen.findByLabelText('Ask XO')); // focus alone is enough
-    expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open full chat' })).not.toBeInTheDocument(); // it is already the full chat
-    await user.type(screen.getByLabelText('Ask XO'), 'hello{enter}');
-    const panel = screen.getByRole('dialog', { name: 'Ask XO conversation' });
-    expect(await within(panel).findByRole('log', { name: 'Messages' })).toHaveTextContent('hello');
-    await user.click(within(panel).getByRole('button', { name: /close chat/i }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
-    expect(window.location.hash).not.toBe('#/chat');
-    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+  it('a second message reuses the thread; New chat starts another; a saved thread can be reopened and deleted after confirming', async () => {
+    const api = new FakeXo();
+    const user = await home(api);
+    const bar = await screen.findByLabelText('Ask XO');
+    await user.type(bar, 'first{enter}');
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
+    await within(panel).findByText('Here is an answer.');
+    await user.type(screen.getByLabelText('Ask XO'), 'second{enter}');
+    await waitFor(() => expect(posts(api, /\/messages$/)).toHaveLength(2));
+    expect(posts(api, /\/chats$/)).toHaveLength(1);
+    const side = within(panel).getByRole('navigation', { name: 'Conversations' });
+    await user.click(within(side).getByRole('button', { name: /new chat/i }));
+    await user.type(screen.getByLabelText('Ask XO'), 'other topic{enter}');
+    await waitFor(() => expect(posts(api, /\/chats$/)).toHaveLength(2));
+    await waitFor(() =>
+      expect(
+        within(side)
+          .getAllByRole('button')
+          .filter((b) => b.classList.contains('askdock-thread')),
+      ).toHaveLength(2),
+    );
+    const first = within(side).getByRole('button', { name: 'first' });
+    await user.click(first);
+    expect(await within(panel).findByText('second')).toBeInTheDocument();
+    await user.click(within(side).getByRole('button', { name: 'Delete first' }));
+    expect(api.studio.chats).toHaveLength(2); // one click deletes nothing
+    await user.click(within(side).getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(api.studio.chats).toHaveLength(1));
+  });
+
+  it('attaches an installed XO by name and sends it to the platform', async () => {
+    const api = new FakeXo();
+    api.studio.installs.push({ name: 'burglary-policy', version: '1.0.0' });
+    const user = await home(api);
+    await user.click(await screen.findByLabelText('Ask XO'));
+    await user.type(screen.getByLabelText('Ask XO'), 'review @bur');
+    await user.click(await screen.findByRole('button', { name: '@burglary-policy' }));
+    await user.type(screen.getByLabelText('Ask XO'), 'it{enter}');
+    await waitFor(() => expect(posts(api, /\/messages$/)).toHaveLength(1));
+    expect((posts(api, /\/messages$/)[0]!.body as { attach: string[] }).attach).toEqual(['burglary-policy']);
+  });
+
+  it('when no model is available (412), shows the platform message, points to Settings → Models and runtime, and keeps the text', async () => {
+    const api = new FakeXo();
+    api.studio.chatReply = { fail: 412, code: 'XO_PRECONDITION_FAILED', message: 'no model is selected for this workspace' };
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'hello{enter}');
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
+    expect(await within(panel).findByText(/no model is selected for this workspace/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Ask XO')).toHaveValue('hello'); // not saved, so the text is still there to resend
+    await user.click(within(panel).getByRole('button', { name: /Settings → Models and runtime/ }));
+    expect(await screen.findByRole('tab', { name: 'Models and runtime', selected: true })).toBeInTheDocument();
+  });
+
+  it('on a provider failure (502) says nothing was saved', async () => {
+    const api = new FakeXo();
+    api.studio.chatReply = { fail: 502, code: 'XO_UPSTREAM', message: 'the model provider failed' };
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'hello{enter}');
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
+    expect(await within(panel).findByText(/Nothing was saved/)).toBeInTheDocument();
+    expect(within(panel).queryByText('Hello')).not.toBeInTheDocument();
+  });
+
+  it('the full Chat screen lists the same saved threads and says they are private', async () => {
+    const api = new FakeXo();
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'hello{enter}');
+    await screen.findByText('Here is an answer.');
+    await user.keyboard('{Escape}');
     await user.keyboard('{Control>}k{/Control}');
     await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'full chat{Enter}');
     await waitFor(() => expect(window.location.hash).toBe('#/chat'));
-    expect(within(await screen.findByRole('log', { name: 'Messages' })).getByText('hello')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '+ New chat' }));
-    expect(screen.getByRole('heading', { name: 'New chat' })).toBeInTheDocument();
+    const nav = await screen.findByRole('navigation', { name: 'Conversations' });
+    expect(await within(nav).findByRole('button', { name: 'hello' })).toBeInTheDocument();
+    expect(screen.getAllByText(/private to you|visible only to you/).length).toBeGreaterThan(0);
   });
-});
 
-describe('Ask XO chat layout', () => {
-  async function opened() {
+  it('Ctrl+J, Escape and the palette still reach the bar from other pages', async () => {
     const api = new FakeXo();
-    const user = userEvent.setup();
-    render(withShell(<App fetchImpl={api.fetch} />));
-    await user.type(screen.getByLabelText(/access key/i), api.validKey);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
-    await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Claims Ops' });
-    await user.click(screen.getByLabelText('Ask XO'));
-    return { user, panel: await screen.findByRole('dialog', { name: 'Ask XO conversation' }) };
-  }
-
-  it('looks like a chat app: conversations sidebar, a welcome with starters, the bar at the bottom, and a preview note', async () => {
-    const { panel } = await opened();
-    const side = within(panel).getByRole('navigation', { name: 'Conversations' });
-    expect(within(side).getByRole('button', { name: /new chat/i })).toBeInTheDocument();
-    expect(within(side).getByText('No conversations yet.')).toBeInTheDocument();
-    expect(within(panel).getByRole('heading', { name: 'What can XO help with?' })).toBeInTheDocument();
-    expect(within(panel).getByText(/replies here are fixed examples/i)).toBeInTheDocument();
-  });
-
-  it('a starter sends a fixed preview reply; conversations list in the sidebar and can be switched between', async () => {
-    const { user, panel } = await opened();
-    await user.click(within(panel).getByRole('button', { name: 'What do I have in this workspace?' }));
-    expect(await within(panel).findByText(/This workspace holds/)).toBeInTheDocument();
-    const side = within(panel).getByRole('navigation', { name: 'Conversations' });
-    await user.click(within(side).getByRole('button', { name: /new chat/i }));
-    expect(within(panel).getByRole('heading', { name: 'What can XO help with?' })).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Ask XO'), 'show me the graph{enter}');
-    expect(await within(panel).findByText(/steps in the order XO composed them/)).toBeInTheDocument();
-    const items = within(side).getAllByRole('button').filter((b) => b.classList.contains('askdock-thread'));
-    expect(items).toHaveLength(2);
-    await user.click(items[1]!);
-    expect(await within(panel).findByText(/This workspace holds/)).toBeInTheDocument();
-    expect(items[1]).toHaveAttribute('aria-current', 'true');
-  });
-});
-
-describe('Ask XO from every screen', () => {
-  async function app() {
-    const api = new FakeXo();
-    const user = userEvent.setup();
-    render(withShell(<App fetchImpl={api.fetch} />));
-    await user.type(screen.getByLabelText(/access key/i), api.validKey);
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
-    await user.type(await screen.findByLabelText(/workspace name/i), 'Claims Ops');
-    await user.click(screen.getByRole('button', { name: /create workspace/i }));
-    await screen.findByRole('heading', { name: 'Claims Ops' });
-    return user;
-  }
-
-  it('every page except Home has the same bar at the top; typing unfolds the conversation on that page', async () => {
-    const user = await app();
-    for (const name of ['Library', 'Activity', 'Audit log']) {
-      await user.click(screen.getByRole('button', { name }));
-      const bar = screen.getByLabelText('Ask XO');
-      expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument();
-      await user.type(bar, 'x');
-      expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name })).toHaveAttribute('aria-current', 'page');
-      await user.keyboard('{Escape}');
-      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
-      expect(bar).toHaveFocus(); // the cursor stays in the bar
-      await user.clear(bar);
-    }
-  });
-
-  it('Ctrl+J puts the cursor in the bar and shows the conversation, and a message asked there stays on the page you are on', async () => {
-    const user = await app();
+    const user = await home(api);
     await user.click(screen.getByRole('button', { name: 'Library' }));
     await user.keyboard('{Control>}j{/Control}');
-    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
-    expect(screen.getByLabelText('Ask XO')).toHaveFocus();
-    await user.type(screen.getByLabelText('Ask XO'), 'show me the graph{enter}');
-    expect(await within(panel).findByText(/steps in the order XO composed them/)).toBeInTheDocument();
-    expect(window.location.hash).toBe('#/library');
-    await user.keyboard('{Control>}j{/Control}');
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
-  });
-
-  it('is reachable from the palette too', async () => {
-    const user = await app();
-    await user.keyboard('{Control>}k{/Control}');
-    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'ask{Enter}');
     expect(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Ask XO')).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
   });
 });

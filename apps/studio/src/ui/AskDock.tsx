@@ -1,9 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { matchXos, mentionQuery, type ChatThread } from '../domain/chat';
-import type { StartTarget } from '../domain/start';
-import type { XoItem } from '../domain/xo';
-import { Badge, Button } from './primitives';
-import { ChatLog } from './ChatScreen';
+import { matchXos, mentionQuery, type Attachable } from '../domain/chat';
+import { Button } from './primitives';
+import { ChatLog, ChatProblem, ThreadList } from './ChatScreen';
+import type { ChatController } from './useChat';
 import '../styles/drawer.css';
 
 /** How long the panel's open and close animations run. The stylesheet uses the same number. */
@@ -14,14 +13,10 @@ export interface DockProps {
   readonly onOpenChange: (open: boolean) => void;
   /** Changes whenever something (⌘J, the palette) asks for the cursor to go to the bar. */
   readonly focusTick: number;
-  readonly thread: ChatThread | undefined;
-  /** Every conversation of this session, oldest first, and the one being shown. */
-  readonly threads: readonly ChatThread[];
-  readonly onSelect: (id: string) => void;
-  readonly xos: readonly XoItem[];
-  readonly onSend: (text: string, attached: readonly string[]) => void;
-  readonly onNew: () => void;
-  readonly goTo: (target: StartTarget) => void;
+  readonly chat: ChatController;
+  /** Installed XOs that can be attached with @name. */
+  readonly xos: readonly Attachable[];
+  readonly onOpenSettings: () => void;
 }
 
 type Phase = 'closed' | 'open' | 'closing';
@@ -30,7 +25,7 @@ type Phase = 'closed' | 'open' | 'closing';
  * Ask XO: one bar, on every screen. Focusing or typing in it opens the conversation as a full-screen layer over the app.
  * The bar is the same element throughout: it glides from the top of the page to the bottom of the screen (a layout
  * animation that measures where it was and where it is now) while the history fades in above it. "Close chat" runs the
- * same movement backwards. Replies are fixed previews and the bar says so.
+ * same movement backwards. Conversations are saved on the platform and private to the person.
  */
 export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating' }) {
   const [text, setText] = useState('');
@@ -99,14 +94,18 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
     );
   }, [props.open]);
 
-  function submit(e: FormEvent) {
+  async function send(value: string) {
+    props.onOpenChange(true);
+    return props.chat.send(value, attached);
+  }
+  async function submit(e: FormEvent) {
     e.preventDefault();
     const value = text.trim();
-    if (value === '') return;
-    props.onSend(value, attached);
-    setText('');
-    setAttached([]);
-    props.onOpenChange(true);
+    if (value === '' || props.chat.sending) return;
+    if (await send(value)) {
+      setText('');
+      setAttached([]);
+    }
   }
   function close() {
     input.current?.blur();
@@ -121,8 +120,17 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
   return (
     <div className={`askdock askdock-v-${props.variant}`} data-phase={phase} data-open={props.open}>
       <div ref={slot} className="askdock-slot">
-        <form ref={form} className={`cmdbar askdock-bar${props.open ? ' is-docked' : ''}`} onSubmit={submit}>
-          <svg className="cmdbar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <form ref={form} className={`cmdbar askdock-bar${props.open ? ' is-docked' : ''}`} onSubmit={(e) => void submit(e)}>
+          <svg
+            className="cmdbar-icon"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
             <path d="M4 5h16v11H9l-5 4z" />
           </svg>
           <label htmlFor={inputId} className="visually-hidden">
@@ -145,14 +153,13 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
               if (e.target.value !== '' && !props.open) props.onOpenChange(true);
             }}
           />
-          <Badge tone="accent">Preview</Badge>
           {props.variant === 'home' && !props.open ? (
-            <span className="cmdbar-pill" aria-disabled="true" title="Ask is the only mode in this preview">
+            <span className="cmdbar-pill" aria-disabled="true" title="Ask is the only mode">
               Ask ▾
             </span>
           ) : null}
           <kbd className="cmdbar-kbd">{props.variant === 'home' ? '⌘K' : '⌘J'}</kbd>
-          <Button variant="secondary" type="submit">
+          <Button variant="secondary" type="submit" disabled={props.chat.sending}>
             Send
           </Button>
         </form>
@@ -164,55 +171,39 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             <button type="button" className="askdock-back" onClick={close}>
               <span aria-hidden="true">← </span>Close chat
             </button>
-            <button type="button" className="askdock-new" onClick={props.onNew}>
+            <button type="button" className="askdock-new" onClick={props.chat.startNew}>
               <span aria-hidden="true">+ </span>New chat
             </button>
-            {props.threads.length === 0 ? (
-              <p className="askdock-note">No conversations yet.</p>
-            ) : (
-              <>
-                <p className="askdock-group">This session</p>
-                <ul className="bare-list askdock-threads">
-                  {[...props.threads].reverse().map((t) => (
-                    <li key={t.id}>
-                      <button type="button" className="askdock-thread" aria-current={t.id === props.thread?.id ? 'true' : undefined} onClick={() => props.onSelect(t.id)}>
-                        {t.title}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <p className="askdock-note askdock-side-foot">Conversations are kept for this session only.</p>
+            <ThreadList chat={props.chat} rowClass="askdock-thread" groupClass="askdock-group" />
+            <p className="askdock-note askdock-side-foot">Conversations are saved and private to you.</p>
           </nav>
           <div className="askdock-main">
             <header className="askdock-head">
-              <h2>{props.thread?.title ?? 'New chat'}</h2>
-              <span className="chat-chip">session memory</span>
-              <Badge tone="accent">Preview</Badge>
+              <h2>{props.chat.thread?.title ?? 'New chat'}</h2>
+              <span className="chat-chip">private to you</span>
             </header>
             <div className="askdock-body">
-              {props.thread === undefined || props.thread.messages.length === 0 ? (
+              {props.chat.problem !== undefined ? <ChatProblem problem={props.chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
+              {props.chat.thread === undefined && !props.chat.loadingThread ? (
                 <div className="askdock-welcome">
                   <h3>What can XO help with?</h3>
-                  <p className="muted">Replies in this preview are fixed and do not change anything. Try one of these:</p>
-                  <div className="askdock-starters">
-                    {['What do I have in this workspace?', 'Show me the workflow graph', 'Create an XO from my documents'].map((q) => (
-                      <button key={q} type="button" className="askdock-starter" onClick={() => props.onSend(q, [])}>
-                        {q}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="muted">Your message goes to the model your workspace has selected. Type @ to attach an installed XO.</p>
                 </div>
               ) : (
-                <ChatLog thread={props.thread} goTo={props.goTo} />
+                <ChatLog thread={props.chat.thread} loading={props.chat.loadingThread} sending={props.chat.sending} />
               )}
             </div>
             <div className="askdock-foot">
               {attached.length > 0 ? (
                 <p className="chat-attached askdock-attached">
                   {attached.map((a) => (
-                    <button key={a} type="button" className="chat-tag" aria-label={`Remove ${a}`} onClick={() => setAttached((x) => x.filter((y) => y !== a))}>
+                    <button
+                      key={a}
+                      type="button"
+                      className="chat-tag"
+                      aria-label={`Remove ${a}`}
+                      onClick={() => setAttached((x) => x.filter((y) => y !== a))}
+                    >
                       @{a} ×
                     </button>
                   ))}
@@ -230,7 +221,7 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
                 </ul>
               ) : null}
             </div>
-            <p className="askdock-legal">Preview: XO's replies here are fixed examples. Check anything that matters in the app.</p>
+            <p className="askdock-legal">Replies come from the workspace's selected model and can be wrong. Check anything that matters.</p>
           </div>
         </section>
       ) : null}

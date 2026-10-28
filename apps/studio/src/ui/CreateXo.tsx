@@ -15,8 +15,8 @@ const STEPS = ['Add sources', 'Build', 'Test', 'Publish'] as const;
 
 /**
  * Creating an XO from your own documents, as designed: Sources on the left, what XO found on the right.
- * Add sources, Build (analysis) and the rules it finds are real. Test hands over to the chat, whose replies are fixed
- * previews. Publish is not available, because Studio cannot package or sign. Nothing here is estimated.
+ * Add sources, Build (analysis) and the rules it finds are real. Test hands over to the chat, which answers with the
+ * workspace's selected model. Publish is not available, because Studio cannot package or sign. Nothing here is estimated.
  */
 export function CreateXo(props: {
   workspaceId: string;
@@ -205,7 +205,7 @@ export function CreateXo(props: {
               </p>
               <p className="muted small">
                 You approve every rule before a workflow may use it. Nothing is approved for you. Running test cases against this XO is not
-                available yet; the chat gives fixed preview replies.
+                available yet; the chat answers with the workspace’s selected model and does not run this XO.
               </p>
               <div className="row">
                 <Button variant="secondary" onClick={() => props.goTo('rules')}>

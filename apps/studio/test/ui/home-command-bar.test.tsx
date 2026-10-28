@@ -19,13 +19,24 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
         open,
         onOpenChange: setOpen,
         focusTick: 0,
-        thread: undefined,
-        threads: [],
-        onSelect: () => {},
+        chat: {
+          list: { phase: 'ready', threads: [] },
+          attachable: [],
+          activeId: undefined,
+          thread: undefined,
+          loadingThread: false,
+          sending: false,
+          problem: undefined,
+          select: () => {},
+          startNew: () => {},
+          send: async (t) => {
+            props.onSend?.(t);
+            return true;
+          },
+          remove: async () => {},
+        },
         xos: [],
-        onSend: (t) => props.onSend?.(t),
-        onNew: () => {},
-        goTo: () => {},
+        onOpenSettings: () => {},
       }}
     />
   );
@@ -41,14 +52,13 @@ describe('Home command bar', () => {
     expect(screen.getByLabelText('Ask XO')).toHaveValue('');
   });
 
-  it('does not send an empty message, and is labelled a preview', async () => {
+  it('does not send an empty message', async () => {
     const onSend = vi.fn();
     const user = userEvent.setup();
     render(<Harness onSend={onSend} />);
     await user.type(screen.getByLabelText('Ask XO'), '   {enter}');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getAllByText('Preview').length).toBeGreaterThan(0);
   });
 
   it('quick actions go where their label says', async () => {

@@ -34,7 +34,7 @@ import { AuditScreen } from './AuditScreen';
 import { SettingsScreen, type Tab as SettingsTab } from './SettingsScreen';
 import { ChatScreen } from './ChatScreen';
 import { WorkflowEditor } from './WorkflowScreen';
-import { chatReply, threadTitle, type ChatFacts, type ChatThread } from '../domain/chat';
+import { useChat } from './useChat';
 import { xoItems, type XoSubject } from '../domain/xo';
 import { CreateXo } from './CreateXo';
 import { CommandPalette, isPaletteShortcut, type PaletteCommand } from './CommandPalette';
@@ -84,8 +84,6 @@ export function WorkspaceView(props: {
   const [blocked, setBlocked] = useState<Section | undefined>();
   const [focusedCapability, setFocusedCapability] = useState<string | undefined>();
   const previousMode = useRef(mode);
-  const [threads, setThreads] = useState<readonly ChatThread[]>([]);
-  const [activeThread, setActiveThread] = useState<string | undefined>();
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | undefined>();
   const [wfSettings, setWfSettings] = useState(false);
   const [xoSubject, setXoSubject] = useState<XoSubject | undefined>();
@@ -112,8 +110,7 @@ export function WorkspaceView(props: {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   const [selectedRun, setSelectedRun] = useState<string | undefined>();
-  const threadSeq = useRef(1);
-  const messageSeq = useRef(1);
+  const chat = useChat(ws, view === 'chat' || drawerOpen);
 
   const sources = useLoad(() => client.listSources(ws), [client, ws]);
   const compilations = useLoad(() => client.listCompilations(ws), [client, ws]);
@@ -173,33 +170,10 @@ export function WorkspaceView(props: {
     else setView(target === 'workflows' ? 'work' : 'tasks');
   }
 
-  const chatFacts: ChatFacts = {
-    documents: loadedValue(sources.state)?.length,
-    analyses: compilations.state.phase === 'loading' ? undefined : succeeded.length,
-    processes: loadedValue(workflows.state)?.length,
-    runs: loadedValue(runs.state)?.length,
-  };
-  function newChat() {
-    setActiveThread(undefined);
-    setView('chat');
-  }
-  /** Adds one question and its fixed reply to a conversation, creating the conversation on the first message. */
-  function sendChat(text: string, attached: readonly string[] = [], stay = false) {
-    const reply = chatReply(text, chatFacts, attached);
-    const id = messageSeq.current;
-    messageSeq.current += 2;
-    const pair = [
-      { id, from: 'you' as const, text, ...(attached.length > 0 ? { attached } : {}) },
-      { id: id + 1, from: 'xo' as const, text: reply.text, ...(reply.action !== undefined ? { action: reply.action } : {}) },
-    ];
-    if (activeThread === undefined) {
-      const tid = `t${threadSeq.current++}`;
-      setThreads((t) => [...t, { id: tid, title: threadTitle(text), messages: pair }]);
-      setActiveThread(tid);
-    } else {
-      setThreads((t) => t.map((x) => (x.id === activeThread ? { ...x, messages: [...x.messages, ...pair] } : x)));
-    }
-    if (!stay) setView('chat');
+  function openModelSettings() {
+    setDrawerOpen(false);
+    setSettingsTab('Models and runtime');
+    setView('settings');
   }
   const latestDocument = [...(loadedValue(sources.state) ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
     ?.originalFilename;
@@ -330,16 +304,9 @@ export function WorkspaceView(props: {
     open: drawerOpen && view !== 'chat',
     onOpenChange: setDrawerOpen,
     focusTick,
-    thread: threads.find((t) => t.id === activeThread),
-    threads,
-    onSelect: setActiveThread,
-    xos: xoList,
-    onSend: (text, attached) => sendChat(text, attached, true),
-    onNew: () => setActiveThread(undefined),
-    goTo: (t) => {
-      setDrawerOpen(false);
-      goToTarget(t);
-    },
+    chat,
+    xos: chat.attachable,
+    onOpenSettings: openModelSettings,
   };
 
   if (view === 'graph' || view === 'executions') {
@@ -418,15 +385,7 @@ export function WorkspaceView(props: {
           layout: 'rail',
           content: (
             <main className="immersive">
-              <ChatScreen
-                threads={threads}
-                activeId={activeThread}
-                onSelect={setActiveThread}
-                onNew={newChat}
-                onSend={sendChat}
-                xos={xoList}
-                goTo={goToTarget}
-              />
+              <ChatScreen chat={chat} xos={chat.attachable} onOpenSettings={openModelSettings} />
             </main>
           ),
         })}
