@@ -20,6 +20,8 @@ export interface LoadedPdfPage {
   readonly isBlank: boolean;
   /** True when the page's resources hold any image XObject (a scan or figure). Distinguishes "needs OCR" from "draws something that is not text". */
   readonly hasImage: boolean;
+  /** Set when this page had no readable text layer and its text was recovered by a later tier (OCR, a second reader, a vision model). Coverage reports such a page as `ocr`, never as ordinary extracted text. */
+  readonly recovery?: { readonly tier: string; readonly confidence: number };
   /** Set when this page could not be loaded; the failure is isolated to the page (WS1-02) and the coverage ledger records it as unaccounted. */
   readonly loadFailure?: { readonly code: string; readonly message: string };
   /**

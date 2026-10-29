@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, SourceError } from '@xo/errors';
-import { NodePdfLoader, type PdfLoader } from '../pdf/pdf-loader.js';
+import { NodePdfLoader, type LoadedPdfDocument, type PdfLoader } from '../pdf/pdf-loader.js';
 import { computePdfCoverage } from '../pdf/pdf-coverage.js';
 import { parseDocument } from '../document/document-parser.js';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
@@ -11,6 +11,8 @@ export interface PdfSourceInput {
   readonly kind: 'pdf';
   readonly bytes: Uint8Array;
   readonly sourcePath: string;
+  /** A document already loaded (and possibly recovered by `extraction/` tiers) from these same `bytes`. When present the frontend uses it instead of loading again. */
+  readonly preloaded?: LoadedPdfDocument;
 }
 
 const PDF_MAGIC = '%PDF-';
@@ -54,7 +56,7 @@ export class PdfSourceFrontend implements SourceFrontend<PdfSourceInput> {
   }
 
   ingest(input: PdfSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
-    const loaded = this.loader.load(input.bytes, input.sourcePath);
+    const loaded = input.preloaded !== undefined ? ok(input.preloaded) : this.loader.load(input.bytes, input.sourcePath);
     if (!loaded.ok) {
       return err(
         new SourceError(ErrorCode.SERIALIZATION_PARSE_FAILED, `Failed to load PDF source "${input.sourcePath}": ${loaded.error.message}`, {
