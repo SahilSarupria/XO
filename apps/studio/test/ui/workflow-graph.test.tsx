@@ -85,7 +85,7 @@ describe('Workflow graph', () => {
     const api = new FakeXo();
     const user = await analysed(api);
     await openGraph(user);
-    expect(screen.getByRole('button', { name: /run/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^▶ Run$/ })).toBeDisabled();
     expect(screen.getByText(/still need your approval/i)).toBeInTheDocument();
     expect(screen.getByText('Needs approval')).toBeInTheDocument();
     expect(api.calls.some((c) => c.method === 'POST' && c.path.includes('/workflows/'))).toBe(false);
@@ -97,7 +97,7 @@ describe('Workflow graph', () => {
     const user = await analysed(api);
     await openGraph(user);
     expect(await screen.findByText('Ready')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /run/i }));
+    await user.click(screen.getByRole('button', { name: /^▶ Run$/ }));
     await waitFor(() =>
       expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1),
     );
@@ -116,7 +116,7 @@ describe('Workflow graph', () => {
     await openScreen(user, 'Work');
     await user.click(await screen.findByRole('button', { name: /view graph of/i }));
     await screen.findByRole('region', { name: 'Workflow graph' });
-    expect(screen.getByRole('button', { name: /run/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^▶ Run$/ })).toBeDisabled();
     expect(screen.getByText(/waiting for a decision/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue in inbox/i })).toBeInTheDocument();
     expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/wf_1\/executions$/.test(c.path))).toHaveLength(1);

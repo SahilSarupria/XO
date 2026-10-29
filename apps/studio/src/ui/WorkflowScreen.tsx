@@ -195,7 +195,15 @@ export function WorkflowEditor(props: {
               onSelect={setSelectedId}
             />
           </div>
-          <WorkflowDraftPanel draft={draft} role={props.role} />
+          <WorkflowDraftPanel
+            draft={draft}
+            role={props.role}
+            workspaceId={props.workspaceId}
+            caps={props.caps}
+            onChanged={props.onChanged}
+            goToTasks={props.goToTasks}
+            goToActivity={props.goToActivity}
+          />
         </>
       )}
     </div>

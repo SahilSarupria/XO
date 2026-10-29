@@ -8,9 +8,16 @@ import { tidyName } from './work';
  * estimated: a duration appears only when both timestamps were recorded.
  */
 export function runsOf(runs: readonly WorkflowRun[], workflowId: string, compilationId?: string): WorkflowRun[] {
-  return runs
-    .filter((r) => r.workflowId === workflowId && (compilationId === undefined || r.compilationId === compilationId))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    runs
+      // Runs started from a saved draft of the same compilation belong in the same history (their workflow id is `draft:<id>`).
+      .filter(
+        (r) =>
+          (r.workflowId === workflowId || (r.draft !== undefined && compilationId !== undefined)) &&
+          (compilationId === undefined || r.compilationId === compilationId),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  );
 }
 
 /** The platform's run ids are long and opaque; the last characters are enough to tell runs apart. */

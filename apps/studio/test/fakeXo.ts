@@ -70,6 +70,8 @@ export class FakeXo {
   executions: FakeExecution[] = [];
   /** When true, the deterministic capability publishes an input contract, as the platform now does. */
   publishContract = false;
+  /** When true, every capability publishes the contract (so a multi-step draft run can show one generated form). */
+  publishContractAll = false;
   caps: FakeCap[] = [
     {
       capabilityId: 'cap_det',
@@ -508,7 +510,7 @@ export class FakeXo {
         compilationId: cid,
         capabilities: this.caps.map((c) => ({
           ...c,
-          ...(this.publishContract && c.capabilityId === 'cap_det' ? { inputContract: CONTRACT } : {}),
+          ...((this.publishContract && c.capabilityId === 'cap_det') || this.publishContractAll ? { inputContract: CONTRACT } : {}),
           contractId: c.capabilityId,
           provenance: [{ documentPath: 'src', pages: [2] }],
           approved: this.approvals.has(`${cid}:${c.capabilityId}`),
