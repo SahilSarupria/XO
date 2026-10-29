@@ -199,6 +199,8 @@ export class StudioFake {
   /** Approved capability keys (`compilationId:capabilityId`), mirrored from FakeXo for the plan's `approved` flags. */
   approvedIds: ReadonlySet<string> = new Set();
   testCases = new Map<string, FakeCase[]>();
+  /** Cases that already exist when a capability's list is first read (so a test can start as a role that cannot create them). */
+  seedCases: Array<Partial<FakeCase>> = [];
   caseRuns = new Map<string, Array<Record<string, unknown>>>();
   /** What a case's real execution would record. Tests override it to produce failures, mismatches and human tasks. */
   caseOutcome: (c: FakeCase) => { status: string; output?: Record<string, unknown>; errorCode?: string; errorMessage?: string } = () => ({
@@ -673,6 +675,24 @@ export class StudioFake {
     if ((m = rest.match(/^\/compilations\/([^/]+)\/capabilities\/([^/]+)\/test-case(s|-runs)(?:\/([^/]+))?(\/runs)?$/))) {
       const [, cid, cap, kind, caseId, runs] = m as unknown as [string, string, string, string, string | undefined, string | undefined];
       const key = `${cid}:${cap}`;
+      if (!this.testCases.has(key) && this.seedCases.length > 0)
+        this.testCases.set(
+          key,
+          this.seedCases.map(
+            (c, i) =>
+              ({
+                caseId: `tc_seed${i}`,
+                workspaceId: 'ws_1',
+                compilationId: cid,
+                capabilityId: cap,
+                revision: 1,
+                updatedAt: '2026-10-01T00:00:00.000Z',
+                input: {},
+                expected: { status: 'succeeded' },
+                ...c,
+              }) as FakeCase,
+          ),
+        );
       const mine = (this.testCases.get(key) ?? []) as FakeCase[];
       const view = (c: FakeCase) => ({
         ...c,

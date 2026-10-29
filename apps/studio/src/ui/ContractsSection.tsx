@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Capability, Workflow, WorkspaceRole } from '../platform/wire';
 import { CapabilityTestPanel } from './CapabilityTestPanel';
+import { TestCasesPanel } from './TestCasesPanel';
 import { Badge, Button, EmptyState, loadedValue, Section, Skeleton, type LoadState } from './primitives';
 
 const STATUS_TONE: Record<Capability['status'], 'success' | 'warning' | 'danger'> = {
@@ -88,6 +89,7 @@ function ContractCard(props: {
   test: { workspaceId: string; compilationId: string; role: WorkspaceRole | undefined; onChanged: () => void } | undefined;
 }) {
   const c = props.cap;
+  const [testCasesOpen, setTestCasesOpen] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (props.focused) ref.current?.scrollIntoView?.({ block: 'start' });
@@ -174,6 +176,12 @@ function ContractCard(props: {
           <details>
             <summary>Preview and Test Run</summary>
             <CapabilityTestPanel cap={c} {...props.test} />
+          </details>
+        ) : null}
+        {props.test !== undefined ? (
+          <details onToggle={(e) => setTestCasesOpen((e.currentTarget as HTMLDetailsElement).open)}>
+            <summary>Test cases</summary>
+            {testCasesOpen ? <TestCasesPanel cap={c} {...props.test} /> : null}
           </details>
         ) : null}
         <details>
