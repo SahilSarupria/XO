@@ -54,10 +54,7 @@ jobs:
         run: npm run format:check
 
       - name: Test
-        run: |
-          npm test > /tmp/t.txt 2>&1 && exit 0
-          echo "::error title=FAILS::$(grep -E '^\s*not ok' /tmp/t.txt | head -15 | cut -c1-200 | tr '\n' '|')"
-          exit 1
+        run: npm test
 
       - name: Build
         run: npm run build
