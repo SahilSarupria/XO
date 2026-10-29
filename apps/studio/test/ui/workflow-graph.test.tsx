@@ -33,43 +33,52 @@ async function openGraph(user: U) {
 }
 
 describe('Workflow graph', () => {
-  it('draws the process steps the platform composed, in order, with a node count', async () => {
+  it('draws the draft copy of the process in order, with a node count', async () => {
     const api = new FakeXo();
     const user = await analysed(api);
     const canvas = await openGraph(user);
-    const nodes = within(within(canvas).getByRole('list', { name: /steps in the order they run/i })).getAllByRole('button');
-    expect(nodes.map((n) => n.querySelector('.wf-node-name')?.textContent)).toEqual(['Record before payment', 'Review not covered']);
-    expect(within(nodes[1]!).getByText('person decides')).toBeInTheDocument();
-    expect(within(canvas).getByText('2 nodes')).toBeInTheDocument();
+    const nodes = within(within(canvas).getByRole('list', { name: /steps in the draft/i })).getAllByRole('button');
+    expect(nodes.map((n) => n.querySelector('.wf-node-name')?.textContent)).toEqual([
+      'Start',
+      'Record before payment',
+      'Review not covered',
+      'A person reviews: Review not covered',
+    ]);
+    expect(within(canvas).getByText('4 nodes')).toBeInTheDocument();
+    expect(within(canvas).getByText('Unsaved changes')).toBeInTheDocument();
     expect(window.location.hash).toBe('#/graph');
     expect(screen.getByRole('button', { name: /^workflows$/i, hidden: false })).toBeInTheDocument(); // breadcrumb back
   });
 
-  it('shows what is not available as unavailable: adding nodes, memory scope, node editing; Save is real', async () => {
+  it("offers only what the platform reports it can run; the rest stays visible, disabled, with the platform's reason", async () => {
     const user = await analysed(new FakeXo());
     await openGraph(user);
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(); // saves a draft copy
-    const palette = screen.getByRole('complementary', { name: 'Node palette' });
-    for (const name of ['Document dropped', 'Schedule', 'Branch', 'Human review', 'Webhook / Email'])
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    const palette = await screen.findByRole('complementary', { name: 'Node palette' });
+    await within(palette).findByRole('button', { name: 'Branch on confidence' });
+    for (const name of ['Branch on confidence', 'Person reviews'])
+      expect(within(palette).getByRole('button', { name })).toHaveAttribute('aria-disabled', 'false');
+    for (const name of ['Schedule', 'Document dropped', 'Manual start', 'Compile', 'Validate', 'Action'])
       expect(within(palette).getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
-    expect(within(palette).getAllByText('Preview').length).toBe(3);
-    expect(within(screen.getByRole('complementary', { name: 'Inspector' })).getByText('Not available yet')).toBeInTheDocument();
-    expect(screen.getByText('Read-only')).toBeInTheDocument();
+    expect(within(palette).getByText(/There is no scheduler/)).toBeInTheDocument();
+    expect(within(palette).getByText(/no folder or drop watcher/)).toBeInTheDocument();
+    expect(within(palette).getByText(/no webhook or email delivery/)).toBeInTheDocument();
+    expect(within(palette).getByText(/Nothing here runs the compiler/)).toBeInTheDocument();
   });
 
-  it('lists the real capabilities in the palette, filters them, and a click selects the matching node', async () => {
+  it('lists the real capabilities in the palette, filters them, and a click adds a step after the selection and selects it', async () => {
     const user = await analysed(new FakeXo());
     await openGraph(user);
     const palette = screen.getByRole('complementary', { name: 'Node palette' });
     expect(within(palette).getByRole('button', { name: 'Notify the Insurer' })).toBeInTheDocument();
-    await user.type(within(palette).getByLabelText('Search nodes'), 'review');
-    expect(within(palette).queryByRole('button', { name: 'Notify the Insurer' })).not.toBeInTheDocument();
-    await user.click(within(palette).getByRole('button', { name: 'Review not covered' }));
+    await user.type(within(palette).getByLabelText('Search nodes'), 'notify');
+    expect(within(palette).queryByRole('button', { name: 'Review not covered' })).not.toBeInTheDocument();
+    await user.click(within(palette).getByRole('button', { name: 'Notify the Insurer' }));
     const inspector = screen.getByRole('complementary', { name: 'Inspector' });
-    expect(within(inspector).getByRole('heading', { name: 'Review not covered' })).toBeInTheDocument();
-    expect(within(inspector).getByText('Person decides')).toBeInTheDocument();
+    expect(within(inspector).getByRole('heading', { name: 'Notify the Insurer' })).toBeInTheDocument();
     expect(within(inspector).getByText('No output recorded for this step yet.')).toBeInTheDocument();
     expect(within(inspector).getByText('Not approved yet')).toBeInTheDocument();
+    expect(screen.getByText('5 nodes')).toBeInTheDocument();
   });
 
   it('will not offer Run while approvals are missing, and says why', async () => {

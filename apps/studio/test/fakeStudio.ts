@@ -905,6 +905,21 @@ export class StudioFake {
       : [{ severity: 'error', message: 'A workflow needs at least one trigger.' }];
     const blockers: Array<{ severity: string; nodeId?: string; message: string }> = [];
     for (const n of nodes) {
+      if (n.kind === 'branch') {
+        const sides = edges
+          .filter((e) => e.from === n.id)
+          .map((e) => e.when)
+          .sort()
+          .join(',');
+        if (sides !== 'gte,lt')
+          errors.push({
+            severity: 'error',
+            nodeId: n.id,
+            message: 'A branch needs exactly two outgoing connections: one "gte" (at or above the threshold) and one "lt" (below it).',
+          });
+      }
+      if (n.kind !== 'trigger' && !edges.some((e) => e.to === n.id))
+        errors.push({ severity: 'error', nodeId: n.id, message: 'This step is not connected to anything upstream.' });
       const bad = this.nodeKinds.find((k) => k.kind === n.kind && !k.supported);
       if (bad !== undefined) blockers.push({ severity: 'blocker', nodeId: n.id, message: String(bad.reason) });
       if (n.kind === 'trigger' && n.config?.['type'] !== 'manual')

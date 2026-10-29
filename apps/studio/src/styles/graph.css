@@ -433,3 +433,36 @@
     max-height: 14rem;
   }
 }
+
+/* ---- draft editor */
+.wf-node[data-issues='true'] {
+  border-color: var(--danger, #b3261e);
+}
+.wf-node-issue {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 11px;
+  color: var(--danger, #b3261e);
+}
+.wf-edge-label {
+  font-size: 11px;
+  fill: var(--text-muted, #666);
+}
+.wf-reason {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted, #666);
+  padding: 0 var(--s-2) var(--s-2) 26px;
+}
+.wf-node-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-top: var(--s-3);
+}
+.wf-issues {
+  margin: var(--s-2) 0;
+  padding-left: var(--s-4);
+  color: var(--danger, #b3261e);
+}

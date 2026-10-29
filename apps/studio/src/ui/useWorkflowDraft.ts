@@ -2,7 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { draftFromWorkflow } from '../domain/workflowDraft';
 import type { ApiProblem } from '../platform/client';
 import type { Capability, Workflow } from '../platform/wire';
-import type { DraftAnalysis, DraftEdge, DraftNode, WorkflowDraft, WorkflowDraftSummary } from '../platform/wire-studio';
+import type { DraftGraph } from '../domain/draftEdit';
+import type {
+  DraftAnalysis,
+  DraftEdge,
+  DraftIssue,
+  DraftNode,
+  NodeKindSupport,
+  WorkflowDraft,
+  WorkflowDraftSummary,
+} from '../platform/wire-studio';
 import { useSession } from './session';
 
 export interface DraftController {
@@ -13,6 +22,14 @@ export interface DraftController {
   readonly definitionId: string | undefined;
   readonly revision: number | undefined;
   readonly analysis: DraftAnalysis | undefined;
+  /** What the platform says about each node (errors and blockers that name it), keyed by node id. */
+  readonly issuesByNode: ReadonlyMap<string, readonly DraftIssue[]>;
+  /** Which node kinds (and variants) the platform can run; undefined until it has answered. */
+  readonly kinds: readonly NodeKindSupport[] | undefined;
+  /** True when the graph or name differs from what is saved (or nothing is saved yet). */
+  readonly dirty: boolean;
+  /** Apply an edit to the graph. The platform re-validates every change. */
+  readonly edit: (change: (g: DraftGraph) => DraftGraph) => void;
   readonly validating: boolean;
   readonly saving: boolean;
   readonly problem: ApiProblem | undefined;
@@ -37,8 +54,28 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<readonly WorkflowDraftSummary[] | undefined>();
-  const nodes = loaded?.nodes ?? base.nodes;
-  const edges = loaded?.edges ?? base.edges;
+  const [kinds, setKinds] = useState<readonly NodeKindSupport[] | undefined>();
+  /** Unsaved edits. Undefined means the graph is exactly the loaded draft (or the starting copy). */
+  const [edited, setEdited] = useState<DraftGraph | undefined>();
+  const nodes = edited?.nodes ?? loaded?.nodes ?? base.nodes;
+  const edges = edited?.edges ?? loaded?.edges ?? base.edges;
+  const dirty = edited !== undefined || loaded === undefined || name.trim() !== loaded.name;
+  const edit = useCallback((change: (g: DraftGraph) => DraftGraph) => setEdited((cur) => change(cur ?? { nodes, edges })), [nodes, edges]);
+  const issuesByNode = useMemo(() => {
+    const m = new Map<string, DraftIssue[]>();
+    for (const i of [...(analysis?.errors ?? []), ...(analysis?.blockers ?? [])])
+      if (i.nodeId !== undefined) m.set(i.nodeId, [...(m.get(i.nodeId) ?? []), i]);
+    return m;
+  }, [analysis]);
+  useEffect(() => {
+    let live = true;
+    void client.getNodeKinds(workspaceId).then((r) => {
+      if (live && r.ok) setKinds(r.value);
+    });
+    return () => {
+      live = false;
+    };
+  }, [client, workspaceId]);
 
   const reloadList = useCallback(async () => {
     const r = await client.listDrafts(workspaceId);
@@ -70,6 +107,7 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
   }, [client, workspaceId, name, nodes, edges]);
 
   const adopt = (d: WorkflowDraft) => {
+    setEdited(undefined);
     setLoaded(d);
     setName(d.name);
     setAnalysis(d.analysis);
@@ -117,6 +155,7 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
   );
 
   const startOver = useCallback(() => {
+    setEdited(undefined);
     setLoaded(undefined);
     setName(base.name);
     setProblem(undefined);
@@ -143,6 +182,10 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
     definitionId: loaded?.definitionId,
     revision: loaded?.revision,
     analysis,
+    issuesByNode,
+    kinds,
+    dirty,
+    edit,
     validating,
     saving,
     problem,
