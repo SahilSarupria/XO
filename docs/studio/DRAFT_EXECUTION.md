@@ -1,6 +1,6 @@
 # Draft workflow execution: discovery note
 
-Status: design decision for Studio Phase 1, task 3. Read from the code at 9ac8ca4; nothing here is implemented yet.
+Status: design decision for Studio Phase 1, implemented in task 3 (`workflows/draft-workflow.ts`, `workflows/draft-runner` logic folded into `workflow-runner.ts`'s start/resume via an optional `draft` argument).
 
 ## How things work today
 
@@ -32,4 +32,4 @@ Well-formed, one manual trigger, a single path of supported nodes, every capabil
 - New driver `workflows/draft-runner.ts` reusing `authorizeStep`, the execution store and `RuntimeCapabilityExecutor`. `driveWorkflow` is not reused because its mismatch check is tied to composed workflows.
 - Run record is a `WorkflowExecutionRecord` with `workflowId = draft:<definitionId>`, plus the draft revision it ran, so it appears in the existing runs and inbox views and resumes through the existing human-task path.
 - `analyzeDefinition` gets the compilation lookup as input, so `runnable` is true only when the checks above pass. `runnable` widens from `false` to `boolean` in the contract (additive for readers that treat it as boolean).
-- Branch evaluation, node visits and audit events (`workflow.draft_run_started`, per-step, resolved) are written to the run record and audit log.
+- The run record carries `draft` (definition id, revision, path, every branch decision with the value used). The start is audited as the existing `workflow.started` event with `draftId`/`draftRevision` in its detail, so no new audit event type is introduced; resume is audited as `workflow.resumed` as before.

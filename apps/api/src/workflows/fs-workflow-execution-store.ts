@@ -54,6 +54,7 @@ export class FsWorkflowExecutionStore implements WorkflowExecutionStore {
       compilationId: input.compilationId,
       workflowId: input.workflowId,
       workflowName: input.workflowName,
+      ...(input.draft !== undefined ? { draft: input.draft } : {}),
       revision: 0,
       status: 'created',
       input: input.input,

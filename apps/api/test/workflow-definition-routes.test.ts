@@ -128,7 +128,8 @@ test('blockers say exactly why a well-formed graph still cannot run here', () =>
   const a = analyzeDefinition(withExtras);
   assert.equal(a.wellFormed, true);
   const text = a.blockers.map((b) => b.message).join(' | ');
-  assert.match(text, /no executor/);
+  assert.doesNotMatch(text, /no executor/, 'the blanket "no executor" blocker is gone; only concrete reasons remain');
+  assert.equal(a.runnable, false);
   assert.match(text, /no scheduler/);
   assert.match(text, /no email delivery/);
   assert.match(text, /memory scopes are not part of the runtime/);

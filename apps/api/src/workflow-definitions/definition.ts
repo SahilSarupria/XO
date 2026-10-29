@@ -2,12 +2,13 @@ import { ErrorCode, XoError } from '@xo/errors';
 
 /**
  * User-authored workflow graphs (what the Studio editor saves): triggers, XO-capability steps, a confidence branch,
- * human review, and actions. This is a DEFINITION store with validation — it is not an executor.
+ * human review, and actions. This is a DEFINITION store with validation; execution lives in
+ * `workflows/draft-runner.ts` and is documented in docs/studio/DRAFT_EXECUTION.md.
  *
- * Honest status: nothing in this server runs a user-authored graph yet (the existing workflow runner executes only
- * graphs `@xo/workflow-composer` derives from a compilation, linearly, with its own executability audit). So every
- * definition reports `runnable: false` with the concrete reasons, activation is refused, and the Run endpoint answers
- * 501. Saving, validating and re-loading what the editor drew is real; running it is not claimed.
+ * Honest status: only a narrow shape runs (manual trigger, capability steps from one succeeded compilation, an
+ * optional confidence branch, a human review directly after a human-in-the-loop capability). `analyzeDefinition`
+ * reports `runnable: true` only when the platform's own facts say the draft is that shape and every capability
+ * binds; everything else keeps concrete `blockers` and the Run endpoint answers 501 with them.
  */
 
 export const NODE_KINDS = ['trigger', 'compile', 'validate', 'capability', 'branch', 'human_review', 'action'] as const;
@@ -131,7 +132,7 @@ function validateConfig(kind: NodeKind, c: Record<string, unknown>, where: strin
       return { type };
     }
     case 'capability': {
-      only(['packageName', 'capabilityId', 'memoryScope']);
+      only(['packageName', 'capabilityId', 'memoryScope', 'compilationId']);
       const memoryScope = c['memoryScope'] ?? 'none';
       if (typeof memoryScope !== 'string' || !(MEMORY_SCOPES as readonly string[]).includes(memoryScope))
         bad(`${where}.config.memoryScope must be one of: ${MEMORY_SCOPES.join(', ')}`);
@@ -139,6 +140,7 @@ function validateConfig(kind: NodeKind, c: Record<string, unknown>, where: strin
         packageName: str(c, 'packageName', `${where}.config`, 200),
         capabilityId: str(c, 'capabilityId', `${where}.config`, 200),
         memoryScope,
+        ...(c['compilationId'] !== undefined ? { compilationId: str(c, 'compilationId', `${where}.config`, 200) } : {}),
       };
     }
     case 'branch': {
@@ -169,17 +171,62 @@ export interface DefinitionIssue {
   readonly message: string;
 }
 
+/** What the platform knows about one capability of a stored compilation. Supplied by the caller; never client input. */
+export interface CapabilityFact {
+  readonly name: string;
+  /** The capability's declared (compile-time) contract confidence. Static: it is not measured per run. */
+  readonly confidence: number;
+  readonly executionClass?: 'deterministic_rule' | 'human_in_the_loop';
+  /** Present when the runtime bridge could not bind the capability to an executable binding. */
+  readonly unbound?: string;
+  /** Approved in this workspace right now (informational for the plan; the run itself re-checks it). */
+  readonly approved: boolean;
+}
+export type CompilationFacts =
+  { readonly ok: true; readonly capabilities: ReadonlyMap<string, CapabilityFact> } | { readonly ok: false; readonly reason: string };
+/** compilationId -> facts. A compilation id missing from the map is reported as unknown. */
+export type DraftFacts = ReadonlyMap<string, CompilationFacts>;
+
+export interface DraftPlanStep {
+  readonly nodeId: string;
+  readonly capabilityId: string;
+  readonly name: string;
+  readonly executionClass: 'deterministic_rule' | 'human_in_the_loop';
+  readonly approved: boolean;
+}
+export interface DraftPlanBranch {
+  readonly nodeId: string;
+  readonly metric: 'confidence';
+  /** Always the upstream capability's DECLARED contract confidence, not a measured per-run value. */
+  readonly basis: 'declared_contract_confidence';
+  readonly capabilityId: string;
+  readonly value: number;
+  readonly threshold: number;
+  readonly taken: 'gte' | 'lt';
+}
+/** The single path a run of this draft takes, derived from the stored compilation. Present only when it could be resolved. */
+export interface DraftPlan {
+  readonly compilationId: string;
+  readonly path: readonly string[];
+  readonly steps: readonly DraftPlanStep[];
+  readonly branches: readonly DraftPlanBranch[];
+}
+
 export interface DefinitionAnalysis {
   /** Structural problems: the graph is not a well-formed workflow. A definition with errors can still be saved as a draft; it can never run. */
   readonly errors: readonly DefinitionIssue[];
   /** Reasons a structurally valid graph still cannot run on THIS server. */
   readonly blockers: readonly DefinitionIssue[];
   readonly wellFormed: boolean;
-  readonly runnable: false;
+  /** True only when the draft is well formed, has no blockers, and its plan resolved. Never inferred from the editor. */
+  readonly runnable: boolean;
+  readonly plan?: DraftPlan;
 }
 
-/** Graph-level checks. Pure; the same input always gives the same report. */
-export function analyzeDefinition(input: DefinitionInput): DefinitionAnalysis {
+export const SUPPORTED_NODE_KINDS = ['trigger', 'capability', 'branch', 'human_review'] as const;
+
+/** Graph-level checks. Pure; the same input and facts always give the same report. */
+export function analyzeDefinition(input: DefinitionInput, facts: DraftFacts = new Map()): DefinitionAnalysis {
   const errors: DefinitionIssue[] = [];
   const blockers: DefinitionIssue[] = [];
   const byId = new Map(input.nodes.map((n) => [n.id, n]));
@@ -244,33 +291,119 @@ export function analyzeDefinition(input: DefinitionInput): DefinitionAnalysis {
   for (const n of input.nodes)
     if (!reached.has(n.id) && n.kind !== 'trigger')
       errors.push({ severity: 'error', nodeId: n.id, message: 'This step cannot be reached from any trigger.' });
-  void byId;
 
-  blockers.push({
-    severity: 'blocker',
-    message: 'This server has no executor for user-authored workflow graphs; only workflows derived from a compilation can run.',
-  });
+  // ---- Blockers: what this server cannot run, or cannot run this way. ----
+  const blocker = (message: string, nodeId?: string) =>
+    blockers.push({ severity: 'blocker', ...(nodeId !== undefined ? { nodeId } : {}), message });
+
   for (const n of input.nodes) {
-    if (n.kind === 'trigger' && n.config['type'] === 'schedule')
-      blockers.push({ severity: 'blocker', nodeId: n.id, message: 'There is no scheduler; schedule triggers cannot fire.' });
-    if (n.kind === 'trigger' && n.config['type'] === 'document_dropped')
-      blockers.push({
-        severity: 'blocker',
-        nodeId: n.id,
-        message: 'There is no folder or drop watcher; "document dropped" triggers cannot fire.',
-      });
-    if (n.kind === 'action')
-      blockers.push({
-        severity: 'blocker',
-        nodeId: n.id,
-        message: `There is no ${String(n.config['type'])} delivery; action steps cannot run.`,
-      });
-    if (n.kind === 'capability' && n.config['memoryScope'] !== 'none')
-      blockers.push({
-        severity: 'blocker',
-        nodeId: n.id,
-        message: 'Capability memory scopes are not part of the runtime; only "none" can be honored.',
-      });
+    if (n.kind === 'trigger' && n.config['type'] === 'schedule') blocker('There is no scheduler; schedule triggers cannot fire.', n.id);
+    else if (n.kind === 'trigger' && n.config['type'] === 'document_dropped')
+      blocker('There is no folder or drop watcher; "document dropped" triggers cannot fire.', n.id);
+    else if (n.kind === 'action') blocker(`There is no ${String(n.config['type'])} delivery; action steps cannot run.`, n.id);
+    else if (n.kind === 'compile' || n.kind === 'validate')
+      blocker(`A ${n.kind} step cannot run inside a workflow; nothing here runs the compiler or validator on demand.`, n.id);
+    else if (n.kind === 'capability' && n.config['memoryScope'] !== 'none')
+      blocker('Capability memory scopes are not part of the runtime; only "none" can be honored.', n.id);
   }
-  return { errors, blockers, wellFormed: errors.length === 0, runnable: false };
+  if (triggers.length > 1) blocker('Only one trigger per workflow can run; remove the others.');
+  for (const n of input.nodes) {
+    if (n.kind !== 'trigger' && (inc.get(n.id) ?? []).length > 1)
+      blocker('This step has several incoming connections; joins are not supported, a run follows one path.', n.id);
+    if (n.kind !== 'branch' && (out.get(n.id) ?? []).length > 1)
+      blocker('This step has several outgoing connections; parallel paths are not supported, only a branch may split.', n.id);
+  }
+
+  // Resolve the single path and the capability facts it depends on.
+  const capabilityNodes = input.nodes.filter((n) => n.kind === 'capability');
+  const compilationIds = new Set<string>();
+  for (const n of capabilityNodes) {
+    const cid = n.config['compilationId'];
+    if (typeof cid !== 'string') {
+      blocker('This capability step does not say which compilation it comes from, so the platform cannot bind it.', n.id);
+      continue;
+    }
+    compilationIds.add(cid);
+    const cf = facts.get(cid);
+    if (cf === undefined) blocker(`Compilation "${cid}" is not available in this workspace.`, n.id);
+    else if (!cf.ok) blocker(`Compilation "${cid}" cannot be used: ${cf.reason}`, n.id);
+    else {
+      const fact = cf.capabilities.get(String(n.config['capabilityId']));
+      if (fact === undefined) blocker(`Capability "${String(n.config['capabilityId'])}" does not exist in compilation "${cid}".`, n.id);
+      else if (fact.unbound !== undefined) blocker(`This capability cannot run: ${fact.unbound}`, n.id);
+      else if (fact.executionClass === undefined) blocker('This capability has no executable binding.', n.id);
+    }
+  }
+  if (compilationIds.size > 1)
+    blocker('Capability steps come from more than one compilation; a run is recorded against exactly one compilation.');
+
+  const factOf = (n: DefinitionNode): CapabilityFact | undefined => {
+    const cid = n.config['compilationId'];
+    const cf = typeof cid === 'string' ? facts.get(cid) : undefined;
+    return cf?.ok === true ? cf.capabilities.get(String(n.config['capabilityId'])) : undefined;
+  };
+
+  const steps: DraftPlanStep[] = [];
+  const branches: DraftPlanBranch[] = [];
+  const path: string[] = [];
+  const structurallyOk = errors.length === 0 && triggers.length === 1 && blockers.length === 0;
+  if (structurallyOk) {
+    let cur: DefinitionNode | undefined = triggers[0];
+    let previousCapability: DefinitionNode | undefined;
+    const seenCaps = new Set<string>();
+    const guard = new Set<string>();
+    while (cur !== undefined && !guard.has(cur.id)) {
+      guard.add(cur.id);
+      path.push(cur.id);
+      let next: DefinitionEdge | undefined;
+      if (cur.kind === 'capability') {
+        const fact = factOf(cur);
+        const capabilityId = String(cur.config['capabilityId']);
+        if (seenCaps.has(capabilityId)) blocker('The same capability appears twice on the path a run takes.', cur.id);
+        seenCaps.add(capabilityId);
+        if (fact?.executionClass !== undefined)
+          steps.push({ nodeId: cur.id, capabilityId, name: fact.name, executionClass: fact.executionClass, approved: fact.approved });
+        previousCapability = cur;
+        next = (out.get(cur.id) ?? [])[0];
+      } else if (cur.kind === 'human_review') {
+        const prev =
+          previousCapability !== undefined && (inc.get(cur.id) ?? [])[0]?.from === previousCapability.id ? previousCapability : undefined;
+        const prevFact = prev !== undefined ? factOf(prev) : undefined;
+        if (prevFact?.executionClass !== 'human_in_the_loop')
+          blocker(
+            'A review step can only follow a capability that itself opens a human task (a human-in-the-loop rule); the platform has no standalone review step.',
+            cur.id,
+          );
+        next = (out.get(cur.id) ?? [])[0];
+      } else if (cur.kind === 'branch') {
+        const upstream = (inc.get(cur.id) ?? [])[0]?.from;
+        const prev = previousCapability !== undefined && upstream === previousCapability.id ? previousCapability : undefined;
+        const prevFact = prev !== undefined ? factOf(prev) : undefined;
+        if (prev === undefined || prevFact === undefined) {
+          blocker("A branch must come directly after a capability; its confidence is that capability's declared confidence.", cur.id);
+          break;
+        }
+        const threshold = Number(cur.config['threshold']);
+        const taken: 'gte' | 'lt' = prevFact.confidence >= threshold ? 'gte' : 'lt';
+        branches.push({
+          nodeId: cur.id,
+          metric: 'confidence',
+          basis: 'declared_contract_confidence',
+          capabilityId: String(prev.config['capabilityId']),
+          value: prevFact.confidence,
+          threshold,
+          taken,
+        });
+        next = (out.get(cur.id) ?? []).find((e) => e.when === taken);
+      } else {
+        next = (out.get(cur.id) ?? [])[0];
+      }
+      cur = next !== undefined ? byId.get(next.to) : undefined;
+    }
+    if (steps.length === 0 && blockers.length === 0) blocker('The path a run takes has no capability step.');
+  }
+
+  const planned = structurallyOk && blockers.length === 0 && compilationIds.size === 1;
+  const plan: DraftPlan | undefined = planned ? { compilationId: [...compilationIds][0] as string, path, steps, branches } : undefined;
+  return { errors, blockers, wellFormed: errors.length === 0, runnable: plan !== undefined, ...(plan !== undefined ? { plan } : {}) };
 }

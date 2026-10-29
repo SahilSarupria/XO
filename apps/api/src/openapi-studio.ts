@@ -87,7 +87,7 @@ const nodeSchema = obj(
       type: 'object',
       additionalProperties: true,
       description:
-        'Validated per kind: trigger{type}, capability{packageName,capabilityId,memoryScope}, branch{metric:"confidence",threshold:0..1}, action{type}; compile/validate/human_review take none.',
+        'Validated per kind: trigger{type}, capability{packageName,capabilityId,memoryScope,compilationId?}, branch{metric:"confidence",threshold:0..1}, action{type}; compile/validate/human_review take none.',
     },
   },
   ['id', 'kind'],
@@ -106,9 +106,42 @@ const definitionInput = obj(
   },
   ['name', 'nodes', 'edges'],
 );
+const draftPlan = obj({
+  compilationId: str,
+  path: arr(str),
+  steps: arr(
+    obj({
+      nodeId: str,
+      capabilityId: str,
+      name: str,
+      executionClass: { type: 'string', enum: ['deterministic_rule', 'human_in_the_loop'] },
+      approved: bool,
+    }),
+  ),
+  branches: arr(
+    obj({
+      nodeId: str,
+      metric: { type: 'string', enum: ['confidence'] },
+      basis: {
+        type: 'string',
+        enum: ['declared_contract_confidence'],
+        description: "The upstream capability's compile-time contract confidence. Static; not measured per run.",
+      },
+      capabilityId: str,
+      value: { type: 'number' },
+      threshold: { type: 'number' },
+      taken: { type: 'string', enum: ['gte', 'lt'] },
+    }),
+  ),
+});
 const analysis = obj({
   wellFormed: bool,
-  runnable: { type: 'boolean', enum: [false], description: 'Always false: nothing on this server executes a user-authored graph.' },
+  runnable: {
+    type: 'boolean',
+    description:
+      'True only when the draft is well formed, has no blockers, and its plan resolved against stored compilations: one manual trigger, capability steps from one succeeded compilation that each bind to an executable binding, an optional confidence branch, and human review only directly after a human-in-the-loop capability. Approval is checked when a run starts, not here (plan.steps[].approved shows it).',
+  },
+  plan: draftPlan,
   errors: arr(obj({ severity: str, nodeId: str, message: str })),
   blockers: arr(obj({ severity: str, nodeId: str, message: str })),
 });
@@ -564,14 +597,18 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/workflow-definitions/{definitionId}/run': {
     post: {
-      summary: 'Run a workflow draft — NOT IMPLEMENTED',
+      summary: 'Run a saved workflow draft',
       description:
-        'Always 501 with the analysis that says why. No executor exists for user-authored graphs; schedule and document-dropped triggers, email/webhook actions and capability memory scopes have nothing behind them. Workflows derived from a compilation run through /workspaces/{workspaceId}/compilations/{compilationId}/workflows.',
+        "Runs the draft's single resolved path through the same engine as a derived workflow: each capability must be approved in this workspace and permitted (403 otherwise), input is validated against the steps' contracts (400), a human-in-the-loop capability opens a human task (status waiting_for_human; continue via POST /workflow-executions/{id}/resume), and every step is a recorded execution. Body (all optional): { input, expectedRevision } — a stale expectedRevision is 409 and nothing runs. 202 returns the workflow execution record (same shape as GET /workflow-executions/{id}, plus draft: { definitionId, revision, path, branches }). A draft that is not runnable gets 501 with analysis (blockers, errors) and nothing is started. Idempotency-Key is honored as on derived workflows (replay is 200). Never accepts steps, capability ids or bindings from the request.",
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('definitionId')],
       responses: {
-        '501': ok('Not implemented, with analysis.blockers'),
+        '202': ok('Workflow execution record, with draft provenance'),
+        '200': ok('Idempotent replay of an earlier run'),
+        '501': ok('Draft is not runnable: { error, analysis }'),
+        '400': R_400,
         '403': R_403,
+        '409': ok('Stale expectedRevision, or an idempotency conflict'),
         ...standard(['404', ok('Unknown definition, or workspace not accessible')]),
       },
     },

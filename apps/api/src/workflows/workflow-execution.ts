@@ -20,6 +20,20 @@ import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
  * are always derived server-side from the stored compilation's graph.
  */
 
+export interface DraftRunInfo {
+  readonly definitionId: string;
+  readonly revision: number;
+  readonly path: readonly string[];
+  readonly branches: readonly {
+    readonly nodeId: string;
+    readonly basis: 'declared_contract_confidence';
+    readonly capabilityId: string;
+    readonly value: number;
+    readonly threshold: number;
+    readonly taken: 'gte' | 'lt';
+  }[];
+}
+
 export type WorkflowExecutionStatus = 'created' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'interrupted';
 
 export type WorkflowStepStatus =
@@ -97,6 +111,8 @@ export interface WorkflowExecutionRecord {
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
+  /** Present only for a run started from a saved draft: which draft revision, the path taken, and each branch decision with the value it used. */
+  readonly draft?: DraftRunInfo;
   /**
    * Optimistic-concurrency counter. A freshly created record has
    * `revision: 0`; every persisted update requires the caller's
@@ -151,6 +167,7 @@ export interface CreateWorkflowExecutionInput {
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
+  readonly draft?: DraftRunInfo;
   readonly input: Readonly<Record<string, unknown>>;
   readonly steps: readonly Pick<WorkflowStepState, 'stepId' | 'order' | 'capabilityId' | 'capabilityName'>[];
   readonly sourceId?: string;
