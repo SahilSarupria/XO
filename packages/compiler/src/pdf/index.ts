@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './lexer.js';
 export * from './object-parser.js';
 export * from './filters.js';
+export * from './limits.js';
 export * from './xref.js';
 export * from './rebuild-xref.js';
 export * from './text-decoder.js';

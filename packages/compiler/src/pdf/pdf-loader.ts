@@ -1,8 +1,9 @@
 import { err, ok, type Result } from '@xo/types';
-import { PdfError } from '@xo/errors';
+import { ErrorCode, PdfError } from '@xo/errors';
 import type { TextRun } from './content-stream.js';
 import { extractTextRuns } from './content-stream.js';
-import { PdfDocument, type PdfMetadata, type RawPdfPage } from './document.js';
+import { PdfDocument, type PdfLoadOptions, type PdfMetadata, type RawPdfPage } from './document.js';
+import { ABORTED_CODE, PdfAbortedError, PdfResourceLimitError, RESOURCE_LIMIT_CODE, throwIfCancelled } from './limits.js';
 import { buildFontEncodingResolver, type FontEncoding } from './font-encoding.js';
 import { textRunsToPlainText } from './text-runs-to-plain-text.js';
 
@@ -46,12 +47,12 @@ export interface LoadedPdfDocument {
 
 /** Stage 1 of the compiler pipeline: PDF -> plain text (+ positioned text runs + provenance), per this package's README. */
 export interface PdfLoader {
-  load(bytes: Uint8Array, sourcePath: string): Result<LoadedPdfDocument, PdfError>;
+  load(bytes: Uint8Array, sourcePath: string, options?: PdfLoadOptions): Result<LoadedPdfDocument, PdfError>;
 }
 
 const NO_FONT_ENCODING: FontEncoding = { codeByteWidth: 1, decode: (bytes) => Buffer.from(bytes).toString('latin1') };
 
-function toLoadedPage(raw: RawPdfPage, doc: PdfDocument): LoadedPdfPage {
+function toLoadedPage(raw: RawPdfPage, doc: PdfDocument, options: PdfLoadOptions): LoadedPdfPage {
   const base = {
     pageNumber: raw.pageNumber,
     sourceObjectNumber: raw.objectNumber,
@@ -60,6 +61,7 @@ function toLoadedPage(raw: RawPdfPage, doc: PdfDocument): LoadedPdfPage {
   };
   if (raw.loadFailure !== undefined) return failedLoadedPage(base, raw.loadFailure);
   try {
+    throwIfCancelled(options);
     const textRuns = extractTextRuns(raw.contentBytes);
     const resolveFontEncoding = buildFontEncodingResolver(raw.resources, (value) => doc.resolve(value));
     const plainText = textRunsToPlainText(textRuns, resolveFontEncoding);
@@ -76,7 +78,14 @@ function toLoadedPage(raw: RawPdfPage, doc: PdfDocument): LoadedPdfPage {
   } catch (cause) {
     // WS1-02: one malformed page must not reject the customer's whole document.
     return failedLoadedPage(base, {
-      code: cause instanceof PdfError ? String(cause.code) : 'PDF_PAGE_LOAD_FAILED',
+      code:
+        cause instanceof PdfResourceLimitError
+          ? RESOURCE_LIMIT_CODE
+          : cause instanceof PdfAbortedError
+            ? ABORTED_CODE
+            : cause instanceof PdfError
+              ? String(cause.code)
+              : 'PDF_PAGE_LOAD_FAILED',
       message: cause instanceof Error ? cause.message : String(cause),
     });
   }
@@ -106,14 +115,26 @@ function failedLoadedPage(
  * page-tree and content-stream order).
  */
 export class NodePdfLoader implements PdfLoader {
-  load(bytes: Uint8Array, sourcePath: string): Result<LoadedPdfDocument, PdfError> {
+  /**
+   * Never throws: hostile or corrupt input yields `err(PdfError)` for the document, or a per-page `loadFailure`
+   * (reported as unaccounted), and a stack overflow or any other unexpected exception is converted to the same.
+   */
+  load(bytes: Uint8Array, sourcePath: string, options: PdfLoadOptions = {}): Result<LoadedPdfDocument, PdfError> {
     try {
-      const doc = PdfDocument.load(bytes);
-      const pages = doc.pages.map((raw) => toLoadedPage(raw, doc));
+      const doc = PdfDocument.load(bytes, options);
+      const pages = doc.pages.map((raw) => toLoadedPage(raw, doc, options));
       return ok({ sourcePath, metadata: doc.info, pages, pageCount: pages.length });
     } catch (cause) {
       if (cause instanceof PdfError) return err(cause);
-      throw cause;
+      return err(
+        new PdfError(
+          ErrorCode.PDF_MALFORMED,
+          `Unexpected failure while reading PDF: ${cause instanceof Error ? cause.message : String(cause)}`,
+          {
+            cause,
+          },
+        ),
+      );
     }
   }
 }

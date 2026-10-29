@@ -6,6 +6,21 @@ import { decodePdfTextString } from './text-decoder.js';
 import { isArray, isDictionary, isName, isPdfString, isReference, isStream, type PdfDictionary, type PdfValue } from './types.js';
 import { parseXref, type XrefTable } from './xref.js';
 import { rebuildXrefByScanning } from './rebuild-xref.js';
+import {
+  ABORTED_CODE,
+  PdfAbortedError,
+  PdfResourceLimitError,
+  RESOURCE_LIMIT_CODE,
+  ResourceMeter,
+  resolveLimits,
+  throwIfCancelled,
+  type Cancellation,
+  type PdfLimits,
+} from './limits.js';
+
+export interface PdfLoadOptions extends Cancellation {
+  readonly limits?: Partial<PdfLimits>;
+}
 
 export interface PdfMetadata {
   readonly title: string | undefined;
@@ -55,19 +70,38 @@ export class PdfDocument {
   /** Decoded `/Type /ObjStm` bodies, keyed by that stream's own object number, so N compressed objects sharing one container stream only pay the inflate+predictor+parse cost once. */
   private readonly objStmCache = new Map<number, ReadonlyMap<number, PdfValue>>();
 
+  private readonly meter: ResourceMeter;
+  private readonly cancellation: Cancellation;
+  private readonly limits: PdfLimits;
+
   private constructor(
     private readonly buf: Uint8Array,
     private readonly xref: XrefTable,
-  ) {}
+    options: PdfLoadOptions,
+  ) {
+    this.limits = resolveLimits(options.limits);
+    this.meter = new ResourceMeter(this.limits);
+    this.cancellation = { signal: options.signal, deadlineMs: options.deadlineMs };
+  }
 
-  static load(buf: Uint8Array): PdfDocument {
+  /** Total bytes decoded so far, for observability. */
+  get decodedBytes(): number {
+    return this.meter.decodedBytes;
+  }
+
+  static load(buf: Uint8Array, options: PdfLoadOptions = {}): PdfDocument {
+    const limits = resolveLimits(options.limits);
+    if (buf.length > limits.maxFileBytes) {
+      throw new PdfResourceLimitError('maxFileBytes', `file is ${buf.length} bytes (limit ${limits.maxFileBytes})`);
+    }
+    throwIfCancelled(options);
     let xref: XrefTable;
     try {
       xref = parseXref(buf);
     } catch {
       xref = rebuildXrefByScanning(buf);
     }
-    const doc = new PdfDocument(buf, xref);
+    const doc = new PdfDocument(buf, xref, options);
     if (xref.trailer.entries.has('Encrypt')) {
       throw new PdfError(ErrorCode.PDF_ENCRYPTED, 'This PDF is encrypted; decryption is not supported');
     }
@@ -123,12 +157,14 @@ export class PdfDocument {
       const firstValue = streamValue.dictionary.entries.get('First');
       const n = typeof nValue === 'number' ? nValue : 0;
       const first = typeof firstValue === 'number' ? firstValue : 0;
-      const data = decodeStream(streamValue);
+      const data = decodeStream(streamValue, this.meter);
 
       const header: Array<[number, number]> = [];
       const headerLexer = new Lexer(data, 0);
-      for (let i = 0; i < n; i += 1) {
+      // /N is attacker-controlled: a header cannot hold more pairs than the decoded body has bytes.
+      for (let i = 0; i < Math.min(n, data.length); i += 1) {
         const objNumTok = headerLexer.next();
+        if (objNumTok.kind === 'eof') break;
         const offsetTok = headerLexer.next();
         header.push([Number.parseInt(objNumTok.text, 10), Number.parseInt(offsetTok.text, 10)]);
       }
@@ -205,12 +241,27 @@ export class PdfDocument {
 
     const walk = (
       node: PdfDictionary,
+      nodeObjectNumber: number,
+      depth: number,
       inheritedMediaBox: readonly [number, number, number, number],
       inheritedRotate: number,
       inheritedResources: PdfDictionary | undefined,
     ): void => {
       if (visitedObjectIds.has(node)) return; // guards against a malformed cyclic page tree
       visitedObjectIds.add(node);
+      if (depth > this.limits.maxTreeDepth) {
+        // A subtree this deep is hostile or corrupt; it is reported as one unaccounted page, never silently dropped.
+        pageNumber += 1;
+        pages.push(
+          failedPage(
+            pageNumber,
+            inheritedMediaBox,
+            inheritedRotate,
+            new PdfResourceLimitError('maxTreeDepth', `page tree deeper than ${this.limits.maxTreeDepth}`),
+          ),
+        );
+        return;
+      }
 
       const mediaBoxValue = this.dictGet(node, 'MediaBox');
       const mediaBox =
@@ -229,8 +280,15 @@ export class PdfDocument {
 
       if (isLeafPage) {
         pageNumber += 1;
+        if (pageNumber > this.limits.maxPages) {
+          pages.push(
+            failedPage(pageNumber, mediaBox, rotate, new PdfResourceLimitError('maxPages', `more than ${this.limits.maxPages} pages`)),
+          );
+          return;
+        }
         try {
-          pages.push(this.buildPage(pageNumber, node, mediaBox, rotate, resources));
+          throwIfCancelled(this.cancellation);
+          pages.push(this.buildPage(pageNumber, nodeObjectNumber, node, mediaBox, rotate, resources));
         } catch (cause) {
           pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
         }
@@ -244,23 +302,40 @@ export class PdfDocument {
           try {
             kid = this.resolve(kidRef);
           } catch (cause) {
+            if (pageNumber > this.limits.maxPages) break; // already over the page cap: do not keep appending failures
             // An unresolvable page-tree entry is accounted for as one failed page rather than
             // vanishing: the document becomes `partial`, it is not silently shortened.
             pageNumber += 1;
             pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
             continue;
           }
-          if (isDictionary(kid)) walk(kid, mediaBox, rotate, resources);
+          if (isDictionary(kid)) walk(kid, this.finalObjectNumber(kidRef), depth + 1, mediaBox, rotate, resources);
         }
       }
     };
 
-    walk(pagesRoot, DEFAULT_MEDIA_BOX, 0, undefined);
+    walk(pagesRoot, this.finalObjectNumber(root.entries.get('Pages')), 0, DEFAULT_MEDIA_BOX, 0, undefined);
     return pages;
+  }
+
+  /** Object number of the object a (possibly chained) reference finally points at, or -1 for a direct object. O(chain), not O(objects in file). */
+  private finalObjectNumber(value: PdfValue | undefined): number {
+    let objectNumber = -1;
+    let current: PdfValue | undefined = value;
+    for (let hops = 0; current !== undefined && isReference(current) && hops < 64; hops += 1) {
+      objectNumber = current.objectNumber;
+      try {
+        current = this.getObject(current.objectNumber);
+      } catch {
+        return objectNumber;
+      }
+    }
+    return objectNumber;
   }
 
   private buildPage(
     pageNumber: number,
+    objectNumber: number,
     node: PdfDictionary,
     mediaBox: readonly [number, number, number, number],
     rotate: number,
@@ -270,23 +345,15 @@ export class PdfDocument {
     const streams: Uint8Array[] = [];
     if (contentsValue !== undefined) {
       if (isStream(contentsValue)) {
-        streams.push(decodeStream(contentsValue));
+        streams.push(decodeStream(contentsValue, this.meter));
       } else if (isArray(contentsValue)) {
         for (const item of contentsValue.items) {
           const resolved = this.resolve(item);
-          if (isStream(resolved)) streams.push(decodeStream(resolved));
+          if (isStream(resolved)) streams.push(decodeStream(resolved, this.meter));
         }
       }
     }
     const contentBytes = concatWithNewlines(streams);
-
-    let objectNumber = -1;
-    for (const [objNum] of this.xref.entriesByObjectNumber) {
-      if (this.cache.get(objNum) === node) {
-        objectNumber = objNum;
-        break;
-      }
-    }
 
     return {
       pageNumber,
@@ -303,7 +370,14 @@ export class PdfDocument {
 }
 
 function failedPage(pageNumber: number, mediaBox: readonly [number, number, number, number], rotate: number, cause: unknown): RawPdfPage {
-  const code = cause instanceof PdfError ? String(cause.code) : 'PDF_PAGE_LOAD_FAILED';
+  const code =
+    cause instanceof PdfResourceLimitError
+      ? RESOURCE_LIMIT_CODE
+      : cause instanceof PdfAbortedError
+        ? ABORTED_CODE
+        : cause instanceof PdfError
+          ? String(cause.code)
+          : 'PDF_PAGE_LOAD_FAILED';
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
     pageNumber,
