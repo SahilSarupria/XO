@@ -25,3 +25,7 @@ export * from './opportunity.js';
 export * from './explain.js';
 export * from './filesystem/config.js';
 export * from './filesystem/connector.js';
+export * from './agent/protocol.js';
+export * from './agent/socket-guard.js';
+export * from './agent/server.js';
+export * from './agent/client.js';
