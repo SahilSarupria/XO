@@ -664,6 +664,35 @@ export const studioPaths = {
       responses: { '200': ok('{ deleted }'), '403': R_403, ...standard(['404', ok('Unknown definition, or workspace not accessible')]) },
     },
   },
+  '/workspaces/{workspaceId}/workflow-definitions/node-kinds': {
+    get: {
+      summary: 'Which workflow node kinds this server can run',
+      description:
+        "The platform's own statement of what has a real executor, per node kind and, where kinds have types (trigger, action) or memory scopes (capability), per variant, with the reason for each that cannot run. The editor offers only what this reports as supported.",
+      'x-xo-permission': 'read',
+      parameters: [WS],
+      responses: {
+        '200': ok(
+          '{ kinds }',
+          obj({
+            kinds: arr(
+              obj(
+                {
+                  kind: str,
+                  supported: bool,
+                  reason: str,
+                  note: str,
+                  variants: arr(obj({ value: str, supported: bool, reason: str }, ['value', 'supported'])),
+                },
+                ['kind', 'supported'],
+              ),
+            ),
+          }),
+        ),
+        ...standard(),
+      },
+    },
+  },
   '/workspaces/{workspaceId}/workflow-definitions/{definitionId}/run': {
     post: {
       summary: 'Run a saved workflow draft',

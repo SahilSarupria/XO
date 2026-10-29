@@ -571,11 +571,37 @@ export interface DraftIssue {
   readonly nodeId?: string;
   readonly message: string;
 }
+export interface DraftPlanStep {
+  readonly nodeId: string;
+  readonly capabilityId: string;
+  readonly name: string;
+  readonly executionClass: 'deterministic_rule' | 'human_in_the_loop';
+  /** Approved in this workspace right now. The run itself re-checks it. */
+  readonly approved: boolean;
+}
+export interface DraftPlanBranch {
+  readonly nodeId: string;
+  readonly capabilityId: string;
+  /** The rule's declared contract confidence (fixed per rule), compared with the threshold. Not a measured per-run value. */
+  readonly value: number;
+  readonly threshold: number;
+  readonly taken: 'gte' | 'lt';
+}
+/** The single path a run of this draft would take, as resolved by the platform. */
+export interface DraftPlan {
+  readonly compilationId: string;
+  readonly path: readonly string[];
+  readonly steps: readonly DraftPlanStep[];
+  readonly branches: readonly DraftPlanBranch[];
+}
 export interface DraftAnalysis {
   readonly wellFormed: boolean;
+  /** The platform's verdict: true only when the draft is well formed, has no blockers and its plan resolved. Never inferred here. */
+  readonly runnable: boolean;
   readonly errors: readonly DraftIssue[];
-  /** Why this draft cannot run on this server. `runnable` is always false today. */
+  /** Why a well-formed draft still cannot run on this server. */
   readonly blockers: readonly DraftIssue[];
+  readonly plan?: DraftPlan;
 }
 export interface WorkflowDraftSummary {
   readonly definitionId: string;
@@ -597,12 +623,52 @@ const issue = (v: unknown, path: string): DraftIssue => {
   const nodeId = optStr(o['nodeId'], `${path}.nodeId`);
   return { ...(nodeId !== undefined ? { nodeId } : {}), message: str(o['message'], `${path}.message`) };
 };
-export function parseAnalysis(v: unknown, path = 'analysis'): DraftAnalysis {
+const EXEC_CLASSES = new Set(['deterministic_rule', 'human_in_the_loop']);
+function parsePlan(v: unknown, path: string): DraftPlan {
   const o = obj(v, path);
   return {
+    compilationId: str(o['compilationId'], `${path}.compilationId`),
+    path: strArr(o['path'], `${path}.path`),
+    steps: list(o['steps'], `${path}.steps`, (s, p) => {
+      const x = obj(s, p);
+      const klass = str(x['executionClass'], `${p}.executionClass`);
+      if (!EXEC_CLASSES.has(klass)) throw new WireParseError(`${p}.executionClass`, 'a known execution class');
+      return {
+        nodeId: str(x['nodeId'], `${p}.nodeId`),
+        capabilityId: str(x['capabilityId'], `${p}.capabilityId`),
+        name: str(x['name'], `${p}.name`),
+        executionClass: klass as DraftPlanStep['executionClass'],
+        approved: bool(x['approved'], `${p}.approved`),
+      };
+    }),
+    branches: list(o['branches'], `${path}.branches`, (b, p) => {
+      const x = obj(b, p);
+      if (str(x['basis'], `${p}.basis`) !== 'declared_contract_confidence')
+        throw new WireParseError(`${p}.basis`, 'declared_contract_confidence');
+      const taken = str(x['taken'], `${p}.taken`);
+      if (taken !== 'gte' && taken !== 'lt') throw new WireParseError(`${p}.taken`, 'gte or lt');
+      return {
+        nodeId: str(x['nodeId'], `${p}.nodeId`),
+        capabilityId: str(x['capabilityId'], `${p}.capabilityId`),
+        value: num(x['value'], `${p}.value`),
+        threshold: num(x['threshold'], `${p}.threshold`),
+        taken,
+      };
+    }),
+  };
+}
+export function parseAnalysis(v: unknown, path = 'analysis'): DraftAnalysis {
+  const o = obj(v, path);
+  const runnable = bool(o['runnable'], `${path}.runnable`);
+  const plan = o['plan'] === undefined ? undefined : parsePlan(o['plan'], `${path}.plan`);
+  // A runnable verdict without the plan it was derived from is not something to act on.
+  if (runnable && plan === undefined) throw new WireParseError(`${path}.plan`, 'a plan whenever runnable is true');
+  return {
     wellFormed: bool(o['wellFormed'], `${path}.wellFormed`),
+    runnable,
     errors: list(o['errors'], `${path}.errors`, issue),
     blockers: list(o['blockers'], `${path}.blockers`, issue),
+    ...(plan !== undefined ? { plan } : {}),
   };
 }
 export function parseDraft(v: unknown): WorkflowDraft {
@@ -680,5 +746,133 @@ export function parseCapabilityPreview(v: unknown): CapabilityPreview {
         : [],
     plan: p !== undefined && p['plan'] !== undefined ? strArr(p['plan'], 'preview.plan') : [],
     ...(reason !== undefined ? { unresolvedReason: reason } : {}),
+  };
+}
+
+// ------------------------------------------------------------------ node-kind support (what the platform can run)
+export interface NodeKindVariant {
+  readonly value: string;
+  readonly supported: boolean;
+  readonly reason?: string;
+}
+export interface NodeKindSupport {
+  readonly kind: DraftNodeKind;
+  readonly supported: boolean;
+  readonly reason?: string;
+  readonly note?: string;
+  readonly variants: readonly NodeKindVariant[];
+}
+export const parseNodeKinds = (v: unknown): NodeKindSupport[] =>
+  list(obj(v, 'body')['kinds'], 'kinds', (k, p) => {
+    const o = obj(k, p);
+    const reason = optStr(o['reason'], `${p}.reason`);
+    const note = optStr(o['note'], `${p}.note`);
+    return {
+      kind: str(o['kind'], `${p}.kind`) as DraftNodeKind,
+      supported: bool(o['supported'], `${p}.supported`),
+      ...(reason !== undefined ? { reason } : {}),
+      ...(note !== undefined ? { note } : {}),
+      variants:
+        o['variants'] === undefined
+          ? []
+          : list(o['variants'], `${p}.variants`, (x, vp) => {
+              const vo = obj(x, vp);
+              const vr = optStr(vo['reason'], `${vp}.reason`);
+              return {
+                value: str(vo['value'], `${vp}.value`),
+                supported: bool(vo['supported'], `${vp}.supported`),
+                ...(vr !== undefined ? { reason: vr } : {}),
+              };
+            }),
+    };
+  });
+
+// ------------------------------------------------------------------ saved test cases
+export type TestCaseStatus = 'succeeded' | 'waiting_for_human' | 'failed';
+const CASE_STATUSES = new Set(['succeeded', 'waiting_for_human', 'failed']);
+export interface TestCaseExpectation {
+  readonly status: TestCaseStatus;
+  readonly output?: Readonly<Record<string, unknown>>;
+}
+export interface TestCaseDraft {
+  readonly name: string;
+  readonly input: Readonly<Record<string, unknown>>;
+  readonly expected: TestCaseExpectation;
+}
+export interface TestCaseRun {
+  readonly runId: string;
+  readonly caseId: string;
+  readonly caseRevision: number;
+  readonly executionId: string;
+  readonly at: string;
+  readonly ranBy: string;
+  /** Decided by the platform from the persisted execution. Never computed in the browser. */
+  readonly pass: boolean;
+  readonly actual: { readonly status: string; readonly output?: unknown; readonly errorCode?: string; readonly errorMessage?: string };
+  readonly mismatches: readonly string[];
+}
+export interface TestCase extends TestCaseDraft {
+  readonly caseId: string;
+  readonly compilationId: string;
+  readonly capabilityId: string;
+  readonly revision: number;
+  readonly updatedAt: string;
+  readonly lastRun?: TestCaseRun;
+}
+export function parseTestCaseRun(v: unknown, path = 'run'): TestCaseRun {
+  const o = obj(v, path);
+  const a = obj(o['actual'], `${path}.actual`);
+  const errorCode = optStr(a['errorCode'], `${path}.actual.errorCode`);
+  const errorMessage = optStr(a['errorMessage'], `${path}.actual.errorMessage`);
+  return {
+    runId: str(o['runId'], `${path}.runId`),
+    caseId: str(o['caseId'], `${path}.caseId`),
+    caseRevision: num(o['caseRevision'], `${path}.caseRevision`),
+    executionId: str(o['executionId'], `${path}.executionId`),
+    at: str(o['at'], `${path}.at`),
+    ranBy: str(o['ranBy'], `${path}.ranBy`),
+    pass: bool(o['pass'], `${path}.pass`),
+    actual: {
+      status: str(a['status'], `${path}.actual.status`),
+      ...(a['output'] !== undefined ? { output: a['output'] } : {}),
+      ...(errorCode !== undefined ? { errorCode } : {}),
+      ...(errorMessage !== undefined ? { errorMessage } : {}),
+    },
+    mismatches: strArr(o['mismatches'], `${path}.mismatches`),
+  };
+}
+export function parseTestCase(v: unknown, path = 'testCase'): TestCase {
+  const o = obj(v, path);
+  const e = obj(o['expected'], `${path}.expected`);
+  const status = str(e['status'], `${path}.expected.status`);
+  if (!CASE_STATUSES.has(status)) throw new WireParseError(`${path}.expected.status`, 'succeeded, waiting_for_human or failed');
+  return {
+    caseId: str(o['caseId'], `${path}.caseId`),
+    compilationId: str(o['compilationId'], `${path}.compilationId`),
+    capabilityId: str(o['capabilityId'], `${path}.capabilityId`),
+    name: str(o['name'], `${path}.name`),
+    input: obj(o['input'] ?? {}, `${path}.input`) as Json,
+    expected: {
+      status: status as TestCaseStatus,
+      ...(e['output'] !== undefined ? { output: obj(e['output'], `${path}.expected.output`) as Json } : {}),
+    },
+    revision: num(o['revision'], `${path}.revision`),
+    updatedAt: str(o['updatedAt'], `${path}.updatedAt`),
+    ...(o['lastRun'] !== undefined ? { lastRun: parseTestCaseRun(o['lastRun'], `${path}.lastRun`) } : {}),
+  };
+}
+export const parseTestCaseList = (v: unknown): TestCase[] => list(obj(v, 'body')['testCases'], 'testCases', (c, p) => parseTestCase(c, p));
+export const parseTestCaseHistory = (v: unknown): TestCaseRun[] => list(obj(v, 'body')['runs'], 'runs', (r, p) => parseTestCaseRun(r, p));
+export interface TestCaseBatch {
+  readonly runs: readonly TestCaseRun[];
+  readonly passed: number;
+  readonly failed: number;
+}
+export function parseTestCaseBatch(v: unknown): TestCaseBatch {
+  const o = obj(v, 'body');
+  return {
+    runs: list(o['runs'], 'runs', (r, p) => parseTestCaseRun(r, p)),
+    passed: num(o['passed'], 'passed'),
+    failed: num(o['failed'], 'failed'),
   };
 }

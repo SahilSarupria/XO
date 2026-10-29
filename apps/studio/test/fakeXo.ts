@@ -222,6 +222,56 @@ export class FakeXo {
       return err(500, 'XO_INTERNAL', 'temporarily unavailable');
     const studio = this.studio.handle(method, path, body as unknown as Record<string, unknown>, reply, err, {
       approvedIds: this.approvals,
+      startDraftRun: (draft, plan, body) => {
+        const denied = (plan['steps'] as Array<{ capabilityId: string }>).filter(
+          (st) => !this.approvals.has(`${plan['compilationId']}:${st.capabilityId}`),
+        );
+        if (denied.length > 0)
+          return reply(403, {
+            error: {
+              code: 'XO_RUNTIME_PERMISSION_DENIED',
+              message: `capability "${denied[0]!.capabilityId}" is not approved for execution in workspace "ws_1"`,
+              context: { denials: denied.map((x) => x.capabilityId) },
+            },
+          });
+        const now = new Date().toISOString();
+        const stepsPlan = plan['steps'] as Array<{ capabilityId: string; name: string; executionClass: string }>;
+        const hitl = stepsPlan.findIndex((x) => x.executionClass === 'human_in_the_loop');
+        const run = {
+          workflowExecutionId: `wfx_${(++this.rn).toString(16).padStart(8, '0')}`,
+          workspaceId: 'ws_1',
+          identityId: 'sally',
+          initiator: { kind: 'human', id: 'sally' },
+          compilationId: plan['compilationId'],
+          workflowId: `draft:${draft.definitionId}`,
+          workflowName: draft.name,
+          draft: { definitionId: draft.definitionId, revision: draft.revision, path: plan['path'], branches: plan['branches'] },
+          revision: 2,
+          status: hitl >= 0 ? 'waiting_for_human' : 'succeeded',
+          input: (body['input'] as Record<string, unknown>) ?? {},
+          steps: stepsPlan.map((x, i) => ({
+            stepId: `${x.capabilityId}#${i}`,
+            order: i,
+            capabilityId: x.capabilityId,
+            capabilityName: x.name,
+            status: hitl < 0 || i < hitl ? 'succeeded' : i === hitl ? 'waiting_for_human' : 'pending',
+            ...(hitl < 0 || i <= hitl ? { executionId: `exe_d${this.rn}_${i}` } : {}),
+          })),
+          currentStepIndex: hitl >= 0 ? hitl : null,
+          ...(hitl >= 0
+            ? {
+                currentStepExecutionId: `exe_d${this.rn}_${hitl}`,
+                pendingHumanTask: { stepIndex: hitl, executionId: `exe_d${this.rn}_${hitl}` },
+              }
+            : {}),
+          completedStepExecutionIds: [],
+          createdAt: now,
+          updatedAt: now,
+          ...(hitl < 0 ? { completedAt: now } : {}),
+        };
+        this.workflowRuns.push(run);
+        return reply(202, run);
+      },
     });
     if (studio !== undefined) return studio;
 

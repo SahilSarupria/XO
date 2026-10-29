@@ -50,7 +50,18 @@ interface FakeChat {
     attachedXos?: string[];
   }>;
 }
-interface FakeDraft {
+export interface FakeCase {
+  caseId: string;
+  workspaceId: string;
+  compilationId: string;
+  capabilityId: string;
+  name: string;
+  input: Record<string, unknown>;
+  expected: { status: string; output?: Record<string, unknown> };
+  revision: number;
+  updatedAt: string;
+}
+export interface FakeDraft {
   definitionId: string;
   name: string;
   revision: number;
@@ -131,6 +142,69 @@ export class StudioFake {
   /** What the platform's model returns, or an error status to simulate a failure. */
   chatReply: string | { fail: number; code: string; message: string } = 'Here is an answer.';
   drafts: FakeDraft[] = [];
+  /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
+  runsStarted: string[] = [];
+  nodeKinds: Array<{
+    kind: string;
+    supported: boolean;
+    reason?: string;
+    note?: string;
+    variants?: Array<{ value: string; supported: boolean; reason?: string }>;
+  }> = [
+    {
+      kind: 'trigger',
+      supported: true,
+      variants: [
+        { value: 'manual', supported: true },
+        { value: 'schedule', supported: false, reason: 'There is no scheduler; schedule triggers cannot fire.' },
+        {
+          value: 'document_dropped',
+          supported: false,
+          reason: 'There is no folder or drop watcher; "document dropped" triggers cannot fire.',
+        },
+      ],
+    },
+    {
+      kind: 'capability',
+      supported: true,
+      note: 'Must name the succeeded compilation it comes from.',
+      variants: [
+        { value: 'none', supported: true },
+        {
+          value: 'workflow',
+          supported: false,
+          reason: 'Capability memory scopes are not part of the runtime; only "none" can be honored.',
+        },
+        {
+          value: 'workspace',
+          supported: false,
+          reason: 'Capability memory scopes are not part of the runtime; only "none" can be honored.',
+        },
+      ],
+    },
+    { kind: 'branch', supported: true, note: 'Compares the capability directly before it by its declared contract confidence.' },
+    { kind: 'human_review', supported: true, note: 'Only directly after a rule that itself asks a person.' },
+    { kind: 'compile', supported: false, reason: 'Nothing here runs the compiler on demand from inside a workflow.' },
+    { kind: 'validate', supported: false, reason: 'Nothing here runs the validator on demand from inside a workflow.' },
+    {
+      kind: 'action',
+      supported: false,
+      reason: 'There is no webhook or email delivery; action steps cannot run.',
+      variants: [
+        { value: 'webhook', supported: false, reason: 'There is no webhook delivery.' },
+        { value: 'email', supported: false, reason: 'There is no email delivery.' },
+      ],
+    },
+  ];
+  /** Approved capability keys (`compilationId:capabilityId`), mirrored from FakeXo for the plan's `approved` flags. */
+  approvedIds: ReadonlySet<string> = new Set();
+  testCases = new Map<string, FakeCase[]>();
+  caseRuns = new Map<string, Array<Record<string, unknown>>>();
+  /** What a case's real execution would record. Tests override it to produce failures, mismatches and human tasks. */
+  caseOutcome: (c: FakeCase) => { status: string; output?: Record<string, unknown>; errorCode?: string; errorMessage?: string } = () => ({
+    status: 'succeeded',
+    output: { matched: true, outcome: 'covered' },
+  });
   infoRequests = new Map<string, FakeInfo[]>();
   /** Human tasks the platform's inbox reports (a test seeds these alongside the matching execution/run). */
   inbox: Array<{
@@ -174,7 +248,11 @@ export class StudioFake {
     body: Record<string, unknown>,
     reply: Reply,
     err: Err,
-    ctx: { approvedIds: ReadonlySet<string> },
+    ctx: {
+      approvedIds: ReadonlySet<string>;
+      /** Records a run the way the platform's runner would (supplied by FakeXo, which owns the run list). */
+      startDraftRun?: (draft: FakeDraft, plan: Record<string, any>, body: Record<string, unknown>) => Response;
+    },
   ): Response | undefined {
     const [path = '', qs = ''] = fullPath.split('?');
     const q = new URLSearchParams(qs);
@@ -183,6 +261,7 @@ export class StudioFake {
         ? undefined
         : (this.note('access.denied', 'denied'),
           err(403, 'XO_RUNTIME_PERMISSION_DENIED', `role "${this.role}" does not have the "${p}" permission in this workspace (${doing})`));
+    this.approvedIds = ctx.approvedIds;
     const base = /^\/workspaces\/[^/]+/;
     if (method === 'GET' && path === '/regions')
       return reply(200, {
@@ -564,6 +643,145 @@ export class StudioFake {
       this.note('workflow.definition_saved', 'succeeded', { kind: 'workflow_definition', id: draft.definitionId });
       return reply(201, this.draftView(draft));
     }
+    if (method === 'GET' && rest === '/workflow-definitions/node-kinds') return reply(200, { kinds: this.nodeKinds });
+    if (method === 'POST' && (m = rest.match(/^\/workflow-definitions\/([^/]+)\/run$/))) {
+      const d = deny('author', 'run workflow');
+      if (d) return d;
+      const draft = this.drafts.find((x) => x.definitionId === m![1]);
+      if (draft === undefined) return err(404, 'XO_NOT_FOUND', 'workflow definition not found');
+      if (typeof body['expectedRevision'] === 'number' && body['expectedRevision'] !== draft.revision)
+        return reply(409, {
+          error: {
+            code: 'XO_RUNTIME_SESSION_INVALID_STATE',
+            message: 'stale draft revision; nothing was run',
+            context: { reason: 'stale_revision' },
+          },
+        });
+      const a = this.analysis(draft as unknown as Record<string, unknown>);
+      if (!a.runnable || a.plan === undefined)
+        return reply(501, {
+          error: {
+            code: 'XO_UNIMPLEMENTED',
+            message: 'This draft cannot run on this server. analysis.blockers and analysis.errors say exactly why; nothing was started.',
+          },
+          analysis: a,
+        });
+      this.runsStarted.push(draft.definitionId);
+      return ctx.startDraftRun !== undefined ? ctx.startDraftRun(draft, a.plan, body) : err(500, 'XO_INTERNAL', 'fake has no run list');
+    }
+    // ---- saved test cases
+    if ((m = rest.match(/^\/compilations\/([^/]+)\/capabilities\/([^/]+)\/test-case(s|-runs)(?:\/([^/]+))?(\/runs)?$/))) {
+      const [, cid, cap, kind, caseId, runs] = m as unknown as [string, string, string, string, string | undefined, string | undefined];
+      const key = `${cid}:${cap}`;
+      const mine = (this.testCases.get(key) ?? []) as FakeCase[];
+      const view = (c: FakeCase) => ({
+        ...c,
+        ...(this.caseRuns.get(c.caseId)?.[0] !== undefined ? { lastRun: this.caseRuns.get(c.caseId)![0] } : {}),
+      });
+      const canRun = this.allowed('author') || this.allowed('review');
+      const refuseRun = () => (
+        this.note('access.denied', 'denied'),
+        err(
+          403,
+          'XO_RUNTIME_PERMISSION_DENIED',
+          `role "${this.role}" does not have the "review" permission in this workspace (run test case)`,
+        )
+      );
+      const execute = (c: FakeCase): Response => {
+        if (!ctx.approvedIds.has(key))
+          return err(403, 'XO_RUNTIME_PERMISSION_DENIED', `capability "${cap}" is not approved for execution in workspace "ws_1"`);
+        const actual = this.caseOutcome(c);
+        const mismatches: string[] = [];
+        if (actual.status !== c.expected.status) mismatches.push(`status: expected "${c.expected.status}", got "${actual.status}"`);
+        for (const [k, v] of Object.entries(c.expected.output ?? {}))
+          if (JSON.stringify((actual.output as Record<string, unknown> | undefined)?.[k]) !== JSON.stringify(v))
+            mismatches.push(
+              `output.${k}: expected ${JSON.stringify(v)}, got ${JSON.stringify((actual.output as Record<string, unknown> | undefined)?.[k])}`,
+            );
+        const run = {
+          runId: `tcr_${++this.n}`,
+          caseId: c.caseId,
+          caseRevision: c.revision,
+          executionId: `exe_tc_${this.n}`,
+          at: new Date().toISOString(),
+          ranBy: 'sally',
+          pass: mismatches.length === 0,
+          actual,
+          mismatches,
+        };
+        this.caseRuns.set(c.caseId, [run, ...(this.caseRuns.get(c.caseId) ?? [])]);
+        return reply(200, run);
+      };
+      if (kind === '-runs') {
+        if (!canRun) return refuseRun();
+        const ids = Array.isArray(body['caseIds']) ? (body['caseIds'] as string[]) : undefined;
+        const chosen = ids === undefined ? mine : mine.filter((c) => ids.includes(c.caseId));
+        const out: unknown[] = [];
+        for (const c of chosen) {
+          const r = execute(c);
+          if (r.status !== 200) return r;
+          out.push(this.caseRuns.get(c.caseId)![0]);
+        }
+        const passed = out.filter((r) => (r as { pass: boolean }).pass).length;
+        return reply(200, { runs: out, passed, failed: out.length - passed });
+      }
+      if (caseId === undefined) {
+        if (method === 'GET') return reply(200, { testCases: mine.map(view) });
+        if (method === 'POST') {
+          const d = deny('author', 'save test case');
+          if (d) return d;
+          const c: FakeCase = {
+            caseId: `tc_${String(++this.n).padStart(32, '0')}`,
+            workspaceId: 'ws_1',
+            compilationId: cid,
+            capabilityId: cap,
+            name: String(body['name']),
+            input: (body['input'] as Record<string, unknown>) ?? {},
+            expected: body['expected'] as FakeCase['expected'],
+            revision: 1,
+            updatedAt: new Date().toISOString(),
+          };
+          this.testCases.set(key, [...mine, c]);
+          return reply(201, c);
+        }
+      } else {
+        const c = mine.find((x) => x.caseId === caseId);
+        if (c === undefined) return err(404, 'XO_NOT_FOUND', `test case "${caseId}" was not found`);
+        if (runs === '/runs') {
+          if (method === 'GET') return reply(200, { runs: this.caseRuns.get(caseId) ?? [] });
+          if (method === 'POST') return canRun ? execute(c) : refuseRun();
+        }
+        if (method === 'GET') return reply(200, view(c));
+        const d = deny('author', 'change test case');
+        if (d) return d;
+        if (method === 'PUT') {
+          if (typeof body['expectedRevision'] === 'number' && body['expectedRevision'] !== c.revision)
+            return reply(412, {
+              error: {
+                code: 'XO_PRECONDITION_FAILED',
+                message: 'this test case was changed by someone else',
+                context: { reason: 'stale_revision' },
+              },
+            });
+          Object.assign(c, {
+            name: String(body['name']),
+            input: body['input'] ?? {},
+            expected: body['expected'],
+            revision: c.revision + 1,
+            updatedAt: new Date().toISOString(),
+          });
+          return reply(200, c);
+        }
+        if (method === 'DELETE') {
+          this.testCases.set(
+            key,
+            mine.filter((x) => x !== c),
+          );
+          this.caseRuns.delete(caseId);
+          return reply(200, { deleted: true });
+        }
+      }
+    }
     if ((m = rest.match(/^\/workflow-definitions\/([^/]+)$/))) {
       const draft = this.drafts.find((x) => x.definitionId === m![1]);
       if (draft === undefined) return err(404, 'XO_NOT_FOUND', 'workflow definition not found');
@@ -678,22 +896,82 @@ export class StudioFake {
       },
     };
   }
+  /** A stand-in for the platform's analysis with the same rules (one manual trigger, supported kinds only, capabilities name a compilation, a branch follows a capability). The real behaviour is checked by the contract test. */
   private analysis(d: Record<string, unknown>) {
-    const nodes = (d['nodes'] as Array<{ kind: string }> | undefined) ?? [];
-    const errors = nodes.some((n) => n.kind === 'trigger')
+    const nodes = (d['nodes'] as Array<{ id: string; kind: string; config?: Record<string, unknown> }> | undefined) ?? [];
+    const edges = (d['edges'] as Array<{ from: string; to: string; when?: string }> | undefined) ?? [];
+    const errors: Array<{ severity: string; nodeId?: string; message: string }> = nodes.some((n) => n.kind === 'trigger')
       ? []
       : [{ severity: 'error', message: 'A workflow needs at least one trigger.' }];
-    return {
-      wellFormed: errors.length === 0,
-      runnable: false,
-      errors,
-      blockers: [
-        {
+    const blockers: Array<{ severity: string; nodeId?: string; message: string }> = [];
+    for (const n of nodes) {
+      const bad = this.nodeKinds.find((k) => k.kind === n.kind && !k.supported);
+      if (bad !== undefined) blockers.push({ severity: 'blocker', nodeId: n.id, message: String(bad.reason) });
+      if (n.kind === 'trigger' && n.config?.['type'] !== 'manual')
+        blockers.push({
           severity: 'blocker',
-          message: 'This server has no executor for user-authored workflow graphs; only workflows derived from a compilation can run.',
-        },
-      ],
-    };
+          nodeId: n.id,
+          message: `There is no ${String(n.config?.['type'])} trigger support; only manual triggers run.`,
+        });
+      if (n.kind === 'capability' && typeof n.config?.['compilationId'] !== 'string')
+        blockers.push({
+          severity: 'blocker',
+          nodeId: n.id,
+          message: 'This capability step does not say which compilation it comes from, so the platform cannot bind it.',
+        });
+    }
+    const wellFormed = errors.length === 0;
+    if (!wellFormed || blockers.length > 0) return { wellFormed, runnable: false, errors, blockers };
+    const by = new Map(nodes.map((n) => [n.id, n]));
+    const steps: Array<Record<string, unknown>> = [];
+    const branches: Array<Record<string, unknown>> = [];
+    const path: string[] = [];
+    let cur = nodes.find((n) => n.kind === 'trigger');
+    let lastCap: (typeof nodes)[number] | undefined;
+    for (let guard = 0; cur !== undefined && guard < 100; guard++) {
+      path.push(cur.id);
+      let next: { to: string } | undefined;
+      if (cur.kind === 'capability') {
+        const cid = String(cur.config?.['compilationId']);
+        const capId = String(cur.config?.['capabilityId']);
+        steps.push({
+          nodeId: cur.id,
+          capabilityId: capId,
+          name: capId,
+          executionClass: capId.includes('hitl') ? 'human_in_the_loop' : 'deterministic_rule',
+          approved: this.approvedIds.has(`${cid}:${capId}`),
+        });
+        lastCap = cur;
+        next = edges.find((e) => e.from === cur!.id);
+      } else if (cur.kind === 'branch') {
+        if (lastCap === undefined) {
+          blockers.push({
+            severity: 'blocker',
+            nodeId: cur.id,
+            message: "A branch must come directly after a capability; its confidence is that capability's declared confidence.",
+          });
+          break;
+        }
+        const threshold = Number(cur.config?.['threshold']);
+        const taken = 0.8 >= threshold ? 'gte' : 'lt';
+        branches.push({
+          nodeId: cur.id,
+          metric: 'confidence',
+          basis: 'declared_contract_confidence',
+          capabilityId: String(lastCap.config?.['capabilityId']),
+          value: 0.8,
+          threshold,
+          taken,
+        });
+        next = edges.find((e) => e.from === cur!.id && e.when === taken);
+      } else next = edges.find((e) => e.from === cur!.id);
+      cur = next === undefined ? undefined : by.get(next.to);
+    }
+    if (blockers.length === 0 && steps.length === 0)
+      blockers.push({ severity: 'blocker', message: 'The path a run takes has no capability step.' });
+    if (blockers.length > 0) return { wellFormed, runnable: false, errors, blockers };
+    const compilationId = String((nodes.find((n) => n.kind === 'capability')?.config ?? {})['compilationId']);
+    return { wellFormed, runnable: true, errors, blockers, plan: { compilationId, path, steps, branches } };
   }
   private draftView(d: FakeDraft) {
     return {

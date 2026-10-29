@@ -327,3 +327,29 @@ test('run request validation: stale revision is refused, unknown fields are refu
     assert.equal((await runs(env)).length, 0);
   });
 });
+
+test('node-kinds reports exactly what analysis enforces', async () => {
+  await withEnv(async (env) => {
+    const res = await env.server.request('GET', `${env.drafts}/node-kinds`);
+    assert.equal(res.status, 200, res.bodyText);
+    const kinds = res.json<{
+      kinds: { kind: string; supported: boolean; reason?: string; variants?: { value: string; supported: boolean }[] }[];
+    }>().kinds;
+    assert.deepEqual(
+      kinds.filter((k) => k.supported).map((k) => k.kind),
+      ['trigger', 'capability', 'branch', 'human_review'],
+    );
+    for (const k of kinds.filter((x) => !x.supported)) assert.ok((k.reason ?? '').length > 0, `${k.kind} states why`);
+    const trigger = kinds.find((k) => k.kind === 'trigger')!;
+    assert.deepEqual(
+      trigger.variants?.filter((v) => v.supported).map((v) => v.value),
+      ['manual'],
+    );
+    // The same support rules block a draft built from an unsupported variant.
+    const sched = await save(env, {
+      ...flowDraft(env),
+      nodes: [{ id: 'start', kind: 'trigger', config: { type: 'schedule' } }, ...flowDraft(env).nodes.slice(1)],
+    });
+    assert.equal(sched.analysis.runnable, false);
+  });
+});

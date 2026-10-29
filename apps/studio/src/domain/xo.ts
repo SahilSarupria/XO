@@ -21,10 +21,14 @@ export function xoItems(compilations: readonly Compilation[], sources: readonly 
   const names = new Map(sources.map((s) => [s.sourceId, documentLabel(s.originalFilename)]));
   return compilations
     .filter((c) => c.status === 'succeeded')
-    .map((c) => ({ id: c.compilationId, label: names.get(c.sourceId) ?? 'Analysed document', sourceId: c.sourceId, at: c.completedAt ?? c.createdAt }))
+    .map((c) => ({
+      id: c.compilationId,
+      label: names.get(c.sourceId) ?? 'Analysed document',
+      sourceId: c.sourceId,
+      at: c.completedAt ?? c.createdAt,
+    }))
     .sort((a, b) => b.at.localeCompare(a.at));
 }
-
 
 /** What an XO is currently being looked at as: an analysed document in this workspace, or a package in the registry. */
 export type XoSubject = { readonly kind: 'analysis'; readonly id: string } | { readonly kind: 'package'; readonly id: string };

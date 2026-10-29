@@ -13,7 +13,9 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  transition: border-radius 260ms, border-color 140ms;
+  transition:
+    border-radius 260ms,
+    border-color 140ms;
 }
 .askdock-bar:focus-within {
   border-color: var(--border-strong);

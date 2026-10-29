@@ -66,7 +66,12 @@ export function ChooseWorkspace(props: {
             + Create workspace
           </button>
         </div>
-        <button type="button" className="cw-open" disabled={selected === undefined} onClick={() => selected && props.onOpen(selected.workspaceId)}>
+        <button
+          type="button"
+          className="cw-open"
+          disabled={selected === undefined}
+          onClick={() => selected && props.onOpen(selected.workspaceId)}
+        >
           Open workspace
         </button>
       </div>

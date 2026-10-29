@@ -450,6 +450,18 @@ export interface WorkflowRun {
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly initiator?: { readonly kind: string; readonly id: string };
+  /** Present only for a run started from a saved draft: which draft revision, the path taken and each branch decision. */
+  readonly draft?: {
+    readonly definitionId: string;
+    readonly revision: number;
+    readonly path: readonly string[];
+    readonly branches: readonly {
+      readonly nodeId: string;
+      readonly value: number;
+      readonly threshold: number;
+      readonly taken: 'gte' | 'lt';
+    }[];
+  };
   /** The platform's full record, kept only for Builder Mode's technical view. */
   readonly raw: unknown;
 }
@@ -497,6 +509,27 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
     const i = obj(o['initiator'], `${path}.initiator`);
     initiator = { kind: str(i['kind'], `${path}.initiator.kind`), id: str(i['id'], `${path}.initiator.id`) };
   }
+  let draft: WorkflowRun['draft'];
+  if (o['draft'] !== undefined) {
+    const d = obj(o['draft'], `${path}.draft`);
+    draft = {
+      definitionId: str(d['definitionId'], `${path}.draft.definitionId`),
+      revision: num(d['revision'], `${path}.draft.revision`),
+      path: arr(d['path'], `${path}.draft.path`).map((x, i) => str(x, `${path}.draft.path[${i}]`)),
+      branches: arr(d['branches'], `${path}.draft.branches`).map((b, i) => {
+        const bp = `${path}.draft.branches[${i}]`;
+        const bo = obj(b, bp);
+        const taken = str(bo['taken'], `${bp}.taken`);
+        if (taken !== 'gte' && taken !== 'lt') throw new WireParseError(`${bp}.taken`, 'gte or lt');
+        return {
+          nodeId: str(bo['nodeId'], `${bp}.nodeId`),
+          value: num(bo['value'], `${bp}.value`),
+          threshold: num(bo['threshold'], `${bp}.threshold`),
+          taken,
+        };
+      }),
+    };
+  }
   const currentStepExecutionId = optStr(o['currentStepExecutionId'], `${path}.currentStepExecutionId`);
   const completedAt = optStr(o['completedAt'], `${path}.completedAt`);
   const errorCode = optStr(o['errorCode'], `${path}.errorCode`);
@@ -518,6 +551,7 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(errorMessage !== undefined ? { errorMessage } : {}),
     ...(initiator !== undefined ? { initiator } : {}),
+    ...(draft !== undefined ? { draft } : {}),
     raw: v,
   };
 }

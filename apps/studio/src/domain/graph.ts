@@ -69,12 +69,10 @@ export function layoutGraph(steps: readonly WorkflowStepSummary[], caps: readonl
 }
 
 /** The status shown beside the workflow's name, from the same facts the Workflows list uses. */
-export function workflowStatus(args: {
-  executable: boolean;
-  needApproval: number;
-  canStart: boolean;
-  activeLabel: string | undefined;
-}): { label: string; tone: 'success' | 'warning' | 'neutral' } {
+export function workflowStatus(args: { executable: boolean; needApproval: number; canStart: boolean; activeLabel: string | undefined }): {
+  label: string;
+  tone: 'success' | 'warning' | 'neutral';
+} {
   if (args.activeLabel !== undefined) return { label: args.activeLabel, tone: 'neutral' };
   if (!args.executable) return { label: 'Cannot run yet', tone: 'warning' };
   if (args.needApproval > 0) return { label: 'Needs approval', tone: 'warning' };

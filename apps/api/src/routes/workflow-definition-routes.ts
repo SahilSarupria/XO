@@ -24,7 +24,7 @@ import { loadDraftFacts, DRAFT_WORKFLOW_PREFIX } from '../workflows/draft-workfl
 import { IDEMPOTENCY_KEY_HEADER, parseIdempotencyKey } from '../workflows/workflow-idempotency.js';
 import { startWorkflowExecutionDetailed, toWorkflowExecutionView, type WorkflowRunnerContext } from '../workflows/workflow-runner.js';
 import { WorkflowConflictError } from '../workflows/workflow-execution.js';
-import type { DefinitionInput } from '../workflow-definitions/definition.js';
+import { nodeKindSupport, type DefinitionInput } from '../workflow-definitions/definition.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { recordAudit } from '../audit/record.js';
 import { analyzeDefinition, parseDefinitionInput, type WorkflowDefinition } from '../workflow-definitions/definition.js';
@@ -262,6 +262,12 @@ export function registerWorkflowDefinitionRoutes(router: Router, workspaceStore:
     return replayed ? json(200, viewed, { 'idempotent-replayed': 'true' }) : json(202, viewed);
   }
 
+  async function nodeKinds(req: ApiRequest): Promise<ApiResponse> {
+    await requireOwnedWorkspace(req, workspaceStore);
+    return json(200, { kinds: nodeKindSupport() });
+  }
+
+  router.get('/workspaces/:workspaceId/workflow-definitions/node-kinds', guarded(nodeKinds));
   router.get('/workspaces/:workspaceId/workflow-definitions', guarded(list));
   router.post('/workspaces/:workspaceId/workflow-definitions', guarded(create));
   router.post('/workspaces/:workspaceId/workflow-definitions/validate', guarded(validate));

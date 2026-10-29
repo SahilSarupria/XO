@@ -3,7 +3,12 @@ import { COLUMNS, formatOutput, layoutGraph, NODE_H, NODE_W, workflowStatus } fr
 import type { Capability, WorkflowStepSummary } from '../../src/platform/wire';
 import { cap } from '../fixtures';
 
-const step = (order: number, capabilityId = `c${order}`): WorkflowStepSummary => ({ order, capabilityId, name: `Step ${order}`, description: '' });
+const step = (order: number, capabilityId = `c${order}`): WorkflowStepSummary => ({
+  order,
+  capabilityId,
+  name: `Step ${order}`,
+  description: '',
+});
 
 describe('layoutGraph', () => {
   it('draws the steps in the platform order, one edge between each neighbour', () => {
@@ -14,14 +19,20 @@ describe('layoutGraph', () => {
   });
 
   it('marks a step as a person-decides step only from its own execution class', () => {
-    const caps: Capability[] = [cap({ capabilityId: 'c0', executionClass: 'deterministic_rule' }), cap({ capabilityId: 'c1', executionClass: 'human_in_the_loop' })];
+    const caps: Capability[] = [
+      cap({ capabilityId: 'c0', executionClass: 'deterministic_rule' }),
+      cap({ capabilityId: 'c1', executionClass: 'human_in_the_loop' }),
+    ];
     const g = layoutGraph([step(0), step(1)], caps);
     expect(g.nodes.map((n) => n.kind)).toEqual(['capability', 'human']);
     expect(layoutGraph([step(0)], undefined).nodes[0]!.kind).toBe('capability'); // capabilities not loaded: no claim
   });
 
   it('never places two nodes on top of each other, and wraps long processes onto new rows', () => {
-    const g = layoutGraph(Array.from({ length: COLUMNS + 2 }, (_, i) => step(i)), undefined);
+    const g = layoutGraph(
+      Array.from({ length: COLUMNS + 2 }, (_, i) => step(i)),
+      undefined,
+    );
     const keys = new Set(g.nodes.map((n) => `${n.x},${n.y}`));
     expect(keys.size).toBe(g.nodes.length);
     expect(g.nodes[COLUMNS]!.y).toBeGreaterThan(g.nodes[0]!.y);
@@ -43,7 +54,10 @@ describe('workflowStatus', () => {
   it('reports exactly what the readiness facts say', () => {
     expect(workflowStatus({ executable: false, needApproval: 0, canStart: false, activeLabel: undefined }).label).toBe('Cannot run yet');
     expect(workflowStatus({ executable: true, needApproval: 2, canStart: false, activeLabel: undefined }).label).toBe('Needs approval');
-    expect(workflowStatus({ executable: true, needApproval: 0, canStart: true, activeLabel: undefined })).toEqual({ label: 'Ready', tone: 'success' });
+    expect(workflowStatus({ executable: true, needApproval: 0, canStart: true, activeLabel: undefined })).toEqual({
+      label: 'Ready',
+      tone: 'success',
+    });
     expect(workflowStatus({ executable: true, needApproval: 0, canStart: true, activeLabel: 'Running' }).label).toBe('Running');
   });
 });

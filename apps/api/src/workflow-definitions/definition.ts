@@ -407,3 +407,64 @@ export function analyzeDefinition(input: DefinitionInput, facts: DraftFacts = ne
   const plan: DraftPlan | undefined = planned ? { compilationId: [...compilationIds][0] as string, path, steps, branches } : undefined;
   return { errors, blockers, wellFormed: errors.length === 0, runnable: plan !== undefined, ...(plan !== undefined ? { plan } : {}) };
 }
+
+export interface NodeKindSupport {
+  readonly kind: NodeKind;
+  /** True when at least one form of this kind can run. `variants` and `note` say which. */
+  readonly supported: boolean;
+  /** Why the kind (or, with `supported: false`, all of it) cannot run. Shown to the author verbatim. */
+  readonly reason?: string;
+  /** A limitation on a supported kind. */
+  readonly note?: string;
+  /** Per-type support for kinds that have types (trigger, action) and memory scopes (capability). */
+  readonly variants?: readonly { readonly value: string; readonly supported: boolean; readonly reason?: string }[];
+}
+
+/**
+ * What this server can run, per node kind: the single statement the editor reads so it offers only what has a real
+ * executor. It is the same rule set `analyzeDefinition` enforces, written once as data.
+ */
+export function nodeKindSupport(): readonly NodeKindSupport[] {
+  const no = (reason: string) => ({ supported: false as const, reason });
+  return [
+    {
+      kind: 'trigger',
+      supported: true,
+      variants: [
+        { value: 'manual', supported: true },
+        { value: 'schedule', ...no('There is no scheduler; schedule triggers cannot fire.') },
+        { value: 'document_dropped', ...no('There is no folder or drop watcher; "document dropped" triggers cannot fire.') },
+      ],
+    },
+    {
+      kind: 'capability',
+      supported: true,
+      note: 'Must name the succeeded compilation it comes from. All capability steps of one draft must come from the same compilation.',
+      variants: [
+        { value: 'none', supported: true },
+        { value: 'workflow', ...no('Capability memory scopes are not part of the runtime; only "none" can be honored.') },
+        { value: 'workspace', ...no('Capability memory scopes are not part of the runtime; only "none" can be honored.') },
+      ],
+    },
+    {
+      kind: 'branch',
+      supported: true,
+      note: 'Compares the capability directly before it by its declared contract confidence, which is fixed per rule, not measured per run.',
+    },
+    {
+      kind: 'human_review',
+      supported: true,
+      note: 'Only directly after a rule that itself asks a person (a human-in-the-loop rule); there is no standalone review step.',
+    },
+    { kind: 'compile', ...no('Nothing here runs the compiler on demand from inside a workflow.') },
+    { kind: 'validate', ...no('Nothing here runs the validator on demand from inside a workflow.') },
+    {
+      kind: 'action',
+      ...no('There is no webhook or email delivery; action steps cannot run.'),
+      variants: [
+        { value: 'webhook', ...no('There is no webhook delivery.') },
+        { value: 'email', ...no('There is no email delivery.') },
+      ],
+    },
+  ];
+}

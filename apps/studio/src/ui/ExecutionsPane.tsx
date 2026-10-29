@@ -36,7 +36,12 @@ export function ExecutionsPane(props: {
             const row = runRow(r);
             return (
               <li key={row.id}>
-                <button type="button" className="ex-run" aria-pressed={run?.workflowExecutionId === row.id} onClick={() => setPickedRun(row.id)}>
+                <button
+                  type="button"
+                  className="ex-run"
+                  aria-pressed={run?.workflowExecutionId === row.id}
+                  onClick={() => setPickedRun(row.id)}
+                >
                   <span className="ex-run-title">{row.title}</span>
                   <span className="ex-run-status" data-tone={row.tone}>
                     {row.status}
@@ -50,7 +55,9 @@ export function ExecutionsPane(props: {
       </nav>
       {run === undefined ? (
         <div className="ex-main">
-          <EmptyState title="No runs to show">Start this process from the Editor. Each run will be listed here with what every step recorded.</EmptyState>
+          <EmptyState title="No runs to show">
+            Start this process from the Editor. Each run will be listed here with what every step recorded.
+          </EmptyState>
         </div>
       ) : (
         <RunView key={run.workflowExecutionId} run={run} executions={props.executions} caps={props.caps} builder={mode === 'builder'} />
@@ -67,12 +74,19 @@ function RunView(props: { run: WorkflowRun; executions: readonly Execution[]; ca
   const [drawer, setDrawer] = useState<Drawer>('output');
   const ordered = useMemo(() => [...run.steps].sort((a, b) => a.order - b.order), [run.steps]);
   const layout = useMemo(
-    () => layoutGraph(ordered.map((s) => ({ order: s.order, capabilityId: s.capabilityId, name: s.capabilityName, description: '' })), props.caps),
+    () =>
+      layoutGraph(
+        ordered.map((s) => ({ order: s.order, capabilityId: s.capabilityId, name: s.capabilityName, description: '' })),
+        props.caps,
+      ),
     [ordered, props.caps],
   );
   const frame = replayFrame(run, position);
   const stateOf = new Map(frame.nodes.map((n) => [n.stepId, n]));
-  const focusStep = selectedStep ?? ordered.find((s) => s.status === 'waiting_for_human' || s.status === 'failed' || s.status === 'rejected')?.stepId ?? ordered[ordered.length - 1]?.stepId;
+  const focusStep =
+    selectedStep ??
+    ordered.find((s) => s.status === 'waiting_for_human' || s.status === 'failed' || s.status === 'rejected')?.stepId ??
+    ordered[ordered.length - 1]?.stepId;
   const record = focusStep === undefined ? undefined : stepRecord(run, focusStep, props.executions);
 
   return (
@@ -82,7 +96,11 @@ function RunView(props: { run: WorkflowRun; executions: readonly Execution[]; ca
           <div className="wf-stage" style={{ width: layout.width, height: layout.height }}>
             <svg className="wf-edges" width={layout.width} height={layout.height} aria-hidden="true">
               {layout.edges.map((e, i) => (
-                <path key={e.id} d={e.path} data-taken={(stateOf.get(ordered[i]?.stepId ?? '')?.state ?? 'upcoming') === 'done' ? 'true' : 'false'} />
+                <path
+                  key={e.id}
+                  d={e.path}
+                  data-taken={(stateOf.get(ordered[i]?.stepId ?? '')?.state ?? 'upcoming') === 'done' ? 'true' : 'false'}
+                />
               ))}
             </svg>
             <ol className="wf-nodes" aria-label="Steps in the order they ran">
@@ -160,7 +178,9 @@ function RunView(props: { run: WorkflowRun; executions: readonly Execution[]; ca
               ) : (
                 <ul className="bare-list ex-events">
                   <li>
-                    <strong>{REPLAY_STATE_LABEL[replayFrame(run, total).nodes.find((n) => n.stepId === record.step.stepId)?.state ?? 'upcoming']}</strong>
+                    <strong>
+                      {REPLAY_STATE_LABEL[replayFrame(run, total).nodes.find((n) => n.stepId === record.step.stepId)?.state ?? 'upcoming']}
+                    </strong>
                     <span className="muted small"> · as recorded</span>
                   </li>
                   {record.step.errorMessage !== undefined ? <li className="danger-text">{record.step.errorMessage}</li> : null}

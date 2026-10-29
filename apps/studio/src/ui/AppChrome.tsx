@@ -98,7 +98,17 @@ export function AppChrome(props: {
             title={collapsed ? 'Keep the sidebar expanded' : 'Collapse to icons. It expands when you point at it.'}
             onClick={toggleCollapsed}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M4 5h16v14H4zM9 5v14" />
             </svg>
           </button>

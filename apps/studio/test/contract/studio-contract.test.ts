@@ -23,6 +23,8 @@ import { XoClient, type Result } from '../../src/platform/client';
 const PDF = fileURLToPath(new URL('../../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf', import.meta.url));
 const HITL = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522';
 const DETERMINISTIC = 'cap_4d97baf947ce09949680b2165c99f71d';
+/** What the fixture rule declares as required input. */
+const RULE_INPUT = { claim: 'fire damage to the warehouse', lossadjuster_assessment: 'covered' };
 
 let dir: string;
 let server: http.Server;
@@ -204,6 +206,128 @@ describe('sources, compile, inbox, preview and test run', () => {
     const after = await owner.requestMoreInfo(ws, item.executionId, 'too late');
     expect(after.ok).toBe(false);
   });
+
+  it('reports which node kinds the platform can run, to anyone who can read', async () => {
+    const kinds = must(await viewer.getNodeKinds(ws));
+    expect(kinds.filter((k) => k.supported).map((k) => k.kind)).toEqual(['trigger', 'capability', 'branch', 'human_review']);
+    const schedule = kinds.find((k) => k.kind === 'trigger')?.variants.find((v) => v.value === 'schedule');
+    expect(schedule).toMatchObject({ supported: false });
+    expect(schedule?.reason).toMatch(/no scheduler/);
+  });
+
+  describe('running a saved draft and saved test cases (real runner, real approval gate)', () => {
+    const detDraft = () => ({
+      name: 'one rule',
+      nodes: [
+        { id: 'start', kind: 'trigger' as const, config: { type: 'manual' } },
+        {
+          id: 'rule',
+          kind: 'capability' as const,
+          config: { packageName: 'policy', capabilityId: DETERMINISTIC, memoryScope: 'none', compilationId },
+        },
+      ],
+      edges: [{ from: 'start', to: 'rule' }],
+    });
+
+    it('the platform says runnable with a plan, refuses unapproved, then runs and records a real workflow run', async () => {
+      const created = must(await owner.createDraft(ws, detDraft()));
+      expect(created.analysis.runnable).toBe(true);
+      expect(created.analysis.plan).toMatchObject({ compilationId, path: ['start', 'rule'] });
+      expect(created.analysis.plan?.steps[0]).toMatchObject({
+        capabilityId: DETERMINISTIC,
+        executionClass: 'deterministic_rule',
+        approved: false,
+      });
+      const before = must(await owner.listWorkflowRuns(ws)).length;
+
+      denied(await viewer.runDraft(ws, created.definitionId, {}));
+      denied(await owner.runDraft(ws, created.definitionId, { expectedRevision: created.revision })); // not approved yet: same gate as any run
+      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before);
+
+      must(await owner.approveCapability(ws, compilationId, DETERMINISTIC));
+      expect(must(await owner.getDraft(ws, created.definitionId)).analysis.plan?.steps[0]?.approved).toBe(true);
+      const stale = await owner.runDraft(ws, created.definitionId, { expectedRevision: created.revision + 1 });
+      expect(stale.ok).toBe(false);
+      if (!stale.ok) expect(stale.problem.status).toBe(409);
+
+      const run = must(await owner.runDraft(ws, created.definitionId, { input: RULE_INPUT, expectedRevision: created.revision }));
+      expect(run.workflowId).toBe(`draft:${created.definitionId}`);
+      expect(run.draft).toMatchObject({ definitionId: created.definitionId, revision: created.revision, path: ['start', 'rule'] });
+      expect(run.steps.map((st) => st.capabilityId)).toEqual([DETERMINISTIC]);
+      expect(must(await owner.getWorkflowRun(ws, run.workflowExecutionId)).workflowExecutionId).toBe(run.workflowExecutionId);
+      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before + 1);
+    });
+
+    it("a draft that is not runnable is refused with the platform's 501 and starts nothing", async () => {
+      const before = must(await owner.listWorkflowRuns(ws)).length;
+      const sched = {
+        ...detDraft(),
+        nodes: [{ id: 'start', kind: 'trigger' as const, config: { type: 'schedule' } }, detDraft().nodes[1]!],
+      };
+      const created = must(await owner.createDraft(ws, sched));
+      expect(created.analysis.runnable).toBe(false);
+      expect(created.analysis.blockers.map((b) => b.message).join(' ')).toMatch(/no scheduler/);
+      const r = await owner.runDraft(ws, created.definitionId, {});
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.problem.kind).toBe('unavailable');
+      expect(must(await owner.listWorkflowRuns(ws)).length).toBe(before);
+    });
+
+    it('saved test cases: author edits, reviewer/author run, the platform decides pass/fail, history is kept', async () => {
+      must(await owner.approveCapability(ws, compilationId, DETERMINISTIC));
+      const pass = must(
+        await owner.createTestCase(ws, compilationId, DETERMINISTIC, {
+          name: 'baseline',
+          input: RULE_INPUT,
+          expected: { status: 'succeeded' },
+        }),
+      );
+      const fail = must(
+        await owner.createTestCase(ws, compilationId, DETERMINISTIC, {
+          name: 'wrong expectation',
+          input: RULE_INPUT,
+          expected: { status: 'failed' },
+        }),
+      );
+      denied(await viewer.createTestCase(ws, compilationId, DETERMINISTIC, { name: 'x', input: {}, expected: { status: 'succeeded' } }));
+      denied(await viewer.runTestCase(ws, compilationId, DETERMINISTIC, pass.caseId));
+      expect(must(await viewer.listTestCases(ws, compilationId, DETERMINISTIC)).map((c) => c.name)).toEqual([
+        'baseline',
+        'wrong expectation',
+      ]);
+
+      const ran = must(await owner.runTestCase(ws, compilationId, DETERMINISTIC, pass.caseId));
+      expect(ran).toMatchObject({ pass: true, caseRevision: 1, actual: { status: 'succeeded' } });
+      expect(must(await owner.listExecutions(ws)).some((e) => e.executionId === ran.executionId)).toBe(true);
+
+      const batch = must(await owner.runTestCases(ws, compilationId, DETERMINISTIC));
+      expect([batch.passed, batch.failed]).toEqual([1, 1]);
+      expect(batch.runs.find((r) => r.caseId === fail.caseId)?.mismatches.join(' ')).toMatch(/status: expected "failed"/);
+      expect(must(await owner.testCaseHistory(ws, compilationId, DETERMINISTIC, pass.caseId))).toHaveLength(2);
+      expect(must(await owner.listTestCases(ws, compilationId, DETERMINISTIC)).find((c) => c.caseId === pass.caseId)?.lastRun?.pass).toBe(
+        true,
+      );
+
+      const edited = must(
+        await owner.updateTestCase(ws, compilationId, DETERMINISTIC, fail.caseId, {
+          name: 'now right',
+          input: RULE_INPUT,
+          expected: { status: 'succeeded' },
+          expectedRevision: 1,
+        }),
+      );
+      expect(edited.revision).toBe(2);
+      const stale = await owner.updateTestCase(ws, compilationId, DETERMINISTIC, fail.caseId, {
+        name: 'stale',
+        input: RULE_INPUT,
+        expected: { status: 'succeeded' },
+        expectedRevision: 1,
+      });
+      expect(stale.ok).toBe(false);
+      if (!stale.ok) expect(stale.problem.reason).toBe('stale_revision');
+      expect(must(await owner.deleteTestCase(ws, compilationId, DETERMINISTIC, fail.caseId)).deleted).toBe(true);
+    });
+  });
 });
 
 describe('library and installs', () => {
@@ -267,10 +391,11 @@ describe('workflow drafts', () => {
     ],
   };
 
-  it('saves with revision guard, reports why it cannot run, and never offers Run', async () => {
+  it('saves with revision guard and reports concretely why this draft cannot run', async () => {
     const analysis = must(await owner.validateDraft(ws, draft));
     expect(analysis.wellFormed).toBe(true);
-    expect(analysis.blockers.map((b) => b.message).join(' ')).toMatch(/no executor/);
+    expect(analysis.runnable).toBe(false);
+    expect(analysis.blockers.map((b) => b.message).join(' ')).toMatch(/no folder or drop watcher/);
     const created = must(await owner.createDraft(ws, draft));
     expect(created.revision).toBe(1);
     const v2 = must(await owner.saveDraft(ws, created.definitionId, { ...draft, name: 'renamed', expectedRevision: 1 }));

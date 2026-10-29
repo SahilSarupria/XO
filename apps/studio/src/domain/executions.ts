@@ -76,8 +76,14 @@ export function stepRecord(run: WorkflowRun, stepId: string, executions: readonl
       );
       if (t.decisionNote !== undefined && t.decisionNote !== '') events.push({ label: `Note: ${t.decisionNote}`, at: undefined });
     }
-    if (execution.completedAt !== undefined) events.push({ label: `Ended as ${execution.status.replace(/_/g, ' ')}`, at: execution.completedAt });
+    if (execution.completedAt !== undefined)
+      events.push({ label: `Ended as ${execution.status.replace(/_/g, ' ')}`, at: execution.completedAt });
     if (execution.errorMessage !== undefined) events.push({ label: execution.errorMessage, at: undefined });
   }
-  return { step, execution, durationMs: execution === undefined ? undefined : durationMs(execution.requestedAt, execution.completedAt), events };
+  return {
+    step,
+    execution,
+    durationMs: execution === undefined ? undefined : durationMs(execution.requestedAt, execution.completedAt),
+    events,
+  };
 }

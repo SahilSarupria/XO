@@ -24,7 +24,11 @@ const run = (over: Partial<WorkflowRun> = {}): WorkflowRun =>
 describe('run rows', () => {
   it('lists only this process, newest first', () => {
     const rows = runsOf(
-      [run({ workflowExecutionId: 'wfx_old', createdAt: '2026-10-01T00:00:00Z' }), run({ workflowExecutionId: 'wfx_new', createdAt: '2026-10-02T00:00:00Z' }), run({ workflowId: 'other' })],
+      [
+        run({ workflowExecutionId: 'wfx_old', createdAt: '2026-10-01T00:00:00Z' }),
+        run({ workflowExecutionId: 'wfx_new', createdAt: '2026-10-02T00:00:00Z' }),
+        run({ workflowId: 'other' }),
+      ],
       'wf_1',
     );
     expect(rows.map((r) => r.workflowExecutionId)).toEqual(['wfx_new', 'wfx_old']);

@@ -121,7 +121,7 @@ describe('mode: default, switching and persistence', () => {
     builder.focus();
     await user.keyboard('{Enter}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument(); // choosing closes the menu
-    expect(screen.getByRole('button', { name: 'Workspace menu' })).toHaveFocus() ;
+    expect(screen.getByRole('button', { name: 'Workspace menu' })).toHaveFocus();
     expect(await modeChoice(user, 'Builder mode')).toBe('true');
   });
 });

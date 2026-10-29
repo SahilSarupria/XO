@@ -54,6 +54,17 @@ import {
   parseRegions,
   parseRuntimeStatus,
   parseSettingsView,
+  parseNodeKinds,
+  parseTestCase,
+  parseTestCaseBatch,
+  parseTestCaseHistory,
+  parseTestCaseList,
+  parseTestCaseRun,
+  type NodeKindSupport,
+  type TestCase,
+  type TestCaseBatch,
+  type TestCaseDraft,
+  type TestCaseRun,
   type AuditPage,
   type AuditVerification,
   type CapabilityPreview,
@@ -386,7 +397,7 @@ export class XoClient {
     );
   }
 
-  // ---- workflow drafts (saved graphs). Saving is real; running a draft is NOT offered: the API has no executor for them.
+  // ---- workflow drafts (saved graphs). Saving, validating and running a supported draft are real; the platform decides what is runnable.
   listDrafts(ws: string): Promise<Result<WorkflowDraftSummary[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-definitions`, parseDraftList);
   }
@@ -417,6 +428,75 @@ export class XoClient {
     draft: { name: string; nodes: readonly DraftNode[]; edges: readonly DraftEdge[] },
   ): Promise<Result<DraftAnalysis>> {
     return this.call('POST', `/workspaces/${enc(ws)}/workflow-definitions/validate`, (b) => parseAnalysis(b), this.json(draft));
+  }
+
+  /** Which node kinds (and variants) the platform can run, with the reason for each it cannot. The editor offers only what is supported. */
+  getNodeKinds(ws: string): Promise<Result<NodeKindSupport[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-definitions/node-kinds`, parseNodeKinds);
+  }
+  /**
+   * Runs a SAVED draft. The platform re-analyses it first: not runnable is a 501 problem, an unapproved capability a 403,
+   * a stale `expectedRevision` a 409 — each is the platform's own refusal. Same approval gate and human-task path as any run.
+   * A key makes a retry of the same request return the original run.
+   */
+  runDraft(
+    ws: string,
+    definitionId: string,
+    args: { input?: Record<string, unknown>; expectedRevision?: number } = {},
+    idempotencyKey?: string,
+  ): Promise<Result<WorkflowRun>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-definitions/${enc(definitionId)}/run`, (b) => parseWorkflowRun(b), {
+      ...this.json(args),
+      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    });
+  }
+
+  // ---- saved test cases (per capability). Pass/fail is the platform's verdict on a real, approval-gated execution.
+  private casesPath(ws: string, compilationId: string, capabilityId: string): string {
+    return `/workspaces/${enc(ws)}/compilations/${enc(compilationId)}/capabilities/${enc(capabilityId)}`;
+  }
+  listTestCases(ws: string, compilationId: string, capabilityId: string): Promise<Result<TestCase[]>> {
+    return this.call('GET', `${this.casesPath(ws, compilationId, capabilityId)}/test-cases`, parseTestCaseList);
+  }
+  createTestCase(ws: string, compilationId: string, capabilityId: string, draft: TestCaseDraft): Promise<Result<TestCase>> {
+    return this.call('POST', `${this.casesPath(ws, compilationId, capabilityId)}/test-cases`, (b) => parseTestCase(b), this.json(draft));
+  }
+  /** `expectedRevision` is the revision the form loaded; a newer saved case is refused (stale_revision) and kept. */
+  updateTestCase(
+    ws: string,
+    compilationId: string,
+    capabilityId: string,
+    caseId: string,
+    draft: TestCaseDraft & { expectedRevision: number },
+  ): Promise<Result<TestCase>> {
+    return this.call(
+      'PUT',
+      `${this.casesPath(ws, compilationId, capabilityId)}/test-cases/${enc(caseId)}`,
+      (b) => parseTestCase(b),
+      this.json(draft),
+    );
+  }
+  deleteTestCase(ws: string, compilationId: string, capabilityId: string, caseId: string): Promise<Result<{ deleted: boolean }>> {
+    return this.call('DELETE', `${this.casesPath(ws, compilationId, capabilityId)}/test-cases/${enc(caseId)}`, (b) => ({
+      deleted: (b as { deleted?: unknown })?.deleted === true,
+    }));
+  }
+  runTestCase(ws: string, compilationId: string, capabilityId: string, caseId: string): Promise<Result<TestCaseRun>> {
+    return this.call('POST', `${this.casesPath(ws, compilationId, capabilityId)}/test-cases/${enc(caseId)}/runs`, (b) =>
+      parseTestCaseRun(b),
+    );
+  }
+  /** Runs every saved case of the capability, or just `caseIds`. Sequential real executions. */
+  runTestCases(ws: string, compilationId: string, capabilityId: string, caseIds?: readonly string[]): Promise<Result<TestCaseBatch>> {
+    return this.call(
+      'POST',
+      `${this.casesPath(ws, compilationId, capabilityId)}/test-case-runs`,
+      parseTestCaseBatch,
+      caseIds !== undefined ? this.json({ caseIds }) : undefined,
+    );
+  }
+  testCaseHistory(ws: string, compilationId: string, capabilityId: string, caseId: string): Promise<Result<TestCaseRun[]>> {
+    return this.call('GET', `${this.casesPath(ws, compilationId, capabilityId)}/test-cases/${enc(caseId)}/runs`, parseTestCaseHistory);
   }
 
   // ---- capability preview (no execution, no record, no approval). A Test Run is the ordinary createExecution above.

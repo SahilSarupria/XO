@@ -46,19 +46,72 @@ async function withRuns(): Promise<{ api: FakeXo; user: U }> {
   await user.click(screen.getByRole('button', { name: /create workspace/i }));
   await screen.findByRole('heading', { name: 'Ops' });
   await user.click(screen.getByRole('button', { name: /^my xos/i }));
-  await user.upload(document.getElementById('file-upload') as HTMLInputElement, new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }));
+  await user.upload(
+    document.getElementById('file-upload') as HTMLInputElement,
+    new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
+  );
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   const cmp = api.compilations[0]!.compilationId;
   api.workflowRuns.push(
-    mkRun(cmp, 'aaaaaa01', 'succeeded', [step('cap_det', 0, 'Record before payment', 'succeeded', 'exe_a0'), step('cap_hitl', 1, 'Review not covered', 'succeeded', 'exe_a1')], '2026-10-19T10:00:00.000Z', '2026-10-19T10:00:01.200Z'),
-    mkRun(cmp, 'bbbbbb02', 'failed', [step('cap_det', 0, 'Record before payment', 'failed', 'exe_b0'), step('cap_hitl', 1, 'Review not covered', 'pending')], '2026-10-19T11:00:00.000Z', '2026-10-19T11:00:00.800Z'),
-    mkRun(cmp, 'dddddd04', 'running', [step('cap_det', 0, 'Record before payment', 'running', 'exe_d0'), step('cap_hitl', 1, 'Review not covered', 'pending')], '2026-10-20T10:00:00.000Z'),
-    mkRun(cmp, 'cccccc03', 'waiting_for_human', [step('cap_det', 0, 'Record before payment', 'succeeded', 'exe_c0'), step('cap_hitl', 1, 'Review not covered', 'waiting_for_human', 'exe_c1')], '2026-10-20T09:00:00.000Z'),
+    mkRun(
+      cmp,
+      'aaaaaa01',
+      'succeeded',
+      [
+        step('cap_det', 0, 'Record before payment', 'succeeded', 'exe_a0'),
+        step('cap_hitl', 1, 'Review not covered', 'succeeded', 'exe_a1'),
+      ],
+      '2026-10-19T10:00:00.000Z',
+      '2026-10-19T10:00:01.200Z',
+    ),
+    mkRun(
+      cmp,
+      'bbbbbb02',
+      'failed',
+      [step('cap_det', 0, 'Record before payment', 'failed', 'exe_b0'), step('cap_hitl', 1, 'Review not covered', 'pending')],
+      '2026-10-19T11:00:00.000Z',
+      '2026-10-19T11:00:00.800Z',
+    ),
+    mkRun(
+      cmp,
+      'dddddd04',
+      'running',
+      [step('cap_det', 0, 'Record before payment', 'running', 'exe_d0'), step('cap_hitl', 1, 'Review not covered', 'pending')],
+      '2026-10-20T10:00:00.000Z',
+    ),
+    mkRun(
+      cmp,
+      'cccccc03',
+      'waiting_for_human',
+      [
+        step('cap_det', 0, 'Record before payment', 'succeeded', 'exe_c0'),
+        step('cap_hitl', 1, 'Review not covered', 'waiting_for_human', 'exe_c1'),
+      ],
+      '2026-10-20T09:00:00.000Z',
+    ),
   );
   api.executions.push(
-    { executionId: 'exe_a0', compilationId: cmp, capabilityId: 'cap_det', status: 'succeeded', requestedAt: '2026-10-19T10:00:00.000Z', completedAt: '2026-10-19T10:00:00.700Z', input: { claim: { amount: 1200 } }, output: { decision: 'eligible', rules_matched: 6 } },
-    { executionId: 'exe_b0', compilationId: cmp, capabilityId: 'cap_det', status: 'failed', requestedAt: '2026-10-19T11:00:00.000Z', completedAt: '2026-10-19T11:00:00.500Z', input: {}, errorMessage: 'missing required property claim' },
+    {
+      executionId: 'exe_a0',
+      compilationId: cmp,
+      capabilityId: 'cap_det',
+      status: 'succeeded',
+      requestedAt: '2026-10-19T10:00:00.000Z',
+      completedAt: '2026-10-19T10:00:00.700Z',
+      input: { claim: { amount: 1200 } },
+      output: { decision: 'eligible', rules_matched: 6 },
+    },
+    {
+      executionId: 'exe_b0',
+      compilationId: cmp,
+      capabilityId: 'cap_det',
+      status: 'failed',
+      requestedAt: '2026-10-19T11:00:00.000Z',
+      completedAt: '2026-10-19T11:00:00.500Z',
+      input: {},
+      errorMessage: 'missing required property claim',
+    },
   );
   await openScreen(user, 'Work');
   await user.click(await screen.findByRole('button', { name: /view graph of/i }));
@@ -84,7 +137,9 @@ describe('Executions', () => {
   it('shows the chosen run as a graph of its steps with their recorded outcome, and no timings that were not recorded', async () => {
     const { user } = await withRuns();
     await user.click(screen.getByRole('button', { name: /Run aaaa01/ }));
-    const nodes = within(within(screen.getByRole('region', { name: 'Run graph' })).getByRole('list', { name: /steps in the order/i })).getAllByRole('button');
+    const nodes = within(
+      within(screen.getByRole('region', { name: 'Run graph' })).getByRole('list', { name: /steps in the order/i }),
+    ).getAllByRole('button');
     expect(nodes[0]!.textContent).toContain('Record before payment');
     expect(nodes[0]!.textContent).toContain('Finished · 700 ms'); // from the execution's own timestamps
     expect(nodes[1]!.textContent).toContain('Finished'); // no execution recorded for this step: no time claimed
@@ -132,7 +187,12 @@ describe('Executions', () => {
     const slider = within(graph).getByLabelText('Replay position') as HTMLInputElement;
     expect(slider.value).toBe('2');
     fireEvent.change(slider, { target: { value: '0' } });
-    expect(within(graph).getAllByRole('button').filter((b) => b.classList.contains('wf-node')).map((b) => b.getAttribute('data-state'))).toEqual(['upcoming', 'upcoming']);
+    expect(
+      within(graph)
+        .getAllByRole('button')
+        .filter((b) => b.classList.contains('wf-node'))
+        .map((b) => b.getAttribute('data-state')),
+    ).toEqual(['upcoming', 'upcoming']);
     expect(within(graph).getByRole('status')).toHaveTextContent(/move the slider or press play/i);
     fireEvent.change(slider, { target: { value: '1' } });
     expect(within(graph).getByRole('status')).toHaveTextContent(/step 1 of 2: record before payment finished/i);
@@ -167,7 +227,9 @@ describe('Executions', () => {
     await screen.findByRole('navigation', { name: 'Runs' });
     expect(screen.getByRole('button', { name: /Run dddd04/ })).toHaveAttribute('aria-pressed', 'true');
     window.location.hash = '#/home';
-    const waiting = (await screen.findAllByRole('button', { name: /^Open Record before payment/ })).find((r) => within(r).queryByText('Needs review') !== null)!;
+    const waiting = (await screen.findAllByRole('button', { name: /^Open Record before payment/ })).find(
+      (r) => within(r).queryByText('Needs review') !== null,
+    )!;
     await user.click(waiting);
     expect(window.location.hash).toBe('#/tasks');
   });

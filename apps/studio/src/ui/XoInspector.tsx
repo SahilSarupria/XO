@@ -101,7 +101,12 @@ function KnowledgeGraphCard(props: { label: string; items: readonly KnowledgeIte
         <p className="muted small">Nothing to draw yet: no rules are recorded for this XO.</p>
       ) : (
         <>
-          <svg className="xoi-kg" viewBox={`0 0 ${g.width} ${g.height}`} role="img" aria-label={`${props.label} and its ${props.items.length} rules`}>
+          <svg
+            className="xoi-kg"
+            viewBox={`0 0 ${g.width} ${g.height}`}
+            role="img"
+            aria-label={`${props.label} and its ${props.items.length} rules`}
+          >
             {g.nodes.map((n) => (
               <line key={`l-${n.id}`} x1={g.center.x} y1={g.center.y} x2={n.x} y2={n.y} />
             ))}
@@ -115,7 +120,11 @@ function KnowledgeGraphCard(props: { label: string; items: readonly KnowledgeIte
               {props.label.length > 9 ? `${props.label.slice(0, 8)}…` : props.label}
             </text>
           </svg>
-          {g.hidden > 0 ? <p className="muted small">Showing {g.nodes.length} of {props.items.length} rules. All of them are listed under Rules.</p> : null}
+          {g.hidden > 0 ? (
+            <p className="muted small">
+              Showing {g.nodes.length} of {props.items.length} rules. All of them are listed under Rules.
+            </p>
+          ) : null}
           <ul className="xoi-legend bare-list">
             {props.legend.map((s) => (
               <li key={s}>
@@ -153,7 +162,8 @@ function AnalysisInspector(props: {
       </EmptyState>
     );
   }
-  const list: readonly Capability[] = caps.state.phase === 'ready' ? caps.state.value : caps.state.phase === 'error' ? (caps.state.stale ?? []) : [];
+  const list: readonly Capability[] =
+    caps.state.phase === 'ready' ? caps.state.value : caps.state.phase === 'error' ? (caps.state.stale ?? []) : [];
   const counts = ruleCounts(list);
   const versions = props.compilations.filter((x) => x.sourceId === c.sourceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return (
@@ -230,7 +240,8 @@ function AnalysisInspector(props: {
           </div>
           {needsInput(list).length > 0 ? (
             <p className="notice notice-warning small" role="status">
-              {needsInput(list).length} {needsInput(list).length === 1 ? 'rule needs' : 'rules need'} more information before XO can use {needsInput(list).length === 1 ? 'it' : 'them'}.
+              {needsInput(list).length} {needsInput(list).length === 1 ? 'rule needs' : 'rules need'} more information before XO can use{' '}
+              {needsInput(list).length === 1 ? 'it' : 'them'}.
             </p>
           ) : null}
           {list.length === 0 && caps.state.phase === 'ready' ? <p className="muted small">XO found no rules in this document.</p> : null}
@@ -241,7 +252,9 @@ function AnalysisInspector(props: {
                 <li key={r.capabilityId}>
                   <div className="row between">
                     <strong>{r.name}</strong>
-                    <Badge tone={reviewStateOf(r) === 'approved' ? 'success' : reviewStateOf(r) === 'ready_for_review' ? 'accent' : 'warning'}>
+                    <Badge
+                      tone={reviewStateOf(r) === 'approved' ? 'success' : reviewStateOf(r) === 'ready_for_review' ? 'accent' : 'warning'}
+                    >
                       {REVIEW_STATE_LABEL[reviewStateOf(r)]}
                     </Badge>
                   </div>
@@ -257,7 +270,9 @@ function AnalysisInspector(props: {
         </section>
       ) : null}
       {tab === 'benchmarks' ? (
-        <EmptyState title="No benchmark runs">This XO has not been published, so the registry has recorded no benchmark runs for it.</EmptyState>
+        <EmptyState title="No benchmark runs">
+          This XO has not been published, so the registry has recorded no benchmark runs for it.
+        </EmptyState>
       ) : null}
       {tab === 'versions' ? (
         <section className="xoi-card">
@@ -266,7 +281,8 @@ function AnalysisInspector(props: {
             {versions.map((v) => (
               <li key={v.compilationId} className="row between">
                 <span>
-                  {formatWhen(v.completedAt ?? v.createdAt)} {v.compilationId === c.compilationId ? <Badge tone="accent">Shown</Badge> : null}
+                  {formatWhen(v.completedAt ?? v.createdAt)}{' '}
+                  {v.compilationId === c.compilationId ? <Badge tone="accent">Shown</Badge> : null}
                 </span>
                 <Badge tone={v.status === 'succeeded' ? 'success' : v.status === 'failed' ? 'danger' : 'neutral'}>
                   {v.status === 'succeeded' ? 'Analysed' : v.status === 'failed' ? 'Did not finish' : 'Analysing'}
@@ -300,7 +316,13 @@ function PackageInspector(props: { workspaceId: string; id: string; onBack: () =
   return <PackageView record={data.record} runs={data.runs} tab={tab} onTab={setTab} onBack={props.onBack} />;
 }
 
-function PackageView(props: { record: RegistryPackage; runs: readonly BenchmarkRun[]; tab: Tab; onTab: (t: Tab) => void; onBack: () => void }) {
+function PackageView(props: {
+  record: RegistryPackage;
+  runs: readonly BenchmarkRun[];
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  onBack: () => void;
+}) {
   const p = props.record;
   const cats = latestByCategory(props.runs);
   const open = props.runs.filter((x) => x.challengeable).length;
@@ -353,7 +375,8 @@ function PackageView(props: { record: RegistryPackage; runs: readonly BenchmarkR
                     })}
                   </ul>
                   <p className="mono">
-                    latest run in each category · {props.runs.length} {props.runs.length === 1 ? 'run' : 'runs'} recorded · {open} marked challengeable
+                    latest run in each category · {props.runs.length} {props.runs.length === 1 ? 'run' : 'runs'} recorded · {open} marked
+                    challengeable
                   </p>
                 </>
               )}

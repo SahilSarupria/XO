@@ -27,7 +27,10 @@ describe('command palette helpers', () => {
     expect(isPaletteShortcut({ key: 'j', metaKey: true, ctrlKey: false })).toBe(false);
   });
   it('filters by label, ignoring case and spaces at the ends', () => {
-    const cmds = [{ id: 'a', label: 'Go to Library', run: () => {} }, { id: 'b', label: 'Open Chat', run: () => {} }];
+    const cmds = [
+      { id: 'a', label: 'Go to Library', run: () => {} },
+      { id: 'b', label: 'Open Chat', run: () => {} },
+    ];
     expect(matchCommands(cmds, ' LIB ').map((c) => c.id)).toEqual(['a']);
     expect(matchCommands(cmds, '').length).toBe(2);
     expect(matchCommands(cmds, 'zzz')).toEqual([]);
@@ -71,8 +74,8 @@ describe('fonts and theme tokens are bundled', () => {
   const read = (p: string) => readFileSync(join(__dirname, '../..', p), 'utf8');
   it('loads Instrument Sans and JetBrains Mono from npm packages, never from a CDN', () => {
     const main = read('src/main.tsx');
-    expect(main).toContain("@fontsource-variable/instrument-sans");
-    expect(main).toContain("@fontsource-variable/jetbrains-mono");
+    expect(main).toContain('@fontsource-variable/instrument-sans');
+    expect(main).toContain('@fontsource-variable/jetbrains-mono');
     for (const f of ['index.html', 'src/styles/tokens.css', 'src/styles/app.css'])
       expect(read(f)).not.toMatch(/fonts\.googleapis|fonts\.gstatic|cdn\./i);
     expect(read('src/styles/tokens.css')).toMatch(/--font-sans: 'Instrument Sans Variable'/);
@@ -80,7 +83,12 @@ describe('fonts and theme tokens are bundled', () => {
   });
   it('defines every colour token in the light theme that the dark theme defines', () => {
     const css = read('src/styles/tokens.css');
-    const names = (block: string) => new Set([...block.matchAll(/(--(?:bg|surface|border|text(?!-(?:xs|sm|md|lg|xl|2xl))|accent|success|warning|danger|info)[a-z0-9-]*):/g)].map((m) => m[1]));
+    const names = (block: string) =>
+      new Set(
+        [...block.matchAll(/(--(?:bg|surface|border|text(?!-(?:xs|sm|md|lg|xl|2xl))|accent|success|warning|danger|info)[a-z0-9-]*):/g)].map(
+          (m) => m[1],
+        ),
+      );
     const dark = names(css.slice(0, css.indexOf(":root[data-theme='light']")));
     const light = names(css.slice(css.indexOf(":root[data-theme='light']")));
     for (const n of dark) expect(light, n).toContain(n);

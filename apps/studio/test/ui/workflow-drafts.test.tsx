@@ -41,9 +41,7 @@ describe('Workflow drafts', () => {
     const user = await analysed(api);
     await openGraph(user);
     const draft = screen.getByRole('region', { name: 'Draft' });
-    expect(await within(draft).findByRole('list', { name: 'Reasons this draft cannot run' })).toHaveTextContent(
-      /no executor for user-authored/,
-    );
+    expect(await within(draft).findByText(/found no structural problems/i)).toBeInTheDocument();
     expect(within(draft).getByRole('button', { name: 'Execute draft' })).toBeDisabled();
     await user.click(within(draft).getByRole('button', { name: 'Execute draft' }));
     expect(runCalls(api)).toHaveLength(0);

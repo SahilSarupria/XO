@@ -69,7 +69,14 @@ export function CommandPalette(props: { open: boolean; onClose: () => void; comm
         />
         <ul id="palette-list" role="listbox" aria-label="Commands" className="bare-list">
           {shown.map((c, i) => (
-            <li key={c.id} id={`pal-${c.id}`} role="option" aria-selected={i === active} onMouseEnter={() => setActive(i)} onClick={() => choose(c)}>
+            <li
+              key={c.id}
+              id={`pal-${c.id}`}
+              role="option"
+              aria-selected={i === active}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => choose(c)}
+            >
               <span>{c.label}</span>
               {c.hint !== undefined ? <span className="muted small">{c.hint}</span> : null}
             </li>
