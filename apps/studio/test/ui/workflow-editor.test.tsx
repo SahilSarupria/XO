@@ -151,3 +151,109 @@ describe('Workflow editor: node operations, validated live by the platform', () 
     expect(within(inspector()).getByRole('button', { name: 'Remove step' })).toBeDisabled();
   });
 });
+
+describe('Workflow editor: branches (gte / lt) with a threshold, validated by the platform', () => {
+  const addBranch = async (user: U) => {
+    await user.click(node(/^Record before payment/));
+    await user.click(
+      within(screen.getByRole('complementary', { name: 'Node palette' })).getByRole('button', { name: 'Branch on confidence' }),
+    );
+  };
+
+  it('a new branch keeps the old next step on "at or above"; the empty "below" side is the platform\'s error until it leads somewhere', async () => {
+    const api = new FakeXo();
+    const user = await analysed(api);
+    await addBranch(user);
+    await waitFor(() => {
+      const g = lastValidate(api)!;
+      expect(g.edges).toEqual(
+        expect.arrayContaining([
+          { from: 'n1', to: 'n4' },
+          { from: 'n4', to: 'n2', when: 'gte' },
+        ]),
+      );
+      expect(g.edges.some((e) => e.from === 'n4' && e.when === 'lt')).toBe(false);
+      expect(g.nodes.find((n) => n.id === 'n4')?.config).toMatchObject({ metric: 'confidence', threshold: 0.8 });
+    });
+    expect(await within(inspector()).findByRole('list', { name: 'Problems with this step' })).toHaveTextContent(
+      /exactly two outgoing connections/,
+    );
+    // The next palette add goes to the missing side, and the problem goes away.
+    await user.click(within(screen.getByRole('complementary', { name: 'Node palette' })).getByRole('button', { name: 'Person reviews' }));
+    await waitFor(() => expect(lastValidate(api)?.edges).toEqual(expect.arrayContaining([{ from: 'n4', to: 'n5', when: 'lt' }])));
+    await user.click(node(/^Branch/));
+    await waitFor(() => expect(within(inspector()).queryByRole('list', { name: 'Problems with this step' })).not.toBeInTheDocument());
+    // With both sides used, the palette says why nothing can be added to the branch itself.
+    expect(screen.getByText(/Both sides of this branch already lead somewhere/)).toBeInTheDocument();
+    expect(within(canvas()).getByText('at or above')).toBeInTheDocument();
+    expect(within(canvas()).getByText('below')).toBeInTheDocument();
+  });
+
+  it('edits the threshold, sends it to the platform, and shows the side the platform resolves it to', async () => {
+    const api = new FakeXo();
+    const user = await analysed(api);
+    await addBranch(user);
+    await user.click(within(screen.getByRole('complementary', { name: 'Node palette' })).getByRole('button', { name: 'Person reviews' }));
+    await user.click(node(/^Branch/));
+    const t = within(inspector()).getByLabelText('Confidence threshold');
+    await user.clear(t);
+    await user.type(t, '0.95');
+    await waitFor(() => expect(lastValidate(api)?.nodes.find((n) => n.id === 'n4')?.config['threshold']).toBe(0.95));
+    const status = await within(inspector()).findByRole('status');
+    await waitFor(() => expect(status).toHaveTextContent(/resolves this branch to below/));
+    expect(status).toHaveTextContent(/fixed per rule, so it does not change from run to run/);
+    await user.clear(t);
+    await user.type(t, '0.5');
+    await waitFor(() => expect(within(inspector()).getByRole('status')).toHaveTextContent(/resolves this branch to at or above/));
+  });
+
+  it('rejects a non-number threshold in the field without changing the draft', async () => {
+    const api = new FakeXo();
+    const user = await analysed(api);
+    await addBranch(user);
+    const t = within(inspector()).getByLabelText('Confidence threshold');
+    await user.clear(t);
+    await user.type(t, 'high');
+    expect(await within(inspector()).findByRole('alert')).toHaveTextContent(/Enter a number/);
+    await waitFor(() => expect(lastValidate(api)?.nodes.find((n) => n.id === 'n4')?.config['threshold']).not.toBe('high'));
+  });
+
+  it('re-points a side: it can lead to nothing, and then to any free step again', async () => {
+    const api = new FakeXo();
+    const user = await analysed(api);
+    await addBranch(user);
+    await user.click(within(screen.getByRole('complementary', { name: 'Node palette' })).getByRole('button', { name: 'Person reviews' }));
+    await user.click(node(/^Branch/));
+    const below = within(inspector()).getByLabelText('Below the threshold, go to') as HTMLSelectElement;
+    expect(below.value).toBe('n5');
+    await user.selectOptions(below, '');
+    await waitFor(() => expect(lastValidate(api)?.edges.some((e) => e.from === 'n4' && e.when === 'lt')).toBe(false));
+    // the orphaned step is reported by the platform and is now a free target for the branch
+    await within(canvas()).findByRole('button', { name: /A person reviews .*1 problem/ });
+    const options = [...(within(inspector()).getByLabelText('Below the threshold, go to') as HTMLSelectElement).options].map(
+      (o) => o.value,
+    );
+    expect(options).toContain('n5');
+    await user.selectOptions(within(inspector()).getByLabelText('Below the threshold, go to'), 'n5');
+    await waitFor(() => expect(lastValidate(api)?.edges).toEqual(expect.arrayContaining([{ from: 'n4', to: 'n5', when: 'lt' }])));
+  });
+
+  it('saves a branch with both sides, and the saved copy reloads with the same edges', async () => {
+    const api = new FakeXo();
+    const user = await analysed(api);
+    await addBranch(user);
+    await user.click(within(screen.getByRole('complementary', { name: 'Node palette' })).getByRole('button', { name: 'Person reviews' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText(/Saved as revision 1/);
+    expect((api.studio.drafts[0]!.edges as Edge[]).filter((e) => e.from === 'n4')).toEqual(
+      expect.arrayContaining([
+        { from: 'n4', to: 'n2', when: 'gte' },
+        { from: 'n4', to: 'n5', when: 'lt' },
+      ]),
+    );
+    expect(api.studio.drafts[0]!.nodes.find((n) => (n as Node).id === 'n4')).toMatchObject({
+      kind: 'branch',
+      config: { metric: 'confidence', threshold: 0.8 },
+    });
+  });
+});

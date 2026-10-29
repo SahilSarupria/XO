@@ -68,7 +68,7 @@ export function DraftPalette(props: {
         <span className="wf-dot" aria-hidden="true" />
         {label}
       </button>
-      {why !== undefined ? <span className="wf-reason">{why}</span> : null}
+      {why !== undefined && why !== blocked ? <span className="wf-reason">{why}</span> : null}
     </li>
   );
   return (
@@ -432,6 +432,7 @@ function BranchSettings(props: {
   const parsed = props.threshold.trim() === '' ? undefined : Number(props.threshold);
   const label = (id: string) => tidyName(d.nodes.find((n) => n.id === id)?.label ?? id, 40);
   const note = variantOf(d.kinds, 'branch')?.note;
+  const decision = d.analysis?.plan?.branches.find((b) => b.nodeId === node.id);
   const side = (s: 'gte' | 'lt', text: string) => {
     const options = branchTargets(g, node.id, s);
     const current = branchSide(g, node.id, s) ?? '';
@@ -475,6 +476,13 @@ function BranchSettings(props: {
         </p>
       ) : null}
       {note !== undefined ? <p className="muted small">{note}</p> : null}
+      {decision !== undefined ? (
+        <p className="small" role="status">
+          The platform resolves this branch to <strong>{decision.taken === 'gte' ? 'at or above' : 'below'}</strong>: the rule’s declared
+          confidence is {decision.value.toFixed(2)} against a threshold of {decision.threshold}. That confidence is fixed per rule, so it
+          does not change from run to run.
+        </p>
+      ) : null}
       {side('gte', 'At or above the threshold, go to')}
       {side('lt', 'Below the threshold, go to')}
     </>
