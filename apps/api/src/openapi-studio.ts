@@ -146,6 +146,75 @@ const analysis = obj({
   blockers: arr(obj({ severity: str, nodeId: str, message: str })),
 });
 
+const testCaseExpected = obj(
+  {
+    status: { type: 'string', enum: ['succeeded', 'waiting_for_human', 'failed'] },
+    output: {
+      type: 'object',
+      additionalProperties: true,
+      description: 'Optional subset: every listed key/value must appear (recursively) in the recorded output.',
+    },
+  },
+  ['status'],
+);
+const testCaseRun = obj(
+  {
+    runId: str,
+    caseId: str,
+    caseRevision: int,
+    executionId: str,
+    at: ts,
+    ranBy: str,
+    pass: { type: 'boolean', description: 'Decided by the platform from the persisted execution record; never supplied by a client.' },
+    actual: obj({ status: str, output: {}, errorCode: str, errorMessage: str }, ['status']),
+    mismatches: arr(str),
+  },
+  ['runId', 'caseId', 'caseRevision', 'executionId', 'at', 'ranBy', 'pass', 'actual', 'mismatches'],
+);
+const testCase = obj(
+  {
+    caseId: str,
+    workspaceId: str,
+    compilationId: str,
+    capabilityId: str,
+    name: str,
+    input: { type: 'object', additionalProperties: true },
+    expected: testCaseExpected,
+    revision: int,
+    createdAt: ts,
+    createdBy: str,
+    updatedAt: ts,
+    updatedBy: str,
+    lastRun: testCaseRun,
+  },
+  [
+    'caseId',
+    'workspaceId',
+    'compilationId',
+    'capabilityId',
+    'name',
+    'input',
+    'expected',
+    'revision',
+    'createdAt',
+    'createdBy',
+    'updatedAt',
+    'updatedBy',
+  ],
+);
+const testCaseBody = obj(
+  {
+    name: str,
+    input: { type: 'object', additionalProperties: true },
+    expected: testCaseExpected,
+    expectedRevision: { ...int, description: 'PUT only. A stale revision is refused with 412 and the newer case is kept.' },
+  },
+  ['name', 'expected'],
+);
+const TC = '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities/{capabilityId}';
+const tcParams = [WS, pathParam('compilationId'), pathParam('capabilityId')];
+const tcNotFound = ['404', ok('Unknown compilation, capability or test case, or workspace not accessible')] as [string, unknown];
+
 export const studioPaths = {
   '/regions': {
     get: {
@@ -681,6 +750,75 @@ export const passwordAuthPaths = {
         '400': ok('Policy violation, same as the current password, or not a password session'),
         '401': ok('Not signed in, or the current password is not correct'),
         '429': R_429_AUTH,
+      },
+    },
+  },
+  [`${TC}/test-cases`]: {
+    get: {
+      summary: 'List the saved test cases of a capability, each with its latest run',
+      'x-xo-permission': 'read',
+      parameters: tcParams,
+      responses: { '200': ok('{ testCases }', obj({ testCases: arr(testCase) })), ...standard(tcNotFound) },
+    },
+    post: {
+      summary: 'Save a test case',
+      description:
+        'A case is a name, an input object and what to expect: a status (succeeded, waiting_for_human or failed) and optionally a subset of the output. Strict body; at most 100 cases per capability.',
+      'x-xo-permission': 'author',
+      parameters: tcParams,
+      requestBody: { required: true, content: { 'application/json': { schema: testCaseBody } } },
+      responses: { '201': ok('The saved case', testCase), '400': R_400, '403': R_403, ...standard(tcNotFound) },
+    },
+  },
+  [`${TC}/test-cases/{caseId}`]: {
+    get: {
+      summary: 'Read a test case',
+      'x-xo-permission': 'read',
+      parameters: [...tcParams, pathParam('caseId')],
+      responses: { '200': ok('The case, with lastRun when it has run', testCase), ...standard(tcNotFound) },
+    },
+    put: {
+      summary: 'Replace a test case',
+      'x-xo-permission': 'author',
+      parameters: [...tcParams, pathParam('caseId')],
+      requestBody: { required: true, content: { 'application/json': { schema: testCaseBody } } },
+      responses: { '200': ok('The updated case', testCase), '400': R_400, '403': R_403, '412': R_412, ...standard(tcNotFound) },
+    },
+    delete: {
+      summary: 'Delete a test case and its run history',
+      'x-xo-permission': 'author',
+      parameters: [...tcParams, pathParam('caseId')],
+      responses: { '200': ok('{ deleted }'), '403': R_403, ...standard(tcNotFound) },
+    },
+  },
+  [`${TC}/test-cases/{caseId}/runs`]: {
+    get: {
+      summary: 'Run history of a test case, newest first (the last 50 are kept)',
+      'x-xo-permission': 'read',
+      parameters: [...tcParams, pathParam('caseId')],
+      responses: { '200': ok('{ runs }', obj({ runs: arr(testCaseRun) })), ...standard(tcNotFound) },
+    },
+    post: {
+      summary: 'Run one saved test case',
+      description:
+        'A real execution through the same approval gate, input validation and runtime as POST /executions (403 if the capability is not approved; a case expecting waiting_for_human really opens a human task). Allowed for the author and review permissions; the documented permission is the least privileged one that works. The verdict is computed by the platform from the persisted execution record. Takes no body.',
+      'x-xo-permission': 'review',
+      parameters: [...tcParams, pathParam('caseId')],
+      responses: { '200': ok('The recorded run', testCaseRun), '400': R_400, '403': R_403, ...standard(tcNotFound) },
+    },
+  },
+  [`${TC}/test-case-runs`]: {
+    post: {
+      summary: 'Run all saved test cases of a capability, or the ones named in caseIds',
+      description:
+        'Sequential real executions (see the single-case run). Body is optional: { "caseIds": string[] }. Returns every recorded run with passed/failed counts.',
+      'x-xo-permission': 'review',
+      parameters: tcParams,
+      responses: {
+        '200': ok('{ runs, passed, failed }', obj({ runs: arr(testCaseRun), passed: int, failed: int })),
+        '400': R_400,
+        '403': R_403,
+        ...standard(tcNotFound),
       },
     },
   },
