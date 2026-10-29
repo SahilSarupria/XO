@@ -49,7 +49,7 @@ test('error-analysis anchor: these decision-bearing sentences are NOT parsed by 
   // that is real recall progress, and the sentence then leaves the unclassified list.
   const unparsed = [
     'The insurer shall acknowledge each claim within 5 business days.',
-    'The handler shall register each claim within 1 working day of receipt.',
+    'The handler shall register each claim within 1 working day of receipt, or as soon as practicable.',
     'Claim forms received after the closing date shall be treated as late submissions by the assessor.',
   ];
   for (const sentence of unparsed) {

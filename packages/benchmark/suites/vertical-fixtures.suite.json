@@ -306,7 +306,7 @@
               "identify": [
                 {
                   "path": "condition",
-                  "equals": "the action is completed within 7 days of becoming aware of the loss"
+                  "equals": "the days since becoming aware of the loss is at most 7"
                 }
               ],
               "assert": [
@@ -316,15 +316,15 @@
                 },
                 {
                   "path": "structuredCondition.type",
-                  "equals": "temporal"
+                  "equals": "comparison"
                 },
                 {
-                  "path": "structuredCondition.amount",
+                  "path": "structuredCondition.value",
                   "equals": 7
                 },
                 {
                   "path": "structuredCondition.field",
-                  "equals": "becoming aware of the loss"
+                  "equals": "the days since becoming aware of the loss"
                 }
               ],
               "evidence": {
@@ -1383,7 +1383,7 @@
             }
           },
           "input": {
-            "becoming_aware_loss": 3
+            "days_since_becoming_aware_loss": 3
           }
         },
         {
@@ -1399,7 +1399,7 @@
             }
           },
           "input": {
-            "becoming_aware_loss": 30
+            "days_since_becoming_aware_loss": 30
           }
         },
         {

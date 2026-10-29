@@ -14,6 +14,7 @@ import type {
 import { buildStructuredSemantics } from './structured-semantics.js';
 import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
+import { sourceKey, type ConfirmedRule } from './rule-proposals.js';
 
 interface Paragraph {
   readonly text: string;
@@ -103,24 +104,64 @@ function baseProvenance(unit: ExperienceUnit, confidence: number, charOffsetRang
  * candidate → merge design `../knowledge/rule-based-extractor.ts` and
  * `../knowledge/merge.ts` use.
  */
+/** A confirmed proposal as an ordinary rule candidate. The human confirmation stands in for the pattern match; the grammar check is repeated here so a stale or hand-edited confirmation cannot smuggle in a condition the runtime cannot run. */
+function confirmedParse(text: string, rule: ConfirmedRule): ReturnType<typeof parseSentence> {
+  if (parseStructuredCondition(rule.condition) === undefined) return { candidates: [], edges: [] };
+  return {
+    candidates: [
+      {
+        nodeType: 'rule',
+        canonicalLabel: text.trim(),
+        condition: rule.condition,
+        action: rule.outcome,
+        rationale: text.trim(),
+        exceptionConditions: [],
+        confidence: 0.75,
+        matchedPattern: 'rule:confirmed-proposal',
+      },
+    ],
+    edges: [],
+  };
+}
+
 export class RuleBasedReasoningExtractor implements ReasoningExtractor {
   readonly name = 'rule-based';
+  private readonly confirmed: ReadonlyMap<string, ConfirmedRule>;
+
+  /** `confirmedRules`: human-confirmed proposals (WS1-09), matched to a sentence by its normalised text. */
+  constructor(confirmedRules: readonly ConfirmedRule[] = []) {
+    this.confirmed = new Map(confirmedRules.map((r) => [sourceKey(r.sourceText), r]));
+  }
 
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
     const unclassified: UnclassifiedSentence[] = [];
 
-    // WS1-03: a table row is read as header-bound facts and, when decision-bearing, reported for review.
-    // Rows stay out of the rule patterns (their cell text is not prose), so this is visibility, not extraction.
+    // WS1-03: a table row is read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000"). When a
+    // decision-bearing column has a value, the row becomes a `policy` (constraint) node: a recorded term of the
+    // document, never an executable rule (no condition, no outcome). Rows stay out of the sentence patterns because
+    // their cell text is not prose.
     if (unit.tableRow !== undefined) {
       const row = tableRowStatement(unit.tableRow.header, unit.tableRow.cells);
       if (row !== undefined) {
-        unclassified.push({
-          text: row.text,
-          cues: row.cues,
+        const confidence = Math.min(unit.confidence, 0.65);
+        const structuredSemantics = buildStructuredSemantics({
+          nodeType: 'policy',
+          action: row.text,
+          exceptionConditions: [],
+        });
+        nodes.push({
+          localId: '0:0',
+          nodeType: 'policy',
+          canonicalLabel: row.text,
+          action: row.text,
+          exceptionConditions: [],
+          confidence,
+          provenance: baseProvenance(unit, confidence, [0, unit.content.length]),
+          metadata: { matchedPattern: 'policy:table-row-term' },
           sourceUnitId: unit.id,
-          provenance: baseProvenance(unit, unit.confidence, [0, unit.content.length]),
+          ...structuredSemantics,
         });
       }
       return ok({ nodes, edges, unclassified });
@@ -129,7 +170,11 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
     const sentences = splitSentencesByParagraph(unit.content);
     for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
       const sentence = sentences[sentenceIndex]!;
-      const parsed = parseSentence(sentence.text);
+      const confirmedRule = this.confirmed.get(sourceKey(sentence.text));
+      const parsed =
+        parseSentence(sentence.text).candidates.length === 0 && confirmedRule !== undefined
+          ? confirmedParse(sentence.text, confirmedRule)
+          : parseSentence(sentence.text);
       if (parsed.candidates.length === 0) {
         // WS1-04: a sentence the patterns rejected is reported when it looks decision-bearing,
         // never silently dropped. It is a review item only; nothing downstream consumes it as a rule.

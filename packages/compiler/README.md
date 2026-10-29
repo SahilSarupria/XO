@@ -226,13 +226,35 @@ source span. It is a review list only: nothing in it becomes a rule or a
 capability automatically. An empty list means the detector found none, not
 that no rule was missed.
 
-Rows of a detected table (three or more aligned columns) join that list as
-header-bound statements such as `Coverage: Buildings; Limit: 1000000; Excess: 1000`
-when a decision-bearing column (limit, excess, deductible, waiting period, ...)
-has a value (WS1-03, `tableRowStatement`). Table rows are still kept out of the
-rule patterns, so this is visibility, not extraction. Two-column grids are not
-detected as tables: a first attempt swallowed a warranty grid in
-`burglary-policy.pdf` that is extracted today, so it was reverted.
+Rows of a detected table become header-bound `constraint` nodes such as
+`Coverage: Buildings; Limit: 1000000; Excess: 1000` when a decision-bearing column
+(limit, excess, deductible, waiting period, ...) has a value (WS1-03,
+`tableRowStatement`). They are recorded terms, never executable rules: no condition,
+no outcome. Three or more aligned columns are enough to detect a table. A
+**two-column** grid is only trusted when its header row names a decision-bearing term
+("Cover | Waiting period") and every cell is short: alignment alone cannot tell a grid
+from a label/value list, and a first, header-less attempt swallowed a warranty grid in
+`burglary-policy.pdf` that is extracted as prose today.
+
+Deadlines and thresholds that reach the runtime are normalised so the input is named for
+what the caller must supply: "within 24 hours of X" becomes `hours_since_x`, "within 2
+working days of X" becomes `working_days_since_x`, and "Claims exceeding 10% of the sum
+insured" becomes `claim_amount_percentage_sum_insured`. The runtime compares the number it
+is given; it does not compute elapsed time or ratios, so the caller supplies the
+already-computed count or percentage in that unit.
+
+### Model-assisted rule proposals (WS1-09)
+
+`rule-proposals.ts` lets a language model (any provider: a proposer is an async function, or
+`modelProposer(complete)` over a text-completion function) propose a rule for a sentence on the
+review list. `proposeRules` validates every answer: the condition must parse in the grammar
+the runtime executes, numbers must appear in the sentence, field and outcome words must be
+grounded in it, and a sentence with an exception clause is declined. A valid proposal is still
+only a proposal; `confirmProposal` requires a named reviewer, and only the resulting
+`ConfirmedRule`s are accepted by `compileSources({ confirmedRules })`, where they become
+ordinary rule nodes at confidence 0.75. `examples/insurance-dev-corpus/proposal-eval.mts`
+measures the validation layer on a synthetic labelled set and can drive a real model through
+`--model-cmd`; real model accuracy needs real documents.
 
 ## Stage 2: Document Parser (`src/document/`)
 

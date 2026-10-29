@@ -86,7 +86,7 @@ test('WS1: a day-based deadline obligation is normalised to an executable rule (
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'rule');
   assert.equal(c.matchedPattern, 'rule:normalized-deadline');
-  assert.equal(c.condition, 'the action is completed within 7 days of becoming aware of the loss');
+  assert.equal(c.condition, 'the days since becoming aware of the loss is at most 7');
   assert.equal(c.action, 'The Insured must notify the Insurer of a loss');
 });
 
@@ -106,9 +106,48 @@ test('WS1: threshold routing is normalised; an amountless or unmeasurable subjec
   );
 });
 
-test('WS1: hours and working days are outside the grammar and fall back to the obligation constraint', () => {
-  const r = parseSentence('The policyholder must report an accident to the Insurer within 24 hours of the accident.');
-  assert.equal(r.candidates[0]?.matchedPattern, 'policy:subject-must-obligation');
+test('WS1: hours, working days, months and the leading form become checks whose input is named for its unit', () => {
+  const cond = (t: string) => parseSentence(t).candidates[0]?.condition;
+  assert.equal(
+    cond('The policyholder must report an accident to the Insurer within 24 hours of the accident.'),
+    'the hours since accident is at most 24',
+  );
+  assert.equal(
+    cond('The adjuster shall contact the claimant within 2 working days of the loss being reported.'),
+    'the working days since loss being reported is at most 2',
+  );
+  assert.equal(
+    cond('The adjuster shall contact the claimant within 2 business days of the loss being reported.'),
+    'the working days since loss being reported is at most 2',
+  );
+  assert.equal(
+    cond('The insurer must settle the claim within 3 months of the proof of loss.'),
+    'the months since proof of loss is at most 3',
+  );
+  assert.equal(
+    cond('Within 30 calendar days of the proof of loss, the insurer must settle the claim.'),
+    'the days since proof of loss is at most 30',
+  );
+  // An unsupported trailing clause is never swallowed into the event phrase.
+  assert.notEqual(
+    parseSentence('The handler shall register each claim within 1 working day of receipt, or as soon as practicable.').candidates[0]
+      ?.matchedPattern,
+    'rule:normalized-deadline',
+  );
+});
+
+test('WS1: a percentage of a stated base is one percentage input; a bare percentage keeps the subject', () => {
+  const claims = parseSentence('Claims exceeding 10% of the sum insured must be referred to a senior adjuster.');
+  assert.equal(claims.candidates[0]?.condition, 'the claim amount percentage of sum insured exceeds 10');
+  assert.equal(
+    parseSentence('Discounts exceeding 15% must be approved by the underwriter.').candidates[0]?.condition,
+    'the discount percentage exceeds 15',
+  );
+  // A base without a percentage ("above 10 of the ...") is not guessed at.
+  assert.notEqual(
+    parseSentence('Claims above 10 of the sum insured must be referred to a senior adjuster.').candidates[0]?.matchedPattern,
+    'rule:normalized-threshold',
+  );
 });
 
 test('M1.2: subject-prefixed "must" obligation — "The Insured must provide..." (real policy §4.3)', () => {

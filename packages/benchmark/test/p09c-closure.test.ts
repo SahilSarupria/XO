@@ -184,7 +184,7 @@ test('frozen: golden expectation fingerprints are unchanged by the closure', asy
   const want: Record<string, string> = {
     'synthetic-claim-rules': '0a3003db9bfe87de',
     // CR WS1 recall refresh: clause 4.1's deadline is now a normalised executable rule (see CHANGELOG.md)
-    'commercial-property-policy': '314740b17040053f',
+    'commercial-property-policy': '3c735dae96b59f24',
     'aastha-operations': 'bbcc3cdac2c9a97c',
     'burglary-policy-schedule': '2384164b83638c58',
     'multidoc-burglary-claims': '6eb147408d795389',

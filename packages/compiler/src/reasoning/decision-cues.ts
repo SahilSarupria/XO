@@ -25,7 +25,14 @@ const CUE_FAMILIES: readonly CueFamily[] = [
   {
     family: 'obligation',
     pattern:
-      /\b(must|shall|is required to|are required to|required to|obliged to|has to|have to|needs? to|will (?:not )?(?:pay|cover|reimburse|refund|provide|indemni[a-z]+))\b/i,
+      /\b(must|shall|is required to|are required to|required to|obliged to|has to|have to|needs? to|needs?|requires?|(?:is|are) referred|will (?:not )?(?:pay|cover|reimburse|refund|provide|indemni[a-z]+))\b/i,
+  },
+  {
+    // "A claim of more than 5000 needs ...", "Hospital stays longer than 3 nights need ...": a comparator against a
+    // number is a threshold whatever verb follows, so it is a strong cue on its own.
+    family: 'threshold',
+    pattern:
+      /\b(?:more than|greater than|over|above|exceed(?:s|ing)?|longer than|below|under|less than|fewer than|at least|at most)\s+(?:[$€£₹]\s?)?\d/i,
   },
   {
     family: 'permission',

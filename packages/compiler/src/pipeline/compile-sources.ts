@@ -12,6 +12,7 @@ import { extractKnowledgeGraph, type KnowledgeExtractionOptions } from '../knowl
 import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../capabilities/capability-extractor.js';
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
 import { extractReasoningGraph, type ReasoningExtractionOptions } from '../reasoning/reasoning-extractor.js';
+import type { ConfirmedRule } from '../reasoning/rule-proposals.js';
 import { compileXoir } from './compile.js';
 import type { CompiledXoirResult } from './types.js';
 import { createDefaultSourceFrontendRegistry } from '../sources/default-registry.js';
@@ -79,6 +80,8 @@ export interface CompileSourcesOptions {
   readonly aiCore?: KnowledgeExtractionOptions['aiCore'] & CapabilityExtractionOptions['aiCore'] & ReasoningExtractionOptions['aiCore'];
   readonly domainHint?: string;
   readonly focusQuestion?: string;
+  /** Human-confirmed rule proposals for sentences on the review list (see `reasoning/rule-proposals.ts`). */
+  readonly confirmedRules?: readonly ConfirmedRule[];
 }
 
 /**
@@ -256,6 +259,7 @@ export async function compileSources(
   const reasoning = await extractReasoningGraph(merged, {
     ...extractionOptions,
     ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
+    ...(options.confirmedRules !== undefined ? { confirmedRules: options.confirmedRules } : {}),
   });
 
   // M1.1 — additive rule-level capability minting (see

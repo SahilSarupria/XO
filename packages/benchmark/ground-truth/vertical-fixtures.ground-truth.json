@@ -651,7 +651,7 @@
           "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
         }
       ],
-      "expectationsFingerprint": "314740b17040053f"
+      "expectationsFingerprint": "3c735dae96b59f24"
     },
     {
       "caseId": "aastha-operations",

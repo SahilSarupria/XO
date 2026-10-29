@@ -213,10 +213,10 @@ test('M1.2: subject-prefixed "must" obligations (real policy §4.1/§6.1 shape) 
 test('WS1: an obligation with a day-based deadline is a checkable rule: minted, named by its source sentence', async () => {
   const { graph, minted } = await mintFrom('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
   assert.equal(graph.nodes[0]!.nodeType, 'rule');
-  assert.equal(graph.nodes[0]!.structuredCondition?.type, 'temporal');
+  assert.equal(graph.nodes[0]!.structuredCondition?.type, 'comparison');
   assert.equal(minted.length, 1);
   assert.match(minted[0]!.canonicalName, /^The Insured Must Notify The Insurer Of A Loss Within 7 Days/);
-  assert.match(minted[0]!.description, /checked as: the action is completed within 7 days of becoming aware of the loss/);
+  assert.match(minted[0]!.description, /checked as: the days since becoming aware of the loss is at most 7/);
 });
 
 // ---------------------------------------------------------------------------

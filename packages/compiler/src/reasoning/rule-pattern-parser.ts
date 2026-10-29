@@ -432,14 +432,14 @@ function parsePassiveExclusion(sentence: string): ParseResult {
 //   threshold  "Claims above 10000 must be referred to a senior adjuster for approval."
 //              -> condition "the claim amount exceeds 10000", outcome "must be referred to ..."
 //   deadline   "Claim documents must be submitted within 15 days after discharge from hospital."
-//              -> condition "the action is completed within 15 days of discharge from hospital"
+//              -> condition "the days since discharge from hospital is at most 15"
 //
 // Each emits an ordinary `rule` candidate whose condition is re-validated by the SAME parser the runtime
 // resolver uses (`parseStructuredCondition`); a sentence whose normalised condition does not parse is not
 // emitted (falls through to the constraint patterns). The existing minter then gives a clean rule its own
 // capability, so nothing here widens what the runtime can execute: it only lets common sentences reach the
-// grammar that was already there. The deadline's `field` is the event phrase, supplied at run time as a day
-// count; hours and working days are not in the grammar and fall through.
+// grammar that was already there. A deadline becomes a numeric comparison on "<unit> since <event>", supplied at run
+// time as the elapsed count in that unit (days, working days, hours, months or years).
 
 /** Money-bearing subjects whose bare "above N" means an amount ("Claims above 10000"). */
 const AMOUNT_SUBJECTS: ReadonlySet<string> = new Set(['claim', 'loss', 'payment', 'settlement', 'invoice', 'payout', 'refund', 'premium']);
@@ -478,7 +478,7 @@ function normalisedRule(
 }
 
 const THRESHOLD_ROUTING =
-  /^(?<subject>[A-Za-z][A-Za-z -]{0,40}?)\s+(?:with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+)?(?:above|over|exceeding|greater than|more than)\s+(?<num>\d[\d,]*(?:\.\d+)?)(?<pct>%)?\s+(?<rest>(?:must|shall|require|requires|are to|is to)\s+.+)$/i;
+  /^(?<subject>[A-Za-z][A-Za-z -]{0,40}?)\s+(?:with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+)?(?:above|over|exceeding|greater than|more than)\s+(?<num>\d[\d,]*(?:\.\d+)?)(?<pct>%|\s?per ?cent)?(?:\s+of\s+(?:the\s+)?(?<base>[a-z][a-z ]{1,30}?))?\s+(?<rest>(?:must|shall|require|requires|are to|is to)\s+.+)$/i;
 const THRESHOLD_UP_TO =
   /^(?:[A-Za-z][A-Za-z ]{0,30}?)\s+may\s+(?<verb>accept|approve|settle|pay|process)\s+(?<obj>[a-z][a-z ]{0,30}?)\s+with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+up to\s+(?<num>\d[\d,]*(?:\.\d+)?)\s+(?<rest>without\s+.+)$/i;
 
@@ -497,28 +497,51 @@ function parseThresholdRule(sentence: string): ParseResult {
   }
   const m = THRESHOLD_ROUTING.exec(text);
   if (!m?.groups) return EMPTY_RESULT;
-  const { subject, field, num, pct, rest } = m.groups as Record<string, string | undefined>;
+  const { subject, field, num, pct, base, rest } = m.groups as Record<string, string | undefined>;
   const head = singular(subject!.trim().split(/\s+/).pop()!);
   let fieldPhrase: string | undefined;
   if (field !== undefined) fieldPhrase = field.trim().toLowerCase();
-  else if (pct !== undefined) fieldPhrase = `${head} percentage`;
+  else if (pct !== undefined && base === undefined) fieldPhrase = `${head} percentage`;
   else if (AMOUNT_SUBJECTS.has(head)) fieldPhrase = `${head} amount`;
   if (fieldPhrase === undefined) return EMPTY_RESULT; // never guess what "above N" measures
+  // "Claims exceeding 10% of the sum insured": one runtime input holding that percentage, named for what it is. The
+  // engine has no ratio operator, so the caller supplies the already-computed percentage (like a deadline's elapsed count).
+  if (pct !== undefined && base !== undefined && base.trim().split(/\s+/).length <= 4) {
+    fieldPhrase = `${fieldPhrase} percentage of ${base.trim().toLowerCase()}`;
+  } else if (base !== undefined) return EMPTY_RESULT;
   return normalisedRule(`the ${fieldPhrase} exceeds ${num}`, rest!.trim(), 'rule:normalized-threshold', 0.75, sentence);
 }
 
-const DEADLINE_RULE =
-  /^(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\s+(?<modal>must|shall)\s+(?<verb>(?!not\b).+?)\s+within\s+(?<n>\d+)\s+(?<unit>days?|months?|years?)\s+(?:of|after|from)\s+(?<event>[a-z][a-z' -]{1,60})$/i;
+const DEADLINE_UNIT = '(?:calendar days?|working days?|business days?|days?|hours?|months?|years?)';
+const DEADLINE_RULE = new RegExp(
+  `^(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\\s+(?<modal>must|shall)\\s+(?<verb>(?!not\\b).+?)\\s+(?:within|no later than)\\s+(?<n>\\d+)\\s+(?<unit>${DEADLINE_UNIT})\\s+(?:of|after|from|following)\\s+(?<event>[a-z][a-z' -]{1,60})$`,
+  'i',
+);
+const DEADLINE_RULE_LEADING = new RegExp(
+  `^(?:within|no later than)\\s+(?<n>\\d+)\\s+(?<unit>${DEADLINE_UNIT})\\s+(?:of|after|from|following)\\s+(?<event>[a-z][a-z' -]{1,60}?),\\s+(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\\s+(?<modal>must|shall)\\s+(?<verb>(?!not\\b).+)$`,
+  'i',
+);
+
+/** "calendar days" and "days" are the same count; "business days" is "working days". Hours, working days, months and years keep their own unit so the input is named for what the caller must supply. */
+function deadlineUnit(raw: string): string {
+  const u = raw
+    .toLowerCase()
+    .replace(/^calendar /, '')
+    .replace(/^business /, 'working ');
+  return u.endsWith('s') ? u : `${u}s`;
+}
 
 function parseDeadlineRule(sentence: string): ParseResult {
-  const m = DEADLINE_RULE.exec(clean(sentence));
+  const text = clean(sentence);
+  const m = DEADLINE_RULE.exec(text) ?? DEADLINE_RULE_LEADING.exec(text);
   if (!m?.groups) return EMPTY_RESULT;
   const { actor, modal, verb, n, unit, event } = m.groups as Record<string, string>;
   const eventPhrase = event!.trim().replace(/^the\s+/i, '');
   if (eventPhrase.split(/\s+/).length > 6) return EMPTY_RESULT; // too long to be a reference phrase
-  const plural = unit!.toLowerCase().endsWith('s') ? unit!.toLowerCase() : `${unit!.toLowerCase()}s`;
+  // "the <unit> since <event> is at most N": a plain numeric comparison the runtime already evaluates, with the unit in
+  // the input's own name ("working_days_since_discharge_hospital") so a caller cannot silently supply days for hours.
   return normalisedRule(
-    `the action is completed within ${n} ${plural} of ${eventPhrase}`,
+    `the ${deadlineUnit(unit!)} since ${eventPhrase} is at most ${n}`,
     `${actor!.trim()} ${modal!.toLowerCase()} ${verb!.trim()}`,
     'rule:normalized-deadline',
     0.75,

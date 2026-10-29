@@ -5,7 +5,7 @@ import { compileSources } from '../../src/pipeline/compile-sources.js';
 const TEXT = `# Claims Handling
 Claims must be reported within 30 days of the loss event.
 
-The handler shall register each claim within 1 working day of receipt.
+The handler shall register each claim within 1 working day of receipt, or as soon as practicable.
 
 The insurer shall acknowledge each claim within 5 business days.
 
@@ -20,7 +20,7 @@ test('WS1-04: decision-bearing sentences no rule pattern parsed are reported wit
 
   const texts = result.value.unclassified.map((u) => u.text);
   assert.deepEqual(texts, [
-    'The handler shall register each claim within 1 working day of receipt.',
+    'The handler shall register each claim within 1 working day of receipt, or as soon as practicable.',
     'The insurer shall acknowledge each claim within 5 business days.',
     'The insurer shall settle each undisputed claim promptly and in good faith.',
   ]);

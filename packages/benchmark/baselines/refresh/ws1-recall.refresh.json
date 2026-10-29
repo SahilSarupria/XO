@@ -6,7 +6,7 @@
     {
       "suiteId": "vertical-fixtures",
       "fromReportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
-      "toReportSha256": "6a9b7431e4a093584ca057cea0c2afbbb9a4d1803cc40e36a4c007b098befd01",
+      "toReportSha256": "8d15c83533aef6b20f05fc6a240a64a34c925edd04349ed46442326dbc35909f",
       "evaluationVersion": {
         "from": "p0.9c-1",
         "to": "p0.9c-1"
@@ -133,7 +133,7 @@
         {
           "caseId": "commercial-property-policy",
           "fromFingerprint": "fc7333250a689842",
-          "toFingerprint": "314740b17040053f",
+          "toFingerprint": "3c735dae96b59f24",
           "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30",
           "affectedMetrics": [

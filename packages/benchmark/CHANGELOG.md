@@ -25,7 +25,7 @@ capped by the paragraph classifier. The heading-derived bundle capability ("Clai
 capability for clause 4.1 are sub-floor and refused by design, so the suite now exercises the real rule capabilities
 ("Deny The Claim"; "Must Notify The Insurer Of A Loss Within 7 Days"). `synthetic-claim-rules` golden
 `e3f18bb648927dce` → `0a3003db9bfe87de` (same inputs and expected outputs, different target) and `commercial-property-policy`
-→ `314740b17040053f` (the redundant `det-notify-verb-capability` execution was removed). Execution and compile output
+→ `3c735dae96b59f24` (the redundant `det-notify-verb-capability` execution was removed). Execution and compile output
 changes are recorded as declared drift.
 
 **Effect on the benchmark.** Every metric value of `vertical-fixtures` is unchanged. The `compile` stage output of

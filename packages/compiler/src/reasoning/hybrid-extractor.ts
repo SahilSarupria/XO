@@ -5,6 +5,7 @@ import { noopLogger } from '@xo/logger';
 import type { ExperienceUnit } from '../semantic/types.js';
 import type { ReasoningExtractionResult, ReasoningExtractor } from './extractor-types.js';
 import { RuleBasedReasoningExtractor } from './rule-based-extractor.js';
+import type { ConfirmedRule } from './rule-proposals.js';
 
 /**
  * The extractor Stage 7 uses by default — same posture as
@@ -18,14 +19,16 @@ import { RuleBasedReasoningExtractor } from './rule-based-extractor.js';
  */
 export class HybridReasoningExtractor implements ReasoningExtractor {
   readonly name = 'hybrid';
-  private readonly ruleBased = new RuleBasedReasoningExtractor();
+  private readonly ruleBased: RuleBasedReasoningExtractor;
   private readonly logger: Logger;
 
   constructor(
     private readonly aiExtractor?: ReasoningExtractor,
     logger?: Logger,
+    confirmedRules: readonly ConfirmedRule[] = [],
   ) {
     this.logger = logger ?? noopLogger;
+    this.ruleBased = new RuleBasedReasoningExtractor(confirmedRules);
   }
 
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {
