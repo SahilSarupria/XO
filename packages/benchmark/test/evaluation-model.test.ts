@@ -154,7 +154,9 @@ test('the registry covers the 20 historical metric ids plus exactly the 2 Step 4
   const seen = new Set<MetricId>();
   for (const name of ['vertical-fixtures', 'runtime-mechanics']) {
     // the pre-Step-4 metric set stays pinned by the retained historical predecessors (the accepted baselines are the current output)
-    const archived = (await readdir(join(PKG, 'baselines', 'archive'))).find((f) => f.startsWith(`${name}.`));
+    const archived = (await readdir(join(PKG, 'baselines', 'archive'))).find(
+      (f) => f.startsWith(`${name}.`) && !f.startsWith('vertical-fixtures.p0.9c-1.'),
+    );
     assert.ok(archived !== undefined, name);
     const parsed = parseReport(JSON.parse(await readFile(join(PKG, 'baselines', 'archive', archived), 'utf8')));
     assert.ok(parsed.ok);

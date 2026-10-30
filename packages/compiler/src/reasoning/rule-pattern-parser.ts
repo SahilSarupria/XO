@@ -1,3 +1,4 @@
+import { parseStructuredCondition } from '@xo/capability-contract';
 import type { ReasoningNodeType } from './types.js';
 
 /**
@@ -423,6 +424,131 @@ function parsePassiveExclusion(sentence: string): ParseResult {
   };
 }
 
+// --- Normalised executable rules: threshold routing and day-based deadlines --------------------
+//
+// The two shapes that dominate insurance operating procedures and that the existing deterministic engine
+// can already evaluate (`StructuredComparisonBindingResolver`: numeric comparison; "within N days of <field>"):
+//
+//   threshold  "Claims above 10000 must be referred to a senior adjuster for approval."
+//              -> condition "the claim amount exceeds 10000", outcome "must be referred to ..."
+//   deadline   "Claim documents must be submitted within 15 days after discharge from hospital."
+//              -> condition "the days since discharge from hospital is at most 15"
+//
+// Each emits an ordinary `rule` candidate whose condition is re-validated by the SAME parser the runtime
+// resolver uses (`parseStructuredCondition`); a sentence whose normalised condition does not parse is not
+// emitted (falls through to the constraint patterns). The existing minter then gives a clean rule its own
+// capability, so nothing here widens what the runtime can execute: it only lets common sentences reach the
+// grammar that was already there. A deadline becomes a numeric comparison on "<unit> since <event>", supplied at run
+// time as the elapsed count in that unit (days, working days, hours, months or years).
+
+/** Money-bearing subjects whose bare "above N" means an amount ("Claims above 10000"). */
+const AMOUNT_SUBJECTS: ReadonlySet<string> = new Set(['claim', 'loss', 'payment', 'settlement', 'invoice', 'payout', 'refund', 'premium']);
+
+function singular(word: string): string {
+  const w = word.toLowerCase();
+  if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
+  if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+function normalisedRule(
+  condition: string,
+  outcome: string,
+  matchedPattern: string,
+  confidence: number,
+  originalSentence: string,
+): ParseResult {
+  if (parseStructuredCondition(condition) === undefined) return EMPTY_RESULT;
+  const text = clean(originalSentence);
+  return {
+    candidates: [
+      {
+        nodeType: 'rule',
+        canonicalLabel: text,
+        condition,
+        action: outcome,
+        rationale: text,
+        exceptionConditions: [],
+        confidence,
+        matchedPattern,
+      },
+    ],
+    edges: [],
+  };
+}
+
+const THRESHOLD_ROUTING =
+  /^(?<subject>[A-Za-z][A-Za-z -]{0,40}?)\s+(?:with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+)?(?:above|over|exceeding|greater than|more than)\s+(?<num>\d[\d,]*(?:\.\d+)?)(?<pct>%|\s?per ?cent)?(?:\s+of\s+(?:the\s+)?(?<base>[a-z][a-z ]{1,30}?))?\s+(?<rest>(?:must|shall|require|requires|are to|is to)\s+.+)$/i;
+const THRESHOLD_UP_TO =
+  /^(?:[A-Za-z][A-Za-z ]{0,30}?)\s+may\s+(?<verb>accept|approve|settle|pay|process)\s+(?<obj>[a-z][a-z ]{0,30}?)\s+with (?:an? |the )?(?<field>[a-z][a-z ]{1,30}?)\s+up to\s+(?<num>\d[\d,]*(?:\.\d+)?)\s+(?<rest>without\s+.+)$/i;
+
+function parseThresholdRule(sentence: string): ParseResult {
+  const text = clean(sentence);
+  const up = THRESHOLD_UP_TO.exec(text);
+  if (up?.groups) {
+    const { verb, obj, field, num, rest } = up.groups as Record<string, string>;
+    return normalisedRule(
+      `the ${field!.trim().toLowerCase()} is at most ${num}`,
+      `${verb} ${obj} ${rest}`,
+      'rule:normalized-threshold-up-to',
+      0.75,
+      sentence,
+    );
+  }
+  const m = THRESHOLD_ROUTING.exec(text);
+  if (!m?.groups) return EMPTY_RESULT;
+  const { subject, field, num, pct, base, rest } = m.groups as Record<string, string | undefined>;
+  const head = singular(subject!.trim().split(/\s+/).pop()!);
+  let fieldPhrase: string | undefined;
+  if (field !== undefined) fieldPhrase = field.trim().toLowerCase();
+  else if (pct !== undefined && base === undefined) fieldPhrase = `${head} percentage`;
+  else if (AMOUNT_SUBJECTS.has(head)) fieldPhrase = `${head} amount`;
+  if (fieldPhrase === undefined) return EMPTY_RESULT; // never guess what "above N" measures
+  // "Claims exceeding 10% of the sum insured": one runtime input holding that percentage, named for what it is. The
+  // engine has no ratio operator, so the caller supplies the already-computed percentage (like a deadline's elapsed count).
+  if (pct !== undefined && base !== undefined && base.trim().split(/\s+/).length <= 4) {
+    fieldPhrase = `${fieldPhrase} percentage of ${base.trim().toLowerCase()}`;
+  } else if (base !== undefined) return EMPTY_RESULT;
+  return normalisedRule(`the ${fieldPhrase} exceeds ${num}`, rest!.trim(), 'rule:normalized-threshold', 0.75, sentence);
+}
+
+const DEADLINE_UNIT = '(?:calendar days?|working days?|business days?|days?|hours?|months?|years?)';
+const DEADLINE_RULE = new RegExp(
+  `^(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\\s+(?<modal>must|shall)\\s+(?<verb>(?!not\\b).+?)\\s+(?:within|no later than)\\s+(?<n>\\d+)\\s+(?<unit>${DEADLINE_UNIT})\\s+(?:of|after|from|following)\\s+(?<event>[a-z][a-z' -]{1,60})$`,
+  'i',
+);
+const DEADLINE_RULE_LEADING = new RegExp(
+  `^(?:within|no later than)\\s+(?<n>\\d+)\\s+(?<unit>${DEADLINE_UNIT})\\s+(?:of|after|from|following)\\s+(?<event>[a-z][a-z' -]{1,60}?),\\s+(?<actor>[A-Za-z][A-Za-z -]{0,40}?)\\s+(?<modal>must|shall)\\s+(?<verb>(?!not\\b).+)$`,
+  'i',
+);
+
+/** "calendar days" and "days" are the same count; "business days" is "working days". Hours, working days, months and years keep their own unit so the input is named for what the caller must supply. */
+function deadlineUnit(raw: string): string {
+  const u = raw
+    .toLowerCase()
+    .replace(/^calendar /, '')
+    .replace(/^business /, 'working ');
+  return u.endsWith('s') ? u : `${u}s`;
+}
+
+function parseDeadlineRule(sentence: string): ParseResult {
+  const text = clean(sentence);
+  const m = DEADLINE_RULE.exec(text) ?? DEADLINE_RULE_LEADING.exec(text);
+  if (!m?.groups) return EMPTY_RESULT;
+  const { actor, modal, verb, n, unit, event } = m.groups as Record<string, string>;
+  const eventPhrase = event!.trim().replace(/^the\s+/i, '');
+  if (eventPhrase.split(/\s+/).length > 6) return EMPTY_RESULT; // too long to be a reference phrase
+  // "the <unit> since <event> is at most N": a plain numeric comparison the runtime already evaluates, with the unit in
+  // the input's own name ("working_days_since_discharge_hospital") so a caller cannot silently supply days for hours.
+  return normalisedRule(
+    `the ${deadlineUnit(unit!)} since ${eventPhrase} is at most ${n}`,
+    `${actor!.trim()} ${modal!.toLowerCase()} ${verb!.trim()}`,
+    'rule:normalized-deadline',
+    0.75,
+    sentence,
+  );
+}
+
 // --- Pattern: warranty obligation ("Warranted that X." / "Warranted X.") ---
 //
 // Real evidence: burglary-policy.pdf's repeated "Warranted that ..."
@@ -742,6 +868,103 @@ function stripLeadingClauseNumber(text: string): string {
  * rather than each leading-cue pattern needing its own copy of the same
  * stripping logic.
  */
+// --- WS1 recall: liability exclusions and quantified policy terms -----------
+//
+// Found by the synthetic insurance dev corpus (examples/insurance-dev-corpus): realistic policy wording
+// states limits, deductibles, waiting periods, co-payments and liability exclusions in shapes the
+// patterns above never matched ("A co-payment of 10% applies...", "Room rent is limited to 1%...",
+// "The Insurer is not liable for..."). Both parsers are LOWEST priority (they run after every pattern
+// above, so no sentence that parsed before parses differently) and reuse existing node types, so
+// they add visibility and provenance, never new executability: `policy` lowers to a constraint with
+// no decision-table outcome, exactly like the `must` obligations.
+
+const LIABILITY_EXCLUSION_PHRASES = [
+  'is not liable for',
+  'are not liable for',
+  'not liable for',
+  'no benefit is payable',
+  'is not payable',
+  'are not payable',
+  'will not pay',
+  'will not cover',
+  'is forfeited',
+  'are forfeited',
+];
+
+function parseLiabilityExclusion(sentence: string): ParseResult {
+  const lower = sentence.toLowerCase();
+  const matched = LIABILITY_EXCLUSION_PHRASES.find((phrase) => indexOfPhraseBoundary(lower, phrase) !== -1);
+  if (!matched) return EMPTY_RESULT;
+  const action = clean(sentence);
+  if (action.length === 0) return EMPTY_RESULT;
+  return {
+    candidates: [
+      {
+        nodeType: 'prohibition',
+        canonicalLabel: action,
+        action,
+        exceptionConditions: [],
+        confidence: 0.7,
+        matchedPattern: 'prohibition:liability-exclusion',
+      },
+    ],
+    edges: [],
+  };
+}
+
+/** Phrases that mark a sentence as stating a numeric term of the cover. A digit in the sentence is also required. */
+const QUANTIFIED_TERM_CUES = [
+  'deductible',
+  'excess of',
+  'excess applies',
+  'co-payment',
+  'co-pay',
+  'coinsurance',
+  'co-insurance',
+  'waiting period',
+  'is limited to',
+  'are limited to',
+  'limited to',
+  'up to',
+  'maximum payable',
+  'maximum of',
+  'not exceed',
+  'no claim discount',
+  'only after',
+  'require approval',
+  'requires approval',
+  'entitled to',
+  'entitles the',
+];
+
+function containsDigit(text: string): boolean {
+  for (const ch of text) if (ch >= '0' && ch <= '9') return true;
+  return false;
+}
+
+function parseQuantifiedTerm(sentence: string): ParseResult {
+  const lower = sentence.toLowerCase();
+  if (!containsDigit(sentence)) return EMPTY_RESULT;
+  if (sentence.trim().endsWith('?')) return EMPTY_RESULT;
+  const cue = QUANTIFIED_TERM_CUES.find((phrase) => indexOfPhraseBoundary(lower, phrase) !== -1);
+  if (!cue) return EMPTY_RESULT;
+  const text = clean(sentence);
+  if (text.split(/\s+/).length < 4) return EMPTY_RESULT;
+  return {
+    candidates: [
+      {
+        nodeType: 'policy',
+        canonicalLabel: text,
+        action: text,
+        exceptionConditions: [],
+        confidence: 0.65,
+        matchedPattern: 'policy:quantified-term',
+      },
+    ],
+    edges: [],
+  };
+}
+
 export function parseSentence(sentence: string): ParseResult {
   const trimmed = sentence.trim();
   if (trimmed.length === 0) return EMPTY_RESULT;
@@ -752,6 +975,8 @@ export function parseSentence(sentence: string): ParseResult {
     parseSubjectTo,
     parseRule,
     parseTrailingConditional,
+    parseThresholdRule,
+    parseDeadlineRule,
     parseWarranty,
     parseProhibition,
     parsePassiveExclusion,
@@ -760,6 +985,8 @@ export function parseSentence(sentence: string): ParseResult {
     parseJustification,
     parseSatisfiesRequirement,
     parseStandaloneOverride,
+    parseLiabilityExclusion,
+    parseQuantifiedTerm,
   ];
   for (const parser of parsers) {
     const result = parser(withoutClauseNumber);

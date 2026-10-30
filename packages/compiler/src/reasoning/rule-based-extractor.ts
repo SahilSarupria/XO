@@ -1,4 +1,5 @@
 import { ok, type Result } from '@xo/types';
+import { parseStructuredCondition } from '@xo/capability-contract';
 import type { XoError } from '@xo/errors';
 import type { ExperienceUnit } from '../semantic/types.js';
 import type { KnowledgeProvenance } from '../knowledge/types.js';
@@ -11,8 +12,9 @@ import type {
   ReasoningExtractor,
 } from './extractor-types.js';
 import { buildStructuredSemantics } from './structured-semantics.js';
-import { findDecisionCues } from './decision-cues.js';
+import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
+import { sourceKey, type ConfirmedRule } from './rule-proposals.js';
 
 interface Paragraph {
   readonly text: string;
@@ -102,18 +104,77 @@ function baseProvenance(unit: ExperienceUnit, confidence: number, charOffsetRang
  * candidate → merge design `../knowledge/rule-based-extractor.ts` and
  * `../knowledge/merge.ts` use.
  */
+/** A confirmed proposal as an ordinary rule candidate. The human confirmation stands in for the pattern match; the grammar check is repeated here so a stale or hand-edited confirmation cannot smuggle in a condition the runtime cannot run. */
+function confirmedParse(text: string, rule: ConfirmedRule): ReturnType<typeof parseSentence> {
+  if (parseStructuredCondition(rule.condition) === undefined) return { candidates: [], edges: [] };
+  return {
+    candidates: [
+      {
+        nodeType: 'rule',
+        canonicalLabel: text.trim(),
+        condition: rule.condition,
+        action: rule.outcome,
+        rationale: text.trim(),
+        exceptionConditions: [],
+        confidence: 0.75,
+        matchedPattern: 'rule:confirmed-proposal',
+      },
+    ],
+    edges: [],
+  };
+}
+
 export class RuleBasedReasoningExtractor implements ReasoningExtractor {
   readonly name = 'rule-based';
+  private readonly confirmed: ReadonlyMap<string, ConfirmedRule>;
+
+  /** `confirmedRules`: human-confirmed proposals (WS1-09), matched to a sentence by its normalised text. */
+  constructor(confirmedRules: readonly ConfirmedRule[] = []) {
+    this.confirmed = new Map(confirmedRules.map((r) => [sourceKey(r.sourceText), r]));
+  }
 
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
     const unclassified: UnclassifiedSentence[] = [];
 
+    // WS1-03: a table row is read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000"). When a
+    // decision-bearing column has a value, the row becomes a `policy` (constraint) node: a recorded term of the
+    // document, never an executable rule (no condition, no outcome). Rows stay out of the sentence patterns because
+    // their cell text is not prose.
+    if (unit.tableRow !== undefined) {
+      const row = tableRowStatement(unit.tableRow.header, unit.tableRow.cells);
+      if (row !== undefined) {
+        const confidence = Math.min(unit.confidence, 0.65);
+        const structuredSemantics = buildStructuredSemantics({
+          nodeType: 'policy',
+          action: row.text,
+          exceptionConditions: [],
+        });
+        nodes.push({
+          localId: '0:0',
+          nodeType: 'policy',
+          canonicalLabel: row.text,
+          action: row.text,
+          exceptionConditions: [],
+          confidence,
+          provenance: baseProvenance(unit, confidence, [0, unit.content.length]),
+          metadata: { matchedPattern: 'policy:table-row-term' },
+          sourceUnitId: unit.id,
+          ...structuredSemantics,
+        });
+      }
+      return ok({ nodes, edges, unclassified });
+    }
+
     const sentences = splitSentencesByParagraph(unit.content);
     for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
       const sentence = sentences[sentenceIndex]!;
-      const parsed = parseSentence(sentence.text);
+      const confirmedRule = this.confirmed.get(sourceKey(sentence.text));
+      const parsed =
+        parseSentence(sentence.text).candidates.length === 0 && confirmedRule !== undefined
+          ? confirmedParse(sentence.text, confirmedRule)
+          : parseSentence(sentence.text);
       if (parsed.candidates.length === 0) {
         // WS1-04: a sentence the patterns rejected is reported when it looks decision-bearing,
         // never silently dropped. It is a review item only; nothing downstream consumes it as a rule.
@@ -133,7 +194,15 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
       parsed.candidates.forEach((candidate: ParsedReasoningCandidate, candidateIndex: number) => {
         const localId = `${sentenceIndex}:${candidateIndex}`;
         labelToLocalId.set(candidate.canonicalLabel, localId);
-        const confidence = Math.min(unit.confidence, candidate.confidence);
+        // A normalised rule (or an explicit rule whose condition parses in the runtime grammar) matched an exact pattern and its condition was re-validated by
+        // the runtime's own parser, so the paragraph-type classifier's uncertainty about the surrounding unit does
+        // not cap it. Every other pattern keeps the conservative min().
+        const groundedRule =
+          candidate.matchedPattern.startsWith('rule:normalized-') ||
+          ((candidate.nodeType === 'rule' || candidate.nodeType === 'decision') &&
+            candidate.condition !== undefined &&
+            parseStructuredCondition(candidate.condition) !== undefined);
+        const confidence = groundedRule ? candidate.confidence : Math.min(unit.confidence, candidate.confidence);
         const structuredSemantics = buildStructuredSemantics({
           nodeType: candidate.nodeType,
           ...(candidate.condition !== undefined ? { condition: candidate.condition } : {}),

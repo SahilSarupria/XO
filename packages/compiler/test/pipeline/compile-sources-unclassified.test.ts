@@ -5,13 +5,13 @@ import { compileSources } from '../../src/pipeline/compile-sources.js';
 const TEXT = `# Claims Handling
 Claims must be reported within 30 days of the loss event.
 
-The deductible for water damage is $500 per occurrence.
+The handler shall register each claim within 1 working day of receipt, or as soon as practicable.
 
 The insurer shall acknowledge each claim within 5 business days.
 
 This claim form has 3 pages.
 
-Coverage is limited to a maximum of $250,000 per policy year.`;
+The insurer shall settle each undisputed claim promptly and in good faith.`;
 
 test('WS1-04: decision-bearing sentences no rule pattern parsed are reported with their source span, in document order', async () => {
   const result = await compileSources([{ kind: 'document', text: TEXT, sourcePath: 'claims.txt' }]);
@@ -20,9 +20,9 @@ test('WS1-04: decision-bearing sentences no rule pattern parsed are reported wit
 
   const texts = result.value.unclassified.map((u) => u.text);
   assert.deepEqual(texts, [
-    'The deductible for water damage is $500 per occurrence.',
+    'The handler shall register each claim within 1 working day of receipt, or as soon as practicable.',
     'The insurer shall acknowledge each claim within 5 business days.',
-    'Coverage is limited to a maximum of $250,000 per policy year.',
+    'The insurer shall settle each undisputed claim promptly and in good faith.',
   ]);
   for (const item of result.value.unclassified) {
     assert.ok(item.cues.length > 0);

@@ -7,11 +7,16 @@ import { chunkDocument } from '../semantic/semantic-chunker.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import { assessDocumentQuality, type SourceQualityState } from '../document/document-quality.js';
 import type { CoverageReport } from '../document/page-coverage.js';
+import { needsRecovery, recoverUnreadPages } from '../extraction/router.js';
+import type { ExtractionBudget, ExtractionLedger, PageTier, RecoveryCache } from '../extraction/types.js';
+import { NodePdfLoader } from '../pdf/pdf-loader.js';
+import type { PdfSourceInput } from '../sources/pdf-frontend.js';
 import type { UnclassifiedSentence } from '../reasoning/types.js';
 import { extractKnowledgeGraph, type KnowledgeExtractionOptions } from '../knowledge/knowledge-extractor.js';
 import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../capabilities/capability-extractor.js';
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
 import { extractReasoningGraph, type ReasoningExtractionOptions } from '../reasoning/reasoning-extractor.js';
+import type { ConfirmedRule } from '../reasoning/rule-proposals.js';
 import { compileXoir } from './compile.js';
 import type { CompiledXoirResult } from './types.js';
 import { createDefaultSourceFrontendRegistry } from '../sources/default-registry.js';
@@ -56,6 +61,8 @@ export interface SourceCompilationReport {
    * A `'partial'` `qualityState` means `coverage.unaccountedPages > 0`.
    */
   readonly coverage?: CoverageReport;
+  /** What page recovery tried and spent for this source (`CompileSourcesOptions.pageTiers`). Absent when no tier was configured or no page needed one. */
+  readonly recovery?: ExtractionLedger;
 }
 
 export interface CompileSourcesResult extends CompiledXoirResult {
@@ -79,6 +86,14 @@ export interface CompileSourcesOptions {
   readonly aiCore?: KnowledgeExtractionOptions['aiCore'] & CapabilityExtractionOptions['aiCore'] & ReasoningExtractionOptions['aiCore'];
   readonly domainHint?: string;
   readonly focusQuestion?: string;
+  /** Human-confirmed rule proposals for sentences on the review list (see `reasoning/rule-proposals.ts`). */
+  readonly confirmedRules?: readonly ConfirmedRule[];
+  /** Recovery tiers for pages the text reader cannot read (scans, outlined text). With none configured such pages stay unaccounted, exactly as before. */
+  readonly pageTiers?: readonly PageTier[];
+  /** Spend limits for recovery. Default: free and local tiers only, no model spend. */
+  readonly extractionBudget?: ExtractionBudget;
+  /** Reused across calls so a page is never recovered twice. */
+  readonly recoveryCache?: RecoveryCache;
 }
 
 /**
@@ -135,6 +150,35 @@ function mergeExperienceDocuments(docs: readonly ExperienceDocument[], mergedPat
  * explicitly instead of returning a technically-"valid," in-practice-
  * empty `XoirGraph`.
  */
+/** For a PDF input with unreadable pages, runs the configured recovery tiers and hands the frontend the recovered document. Anything else passes through untouched. */
+async function withRecoveredPages(
+  input: unknown,
+  options: CompileSourcesOptions,
+  ledgers: Map<string, ExtractionLedger>,
+): Promise<unknown> {
+  const candidate = input as Partial<PdfSourceInput> | null;
+  if (
+    candidate === null ||
+    typeof candidate !== 'object' ||
+    candidate.kind !== 'pdf' ||
+    !(candidate.bytes instanceof Uint8Array) ||
+    typeof candidate.sourcePath !== 'string'
+  ) {
+    return input;
+  }
+  const loaded = new NodePdfLoader().load(candidate.bytes, candidate.sourcePath);
+  if (!loaded.ok || !loaded.value.pages.some(needsRecovery)) return input;
+  const { document, ledger } = await recoverUnreadPages(
+    loaded.value,
+    candidate.bytes,
+    options.pageTiers!,
+    options.extractionBudget,
+    options.recoveryCache,
+  );
+  ledgers.set(candidate.sourcePath, ledger);
+  return { ...candidate, preloaded: document };
+}
+
 export async function compileSources(
   inputs: readonly unknown[],
   options: CompileSourcesOptions = {},
@@ -149,8 +193,11 @@ export async function compileSources(
       ? { ...(options.now !== undefined ? { now: options.now } : {}), ...(options.logger !== undefined ? { logger: options.logger } : {}) }
       : undefined;
 
+  const ledgers = new Map<string, ExtractionLedger>();
   const canonicalSources: CanonicalSource[] = [];
-  for (const input of inputs) {
+  for (const rawInput of inputs) {
+    const input =
+      options.pageTiers !== undefined && options.pageTiers.length > 0 ? await withRecoveredPages(rawInput, options, ledgers) : rawInput;
     const ingested = registry.ingest(input, ingestContext);
     if (!ingested.ok) return err(ingested.error);
     canonicalSources.push(ingested.value);
@@ -256,6 +303,7 @@ export async function compileSources(
   const reasoning = await extractReasoningGraph(merged, {
     ...extractionOptions,
     ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
+    ...(options.confirmedRules !== undefined ? { confirmedRules: options.confirmedRules } : {}),
   });
 
   // M1.1 — additive rule-level capability minting (see
@@ -333,7 +381,7 @@ export async function compileSources(
   return ok({
     ...compiled.value,
     diagnostics: [...qualityDiagnostics, ...reviewDiagnostics, ...compiled.value.diagnostics],
-    sources: sourceReports,
+    sources: sourceReports.map((r) => (ledgers.has(r.sourcePath) ? { ...r, recovery: ledgers.get(r.sourcePath)! } : r)),
     unclassified,
   });
 }

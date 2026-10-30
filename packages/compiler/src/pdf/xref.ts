@@ -19,10 +19,12 @@ export interface XrefTable {
 }
 
 const STARTXREF_KEYWORD = Buffer.from('startxref', 'latin1');
+/** Longest `/Prev` + `/XRefStm` chain followed. A longer one is treated as damaged and the caller falls back to the rebuild scan. */
+const MAX_XREF_CHAIN = 1024;
 
 /** Finds the byte offset of the last `startxref` keyword and reads the offset number that follows it. */
 function findStartxrefOffset(buf: Uint8Array): number {
-  const idx = Buffer.from(buf).lastIndexOf(STARTXREF_KEYWORD);
+  const idx = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength).lastIndexOf(STARTXREF_KEYWORD);
   if (idx === -1) {
     throw new PdfError(ErrorCode.PDF_MALFORMED, 'No "startxref" keyword found');
   }
@@ -75,10 +77,15 @@ function parseClassicXrefSection(buf: Uint8Array, offset: number, seenOffsets: S
     const countTok = lexer.next();
     const start = Number.parseInt(startTok.text, 10);
     const count = Number.parseInt(countTok.text, 10);
+    if (!Number.isFinite(count) || !Number.isFinite(start) || count < 0 || start < 0) {
+      throw new PdfError(ErrorCode.PDF_MALFORMED, `Invalid xref subsection header "${startTok.text} ${countTok.text}"`);
+    }
     for (let i = 0; i < count; i += 1) {
       const offsetTok = lexer.next();
       const genTok = lexer.next();
       const typeTok = lexer.next();
+      // A subsection that claims more entries than the file has bytes is damaged: stop instead of looping on EOF tokens.
+      if (typeTok.kind === 'eof') throw new PdfError(ErrorCode.PDF_MALFORMED, 'xref table ends before its declared entry count');
       const objectNumber = start + i;
       if (!entries.has(objectNumber)) {
         entries.set(objectNumber, {
@@ -132,7 +139,10 @@ function parseXrefStreamSection(buf: Uint8Array, offset: number, seenOffsets: Se
   if (!isArray(wValue) || wValue.items.length < 3) {
     throw new PdfError(ErrorCode.PDF_MALFORMED, 'Cross-reference stream is missing a valid /W field-width array');
   }
-  const w = wValue.items.map((n) => (typeof n === 'number' ? n : 0)) as [number, number, number];
+  const w = wValue.items.slice(0, 3).map((n) => (typeof n === 'number' && Number.isInteger(n) ? n : -1)) as [number, number, number];
+  if (w.some((n) => n < 0 || n > 8) || w[0] + w[1] + w[2] === 0) {
+    throw new PdfError(ErrorCode.PDF_MALFORMED, 'Cross-reference stream /W field widths are invalid');
+  }
 
   const sizeValue = dict.entries.get('Size');
   const size = typeof sizeValue === 'number' ? sizeValue : 0;
@@ -184,6 +194,9 @@ function readBigEndian(data: Uint8Array, offset: number, width: number): number 
 
 /** Dispatches to the classic-table or cross-reference-stream parser at `offset`, whichever is actually there, and follows `/Prev`/`/XRefStm` to merge in incremental-update sections (earlier sections never override an object number a later section already defined). */
 function parseXrefSectionChain(buf: Uint8Array, offset: number, seenOffsets: Set<number> = new Set()): XrefTable {
+  if (seenOffsets.size >= MAX_XREF_CHAIN) {
+    throw new PdfError(ErrorCode.PDF_MALFORMED, `Cross-reference chain longer than ${MAX_XREF_CHAIN} sections`);
+  }
   if (seenOffsets.has(offset)) {
     throw new PdfError(ErrorCode.PDF_MALFORMED, `Cyclic /Prev or /XRefStm chain detected at byte offset ${offset}`);
   }

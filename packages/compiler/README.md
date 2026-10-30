@@ -129,8 +129,9 @@ the operators differ.
   recovery, not a heuristic guess) when the xref table is missing,
   malformed, or points at garbage — the same class of recovery real-world
   PDF readers perform on damaged files.
-- Decodes `FlateDecode`-compressed streams via `node:zlib`. Any other
-  filter (`LZWDecode`, `ASCII85Decode`, `DCTDecode`, ...) raises
+- Decodes `FlateDecode` (via `node:zlib`), `ASCII85Decode`,
+  `ASCIIHexDecode` and `RunLengthDecode` streams. Any other
+  filter (`LZWDecode`, `DCTDecode`, ...) raises
   `PDF_UNSUPPORTED_FEATURE` explicitly rather than silently producing
   wrong bytes.
 - Walks the page tree (`/Root/Pages/Kids`) with correct attribute
@@ -170,8 +171,8 @@ the operators differ.
   documented 2-byte approximation and can still decode to wrong text for
   unusual custom encodings. This replaces an earlier limitation that said
   font encoding was not supported at all.
-- **Only `FlateDecode` stream filters are supported.** A stream using any
-  other filter (LZW, ASCII85, ...) makes that one page fail to load. Since
+- **Only `FlateDecode`, `ASCII85Decode`, `ASCIIHexDecode` and `RunLengthDecode` stream filters are supported.** A stream using any
+  other filter (LZW, ...) makes that one page fail to load. Since
   WS1-02 the failure is isolated to the page and recorded in the coverage
   ledger (below); it no longer rejects the document.
 - **No text-rendering-matrix composition.** `content-stream.ts` tracks
@@ -179,9 +180,17 @@ the operators differ.
   character/word spacing, horizontal scaling, or an enclosing `cm`'s
   effect on position. Reading order and line grouping are unaffected;
   sub-pixel-accurate glyph coordinates are not available.
-- **No encrypted-PDF support.** An encrypted PDF (any `/Encrypt` entry in
-  the trailer) is rejected with `PDF_ENCRYPTED` rather than attempting
-  decryption.
+- **Encrypted PDFs: empty user password only.** The Standard security handler
+  is implemented (RC4 40/128, AES-128, AES-256 R5/R6; `pdf/decrypt.ts`), so a
+  document with only an owner password (printing/copying restrictions) is read.
+  A document that needs a user password is refused with `PDF_ENCRYPTED`; no
+  password is ever guessed. Checked against files written by qpdf
+  (`test/fixtures/encrypted`) and by the taxonomy writer (RC4).
+- **Resource limits.** Every read is bounded (`pdf/limits.ts`: per-stream and
+  per-document decoded bytes, inflate ratio, object nesting, page-tree depth,
+  page count, file size) and cancellable (`AbortSignal`, deadline). A limit hit
+  is a per-page `PDF_RESOURCE_LIMIT` failure (the page stays unaccounted), never a
+  throw or an unbounded allocation. `NodePdfLoader.load` never throws.
 - **No inter-run space inference.** Two separate `Tj`/`TJ` calls on the
   same line are concatenated with no inserted space unless the source
   PDF's own string content already contains one (see
@@ -224,6 +233,36 @@ eligibility, exclusions; `reasoning/decision-cues.ts`), each with its
 source span. It is a review list only: nothing in it becomes a rule or a
 capability automatically. An empty list means the detector found none, not
 that no rule was missed.
+
+Rows of a detected table become header-bound `constraint` nodes such as
+`Coverage: Buildings; Limit: 1000000; Excess: 1000` when a decision-bearing column
+(limit, excess, deductible, waiting period, ...) has a value (WS1-03,
+`tableRowStatement`). They are recorded terms, never executable rules: no condition,
+no outcome. Three or more aligned columns are enough to detect a table. A
+**two-column** grid is only trusted when its header row names a decision-bearing term
+("Cover | Waiting period") and every cell is short: alignment alone cannot tell a grid
+from a label/value list, and a first, header-less attempt swallowed a warranty grid in
+`burglary-policy.pdf` that is extracted as prose today.
+
+Deadlines and thresholds that reach the runtime are normalised so the input is named for
+what the caller must supply: "within 24 hours of X" becomes `hours_since_x`, "within 2
+working days of X" becomes `working_days_since_x`, and "Claims exceeding 10% of the sum
+insured" becomes `claim_amount_percentage_sum_insured`. The runtime compares the number it
+is given; it does not compute elapsed time or ratios, so the caller supplies the
+already-computed count or percentage in that unit.
+
+### Model-assisted rule proposals (WS1-09)
+
+`rule-proposals.ts` lets a language model (any provider: a proposer is an async function, or
+`modelProposer(complete)` over a text-completion function) propose a rule for a sentence on the
+review list. `proposeRules` validates every answer: the condition must parse in the grammar
+the runtime executes, numbers must appear in the sentence, field and outcome words must be
+grounded in it, and a sentence with an exception clause is declined. A valid proposal is still
+only a proposal; `confirmProposal` requires a named reviewer, and only the resulting
+`ConfirmedRule`s are accepted by `compileSources({ confirmedRules })`, where they become
+ordinary rule nodes at confidence 0.75. `examples/insurance-dev-corpus/proposal-eval.mts`
+measures the validation layer on a synthetic labelled set and can drive a real model through
+`--model-cmd`; real model accuracy needs real documents.
 
 ## Stage 2: Document Parser (`src/document/`)
 

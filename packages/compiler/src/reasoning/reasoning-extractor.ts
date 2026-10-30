@@ -7,6 +7,7 @@ import { mergeReasoningNodes, type PerUnitReasoningExtraction } from './merge.js
 import { buildReasoningEdges } from './edge-builder.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import type { ReasoningGraph, UnclassifiedSentence } from './types.js';
+import type { ConfirmedRule } from './rule-proposals.js';
 
 export interface ReasoningExtractionOptions {
   /** When supplied, `HybridReasoningExtractor` additionally calls `@xo/ai-core`'s `extractReasoning`/`extractDecisionGraph`/`extractConstraints` per unit; when omitted, extraction is rule-based only (still a correct, if narrower, graph — see `rule-pattern-parser.ts`'s supported pattern list). */
@@ -16,6 +17,8 @@ export interface ReasoningExtractionOptions {
   readonly logger?: Logger;
   /** Escape hatch for a caller that wants to supply its own `ReasoningExtractor` entirely (e.g. a test double), bypassing the default hybrid wiring — same convention as `../knowledge/knowledge-extractor.ts`. */
   readonly extractor?: ReasoningExtractor;
+  /** Human-confirmed rule proposals (WS1-09). Nothing else promotes a review item to a rule. */
+  readonly confirmedRules?: readonly ConfirmedRule[];
 }
 
 /**
@@ -47,6 +50,7 @@ export async function extractReasoningGraph(
     new HybridReasoningExtractor(
       options.aiCore ? new AiReasoningExtractor(options.aiCore, options.domainHint, options.focusQuestion) : undefined,
       options.logger,
+      options.confirmedRules,
     );
 
   const perUnit: PerUnitReasoningExtraction[] = [];

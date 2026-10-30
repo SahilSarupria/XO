@@ -71,12 +71,83 @@ test('policy: "Must be over 18."', () => {
 // §4.1/§4.3/§4.4/§6.1/§6.2 and previously produced zero candidates —
 // not merely a low-confidence one.
 test('M1.2: subject-prefixed "must" obligation — "The Insured must notify..." (real policy §4.1)', () => {
-  const result = parseSentence('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  // (a day-based deadline version of this sentence is now a normalised executable rule — see the WS1 test below)
+  const result = parseSentence('The Insured must notify the Insurer of a loss as soon as reasonably practicable after the loss.');
   assert.equal(result.candidates.length, 1);
   const c = result.candidates[0]!;
   assert.equal(c.nodeType, 'policy');
   assert.equal(c.matchedPattern, 'policy:subject-must-obligation');
-  assert.equal(c.action, 'must notify the Insurer of a loss within 7 days after becoming aware of the loss');
+  assert.equal(c.action, 'must notify the Insurer of a loss as soon as reasonably practicable after the loss');
+});
+
+test('WS1: a day-based deadline obligation is normalised to an executable rule (supersedes the M1.2 constraint for this shape)', () => {
+  const result = parseSentence('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  assert.equal(result.candidates.length, 1);
+  const c = result.candidates[0]!;
+  assert.equal(c.nodeType, 'rule');
+  assert.equal(c.matchedPattern, 'rule:normalized-deadline');
+  assert.equal(c.condition, 'the days since becoming aware of the loss is at most 7');
+  assert.equal(c.action, 'The Insured must notify the Insurer of a loss');
+});
+
+test('WS1: threshold routing is normalised; an amountless or unmeasurable subject is not guessed at', () => {
+  const claims = parseSentence('Claims above 10000 must be referred to a senior adjuster for approval.');
+  assert.equal(claims.candidates[0]!.condition, 'the claim amount exceeds 10000');
+  assert.equal(claims.candidates[0]!.matchedPattern, 'rule:normalized-threshold');
+  const risks = parseSentence('Risks with a sum insured above 500000 must be referred to the underwriting manager.');
+  assert.equal(risks.candidates[0]!.condition, 'the sum insured exceeds 500000');
+  const upTo = parseSentence('Underwriters may accept risks with a sum insured up to 500000 without referral.');
+  assert.equal(upTo.candidates[0]!.condition, 'the sum insured is at most 500000');
+  assert.equal(upTo.candidates[0]!.action, 'accept risks without referral');
+  // "Widgets above 10 must be recounted": nothing says what is being measured, so no rule is invented.
+  assert.notEqual(
+    parseSentence('Widgets above 10 must be recounted by the warehouse team.').candidates[0]?.matchedPattern,
+    'rule:normalized-threshold',
+  );
+});
+
+test('WS1: hours, working days, months and the leading form become checks whose input is named for its unit', () => {
+  const cond = (t: string) => parseSentence(t).candidates[0]?.condition;
+  assert.equal(
+    cond('The policyholder must report an accident to the Insurer within 24 hours of the accident.'),
+    'the hours since accident is at most 24',
+  );
+  assert.equal(
+    cond('The adjuster shall contact the claimant within 2 working days of the loss being reported.'),
+    'the working days since loss being reported is at most 2',
+  );
+  assert.equal(
+    cond('The adjuster shall contact the claimant within 2 business days of the loss being reported.'),
+    'the working days since loss being reported is at most 2',
+  );
+  assert.equal(
+    cond('The insurer must settle the claim within 3 months of the proof of loss.'),
+    'the months since proof of loss is at most 3',
+  );
+  assert.equal(
+    cond('Within 30 calendar days of the proof of loss, the insurer must settle the claim.'),
+    'the days since proof of loss is at most 30',
+  );
+  // An unsupported trailing clause is never swallowed into the event phrase.
+  assert.notEqual(
+    parseSentence('The handler shall register each claim within 1 working day of receipt, or as soon as practicable.').candidates[0]
+      ?.matchedPattern,
+    'rule:normalized-deadline',
+  );
+});
+
+test('WS1: a percentage of a stated base is one percentage input; a bare percentage keeps the subject', () => {
+  const claims = parseSentence('Claims exceeding 10% of the sum insured must be referred to a senior adjuster.');
+  assert.equal(claims.candidates[0]?.condition, 'the claim amount percentage of sum insured exceeds 10');
+  assert.equal(
+    parseSentence('Discounts exceeding 15% must be approved by the underwriter.').candidates[0]?.condition,
+    'the discount percentage exceeds 15',
+  );
+  // A base without a percentage ("above 10 of the ...") is not guessed at.
+  assert.notEqual(
+    parseSentence('Claims above 10 of the sum insured must be referred to a senior adjuster.').candidates[0]?.matchedPattern,
+    'rule:normalized-threshold',
+  );
 });
 
 test('M1.2: subject-prefixed "must" obligation — "The Insured must provide..." (real policy §4.3)', () => {
@@ -440,4 +511,19 @@ test('clause number: provenance offsets still cover the ORIGINAL numbered senten
   const result = parseSentence('2.4 If the claim amount exceeds INR 10,000, the claim requires manager approval before settlement.');
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0]!.condition, 'the claim amount exceeds INR 10,000');
+});
+
+test('an explicit IF/THEN rule keeps the pattern confidence in the extractor even when its paragraph is classified weakly', async () => {
+  const { compileSources } = await import('../../src/pipeline/compile-sources.js');
+  const r = await compileSources([
+    {
+      kind: 'document',
+      text: '# Rules\n\n## Claim Assessment\n\nIf the claim assessment amount exceeds 10000, then deny the claim.',
+      sourcePath: 'r.md',
+    },
+  ]);
+  assert.ok(r.ok);
+  const rule = r.value.graph.allNodes().find((n) => n.kind === 'decision_node');
+  assert.ok(rule);
+  assert.equal(rule.metadata.confidence, 0.8);
 });

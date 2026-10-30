@@ -32,6 +32,34 @@ const MIN_TABLE_ROWS = 3;
 /** How close two runs' x-coordinates must be to be considered "the same column start" — small enough that two genuinely different column positions are never merged, large enough to absorb the sub-point rounding a real content stream's positioning can produce. Same order of magnitude as `line-grouper.ts`'s `Y_TOLERANCE`, applied to the perpendicular axis. */
 const COLUMN_X_TOLERANCE = 3;
 
+/** A two-column grid is only trusted when its header row names a decision-bearing term (limit, excess, waiting period, ...): alignment alone cannot tell a grid from a label/value list (a warranty grid in burglary-policy.pdf is extracted as prose today and must stay so). */
+const TWO_COLUMN_HEADER =
+  /\b(limit|sub-?limit|excess|deductible|co-?pay(?:ment)?|co-?insurance|maximum|minimum|sum insured|waiting|period|days|deadline|grace)\b/i;
+const MAX_GRID_CELL_WORDS = 6;
+
+/**
+ * Header-anchored two-column grid ("Peril | Waiting period" followed by rows). Returns the exclusive end line of a
+ * grid that starts at `start`, or `start` when none does. Needs the same `MIN_TABLE_ROWS` aligned consecutive lines as
+ * any table, a header whose second cell names a decision-bearing term, and short cells in every row (a wrapped prose
+ * clause is not a grid cell).
+ */
+function twoColumnGridEnd(lines: readonly ClassifiedLine[], start: number): number {
+  const head = lines[start]!;
+  if (head.runs.length !== 2) return start;
+  const headCells = head.runs.map((r) => decodeRunText(r).trim());
+  if (!TWO_COLUMN_HEADER.test(headCells[1]!)) return start;
+  const xs = head.runs.map((r) => r.x);
+  let j = start;
+  while (j < lines.length) {
+    const line = lines[j]!;
+    if (line.pageNumber !== head.pageNumber || line.runs.length !== 2) break;
+    if (!line.runs.every((r, k) => Math.abs(r.x - xs[k]!) < COLUMN_X_TOLERANCE)) break;
+    if (line.runs.some((r) => decodeRunText(r).trim().split(/\s+/).length > MAX_GRID_CELL_WORDS)) break;
+    j += 1;
+  }
+  return j - start >= MIN_TABLE_ROWS ? j : start;
+}
+
 /**
  * P0.9A area C (Table Detection + Quarantine).
  *
@@ -81,6 +109,12 @@ export function detectTableRowLines(lines: readonly ClassifiedLine[]): ReadonlyS
   let i = 0;
   while (i < lines.length) {
     const base = lines[i]!;
+    const grid = twoColumnGridEnd(lines, i);
+    if (grid > i) {
+      for (let k = i; k < grid; k += 1) tableLineIndices.add(k);
+      i = grid;
+      continue;
+    }
     if (base.runs.length < MIN_TABLE_COLUMNS) {
       i += 1;
       continue;

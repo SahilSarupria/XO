@@ -25,7 +25,14 @@ const CUE_FAMILIES: readonly CueFamily[] = [
   {
     family: 'obligation',
     pattern:
-      /\b(must|shall|is required to|are required to|required to|obliged to|has to|have to|needs? to|will (?:not )?(?:pay|cover|reimburse|refund|provide|indemni[a-z]+))\b/i,
+      /\b(must|shall|is required to|are required to|required to|obliged to|has to|have to|needs? to|needs?|requires?|(?:is|are) referred|will (?:not )?(?:pay|cover|reimburse|refund|provide|indemni[a-z]+))\b/i,
+  },
+  {
+    // "A claim of more than 5000 needs ...", "Hospital stays longer than 3 nights need ...": a comparator against a
+    // number is a threshold whatever verb follows, so it is a strong cue on its own.
+    family: 'threshold',
+    pattern:
+      /\b(?:more than|greater than|over|above|exceed(?:s|ing)?|longer than|below|under|less than|fewer than|at least|at most)\s+(?:[$€£₹]\s?)?\d/i,
   },
   {
     family: 'permission',
@@ -76,4 +83,33 @@ export function findDecisionCues(sentence: string): readonly string[] {
   const unique = [...new Set(found)].sort();
   const strong = unique.filter((f) => f !== 'coverage' && f !== 'quantity');
   return strong.length > 0 || unique.length >= 2 ? unique : [];
+}
+
+const TABLE_HEADER_FAMILIES: readonly CueFamily[] = [
+  { family: 'limit', pattern: /\b(limit|sub-?limit|excess|deductible|co-?pay(?:ment)?|co-?insurance|maximum|minimum|sum insured|cap)\b/i },
+  { family: 'deadline', pattern: /\b(waiting|period|within|days|notice|deadline|grace|time ?frame)\b/i },
+];
+
+/**
+ * WS1-03: a table row read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000").
+ * Returns that statement and its cue families, or `undefined` when the row is not decision-bearing
+ * (no recognised header, empty row, or no value under a decision-bearing column). The statement is
+ * for human review only, exactly like a flagged sentence: it never becomes a rule by itself.
+ */
+export function tableRowStatement(
+  header: readonly string[] | undefined,
+  cells: readonly string[],
+): { readonly text: string; readonly cues: readonly string[] } | undefined {
+  if (header === undefined) return undefined;
+  const pairs = header.map((h, i) => ({ h: h.trim(), v: (cells[i] ?? '').trim() })).filter((p) => p.h.length > 0 && p.v.length > 0);
+  if (pairs.length < 2) return undefined;
+  const cues = new Set<string>();
+  for (const { h, v } of pairs.slice(1)) {
+    // The first column labels the row (the thing a limit applies to); the rest carry the terms.
+    for (const f of TABLE_HEADER_FAMILIES) if (f.pattern.test(h)) cues.add(f.family);
+    if (/\d/.test(v)) for (const f of CUE_FAMILIES) if (f.family === 'quantity' && f.pattern.test(v)) cues.add('quantity');
+  }
+  const strong = [...cues].filter((c) => c !== 'quantity');
+  if (strong.length === 0) return undefined;
+  return { text: pairs.map((p) => `${p.h}: ${p.v}`).join('; '), cues: [...cues].sort() };
 }

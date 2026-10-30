@@ -456,7 +456,10 @@ test('baseline identity: the committed manifest verifies against the committed b
         e.predecessor !== undefined && e.predecessor.startsWith('baselines/archive/'),
         'an accepted baseline names its retained predecessor',
       );
-      assert.equal(e.refreshRecord, 'baselines/refresh/p09c-final.refresh.json');
+      assert.ok(
+        e.refreshRecord !== undefined && e.refreshRecord.startsWith('baselines/refresh/') && e.refreshRecord.endsWith('.refresh.json'),
+        'an accepted baseline names the refresh record that produced it',
+      );
       assert.deepEqual(e.knownDrift, [], 'the accepted baseline carries no historical drift');
       assert.ok(!e.reportFile.startsWith('baselines/archive/'));
     } else {
@@ -486,8 +489,10 @@ test('the declared golden changes in the manifest match the Step 3 / Step 4 hist
   assert.ok(l.ok);
   assert.deepEqual(e.declaredGoldenChanges.map((g) => g.caseId).sort(), [
     'aastha-operations',
+    'commercial-property-policy',
     'openapi-operation-data-flow',
     'structured-operation-data-flow',
+    'synthetic-claim-rules',
   ]);
   for (const g of e.declaredGoldenChanges) {
     assert.equal(expectationsFingerprint(l.suite.cases.find((c) => c.caseId === g.caseId)!), g.toFingerprint, g.caseId);
@@ -553,7 +558,7 @@ test('AUDIT (historical): every difference between each historical baseline and 
       version: out['vertical-fixtures']!.counts['evaluation_version_change'],
       repr: out['vertical-fixtures']!.counts['representation_only'],
     },
-    { added: 26, golden: 3, drift: 6, version: 1, repr: 7 },
+    { added: 26, golden: 12, drift: 13, version: 1, repr: 7 },
   );
 });
 

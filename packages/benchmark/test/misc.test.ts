@@ -80,7 +80,7 @@ test('formatReport / formatRegression render every metric with numerator/denomin
   const parsed = parseReport(baseline);
   assert.ok(parsed.ok);
   const text = formatReport(parsed.value, { itemLimit: 2 });
-  assert.match(text, /semanticRecall\s+compile\s+28\/30\s+93\.3%/);
+  assert.match(text, /semanticRecall\s+compile\s+29\/31\s+93\.5%/);
   assert.match(text, /each metric is independent — there is no combined score/);
   assert.match(text, /… \d+ more/);
   assert.doesNotMatch(text, /overall score/i);

@@ -4,6 +4,44 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## CR WS1 recall — vertical-fixtures baseline refresh
+
+**Context.** The CR milestone's WS1 added two lowest-priority rule patterns to
+`packages/compiler/src/reasoning/rule-pattern-parser.ts` (quantified policy terms such as deductible, excess,
+co-payment, waiting period and "limited to"; liability exclusions such as "is not liable for"), plus header-bound
+table-row statements on the review list. They add `policy`/`prohibition` constraint nodes only: no new
+executable capability class, no lowering change.
+
+**Second step (normalised executable rules).** Threshold-routing ("Claims above N must…", "… up to N without …") and
+deadline ("must … within N days of <event>") sentences are now lowered to the existing structured-condition grammar,
+so they mint deterministic, evidence-grounded capabilities (confidence 0.75). This is a deliberate golden change:
+`commercial-property-policy` expectations moved `fc7333250a689842` → `754a88e1ff8edd61` (clause 4.1 now resolves to an
+exact-named, deterministic capability). `semanticRecall` is 29/31, and the `execution` and `workflows` outputs of that
+case also changed and are recorded as declared drift. No metric regressed.
+
+**Third step (confidence floor merged).** The CRD-02 floor (0.7) now applies on every automated execution path.
+Explicit IF/THEN rules whose condition parses in the runtime grammar keep their pattern confidence (0.8) rather than being
+capped by the paragraph classifier. The heading-derived bundle capability ("Claim Assessment", 0.65) and the verb-derived
+capability for clause 4.1 are sub-floor and refused by design, so the suite now exercises the real rule capabilities
+("Deny The Claim"; "Must Notify The Insurer Of A Loss Within 7 Days"). `synthetic-claim-rules` golden
+`e3f18bb648927dce` → `0a3003db9bfe87de` (same inputs and expected outputs, different target) and `commercial-property-policy`
+→ `3c735dae96b59f24` (the redundant `det-notify-verb-capability` execution was removed). Execution and compile output
+changes are recorded as declared drift.
+
+**Effect on the benchmark.** Every metric value of `vertical-fixtures` is unchanged. The `compile` stage output of
+`commercial-property-policy` and `burglary-policy-schedule`, and the `capabilities` stage output of
+`commercial-property-policy`, changed (more nodes), and the observed node population grew with
+`observedSourceRefCoverage` still 100%.
+
+**Refresh.** Controlled refresh of the accepted `vertical-fixtures` baseline, validated by `validateRefreshRecord`
+(`baselines/refresh/ws1-recall.refresh.json`, every difference dispositioned). The superseded accepted report is
+retained as `baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json`; evaluation version unchanged
+(`p0.9c-1`); `runtime-mechanics` is untouched. The three output differences are also recorded as `knownDrift` on the
+historical entry so the historical audit stays explained.
+
+**Not evidence of quality.** The patterns were tuned against a synthetic corpus the same team wrote
+(`examples/insurance-dev-corpus`, CRD-06); they raise recall there, and nothing here claims customer-level accuracy.
+
 ## P0.9 Beta — Layer 0 (PDF text-integrity fix)
 
 **Context.** The P0.9 Aastha audit found character-level corruption in extracted text from `Aastha.pdf` (e.g.

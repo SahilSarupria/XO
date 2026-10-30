@@ -54,7 +54,10 @@ export class GeminiProvider implements ModelProvider {
       .join('\n\n');
     const contents = request.messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }, ...(m.images ?? []).map((i) => ({ inlineData: { mimeType: i.mediaType, data: i.dataBase64 } }))],
+      }));
 
     const url = `${this.baseUrl}/v1beta/models/${encodeURIComponent(request.model)}:generateContent?key=${encodeURIComponent(this.options.apiKey)}`;
     const response = await this.fetchImpl(url, {

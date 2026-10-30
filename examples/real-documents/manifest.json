@@ -1,0 +1,133 @@
+{
+  "purpose": "Public, insurer- or regulator-published policy wordings for unlabelled 'wild' runs of the compiler. Never committed to the repo (copyright stays with the publishers); fetch to examples/real-documents/downloads/ (gitignored).",
+  "documents": [
+    {
+      "id": "motor-01",
+      "vertical": "motor",
+      "publisher": "Policy Expert",
+      "title": "Car insurance policy wording 2026a (UK)",
+      "url": "https://docs.policyexpert.co.uk/car/cdl/car_wording_2026_a.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "motor-02",
+      "vertical": "motor",
+      "publisher": "1st Central",
+      "title": "Motor policy wording v3.2 (UK)",
+      "url": "https://content.1stcentralinsurance.com/Documents/Policywording/PolicyWording_v3.2.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "motor-03",
+      "vertical": "motor",
+      "publisher": "RHB / insurer partner",
+      "title": "Private car policy wording (Malaysia)",
+      "url": "https://rhbfoundation.rhbgroup.com/-/media/Assets/Corporate-Website/Document/Motor-Insurance/Private_Car_Policy_Wording_M_PCP.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "motor-04",
+      "vertical": "motor",
+      "publisher": "Alliance Bank / insurer",
+      "title": "Z-Driver policy wording (Malaysia)",
+      "url": "https://alliancebank.com.my/Alliance/media/Pdf/Z-Driver-Policy-Wording.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "home-05",
+      "vertical": "home",
+      "publisher": "Bank of Scotland",
+      "title": "Home options contents insurance policy booklet (UK)",
+      "url": "https://www.bankofscotland.co.uk/assets/pdf/insurance/pdf/home-options-contents-insurance-policy-booklet.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "home-06",
+      "vertical": "home",
+      "publisher": "Lloyds Bank",
+      "title": "Home insurance policy booklet (UK)",
+      "url": "https://www.lloydsbank.com/assets/media/pdfs/insurance/home-insurance/hap/policy-booklet.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "home-07",
+      "vertical": "home",
+      "publisher": "MBNA",
+      "title": "Home insurance policy booklet (UK)",
+      "url": "https://www.mbna.co.uk/assets/pdfs/home-insurance/hap/policy-booklet.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "travel-08",
+      "vertical": "travel",
+      "publisher": "Chase UK",
+      "title": "Travel insurance terms and conditions",
+      "url": "https://static.chase.co.uk/content/dam/chaseweb/gb/en/downloads/chase-protect/travel-insurance-terms-and-conditions.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "travel-09",
+      "vertical": "travel",
+      "publisher": "Holiday Extras / ERGO",
+      "title": "Travel policy wording ERGO1224",
+      "url": "https://www.holidayextras.com/images/groups/insurancemagenta/policy_wording/ERGO1224.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "travel-10",
+      "vertical": "travel",
+      "publisher": "Europ Assistance",
+      "title": "Travel policy wording NZ 2025",
+      "url": "https://www.europ-assistance.com/wp-content/uploads/2025/09/2025_03_TA_NZ_PW.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "health_pa-11",
+      "vertical": "health_pa",
+      "publisher": "American Express India",
+      "title": "Personal accident insurance policy wording",
+      "url": "https://www.americanexpress.com/content/dam/amex/in/Insurance/personal-accident-insurance-policy-wording.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "health_pa-12",
+      "vertical": "health_pa",
+      "publisher": "HSBC China",
+      "title": "Insurance policy wording (English)",
+      "url": "https://www.hsbc.com.cn/content/dam/hsbc/cn/docs/insurance/policy-wording-en.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "commercial-13",
+      "vertical": "commercial",
+      "publisher": "Bajaj Allianz",
+      "title": "Property Prime policy wordings (India)",
+      "url": "https://bajajallianz.com/download-documents/commercial-insurance/Property-Prime-Policy-Wordings.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "commercial-14",
+      "vertical": "commercial",
+      "publisher": "Universal Sompo",
+      "title": "Consequential loss (fire) policy wording, retail (India)",
+      "url": "https://www.universalsompo.com/assets/file/consequential-loss-fire-insurance-policy-Retail/policy-wording.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "commercial-15",
+      "vertical": "commercial",
+      "publisher": "ICICI Lombard",
+      "title": "Industrial All Risk policy prospectus (India)",
+      "url": "https://www.icicilombard.com/docs/default-source/default-document-library/15-prospectus-icici-lombard-iar-policy8c0007ff45fd68ff8a0df0055fcf7d9e.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    },
+    {
+      "id": "commercial-16",
+      "vertical": "commercial",
+      "publisher": "FCA (regulator)",
+      "title": "Business interruption test case: representative sample of policy wordings",
+      "url": "https://www.fca.org.uk/publication/corporate/bi-insurance-test-case-proposed-representative-sample-of-policy-wordings.pdf",
+      "verified": "returned by a web search on 2026-10-29; NOT downloaded or opened"
+    }
+  ]
+}

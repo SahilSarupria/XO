@@ -63,13 +63,13 @@ test('capabilities on a source with real decision-rule content (the vertical-tes
   const parsed = JSON.parse(result.lines[0]!);
   assert.equal(parsed.mode, 'source');
   // Pinned to the known-current values from the real compiler (33
-  // discovered / 20 resolved) so a regression in either the compiler's
+  // discovered / 22 resolved) so a regression in either the compiler's
   // discovery/lowering or this command's plumbing is caught — if the
   // compiler's own extraction quality legitimately changes these
   // numbers, this assertion is expected to need updating alongside it,
   // not a sign the CLI is wrong.
-  assert.equal(parsed.discovered.length, 33);
-  assert.equal(parsed.resolvedCount, 20);
+  assert.equal(parsed.discovered.length, 34);
+  assert.equal(parsed.resolvedCount, 22);
   assert.ok(parsed.resolvedCount > 0, 'this fixture must prove the positive case, not just 0-resolved');
   assert.ok(
     parsed.resolvedCount < parsed.discovered.length,

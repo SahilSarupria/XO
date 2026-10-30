@@ -1,0 +1,75 @@
+{
+  "scan-clean-3p": [
+    [
+      "Claim Assessment",
+      "If the claim assessment amount exceeds 10000, then deny the claim.",
+      "The Insurer shall pay the sum insured less the applicable excess.",
+      "Theft is excluded unless there is evidence of forced entry."
+    ],
+    [
+      "Notification",
+      "The Insured must notify the Insurer within 7 days of becoming aware of the loss.",
+      "A waiting period of 30 days applies to all new claims.",
+      "Cover under this section is limited to 50000 per event."
+    ],
+    [
+      "General Conditions",
+      "The policy period is twelve months from the effective date.",
+      "Flood damage is covered only where the premises are located above the flood line.",
+      "No claim will be paid where the loss was caused by wear and tear."
+    ]
+  ],
+  "scan-rotated-90": [
+    [
+      "Claim Assessment",
+      "If the claim assessment amount exceeds 10000, then deny the claim.",
+      "The Insurer shall pay the sum insured less the applicable excess.",
+      "Theft is excluded unless there is evidence of forced entry."
+    ]
+  ],
+  "scan-rotated-180": [
+    [
+      "Claim Assessment",
+      "If the claim assessment amount exceeds 10000, then deny the claim.",
+      "The Insurer shall pay the sum insured less the applicable excess.",
+      "Theft is excluded unless there is evidence of forced entry."
+    ]
+  ],
+  "scan-rotated-270": [
+    [
+      "Claim Assessment",
+      "If the claim assessment amount exceeds 10000, then deny the claim.",
+      "The Insurer shall pay the sum insured less the applicable excess.",
+      "Theft is excluded unless there is evidence of forced entry."
+    ]
+  ],
+  "scan-skewed-2deg": [
+    [
+      "Claim Assessment",
+      "If the claim assessment amount exceeds 10000, then deny the claim.",
+      "The Insurer shall pay the sum insured less the applicable excess.",
+      "Theft is excluded unless there is evidence of forced entry."
+    ]
+  ],
+  "scan-noisy-100dpi": [
+    [
+      "Notification",
+      "The Insured must notify the Insurer within 7 days of becoming aware of the loss.",
+      "A waiting period of 30 days applies to all new claims.",
+      "Cover under this section is limited to 50000 per event."
+    ]
+  ],
+  "scan-two-column": [
+    [
+      "Left column heading",
+      "The Insured must notify the Insurer promptly.",
+      "Theft is excluded without forced entry.",
+      "Right column heading",
+      "A waiting period of 30 days applies.",
+      "Cover is limited to 50000 per event."
+    ]
+  ],
+  "scan-adversarial-noise": [[]],
+  "scan-adversarial-strokes": [[]],
+  "scan-adversarial-tiny-text": [[]]
+}

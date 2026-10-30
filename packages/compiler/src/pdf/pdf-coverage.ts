@@ -25,6 +25,14 @@ export function classifyPdfPage(page: LoadedPdfPage): PageCoverageEntry {
       detail: `${page.loadFailure.code}: ${page.loadFailure.message}`,
     };
   }
+  if (page.recovery !== undefined) {
+    return {
+      page: page.pageNumber,
+      status: 'ocr',
+      detail: `text recovered by tier "${page.recovery.tier}" (confidence ${page.recovery.confidence.toFixed(2)})`,
+      ...(page.recovery.costClass !== undefined ? { recoveredBy: page.recovery.costClass } : {}),
+    };
+  }
   if (!page.requiresOcr) return { page: page.pageNumber, status: 'extracted' };
   if (page.isBlank) return { page: page.pageNumber, status: 'excluded', reason: 'blank_page' };
   if (page.hasImage) {
