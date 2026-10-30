@@ -78,9 +78,22 @@ export function resolveProvider(
       return ok(new AzureOpenAiProvider({ apiKey, endpoint, ...(flags.apiVersion !== undefined ? { apiVersion: flags.apiVersion } : {}) }));
     }
     case 'gemini': {
-      const apiKey = flags.apiKey ?? env['GEMINI_API_KEY'];
-      if (!apiKey) return err('gemini provider needs an API key — pass --api-key or set GEMINI_API_KEY');
-      return ok(new GeminiProvider({ apiKey, ...(flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {}) }));
+      const apiKey = flags.apiKey ?? env['GEMINI_API_KEY'] ?? env['GOOGLE_API_KEY'];
+      if (!apiKey) return err('gemini provider needs an API key — pass --api-key or set GEMINI_API_KEY (or GOOGLE_API_KEY)');
+      const rawBudget = env['XO_GEMINI_THINKING_BUDGET'];
+      let thinkingBudget: number | undefined;
+      if (rawBudget !== undefined && rawBudget !== '') {
+        thinkingBudget = Number(rawBudget);
+        if (!Number.isInteger(thinkingBudget) || thinkingBudget < -1)
+          return err('XO_GEMINI_THINKING_BUDGET must be an integer >= -1 (0 disables thinking where the model allows it, -1 = dynamic)');
+      }
+      return ok(
+        new GeminiProvider({
+          apiKey,
+          ...(flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {}),
+          ...(thinkingBudget !== undefined ? { thinkingBudget } : {}),
+        }),
+      );
     }
     case 'ollama':
       return ok(new OllamaProvider(flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {}));

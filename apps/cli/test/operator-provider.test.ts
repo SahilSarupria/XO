@@ -31,3 +31,23 @@ describe('operator provider (env-only configuration)', () => {
     assert.ok(!viaEnv.ok);
   });
 });
+
+describe('operator provider — gemini', () => {
+  it('works from GEMINI_API_KEY (or GOOGLE_API_KEY) with no Anthropic key present', () => {
+    const a = resolveOperatorProvider({ XO_MODEL: 'gemini-2.5-flash', XO_PROVIDER: 'gemini', GEMINI_API_KEY: 'g' });
+    assert.ok(a.ok);
+    assert.equal(a.ok && a.value.providerId, 'gemini');
+    assert.equal(a.ok && a.value.provider.describeCapabilities().supportsToolCalling, true);
+    assert.ok(resolveOperatorProvider({ XO_MODEL: 'm', XO_PROVIDER: 'gemini', GOOGLE_API_KEY: 'g' }).ok);
+    const none = resolveOperatorProvider({ XO_MODEL: 'm', XO_PROVIDER: 'gemini' });
+    assert.ok(!none.ok && /GEMINI_API_KEY/.test(none.error));
+  });
+  it('validates XO_GEMINI_THINKING_BUDGET and the endpoint allowlist still applies', () => {
+    const base = { XO_MODEL: 'm', XO_PROVIDER: 'gemini', GEMINI_API_KEY: 'g' };
+    assert.ok(resolveOperatorProvider({ ...base, XO_GEMINI_THINKING_BUDGET: '0' }).ok);
+    assert.ok(resolveOperatorProvider({ ...base, XO_GEMINI_THINKING_BUDGET: '-1' }).ok);
+    for (const bad of ['abc', '1.5', '-2']) assert.ok(!resolveOperatorProvider({ ...base, XO_GEMINI_THINKING_BUDGET: bad }).ok, bad);
+    assert.ok(resolveOperatorProvider({ ...base, XO_PROVIDER_BASE_URL: 'https://generativelanguage.googleapis.com' }).ok);
+    assert.ok(!resolveOperatorProvider({ ...base, XO_PROVIDER_BASE_URL: 'https://evil.example.com' }).ok);
+  });
+});

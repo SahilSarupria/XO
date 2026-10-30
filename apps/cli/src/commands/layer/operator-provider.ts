@@ -54,7 +54,7 @@ export function resolveOperatorProvider(env: Readonly<Record<string, string | un
   const model = env['XO_MODEL'];
   if (!model)
     return err(
-      'set XO_MODEL to the model id to use (and XO_PROVIDER, default "anthropic", plus the provider API key in its usual variable, e.g. ANTHROPIC_API_KEY)',
+      'set XO_MODEL to the model id to use (and XO_PROVIDER, default "anthropic", plus the provider API key in its usual variable, e.g. ANTHROPIC_API_KEY or GEMINI_API_KEY)',
     );
   const providerId = env['XO_PROVIDER'] ?? 'anthropic';
   const base = env['XO_PROVIDER_BASE_URL'];

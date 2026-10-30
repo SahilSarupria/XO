@@ -23,6 +23,11 @@ export interface ProviderToolCall {
   readonly id: string;
   readonly name: string;
   readonly input: Readonly<Record<string, unknown>>;
+  /**
+   * Opaque, provider-specific token that must be echoed back unchanged when this call is replayed in an
+   * assistant message (e.g. Gemini's `thoughtSignature`). Callers must not inspect, modify or drop it.
+   */
+  readonly providerState?: string;
 }
 
 export interface ProviderMessage {

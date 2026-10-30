@@ -13,7 +13,7 @@ export function assertNoToolCalling(providerId: string, request: ProviderRequest
   if (hasTools || hasToolMessages) {
     throw new AiError(
       ErrorCode.AI_PROVIDER_REQUEST_FAILED,
-      `provider "${providerId}" does not implement tool calling in this build; use the anthropic provider for tool-enabled requests`,
+      `provider "${providerId}" does not implement tool calling in this build; use the anthropic or gemini provider for tool-enabled requests`,
     );
   }
 }
