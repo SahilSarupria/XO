@@ -21,6 +21,7 @@ import { latestExecutionByCapability } from '../domain/review';
 import { tidyName } from '../domain/work';
 import type { Capability, Execution, Workflow, WorkspaceRole } from '../platform/wire';
 import type { DraftNode, NodeKindSupport } from '../platform/wire-studio';
+import { clip, MAX_NODE_LABEL } from '../domain/workflowDraft';
 import { Badge, Button } from './primitives';
 import type { DraftController } from './useWorkflowDraft';
 
@@ -94,9 +95,9 @@ export function DraftPalette(props: {
               () =>
                 add({
                   kind: 'capability',
-                  label: c.name,
+                  label: clip(c.name, MAX_NODE_LABEL),
                   config: {
-                    packageName: props.workflow.name,
+                    packageName: clip(props.workflow.name, 200),
                     capabilityId: c.capabilityId,
                     memoryScope: 'none',
                     compilationId: props.workflow.compilationId,

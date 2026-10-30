@@ -126,6 +126,17 @@ describe('Workflow drafts', () => {
     expect(runCalls(api)).toHaveLength(0);
   });
 
+  it("says so, in the platform's words, when the platform cannot check the draft, and leaves no old verdict on screen", async () => {
+    const api = new FakeXo();
+    api.studio.validateRefusal = 'body.name must be a non-empty string of at most 120 characters';
+    const user = await analysed(api);
+    await openGraph(user);
+    const draft = screen.getByRole('region', { name: 'Draft' });
+    expect(await within(draft).findByLabelText('What the platform said about checking')).toHaveTextContent(/at most 120 characters/);
+    expect(within(draft).queryByText(/the platform says this draft can run/i)).not.toBeInTheDocument();
+    expect(within(draft).getByRole('button', { name: 'Run draft' })).toBeDisabled();
+  });
+
   it("shows the platform's stale-revision refusal instead of running", async () => {
     const api = new FakeXo();
     api.approvals.all = true;

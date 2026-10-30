@@ -31,6 +31,8 @@ export interface DraftController {
   /** Apply an edit to the graph. The platform re-validates every change. */
   readonly edit: (change: (g: DraftGraph) => DraftGraph) => void;
   readonly validating: boolean;
+  /** Set when the platform could not check the current graph (shown instead of silently leaving the last verdict). */
+  readonly checkProblem: ApiProblem | undefined;
   readonly saving: boolean;
   readonly problem: ApiProblem | undefined;
   /** A plain statement of what just happened that is not an error (saved, reloaded after a conflict). */
@@ -54,6 +56,7 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [note, setNote] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<readonly WorkflowDraftSummary[] | undefined>();
+  const [checkProblem, setCheckProblem] = useState<ApiProblem | undefined>();
   const [kinds, setKinds] = useState<readonly NodeKindSupport[] | undefined>();
   /** Unsaved edits. Undefined means the graph is exactly the loaded draft (or the starting copy). */
   const [edited, setEdited] = useState<DraftGraph | undefined>();
@@ -96,7 +99,13 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
       void client.validateDraft(workspaceId, { name, nodes, edges }).then((r) => {
         if (!live) return;
         setValidating(false);
-        if (r.ok) setAnalysis(r.value);
+        if (r.ok) {
+          setAnalysis(r.value);
+          setCheckProblem(undefined);
+        } else {
+          setAnalysis(undefined); // a verdict for a different graph must not stay on screen
+          setCheckProblem(r.problem);
+        }
       });
     }, 250);
     return () => {
@@ -187,6 +196,7 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
     dirty,
     edit,
     validating,
+    checkProblem,
     saving,
     problem,
     note,

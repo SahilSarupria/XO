@@ -144,6 +144,8 @@ export class StudioFake {
   drafts: FakeDraft[] = [];
   /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
   runsStarted: string[] = [];
+  /** When set, live validation is refused with this message (a 400), as the real API does for an over-long name. */
+  validateRefusal: string | undefined;
   nodeKinds: Array<{
     kind: string;
     supported: boolean;
@@ -629,6 +631,8 @@ export class StudioFake {
           updatedBy: 'owner',
         })),
       });
+    if (method === 'POST' && rest === '/workflow-definitions/validate' && this.validateRefusal !== undefined)
+      return err(400, 'XO_INVALID_ARGUMENT', this.validateRefusal);
     if (method === 'POST' && rest === '/workflow-definitions/validate') return reply(200, this.analysis(body));
     if (method === 'POST' && rest === '/workflow-definitions') {
       const d = deny('author', 'save workflow');

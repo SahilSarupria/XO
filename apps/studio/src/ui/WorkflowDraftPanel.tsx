@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { can, whyNot } from '../domain/access';
 import { mergeInputContracts } from '../domain/draftRun';
+import { MAX_DRAFT_NAME } from '../domain/workflowDraft';
 import { buildInputFromContract } from '../domain/review';
 import type { Capability, WorkspaceRole } from '../platform/wire';
 import { ContractFields } from './ContractFields';
@@ -79,7 +80,7 @@ export function WorkflowDraftPanel(props: {
         own analysis says it can.
       </p>
       <label htmlFor="wf-draft-name">Draft name</label>
-      <input id="wf-draft-name" value={d.name} disabled={!canSave} onChange={(e) => d.setName(e.target.value)} />
+      <input id="wf-draft-name" maxLength={MAX_DRAFT_NAME} value={d.name} disabled={!canSave} onChange={(e) => d.setName(e.target.value)} />
       <p className="small" role="status">
         {d.definitionId === undefined ? 'Not saved yet.' : `Saved · revision ${String(d.revision)}.`} {d.validating ? 'Checking…' : ''}
       </p>
@@ -91,6 +92,14 @@ export function WorkflowDraftPanel(props: {
         </p>
       ) : null}
       {d.problem !== undefined ? <ProblemNotice problem={d.problem} /> : null}
+      {d.checkProblem !== undefined ? (
+        <>
+          <ProblemNotice problem={d.checkProblem} />
+          <p className="small" aria-label="What the platform said about checking">
+            The platform said: “{d.checkProblem.message}”
+          </p>
+        </>
+      ) : null}
 
       {errors.length > 0 ? (
         <>
