@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { PdfForge, pdfLiteral } from './pdf-forge.js';
 import { buildEncrypted, type EncryptionSpec } from './pdf-encrypt.js';
 
@@ -588,6 +590,29 @@ function bombCases(): TaxonomyCase[] {
 // Case list
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** Scanned-page cases: rendered by `scan-fixtures/make_scans.py`, committed with their ground truth. */
+function scanCases(): TaxonomyCase[] {
+  const dir = new URL('./scan-fixtures/', import.meta.url);
+  const truth = JSON.parse(readFileSync(fileURLToPath(new URL('scan-truth.json', dir)), 'utf8')) as Record<string, string[][]>;
+  const describe: Record<string, string> = {
+    'scan-clean-3p': 'three clean 150 dpi scanned pages (image only, no text layer)',
+    'scan-rotated-90': 'scanned page physically rotated 90 degrees',
+    'scan-rotated-180': 'scanned page upside down',
+    'scan-rotated-270': 'scanned page physically rotated 270 degrees',
+    'scan-skewed-2deg': 'scanned page skewed by 2 degrees',
+    'scan-noisy-100dpi': 'low-resolution 100 dpi scan with noise and blur',
+    'scan-two-column': 'two-column scanned page',
+  };
+  return Object.keys(truth).map((id) => ({
+    id,
+    category: 'scan' as const,
+    description: describe[id] ?? id,
+    expectation: 'needs_recovery' as const,
+    truth: truth[id]!.map((lines) => ({ lines })),
+    build: () => new Uint8Array(readFileSync(fileURLToPath(new URL(`${id}.pdf`, dir)))),
+  }));
+}
+
 export function buildCases(): TaxonomyCase[] {
   const cases: TaxonomyCase[] = [];
   const add = (c: TaxonomyCase): void => void cases.push(c);
@@ -791,6 +816,7 @@ export function buildCases(): TaxonomyCase[] {
     },
   });
 
+  for (const c of scanCases()) add(c);
   for (const c of corruptCases()) add(c);
   for (const c of inertCases()) add(c);
   for (const c of bombCases()) add(c);

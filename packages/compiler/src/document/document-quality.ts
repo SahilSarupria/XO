@@ -121,14 +121,25 @@ export function assessDocumentQuality(parsed: ParsedDocument, sourceId: string, 
   // however clean the (empty) text looks — this is the A1-01 hole, where a fully scanned PDF was
   // vacuously "trusted" because quality was judged only on the tokens that survived.
   const nothingRead = coverage !== undefined && accountedContentPages(coverage) === 0;
+  // A page transcribed by a hosted model is evidence a human has not checked: it can read the page, so the source is
+  // not blocked or partial for it, but the source is never `trusted` while any page rests on model output alone.
+  const modelPages = coverage?.entries.filter((p) => p.status === 'ocr' && p.recoveredBy === 'model').map((p) => p.page) ?? [];
   const state: SourceQualityState =
     nothingRead || suspiciousTokenRatio > BLOCKED_RATIO_THRESHOLD
       ? 'blocked'
       : coverage !== undefined && !coverage.complete
         ? 'partial'
-        : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD
+        : suspiciousTokenRatio > DEGRADED_RATIO_THRESHOLD || modelPages.length > 0
           ? 'degraded'
           : 'trusted';
+  if (modelPages.length > 0 && state === 'degraded') {
+    diagnostics.push({
+      severity: 'warning',
+      passName: SOURCE_QUALITY_PASS_NAME,
+      code: 'source-quality/model-transcribed',
+      message: `Source "${sourceId}": page(s) ${modelPages.join(', ')} were transcribed by a hosted model and have not been reviewed by a person; the source is not trusted until they are.`,
+    });
+  }
 
   if (coverage !== undefined) diagnostics.push(...coverageDiagnostics(coverage, sourceId));
 

@@ -25,6 +25,16 @@ export interface Target {
 const READ: Target = { minWordF1: 0.95, minSequence: 0.95, maxMs: 5000 };
 
 export const TARGETS: Readonly<Record<string, Target>> = {
+  'scan-clean-3p': { allPagesFlagged: true },
+  'scan-rotated-90': { allPagesFlagged: true },
+  'scan-rotated-180': { allPagesFlagged: true },
+  'scan-rotated-270': { allPagesFlagged: true },
+  'scan-skewed-2deg': { allPagesFlagged: true },
+  'scan-noisy-100dpi': { allPagesFlagged: true },
+  'scan-two-column': { allPagesFlagged: true },
+  'scan-adversarial-noise': { allPagesFlagged: true },
+  'scan-adversarial-strokes': { allPagesFlagged: true },
+  'scan-adversarial-tiny-text': { allPagesFlagged: true },
   'control-text-3p': READ,
   'layout-page-rotate-90': READ,
   'layout-page-rotate-180': READ,
@@ -81,4 +91,27 @@ export const TARGETS: Readonly<Record<string, Target>> = {
     maxMs: 1000,
   },
   'bomb-many-streams': { maxMs: 8000 },
+};
+
+/**
+ * Targets for the full local recovery chain (pdfium second reader, then Tesseract OCR) on cases the text layer cannot
+ * read. Calibrated on the taxonomy: correct pages score OCR confidence 0.90-0.95, adversarial pages (no real text) score
+ * 0.31-0.35 or hang and are aborted, so the default gate of 0.6 sits in a wide empty gap (no page lies between 0.35 and 0.90).
+ */
+export const RECOVERY_TARGETS: Readonly<Record<string, Target>> = {
+  'scan-clean-3p': { minWordF1: 0.9, minPagesWithText: 3 },
+  'scan-rotated-90': { minWordF1: 0.9, minPagesWithText: 1 },
+  'scan-rotated-180': { minWordF1: 0.9, minPagesWithText: 1 },
+  'scan-rotated-270': { minWordF1: 0.9, minPagesWithText: 1 },
+  'scan-skewed-2deg': { minWordF1: 0.9, minPagesWithText: 1 },
+  'scan-noisy-100dpi': { minWordF1: 0.85, minPagesWithText: 1 },
+  'scan-two-column': {
+    minWordF1: 0.8,
+    minPagesWithText: 1,
+    minSequence: 0.9,
+    knownGap: 'two-column scan is read across the columns (word F1 ok, order ~0.89)',
+  },
+  'scan-adversarial-noise': { allPagesFlagged: true, maxMs: 40_000 },
+  'scan-adversarial-strokes': { allPagesFlagged: true },
+  'scan-adversarial-tiny-text': { allPagesFlagged: true },
 };

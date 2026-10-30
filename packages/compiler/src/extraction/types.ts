@@ -1,4 +1,5 @@
 import type { LoadedPdfDocument, LoadedPdfPage } from '../pdf/pdf-loader.js';
+import type { RunBudget } from './budget.js';
 
 /**
  * Tiered page recovery. The deterministic reader handles every page that has a text layer for free. A page it cannot
@@ -57,8 +58,12 @@ export interface ExtractionBudget {
   readonly minConfidence?: number;
   /** Pages recovered in parallel. Default 4. */
   readonly concurrency?: number;
-  /** Per-page wall-clock limit in ms for any one tier call. Default 60_000. */
+  /** Per-page wall-clock limit in ms for any one tier call. On expiry the tier's `signal` is aborted. Default 60_000. */
   readonly tierTimeoutMs?: number;
+  /** Cancels the whole recovery run: in-flight tier calls are aborted and remaining pages are left unaccounted. */
+  readonly signal?: AbortSignal;
+  /** Hard spend ceiling shared across every document of a run. Checked together with `maxCostUsd`; either one stops a model call. */
+  readonly runBudget?: RunBudget;
 }
 
 export interface RecoveryCache {
@@ -66,7 +71,17 @@ export interface RecoveryCache {
   set(key: string, value: PageRecovery): Promise<void> | void;
 }
 
-export type RecoveryOutcome = 'recovered' | 'cache_hit' | 'low_confidence' | 'no_text' | 'tier_failed' | 'skipped_budget' | 'timed_out';
+export type RecoveryOutcome =
+  | 'recovered'
+  | 'cache_hit'
+  /** Another page request for the same (document, page, tier) was already in flight; its result was shared, nothing was sent twice. */
+  | 'deduplicated'
+  | 'low_confidence'
+  | 'no_text'
+  | 'tier_failed'
+  | 'skipped_budget'
+  | 'timed_out'
+  | 'cancelled';
 
 export interface LedgerEntry {
   readonly page: number;
@@ -79,8 +94,20 @@ export interface LedgerEntry {
 }
 
 /** Everything a recovery run spent, per page and per tier, so cost is a number you can read rather than a surprise. */
+export interface TierCostSummary {
+  readonly tier: string;
+  readonly costClass: TierCostClass;
+  readonly attempts: number;
+  readonly recovered: number;
+  readonly ms: number;
+  readonly tokens: number;
+  readonly costUsd: number;
+}
+
 export interface ExtractionLedger {
   readonly entries: readonly LedgerEntry[];
+  /** The same entries rolled up per tier: what each tier cost and how much it recovered. */
+  readonly byTier: readonly TierCostSummary[];
   readonly pagesNeedingRecovery: number;
   readonly pagesRecovered: number;
   readonly totalMs: number;

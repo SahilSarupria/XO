@@ -11,9 +11,18 @@
 
 export type ProviderId = 'openai' | 'anthropic' | 'gemini' | 'azure-openai' | 'ollama' | 'deterministic-replay' | (string & {});
 
+/** An image attached to a message. Only vision-capable providers (`supportsVision`) accept these; the others never receive them. */
+export interface ProviderImage {
+  readonly mediaType: 'image/png' | 'image/jpeg';
+  /** Base64 of the encoded image bytes (no data-URL prefix). */
+  readonly dataBase64: string;
+}
+
 export interface ProviderMessage {
   readonly role: 'system' | 'user' | 'assistant';
   readonly content: string;
+  /** Optional images sent alongside `content` (user messages). Absent for every text-only call, so existing behaviour is unchanged. */
+  readonly images?: readonly ProviderImage[];
 }
 
 export interface ProviderRequest {

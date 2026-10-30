@@ -34,6 +34,8 @@ export interface PageCoverageEntry {
   readonly reason?: PageCoverageReason;
   /** Human-readable specifics (e.g. the underlying parser error). Never parsed by code. */
   readonly detail?: string;
+  /** For `ocr` pages: the cost class of the tier that supplied the text. A `model` page is never silently trusted. */
+  readonly recoveredBy?: 'free' | 'local' | 'model';
 }
 
 export interface CoverageCounts {

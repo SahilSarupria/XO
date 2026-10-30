@@ -71,7 +71,16 @@ export class AnthropicProvider implements ModelProvider {
         model: request.model,
         max_tokens: request.maxOutputTokens,
         system: system.length > 0 ? system : undefined,
-        messages: nonSystemMessages.map((m) => ({ role: m.role, content: m.content })),
+        messages: nonSystemMessages.map((m) => ({
+          role: m.role,
+          content:
+            m.images !== undefined && m.images.length > 0
+              ? [
+                  ...m.images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.dataBase64 } })),
+                  { type: 'text', text: m.content },
+                ]
+              : m.content,
+        })),
         temperature: request.temperature,
       }),
     });
