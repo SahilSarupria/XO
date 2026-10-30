@@ -1,0 +1,35 @@
+{
+  "name": "@xo/ab-eval",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A/B evaluation harness: does loading an XO make a model measurably better than plain / prompt-only / context-dump baselines? Includes the Halvorsen freight-claims scenario (gold XO, deterministic oracle, seeded task generator) and the compiler-gap metric.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test",
+    "materialize": "node --import tsx scripts/materialize.ts"
+  },
+  "dependencies": {
+    "@xo/ai-core": "0.1.0",
+    "@xo/capability-layer": "0.1.0",
+    "@xo/compiler": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/package-sdk": "0.1.0",
+    "@xo/types": "0.1.0",
+    "@xo/automation": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

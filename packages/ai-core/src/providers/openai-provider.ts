@@ -1,3 +1,4 @@
+import { assertNoToolCalling } from './tool-guard.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -46,6 +47,7 @@ export class OpenAiProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
+    assertNoToolCalling('openai', request);
     const response = await this.fetchImpl(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {

@@ -1,3 +1,4 @@
+import { assertNoToolCalling } from './tool-guard.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -51,6 +52,7 @@ export class OllamaProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
+    assertNoToolCalling('ollama', request);
     const response = await this.fetchImpl(`${this.baseUrl}/api/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

@@ -1,3 +1,4 @@
+import { assertNoToolCalling } from './tool-guard.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -48,6 +49,7 @@ export class GeminiProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
+    assertNoToolCalling('gemini', request);
     const systemText = request.messages
       .filter((m) => m.role === 'system')
       .map((m) => m.content)

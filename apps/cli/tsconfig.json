@@ -6,23 +6,68 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../../packages/types" },
-    { "path": "../../packages/errors" },
-    { "path": "../../packages/logger" },
-    { "path": "../../packages/config" },
-    { "path": "../../packages/crypto" },
-    { "path": "../../packages/storage" },
-    { "path": "../../packages/package-sdk" },
-    { "path": "../../packages/registry-core" },
-    { "path": "../../packages/registry" },
-    { "path": "../../packages/ai-core" },
-    { "path": "../../packages/permissions" },
-    { "path": "../../packages/audit" },
-    { "path": "../../packages/capability-contract" },
-    { "path": "../../packages/runtime" },
-    { "path": "../../packages/workflow-composer" },
-    { "path": "../../packages/compiler" },
-    { "path": "../../packages/xoir" },
-    { "path": "../../packages/benchmark" }
+    {
+      "path": "../../packages/types"
+    },
+    {
+      "path": "../../packages/errors"
+    },
+    {
+      "path": "../../packages/logger"
+    },
+    {
+      "path": "../../packages/config"
+    },
+    {
+      "path": "../../packages/crypto"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/package-sdk"
+    },
+    {
+      "path": "../../packages/registry-core"
+    },
+    {
+      "path": "../../packages/registry"
+    },
+    {
+      "path": "../../packages/ai-core"
+    },
+    {
+      "path": "../../packages/permissions"
+    },
+    {
+      "path": "../../packages/audit"
+    },
+    {
+      "path": "../../packages/capability-contract"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../../packages/workflow-composer"
+    },
+    {
+      "path": "../../packages/compiler"
+    },
+    {
+      "path": "../../packages/xoir"
+    },
+    {
+      "path": "../../packages/benchmark"
+    },
+    {
+      "path": "../../packages/ab-eval"
+    },
+    {
+      "path": "../../packages/automation"
+    },
+    {
+      "path": "../../packages/capability-layer"
+    }
   ]
 }
