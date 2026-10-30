@@ -180,9 +180,17 @@ the operators differ.
   character/word spacing, horizontal scaling, or an enclosing `cm`'s
   effect on position. Reading order and line grouping are unaffected;
   sub-pixel-accurate glyph coordinates are not available.
-- **No encrypted-PDF support.** An encrypted PDF (any `/Encrypt` entry in
-  the trailer) is rejected with `PDF_ENCRYPTED` rather than attempting
-  decryption.
+- **Encrypted PDFs: empty user password only.** The Standard security handler
+  is implemented (RC4 40/128, AES-128, AES-256 R5/R6; `pdf/decrypt.ts`), so a
+  document with only an owner password (printing/copying restrictions) is read.
+  A document that needs a user password is refused with `PDF_ENCRYPTED`; no
+  password is ever guessed. Checked against files written by qpdf
+  (`test/fixtures/encrypted`) and by the taxonomy writer (RC4).
+- **Resource limits.** Every read is bounded (`pdf/limits.ts`: per-stream and
+  per-document decoded bytes, inflate ratio, object nesting, page-tree depth,
+  page count, file size) and cancellable (`AbortSignal`, deadline). A limit hit
+  is a per-page `PDF_RESOURCE_LIMIT` failure (the page stays unaccounted), never a
+  throw or an unbounded allocation. `NodePdfLoader.load` never throws.
 - **No inter-run space inference.** Two separate `Tj`/`TJ` calls on the
   same line are concatenated with no inserted space unless the source
   PDF's own string content already contains one (see

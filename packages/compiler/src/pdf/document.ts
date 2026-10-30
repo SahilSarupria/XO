@@ -6,6 +6,7 @@ import { decodePdfTextString } from './text-decoder.js';
 import { isArray, isDictionary, isName, isPdfString, isReference, isStream, type PdfDictionary, type PdfValue } from './types.js';
 import { parseXref, type XrefTable } from './xref.js';
 import { rebuildXrefByScanning } from './rebuild-xref.js';
+import { createDecryptor, decryptValue, type Decryptor } from './decrypt.js';
 import {
   ABORTED_CODE,
   PdfAbortedError,
@@ -82,6 +83,23 @@ export class PdfDocument {
     this.limits = resolveLimits(options.limits);
     this.meter = new ResourceMeter(this.limits);
     this.cancellation = { signal: options.signal, deadlineMs: options.deadlineMs };
+    this.initEncryption();
+  }
+
+  private decryptor: Decryptor | undefined;
+
+  private initEncryption(): void {
+    const encryptValue = this.xref.trailer.entries.get('Encrypt');
+    if (encryptValue === undefined) return;
+    const idValue = this.xref.trailer.entries.get('ID');
+    const idArr = idValue !== undefined ? this.resolve(idValue) : undefined;
+    const first = idArr !== undefined && isArray(idArr) && idArr.items[0] !== undefined ? this.resolve(idArr.items[0]) : undefined;
+    const id0 = first !== undefined && isPdfString(first) ? first.bytes : new Uint8Array(0);
+    const encObjNum = isReference(encryptValue) ? encryptValue.objectNumber : undefined;
+    // The /Encrypt dictionary is read before the decryptor exists, so it is (correctly) never decrypted.
+    this.decryptor = createDecryptor(encryptValue, encObjNum, id0, (v) => this.resolve(v));
+    // Objects cached while reading /Encrypt were parsed in the clear; drop them so everything else is decrypted on first read.
+    this.cache.clear();
   }
 
   /** Total bytes decoded so far, for observability. */
@@ -98,17 +116,29 @@ export class PdfDocument {
     let xref: XrefTable;
     try {
       xref = parseXref(buf);
-    } catch {
+      // A table that parses but points at the wrong bytes is as useless as none: prove the catalog and page tree
+      // are reachable through it, otherwise fall back to the rebuild scan.
+      new PdfDocument(buf, xref, options).assertPageTreeReachable();
+    } catch (cause) {
+      if (cause instanceof PdfResourceLimitError || cause instanceof PdfAbortedError) throw cause;
+      if (cause instanceof PdfError && cause.code === ErrorCode.PDF_ENCRYPTED) throw cause;
       xref = rebuildXrefByScanning(buf);
     }
     const doc = new PdfDocument(buf, xref, options);
-    if (xref.trailer.entries.has('Encrypt')) {
-      throw new PdfError(ErrorCode.PDF_ENCRYPTED, 'This PDF is encrypted; decryption is not supported');
-    }
     if (!xref.trailer.entries.has('Root')) {
       throw new PdfError(ErrorCode.PDF_MALFORMED, 'No /Root found in trailer (even after xref recovery)');
     }
     return doc;
+  }
+
+  /** Throws unless /Root and /Root/Pages resolve to dictionaries through this xref. */
+  assertPageTreeReachable(): void {
+    const root = this.dictGet(this.xref.trailer, 'Root');
+    if (root === undefined || !isDictionary(root))
+      throw new PdfError(ErrorCode.PDF_MALFORMED, '/Root unreachable through the cross-reference table');
+    const pages = this.dictGet(root, 'Pages');
+    if (pages === undefined || !isDictionary(pages))
+      throw new PdfError(ErrorCode.PDF_MALFORMED, '/Root/Pages unreachable through the cross-reference table');
   }
 
   getObject(objectNumber: number): PdfValue {
@@ -131,8 +161,12 @@ export class PdfDocument {
       const lengthValue = this.getObject(refObjNum);
       return typeof lengthValue === 'number' ? lengthValue : undefined;
     });
-    this.cache.set(objectNumber, indirect.value);
-    return indirect.value;
+    const value =
+      this.decryptor !== undefined && objectNumber !== this.decryptor.encryptObjectNumber
+        ? decryptValue(indirect.value, indirect.objectNumber, indirect.generation, this.decryptor)
+        : indirect.value;
+    this.cache.set(objectNumber, value);
+    return value;
   }
 
   /**

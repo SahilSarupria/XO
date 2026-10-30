@@ -172,6 +172,8 @@ export function decodeStream(stream: PdfStream, meter: ResourceMeter = new Resou
       case 'RL':
         bytes = decodeRunLength(bytes, Math.max(1, allowance));
         break;
+      case 'Crypt':
+        break; // handled by the document's decryptor before filters run
       default:
         throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `Unsupported stream filter "${name}"`);
     }
@@ -247,7 +249,16 @@ export function decodeAsciiHex(input: Uint8Array): Uint8Array {
 
 /** RunLengthDecode (§7.4.5): length byte n: 0-127 copy n+1 literal bytes, 129-255 repeat the next byte 257-n times, 128 = EOD. */
 export function decodeRunLength(input: Uint8Array, maxOut = DEFAULT_PDF_LIMITS.maxStreamBytes): Uint8Array {
-  const out: number[] = [];
+  let out = new Uint8Array(Math.min(Math.max(input.length * 4, 1024), maxOut + 1));
+  let len = 0;
+  const ensure = (extra: number): void => {
+    if (len + extra > maxOut) throw new PdfResourceLimitError('maxStreamBytes', `RunLengthDecode output exceeds ${maxOut} bytes`);
+    if (len + extra > out.length) {
+      const grown = new Uint8Array(Math.min(Math.max(out.length * 2, len + extra), maxOut + 1));
+      grown.set(out.subarray(0, len));
+      out = grown;
+    }
+  };
   let i = 0;
   while (i < input.length) {
     const n = input[i++]!;
@@ -255,13 +266,17 @@ export function decodeRunLength(input: Uint8Array, maxOut = DEFAULT_PDF_LIMITS.m
     if (n < 128) {
       const end = i + n + 1;
       if (end > input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: literal run overruns the data');
-      for (; i < end; i++) out.push(input[i]!);
+      ensure(n + 1);
+      out.set(input.subarray(i, end), len);
+      len += n + 1;
+      i = end;
     } else {
       if (i >= input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: repeat run missing its byte');
-      const b = input[i++]!;
-      for (let k = 0; k < 257 - n; k++) out.push(b);
+      const count = 257 - n;
+      ensure(count);
+      out.fill(input[i++]!, len, len + count);
+      len += count;
     }
-    if (out.length > maxOut) throw new PdfResourceLimitError('maxStreamBytes', `RunLengthDecode output exceeds ${maxOut} bytes`);
   }
-  return Uint8Array.from(out);
+  return out.slice(0, len);
 }
