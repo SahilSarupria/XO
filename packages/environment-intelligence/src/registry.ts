@@ -32,7 +32,14 @@ export class ConnectorRegistrationError extends Error {
  *  - a `supported` operation declares the permission it will ask for (so the framework can verify it was spent);
  *  - only auth mechanisms that work today (`SUPPORTED_AUTH_METHODS`) may be claimed, and no config field may be a secret.
  */
-export function connectorContractProblems(connector: Connector): readonly string[] {
+export function connectorContractProblems(
+  connector: Connector,
+  /**
+   * C3: auth methods this REGISTRY has a wired credential mechanism for. Supplied by the registrar (trusted host code), never by
+   * a connector's own descriptor, so a connector cannot enable a method it claims. Defaults to the C1 set.
+   */
+  enabledAuthMethods: readonly AuthMethod[] = SUPPORTED_AUTH_METHODS,
+): readonly string[] {
   const problems: string[] = [];
   const d = connector?.descriptor;
   if (d === undefined || d === null || typeof d !== 'object') return ['descriptor_missing'];
@@ -61,7 +68,7 @@ export function connectorContractProblems(connector: Connector): readonly string
   if (!Array.isArray(d.authMethods) || d.authMethods.length === 0) problems.push('auth_methods_empty');
   else
     for (const m of d.authMethods)
-      if (!(SUPPORTED_AUTH_METHODS as readonly unknown[]).includes(m))
+      if (!(enabledAuthMethods as readonly unknown[]).includes(m))
         problems.push(`auth_method_unsupported:${KNOWN_UNSUPPORTED_AUTH.includes(m as string) ? (m as string) : 'unknown'}`);
   if (Array.isArray(d.configFields))
     for (const f of d.configFields) if (f?.secret === true) problems.push('secret_config_field_unsupported');
@@ -72,8 +79,14 @@ export function connectorContractProblems(connector: Connector): readonly string
 export class ConnectorRegistry {
   private readonly byId = new Map<ConnectorId, Connector>();
 
-  register(connector: Connector): void {
-    const problems = connectorContractProblems(connector);
+  /**
+   * `options.enabledAuthMethods` (C3) widens the accepted auth methods beyond `SUPPORTED_AUTH_METHODS` ONLY for this call and only
+   * to methods the registrar vouches a credential mechanism exists for (e.g. `oauth2` with the cloud credential vault). Omitted =
+   * C1 behaviour exactly. A secret-bearing config field is still always refused.
+   */
+  register(connector: Connector, options: { readonly enabledAuthMethods?: readonly AuthMethod[] } = {}): void {
+    const enabled = [...SUPPORTED_AUTH_METHODS, ...(options.enabledAuthMethods ?? [])];
+    const problems = connectorContractProblems(connector, enabled);
     if (problems.length > 0) throw new ConnectorRegistrationError(problems);
     if (this.byId.has(connector.descriptor.id)) {
       throw new Error(`connector already registered: ${connector.descriptor.id}`);

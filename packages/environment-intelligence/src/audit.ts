@@ -31,7 +31,11 @@ export type AuditOperation =
   | 'health'
   | 'declare_sources'
   | 'revoke_evidence'
-  | 'purge_evidence';
+  | 'purge_evidence'
+  /** C3: an administrator-consented cloud account connection (begin through completion). */
+  | 'connect_account'
+  /** C3: local revocation of a cloud account connection (credentials destroyed). */
+  | 'revoke_connection';
 
 /**
  * - `attempt`:    write-ahead record, accepted BEFORE protected evidence is read.
@@ -187,6 +191,8 @@ const OPERATIONS: ReadonlySet<string> = new Set([
   'declare_sources',
   'revoke_evidence',
   'purge_evidence',
+  'connect_account',
+  'revoke_connection',
 ]);
 const TOP_KEYS: ReadonlySet<string> = new Set([
   'idempotencyKey',
