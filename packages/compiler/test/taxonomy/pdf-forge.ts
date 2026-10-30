@@ -24,9 +24,20 @@ export function encodeStream(data: Buffer, enc: StreamEncoding): { bytes: Buffer
       return { bytes: data };
     case 'runlength': {
       const out: number[] = [];
-      for (let i = 0; i < data.length; i += 128) {
-        const chunk = data.subarray(i, Math.min(data.length, i + 128));
-        out.push(chunk.length - 1, ...chunk);
+      let i = 0;
+      while (i < data.length) {
+        let run = 1;
+        while (i + run < data.length && run < 128 && data[i + run] === data[i]) run++;
+        if (run >= 2) {
+          out.push(257 - run, data[i]!);
+          i += run;
+        } else {
+          // literal run of up to 128 bytes that does not start a repeat
+          let end = i + 1;
+          while (end < data.length && end - i < 128 && !(end + 1 < data.length && data[end] === data[end + 1])) end++;
+          out.push(end - i - 1, ...data.subarray(i, end));
+          i = end;
+        }
       }
       out.push(128);
       return { bytes: Buffer.from(out), filter: '/RunLengthDecode' };
@@ -66,6 +77,10 @@ export class PdfForge {
   private next = 1;
   alloc(): number {
     return this.next++;
+  }
+  /** Applies a stream encoding without adding an object (used by the encryption writer). */
+  encode(data: Buffer, enc: StreamEncoding): { bytes: Buffer; filter?: string } {
+    return encodeStream(data, enc);
   }
   /** Adds a whole object (dictionary/array/primitive). */
   obj(num: number, body: string): number {

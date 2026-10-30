@@ -52,6 +52,22 @@ export interface PdfLoader {
 
 const NO_FONT_ENCODING: FontEncoding = { codeByteWidth: 1, decode: (bytes) => Buffer.from(bytes).toString('latin1') };
 
+/**
+ * A text layer that decodes to placeholders (a composite font with no /ToUnicode yields one U+FFFD per code) carries no
+ * information. Treating it as text would hand downstream stages garbage rated `trusted`; treating it as "no text layer"
+ * routes the page to recovery (a second reader, OCR) or leaves it visibly unaccounted.
+ */
+export function isUnreadableTextLayer(text: string): boolean {
+  let visible = 0;
+  let placeholders = 0;
+  for (const ch of text) {
+    if (/\s/u.test(ch)) continue;
+    visible += 1;
+    if (ch === '\uFFFD') placeholders += 1;
+  }
+  return visible > 0 && placeholders / visible >= 0.5;
+}
+
 function toLoadedPage(raw: RawPdfPage, doc: PdfDocument, options: PdfLoadOptions): LoadedPdfPage {
   const base = {
     pageNumber: raw.pageNumber,
@@ -65,7 +81,7 @@ function toLoadedPage(raw: RawPdfPage, doc: PdfDocument, options: PdfLoadOptions
     const textRuns = extractTextRuns(raw.contentBytes);
     const resolveFontEncoding = buildFontEncodingResolver(raw.resources, (value) => doc.resolve(value));
     const plainText = textRunsToPlainText(textRuns, resolveFontEncoding);
-    const hasText = plainText.trim().length > 0;
+    const hasText = plainText.trim().length > 0 && !isUnreadableTextLayer(plainText);
     return {
       ...base,
       plainText,
