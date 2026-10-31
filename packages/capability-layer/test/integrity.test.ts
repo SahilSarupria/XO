@@ -46,6 +46,10 @@ describe('a layer refuses a bundle that is not what its manifest says', () => {
     );
     rejects({ ...b, components: comps }, /knowledge_graph.*declared hash/);
   });
+  it('rejects a package whose formatVersion major this layer does not know', () => {
+    const b = sealed();
+    rejects({ ...b, manifest: { ...b.manifest, formatVersion: '2.0' as never } }, /formatVersion/);
+  });
   it('rejects a smuggled component the manifest never declared', () => {
     const b = sealed();
     const extra = { kind: 'decision_trees', path: 'reasoning/decision_trees.json', required: false, data: enc({ trees: [] }) } as never;

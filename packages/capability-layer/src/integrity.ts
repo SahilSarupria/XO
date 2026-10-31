@@ -26,6 +26,8 @@ export interface IntegrityOptions {
 /** Verifies content integrity (component hashes + Merkle root) and, when a policy is supplied, signatures. Returns the trust verdict if one was computed. Throws {@link BundleIntegrityError}. */
 export function verifyBundle(bundle: PackageBundle, options: IntegrityOptions = {}): TrustVerdict | undefined {
   const problems: string[] = [];
+  if (!/^1(\.\d+)*$/.test(String(bundle.manifest.formatVersion)))
+    problems.push(`unsupported manifest formatVersion "${String(bundle.manifest.formatVersion)}" (this layer reads 1.x)`);
   const hasher = new Sha256Hasher();
   const { manifest } = bundle;
   for (const c of bundle.components) {
