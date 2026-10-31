@@ -156,8 +156,9 @@ export function renderMarkdown(rep: EvalReport): string {
     );
   }
   if (rep.arms.some((a) => a.estimatedCostUsd !== null)) {
-    L.push('', '| arm | est. cost / task (USD) |', '|---|---|');
-    for (const a of rep.arms) L.push(`| ${a.arm} | ${a.estimatedCostUsd === null ? '—' : a.estimatedCostUsd.toFixed(5)} |`);
+    L.push('', '| arm | est. cost / task (USD) | est. cost / correct task (USD) |', '|---|---|---|');
+    for (const a of rep.arms)
+      L.push(`| ${a.arm} | ${a.estimatedCostUsd === null ? '—' : a.estimatedCostUsd.toFixed(5)} | ${costPerCorrect(a)} |`);
   }
   L.push(
     '',
@@ -182,4 +183,34 @@ export function renderMarkdown(rep: EvalReport): string {
     '- `xo_router` is shown structured intake, so it answers with zero model calls; it is not directly comparable to narrative arms on accuracy.',
   );
   return L.join('\n');
+}
+
+/** Mean cost per task divided by pass rate: what one *correct* answer costs. '—' if unpriced or nothing passed. */
+export function costPerCorrect(a: ArmSummary): string {
+  return a.estimatedCostUsd === null || a.passRate === 0 ? '—' : (a.estimatedCostUsd / a.passRate).toFixed(5);
+}
+
+/** Side-by-side of two (or more) reports, e.g. the same arms on two models. Pure formatting of measured numbers. */
+export function renderComparison(reports: readonly { label: string; report: EvalReport }[]): string {
+  const arms = [...new Set(reports.flatMap((r) => r.report.arms.map((a) => a.arm)))];
+  const L = [
+    '# Model comparison',
+    '',
+    `| arm | ${reports.map((r) => `${r.label} pass`).join(' | ')} | ${reports.map((r) => `${r.label} unsafe`).join(' | ')} | ${reports.map((r) => `${r.label} tokens`).join(' | ')} |`,
+  ];
+  L.push(`|---|${reports.map(() => '---|').join('')}${reports.map(() => '---|').join('')}${reports.map(() => '---|').join('')}`);
+  const pct = (x: number): string => `${(x * 100).toFixed(0)}%`;
+  for (const arm of arms) {
+    const cells = reports.map((r) => r.report.arms.find((a) => a.arm === arm));
+    L.push(
+      `| ${arm} | ${cells.map((c) => (c ? pct(c.passRate) : '—')).join(' | ')} | ${cells.map((c) => (c ? pct(c.unsafeAutoApprovalRate) : '—')).join(' | ')} | ${cells.map((c) => (c ? Math.round(c.meanInputTokens + c.meanOutputTokens).toString() : '—')).join(' | ')} |`,
+    );
+  }
+  L.push(
+    '',
+    ...reports.map(
+      (r) => `- **${r.label}**: ${r.report.meta.model} (${r.report.meta.provider}), ${r.report.meta.taskSet}, ${r.report.meta.date}`,
+    ),
+  );
+  return L.join('\n') + '\n';
 }

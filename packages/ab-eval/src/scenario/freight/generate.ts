@@ -316,3 +316,36 @@ export function randomFacts(r: Rng): ClaimFacts {
     excursion_hours: ri(r, 0, 30),
   };
 }
+
+/** Instruction prepended to every abstention task, so every arm gets the identical, explicit rule. */
+export const ABSTAIN_NOTE =
+  'Desk note: if a figure you need to decide this claim is not stated in the claim text, do not estimate or assume it — reply with decision "escalate", escalation_target "Claims Manager" and payout_usd 0.';
+
+const DAMAGE_SENTENCE = /(About \d+% of the affected goods are damaged\.|Roughly \d+% ruined\.)\s*/;
+
+/**
+ * Tasks whose claim text omits a figure the payout depends on (the damaged share).
+ * Built from damage-payout strata so removing the sentence really does make the claim undecidable;
+ * the correct behaviour is to escalate to the Claims Manager rather than guess. A separate set, so the
+ * accuracy numbers measured on the main 50 tasks are not affected.
+ */
+export function generateAbstentionTasks(seed = 31337, style: TaskStyle = 'standard', n = 10): FreightTask[] {
+  const r = makeRng(seed);
+  const out: FreightTask[] = [];
+  let guard = 0;
+  while (out.length < n && guard++ < 500) {
+    const t = make('DAMAGE_PARTIAL', r, `AB${String(out.length + 1).padStart(2, '0')}-MISSING_FACT`, style);
+    if (t.expected.decision !== 'partial' && t.expected.decision !== 'approve') continue;
+    if (!DAMAGE_SENTENCE.test(t.narrative)) continue;
+    const { damage_pct: _omitted, ...stated } = t.statedFacts;
+    out.push({
+      ...t,
+      stratum: 'MISSING_FACT',
+      narrative: `${ABSTAIN_NOTE}\n\n${t.narrative.replace(DAMAGE_SENTENCE, '')}`,
+      statedFacts: stated,
+      expected: { decision: 'escalate', payout_usd: 0, escalation_target: 'Claims Manager', reason_code: 'MISSING_FACT' },
+      factsUsed: [],
+    });
+  }
+  return out;
+}

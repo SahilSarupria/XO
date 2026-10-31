@@ -29,8 +29,11 @@ import {
   compilerGap,
   freightClaimWorkflow,
   generateEvalTasks,
+  generateAbstentionTasks,
   manualMarkdown,
   renderMarkdown,
+  renderComparison,
+  type EvalReport,
   runEval,
   EvalAbortedError,
   PacedProvider,
@@ -66,7 +69,7 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo ab-eval [--arms plain,prompt,dump,xo_context,xo_tools,xo_router] [--trials n] [--concurrency n] [--limit n]\n' +
-      '           [--seed n] [--style standard|variant] [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
+      '           [--seed n] [--style standard|variant] [--task-set main|abstain] [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
       '                                         A/B the Halvorsen freight scenario. Model/provider come from the environment:\n' +
       '                                         XO_MODEL, XO_PROVIDER (default anthropic) and the provider API key variable.\n' +
       '                                         --self-test uses simulated models to validate the harness (NOT a measurement).',
@@ -76,7 +79,12 @@ export function registerCommands(registry: CommandRegistry): void {
       const styleFlag = flag(args.flags, 'style') ?? 'standard';
       if (styleFlag !== 'standard' && styleFlag !== 'variant') return fail('--style must be "standard" or "variant"');
       if (seedFlag !== undefined && !Number.isInteger(Number(seedFlag))) return fail('--seed must be an integer');
-      let tasks = generateEvalTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag);
+      const taskSet = flag(args.flags, 'task-set') ?? 'main';
+      if (taskSet !== 'main' && taskSet !== 'abstain') return fail('--task-set must be "main" or "abstain"');
+      let tasks =
+        taskSet === 'abstain'
+          ? generateAbstentionTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag)
+          : generateEvalTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag);
       const limit = Number(flag(args.flags, 'limit') ?? '0');
       if (limit > 0) tasks = tasks.filter((_, i) => i % Math.ceil(tasks.length / limit) === 0).slice(0, limit);
       const gold = buildGoldXo();
@@ -167,7 +175,7 @@ export function registerCommands(registry: CommandRegistry): void {
           date: new Date().toISOString().slice(0, 10),
           trials,
           selfTest,
-          taskSet: `seed ${seedFlag ?? 'default'}, ${styleFlag} phrasing`,
+          taskSet: `${taskSet} set, seed ${seedFlag ?? 'default'}, ${styleFlag} phrasing`,
         },
         pin !== undefined && pout !== undefined ? { inputPerMTok: Number(pin), outputPerMTok: Number(pout) } : undefined,
       );
@@ -183,6 +191,26 @@ export function registerCommands(registry: CommandRegistry): void {
         );
       }
       out(md);
+      return 0;
+    },
+  });
+
+  registry.register({
+    name: 'ab-compare',
+    subsystem: SUBSYSTEM,
+    usage:
+      'xo ab-compare <dirA> <dirB> [...]   Side-by-side of ab-eval output directories (each holds report.json), e.g. the same arms on two models.\n' +
+      '                                     Reads measured reports only; label = directory name.',
+    run: async (args) => {
+      const dirs = args.positionals.slice(0);
+      if (dirs.length < 2) return fail('give at least two ab-eval output directories');
+      const reports: { label: string; report: EvalReport }[] = [];
+      for (const d of dirs) {
+        const f = join(resolve(d), 'report.json');
+        if (!existsSync(f)) return fail(`no report.json in ${d}`);
+        reports.push({ label: d.replace(/\/+$/, '').split('/').pop() ?? d, report: JSON.parse(readFileSync(f, 'utf8')) as EvalReport });
+      }
+      out(renderComparison(reports));
       return 0;
     },
   });
