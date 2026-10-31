@@ -1,5 +1,5 @@
 import type { ArmId } from './arms.js';
-import type { EvalRecord } from './runner.js';
+import { isTransportError, type EvalRecord } from './runner.js';
 import { mean, pairedBootstrapDiff, percentile, wilson } from './stats.js';
 
 export interface ArmSummary {
@@ -22,6 +22,8 @@ export interface ArmSummary {
   readonly safetyOverrideRate: number;
   readonly pathCounts: Record<string, number>;
   readonly estimatedCostUsd: number | null;
+  /** Runs where the API call itself failed (HTTP/network) — counted as failures in passRate, shown separately so they are not mistaken for wrong answers. */
+  readonly transportFailures: number;
 }
 
 export interface Pricing {
@@ -63,6 +65,7 @@ export function summarize(records: readonly EvalRecord[], arm: ArmId, pricing?: 
     safetyOverrideRate: n === 0 ? 0 : rs.filter((r) => r.run.overridden).length / n,
     pathCounts,
     estimatedCostUsd: cost,
+    transportFailures: rs.filter(isTransportError).length,
   };
 }
 
@@ -142,6 +145,14 @@ export function renderMarkdown(rep: EvalReport): string {
   for (const a of rep.arms) {
     L.push(
       `| ${a.arm} | **${pct(a.passRate)}** (${pct(a.passCI.lo)}–${pct(a.passCI.hi)}) | ${pct(a.decisionAcc)} | ${pct(a.payoutAcc)} | ${pct(a.unsafeAutoApprovalRate)} | ${a.meanModelCalls.toFixed(2)} | ${a.meanInputTokens.toFixed(0)} | ${a.meanOutputTokens.toFixed(0)} | ${a.meanLatencyMs.toFixed(0)} (${a.p95LatencyMs.toFixed(0)}) | ${pct(a.toolUseRate)} |`,
+    );
+  }
+  for (const a of rep.arms.filter((x) => x.transportFailures > 0)) {
+    const ok = a.runs - a.transportFailures;
+    const passes = Math.round(a.passRate * a.runs);
+    L.push(
+      '',
+      `> **${a.arm}: ${a.transportFailures} of ${a.runs} runs failed at the API (e.g. 503/429), not by answering wrongly.** They are counted as failures above. Excluding them: ${pct(ok === 0 ? 0 : passes / ok)} (${passes}/${ok}).`,
     );
   }
   if (rep.arms.some((a) => a.estimatedCostUsd !== null)) {

@@ -78,3 +78,34 @@ describe('quota handling', () => {
     assert.ok(stamps[2]! - stamps[0]! >= 190, `gaps ${stamps}`);
   });
 });
+
+import { buildReport, renderMarkdown } from '../src/index.js';
+
+describe('report separates API failures from wrong answers', () => {
+  it('flags transport failures and gives the rate excluding them', () => {
+    const mk = (pass: boolean, error?: string) =>
+      ({
+        arm: 'xo_tools',
+        taskId: `t${Math.random()}`,
+        stratum: 's',
+        trial: 1,
+        score: { parsed: pass, decisionOk: pass, payoutOk: pass, targetOk: pass, pass, unsafeAutoApproval: false, falseEscalation: false },
+        run: {
+          output: null,
+          rawText: '',
+          modelCalls: 1,
+          inputTokens: error ? 0 : 5,
+          outputTokens: error ? 0 : 5,
+          toolCalls: [],
+          path: 'model',
+          overridden: false,
+          latencyMs: 1,
+          ...(error ? { error } : {}),
+        },
+      }) as never;
+    const recs = [mk(true), mk(true), mk(true), mk(false, 'Gemini API returned 503')];
+    const md = renderMarkdown(buildReport(recs, { model: 'm', provider: 'p', date: 'd', trials: 1, selfTest: false }));
+    assert.match(md, /1 of 4 runs failed at the API/);
+    assert.match(md, /100% \(3\/3\)/);
+  });
+});
