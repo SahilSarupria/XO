@@ -144,3 +144,57 @@ export function renderClaim(f: ClaimFacts, rng: Rng): RenderedClaim {
   }
   return { narrative: `${head} ${body}`, statedFacts: stated };
 }
+
+/**
+ * A second, independently worded rendering of the same facts ("adjuster note" style): different vocabulary, no
+ * commodity-class header, no repeated template phrases. It exists to test whether retrieval generalises beyond the
+ * wording of the tasks the gold XO's pins/keywords were authored against. Written before it was ever run through
+ * retrieval; retrieval must NOT be tuned against it (if it is, treat the result as contaminated and mint a new one).
+ */
+export function renderClaimVariant(f: ClaimFacts, rng: Rng): RenderedClaim {
+  const base = renderClaim(f, rng); // reuse statedFacts + rng consumption shape; the narrative below is fully re-worded
+  const goods = pick(rng, GOODS[f.commodity_class]);
+  const who = pick(rng, CLAIMANTS);
+  const ref = `file ${ri(rng, 10000, 99999)}`;
+  const day = new Date(Date.UTC(2026, ri(rng, 0, 7), ri(rng, 2, 24)));
+  const filedOn = addDays(day, f.days_to_file);
+  const ask = usd(ri(rng, 4, 90) * 100);
+  const history =
+    f.claimant_claims_last_90d === 0
+      ? 'First contact from this customer this quarter.'
+      : `Customer already opened ${f.claimant_claims_last_90d} other case${f.claimant_claims_last_90d === 1 ? '' : 's'} in roughly the last three months.`;
+  const worth =
+    f.declared_value_usd > 0
+      ? `BOL lists ${usd(f.declared_value_usd)} as the stated worth.`
+      : 'Nothing was stated on the BOL regarding worth.';
+  const cover = f.full_value_coverage ? 'Shipper bought the full-value protection add-on.' : 'No full-value protection was purchased.';
+  let note: string;
+  if (f.claim_type === 'loss') {
+    note = `${who}, ${ref}: ${goods}, ${f.weight_lb} lbs, never showed up at the consignee (was due ${fmtDate(day)}). Customer wrote to us on ${fmtDate(filedOn)}. ${worth} ${cover} ${history} Wants ${ask} back.`;
+  } else if (f.claim_type === 'delay') {
+    const actual = addDays(day, f.days_late);
+    const why = f.weather_event
+      ? 'Terminal blames severe weather in the lane.'
+      : 'Nothing weather related; ops says it was an internal capacity problem.';
+    note = `${who}, ${ref}: ${goods} promised ${fmtDate(day)}, arrived ${fmtDate(actual)}. ${why} Customer wrote in ${fmtDate(addDays(actual, f.days_to_file))}. ${history} Asking ${ask} for the lateness.`;
+  } else if (f.claim_type === 'temperature') {
+    const logLine = f.reefer_log_available
+      ? `Download from the refrigeration unit shows it ran warm for about ${f.excursion_hours} hrs.`
+      : 'We could not pull any data from the refrigeration unit for this trip.';
+    note = `${who}, ${ref}: cold-chain complaint on ${f.weight_lb} lbs of ${goods}, dropped ${fmtDate(day)}, customer wrote ${fmtDate(filedOn)}. ${logLine} ${worth} ${cover} ${history} Seeks ${ask}.`;
+  } else {
+    const pack =
+      f.packaging === 'carrier_packed'
+        ? 'Our own dock crew crated it at pickup.'
+        : f.packaging === 'shipper_adequate'
+          ? 'Customer palletised it themselves and the wrap, bands and edge protection looked proper.'
+          : 'Customer palletised it themselves; cartons were loose and unprotected on the pallet.';
+    const sign = f.pod_damage_noted
+      ? 'Receiver wrote the damage on the delivery receipt on the spot.'
+      : 'Delivery receipt was signed with no exceptions.';
+    const scrap =
+      f.salvage_value_usd > 0 ? `Scrap dealer would pay ${usd(f.salvage_value_usd)} for what is left.` : 'Nothing left worth selling.';
+    note = `${who}, ${ref}: ${f.weight_lb} lbs of ${goods} smashed in transit, delivered ${fmtDate(day)}, customer wrote ${fmtDate(filedOn)}. Roughly ${f.damage_pct}% ruined. ${pack} ${sign} ${worth} ${cover} ${scrap} ${history} Wants ${ask}.`;
+  }
+  return { narrative: note, statedFacts: base.statedFacts };
+}

@@ -1,6 +1,8 @@
 import type { ClaimFacts, Outcome } from './facts.js';
 import { adjudicate } from './oracle.js';
-import { chance, makeRng, pick, renderClaim, ri, type Rng } from './render.js';
+import { chance, makeRng, pick, renderClaim, renderClaimVariant, ri, type Rng } from './render.js';
+
+export type TaskStyle = 'standard' | 'variant';
 
 export interface FreightTask {
   readonly id: string;
@@ -238,14 +240,14 @@ export const EVAL_STRATA_COUNTS: Record<string, number> = {
   HIGH_VALUE_LATE: 1,
 };
 
-function make(stratum: string, r: Rng, id: string): FreightTask {
+function make(stratum: string, r: Rng, id: string, style: TaskStyle = 'standard'): FreightTask {
   const gen = STRATA[stratum];
   if (gen === undefined) throw new Error(`unknown stratum ${stratum}`);
   for (let attempt = 0; attempt < 500; attempt++) {
     const { facts, codes } = gen(r);
     const outcome = adjudicate(facts);
     if (!codes.includes(outcome.reason_code)) continue; // rejection sampling: the stratum label must be true
-    const rendered = renderClaim(facts, r);
+    const rendered = style === 'variant' ? renderClaimVariant(facts, r) : renderClaim(facts, r);
     return {
       id,
       stratum,
@@ -265,11 +267,11 @@ function make(stratum: string, r: Rng, id: string): FreightTask {
 }
 
 /** The held-out evaluation set. Seeded, so every run (and every machine) sees the same 50 tasks. */
-export function generateEvalTasks(seed = 20260101): FreightTask[] {
+export function generateEvalTasks(seed = 20260101, style: TaskStyle = 'standard'): FreightTask[] {
   const r = makeRng(seed);
   const out: FreightTask[] = [];
   for (const [stratum, n] of Object.entries(EVAL_STRATA_COUNTS))
-    for (let i = 0; i < n; i++) out.push(make(stratum, r, `T${String(out.length + 1).padStart(2, '0')}-${stratum}`));
+    for (let i = 0; i < n; i++) out.push(make(stratum, r, `T${String(out.length + 1).padStart(2, '0')}-${stratum}`, style));
   return out;
 }
 

@@ -120,9 +120,15 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'compiler-gap',
     subsystem: SUBSYSTEM,
     usage:
-      'xo compiler-gap [--json]             Compile the Halvorsen manual and score the result against the hand-authored gold XO (no model needed)',
+      'xo compiler-gap [--json] [--seed n] [--style standard|variant]\n' +
+      '                                     Compile the Halvorsen manual and score the result against the hand-authored gold XO (no model needed).\n' +
+      '                                     --seed picks a fresh task set; --style variant re-words the claims (held-out phrasing).',
     run: async (args) => {
-      const tasks = generateEvalTasks();
+      const seedFlag = flag(args.flags, 'seed');
+      const styleFlag = flag(args.flags, 'style') ?? 'standard';
+      if (styleFlag !== 'standard' && styleFlag !== 'variant') return fail('--style must be "standard" or "variant"');
+      if (seedFlag !== undefined && !Number.isInteger(Number(seedFlag))) return fail('--seed must be an integer');
+      const tasks = generateEvalTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag);
       const gold = scorePackage(buildGoldXo(), tasks);
       const { bundle } = await compileManual();
       const gap = compilerGap(gold, scorePackage(bundle, tasks));
