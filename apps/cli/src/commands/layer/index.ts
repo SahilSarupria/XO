@@ -79,7 +79,7 @@ export function registerCommands(registry: CommandRegistry): void {
         ({ provider, providerId, model } = op.value);
       }
       const rpmFlag = flag(args.flags, 'rpm');
-      const rpm = rpmFlag !== undefined ? Number(rpmFlag) : providerId === 'gemini' ? 8 : 0; // 8/min is conservative for free tiers; --rpm 0 disables
+      const rpm = rpmFlag !== undefined ? Number(rpmFlag) : providerId === 'gemini' ? 4 : 0; // 4/min fits the strictest free tier (5 RPM); raise with --rpm (e.g. 12 for flash-lite); 0 disables
       if (!Number.isFinite(rpm) || rpm < 0) return fail('--rpm must be a non-negative number');
       if (rpm > 0) provider = new PacedProvider(provider, rpm);
       const arms = buildArms({ provider, model, gold, ...(compiled !== undefined ? { compiled } : {}) });
