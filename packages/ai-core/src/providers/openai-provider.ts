@@ -1,4 +1,4 @@
-import { assertNoToolCalling } from './tool-guard.js';
+import { fromWireToolCalls, toWireMessages, toWireTools, type WireToolCall } from './openai-tools.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -9,7 +9,10 @@ export interface OpenAiProviderOptions {
 }
 
 interface OpenAiChatCompletionResponse {
-  readonly choices: readonly { readonly message: { readonly content: string | null }; readonly finish_reason: string }[];
+  readonly choices: readonly {
+    readonly message: { readonly content: string | null; readonly tool_calls?: readonly WireToolCall[] };
+    readonly finish_reason: string;
+  }[];
   readonly usage: { readonly prompt_tokens: number; readonly completion_tokens: number };
   readonly model: string;
 }
@@ -42,12 +45,12 @@ export class OpenAiProvider implements ModelProvider {
       supportsStreaming: true,
       supportsStructuredOutput: true,
       supportsVision: true,
+      supportsToolCalling: true,
       maxContextTokens: 128_000,
     };
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
-    assertNoToolCalling('openai', request);
     const response = await this.fetchImpl(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -58,7 +61,8 @@ export class OpenAiProvider implements ModelProvider {
         model: request.model,
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: toWireMessages(request.messages),
+        tools: toWireTools(request),
         response_format: request.responseSchema
           ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } }
           : undefined,
@@ -76,11 +80,19 @@ export class OpenAiProvider implements ModelProvider {
       throw new AiError(ErrorCode.AI_PROVIDER_REQUEST_FAILED, 'OpenAI API returned no choices');
     }
 
+    const toolCalls = fromWireToolCalls(choice.message.tool_calls, 'openai_call');
+    // Tool calls are honoured only when the model actually stopped to call tools; a length-truncated reply may carry cut-off arguments.
+    if (toolCalls.length > 0 && choice.finish_reason !== 'tool_calls' && choice.finish_reason !== 'stop')
+      throw new AiError(
+        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
+        `OpenAI returned tool calls with finish_reason "${choice.finish_reason}"; refusing to run them`,
+      );
     return {
       text: choice.message.content ?? '',
       usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens },
       modelUsed: data.model,
-      finishReason: mapFinishReason(choice.finish_reason),
+      finishReason: toolCalls.length > 0 ? 'tool_use' : mapFinishReason(choice.finish_reason),
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 }

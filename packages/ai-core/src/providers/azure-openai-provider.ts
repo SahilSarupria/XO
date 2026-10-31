@@ -1,4 +1,4 @@
-import { assertNoToolCalling } from './tool-guard.js';
+import { fromWireToolCalls, toWireMessages, toWireTools, type WireToolCall } from './openai-tools.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -12,7 +12,10 @@ export interface AzureOpenAiProviderOptions {
 }
 
 interface AzureChatCompletionResponse {
-  readonly choices: readonly { readonly message: { readonly content: string | null }; readonly finish_reason: string }[];
+  readonly choices: readonly {
+    readonly message: { readonly content: string | null; readonly tool_calls?: readonly WireToolCall[] };
+    readonly finish_reason: string;
+  }[];
   readonly usage: { readonly prompt_tokens: number; readonly completion_tokens: number };
   readonly model: string;
 }
@@ -46,12 +49,12 @@ export class AzureOpenAiProvider implements ModelProvider {
       supportsStreaming: true,
       supportsStructuredOutput: true,
       supportsVision: true,
+      supportsToolCalling: true,
       maxContextTokens: 128_000,
     };
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
-    assertNoToolCalling('azure-openai', request);
     const url = `${this.options.endpoint}/openai/deployments/${encodeURIComponent(request.model)}/chat/completions?api-version=${this.apiVersion}`;
     const response = await this.fetchImpl(url, {
       method: 'POST',
@@ -62,7 +65,8 @@ export class AzureOpenAiProvider implements ModelProvider {
       body: JSON.stringify({
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: toWireMessages(request.messages),
+        tools: toWireTools(request),
         response_format: request.responseSchema
           ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } }
           : undefined,
@@ -80,18 +84,27 @@ export class AzureOpenAiProvider implements ModelProvider {
       throw new AiError(ErrorCode.AI_PROVIDER_REQUEST_FAILED, 'Azure OpenAI API returned no choices');
     }
 
+    const toolCalls = fromWireToolCalls(choice.message.tool_calls, 'azure_call');
+    if (toolCalls.length > 0 && choice.finish_reason !== 'tool_calls' && choice.finish_reason !== 'stop')
+      throw new AiError(
+        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
+        `Azure OpenAI returned tool calls with finish_reason "${choice.finish_reason}"; refusing to run them`,
+      );
     return {
       text: choice.message.content ?? '',
       usage: { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens },
       modelUsed: request.model,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
       finishReason:
-        choice.finish_reason === 'stop'
-          ? 'stop'
-          : choice.finish_reason === 'length'
-            ? 'length'
-            : choice.finish_reason === 'content_filter'
-              ? 'content_filter'
-              : 'error',
+        toolCalls.length > 0
+          ? 'tool_use'
+          : choice.finish_reason === 'stop'
+            ? 'stop'
+            : choice.finish_reason === 'length'
+              ? 'length'
+              : choice.finish_reason === 'content_filter'
+                ? 'content_filter'
+                : 'error',
     };
   }
 }

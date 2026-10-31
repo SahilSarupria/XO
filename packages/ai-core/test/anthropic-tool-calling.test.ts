@@ -74,14 +74,9 @@ describe('AnthropicProvider tool calling', () => {
     assert.equal(results[1]!['is_error'], true);
   });
 
-  it('other providers reject tool-bearing requests instead of silently dropping tools', async () => {
-    const { OpenAiProvider } = await import('../src/index.js');
-    const p = new OpenAiProvider({
-      apiKey: 'k',
-      fetchImpl: (async () => {
-        throw new Error('should not be called');
-      }) as unknown as typeof fetch,
-    });
+  it('a provider without tool support (replay) rejects tool-bearing requests instead of silently dropping tools', async () => {
+    const { DeterministicReplayProvider } = await import('../src/index.js');
+    const p = new DeterministicReplayProvider();
     await assert.rejects(
       p.complete({
         model: 'm',

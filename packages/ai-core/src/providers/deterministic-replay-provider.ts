@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { AiError, ErrorCode } from '@xo/errors';
+import { assertNoToolCalling } from './tool-guard.js';
 import type {
   ModelProvider,
   ProviderCapabilityDescriptor,
@@ -57,6 +58,7 @@ export class DeterministicReplayProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
+    assertNoToolCalling('deterministic-replay', request); // a replay never exercises tools; silently ignoring them would fake a tool run
     const key = hashRequest(request);
     const fixture = this.fixtures.get(key);
     if (!fixture) {
