@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { canonicalJson } from '@xo/capability-layer';
+import type { Anchor, AnchorSink } from './anchor.js';
+import { acquireEngineLock, type LockHandle } from './lock.js';
 import { HashChainLedger } from './ledger.js';
 import type { EmitResult, Trigger, TriggerEvent } from './triggers.js';
 
@@ -47,6 +49,10 @@ export interface EngineOptions {
   readonly backoffBaseMs?: number;
   readonly now?: () => Date;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Single-writer lock on `dir` (default true). Turn off only in tests that deliberately share a directory. */
+  readonly lock?: boolean;
+  /** Publish the ledger head to places an attacker with write access to `dir` cannot edit. A publish failure is recorded in the ledger, never fatal. */
+  readonly anchors?: { readonly sinks: readonly AnchorSink[]; readonly everyEntries?: number };
 }
 
 interface Job {
@@ -74,11 +80,13 @@ export class AutomationEngine {
   /** events being persisted/acknowledged right now — not yet queued, but definitely coming */
   private accepting = 0;
   private stopped = true;
+  private lockHandle: LockHandle | undefined;
+  private lastAnchoredSeq = 0;
   private readonly recent = new Map<string, number[]>();
   private idleWaiters: (() => void)[] = [];
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => Date;
-  readonly counters = { accepted: 0, completed: 0, failed: 0, duplicates: 0, retries: 0, rejected: 0 };
+  readonly counters = { accepted: 0, completed: 0, failed: 0, duplicates: 0, retries: 0, rejected: 0, anchorFailures: 0 };
 
   constructor(private readonly opts: EngineOptions) {
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -91,13 +99,26 @@ export class AutomationEngine {
   get ledgerEntries(): ReturnType<HashChainLedger['entries']> {
     return this.ledger.entries();
   }
+  get queueDepth(): number {
+    return this.queue.length;
+  }
+  get activeJobs(): number {
+    return this.active;
+  }
   get ledgerPath(): string {
     return join(this.opts.dir, 'ledger.jsonl');
   }
 
   async start(): Promise<void> {
     await Promise.all(['state/pending', 'outbox'].map((d) => mkdir(join(this.opts.dir, d), { recursive: true })));
-    this.ledger = await HashChainLedger.open(this.ledgerPath, this.now);
+    if (this.opts.lock !== false) this.lockHandle = await acquireEngineLock(this.opts.dir);
+    try {
+      this.ledger = await HashChainLedger.open(this.ledgerPath, this.now);
+    } catch (e) {
+      await this.lockHandle?.release(); // never keep the directory locked after a failed start
+      this.lockHandle = undefined;
+      throw e;
+    }
     for (const e of this.ledger.entries()) if (e.type === 'job.accepted') this.seen.add((e.data as { key: string }).key);
     this.stopped = false;
     await this.ledger.append('engine.started', { workflows: this.opts.workflows.map((w) => w.id) });
@@ -122,6 +143,26 @@ export class AutomationEngine {
         this.enqueue({ runId: rec.runId, wf, event: rec.event, key: rec.key });
       } catch {
         await rename(join(dir, f), join(dir, `${f}.corrupt`)).catch(() => undefined);
+      }
+    }
+  }
+
+  /** Publishes the current head to every sink once enough entries accumulated (or `force`). */
+  private async maybeAnchor(force = false): Promise<void> {
+    const cfg = this.opts.anchors;
+    if (cfg === undefined || cfg.sinks.length === 0) return;
+    const entries = this.ledger.entries();
+    const last = entries[entries.length - 1];
+    if (last === undefined || last.seq === this.lastAnchoredSeq) return;
+    if (!force && last.seq - this.lastAnchoredSeq < (cfg.everyEntries ?? 100)) return;
+    this.lastAnchoredSeq = last.seq;
+    const anchor: Anchor = { seq: last.seq, hash: last.hash, at: this.now().toISOString() };
+    for (const sink of cfg.sinks) {
+      try {
+        await sink.publish(anchor);
+      } catch (e) {
+        this.counters.anchorFailures++;
+        await this.ledger.append('anchor.failed', { sink: sink.id, seq: anchor.seq, error: (e as Error).message });
       }
     }
   }
@@ -215,6 +256,7 @@ export class AutomationEngine {
         });
         await rm(join(this.opts.dir, 'state/pending', `${job.runId}.json`), { force: true });
         this.counters.completed++;
+        await this.maybeAnchor();
         await job.event.onSettled?.('completed');
         return;
       } catch (e) {
@@ -235,6 +277,7 @@ export class AutomationEngine {
     await this.ledger.append('job.failed', { runId: job.runId, workflow: job.wf.id, error: lastError });
     await rm(join(this.opts.dir, 'state/pending', `${job.runId}.json`), { force: true });
     this.counters.failed++;
+    await this.maybeAnchor();
     await job.event.onSettled?.('failed');
   }
 
@@ -276,5 +319,8 @@ export class AutomationEngine {
     await Promise.all(this.opts.workflows.flatMap((w) => w.triggers.map((t) => t.stop())));
     await this.idle();
     await this.ledger.append('engine.stopped', { counters: this.counters });
+    await this.maybeAnchor(true);
+    await this.lockHandle?.release();
+    this.lockHandle = undefined;
   }
 }

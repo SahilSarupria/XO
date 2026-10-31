@@ -3,3 +3,8 @@ export * from './sandbox.js';
 export * from './triggers.js';
 export * from './engine.js';
 export * from './xo-workflow.js';
+export * from './lock.js';
+export * from './anchor.js';
+export * from './cron.js';
+export * from './metrics.js';
+export * from './delivery.js';

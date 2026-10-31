@@ -144,6 +144,7 @@ describe('AutomationEngine', () => {
     const e1 = new AutomationEngine({
       dir,
       sleep: noSleep,
+      lock: false, // a real crash takes its process (and so its lock) down; in one process we can only model that by not taking the lock
       workflows: [{ id: 'w', triggers: [t1], run: async () => (await gate, ok('first')) }],
     });
     await e1.start();
