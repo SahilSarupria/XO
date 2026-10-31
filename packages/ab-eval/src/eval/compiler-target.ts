@@ -1,4 +1,4 @@
-import { compileSources, packageXoirGraph } from '@xo/compiler';
+import { compileSources, packageXoirGraph, synthesizePolicyArtifacts } from '@xo/compiler';
 import { createCapabilityLayer, evaluateTree, nodeDisplayText, parseTrees } from '@xo/capability-layer';
 import type { PackageBundle } from '@xo/package-sdk';
 import { GOLD_FACTS, type GoldFact } from '../scenario/freight/gold-facts.js';
@@ -103,16 +103,32 @@ export function scorePackage(bundle: PackageBundle, tasks: readonly FreightTask[
   };
 }
 
-export async function compileManual(handbook?: number): Promise<{ bundle: PackageBundle; diagnostics: number }> {
+export interface CompileManualOptions {
+  /** Run the policy-synthesis stage (default). `false` reproduces the pre-synthesis compiler for before/after comparison. */
+  readonly policy?: boolean;
+  readonly handbook?: number;
+}
+
+export async function compileManual(
+  handbookOrOptions?: number | CompileManualOptions,
+): Promise<{ bundle: PackageBundle; diagnostics: number; policy?: ReturnType<typeof synthesizePolicyArtifacts> }> {
+  const opts: CompileManualOptions = typeof handbookOrOptions === 'number' ? { handbook: handbookOrOptions } : (handbookOrOptions ?? {});
+  const text = manualMarkdown(opts.handbook);
   const compiled = await compileSources([
     {
       kind: 'document',
-      text: manualMarkdown(handbook),
+      text,
       sourcePath: 'halvorsen-claims-manual.md',
       title: 'Halvorsen Freight — Claims Desk Manual (Rev 7)',
     },
   ]);
   if (!compiled.ok) throw new Error(`compile failed: ${compiled.error.message}`);
+  const policy =
+    opts.policy === false
+      ? undefined
+      : synthesizePolicyArtifacts([
+          { text, title: 'Halvorsen Freight — Claims Desk Manual (Rev 7)', sourcePath: 'halvorsen-claims-manual.md' },
+        ]);
   const packaged = packageXoirGraph(compiled.value.graph, {
     identity: { name: 'halvorsen-freight-claims-desk-compiled', version: '0.1.0', creatorDid: 'did:xo:compiler' },
     metadata: {
@@ -121,9 +137,10 @@ export async function compileManual(handbook?: number): Promise<{ bundle: Packag
       scope: ['freight claims'],
       limitations: ['compiler output; unreviewed'],
     },
+    ...(policy !== undefined ? { policy } : {}),
   });
   if (!packaged.ok) throw new Error(`packaging failed: ${packaged.error.message}`);
-  return { bundle: packaged.value.bundle, diagnostics: packaged.value.diagnostics.length };
+  return { bundle: packaged.value.bundle, diagnostics: packaged.value.diagnostics.length, ...(policy !== undefined ? { policy } : {}) };
 }
 
 export interface CompilerGap {

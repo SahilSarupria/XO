@@ -120,10 +120,13 @@ describe('compiler target', () => {
     assert.equal(g.coverage, 1);
     assert.equal(g.recallAtK, 1);
     assert.equal(g.treeAgreement, 1);
+    const legacy = await compileManual({ policy: false });
+    const lc = scorePackage(legacy.bundle, tasks);
+    assert.ok(lc.coverage > 0.4 && lc.coverage < 0.95, `pre-synthesis coverage ${lc.coverage}`); // the old compiler, kept as a before/after baseline
     const { bundle } = await compileManual();
     const c = scorePackage(bundle, tasks);
     const gap = compilerGap(g, c);
-    assert.ok(c.coverage > 0.4 && c.coverage < 0.95, `coverage ${c.coverage}`); // regression guard: the compiler must not get worse…
+    assert.ok(c.coverage >= lc.coverage, `coverage ${c.coverage}`); // regression guard: synthesis must not reduce coverage…
     assert.equal(gap.passed, false); // …and until it emits trees/traces/strategy/safety it cannot claim parity
     assert.ok(gap.checks.some((x) => !x.pass && /decision tree/.test(x.name)));
   });

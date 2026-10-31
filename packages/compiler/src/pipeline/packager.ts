@@ -22,6 +22,8 @@ function jsonBytes(value: unknown): Uint8Array {
   return ENCODER.encode(JSON.stringify(value, null, 2));
 }
 
+import type { PolicyArtifacts } from '../policy/artifacts.js';
+
 export interface PackageXoirIdentity {
   readonly name: string;
   readonly version: string;
@@ -44,7 +46,9 @@ export interface PackageXoirIdentity {
  * capability negotiation, which is out of this module's scope.
  */
 function defaultCompatibility(includedKinds: readonly ComponentKind[]): CompatibilityDeclaration {
-  const baseline = includedKinds.filter((k) => k === 'knowledge_graph' || k === 'safety_rules' || k === 'benchmark_suite');
+  const baseline = includedKinds.filter(
+    (k) => k === 'knowledge_graph' || k === 'safety_rules' || k === 'benchmark_suite' || k === 'prompt_strategies',
+  );
   return {
     modelFamilies: [
       { family: 'generic', minCapability: ['chat'], consumes: baseline },
@@ -71,6 +75,12 @@ export interface PackageXoirOptions {
    * doc comment (`@xo/types`).
    */
   readonly capabilityLowering?: Pick<LowerCapabilitiesOptions, 'resolvers'>;
+  /**
+   * Output of the policy-synthesis stage (`../policy`): high-quality rule knowledge, executable decision trees,
+   * worked examples, prompt strategy and executable safety rules. Merged into the matching components — XOIR-derived
+   * content is kept, never replaced.
+   */
+  readonly policy?: PolicyArtifacts;
 }
 
 /** One `ComponentKind`'s outcome for this compilation — the packager's own audit trail (satisfies "preserve diagnostics" at this layer without inventing a redundant second `Diagnostic` shape for a concern that's really "manifest bookkeeping", not a compiler pass finding). */
@@ -108,13 +118,13 @@ function jsonComponent(
   kind: ComponentKind,
   path: string,
   required: boolean,
-  payload: { nodes?: readonly unknown[] } | undefined,
+  payload: object | undefined,
   emptyReason: string,
 ): ComponentBuildResult {
   if (payload === undefined) {
     return { summary: { kind, included: false, reason: emptyReason } };
   }
-  const nodeCount = payload.nodes?.length;
+  const nodeCount = (payload as { nodes?: readonly unknown[] }).nodes?.length;
   return {
     input: { kind, path, data: jsonBytes(payload), required },
     summary: {
@@ -157,14 +167,18 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
   // component are computed again, below, AFTER lowering, from the
   // (possibly now contract-embedded) graph — see the `capabilities`
   // block's comment for why that ordering is required, not incidental.
-  const knowledgeGraphIncludedBeforeLowering = buildKnowledgeGraphComponent(graph) !== undefined;
+  const xoirKnowledgeBase = buildKnowledgeGraphComponent(graph);
+  const policy = options.policy;
+  const knowledgeGraphIncludedBeforeLowering = xoirKnowledgeBase !== undefined || (policy?.knowledge.nodes.length ?? 0) > 0;
 
+  const xoirTrees = buildDecisionTreesComponent(graph);
+  const policyTrees = policy?.trees;
   const decisionTrees = jsonComponent(
     'decision_trees',
     'reasoning/decision_trees.json',
     false,
-    buildDecisionTreesComponent(graph),
-    'no decision_node nodes in this XOIR graph',
+    policyTrees !== undefined && policyTrees.length > 0 ? { ...(xoirTrees ?? { nodes: [], edges: [] }), trees: policyTrees } : xoirTrees,
+    'no decision_node nodes in this XOIR graph and no executable trees were synthesized',
   );
   const caseLibrary = jsonComponent(
     'case_library',
@@ -181,7 +195,11 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
     'no memory_unit nodes — no extractor in this codebase produces them yet',
   );
 
-  const tracesJsonl = buildReasoningTracesComponent(graph);
+  const xoirTraces = buildReasoningTracesComponent(graph);
+  const traceParts = [xoirTraces, policy?.reasoningTraces]
+    .filter((t): t is string => t !== undefined && t.trim().length > 0)
+    .map((t) => t.trim());
+  const tracesJsonl = traceParts.length > 0 ? traceParts.join('\n') : undefined;
   const reasoningTraces: ComponentBuildResult =
     tracesJsonl === undefined
       ? { summary: { kind: 'reasoning_traces', included: false, reason: 'no reasoning_step nodes in this XOIR graph' } }
@@ -195,7 +213,9 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
           },
         };
 
-  const safety = buildSafetyRulesComponent(graph);
+  const xoirSafety = buildSafetyRulesComponent(graph);
+  const safety =
+    policy?.safetyRules !== undefined && policy.safetyRules.length > 0 ? { ...xoirSafety, rules: policy.safetyRules } : xoirSafety;
   const safetyRules: ComponentBuildResult = {
     input: { kind: 'safety_rules', path: 'safety/rules.json', data: jsonBytes(safety), required: true },
     summary: {
@@ -220,16 +240,27 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
     },
   };
 
-  // prompt_strategies / lora / finetune: never produced — no Prompt
-  // Optimization pass and no weight-fine-tuning pipeline exist anywhere in
-  // this codebase (see xoir-to-package.ts's top doc comment). Recorded as
-  // explicitly omitted rather than silently absent, so a caller inspecting
-  // `PackagerResult.components` sees *why*, not just that they're missing.
-  const promptStrategies: PackagerComponentSummary = {
-    kind: 'prompt_strategies',
-    included: false,
-    reason: 'no Prompt Optimization pass exists in this compiler (EXPERIENCE_COMPILER.md §4.2)',
-  };
+  // prompt_strategies is produced only by the policy-synthesis stage; lora / finetune are never produced (no
+  // weight-fine-tuning pipeline exists in this codebase). Omissions are recorded with their reason.
+  const promptStrategies: ComponentBuildResult =
+    policy?.promptStrategies !== undefined
+      ? {
+          input: {
+            kind: 'prompt_strategies',
+            path: 'prompting/strategies.json',
+            data: jsonBytes(policy.promptStrategies),
+            required: false,
+          },
+          summary: {
+            kind: 'prompt_strategies',
+            included: true,
+            nodeCount: policy.promptStrategies.fragments.length,
+            reason: 'synthesized from the source policy text (persona + procedure + tool-use fragments)',
+          },
+        }
+      : {
+          summary: { kind: 'prompt_strategies', included: false, reason: 'no policy-synthesis stage was run for this compilation' },
+        };
   const lora: PackagerComponentSummary = {
     kind: 'lora',
     included: false,
@@ -241,7 +272,7 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
     reason: 'no fine-tuning/weights pipeline exists in this compiler',
   };
 
-  const nonKnowledgeGraphInputs = [decisionTrees, caseLibrary, memoryGraph, reasoningTraces, safetyRules, benchmarkSuite]
+  const nonKnowledgeGraphInputs = [decisionTrees, caseLibrary, memoryGraph, reasoningTraces, promptStrategies, safetyRules, benchmarkSuite]
     .map((b) => b.input)
     .filter((i): i is ComponentInput => i !== undefined);
   const includedKinds: ComponentKind[] = [
@@ -287,15 +318,21 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
   // JSON" projection `buildDecisionTreesComponent` etc. already perform
   // once each above, just deferred for this one component specifically
   // because its content depends on lowering's side effect.
+  const knowledgeBase = buildKnowledgeGraphComponent(graph);
   const knowledge = jsonComponent(
     'knowledge_graph',
     'knowledge/graph.json',
     false,
-    buildKnowledgeGraphComponent(graph),
+    policy !== undefined && policy.knowledge.nodes.length > 0
+      ? {
+          nodes: [...(knowledgeBase?.nodes ?? []), ...policy.knowledge.nodes],
+          edges: [...(knowledgeBase?.edges ?? []), ...policy.knowledge.edges],
+        }
+      : knowledgeBase,
     'no concept/fact/heuristic/preference/capability nodes in this XOIR graph',
   );
 
-  const built = [knowledge, decisionTrees, caseLibrary, memoryGraph, reasoningTraces, safetyRules, benchmarkSuite];
+  const built = [knowledge, decisionTrees, caseLibrary, memoryGraph, reasoningTraces, promptStrategies, safetyRules, benchmarkSuite];
   const includedInputs = built.map((b) => b.input).filter((i): i is ComponentInput => i !== undefined);
 
   let builder = ManifestBuilder.create()
@@ -319,7 +356,7 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
   const result = builder.build();
   if (!result.ok) return result;
 
-  const components = [...built.map((b) => b.summary), promptStrategies, lora, finetune].sort((a, b) => a.kind.localeCompare(b.kind));
+  const components = [...built.map((b) => b.summary), lora, finetune].sort((a, b) => a.kind.localeCompare(b.kind));
 
   return ok({
     bundle: result.value,

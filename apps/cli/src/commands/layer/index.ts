@@ -20,6 +20,8 @@ import {
   manualMarkdown,
   renderMarkdown,
   runEval,
+  EvalAbortedError,
+  isTransportError,
   scorePackage,
   SimulatedModel,
   type ArmId,
@@ -80,19 +82,39 @@ export function registerCommands(registry: CommandRegistry): void {
       if (unknown.length > 0) return fail(`unknown arm(s): ${unknown.join(', ')}`);
       const trials = Math.max(1, Number(flag(args.flags, 'trials') ?? '1'));
       let last = 0;
-      const records = await runEval({
-        arms: want.map((a) => arms[a]),
-        tasks,
-        trials,
-        concurrency: Number(flag(args.flags, 'concurrency') ?? '4'),
-        onProgress: (done, total) => {
-          if (done === total || done - last >= Math.max(1, Math.floor(total / 20))) {
-            last = done;
-            process.stderr.write(`\r  ${done}/${total}`);
-          }
-        },
-      });
+      let records;
+      try {
+        records = await runEval({
+          arms: want.map((a) => arms[a]),
+          tasks,
+          trials,
+          concurrency: Number(flag(args.flags, 'concurrency') ?? '4'),
+          onProgress: (done, total) => {
+            if (done === total || done - last >= Math.max(1, Math.floor(total / 20))) {
+              last = done;
+              process.stderr.write(`\r  ${done}/${total}`);
+            }
+          },
+        });
+      } catch (e) {
+        process.stderr.write('\n');
+        if (e instanceof EvalAbortedError) return fail(`INVALID RUN — no results produced. ${e.message}`);
+        throw e;
+      }
       process.stderr.write('\n');
+      const failedCalls = records.filter(isTransportError);
+      const modelCalls = records.filter((r) => r.run.path === 'model').length;
+      if (failedCalls.length > 0 && failedCalls.length / Math.max(1, modelCalls) > 0.02) {
+        const outDir0 = flag(args.flags, 'out');
+        if (outDir0 !== undefined) {
+          await mkdir(resolve(outDir0), { recursive: true });
+          await writeFile(join(outDir0, 'records.invalid.jsonl'), records.map((r) => JSON.stringify(r)).join('\n'));
+        }
+        return fail(
+          `INVALID RUN — ${failedCalls.length}/${modelCalls} model calls failed at the transport level (not wrong answers). ` +
+            `First error: ${(failedCalls[0]?.run.error ?? '').slice(0, 300)}`,
+        );
+      }
       const pin = flag(args.flags, 'price-in');
       const pout = flag(args.flags, 'price-out');
       const report = buildReport(

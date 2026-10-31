@@ -17,6 +17,7 @@
     { "path": "../permissions" },
     { "path": "../storage" },
     { "path": "../crypto" },
-    { "path": "../ai-core" }
+    { "path": "../ai-core" },
+    { "path": "../capability-layer" }
   ]
 }

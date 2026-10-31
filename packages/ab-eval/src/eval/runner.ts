@@ -18,6 +18,30 @@ export interface RunOptions {
   readonly trials?: number;
   readonly concurrency?: number;
   readonly onProgress?: (done: number, total: number, rec: EvalRecord) => void;
+  /** Abort the whole run after this many consecutive transport failures (default 8; 0 disables). A dead endpoint must not be scored as wrong answers. */
+  readonly abortAfterConsecutiveTransportErrors?: number;
+}
+
+/** A run record whose model call never produced a reply (HTTP/auth/model-not-found/network), as opposed to a reply that was merely wrong. */
+export function isTransportError(rec: Pick<EvalRecord, 'run'>): boolean {
+  const e = rec.run.error;
+  return (
+    e !== undefined &&
+    e !== 'no JSON object in reply' &&
+    rec.run.path === 'model' &&
+    rec.run.inputTokens === 0 &&
+    rec.run.outputTokens === 0
+  );
+}
+
+export class EvalAbortedError extends Error {
+  constructor(
+    readonly sample: string,
+    readonly consecutive: number,
+  ) {
+    super(`aborted after ${consecutive} consecutive transport failures; first error: ${sample}`);
+    this.name = 'EvalAbortedError';
+  }
 }
 
 /** Retries rate-limit/overload/network errors with exponential backoff. Anything else is surfaced as-is (a bad request will not get better). */
@@ -62,17 +86,28 @@ export async function runEval(o: RunOptions): Promise<EvalRecord[]> {
   const records: EvalRecord[] = new Array(jobs.length);
   let next = 0;
   let done = 0;
+  let streak = 0;
+  let firstErr = '';
+  let aborted: EvalAbortedError | undefined;
+  const limit = o.abortAfterConsecutiveTransportErrors ?? 8;
   const worker = async (): Promise<void> => {
     for (;;) {
+      if (aborted !== undefined) return;
       const i = next++;
       if (i >= jobs.length) return;
       const { arm, task, trial } = jobs[i] as (typeof jobs)[number];
       const run = await arm.run(task);
       const rec: EvalRecord = { arm: arm.id, taskId: task.id, stratum: task.stratum, trial, score: scoreTask(task, run.output), run };
       records[i] = rec;
+      if (isTransportError(rec)) {
+        if (streak === 0) firstErr = (rec.run.error ?? '').slice(0, 400);
+        streak++;
+        if (limit > 0 && streak >= limit && aborted === undefined) aborted = new EvalAbortedError(firstErr, streak);
+      } else if (rec.run.path === 'model') streak = 0;
       o.onProgress?.(++done, jobs.length, rec);
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, o.concurrency ?? 4) }, worker));
+  if (aborted !== undefined) throw aborted;
   return records;
 }
