@@ -153,7 +153,7 @@ export async function runEval(o: RunOptions): Promise<EvalRecord[]> {
       const rec: EvalRecord = { arm: arm.id, taskId: task.id, stratum: task.stratum, trial, score: scoreTask(task, run.output), run };
       records[i] = rec;
       if (isTransportError(rec)) {
-        if (streak === 0) firstErr = (rec.run.error ?? '').slice(0, 400);
+        if (streak === 0) firstErr = (rec.run.error ?? '').replace(/\s+/g, ' ').slice(0, 1500);
         streak++;
         if (limit > 0 && streak >= limit && aborted === undefined) aborted = new EvalAbortedError(firstErr, streak);
       } else if (rec.run.path === 'model') streak = 0;

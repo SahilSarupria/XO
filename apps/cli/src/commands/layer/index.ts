@@ -139,7 +139,7 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         return fail(
           `INVALID RUN — ${failedCalls.length}/${modelCalls} model calls failed at the transport level (not wrong answers). ` +
-            `First error: ${(failedCalls[0]?.run.error ?? '').slice(0, 300)}`,
+            `First error: ${(failedCalls[0]?.run.error ?? '').replace(/\s+/g, ' ').slice(0, 1500)}`,
         );
       }
       const pin = flag(args.flags, 'price-in');
