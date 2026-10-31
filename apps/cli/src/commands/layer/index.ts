@@ -1,3 +1,4 @@
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
@@ -21,6 +22,8 @@ import {
   renderMarkdown,
   runEval,
   EvalAbortedError,
+  PacedProvider,
+  type EvalRecord,
   isTransportError,
   scorePackage,
   SimulatedModel,
@@ -40,6 +43,8 @@ process.stdout.on('error', (e: NodeJS.ErrnoException) => {
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
 const fail = (s: string): number => (process.stderr.write(`error: ${s}\n`), 1);
 
+/** Cheapest set that still answers "does XO beat the same model alone / with the whole manual pasted in?" (+ the free router arm). */
+const LEAN_ARMS: ArmId[] = ['plain', 'dump', 'xo_tools', 'xo_router'];
 const ALL_ARMS: ArmId[] = ['plain', 'prompt', 'dump', 'xo_context', 'xo_tools', 'xo_router'];
 
 export function registerCommands(registry: CommandRegistry): void {
@@ -50,7 +55,7 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo ab-eval [--arms plain,prompt,dump,xo_context,xo_tools,xo_router] [--trials n] [--concurrency n] [--limit n]\n' +
-      '           [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
+      '           [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
       '                                         A/B the Halvorsen freight scenario. Model/provider come from the environment:\n' +
       '                                         XO_MODEL, XO_PROVIDER (default anthropic) and the provider API key variable.\n' +
       '                                         --self-test uses simulated models to validate the harness (NOT a measurement).',
@@ -73,23 +78,45 @@ export function registerCommands(registry: CommandRegistry): void {
         if (!op.ok) return fail(op.error);
         ({ provider, providerId, model } = op.value);
       }
+      const rpmFlag = flag(args.flags, 'rpm');
+      const rpm = rpmFlag !== undefined ? Number(rpmFlag) : providerId === 'gemini' ? 8 : 0; // 8/min is conservative for free tiers; --rpm 0 disables
+      if (!Number.isFinite(rpm) || rpm < 0) return fail('--rpm must be a non-negative number');
+      if (rpm > 0) provider = new PacedProvider(provider, rpm);
       const arms = buildArms({ provider, model, gold, ...(compiled !== undefined ? { compiled } : {}) });
+      const preset = flag(args.flags, 'preset');
+      if (preset !== undefined && preset !== 'lean') return fail('--preset must be "lean"');
       const want = (flag(args.flags, 'arms')?.split(',') ?? [
-        ...ALL_ARMS,
+        ...(preset === 'lean' ? LEAN_ARMS : ALL_ARMS),
         ...(includeCompiled ? (['compiled_context'] as ArmId[]) : []),
       ]) as ArmId[];
       const unknown = want.filter((a) => arms[a] === undefined);
       if (unknown.length > 0) return fail(`unknown arm(s): ${unknown.join(', ')}`);
       const trials = Math.max(1, Number(flag(args.flags, 'trials') ?? '1'));
+      const outDirEarly = flag(args.flags, 'out');
       let last = 0;
+      const partialPath = outDirEarly !== undefined ? join(resolve(outDirEarly), 'records.partial.jsonl') : undefined;
+      let resume: EvalRecord[] = [];
+      if (partialPath !== undefined) {
+        await mkdir(resolve(outDirEarly as string), { recursive: true });
+        if (args.flags['resume'] === true && existsSync(partialPath))
+          resume = readFileSync(partialPath, 'utf8')
+            .split('\n')
+            .filter((l) => l.trim() !== '')
+            .map((l) => JSON.parse(l) as EvalRecord);
+        else if (existsSync(partialPath)) await writeFile(partialPath, '');
+        if (resume.length > 0) process.stderr.write(`  resuming: ${resume.length} saved records will not be re-run\n`);
+      }
       let records;
       try {
         records = await runEval({
           arms: want.map((a) => arms[a]),
           tasks,
           trials,
-          concurrency: Number(flag(args.flags, 'concurrency') ?? '4'),
-          onProgress: (done, total) => {
+          concurrency: Number(flag(args.flags, 'concurrency') ?? (providerId === 'gemini' ? '2' : '4')),
+          resume,
+          onProgress: (done, total, rec) => {
+            if (partialPath !== undefined && !isTransportError(rec) && !resume.includes(rec))
+              appendFileSync(partialPath, `${JSON.stringify({ ...rec, run: { ...rec.run, rawText: rec.run.rawText.slice(0, 2000) } })}\n`);
             if (done === total || done - last >= Math.max(1, Math.floor(total / 20))) {
               last = done;
               process.stderr.write(`\r  ${done}/${total}`);

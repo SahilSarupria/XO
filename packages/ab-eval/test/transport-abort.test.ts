@@ -31,3 +31,50 @@ describe('dead endpoints are not scored as wrong answers', () => {
     );
   });
 });
+
+import { PacedProvider, RetryingProvider, isExhaustedQuota, retryAfterSeconds } from '../src/index.js';
+
+describe('quota handling', () => {
+  const ok = { text: '{}', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'm', finishReason: 'stop' as const };
+  it('parses the server-suggested delay and waits for it', async () => {
+    assert.equal(retryAfterSeconds('429 ... Please retry in 12.5s.'), 12.5);
+    const waits: number[] = [];
+    let n = 0;
+    const p = new RetryingProvider(
+      {
+        id: 'x',
+        describeCapabilities: () => ({}) as never,
+        complete: async () => {
+          if (n++ < 1) throw new Error('Gemini API returned 429: "retryDelay": "7s"');
+          return ok;
+        },
+      },
+      { sleep: async (ms) => void waits.push(ms) },
+    );
+    await p.complete({ model: 'm', maxOutputTokens: 1, messages: [] });
+    assert.deepEqual(waits, [7500]);
+  });
+  it('does not retry a per-day / billing quota', async () => {
+    const msg = 'Gemini API returned 429: Quota exceeded for metric generate_content_free_tier_requests PerDay; retryDelay 30s';
+    assert.equal(isExhaustedQuota(msg), true);
+    let calls = 0;
+    const p = new RetryingProvider(
+      { id: 'x', describeCapabilities: () => ({}) as never, complete: async () => (calls++, Promise.reject(new Error(msg))) },
+      { sleep: async () => undefined },
+    );
+    await assert.rejects(p.complete({ model: 'm', maxOutputTokens: 1, messages: [] }), /QUOTA EXHAUSTED/);
+    assert.equal(calls, 1);
+  });
+  it('retries a per-minute 429 that merely mentions billing', () => {
+    assert.equal(isExhaustedQuota('429 You exceeded your current quota, check your plan and billing details. PerMinute'), false);
+  });
+  it('spaces calls by 60000/rpm', async () => {
+    const stamps: number[] = [];
+    const p = new PacedProvider(
+      { id: 'x', describeCapabilities: () => ({}) as never, complete: async () => (stamps.push(Date.now()), ok) },
+      600, // 100ms apart
+    );
+    await Promise.all([1, 2, 3].map(() => p.complete({ model: 'm', maxOutputTokens: 1, messages: [] })));
+    assert.ok(stamps[2]! - stamps[0]! >= 190, `gaps ${stamps}`);
+  });
+});
