@@ -79,6 +79,8 @@ export interface EvalReport {
     readonly tasks: number;
     readonly trials: number;
     readonly selfTest: boolean;
+    /** Which task set was used (seed + phrasing), so a held-out run is distinguishable from a tuned-on one. */
+    readonly taskSet?: string;
   };
   readonly arms: readonly ArmSummary[];
   readonly comparisons: readonly {
@@ -130,7 +132,7 @@ export function renderMarkdown(rep: EvalReport): string {
   L.push(
     `# XO A/B evaluation — ${rep.meta.model}`,
     '',
-    `provider \`${rep.meta.provider}\` · ${rep.meta.tasks} tasks × ${rep.meta.trials} trial(s) · ${rep.meta.date}`,
+    `provider \`${rep.meta.provider}\` · ${rep.meta.tasks} tasks × ${rep.meta.trials} trial(s) · ${rep.meta.date}${rep.meta.taskSet !== undefined ? ` · task set: ${rep.meta.taskSet}` : ''}`,
     '',
   );
   L.push(

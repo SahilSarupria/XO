@@ -55,13 +55,17 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo ab-eval [--arms plain,prompt,dump,xo_context,xo_tools,xo_router] [--trials n] [--concurrency n] [--limit n]\n' +
-      '           [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
+      '           [--seed n] [--style standard|variant] [--preset lean] [--rpm n] [--resume] [--include-compiled] [--price-in <usd/Mtok>] [--price-out <usd/Mtok>] [--out <dir>] [--self-test]\n' +
       '                                         A/B the Halvorsen freight scenario. Model/provider come from the environment:\n' +
       '                                         XO_MODEL, XO_PROVIDER (default anthropic) and the provider API key variable.\n' +
       '                                         --self-test uses simulated models to validate the harness (NOT a measurement).',
     run: async (args) => {
       const selfTest = args.flags['self-test'] === true;
-      let tasks = generateEvalTasks();
+      const seedFlag = flag(args.flags, 'seed');
+      const styleFlag = flag(args.flags, 'style') ?? 'standard';
+      if (styleFlag !== 'standard' && styleFlag !== 'variant') return fail('--style must be "standard" or "variant"');
+      if (seedFlag !== undefined && !Number.isInteger(Number(seedFlag))) return fail('--seed must be an integer');
+      let tasks = generateEvalTasks(seedFlag !== undefined ? Number(seedFlag) : undefined, styleFlag);
       const limit = Number(flag(args.flags, 'limit') ?? '0');
       if (limit > 0) tasks = tasks.filter((_, i) => i % Math.ceil(tasks.length / limit) === 0).slice(0, limit);
       const gold = buildGoldXo();
@@ -146,7 +150,14 @@ export function registerCommands(registry: CommandRegistry): void {
       const pout = flag(args.flags, 'price-out');
       const report = buildReport(
         records,
-        { model, provider: providerId, date: new Date().toISOString().slice(0, 10), trials, selfTest },
+        {
+          model,
+          provider: providerId,
+          date: new Date().toISOString().slice(0, 10),
+          trials,
+          selfTest,
+          taskSet: `seed ${seedFlag ?? 'default'}, ${styleFlag} phrasing`,
+        },
         pin !== undefined && pout !== undefined ? { inputPerMTok: Number(pin), outputPerMTok: Number(pout) } : undefined,
       );
       const md = renderMarkdown(report);
