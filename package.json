@@ -22,6 +22,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b tsconfig.json",
     "bench:cpu": "node scripts/bench-cpu.mjs",
+    "soak:desk": "node scripts/soak-desk.mjs",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules/.cache",
     "changeset": "changeset",
     "version-packages": "changeset version",

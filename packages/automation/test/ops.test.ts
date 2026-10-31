@@ -192,3 +192,74 @@ describe('escalation delivery', () => {
     assert.throws(() => new WebhookDelivery('http://example.com/x', secret), /https/);
   });
 });
+
+import { spawnSync } from 'node:child_process';
+import { request as httpsRequest } from 'node:https';
+import { WebhookTrigger } from '../src/index.js';
+
+describe('webhook TLS posture', () => {
+  const secret = 'w'.repeat(20);
+  it('refuses a non-loopback plain-HTTP bind unless TLS is served or acknowledged upstream', () => {
+    assert.throws(() => new WebhookTrigger('h', { secret, host: '0.0.0.0' }), /plain HTTP/);
+    assert.throws(() => new WebhookTrigger('h', { secret, host: '10.0.0.5' }), /plain HTTP/);
+    assert.doesNotThrow(() => new WebhookTrigger('h', { secret, host: '0.0.0.0', tlsTerminatedUpstream: true }));
+    assert.doesNotThrow(() => new WebhookTrigger('h', { secret })); // loopback default
+    assert.doesNotThrow(() => new WebhookTrigger('h', { secret, host: '::1' }));
+  });
+  it('serves HTTPS when given a key and certificate', async (t) => {
+    const dir = await tmp();
+    const r = spawnSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        join(dir, 'k.pem'),
+        '-out',
+        join(dir, 'c.pem'),
+        '-days',
+        '1',
+        '-subj',
+        '/CN=localhost',
+      ],
+      { stdio: 'ignore' },
+    );
+    if (r.status !== 0) return void t.skip('openssl not available');
+    const trig = new WebhookTrigger('h', {
+      secret,
+      port: 0,
+      tls: { keyPem: await readFile(join(dir, 'k.pem'), 'utf8'), certPem: await readFile(join(dir, 'c.pem'), 'utf8') },
+    });
+    await trig.start(async () => ({ accepted: true, runId: 'r1' }));
+    try {
+      const body = JSON.stringify({ a: 1 });
+      const ts = Math.floor(Date.now() / 1000);
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpsRequest(
+          {
+            host: '127.0.0.1',
+            port: trig.address().port,
+            path: '/hook',
+            method: 'POST',
+            rejectUnauthorized: false,
+            headers: {
+              'x-xo-timestamp': String(ts),
+              'x-xo-signature': WebhookTrigger.sign(secret, ts, body),
+              'content-type': 'application/json',
+            },
+          },
+          (res) => resolve(res.statusCode ?? 0),
+        );
+        req.on('error', reject);
+        req.end(body);
+      });
+      assert.equal(status, 202);
+    } finally {
+      await trig.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

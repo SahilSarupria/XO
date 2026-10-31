@@ -4,7 +4,9 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { DecisionTree, TreeEvaluation } from '@xo/capability-layer';
 
+/** `required`: network namespace or refuse to start. `best_effort`: namespace if available, otherwise an in-worker guard (NOT isolation). `none`: no network measures (tests / explicit operator choice). */
 export type NetworkIsolation = 'required' | 'best_effort' | 'none';
+export type NetworkMode = 'namespace' | 'guard' | 'none';
 
 export interface SandboxOptions {
   /** Worker processes kept warm. Default 2. */
@@ -20,6 +22,8 @@ export interface SandboxOptions {
    * with network access while claiming to be sandboxed.
    */
   readonly networkIsolation?: NetworkIsolation;
+  /** Do not use a network namespace even if the host has one (for hosts where `unshare` is undesirable, and to test the guard mode on Linux). Incompatible with `required`. */
+  readonly skipNamespace?: boolean;
   /** Enables a CPU-spin message in the worker so the timeout path can be tested. Never set in production. */
   readonly testHooks?: boolean;
 }
@@ -83,25 +87,30 @@ export class TreeSandbox {
     .map((u) => fileURLToPath(u))
     .find((p) => existsSync(p)) as string;
   private readonly evaluatorDir: string;
-  readonly isolation: { readonly network: boolean };
+  readonly isolation: { readonly network: boolean; readonly mode: NetworkMode };
   private evalCount = 0;
   private restartCount = 0;
 
   constructor(private readonly opts: SandboxOptions = {}) {
     const mode = opts.networkIsolation ?? 'required';
-    const haveNs = mode === 'none' ? false : networkNamespaceAvailable();
+    const haveNs = mode === 'none' || opts.skipNamespace === true ? false : networkNamespaceAvailable();
     if (mode === 'required' && !haveNs)
       throw new SandboxUnavailableError(
         'network isolation is required but a network namespace (unshare -rn) is not available on this host; refusing to run unsandboxed',
       );
     if (this.workerPath === undefined) throw new SandboxUnavailableError('sandbox worker is not built (run the build for @xo/automation)');
-    this.isolation = { network: haveNs };
+    this.isolation = { network: haveNs, mode: haveNs ? 'namespace' : mode === 'none' ? 'none' : 'guard' };
     this.evaluatorDir = dirname(fileURLToPath(import.meta.resolve('@xo/capability-layer')));
     this.slots = Array.from({ length: Math.max(1, opts.workers ?? 2) }, () => ({ child: undefined, ready: undefined, busy: false }));
   }
 
-  get stats(): { evaluations: number; restarts: number; networkIsolated: boolean } {
-    return { evaluations: this.evalCount, restarts: this.restartCount, networkIsolated: this.isolation.network };
+  get stats(): { evaluations: number; restarts: number; networkIsolated: boolean; networkMode: NetworkMode } {
+    return {
+      evaluations: this.evalCount,
+      restarts: this.restartCount,
+      networkIsolated: this.isolation.network,
+      networkMode: this.isolation.mode,
+    };
   }
 
   private start(slot: Slot): Promise<void> {
@@ -121,6 +130,7 @@ export class TreeSandbox {
     const env: NodeJS.ProcessEnv = {
       PATH: process.env['PATH'] ?? '',
       ...(this.opts.testHooks === true ? { XO_SANDBOX_TEST_HOOKS: '1' } : {}),
+      ...(this.isolation.mode === 'guard' ? { XO_SANDBOX_NET_GUARD: '1' } : {}),
     };
     const child = spawn(cmd, [...args], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env, cwd: '/' });
     slot.child = child;
@@ -218,7 +228,8 @@ export class TreeSandbox {
     if (!/^EvalError$|ERR_/.test(r.code_gen)) failures.push(`code generation from strings was not denied (${r.code_gen})`);
     if (r.spawn !== 'ERR_ACCESS_DENIED') failures.push(`process spawning was not denied (${r.spawn})`);
     if (r.env_secrets !== 'ALLOWED') failures.push(`secrets leaked into the worker environment (${r.env_secrets})`);
-    if (this.isolation.network && !r.net.startsWith('BLOCKED')) failures.push(`network was not blocked (${r.net})`);
+    if (this.isolation.mode !== 'none' && !r.net.startsWith('BLOCKED'))
+      failures.push(`network was not blocked (${r.net}) in ${this.isolation.mode} mode`);
     return { ...r, enforced: failures.length === 0, failures };
   }
 

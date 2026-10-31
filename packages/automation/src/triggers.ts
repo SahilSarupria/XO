@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
+import { createServer as createTlsServer } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { canonicalJson } from '@xo/capability-layer';
@@ -162,6 +163,13 @@ export interface WebhookOptions {
   readonly toleranceSec?: number;
   readonly maxBodyBytes?: number;
   readonly now?: () => number;
+  /** Serve HTTPS directly. */
+  readonly tls?: { readonly keyPem: string; readonly certPem: string };
+  /**
+   * Binding anywhere but loopback over plain HTTP sends the signed body (and the claim data in it) across the network in clear text.
+   * It is refused unless TLS is terminated by this server (`tls`) or the operator states that a TLS-terminating proxy sits in front.
+   */
+  readonly tlsTerminatedUpstream?: boolean;
 }
 
 /**
@@ -179,6 +187,12 @@ export class WebhookTrigger implements Trigger {
     private readonly opts: WebhookOptions,
   ) {
     if (opts.secret.length < 16) throw new Error('webhook secret must be at least 16 characters');
+    const host = opts.host ?? '127.0.0.1';
+    const loopback = ['127.0.0.1', '::1', 'localhost', '[::1]'].includes(host);
+    if (!loopback && opts.tls === undefined && opts.tlsTerminatedUpstream !== true)
+      throw new Error(
+        `refusing to bind the webhook to "${host}" over plain HTTP: set \`tls\` to serve HTTPS, or \`tlsTerminatedUpstream: true\` to confirm a TLS-terminating proxy fronts it (see docs/AUTOMATION_OPERATIONS.md)`,
+      );
   }
 
   static sign(secret: string, timestampSec: number, body: string): string {
@@ -194,7 +208,12 @@ export class WebhookTrigger implements Trigger {
     const maxBytes = this.opts.maxBodyBytes ?? 262_144;
     const tolerance = this.opts.toleranceSec ?? 300;
     const now = this.opts.now ?? (() => Date.now());
-    this.server = createServer((req, res) => {
+    const make =
+      this.opts.tls !== undefined
+        ? (h: Parameters<typeof createServer>[0]) =>
+            createTlsServer({ key: this.opts.tls!.keyPem, cert: this.opts.tls!.certPem }, h as never)
+        : createServer;
+    this.server = make((req, res) => {
       const reply = (code: number, body: unknown): void => {
         res.writeHead(code, { 'content-type': 'application/json' });
         res.end(JSON.stringify(body));

@@ -1,13 +1,24 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import { createServer } from 'node:http';
 import {
   AutomationEngine,
+  CronTrigger,
   FileDropTrigger,
+  FileAnchorSink,
   HashChainLedger,
   ScheduleTrigger,
+  TreeSandbox,
+  WebhookAnchorSink,
+  WebhookDelivery,
   WebhookTrigger,
+  deliverOutbox,
   networkNamespaceAvailable,
+  readAnchorFile,
+  renderMetrics,
+  verifyAgainstAnchors,
+  type AnchorSink,
   type Trigger,
 } from '@xo/automation';
 import {
@@ -253,11 +264,15 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'desk',
     subsystem: SUBSYSTEM,
     usage:
-      'xo desk --state <dir> [--inbox <dir>] [--webhook-port <n>] [--every-ms <n>] [--model-fallback] [--duration-sec <n>]\n' +
+      'xo desk --state <dir> [--inbox <dir>] [--webhook-port <n>] [--webhook-host <h>] [--every-ms <n>] [--cron "<m h dom mon dow>"]\n' +
+      '        [--metrics-port <n>] [--anchor-file <path outside --state>] [--model-fallback] [--duration-sec <n>]\n' +
       '                                         Run the freight claims desk unattended: triggers → sandboxed evaluation → outbox lanes → ledger.\n' +
       '                                         Webhook secret is read from XO_WEBHOOK_SECRET (never a flag). --model-fallback lets free-text\n' +
       '                                         claims use the operator-configured model; without it they go to a human. Requires a network\n' +
-      '                                         namespace for the sandbox unless XO_SANDBOX_NETWORK=none.',
+      '                                         namespace for the sandbox unless XO_SANDBOX_NETWORK=guard (in-worker guard, NOT isolation) or none.\n' +
+      '                                         Optional env: XO_ANCHOR_URL + XO_ANCHOR_SECRET (publish ledger heads), XO_DELIVERY_URL + XO_DELIVERY_SECRET\n' +
+      '                                         (deliver needs-human/dead-letter items), XO_WEBHOOK_TLS_KEY/XO_WEBHOOK_TLS_CERT (serve HTTPS) or\n' +
+      '                                         XO_WEBHOOK_BEHIND_TLS_PROXY=1 (required to bind a non-loopback --webhook-host over plain HTTP).',
     run: async (args) => {
       const state = flag(args.flags, 'state');
       if (state === undefined) return fail('--state <dir> is required');
@@ -269,17 +284,44 @@ export function registerCommands(registry: CommandRegistry): void {
       if (port !== undefined) {
         const secret = process.env['XO_WEBHOOK_SECRET'];
         if (secret === undefined) return fail('set XO_WEBHOOK_SECRET (at least 16 characters) to enable the webhook');
-        hook = new WebhookTrigger('webhook', { secret, port: Number(port) });
+        const keyPath = process.env['XO_WEBHOOK_TLS_KEY'];
+        const certPath = process.env['XO_WEBHOOK_TLS_CERT'];
+        const host = flag(args.flags, 'webhook-host');
+        try {
+          hook = new WebhookTrigger('webhook', {
+            secret,
+            port: Number(port),
+            ...(host !== undefined ? { host } : {}),
+            ...(keyPath !== undefined && certPath !== undefined
+              ? { tls: { keyPem: readFileSync(keyPath, 'utf8'), certPem: readFileSync(certPath, 'utf8') } }
+              : {}),
+            ...(process.env['XO_WEBHOOK_BEHIND_TLS_PROXY'] === '1' ? { tlsTerminatedUpstream: true } : {}),
+          });
+        } catch (e) {
+          return fail((e as Error).message);
+        }
         triggers.push(hook);
       }
       const every = flag(args.flags, 'every-ms');
       if (every !== undefined) triggers.push(new ScheduleTrigger('heartbeat', { everyMs: Number(every) }));
-      if (triggers.length === 0) return fail('enable at least one of --inbox, --webhook-port, --every-ms');
-      const isolation = process.env['XO_SANDBOX_NETWORK'] === 'none' ? 'none' : 'required';
-      if (isolation === 'required' && !networkNamespaceAvailable())
-        return fail(
-          'network isolation is required but unavailable on this host; set XO_SANDBOX_NETWORK=none to run with filesystem/process isolation only',
-        );
+      const cron = flag(args.flags, 'cron');
+      if (cron !== undefined) {
+        try {
+          triggers.push(new CronTrigger('cron', cron));
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+      }
+      if (triggers.length === 0) return fail('enable at least one of --inbox, --webhook-port, --every-ms, --cron');
+      const netEnv = process.env['XO_SANDBOX_NETWORK'];
+      if (netEnv !== undefined && !['none', 'guard', 'required'].includes(netEnv))
+        return fail('XO_SANDBOX_NETWORK must be required, guard or none');
+      const isolation = netEnv === 'none' ? 'none' : 'required';
+      if (netEnv === undefined || netEnv === 'required')
+        if (!networkNamespaceAvailable())
+          return fail(
+            'network isolation is required but unavailable on this host; set XO_SANDBOX_NETWORK=none to run with filesystem/process isolation only',
+          );
       let provider, model: string | undefined;
       if (args.flags['model-fallback'] === true) {
         const op = resolveOperatorProvider();
@@ -291,18 +333,71 @@ export function registerCommands(registry: CommandRegistry): void {
         bundle: buildGoldXo(),
         triggers,
         networkIsolation: isolation,
+        ...(netEnv === 'guard' ? { sandbox: new TreeSandbox({ networkIsolation: 'best_effort' }) } : {}),
         ...(provider !== undefined && model !== undefined ? { provider, model, maxModelCallsPerRun: 500 } : {}),
       });
       // Heartbeat payloads are not claims; the schedule trigger exists to show the pattern (e.g. a nightly sweep) — claims need facts/narrative.
       const st = await sandbox.selfTest();
-      if (!st.enforced) return fail(`sandbox isolation self-test failed: ${st.failures.join('; ')}`);
-      const engine = new AutomationEngine({ dir: resolve(state), workflows: [workflow], concurrency: 4 });
-      await engine.start();
+      if (!st.enforced) return (await sandbox.close(), fail(`sandbox isolation self-test failed: ${st.failures.join('; ')}`));
+      const sinks: AnchorSink[] = [];
+      const anchorFile = flag(args.flags, 'anchor-file');
+      if (anchorFile !== undefined) {
+        const rel = relative(resolve(state), resolve(anchorFile));
+        if (!rel.startsWith('..') && !isAbsolute(rel)) {
+          await sandbox.close();
+          return fail('--anchor-file must live OUTSIDE --state, otherwise whoever can rewrite the ledger can rewrite its anchors');
+        }
+        sinks.push(new FileAnchorSink(resolve(anchorFile)));
+      }
+      try {
+        if (process.env['XO_ANCHOR_URL'] !== undefined)
+          sinks.push(new WebhookAnchorSink(process.env['XO_ANCHOR_URL'], process.env['XO_ANCHOR_SECRET'] ?? ''));
+      } catch (e) {
+        await sandbox.close();
+        return fail((e as Error).message);
+      }
+      const engine = new AutomationEngine({
+        dir: resolve(state),
+        workflows: [workflow],
+        concurrency: 4,
+        ...(sinks.length > 0 ? { anchors: { sinks } } : {}),
+      });
+      try {
+        await engine.start();
+      } catch (e) {
+        await sandbox.close();
+        return fail((e as Error).message);
+      }
       out(
-        `desk running · sandbox isolation verified (network ${sandbox.isolation.network ? 'blocked' : 'NOT blocked'}) · ledger ${engine.ledgerPath}`,
+        `desk running · sandbox network ${sandbox.isolation.mode === 'namespace' ? 'isolated (namespace)' : sandbox.isolation.mode === 'guard' ? 'GUARDED in-process (not isolation)' : 'NOT blocked'} · ledger ${engine.ledgerPath}`,
       );
+      let metricsServer: ReturnType<typeof createServer> | undefined;
+      const metricsPort = flag(args.flags, 'metrics-port');
+      if (metricsPort !== undefined) {
+        metricsServer = createServer((req, res) => {
+          if (req.method === 'GET' && req.url === '/metrics') {
+            res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
+            res.end(renderMetrics(engine));
+          } else {
+            res.writeHead(404).end();
+          }
+        });
+        metricsServer.listen(Number(metricsPort), '127.0.0.1');
+        out(`metrics on http://127.0.0.1:${Number(metricsPort)}/metrics (loopback only; front it with your proxy to expose)`);
+      }
+      let deliveryTimer: NodeJS.Timeout | undefined;
+      if (process.env['XO_DELIVERY_URL'] !== undefined) {
+        const adapter = new WebhookDelivery(process.env['XO_DELIVERY_URL'], process.env['XO_DELIVERY_SECRET'] ?? '');
+        deliveryTimer = setInterval(
+          () => void deliverOutbox({ outboxDir: join(resolve(state), 'outbox'), adapters: [adapter] }).catch(() => undefined),
+          30_000,
+        );
+        deliveryTimer.unref();
+      }
       if (hook !== undefined) out(`webhook listening on http://127.0.0.1:${hook.address().port}/hook`);
       const stop = async (): Promise<void> => {
+        if (deliveryTimer !== undefined) clearInterval(deliveryTimer);
+        metricsServer?.close();
         await engine.stop();
         await sandbox.close();
         out(`stopped · ${JSON.stringify(engine.counters)} · ledger head ${engine.ledgerHead.slice(0, 16)}…`);
@@ -321,10 +416,22 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'ledger-verify',
     subsystem: SUBSYSTEM,
-    usage: "xo ledger-verify <ledger.jsonl>     Verify a desk ledger's hash chain (detects edited, removed or reordered entries)",
+    usage:
+      "xo ledger-verify <ledger.jsonl> [--anchors <anchors.jsonl>]   Verify a desk ledger's hash chain (detects edited, removed or reordered entries);\n" +
+      '                                         with --anchors also detects truncation and rebuilt history against published heads.',
     run: async (args) => {
       const p = args.positionals[0];
       if (p === undefined) return fail('give the ledger path');
+      const anchorsPath = flag(args.flags, 'anchors');
+      if (anchorsPath !== undefined) {
+        const entries = readFileSync(resolve(p), 'utf8')
+          .split('\n')
+          .filter((l) => l.trim() !== '')
+          .map((l) => JSON.parse(l));
+        const c = verifyAgainstAnchors(entries, await readAnchorFile(resolve(anchorsPath)));
+        out(c.ok ? `OK · chain intact and consistent with ${c.anchors} anchor(s)` : `FAILED:\n  ${c.problems.join('\n  ')}`);
+        return c.ok ? 0 : 3;
+      }
       const v = await HashChainLedger.verifyFile(resolve(p));
       out(v.ok ? `OK · ${v.entries} entries, chain intact` : `BROKEN at entry ${v.brokenAt}: ${v.reason}`);
       return v.ok ? 0 : 3;

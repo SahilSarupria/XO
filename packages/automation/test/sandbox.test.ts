@@ -71,3 +71,30 @@ describe('TreeSandbox', () => {
     assert.throws(() => new TreeSandbox({ networkIsolation: 'required' }), SandboxUnavailableError);
   });
 });
+
+describe('TreeSandbox without a network namespace (guard mode)', () => {
+  it('refuses `required` when the namespace is skipped, and otherwise reports "guard" — never "isolated"', async () => {
+    assert.throws(() => new TreeSandbox({ networkIsolation: 'required', skipNamespace: true }), SandboxUnavailableError);
+    const sb = new TreeSandbox({ workers: 1, networkIsolation: 'best_effort', skipNamespace: true });
+    try {
+      assert.equal(sb.stats.networkMode, 'guard');
+      assert.equal(sb.stats.networkIsolated, false);
+      const rep = await sb.selfTest();
+      assert.deepEqual(rep.failures, []);
+      assert.equal(rep.net, 'BLOCKED(XO_NET_GUARD)');
+      const r = await sb.evaluate(
+        {
+          id: 't',
+          description: '',
+          inputs: [{ name: 'x', type: 'number', description: '' }],
+          start: 'a',
+          nodes: { a: { type: 'leaf', output: { v: '=x + 1' } } },
+        },
+        { x: 1 },
+      );
+      assert.ok(r.ok && r.output['v'] === 2);
+    } finally {
+      await sb.close();
+    }
+  });
+});

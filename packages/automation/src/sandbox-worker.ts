@@ -15,6 +15,31 @@ interface Msg {
   readonly facts?: unknown;
 }
 
+// Defense in depth for hosts WITHOUT a network namespace (macOS, Windows, locked-down containers): make every network entry point
+// throw. This is NOT isolation — code that can reach an unpatched primitive could still connect — which is why the parent reports
+// the mode honestly ("guard", never "isolated") and why network isolation stays `required` by default. The evaluator itself has no I/O.
+if (process.env['XO_SANDBOX_NET_GUARD'] === '1') {
+  const deny = (): never => {
+    const e = new Error('network access is blocked in the sandbox') as NodeJS.ErrnoException;
+    e.code = 'XO_NET_GUARD';
+    throw e;
+  };
+  // Builtin ESM namespaces are read-only; patch the shared CommonJS export objects, then re-sync the named ESM exports.
+  const patch = async (name: string, keys: readonly string[]): Promise<void> => {
+    const mod = ((await import(name)) as unknown as { default: Record<string, unknown> }).default;
+    for (const k of keys) mod[k] = deny;
+  };
+  const net = ((await import('node:net')) as unknown as { default: { Socket: { prototype: Record<string, unknown> } } }).default;
+  net.Socket.prototype['connect'] = deny;
+  await patch('node:net', ['connect', 'createConnection']);
+  await patch('node:dns', ['lookup', 'resolve', 'resolve4', 'resolve6']);
+  await patch('node:dgram', ['createSocket']);
+  await patch('node:http', ['request', 'get']);
+  await patch('node:https', ['request', 'get']);
+  (await import('node:module')).syncBuiltinESMExports();
+  (globalThis as { fetch: unknown }).fetch = deny;
+}
+
 const distDir = process.argv[2] as string;
 const testHooks = process.env['XO_SANDBOX_TEST_HOOKS'] === '1';
 const { evaluateTree } = (await import(pathToFileURL(join(distDir, 'decision-tree.js')).href)) as {
@@ -61,7 +86,13 @@ process.on('message', async (m: Msg) => {
       const net = await import('node:net').then(
         (n) =>
           new Promise<string>((resolve) => {
-            const c = n.connect({ host: '1.1.1.1', port: 443 });
+            let c: ReturnType<typeof n.connect>;
+            try {
+              c = n.connect({ host: '1.1.1.1', port: 443 });
+            } catch (e) {
+              resolve(`BLOCKED(${(e as NodeJS.ErrnoException).code ?? 'error'})`);
+              return;
+            }
             const timer = setTimeout(() => {
               c.destroy();
               resolve('BLOCKED(timeout)');
