@@ -32,6 +32,8 @@ export type AuditOperation =
   | 'declare_sources'
   | 'revoke_evidence'
   | 'purge_evidence'
+  /** C4: one ingestion batch (the checkpoint commit boundary), authorized separately from the connector's content read. */
+  | 'ingest_source'
   /** C3: an administrator-consented cloud account connection (begin through completion). */
   | 'connect_account'
   /** C3: local revocation of a cloud account connection (credentials destroyed). */
@@ -191,6 +193,7 @@ const OPERATIONS: ReadonlySet<string> = new Set([
   'declare_sources',
   'revoke_evidence',
   'purge_evidence',
+  'ingest_source',
   'connect_account',
   'revoke_connection',
 ]);

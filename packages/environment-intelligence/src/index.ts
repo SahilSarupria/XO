@@ -19,6 +19,7 @@ export * from './source-state.js';
 export * from './inventory.js';
 export * from './registry.js';
 export * from './orchestrator.js';
+export * from './ingestion.js';
 export * from './environment-model.js';
 export * from './process-discovery.js';
 export * from './opportunity.js';

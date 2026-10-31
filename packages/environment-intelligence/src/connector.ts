@@ -191,6 +191,17 @@ export interface SyncRequest<TScope extends DiscoveryScopeBase = DiscoveryScopeB
   readonly scope: TScope;
 }
 
+/**
+ * C4: an object the provider reports as no longer present or no longer accessible. This is the one deficiency in the C1 sync contract
+ * that C4 could not work around: without it a delta provider has no way to say "this was deleted", so stale content would stay
+ * eligible. It is OPTIONAL and additive (connectors that never set it behave exactly as before). `resourceKey` is a source-relative key
+ * and is treated as untrusted provider data: it is only ever digested, never persisted or logged.
+ */
+export interface RemovedResource {
+  readonly resourceKey: string;
+  readonly reason: 'deleted' | 'access_lost';
+}
+
 export interface SyncOutcome {
   readonly status: OutcomeStatus;
   readonly evidence: readonly Evidence[];
@@ -199,6 +210,8 @@ export interface SyncOutcome {
   readonly errors: readonly DiscoveryError[];
   /** Where the next sync should resume. Absent = nothing further to resume from. */
   readonly nextCursor?: SyncCursor;
+  /** C4, OPTIONAL: resources deleted or no longer accessible since the cursor. Consumed only by `ingestSource`; plain `syncSource` callers may ignore it. */
+  readonly removed?: readonly RemovedResource[];
 }
 
 export interface HealthRequest<TScope extends DiscoveryScopeBase = DiscoveryScopeBase> {

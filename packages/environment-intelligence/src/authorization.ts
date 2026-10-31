@@ -27,7 +27,13 @@ export interface AuthorizationRequest {
   readonly connectorId: ConnectorId;
   /** A connector operation, or `declare_sources` for registering administrator-declared systems (see `registerDeclaredSources`). */
   readonly operation:
-    ConnectorOperation | 'declare_sources' | 'revoke_evidence' | 'purge_evidence' | 'connect_account' | 'revoke_connection';
+    | ConnectorOperation
+    | 'declare_sources'
+    | 'revoke_evidence'
+    | 'purge_evidence'
+    | 'connect_account'
+    | 'revoke_connection'
+    | 'ingest_source';
   readonly permission: string;
   readonly scope: PermissionScope;
   /** The authenticated caller. Required at runtime by the enforcement point; optional in the type only so a missing/plain one is rejected, not mistyped. */

@@ -20,7 +20,7 @@ import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError 
 import type { Evidence } from './evidence.js';
 import type { EnvironmentInventory } from './inventory.js';
 import { type SourceRecord } from './inventory.js';
-import { ConnectorId, type SourceId } from './ids.js';
+import { ConnectorId, stableDigest, type SourceId } from './ids.js';
 import { resourceScope } from '@xo/permissions';
 import { requireAuthenticatedPrincipal, requireAuthorization } from './authorization-gate.js';
 import { planConnection, type ConnectionPlan, type ConnectorRegistry } from './registry.js';
@@ -451,10 +451,25 @@ export async function syncSource<TScope extends DiscoveryScopeBase>(
     expectedSourceIds: [request.sourceId],
   });
   if (!outcome.ok) return outcome;
-  if (outcome.value.nextCursor !== undefined && !validCursor(outcome.value.nextCursor))
+  if (outcome.value.nextCursor !== undefined && !validCursor(outcome.value.nextCursor)) {
+    // C4 hardening of a C1 gap: the connector's completion audit has ALREADY released this batch's evidence, so rejecting the result
+    // alone would leave unusable-batch evidence eligible. Quarantine it (best effort; the rejection below is returned either way).
+    const batch = Array.isArray(outcome.value.evidence) ? outcome.value.evidence : [];
+    // ENFORCE:badcursor-contains
+    if (batch.length > 0) {
+      const op = `badcursor_${stableDigest(batch.map((e) => e.id as string).sort()).slice(0, 24)}`;
+      try {
+        const trust = trustFromContext(ctx);
+        if (ctx.state !== undefined && trust !== undefined) await ctx.state.quarantine(trust, op, batch);
+        else ctx.ledger?.quarantine(op, batch);
+      } catch {
+        // never turns the rejection into success
+      }
+    }
     return err(
       discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the connector returned a cursor that is not acceptable', { field: 'nextCursor' }),
     );
+  }
   return outcome;
 }
 

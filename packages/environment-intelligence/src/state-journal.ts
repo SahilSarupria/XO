@@ -31,7 +31,7 @@ import { summarize, type SourceAxes } from './source-state.js';
  * crash window at a state that is never more permissive than the last confirmed fact. See
  * docs/environment-intelligence/c0-4-state-journal.md for the full crash matrix.
  *
- * NEVER persisted: locators, display names, error messages/contexts, transition history, evidence payloads or provenance.
+ * NEVER persisted: locators, display names, error messages/contexts, transition history, evidence payloads or per-item provenance (only a 64-hex DIGEST of a batch's provenance is persisted, in the checkpoint).
  */
 export const EI_STATE_NAMESPACE = 'x-ei-state';
 
@@ -47,11 +47,27 @@ const AXES_FIELDS = {
 export const EI_STATE_EXTENSION_SCHEMA: AuditExtensionSchema = {
   namespace: EI_STATE_NAMESPACE,
   fields: {
-    rec: { kind: 'enum', values: ['release', 'quarantine', 'intent', 'transition', 'source'] },
+    rec: { kind: 'enum', values: ['release', 'quarantine', 'intent', 'transition', 'source', 'checkpoint', 'tombstone'] },
     operationId: { kind: 'id', optional: true },
     sourceId: { kind: 'id', optional: true },
     ids: { kind: 'list', max: 5000, of: { kind: 'id' }, optional: true },
-    kind: { kind: 'enum', values: ['revoke', 'purge', 'revoked', 'purged'], optional: true },
+    kind: { kind: 'enum', values: ['revoke', 'purge', 'revoked', 'purged', 'deleted', 'access_lost', 'superseded'], optional: true },
+    // C4 (additive): `pairs` are `<resourceDigest>:<evidenceId>` entries (digests only, never a resource key or locator). `cp` is one
+    // ingestion checkpoint. `cursor` is persisted only when it satisfies the `id` kind, so the global secret filter applies to it.
+    pairs: { kind: 'list', max: 5000, of: { kind: 'id' }, optional: true },
+    cp: {
+      kind: 'object',
+      optional: true,
+      fields: {
+        // NB: `seq` is a reserved audit key, so the checkpoint sequence is persisted as `cseq`.
+        cseq: { kind: 'count' },
+        binding: { kind: 'opaque', pattern: /^[0-9a-f]{64}$/, maxLength: 64 },
+        cursor: { kind: 'id', optional: true },
+        complete: { kind: 'bool' },
+        // Digest of the batch's per-item provenance (see `provenanceDigestOf`): makes the returned provenance verifiable against the journal.
+        prov: { kind: 'opaque', pattern: /^[0-9a-f]{64}$/, maxLength: 64, optional: true },
+      },
+    },
     // Diagnostic / cross-reference values that may legitimately differ between a first attempt and an idempotent retry.
     count: { kind: 'count', optional: true, volatile: true },
     recovered: { kind: 'bool', optional: true, volatile: true },
@@ -138,6 +154,17 @@ interface SourceSnapshot {
   };
 }
 
+/** C4: why an ingested item stopped being eligible. */
+export type RetireReason = 'deleted' | 'access_lost' | 'superseded';
+
+interface CheckpointSnapshot {
+  readonly seq: number;
+  readonly binding: string;
+  readonly cursor?: string;
+  readonly complete: boolean;
+  readonly prov?: string;
+}
+
 type StateRecord =
   | { rec: 'release' | 'quarantine'; operationId: string; sourceId: string; ids: string[]; auditEventId?: string; key: string }
   | { rec: 'intent'; operationId: string; sourceId: string; kind: 'revoke' | 'purge'; auditEventId?: string; key: string }
@@ -150,7 +177,9 @@ type StateRecord =
       recovered?: boolean;
       key: string;
     }
-  | { rec: 'source'; sourceId: string; rev: number; src: SourceSnapshot; key: string };
+  | { rec: 'source'; sourceId: string; rev: number; src: SourceSnapshot; key: string }
+  | { rec: 'checkpoint'; operationId: string; sourceId: string; cp: CheckpointSnapshot; pairs: string[]; key: string }
+  | { rec: 'tombstone'; operationId: string; sourceId: string; reason: RetireReason; ids: string[]; pairs: string[]; key: string };
 
 const TYPE_OF: Readonly<Record<string, readonly [AuditEventDraft['type'], AuditEventDraft['outcome']]>> = {
   release: ['environment.completed', 'completed'],
@@ -159,6 +188,8 @@ const TYPE_OF: Readonly<Record<string, readonly [AuditEventDraft['type'], AuditE
   revoked: ['environment.revoked', 'revoked'],
   purged: ['environment.purged', 'purged'],
   source: ['environment.completed', 'completed'],
+  checkpoint: ['environment.completed', 'completed'],
+  tombstone: ['environment.purged', 'purged'],
 };
 
 function draftFor(actor: AuditEventDraft['actor'], r: StateRecord): AuditEventDraft {
@@ -168,8 +199,22 @@ function draftFor(actor: AuditEventDraft['actor'], r: StateRecord): AuditEventDr
   ];
   const ext: Record<string, unknown> = { rec: r.rec, sourceId: r.sourceId };
   if (r.rec !== 'source') ext['operationId'] = r.operationId;
-  if (r.rec === 'release' || r.rec === 'quarantine') ext['ids'] = r.ids;
+  if (r.rec === 'release' || r.rec === 'quarantine' || r.rec === 'tombstone') ext['ids'] = r.ids;
   if (r.rec === 'intent' || r.rec === 'transition') ext['kind'] = r.kind;
+  if (r.rec === 'tombstone') {
+    ext['kind'] = r.reason;
+    ext['pairs'] = r.pairs;
+  }
+  if (r.rec === 'checkpoint') {
+    ext['cp'] = {
+      cseq: r.cp.seq,
+      binding: r.cp.binding,
+      ...(r.cp.cursor !== undefined ? { cursor: r.cp.cursor } : {}),
+      complete: r.cp.complete,
+      ...(r.cp.prov !== undefined ? { prov: r.cp.prov } : {}),
+    };
+    ext['pairs'] = r.pairs;
+  }
   if (r.rec === 'transition') {
     ext['count'] = r.count;
     if (r.recovered === true) ext['recovered'] = true;
@@ -299,13 +344,50 @@ interface Folded {
    * A later snapshot (for example a deliberate re-authorization) supersedes it, so recovery never undoes a later change.
    */
   readonly pending: Map<string, 'revoked' | 'purged'>;
+  /** C4: current checkpoint per binding (the latest journaled one). */
+  readonly checkpoints: Map<string, CheckpointState>;
+  /** C4: per source, resource digest -> evidence ids currently ingested for it. */
+  readonly resources: Map<string, Map<string, Set<string>>>;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** `<resourceDigest>:<evidenceId>` entries as `[resourceDigest, evidenceId]`, or undefined when any entry is malformed. */
+function parsePairs(raw: unknown): [string, string][] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: [string, string][] = [];
+  for (const p of raw) {
+    if (typeof p !== 'string') return undefined;
+    const at = p.indexOf(':');
+    if (at < 1 || at === p.length - 1) return undefined;
+    out.push([p.slice(0, at), p.slice(at + 1)]);
+  }
+  return out;
+}
+
+/** C4: the latest journaled checkpoint of one (source, principal, scope, kind) binding. */
+export interface CheckpointState {
+  readonly binding: string;
+  readonly sourceId: string;
+  readonly seq: number;
+  /** Where the next batch resumes. Absent = from the beginning. */
+  readonly cursor?: string;
+  readonly complete: boolean;
+  /** Provenance digest of the batch that produced this checkpoint (absent for pre-digest journals). */
+  readonly provenance?: string;
+}
+
 function fold(events: readonly AuditEvent[]): Result<Folded, DiscoveryError> {
   const bad = (): Result<Folded, DiscoveryError> => err(stateError('load', 'corrupt'));
-  const f: Folded = { ledger: new EvidenceLedger(), sources: new Map(), intents: new Map(), operations: [], pending: new Map() };
+  const f: Folded = {
+    ledger: new EvidenceLedger(),
+    sources: new Map(),
+    intents: new Map(),
+    operations: [],
+    pending: new Map(),
+    checkpoints: new Map(),
+    resources: new Map(),
+  };
   const stub = (id: string, sourceId: string): Evidence => ({ id: EvidenceId(id), sourceId: SourceId(sourceId) }) as unknown as Evidence;
   for (const e of events) {
     const x = e.extensions?.[EI_STATE_NAMESPACE];
@@ -324,7 +406,45 @@ function fold(events: readonly AuditEvent[]): Result<Folded, DiscoveryError> {
       continue;
     }
     if (typeof op !== 'string') return bad();
-    if (rec === 'release' || rec === 'quarantine') {
+    if (rec === 'checkpoint') {
+      const cp = x['cp'];
+      const pairs = parsePairs(x['pairs']);
+      if (!isObj(cp) || pairs === undefined || typeof cp['cseq'] !== 'number' || typeof cp['binding'] !== 'string') return bad();
+      if (typeof cp['complete'] !== 'boolean' || (cp['cursor'] !== undefined && typeof cp['cursor'] !== 'string')) return bad();
+      if (cp['prov'] !== undefined && typeof cp['prov'] !== 'string') return bad();
+      const prior = f.checkpoints.get(cp['binding']);
+      // Checkpoints of one binding are strictly sequential: a gap, a repeat or a rewind means the journal was altered.
+      // ENFORCE:fold-checkpoint-sequence
+      if (cp['cseq'] !== (prior?.seq ?? 0) + 1 || (prior !== undefined && prior.sourceId !== sid)) return bad();
+      const next: CheckpointState = {
+        binding: cp['binding'],
+        sourceId: sid,
+        seq: cp['cseq'],
+        complete: cp['complete'],
+        ...(typeof cp['prov'] === 'string' ? { provenance: cp['prov'] } : {}),
+        ...(typeof cp['cursor'] === 'string' ? { cursor: cp['cursor'] } : prior?.cursor !== undefined ? { cursor: prior.cursor } : {}),
+      };
+      f.checkpoints.set(cp['binding'], next);
+      const bySource = f.resources.get(sid) ?? new Map<string, Set<string>>();
+      for (const [rd, ev] of pairs) bySource.set(rd, (bySource.get(rd) ?? new Set<string>()).add(ev));
+      f.resources.set(sid, bySource);
+    } else if (rec === 'tombstone') {
+      const ids = x['ids'];
+      const pairs = parsePairs(x['pairs']);
+      const kind = x['kind'];
+      if (!Array.isArray(ids) || ids.some((i) => typeof i !== 'string') || pairs === undefined) return bad();
+      if (kind !== 'deleted' && kind !== 'access_lost' && kind !== 'superseded') return bad();
+      f.ledger.purgeIds(
+        op,
+        (ids as string[]).map((i) => EvidenceId(i)),
+      );
+      const bySource = f.resources.get(sid);
+      for (const [rd, ev] of pairs) {
+        const set = bySource?.get(rd);
+        set?.delete(ev);
+        if (set !== undefined && set.size === 0) bySource?.delete(rd);
+      }
+    } else if (rec === 'release' || rec === 'quarantine') {
       const ids = x['ids'];
       if (!Array.isArray(ids) || ids.length === 0 || ids.some((i) => typeof i !== 'string')) return bad();
       const evidence = (ids as string[]).map((i) => stub(i, sid));
@@ -423,6 +543,8 @@ export class EiStateStore {
   private readonly digests = new Map<string, string>();
   private readonly revs = new Map<string, number>();
   private readonly intents = new Map<string, IntentState>();
+  private readonly checkpoints = new Map<string, CheckpointState>();
+  private readonly resources = new Map<string, Map<string, Set<string>>>();
 
   private constructor(
     private readonly store: ChainedAuditStore,
@@ -542,6 +664,9 @@ export class EiStateStore {
       }
       inventory.restoreRecords(records);
       for (const [op, i] of f.intents) this.intents.set(op, { ...i });
+      for (const [binding, cp] of f.checkpoints) this.checkpoints.set(binding, cp);
+      for (const [sid, byResource] of f.resources)
+        this.resources.set(sid, new Map([...byResource.entries()].map(([rd, evs]) => [rd, new Set(evs)])));
 
       this.status = 'starting';
       let reconciled = 0;
@@ -714,6 +839,149 @@ export class EiStateStore {
         }
       }
       return ok(undefined);
+    });
+  }
+
+  // ── C4: ingestion checkpoints ─────────────────────────────────────────────────────────────────────────────────────────
+
+  /** The latest DURABLE checkpoint of a binding, or undefined. Memory is updated only after the journal write was confirmed. */
+  checkpointOf(binding: string): CheckpointState | undefined {
+    return this.operational ? this.checkpoints.get(binding) : undefined;
+  }
+
+  /** Resource digest -> evidence ids currently ingested for a source (a copy; empty when the store is not operational). */
+  ingestedResources(sourceId: string): ReadonlyMap<string, readonly string[]> {
+    if (!this.operational) return new Map();
+    const out = new Map<string, readonly string[]>();
+    for (const [rd, evs] of this.resources.get(sourceId) ?? []) out.set(rd, [...evs].sort());
+    return out;
+  }
+
+  /**
+   * Commits ONE ingestion batch: retires superseded/deleted evidence, THEN advances the checkpoint. The checkpoint is journaled
+   * only after the retirements are, and the in-memory checkpoint moves only after the journal write is CONFIRMED, so a failed or
+   * unconfirmed write can never leave a cursor ahead of the data it covers.
+   *  - `expectedSeq` must equal the current checkpoint sequence (0 when none): a stale or concurrent writer is rejected, never merged.
+   *  - A batch that changes nothing (every pair already present, nothing to retire, same cursor) writes nothing: replays and
+   *    duplicate batches are no-ops.
+   *  - Retirement is applied to the ledger BEFORE it is journaled (the safe direction: ineligible first).
+   */
+  commitIngestion(
+    trust: AuditTrust,
+    args: {
+      operationId: string;
+      sourceId: string;
+      binding: string;
+      expectedSeq: number;
+      cursor?: string;
+      complete: boolean;
+      /** Optional 64-hex digest of the batch provenance, persisted with the checkpoint. */
+      provenance?: string;
+      upserts: readonly { readonly rd: string; readonly evidenceId: string }[];
+      retire: readonly { readonly rd: string; readonly evidenceId: string; readonly reason: RetireReason }[];
+    },
+  ): Promise<Result<{ seq: number; changed: boolean }, DiscoveryError>> {
+    return this.serialize(async () => {
+      const pairOf = (x: { rd: string; evidenceId: string }): string => `${x.rd}:${x.evidenceId}`;
+      // ENFORCE:commit-input-valid
+      if (
+        !validId(args.operationId, MAX_KEY_ID) ||
+        !validId(args.sourceId, MAX_KEY_ID) ||
+        !/^[0-9a-f]{64}$/.test(args.binding) ||
+        (args.provenance !== undefined && !/^[0-9a-f]{64}$/.test(args.provenance)) ||
+        !Number.isSafeInteger(args.expectedSeq) ||
+        args.expectedSeq < 0 ||
+        (args.cursor !== undefined && !validId(args.cursor)) ||
+        args.upserts.length > CHUNK ||
+        args.retire.length > CHUNK ||
+        ![...args.upserts, ...args.retire].every((x) => /^[0-9a-f]{24}$/.test(x.rd) && validId(x.evidenceId) && validId(pairOf(x)))
+      )
+        return err(stateError('checkpoint', 'rejected'));
+      // ENFORCE:commit-not-operational
+      if (!this.operational) return err(stateError('checkpoint', 'not_operational'));
+      const current = this.checkpoints.get(args.binding);
+      // ENFORCE:commit-stale-writer
+      if ((current?.seq ?? 0) !== args.expectedSeq) return err(stateError('checkpoint', 'rejected'));
+      const index = this.resources.get(args.sourceId);
+      const fresh = args.upserts.filter((u) => !(index?.get(u.rd)?.has(u.evidenceId) ?? false));
+      const gone = args.retire.filter((r) => index?.get(r.rd)?.has(r.evidenceId) === true);
+      const cursor = args.cursor ?? current?.cursor;
+      // ENFORCE:commit-noop-unchanged
+      if (fresh.length === 0 && gone.length === 0 && cursor === current?.cursor && args.complete === (current?.complete ?? false))
+        return ok({ seq: args.expectedSeq, changed: false });
+
+      const ledger = this.ledger;
+      const seq = args.expectedSeq + 1;
+      const bk = args.binding.slice(0, 40);
+      if (gone.length > 0) {
+        ledger?.purgeIds(
+          args.operationId,
+          gone.map((g) => EvidenceId(g.evidenceId)),
+        );
+        const byReason = new Map<RetireReason, typeof gone>();
+        for (const g of gone) byReason.set(g.reason, [...(byReason.get(g.reason) ?? []), g]);
+        let n = 0;
+        for (const reason of [...byReason.keys()].sort()) {
+          const group = byReason.get(reason) ?? [];
+          const w = await this.append(
+            trust,
+            {
+              rec: 'tombstone',
+              operationId: args.operationId,
+              sourceId: args.sourceId,
+              reason,
+              ids: [...new Set(group.map((g) => g.evidenceId))].sort(),
+              pairs: group.map(pairOf).sort(),
+              key: `tmb:${bk}:${seq}:${n}`,
+            },
+            'tombstone',
+            { poisonOnReject: true },
+          );
+          n += 1;
+          if (!w.ok) return w;
+          // The tombstone is durable: memory follows immediately so it can never disagree with the journal.
+          const bySrc = this.resources.get(args.sourceId);
+          for (const g of group) {
+            const set = bySrc?.get(g.rd);
+            set?.delete(g.evidenceId);
+            if (set !== undefined && set.size === 0) bySrc?.delete(g.rd);
+          }
+        }
+      }
+      const w = await this.append(
+        trust,
+        {
+          rec: 'checkpoint',
+          operationId: args.operationId,
+          sourceId: args.sourceId,
+          cp: {
+            seq,
+            binding: args.binding,
+            ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+            complete: args.complete,
+            ...(args.provenance !== undefined ? { prov: args.provenance } : {}),
+          },
+          pairs: fresh.map(pairOf).sort(),
+          key: `cpt:${bk}:${seq}`,
+        },
+        'checkpoint',
+        // Memory is only AHEAD of the journal when retirements were applied to the ledger first; then a rejection fails closed.
+        { poisonOnReject: gone.length > 0 },
+      );
+      if (!w.ok) return w;
+      // The journal confirmed: only now does memory move.
+      const bySource = this.resources.get(args.sourceId) ?? new Map<string, Set<string>>();
+      for (const u of fresh) bySource.set(u.rd, (bySource.get(u.rd) ?? new Set<string>()).add(u.evidenceId));
+      this.resources.set(args.sourceId, bySource);
+      this.checkpoints.set(args.binding, {
+        binding: args.binding,
+        sourceId: args.sourceId,
+        seq,
+        complete: args.complete,
+        ...(args.provenance !== undefined ? { provenance: args.provenance } : {}),
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      return ok({ seq, changed: true });
     });
   }
 
@@ -896,6 +1164,11 @@ export class EiStateStore {
       await this.store.close();
     });
   }
+}
+
+/** C4: true when a provider cursor can be persisted in the journal (the closed `id` contract; the global secret filter applies on write). */
+export function isPersistableCursor(cursor: unknown): cursor is string {
+  return validId(cursor, 200);
 }
 
 /** True when `id` is a source/operation id the journal can key. Used to refuse unrepresentable ids BEFORE they enter any state. */

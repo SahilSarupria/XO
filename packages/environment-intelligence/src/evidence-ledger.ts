@@ -79,6 +79,22 @@ export class EvidenceLedger implements EvidenceEligibility {
     }
   }
 
+  /**
+   * C4: retires SPECIFIC evidence ids (deleted or inaccessible at the source, or superseded by newer content) by moving them to
+   * `purged`. Only ids this ledger already holds are touched (an unknown id is never created), a `purged` id is left as is, and
+   * the result is ineligible. A later NEW authorized, audited release of the same id legitimately makes it eligible again.
+   */
+  purgeIds(operationId: string, ids: readonly EvidenceId[]): readonly EvidenceId[] {
+    const affected: EvidenceId[] = [];
+    for (const id of ids) {
+      const entry = this.entries.get(id);
+      if (entry === undefined || SEVERITY[entry.state] >= SEVERITY.purged) continue;
+      this.entries.set(id, { state: 'purged', sourceId: entry.sourceId, operationId });
+      affected.push(id);
+    }
+    return affected.sort();
+  }
+
   /** Revokes every non-terminal item of a source. Returns the ids affected. */
   revokeSource(sourceId: SourceId, operationId: string): readonly EvidenceId[] {
     return this.transition(sourceId, operationId, 'revoked');

@@ -112,7 +112,10 @@ function trustOf(ctx: ConnectorContext): AuditTrust | undefined {
 const now = (ctx: ConnectorContext): string => ctx.clock.now().toISOString();
 
 export interface AuditedOperationInfo {
-  readonly operation: Extract<AuditOperation, 'discover' | 'acquire_content' | 'incremental_sync' | 'revoke_evidence' | 'purge_evidence'>;
+  readonly operation: Extract<
+    AuditOperation,
+    'discover' | 'acquire_content' | 'incremental_sync' | 'revoke_evidence' | 'purge_evidence' | 'ingest_source'
+  >;
   readonly connectorId: string;
   readonly connectorVersion: string;
   readonly permission: string;
