@@ -1,3 +1,4 @@
+import { verifyBundle, type IntegrityOptions } from './integrity.js';
 import type { ProviderToolDefinition } from '@xo/ai-core';
 import { Ed25519Signer, Sha256Hasher } from '@xo/crypto';
 import type { PackageBundle } from '@xo/package-sdk';
@@ -66,6 +67,10 @@ export interface LayerOptions {
   readonly host: { readonly family: ModelFamily; readonly capabilities: readonly HostCapability[] };
   readonly signing?: { readonly privateKeyPem: string };
   readonly now?: () => Date;
+  /** See {@link IntegrityOptions}. Default `enforce`: a tampered or unsealed package is refused before anything is read from it. */
+  readonly integrity?: IntegrityOptions['integrity'];
+  /** Operator trust policy; when set, the package must verify against it (signatures, publisher, roles). */
+  readonly trust?: IntegrityOptions['trust'];
 }
 
 interface PromptStrategies {
@@ -124,6 +129,11 @@ function canonical(value: unknown): string {
  * components are *skipped and recorded* in the load receipt, never errored.
  */
 export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptions): CapabilityLayer {
+  verifyBundle(bundle, {
+    ...(options.integrity !== undefined ? { integrity: options.integrity } : {}),
+    ...(options.trust !== undefined ? { trust: options.trust } : {}),
+    ...(options.now !== undefined ? { now: options.now } : {}),
+  });
   const manifest = bundle.manifest;
   const entry =
     manifest.compatibility.modelFamilies.find((f) => f.family === options.host.family) ??
