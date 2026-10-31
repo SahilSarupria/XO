@@ -51,3 +51,21 @@ describe('operator provider — gemini', () => {
     assert.ok(!resolveOperatorProvider({ ...base, XO_PROVIDER_BASE_URL: 'https://evil.example.com' }).ok);
   });
 });
+
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+describe('xo run uses the operator-config model', () => {
+  const bin = fileURLToPath(new URL('../bin/xo.js', import.meta.url));
+  for (const flag of ['--api-key', '--base-url', '--endpoint', '--api-version']) {
+    it(`refuses ${flag} and points at the environment`, () => {
+      const r = spawnSync(process.execPath, [bin, 'run', 'cap', '--input', 'x', '--store', '/nonexistent', flag, 'v'], {
+        encoding: 'utf8',
+        env: { PATH: process.env['PATH'] ?? '' },
+      });
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, new RegExp(`${flag} .*no longer accepted`));
+      assert.match(r.stderr, /XO_PROVIDER/);
+    });
+  }
+});
