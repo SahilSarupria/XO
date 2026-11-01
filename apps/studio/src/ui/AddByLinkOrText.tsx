@@ -4,6 +4,7 @@ import type { ApiProblem } from '../platform/client';
 import type { WorkspaceRole } from '../platform/wire';
 import type { AddResult } from './useDocuments';
 import { Button, ProblemNotice } from './primitives';
+import { Icon } from './icons';
 
 /**
  * Add a document by link or pasted text. The role check only hides/disables the controls as a hint: the platform still
@@ -36,13 +37,15 @@ export function AddByLinkOrText(props: {
 
   return (
     <div className="add-link-text">
-      <div role="group" aria-label="Add by">
-        <Button variant="quiet" aria-pressed={mode === 'link'} onClick={() => setMode('link')}>
+      <div className="alt-tabs" role="group" aria-label="Add by">
+        <button type="button" aria-pressed={mode === 'link'} onClick={() => setMode('link')}>
+          <Icon name="link" size={15} />
           From a link
-        </Button>
-        <Button variant="quiet" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>
+        </button>
+        <button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>
+          <Icon name="text" size={15} />
           Paste text
-        </Button>
+        </button>
       </div>
       {mode === 'link' ? (
         <label>
@@ -63,7 +66,7 @@ export function AddByLinkOrText(props: {
           </label>
           <label>
             Text
-            <textarea rows={5} value={text} disabled={!allowed || busy} onChange={(e) => setText(e.target.value)} />
+            <textarea rows={4} value={text} disabled={!allowed || busy} onChange={(e) => setText(e.target.value)} />
           </label>
         </>
       )}

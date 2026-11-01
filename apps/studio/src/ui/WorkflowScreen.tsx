@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { describeRun, workflowTitle } from '../domain/work';
 import { workflowStatus } from '../domain/graph';
 import type { Capability, Execution, Workflow, WorkflowRun } from '../platform/wire';
@@ -7,13 +7,15 @@ import { ActionNoticeView } from './actions';
 import { can } from '../domain/access';
 import type { WorkspaceRole } from '../platform/wire';
 import { Badge, Button, EmptyState } from './primitives';
-import { DraftCanvas, DraftInspector, DraftPalette } from './DraftEditor';
+import { DraftInspector, DraftPalette } from './DraftEditor';
+import { FlowCanvas, type InsertTarget, type NodeBadge } from './FlowCanvas';
 import { useWorkflowDraft } from './useWorkflowDraft';
 import { WorkflowDraftPanel } from './WorkflowDraftPanel';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
 import { ExecutionsPane } from './ExecutionsPane';
 import '../styles/graph.css';
+import '../styles/flow.css';
 
 export type WorkflowTab = 'editor' | 'executions' | 'settings';
 
@@ -83,8 +85,29 @@ export function WorkflowEditor(props: {
     activeLabel: active === undefined ? undefined : describeRun(active).label,
   });
   const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [zoom, setZoom] = useState(1);
+  const [panel, setPanel] = useState<'step' | 'draft'>('step');
+  const [target, setTarget] = useState<InsertTarget | undefined>();
   const selected = draft.nodes.find((n) => n.id === selectedId) ?? draft.nodes[0];
+  const mayEdit = can(props.role, 'author');
+  const select = (id: string) => {
+    setSelectedId(id);
+    setPanel('step');
+  };
+  // Saving, and anything the platform says about it, is shown in the Draft pane: bring it forward so it is not missed.
+  useEffect(() => {
+    if (draft.note !== undefined || draft.problem !== undefined) setPanel('draft');
+  }, [draft.note, draft.problem]);
+  const problemCount = (draft.analysis?.errors.length ?? 0) + (draft.analysis?.blockers.length ?? 0);
+  // Approval is the one thing worth seeing at a glance: the platform refuses to run a step that is not approved.
+  const badges = useMemo(() => {
+    const m = new Map<string, NodeBadge>();
+    for (const n of draft.nodes) {
+      if (n.kind !== 'capability') continue;
+      const cap = props.caps?.find((c) => c.capabilityId === n.config['capabilityId']);
+      if (cap !== undefined && !cap.approved) m.set(n.id, { text: 'Not approved', tone: 'warning' });
+    }
+    return m;
+  }, [draft.nodes, props.caps]);
   const xo = props.xos.find((x) => x.id === w.compilationId);
 
   const actions = (
@@ -142,68 +165,77 @@ export function WorkflowEditor(props: {
         <WorkflowSettings workflow={w} workflows={props.workflows} onSelectWorkflow={props.onSelectWorkflow} builder={mode === 'builder'} />
       ) : (
         <>
-          <div className="wf-editor">
+          <div
+            className="wf-editor"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && target !== undefined) setTarget(undefined);
+            }}
+          >
             <DraftPalette
               caps={props.caps}
               workflow={w}
               draft={draft}
               role={props.role}
               selectedId={selected?.id}
-              onAdded={setSelectedId}
+              onAdded={select}
+              target={target}
+              onClearTarget={() => setTarget(undefined)}
             />
             <section className="wf-canvas" aria-label="Workflow graph">
               {draft.nodes.length === 0 ? (
                 <EmptyState title="This draft has no steps">Add a start and a capability from the palette.</EmptyState>
               ) : (
-                <DraftCanvas draft={draft} selectedId={selected?.id} onSelect={setSelectedId} zoom={zoom} />
+                <FlowCanvas
+                  draft={draft}
+                  selectedId={selected?.id}
+                  onSelect={select}
+                  canEdit={mayEdit}
+                  badges={badges}
+                  insertTarget={target}
+                  onInsert={setTarget}
+                />
               )}
-              <div className="wf-zoom">
-                <button
-                  type="button"
-                  className="wf-zbtn"
-                  aria-label="Zoom in"
-                  onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.2).toFixed(1)))}
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  className="wf-zbtn"
-                  aria-label="Zoom out"
-                  onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.2).toFixed(1)))}
-                >
-                  −
-                </button>
-                <button type="button" className="wf-zbtn wf-fit" onClick={() => setZoom(1)}>
-                  Fit
-                </button>
-                <span className="wf-count">
-                  {draft.nodes.length} {draft.nodes.length === 1 ? 'node' : 'nodes'}
-                </span>
-                <span className="wf-count">{draft.dirty ? 'Unsaved changes' : 'Saved'}</span>
-              </div>
             </section>
-            <DraftInspector
-              draft={draft}
-              role={props.role}
-              selectedId={selected?.id}
-              caps={props.caps}
-              executions={props.executions}
-              workflow={w}
-              xoLabel={xo?.label}
-              builder={mode === 'builder'}
-              onSelect={setSelectedId}
-            />
+            <div className="wf-side">
+              <div className="wf-side-tabs" role="tablist" aria-label="Side panel">
+                <button type="button" role="tab" aria-selected={panel === 'step'} onClick={() => setPanel('step')}>
+                  Step
+                </button>
+                <button type="button" role="tab" aria-selected={panel === 'draft'} onClick={() => setPanel('draft')}>
+                  Draft
+                  {problemCount > 0 ? (
+                    <span className="wf-tab-count" aria-label={`${problemCount} ${problemCount === 1 ? 'problem' : 'problems'}`}>
+                      {problemCount}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+              <div className="wf-pane" data-active={panel === 'step'}>
+                <DraftInspector
+                  draft={draft}
+                  role={props.role}
+                  selectedId={selected?.id}
+                  caps={props.caps}
+                  executions={props.executions}
+                  workflow={w}
+                  xoLabel={xo?.label}
+                  builder={mode === 'builder'}
+                  onSelect={(id) => setSelectedId(id)}
+                />
+              </div>
+              <div className="wf-pane" data-active={panel === 'draft'}>
+                <WorkflowDraftPanel
+                  draft={draft}
+                  role={props.role}
+                  workspaceId={props.workspaceId}
+                  caps={props.caps}
+                  onChanged={props.onChanged}
+                  goToTasks={props.goToTasks}
+                  goToActivity={props.goToActivity}
+                />
+              </div>
+            </div>
           </div>
-          <WorkflowDraftPanel
-            draft={draft}
-            role={props.role}
-            workspaceId={props.workspaceId}
-            caps={props.caps}
-            onChanged={props.onChanged}
-            goToTasks={props.goToTasks}
-            goToActivity={props.goToActivity}
-          />
         </>
       )}
     </div>

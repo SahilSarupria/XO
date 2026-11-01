@@ -38,7 +38,7 @@ describe('Workflow graph', () => {
     const user = await analysed(api);
     const canvas = await openGraph(user);
     const nodes = within(within(canvas).getByRole('list', { name: /steps in the draft/i })).getAllByRole('button');
-    expect(nodes.map((n) => n.querySelector('.wf-node-name')?.textContent)).toEqual([
+    expect(nodes.map((n) => n.querySelector('.nf-node-name')?.textContent)).toEqual([
       'Start',
       'Record before payment',
       'Review not covered',
@@ -132,15 +132,31 @@ describe('Workflow graph', () => {
     expect(screen.getByRole('region', { name: 'Workflow graph' })).toBeInTheDocument();
   });
 
-  it('zoom controls resize the drawing and Fit restores it', async () => {
+  it('zoom controls rescale the drawing and Fit restores it', async () => {
     const user = await analysed(new FakeXo());
     const canvas = await openGraph(user);
-    const stage = () => canvas.querySelector('.wf-stage') as HTMLElement;
-    const base = stage().style.width;
+    const zoom = () => (canvas.querySelector('.nf-world') as HTMLElement).dataset['zoom'];
+    const base = zoom();
     await user.click(within(canvas).getByRole('button', { name: 'Zoom in' }));
-    expect(stage().style.width).not.toBe(base);
+    expect(zoom()).not.toBe(base);
+    await user.click(within(canvas).getByRole('button', { name: 'Zoom out' }));
+    await user.click(within(canvas).getByRole('button', { name: 'Zoom out' }));
+    expect(Number(zoom())).toBeLessThan(Number(base));
     await user.click(within(canvas).getByRole('button', { name: 'Fit' }));
-    expect(stage().style.width).toBe(base);
+    expect(zoom()).toBe(base);
+  });
+
+  it('keyboard shortcuts zoom and fit while focus is on the canvas', async () => {
+    const user = await analysed(new FakeXo());
+    const canvas = await openGraph(user);
+    const zoom = () => (canvas.querySelector('.nf-world') as HTMLElement).dataset['zoom'];
+    const base = zoom();
+    const first = within(within(canvas).getByRole('list', { name: /steps in the draft/i })).getAllByRole('button')[0]!;
+    first.focus();
+    await user.keyboard('+');
+    expect(zoom()).not.toBe(base);
+    await user.keyboard('0');
+    expect(zoom()).toBe(base);
   });
 
   it('the breadcrumb returns to the Workflows list', async () => {

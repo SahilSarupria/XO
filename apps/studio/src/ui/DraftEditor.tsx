@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { can, whyNot } from '../domain/access';
 import {
   branchSide,
   branchTargets,
   canMove,
   insertNode,
+  insertOnEdge,
   KIND_LABEL,
-  layoutDraft,
   moveNode,
-  NODE_H,
-  NODE_W,
   nextNodeId,
   removeNode,
   setBranchTarget,
@@ -23,6 +21,7 @@ import type { Capability, Execution, Workflow, WorkspaceRole } from '../platform
 import type { DraftNode, NodeKindSupport } from '../platform/wire-studio';
 import { clip, MAX_NODE_LABEL } from '../domain/workflowDraft';
 import { Badge, Button } from './primitives';
+import type { InsertTarget } from './FlowCanvas';
 import type { DraftController } from './useWorkflowDraft';
 
 const variantOf = (kinds: readonly NodeKindSupport[] | undefined, kind: string) => kinds?.find((k) => k.kind === kind);
@@ -38,17 +37,29 @@ export function DraftPalette(props: {
   role: WorkspaceRole | undefined;
   selectedId: string | undefined;
   onAdded: (id: string) => void;
+  /** Set when the person pressed a "+" on the canvas: the next node goes exactly there. */
+  target?: InsertTarget | undefined;
+  onClearTarget?: (() => void) | undefined;
 }) {
   const [q, setQ] = useState('');
+  const search = useRef<HTMLInputElement>(null);
   const d = props.draft;
+  const target = props.target !== undefined && d.nodes.some((n) => n.id === props.target?.from) ? props.target : undefined;
+  useEffect(() => {
+    if (target !== undefined) search.current?.focus();
+  }, [target?.from, target?.when]); // eslint-disable-line react-hooks/exhaustive-deps
   const match = (s: string) => s.toLowerCase().includes(q.toLowerCase());
   const mayEdit = can(props.role, 'author');
-  const where = whereAdd({ nodes: d.nodes, edges: d.edges }, props.selectedId);
+  const where = target !== undefined ? { ok: true as const } : whereAdd({ nodes: d.nodes, edges: d.edges }, props.selectedId);
   const blocked = !mayEdit ? whyNot(props.role, 'author', 'editing workflows') : !where.ok ? where.reason : undefined;
   const inFlow = new Set(d.nodes.map((n) => String(n.config['capabilityId'] ?? '')));
   const add = (node: Omit<DraftNode, 'id'>) => {
     const id = nextNodeId(d.nodes);
-    d.edit((g) => insertNode(g, { id, ...node } as DraftNode, props.selectedId));
+    const made = { id, ...node } as DraftNode;
+    // A start always goes at the head, wherever the "+" was; everything else goes where the person pointed.
+    if (target !== undefined && node.kind !== 'trigger') d.edit((g) => insertOnEdge(g, made, target.from, target.when));
+    else d.edit((g) => insertNode(g, made, props.selectedId));
+    props.onClearTarget?.();
     props.onAdded(id);
   };
   const hasStart = d.nodes.some((n) => n.kind === 'trigger');
@@ -77,7 +88,25 @@ export function DraftPalette(props: {
       <label className="visually-hidden" htmlFor="wf-search">
         Search nodes
       </label>
-      <input id="wf-search" className="searchbox" placeholder="Search nodes…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <input
+        id="wf-search"
+        ref={search}
+        className="searchbox"
+        placeholder="Search nodes…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {target !== undefined ? (
+        <div className="wf-target" role="status">
+          <span>
+            Adding after <strong>{tidyName(d.nodes.find((n) => n.id === target.from)?.label ?? target.from, 28)}</strong>
+            {target.when !== undefined ? ` (${target.when === 'gte' ? 'at or above' : 'below'})` : ''}
+          </span>
+          <button type="button" className="chat-link" onClick={props.onClearTarget}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
       {d.kinds === undefined ? <p className="muted small">Asking the platform what it can run…</p> : null}
       {blocked !== undefined ? <p className="muted small">{blocked}</p> : null}
 
@@ -164,74 +193,6 @@ export function DraftPalette(props: {
         </>
       ) : null}
     </aside>
-  );
-}
-
-/** The draft drawn as the platform will read it, with each node's own problems marked. */
-export function DraftCanvas(props: {
-  draft: DraftController;
-  selectedId: string | undefined;
-  onSelect: (id: string) => void;
-  zoom: number;
-}) {
-  const d = props.draft;
-  const layout = layoutDraft({ nodes: d.nodes, edges: d.edges });
-  return (
-    <div className="wf-scroll">
-      <div className="wf-stage" style={{ width: layout.width * props.zoom, height: layout.height * props.zoom }}>
-        <div
-          style={{
-            width: layout.width,
-            height: layout.height,
-            transform: `scale(${props.zoom})`,
-            transformOrigin: '0 0',
-            position: 'relative',
-          }}
-        >
-          <svg className="wf-edges" width={layout.width} height={layout.height} aria-hidden="true">
-            {layout.edges.map((e) => (
-              <g key={e.id}>
-                <path d={e.path} />
-                {e.when !== undefined ? (
-                  <text className="wf-edge-label" x={e.labelX} y={e.labelY}>
-                    {e.when === 'gte' ? 'at or above' : 'below'}
-                  </text>
-                ) : null}
-              </g>
-            ))}
-          </svg>
-          <ol className="wf-nodes" aria-label="Steps in the draft">
-            {layout.nodes.map(({ node, x, y }) => {
-              const issues = d.issuesByNode.get(node.id) ?? [];
-              return (
-                <li key={node.id} style={{ left: x, top: y, width: NODE_W, height: NODE_H }}>
-                  <button
-                    type="button"
-                    className="wf-node"
-                    data-kind={node.kind === 'human_review' ? 'human' : node.kind}
-                    data-issues={issues.length > 0}
-                    aria-pressed={props.selectedId === node.id}
-                    aria-label={`${node.label ?? KIND_LABEL[node.kind]} (${KIND_LABEL[node.kind]})${issues.length > 0 ? `, ${issues.length} ${issues.length === 1 ? 'problem' : 'problems'}` : ''}`}
-                    onClick={() => props.onSelect(node.id)}
-                  >
-                    <span className="wf-dot" aria-hidden="true" />
-                    <span className="wf-node-name" title={node.label}>
-                      {tidyName(node.label ?? KIND_LABEL[node.kind], 40)}
-                    </span>
-                    <span className="wf-node-sub">{KIND_LABEL[node.kind]}</span>
-                    {issues.length > 0 ? (
-                      <span className="wf-node-issue" aria-hidden="true">
-                        ● {issues.length}
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      </div>
-    </div>
   );
 }
 

@@ -25,25 +25,29 @@ export function useDocuments(props: { workspaceId: string; onChanged: () => void
   const [analysing, setAnalysing] = useState<string | undefined>();
   const [analysisFailure, setAnalysisFailure] = useState<AnalysisFailure | undefined>();
 
-  async function onFiles(files: FileList | null) {
-    const file = files?.[0];
-    if (file === undefined) return;
+  /** One or many files (a picker or a drop). Each is checked and uploaded in turn; one that fails does not stop the rest, and the first problem is the one shown. */
+  async function onFiles(files: FileList | readonly File[] | null) {
+    const list = files === null ? [] : Array.from(files);
+    if (list.length === 0) return;
     setUploadProblem(undefined);
-    const ext = file.name.includes('.') ? `.${file.name.split('.').pop()!.toLowerCase()}` : '';
-    // A convenience check only; the API enforces the same allowlist authoritatively.
-    if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(ext)) {
-      setUploadProblem(
-        `XO can read: ${SUPPORTED_UPLOAD_EXTENSIONS.join(', ')}. “${file.name}” is not one of those.${ext === '.doc' ? ' Older .doc files are not supported: save it as .docx or PDF first.' : ''}`,
-      );
-      if (fileInput.current) fileInput.current.value = '';
-      return;
-    }
     setUploading(true);
-    const r = await client.uploadSource(props.workspaceId, file);
+    let first: ApiProblem | string | undefined;
+    let added = 0;
+    for (const file of list) {
+      const ext = file.name.includes('.') ? `.${file.name.split('.').pop()!.toLowerCase()}` : '';
+      // A convenience check only; the API enforces the same allowlist authoritatively.
+      if (!SUPPORTED_UPLOAD_EXTENSIONS.includes(ext)) {
+        first ??= `XO can read: ${SUPPORTED_UPLOAD_EXTENSIONS.join(', ')}. “${file.name}” is not one of those.${ext === '.doc' ? ' Older .doc files are not supported: save it as .docx or PDF first.' : ''}`;
+        continue;
+      }
+      const r = await client.uploadSource(props.workspaceId, file);
+      if (r.ok) added++;
+      else first ??= r.problem;
+    }
     setUploading(false);
     if (fileInput.current) fileInput.current.value = '';
-    if (r.ok) props.onChanged();
-    else setUploadProblem(r.problem);
+    if (first !== undefined) setUploadProblem(first);
+    if (added > 0) props.onChanged();
   }
 
   async function analyse(source: Source) {

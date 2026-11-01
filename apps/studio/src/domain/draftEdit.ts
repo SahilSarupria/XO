@@ -253,3 +253,31 @@ export const KIND_LABEL: Readonly<Record<DraftNodeKind, string>> = {
   human_review: 'Person reviews',
   action: 'Action',
 };
+
+// ------------------------------------------------------------------ insert at a connection
+/**
+ * Inserts `node` on the connection that leaves `from` (on the `when` side, for a branch). If that connection already
+ * leads somewhere, the node is spliced in between; if it leads nowhere yet, the node becomes its target. A new branch
+ * keeps the old successor on its "at or above" side, as `insertNode` does. Returns the graph unchanged if `from` does
+ * not exist or if a non-branch step is asked to split. Whether the result is valid is the platform's call, as always.
+ */
+export function insertOnEdge(g: DraftGraph, node: DraftNode, from: string, when?: 'gte' | 'lt'): DraftGraph {
+  const source = byId(g, from);
+  if (source === undefined) return g;
+  if (source.kind === 'branch' && when === undefined) return g;
+  if (source.kind !== 'branch' && when !== undefined) return g;
+  const existing = outOf(g, from).find((e) => e.when === when);
+  const out = when !== undefined ? { from, when } : { from };
+  if (existing === undefined) return { nodes: [...g.nodes, node], edges: [...g.edges, { ...out, to: node.id }] };
+  const keep = node.kind === 'branch' ? { from: node.id, to: existing.to, when: 'gte' as const } : { from: node.id, to: existing.to };
+  return { nodes: [...g.nodes, node], edges: [...without(g.edges, [existing]), { ...out, to: node.id }, keep] };
+}
+
+/** The sides of a branch (or the single output of any other step) that currently lead nowhere. Used to draw an "add" stub there. */
+export function openOutputs(g: DraftGraph, id: string): readonly ('gte' | 'lt' | undefined)[] {
+  const n = byId(g, id);
+  if (n === undefined) return [];
+  const have = new Set(outOf(g, id).map((e) => e.when));
+  if (n.kind === 'branch') return (['gte', 'lt'] as const).filter((s) => !have.has(s));
+  return have.size === 0 ? [undefined] : [];
+}

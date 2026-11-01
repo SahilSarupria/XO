@@ -17,7 +17,20 @@ export type IconName =
   | 'check'
   | 'user'
   | 'file'
-  | 'play';
+  | 'play'
+  | 'bolt'
+  | 'split'
+  | 'plus'
+  | 'upload'
+  | 'link'
+  | 'text'
+  | 'search'
+  | 'minus'
+  | 'fit'
+  | 'image'
+  | 'table'
+  | 'code'
+  | 'x';
 
 const PATHS: Record<IconName, string> = {
   workspaces: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
@@ -39,6 +52,19 @@ const PATHS: Record<IconName, string> = {
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21a8 8 0 0 1 16 0',
   file: 'M6 3h9l4 4v14H6zM14 3v5h5',
   play: 'M7 4l13 8-13 8z',
+  bolt: 'M13 3L5 13h6l-1 8 8-10h-6z',
+  split: 'M6 4v6a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v2M18 4v6M6 4h.01M18 4h.01M18 20h.01',
+  plus: 'M12 5v14M5 12h14',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 16v4h16v-4',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  text: 'M5 6h14M5 11h14M5 16h9',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14M20 20l-4-4',
+  minus: 'M5 12h14',
+  fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01',
+  table: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
+  code: 'M9 8l-5 4 5 4M15 8l5 4-5 4',
+  x: 'M6 6l12 12M18 6L6 18',
 };
 
 /** Decorative only: every use sits next to visible text, so it is hidden from assistive technology. */
