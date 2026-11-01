@@ -27,7 +27,8 @@
     "@xo/crypto": "0.1.0",
     "@xo/package-sdk": "0.1.0",
     "@xo/types": "0.1.0",
-    "@xo/automation": "0.1.0"
+    "@xo/automation": "0.1.0",
+    "@xo/workflow-ir": "0.1.0"
   },
   "devDependencies": {
     "tsx": "^4.16.0"

@@ -21,6 +21,7 @@ const COMPONENT_KINDS: readonly ComponentKind[] = [
   'finetune',
   'safety_rules',
   'benchmark_suite',
+  'workflows',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {

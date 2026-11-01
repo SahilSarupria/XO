@@ -5,7 +5,7 @@ import type { CompatibilityResolution, HostProfile } from '../types.js';
  * Maps a component kind to the compatibility level it contributes, per
  * SPECIFICATION.md §2.2's table. `knowledge_graph`/`long_term_memory_graph`
  * are L1, `reasoning_traces`/`case_library` are L2, `decision_trees` is L3,
- * `lora`/`finetune` are L4. `prompt_strategies` and `safety_rules` /
+ * `workflows` are L3, `lora`/`finetune` are L4. `prompt_strategies` and `safety_rules` /
  * `benchmark_suite` don't gate a level on their own (every level already
  * includes L0's prompt-only baseline).
  */
@@ -15,6 +15,9 @@ const COMPONENT_LEVEL: Readonly<Partial<Record<ComponentKind, CompatibilityResol
   reasoning_traces: 'L2',
   case_library: 'L2',
   decision_trees: 'L3',
+  // Workflows reach L3: their decide steps are decision-tree/rule evaluations a host runs as deterministic tools. A host
+  // that only has a prompt-only or retrieval level skips the component (and never runs a workflow with part of it missing).
+  workflows: 'L3',
   lora: 'L4',
   finetune: 'L4',
 };

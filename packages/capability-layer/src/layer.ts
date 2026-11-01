@@ -65,6 +65,11 @@ export interface CapabilityLayer {
   readonly requiresEvidence: boolean;
   /** The decision trees this layer exposes as tools (empty when the host lacks tool use). */
   decisionTrees(): readonly DecisionTree[];
+  /**
+   * The integrity-verified bytes of a component this layer consumed (undefined when absent or skipped). This is how a
+   * workflow runner obtains `workflows/workflows.json` without re-implementing bundle verification.
+   */
+  componentBytes(kind: ComponentKind): Uint8Array | undefined;
 }
 
 export interface LayerOptions {
@@ -172,6 +177,8 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
   });
   const useStrategies = decide('prompt_strategies');
   const useSafety = decide('safety_rules');
+  // Workflows are data a workflow runner executes (docs/WORKFLOW_IR.md); the layer only verifies and hands over the bytes.
+  const useWorkflows = decide('workflows');
   // lora / finetune: never consumed in this build (L4 not implemented)
   for (const k of ['lora', 'finetune'] as const)
     if (present.includes(k)) skipped.push({ kind: k, reason: 'weight-level adaptation (L4) is not implemented by this host binding' });
@@ -212,7 +219,7 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
   const safetyJson = (useSafety ? json(component(bundle, 'safety_rules')) : undefined) as { rules?: SafetyRule[] } | undefined;
   const safetyRules: SafetyRule[] = Array.isArray(safetyJson?.rules) ? (safetyJson?.rules as SafetyRule[]) : [];
 
-  const level: CompatibilityLevel = trees.length > 0 ? 'L3' : traceDocs.length > 0 ? 'L2' : index.size > 0 ? 'L1' : 'L0';
+  const level: CompatibilityLevel = trees.length > 0 || useWorkflows ? 'L3' : traceDocs.length > 0 ? 'L2' : index.size > 0 ? 'L1' : 'L0';
   const loadedAt = (options.now ?? (() => new Date()))().toISOString();
 
   return {
@@ -334,6 +341,7 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
 
     requiresEvidence: options.requireEvidence === true,
     decisionTrees: () => trees,
+    componentBytes: (kind) => (consumed.includes(kind) ? component(bundle, kind) : undefined),
 
     emitLoadReceipt(): LoadReceipt {
       const body = {

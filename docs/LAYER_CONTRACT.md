@@ -40,6 +40,7 @@ Guarantees:
 | `decision_trees`    | `reasoning/decision_trees.json` | `{ trees: [{ id, description, inputs[], start, nodes{} }] }`; node types `branch`, `compute`, `leaf`            |
 | `reasoning_traces`  | `reasoning/traces.jsonl`        | one JSON object per line: `{ id, task_type, scenario, steps[], conclusion, confidence, provenance }`            |
 | `prompt_strategies` | `prompting/strategies.json`     | `{ persona, fragments: [{ id?, text, requires? }] }`                                                            |
+| `workflows`         | `workflows/workflows.json`      | Workflow IR 1.0, see `docs/WORKFLOW_IR.md`. The layer verifies and hands over the bytes (`componentBytes`); `@xo/workflow-ir` parses them. Counts as L3 |
 | `safety_rules`      | `safety/rules.json`             | `{ rules: [{ id, applies_to: 'input'\|'output', when, action: 'block'\|'warn', message?, override_output? }] }` |
 
 Retrieval semantics: BM25 with multi-query reciprocal-rank fusion; `pinned: true` nodes are always returned first; node `kind` is a prior

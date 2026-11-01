@@ -4,7 +4,9 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
     {
       "path": "../types"
@@ -29,6 +31,9 @@
     },
     {
       "path": "../automation"
+    },
+    {
+      "path": "../workflow-ir"
     }
   ]
 }

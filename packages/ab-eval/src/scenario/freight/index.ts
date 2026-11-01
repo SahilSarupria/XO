@@ -7,3 +7,4 @@ export * from './generate.js';
 export * from './gold-xo.js';
 export * from './automation.js';
 export * from './glossary.js';
+export * from './workflow-ir.js';

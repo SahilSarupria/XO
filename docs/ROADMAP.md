@@ -43,3 +43,17 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 - [x] Glossary lookup + reconciliation before the model's value is trusted; high-risk override, conflict escalation, model-assisted flag; compiler extracts class definitions from a document and reports what it does and does not define
 - [~] Freight: the manual defines no goods for any class, so coverage rests on an operator glossary (upper bound on generated claims). Tested offline on seeds 1234, 2468, 8080, 13579, 777777.
 - [ ] Live effect on the seed-9001 failure cluster: unmeasured. Run `--arms xo_tools,xo_tools_classified` later.
+
+## G. Workflow automation (branch feat/detachable-layer-b-f)
+
+All items below are **unmeasured**; the only measured results remain section A (freight claims only).
+
+- [x] A. Workflow IR 1.0: types, published JSON Schema, fail-closed validator, graph/state semantics, negotiation, pure decide evaluator, conformance vectors, `workflows` package component (manifest, Merkle, layer, L3), freight reference workflow (`docs/WORKFLOW_IR.md`)
+- [ ] A (remaining): `xo workflow validate` CLI entry; compiler emission of workflows
+- [ ] B. Connectors (HTTP, MCP, file, SMTP), grants, sandboxes, vault
+- [ ] C. Durable runs, retries, circuit breakers, compensation runner, on-disk ledger segments
+- [ ] D. Approvals (API, roles, signatures)
+- [ ] E. Determinization (compile-time analysis exists only as the declaration-based `determinismReport`), structured-first routing, promotion loop, shadow mode, authority limits
+- [ ] F. Local/server runners, lease protocol, ledger sync, `@xo/sdk`
+- [ ] G. Package lifecycle commands, audit export, `xo explain`
+- [ ] H. Compiler quality, efficiency, provider parity tests, `docs/ACCEPTANCE_CRITERIA.md`

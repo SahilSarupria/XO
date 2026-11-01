@@ -1,0 +1,35 @@
+{
+  "name": "@xo/workflow-ir",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workflow IR 1.0: the portable, signed, host-independent execution contract for XO workflows. Types, published JSON Schema, fail-closed validator, graph/state semantics, compatibility negotiation and a pure evaluator for deterministic decide steps. Contains no I/O and no host-specific code.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/workflow-1.0.schema.json": "./schema/workflow-1.0.schema.json"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "conformance"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "schema:emit": "node --import tsx scripts/emit-schema.ts",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/capability-layer": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

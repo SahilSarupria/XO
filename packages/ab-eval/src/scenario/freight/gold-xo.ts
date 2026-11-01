@@ -273,6 +273,8 @@ export interface GoldXoOptions {
   readonly handbook?: number;
   /** Attach the operator's goods→class glossary to commodity_class (deterministic classification before the model's value is trusted). */
   readonly classification?: boolean;
+  /** When given, ships as the signed, hash-covered `workflows` component (see workflow-ir.ts). */
+  readonly workflows?: unknown;
 }
 
 export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
@@ -347,8 +349,16 @@ export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
       'Seeded, stratified claims; ground truth from an independent oracle (see packages/ab-eval). Items are never exposed to the model by the capability layer.',
     items: tasks.map((t) => ({ id: t.id, category: t.stratum, input: t.narrative, expected: t.expected, factsUsed: t.factsUsed })),
   };
-  const all = ['knowledge_graph', 'decision_trees', 'reasoning_traces', 'prompt_strategies', 'safety_rules', 'benchmark_suite'] as const;
-  const built = ManifestBuilder.create()
+  const all = [
+    'knowledge_graph',
+    'decision_trees',
+    'reasoning_traces',
+    'prompt_strategies',
+    'safety_rules',
+    'benchmark_suite',
+    ...(options.workflows !== undefined ? (['workflows'] as const) : []),
+  ] as const;
+  const built0 = ManifestBuilder.create()
     .setIdentity({
       formatVersion: '1.0',
       name: 'halvorsen-freight-claims-desk',
@@ -388,8 +398,9 @@ export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
     .addComponent({ kind: 'reasoning_traces', path: 'reasoning/reasoning_traces.jsonl', required: false, data: enc(exemplarTraceLines()) })
     .addComponent({ kind: 'prompt_strategies', path: 'prompting/strategies.json', required: false, data: enc(strategies) })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', required: true, data: enc(safety) })
-    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', required: true, data: enc(benchmark) })
-    .build();
+    .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', required: true, data: enc(benchmark) });
+  const withWf = options.workflows !== undefined ? built0.addComponent({ kind: 'workflows', path: 'workflows/workflows.json', required: false, data: enc(options.workflows) }) : built0;
+  const built = withWf.build();
   if (!built.ok) throw new Error(`gold XO failed to build: ${JSON.stringify(built.error)}`);
   return built.value;
 }

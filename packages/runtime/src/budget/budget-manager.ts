@@ -17,6 +17,8 @@ const COMPONENT_PRIORITY: Readonly<Record<ComponentKind, number>> = {
   long_term_memory_graph: 7,
   lora: 8,
   finetune: 9,
+  // Workflows are executed by a workflow runner, never rendered into a prompt, so they never compete for context budget.
+  workflows: 10,
 };
 
 export interface BudgetFitResult {

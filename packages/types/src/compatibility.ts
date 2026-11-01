@@ -19,7 +19,8 @@ export type ComponentKind =
   | 'lora'
   | 'finetune'
   | 'safety_rules'
-  | 'benchmark_suite';
+  | 'benchmark_suite'
+  | 'workflows';
 
 export interface ModelFamilyCompatibility {
   readonly family: ModelFamily;
