@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ModelProvider } from '@xo/ai-core';
 import { runAgent, type ToolCallRecord } from './agent.js';
 import { assembleContext } from './context.js';
+import { applyClassifications, treeHasClassification, type ClassificationFinding } from './classification.js';
 import { checkGrounding } from './grounding.js';
 import { evaluateTree, parseTrees, type DecisionTree, type TreeEvaluation } from './decision-tree.js';
 import type { CapabilityLayer, SafetyDecision } from './layer.js';
@@ -136,7 +137,7 @@ export class XoExecutor {
     input: Readonly<Record<string, unknown>>,
     caseText: string,
   ): Promise<{ isError: boolean; content: string }> {
-    if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence) {
+    if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence && input['__classified'] !== true) {
       const all = this.layer.decisionTrees();
       const id = typeof input['tree_id'] === 'string' ? input['tree_id'] : all.length === 1 ? all[0]?.id : undefined;
       const tree = all.find((t) => t.id === id);
@@ -153,6 +154,49 @@ export class XoExecutor {
               hint: 'Remove any fact the case text does not state. If a fact the tree needs is not in the case, do not guess it: report it as missing and escalate.',
             }),
           };
+      }
+    }
+    if (name === 'evaluate_decision_tree' && input['__classified'] !== true) {
+      const all = this.layer.decisionTrees();
+      const id = typeof input['tree_id'] === 'string' ? input['tree_id'] : all.length === 1 ? all[0]?.id : undefined;
+      const tree = all.find((t) => t.id === id);
+      if (tree !== undefined && treeHasClassification(tree)) {
+        const facts = typeof input['facts'] === 'object' && input['facts'] !== null ? (input['facts'] as Record<string, unknown>) : {};
+        const c = applyClassifications(tree, facts, caseText);
+        const notes = c.findings.map((f: ClassificationFinding) => f.note);
+        const assisted = c.findings.filter((f) => f.modelAssisted).map((f) => f.field);
+        if (c.escalation !== undefined)
+          return {
+            isError: false,
+            content: JSON.stringify({
+              outcome: {
+                decision: 'escalate',
+                payout_usd: 0,
+                escalation_target: c.escalation.target,
+                reason_code: c.escalation.reason_code,
+              },
+              rules_applied: ['CLASSIFICATION'],
+              trace: notes,
+              classification: c.findings,
+            }),
+          };
+        const inner = await this.runTool(name, { ...input, facts: c.facts, __classified: true }, caseText);
+        if (inner.isError) return inner;
+        try {
+          const parsed = JSON.parse(inner.content) as Record<string, unknown>;
+          const trace = Array.isArray(parsed['trace']) ? (parsed['trace'] as unknown[]) : [];
+          return {
+            isError: false,
+            content: JSON.stringify({
+              ...parsed,
+              trace: [...notes, ...trace],
+              classification: c.findings,
+              model_assisted_fields: assisted,
+            }),
+          };
+        } catch {
+          return inner;
+        }
       }
     }
     if (name === 'evaluate_decision_tree' && this.opts.evaluate !== undefined) {

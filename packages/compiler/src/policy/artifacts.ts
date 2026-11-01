@@ -4,6 +4,7 @@ import { buildPolicyKnowledge } from './knowledge.js';
 import { extractRules, type RuleSet } from './rules.js';
 import { synthesizeSafetyRules, synthesizeStrategies, synthesizeTraces, synthesizeTree } from './synthesize.js';
 import { segmentPolicyText, type PolicyEntry } from './segment.js';
+import { buildClassificationSpec, type ClassificationGlossaryInput, type ClassificationReport } from './classification.js';
 
 /**
  * Everything the policy-synthesis stage contributes to a package, in exactly the formats `@xo/capability-layer`
@@ -43,6 +44,8 @@ export interface PolicyReview {
   readonly unrecognized: RuleSet['unrecognized'];
   readonly failClosedPaths: readonly string[];
   readonly treeProblems: readonly string[];
+  /** For each closed-set input with a glossary: what the document defines, what it does not, and what the model alone decides. */
+  readonly classification?: ClassificationReport;
   readonly status: 'unreviewed';
 }
 
@@ -52,7 +55,12 @@ export interface PolicySource {
   readonly sourcePath?: string;
 }
 
-export function synthesizePolicyArtifacts(sources: readonly PolicySource[]): PolicyArtifacts {
+export interface PolicyOptions {
+  /** Customer-supplied glossary for closed-set inputs the document does not define (labelled `operator` in provenance). */
+  readonly glossary?: ClassificationGlossaryInput;
+}
+
+export function synthesizePolicyArtifacts(sources: readonly PolicySource[], options: PolicyOptions = {}): PolicyArtifacts {
   const entries: PolicyEntry[] = [];
   for (const s of sources) {
     const segmented = segmentPolicyText(s.text);
@@ -62,7 +70,20 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[]): Pol
   const title = sources[0]?.title ?? 'the policy document';
   const rules = extractRules(entries);
   const synth = synthesizeTree(rules, title);
-  const tree = synth.tree !== undefined && synth.treeProblems.length === 0 ? synth.tree : undefined;
+  let tree = synth.tree !== undefined && synth.treeProblems.length === 0 ? synth.tree : undefined;
+  let classificationReport: ClassificationReport | undefined;
+  if (tree !== undefined && tree.inputs.some((i) => i.name === 'commodity_class')) {
+    const gateClasses = rules.gates.filter((g) => g.variable === 'commodity_class').map((g) => String(g.value));
+    const classes = [
+      ...new Set([...rules.rates.map((r) => r.cls), ...gateClasses, ...(rules.temperature.perishableOnly ? ['perishable'] : [])]),
+    ];
+    const built = buildClassificationSpec('commodity_class', tree, entries, classes, gateClasses, options.glossary);
+    classificationReport = built.report;
+    if (built.spec !== undefined) {
+      const spec = built.spec;
+      tree = { ...tree, inputs: tree.inputs.map((i) => (i.name === 'commodity_class' ? { ...i, classification: spec } : i)) };
+    }
+  }
   const traces = tree !== undefined ? synthesizeTraces(tree) : '';
   const review: PolicyReview = {
     decisionSentences: rules.decisionSentences,
@@ -70,6 +91,7 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[]): Pol
     unrecognized: rules.unrecognized,
     failClosedPaths: synth.failClosedPaths,
     treeProblems: synth.treeProblems,
+    ...(classificationReport !== undefined ? { classification: classificationReport } : {}),
     status: 'unreviewed',
   };
   return {

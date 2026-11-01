@@ -80,3 +80,24 @@ Measured finding (gemini-3.1-flash-lite, 10 abstain tasks): when a needed fact w
 With `requireEvidence`, `evaluate_decision_tree` requires `evidence: { fact: { quote, derived? } }`. `XoExecutor` refuses the call (`UNGROUNDED_FACTS`) when a fact has no quote, the quote is not verbatim in the case text, or a numeric value is not a number in its quote (unless `derived`).
 Rev 2 (after the live abstain run showed the model re-sending an invented value as `derived` with an unrelated quote): `derived` counts only for inputs the tree marks `derivable` (day counts, hours) and is checked against the dates in the quotes; classification enums need no quote; quotes are compared ignoring punctuation; a zero is accepted from any verbatim absence statement.
 Limits: it makes invention visible, not impossible. A model can quote real text it misreads, or mark an invented value `derived` with an unrelated quote. Whether it fixes abstention on a real model is **unmeasured** until `xo_tools_grounded` is run live.
+
+## Deterministic classification of free-text inputs (E6)
+
+Finding (seed 9001, gemini-3.1-flash-lite): all five `xo_tools` misses were the model classifying goods into `commodity_class` — lithium batteries not called hazmat (claim denied instead of escalated to Hazmat Compliance), the class left out, dry goods called temperature-sensitive (claim paid). The tree was right; its input was wrong.
+
+A tree input may carry `classification: { entries, highRisk, onConflict }`. Before a model-supplied value is trusted, `XoExecutor` looks the case text up in the glossary (whole words, case-insensitive, plural tolerated) and reconciles:
+
+| lookup vs model                                                       | result                                                                                                         |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| no glossary match                                                     | model's value used, reported in `model_assisted_fields`                                                        |
+| agree                                                                 | proceed                                                                                                        |
+| model gave nothing, one class matched                                 | glossary value used                                                                                            |
+| matched a **high-risk** class, model said otherwise                   | high-risk class applied, so the tree's own rule escalates (hazmat → Hazmat Compliance); both values in `trace` |
+| model said a high-risk class, glossary said another                   | the cautious (model) value kept, disagreement noted                                                            |
+| glossary disagrees on a normal class, or text matches several classes | escalated to `onConflict.target` with reason `CLASSIFICATION_CONFLICT`, nothing paid, both values in `trace`   |
+
+Entries carry an origin: `manual` (a definitional sentence of the compiled document, with the sentence as evidence) or `operator` (the customer's own glossary, e.g. a TMS class table). The compiler's review report (`policy.review.classification`) lists, per class, what the document defines, what it does not, what the operator supplied, and which classes remain model-only.
+
+**For the Halvorsen manual: it defines no goods for any class** (all five classes are `notDefinedByManual`), so the lookup rests entirely on the operator glossary in `scenario/freight/glossary.ts`. That glossary was written with knowledge of the task domain: its score on generated claims is an upper bound, not evidence about unseen goods (unknown goods fall back to the model and are flagged). Free-text claimant names ("Delacroix Foods") are a false-positive hazard; a test guards against it.
+
+Opt-in: `buildGoldXo({ classification: true })`, arm `xo_tools_classified`, `compileManual({ glossary })`. The default arms are unchanged, so earlier measurements remain valid. **Not yet measured on a live model.**

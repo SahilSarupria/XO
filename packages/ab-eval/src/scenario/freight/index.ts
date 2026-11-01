@@ -6,3 +6,4 @@ export * from './render.js';
 export * from './generate.js';
 export * from './gold-xo.js';
 export * from './automation.js';
+export * from './glossary.js';

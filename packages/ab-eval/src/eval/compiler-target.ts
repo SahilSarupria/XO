@@ -1,5 +1,6 @@
+import type { ClassificationGlossaryInput } from '@xo/compiler';
 import { compileSources, packageXoirGraph, synthesizePolicyArtifacts } from '@xo/compiler';
-import { createCapabilityLayer, evaluateTree, nodeDisplayText, parseTrees } from '@xo/capability-layer';
+import { createCapabilityLayer, evaluateTree, lookupClassification, nodeDisplayText, parseTrees } from '@xo/capability-layer';
 import type { PackageBundle } from '@xo/package-sdk';
 import { GOLD_FACTS, type GoldFact } from '../scenario/freight/gold-facts.js';
 import type { FreightTask } from '../scenario/freight/generate.js';
@@ -104,6 +105,8 @@ export function scorePackage(bundle: PackageBundle, tasks: readonly FreightTask[
 }
 
 export interface CompileManualOptions {
+  /** Operator glossary for closed-set inputs the manual does not define (e.g. FREIGHT_GLOSSARY_INPUT). */
+  readonly glossary?: ClassificationGlossaryInput;
   /** Run the policy-synthesis stage (default). `false` reproduces the pre-synthesis compiler for before/after comparison. */
   readonly policy?: boolean;
   readonly handbook?: number;
@@ -126,9 +129,10 @@ export async function compileManual(
   const policy =
     opts.policy === false
       ? undefined
-      : synthesizePolicyArtifacts([
-          { text, title: 'Halvorsen Freight — Claims Desk Manual (Rev 7)', sourcePath: 'halvorsen-claims-manual.md' },
-        ]);
+      : synthesizePolicyArtifacts(
+          [{ text, title: 'Halvorsen Freight — Claims Desk Manual (Rev 7)', sourcePath: 'halvorsen-claims-manual.md' }],
+          opts.glossary !== undefined ? { glossary: opts.glossary } : {},
+        );
   const packaged = packageXoirGraph(compiled.value.graph, {
     identity: { name: 'halvorsen-freight-claims-desk-compiled', version: '0.1.0', creatorDid: 'did:xo:compiler' },
     metadata: {
@@ -201,4 +205,54 @@ export function compilerGap(gold: PackageScore, compiled: PackageScore): Compile
 /** With a real model: how much of the gold XO's uplift over the plain model did the compiled XO capture? */
 export function upliftRatio(plain: number, compiled: number, gold: number): number | null {
   return gold - plain <= 0.0001 ? null : (compiled - plain) / (gold - plain);
+}
+
+export interface ClassificationScore {
+  readonly tasks: number;
+  /** tasks where the glossary found at least one class in the claim text */
+  readonly matched: number;
+  /** of the matched tasks, how many found exactly the true class */
+  readonly correctWhenMatched: number;
+  /** tasks where the text matched several classes (these would be escalated) */
+  readonly ambiguous: number;
+  /** true-hazmat tasks the glossary recognised as hazmat, and non-hazmat tasks it wrongly called hazmat */
+  readonly hazmatRecall: number | null;
+  readonly falseHazmat: number;
+  /** tasks with no glossary match: the model alone classifies these (model-assisted) */
+  readonly unmatched: number;
+}
+
+/** Offline, model-free: how the glossary alone classifies the claim narratives against the oracle's true class. */
+export function scoreClassification(bundle: PackageBundle, tasks: readonly FreightTask[]): ClassificationScore | null {
+  const raw = comp(bundle, 'decision_trees');
+  const tree = parseTrees(JSON.parse(text(raw) || 'null') ?? undefined)?.[0];
+  const spec = tree?.inputs.find((i) => i.name === 'commodity_class')?.classification;
+  if (spec === undefined) return null;
+  let matched = 0;
+  let correct = 0;
+  let ambiguous = 0;
+  let hazTotal = 0;
+  let hazFound = 0;
+  let falseHaz = 0;
+  for (const t of tasks) {
+    const { values } = lookupClassification(spec, t.narrative);
+    const truth = t.facts.commodity_class;
+    if (truth === 'hazmat') {
+      hazTotal++;
+      if (values.includes('hazmat')) hazFound++;
+    } else if (values.includes('hazmat')) falseHaz++;
+    if (values.length === 0) continue;
+    matched++;
+    if (values.length > 1) ambiguous++;
+    else if (values[0] === truth) correct++;
+  }
+  return {
+    tasks: tasks.length,
+    matched,
+    correctWhenMatched: correct,
+    ambiguous,
+    hazmatRecall: hazTotal === 0 ? null : hazFound / hazTotal,
+    falseHazmat: falseHaz,
+    unmatched: tasks.length - matched,
+  };
 }

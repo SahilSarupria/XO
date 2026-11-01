@@ -1,3 +1,4 @@
+import { FREIGHT_CLASSIFICATION } from './glossary.js';
 import type { DecisionTree } from '@xo/capability-layer';
 import { ManifestBuilder, type PackageBundle } from '@xo/package-sdk';
 import { generateEvalTasks, generateExemplarTasks, type FreightTask } from './generate.js';
@@ -261,11 +262,17 @@ export function exemplarTraceLines(exemplars: readonly FreightTask[] = generateE
     .join('\n');
 }
 
+export function withClassification(tree: DecisionTree): DecisionTree {
+  return { ...tree, inputs: tree.inputs.map((i) => (i.name === 'commodity_class' ? { ...i, classification: FREIGHT_CLASSIFICATION } : i)) };
+}
+
 export interface GoldXoOptions {
   readonly tasks?: readonly FreightTask[];
   readonly version?: string;
   /** Number of filler operations-handbook entries alongside the claims rules. */
   readonly handbook?: number;
+  /** Attach the operator's goods→class glossary to commodity_class (deterministic classification before the model's value is trusted). */
+  readonly classification?: boolean;
 }
 
 export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
@@ -372,7 +379,12 @@ export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
       tags: ['gold', 'freight', 'claims'],
     })
     .addComponent({ kind: 'knowledge_graph', path: 'knowledge/graph.json', required: false, data: enc(knowledge) })
-    .addComponent({ kind: 'decision_trees', path: 'reasoning/decision_trees.json', required: false, data: enc({ trees: [FREIGHT_TREE] }) })
+    .addComponent({
+      kind: 'decision_trees',
+      path: 'reasoning/decision_trees.json',
+      required: false,
+      data: enc({ trees: [options.classification === true ? withClassification(FREIGHT_TREE) : FREIGHT_TREE] }),
+    })
     .addComponent({ kind: 'reasoning_traces', path: 'reasoning/reasoning_traces.jsonl', required: false, data: enc(exemplarTraceLines()) })
     .addComponent({ kind: 'prompt_strategies', path: 'prompting/strategies.json', required: false, data: enc(strategies) })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', required: true, data: enc(safety) })

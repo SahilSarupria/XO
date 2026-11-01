@@ -1,3 +1,4 @@
+import type { ClassificationSpec } from './classification.js';
 import { assertExpressionParses, evaluateExpression, ExpressionError, MissingFactError, type Scope, type Value } from './expr.js';
 
 /**
@@ -21,6 +22,8 @@ export interface TreeInput {
   readonly enum?: readonly string[];
   /** True when the value is normally computed from the case text (a day count from two dates) rather than quoted. Only these may be grounded as `derived`. */
   readonly derivable?: boolean;
+  /** Glossary lookup that runs before the model's value is trusted for this input (see classification.ts). */
+  readonly classification?: ClassificationSpec;
 }
 
 export type TreeNode =

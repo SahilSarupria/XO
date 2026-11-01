@@ -3,3 +3,4 @@ export * from './knowledge.js';
 export * from './artifacts.js';
 export * from './rules.js';
 export * from './synthesize.js';
+export * from './classification.js';

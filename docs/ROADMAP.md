@@ -37,3 +37,9 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 
 - [x] Roadmap, runtime architecture doc
 - [ ] PR merged, CI green on GitHub
+
+## E6. Deterministic classification (offline only)
+
+- [x] Glossary lookup + reconciliation before the model's value is trusted; high-risk override, conflict escalation, model-assisted flag; compiler extracts class definitions from a document and reports what it does and does not define
+- [~] Freight: the manual defines no goods for any class, so coverage rests on an operator glossary (upper bound on generated claims). Tested offline on seeds 1234, 2468, 8080, 13579, 777777.
+- [ ] Live effect on the seed-9001 failure cluster: unmeasured. Run `--arms xo_tools,xo_tools_classified` later.

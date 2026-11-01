@@ -59,7 +59,7 @@ const fail = (s: string): number => (process.stderr.write(`error: ${s}\n`), 1);
 
 /** Cheapest set that still answers "does XO beat the same model alone / with the whole manual pasted in?" (+ the free router arm). */
 const LEAN_ARMS: ArmId[] = ['plain', 'dump', 'xo_tools', 'xo_router'];
-const ALL_ARMS: ArmId[] = ['plain', 'prompt', 'dump', 'xo_context', 'xo_tools', 'xo_tools_grounded', 'xo_router'];
+const ALL_ARMS: ArmId[] = ['plain', 'prompt', 'dump', 'xo_context', 'xo_tools', 'xo_tools_grounded', 'xo_tools_classified', 'xo_router'];
 
 export function registerCommands(registry: CommandRegistry): void {
   registry.declareSubsystem(SUBSYSTEM, 'detachable intelligence layer: ask, A/B evaluation, compiler gap, unattended desk');
@@ -107,7 +107,8 @@ export function registerCommands(registry: CommandRegistry): void {
       const rpm = rpmFlag !== undefined ? Number(rpmFlag) : providerId === 'gemini' ? 4 : 0; // 4/min fits the strictest free tier (5 RPM); raise with --rpm (e.g. 12 for flash-lite); 0 disables
       if (!Number.isFinite(rpm) || rpm < 0) return fail('--rpm must be a non-negative number');
       if (rpm > 0) provider = new PacedProvider(provider, rpm);
-      const arms = buildArms({ provider, model, gold, ...(compiled !== undefined ? { compiled } : {}) });
+      const goldClassified = buildGoldXo({ classification: true });
+      const arms = buildArms({ provider, model, gold, goldClassified, ...(compiled !== undefined ? { compiled } : {}) });
       const preset = flag(args.flags, 'preset');
       if (preset !== undefined && preset !== 'lean') return fail('--preset must be "lean"');
       const want = (flag(args.flags, 'arms')?.split(',') ?? [

@@ -5,7 +5,8 @@ import { OUTPUT_CONTRACT } from '../scenario/freight/gold-xo.js';
 import type { FreightTask } from '../scenario/freight/generate.js';
 import { manualMarkdown, PROMPT_ONLY_BRIEF } from '../scenario/freight/rules.js';
 
-export type ArmId = 'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_tools_grounded' | 'xo_router' | 'compiled_context';
+export type ArmId =
+  'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_tools_grounded' | 'xo_tools_classified' | 'xo_router' | 'compiled_context';
 
 export interface ArmRun {
   readonly output: Record<string, unknown> | null;
@@ -35,6 +36,8 @@ export interface ArmFactoryOptions {
   readonly model: string;
   readonly gold: PackageBundle;
   readonly compiled?: PackageBundle;
+  /** Gold XO built with `classification: true` (needed only for the xo_tools_classified arm). */
+  readonly goldClassified?: PackageBundle;
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
   readonly knowledgeK?: number;
@@ -126,6 +129,7 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
   const goldContext = xo(o.gold, false, false);
   const goldTools = xo(o.gold, true, false);
   const goldToolsGrounded = xo(o.gold, true, false, true);
+  const goldClassified = o.goldClassified !== undefined ? xo(o.goldClassified, true, false) : undefined;
   const goldRouter = xo(o.gold, true, true);
   const compiledContext = o.compiled !== undefined ? xo(o.compiled, false, false) : undefined;
 
@@ -173,6 +177,26 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
       label: 'XO L3 + fact grounding: every tool fact needs a verbatim quote from the claim',
       input: 'narrative',
       run: async (t) => fromExecutor(await goldToolsGrounded.execute({ text: t.narrative })),
+    },
+    xo_tools_classified: {
+      id: 'xo_tools_classified',
+      label: 'XO L3 + deterministic classification: glossary lookup reconciled with the model’s commodity class',
+      input: 'narrative',
+      run: async (t) =>
+        goldClassified === undefined
+          ? {
+              output: null,
+              rawText: '',
+              modelCalls: 0,
+              inputTokens: 0,
+              outputTokens: 0,
+              toolCalls: [],
+              path: 'refused',
+              overridden: false,
+              latencyMs: 0,
+              error: 'no classified bundle supplied',
+            }
+          : fromExecutor(await goldClassified.execute({ text: t.narrative })),
     },
     xo_router: {
       id: 'xo_router',
