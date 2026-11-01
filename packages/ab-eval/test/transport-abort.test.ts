@@ -109,3 +109,36 @@ describe('report separates API failures from wrong answers', () => {
     assert.match(md, /100% \(3\/3\)/);
   });
 });
+
+import { RetryingProvider, waitMeter } from '../src/index.js';
+import type { ModelProvider as MP } from '@xo/ai-core';
+
+it('retry waiting is metered per request and capped, so a stalled API fails instead of taking minutes', async () => {
+  const flaky: MP = {
+    id: 'flaky',
+    describeCapabilities: () => ({
+      providerId: 'flaky',
+      models: ['m'],
+      supportsStreaming: false,
+      supportsStructuredOutput: false,
+      supportsVision: false,
+      supportsToolCalling: false,
+      maxContextTokens: 1,
+    }),
+    complete: async () => {
+      throw new Error('503 overloaded');
+    },
+  };
+  const slept: number[] = [];
+  const p = new RetryingProvider(flaky, { attempts: 8, baseDelayMs: 1000, maxTotalWaitMs: 5000, sleep: async (ms) => void slept.push(ms) });
+  const stats = { retryMs: 0, pacedMs: 0, retries: 0 };
+  await assert.rejects(
+    waitMeter.run(stats, () => p.complete({ model: 'm', messages: [] } as never)),
+    /gave up after/,
+  );
+  assert.ok(stats.retries >= 1 && stats.retryMs <= 5000);
+  assert.equal(
+    slept.reduce((a, b) => a + b, 0),
+    stats.retryMs,
+  );
+});

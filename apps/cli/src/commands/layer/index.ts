@@ -152,6 +152,15 @@ export function registerCommands(registry: CommandRegistry): void {
         throw e;
       }
       process.stderr.write('\n');
+      // An arm that produced no answer and made no model call did not run at all (e.g. compiled_context without --include-compiled).
+      const deadArms = [...new Set(records.map((r) => r.arm))].filter((a) =>
+        records.filter((r) => r.arm === a).every((r) => r.run.error !== undefined && r.run.modelCalls === 0),
+      );
+      if (deadArms.length > 0)
+        return fail(
+          `INVALID RUN — arm(s) ${deadArms.join(', ')} produced no result and made no model call: ${records.find((r) => r.arm === deadArms[0])?.run.error ?? 'unknown error'}. ` +
+            `(compiled_context needs --include-compiled.)`,
+        );
       const failedCalls = records.filter(isTransportError);
       const modelCalls = records.filter((r) => r.run.path === 'model').length;
       if (failedCalls.length > 0 && failedCalls.length / Math.max(1, modelCalls) > 0.02) {

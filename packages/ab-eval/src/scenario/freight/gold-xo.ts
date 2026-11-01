@@ -29,6 +29,7 @@ export const FREIGHT_TREE: DecisionTree = {
       description: 'number of earlier claims by this claimant in the previous 90 days (0 if none)',
     },
     {
+      derivable: true,
       name: 'days_to_file',
       type: 'number',
       description:
@@ -50,10 +51,16 @@ export const FREIGHT_TREE: DecisionTree = {
     { name: 'full_value_coverage', type: 'boolean', description: 'true if a Full Value Coverage endorsement is on the bill of lading' },
     { name: 'damage_pct', type: 'number', description: 'damage claims: percent of the affected goods that are damaged (0–100)' },
     { name: 'salvage_value_usd', type: 'number', description: 'damage claims: salvage offer in USD; 0 if none' },
-    { name: 'days_late', type: 'number', description: 'delay claims: days between the scheduled and the actual delivery date' },
+    {
+      derivable: true,
+      name: 'days_late',
+      type: 'number',
+      description: 'delay claims: days between the scheduled and the actual delivery date',
+    },
     { name: 'weather_event', type: 'boolean', description: 'delay claims: true if the delay was caused by a documented weather event' },
     { name: 'reefer_log_available', type: 'boolean', description: 'temperature claims: true if a reefer temperature log is available' },
     {
+      derivable: true,
       name: 'excursion_hours',
       type: 'number',
       description: 'temperature claims: hours the trailer ran above its set temperature (only when a log is available)',

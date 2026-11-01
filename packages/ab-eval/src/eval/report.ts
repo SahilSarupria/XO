@@ -24,6 +24,12 @@ export interface ArmSummary {
   readonly estimatedCostUsd: number | null;
   /** Runs where the API call itself failed (HTTP/network) — counted as failures in passRate, shown separately so they are not mistaken for wrong answers. */
   readonly transportFailures: number;
+  /** mean ms per task spent in retry backoff / rate pacing, and median latency with that waiting removed */
+  readonly meanRetryWaitMs: number;
+  readonly meanPacedWaitMs: number;
+  readonly medianLatencyMs: number;
+  readonly medianActiveLatencyMs: number;
+  readonly p99LatencyMs: number;
 }
 
 export interface Pricing {
@@ -66,6 +72,20 @@ export function summarize(records: readonly EvalRecord[], arm: ArmId, pricing?: 
     pathCounts,
     estimatedCostUsd: cost,
     transportFailures: rs.filter(isTransportError).length,
+    meanRetryWaitMs: mean(rs.map((r) => r.run.waits?.retryMs ?? 0)),
+    meanPacedWaitMs: mean(rs.map((r) => r.run.waits?.pacedMs ?? 0)),
+    medianLatencyMs: percentile(
+      rs.map((r) => r.run.latencyMs),
+      0.5,
+    ),
+    medianActiveLatencyMs: percentile(
+      rs.map((r) => Math.max(0, r.run.latencyMs - (r.run.waits?.retryMs ?? 0) - (r.run.waits?.pacedMs ?? 0))),
+      0.5,
+    ),
+    p99LatencyMs: percentile(
+      rs.map((r) => r.run.latencyMs),
+      0.99,
+    ),
   };
 }
 
@@ -156,6 +176,17 @@ export function renderMarkdown(rep: EvalReport): string {
       '',
       `> **${a.arm}: ${a.transportFailures} of ${a.runs} runs failed at the API (e.g. 503/429), not by answering wrongly.** They are counted as failures above. Excluding them: ${pct(ok === 0 ? 0 : passes / ok)} (${passes}/${ok}).`,
     );
+  }
+  if (rep.arms.some((a) => a.meanRetryWaitMs > 0 || a.meanPacedWaitMs > 0)) {
+    L.push(
+      '',
+      '| arm | median ms | median ms excl. waiting | p99 ms | mean retry wait ms | mean pacer wait ms |',
+      '|---|---|---|---|---|---|',
+    );
+    for (const a of rep.arms)
+      L.push(
+        `| ${a.arm} | ${Math.round(a.medianLatencyMs)} | ${Math.round(a.medianActiveLatencyMs)} | ${Math.round(a.p99LatencyMs)} | ${Math.round(a.meanRetryWaitMs)} | ${Math.round(a.meanPacedWaitMs)} |`,
+      );
   }
   if (rep.arms.some((a) => a.estimatedCostUsd !== null)) {
     L.push('', '| arm | est. cost / task (USD) | est. cost / correct task (USD) |', '|---|---|---|');

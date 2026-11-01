@@ -17,6 +17,8 @@ export interface ArmRun {
   readonly path: 'model' | 'deterministic' | 'cache' | 'refused';
   readonly overridden: boolean;
   readonly latencyMs: number;
+  /** Set by the runner: how much of latencyMs was spent waiting on retries or the rate pacer. */
+  readonly waits?: { readonly retryMs: number; readonly pacedMs: number; readonly retries: number };
   readonly error?: string;
 }
 

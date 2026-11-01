@@ -1,7 +1,19 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ModelProvider, ProviderRequest, ProviderResponse } from '@xo/ai-core';
 import type { FreightTask } from '../scenario/freight/generate.js';
 import type { Arm, ArmId, ArmRun } from './arms.js';
 import { scoreTask, type TaskScore } from './scoring.js';
+
+/** Time a request spent waiting rather than computing, so latency can be split into API wait vs everything else. */
+export interface WaitStats {
+  /** ms slept in retry/backoff after 429/5xx */
+  retryMs: number;
+  /** ms queued behind the request pacer (--rpm) */
+  pacedMs: number;
+  /** number of retried model calls */
+  retries: number;
+}
+export const waitMeter = new AsyncLocalStorage<WaitStats>();
 
 export interface EvalRecord {
   readonly arm: ArmId;
@@ -70,6 +82,8 @@ export class RetryingProvider implements ModelProvider {
       readonly attempts?: number;
       readonly baseDelayMs?: number;
       readonly maxDelayMs?: number;
+      /** Give up (as a transport failure) once one request has slept this long in total across retries. Default 240000. */
+      readonly maxTotalWaitMs?: number;
       readonly sleep?: (ms: number) => Promise<void>;
     } = {},
   ) {}
@@ -94,7 +108,15 @@ export class RetryingProvider implements ModelProvider {
           throw e;
         const hinted = retryAfterSeconds(m);
         const backoff = (this.opts.baseDelayMs ?? 2000) * 2 ** i + Math.floor(Math.random() * 250);
-        await sleep(Math.min(this.opts.maxDelayMs ?? 90_000, hinted !== undefined ? hinted * 1000 + 500 : backoff));
+        const wait = Math.min(this.opts.maxDelayMs ?? 90_000, hinted !== undefined ? hinted * 1000 + 500 : backoff);
+        const w = waitMeter.getStore();
+        if (w !== undefined && w.retryMs + wait > (this.opts.maxTotalWaitMs ?? 240_000))
+          throw new Error(`gave up after ${Math.round(w.retryMs / 1000)}s of retry waiting (${w.retries} retries): ${m.slice(0, 300)}`);
+        if (w !== undefined) {
+          w.retryMs += wait;
+          w.retries += 1;
+        }
+        await sleep(wait);
       }
     }
     throw lastErr;
@@ -119,7 +141,11 @@ export class PacedProvider implements ModelProvider {
     const now = Date.now();
     const at = Math.max(now, this.nextSlot);
     this.nextSlot = at + gap;
-    if (at > now) await new Promise<void>((r) => setTimeout(r, at - now));
+    if (at > now) {
+      const w = waitMeter.getStore();
+      if (w !== undefined) w.pacedMs += at - now;
+      await new Promise<void>((r) => setTimeout(r, at - now));
+    }
     return this.inner.complete(req);
   }
 }
@@ -149,7 +175,12 @@ export async function runEval(o: RunOptions): Promise<EvalRecord[]> {
         o.onProgress?.(++done, jobs.length, reused);
         continue;
       }
-      const run = await arm.run(task);
+      const waits: WaitStats = { retryMs: 0, pacedMs: 0, retries: 0 };
+      const run0 = await waitMeter.run(waits, () => arm.run(task));
+      const run: ArmRun = {
+        ...run0,
+        waits: { retryMs: Math.round(waits.retryMs), pacedMs: Math.round(waits.pacedMs), retries: waits.retries },
+      };
       const rec: EvalRecord = { arm: arm.id, taskId: task.id, stratum: task.stratum, trial, score: scoreTask(task, run.output), run };
       records[i] = rec;
       if (isTransportError(rec)) {

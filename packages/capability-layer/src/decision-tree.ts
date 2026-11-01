@@ -19,6 +19,8 @@ export interface TreeInput {
   readonly type: 'number' | 'string' | 'boolean';
   readonly description: string;
   readonly enum?: readonly string[];
+  /** True when the value is normally computed from the case text (a day count from two dates) rather than quoted. Only these may be grounded as `derived`. */
+  readonly derivable?: boolean;
 }
 
 export type TreeNode =

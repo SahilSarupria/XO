@@ -46,9 +46,35 @@ test('adversarial: invented value, missing evidence, fake quote, wrong number, e
   }
 });
 
-test('known limit: a value marked derived with an unrelated real quote passes (documented, not hidden)', () => {
-  const r = checkGrounding(FREIGHT_TREE, { damage_pct: 100 }, { damage_pct: { quote: 'filed on March 11', derived: true } }, CLAIM);
-  assert.equal(r.ok, true);
+test('adversarial (seen in the live abstain run): an invented value marked derived with an unrelated quote is refused', () => {
+  const r = checkGrounding(
+    FREIGHT_TREE,
+    { damage_pct: 100 },
+    { damage_pct: { quote: 'Acme reports damage to 2,140 lb of glass', derived: true } },
+    CLAIM,
+  );
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.ungrounded[0]!.reason, 'value_not_in_quote');
+});
+
+test('a derived day count needs two quoted figures; one quote cannot launder an invented derivable value', () => {
+  const one = checkGrounding(FREIGHT_TREE, { days_to_file: 8 }, { days_to_file: { quote: 'filed on March 11', derived: true } }, CLAIM);
+  assert.equal(one.ok, false);
+  const two = checkGrounding(
+    FREIGHT_TREE,
+    { days_to_file: 8 },
+    { days_to_file: { quote: 'delivered on March 3 … filed on March 11', derived: true } },
+    CLAIM,
+  );
+  assert.equal(two.ok, true);
+});
+
+test('classification enums need no quote, but a quote that is given must still be verbatim', () => {
+  assert.equal(checkGrounding(FREIGHT_TREE, { claim_type: 'damage' }, {}, CLAIM).ok, true);
+  assert.equal(
+    checkGrounding(FREIGHT_TREE, { claim_type: 'damage' }, { claim_type: { quote: 'this is a damage claim' } }, CLAIM).ok,
+    false,
+  );
 });
 
 /** Scripted model: first call invents damage_pct with no evidence; after the tool refuses it escalates, as instructed. */
