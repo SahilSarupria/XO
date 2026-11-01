@@ -33,7 +33,10 @@ export interface AuthorizationRequest {
     | 'purge_evidence'
     | 'connect_account'
     | 'revoke_connection'
-    | 'ingest_source';
+    | 'ingest_source'
+    | 'derive_knowledge'
+    | 'query_knowledge'
+    | 'review_knowledge';
   readonly permission: string;
   readonly scope: PermissionScope;
   /** The authenticated caller. Required at runtime by the enforcement point; optional in the type only so a missing/plain one is rejected, not mistyped. */

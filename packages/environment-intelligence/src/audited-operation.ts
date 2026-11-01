@@ -114,7 +114,15 @@ const now = (ctx: ConnectorContext): string => ctx.clock.now().toISOString();
 export interface AuditedOperationInfo {
   readonly operation: Extract<
     AuditOperation,
-    'discover' | 'acquire_content' | 'incremental_sync' | 'revoke_evidence' | 'purge_evidence' | 'ingest_source'
+    | 'discover'
+    | 'acquire_content'
+    | 'incremental_sync'
+    | 'revoke_evidence'
+    | 'purge_evidence'
+    | 'ingest_source'
+    | 'derive_knowledge'
+    | 'query_knowledge'
+    | 'review_knowledge'
   >;
   readonly connectorId: string;
   readonly connectorVersion: string;
@@ -180,6 +188,26 @@ export class AuditSession {
     };
     const accepted = await acceptAuditEvent(this.recorder, event, this.trust, this.options);
     return accepted.ok ? accepted.value : undefined;
+  }
+
+  /**
+   * C5: closing event for operations that read or derive WITHOUT releasing any evidence (knowledge derivation, queries, review).
+   * Returns true only when the record was ACCEPTED; the caller must not report the operation as completed otherwise. Counts only:
+   * no content, no identifiers other than the opaque evidence ids supplied (at most 10 000).
+   */
+  async closeWithoutRelease(
+    outcome: Extract<AuditOutcome, 'completed' | 'failed'>,
+    detail: { readonly counts: AuditCounts; readonly errorCode?: string; readonly evidenceIds?: readonly string[] },
+  ): Promise<boolean> {
+    const ids = detail.evidenceIds ?? [];
+    const event: AuditRecordRequest = {
+      ...this.base(outcome),
+      ...(detail.errorCode !== undefined ? { errorCode: detail.errorCode } : {}),
+      counts: detail.counts,
+      ...(ids.length > 0 && ids.length <= 10_000 ? { evidenceIds: ids } : {}),
+    };
+    const accepted = await acceptAuditEvent(this.recorder, event, this.trust, this.options);
+    return accepted.ok;
   }
 
   /**

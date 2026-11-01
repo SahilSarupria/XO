@@ -37,7 +37,13 @@ export type AuditOperation =
   /** C3: an administrator-consented cloud account connection (begin through completion). */
   | 'connect_account'
   /** C3: local revocation of a cloud account connection (credentials destroyed). */
-  | 'revoke_connection';
+  | 'revoke_connection'
+  /** C5: derivation of organizational knowledge from eligible evidence (its own authority, separate from ingest and read). */
+  | 'derive_knowledge'
+  /** C5: a read of derived knowledge by a caller (its own authority; every query is audited). */
+  | 'query_knowledge'
+  /** C5: a human-review decision on derived knowledge (entity merge / conflict resolution). */
+  | 'review_knowledge';
 
 /**
  * - `attempt`:    write-ahead record, accepted BEFORE protected evidence is read.
@@ -196,6 +202,9 @@ const OPERATIONS: ReadonlySet<string> = new Set([
   'ingest_source',
   'connect_account',
   'revoke_connection',
+  'derive_knowledge',
+  'query_knowledge',
+  'review_knowledge',
 ]);
 const TOP_KEYS: ReadonlySet<string> = new Set([
   'idempotencyKey',

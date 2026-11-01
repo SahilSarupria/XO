@@ -181,7 +181,7 @@ export function ingestionBinding(args: {
 export const resourceDigestOf = (sourceId: string, kind: string, resourceKey: string): string =>
   stableDigest(['ei-ingest-resource-v1', sourceId, kind, resourceKey]).slice(0, 24);
 
-function contentHashOf(e: Evidence): string {
+export function contentHashOf(e: Evidence): string {
   const d = e.payload['digest'];
   if (typeof d === 'string' && /^sha256:[0-9a-f]{64}$/.test(d)) return d;
   return `sha256:${createHash('sha256').update(canonical(e.payload)).digest('hex')}`;
