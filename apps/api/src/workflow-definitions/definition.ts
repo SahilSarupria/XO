@@ -25,7 +25,19 @@ export interface DefinitionNode {
   readonly label?: string;
   /** Kind-specific, validated per kind in `validateDefinition`. Never executed or interpolated. */
   readonly config: Readonly<Record<string, unknown>>;
+  /**
+   * Where the editor draws the node. Presentation only: never read by validation, planning or execution, and optional
+   * (a node without one is placed automatically). Whole numbers, so the same drawing round-trips exactly.
+   */
+  readonly position?: NodePosition;
 }
+
+/** Canvas coordinates in whole pixels, 0..{@link MAX_COORD}. */
+export interface NodePosition {
+  readonly x: number;
+  readonly y: number;
+}
+export const MAX_COORD = 100_000;
 
 export interface DefinitionEdge {
   readonly from: string;
@@ -74,6 +86,18 @@ function str(o: Record<string, unknown>, key: string, where: string, max = 200):
   return v.trim();
 }
 
+function parsePosition(raw: unknown, where: string): NodePosition {
+  const p = record(raw, where);
+  for (const k of Object.keys(p)) if (k !== 'x' && k !== 'y') bad(`${where}: unknown field "${k}"`);
+  const coord = (k: 'x' | 'y'): number => {
+    const v = p[k];
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > MAX_COORD)
+      bad(`${where}.${k} must be a whole number from 0 to ${MAX_COORD}`);
+    return v;
+  };
+  return { x: coord('x'), y: coord('y') };
+}
+
 /** Parses an untrusted body into a structurally valid input (shapes, sizes, enums). Graph-level checks are `analyzeDefinition`. */
 export function parseDefinitionInput(body: unknown): DefinitionInput {
   const o = record(body, 'body');
@@ -86,7 +110,8 @@ export function parseDefinitionInput(body: unknown): DefinitionInput {
   const seen = new Set<string>();
   const nodes: DefinitionNode[] = (o['nodes'] as unknown[]).map((raw, i) => {
     const n = record(raw, `nodes[${i}]`);
-    for (const k of Object.keys(n)) if (!['id', 'kind', 'label', 'config'].includes(k)) bad(`nodes[${i}]: unknown field "${k}"`);
+    for (const k of Object.keys(n))
+      if (!['id', 'kind', 'label', 'config', 'position'].includes(k)) bad(`nodes[${i}]: unknown field "${k}"`);
     const id = n['id'];
     if (typeof id !== 'string' || !ID.test(id)) bad(`nodes[${i}].id must match ${ID}`);
     if (seen.has(id)) bad(`duplicate node id "${id}"`);
@@ -97,10 +122,12 @@ export function parseDefinitionInput(body: unknown): DefinitionInput {
     const config = n['config'] === undefined ? {} : record(n['config'], `nodes[${i}].config`);
     if (JSON.stringify(config).length > 4000) bad(`nodes[${i}].config is too large`);
     const label = n['label'] === undefined ? undefined : str(n, 'label', `nodes[${i}]`, 120);
+    const position = n['position'] === undefined ? undefined : parsePosition(n['position'], `nodes[${i}].position`);
     return {
       id,
       kind: kind as NodeKind,
       ...(label !== undefined ? { label } : {}),
+      ...(position !== undefined ? { position } : {}),
       config: validateConfig(kind as NodeKind, config, `nodes[${i}]`),
     };
   });

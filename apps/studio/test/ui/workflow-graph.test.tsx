@@ -47,7 +47,8 @@ describe('Workflow graph', () => {
     expect(within(canvas).getByText('4 nodes')).toBeInTheDocument();
     expect(within(canvas).getByText('Unsaved changes')).toBeInTheDocument();
     expect(window.location.hash).toBe('#/graph');
-    expect(screen.getByRole('button', { name: /^workflows$/i, hidden: false })).toBeInTheDocument(); // breadcrumb back
+    expect(screen.getByRole('button', { name: 'Back to Workflows' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/record before payment/i);
   });
 
   it("offers only what the platform reports it can run; the rest stays visible, disabled, with the platform's reason", async () => {
@@ -159,10 +160,10 @@ describe('Workflow graph', () => {
     expect(zoom()).toBe(base);
   });
 
-  it('the breadcrumb returns to the Workflows list', async () => {
+  it('the back button returns to the Workflows list', async () => {
     const user = await analysed(new FakeXo());
     await openGraph(user);
-    await user.click(screen.getByRole('button', { name: 'Workflows' }));
+    await user.click(screen.getByRole('button', { name: 'Back to Workflows' }));
     expect(await screen.findByRole('heading', { name: /^workflows$/i })).toBeInTheDocument();
   });
 

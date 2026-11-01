@@ -71,7 +71,11 @@ function grid(g: DraftGraph): { depth: Map<string, number>; row: Map<string, num
     place(h.id, 0, nextRow, new Set());
     nextRow++;
   }
-  for (const n of g.nodes) if (!depth.has(n.id)) (depth.set(n.id, 0), row.set(n.id, nextRow++));
+  for (const n of g.nodes) {
+    if (depth.has(n.id)) continue;
+    depth.set(n.id, 0);
+    row.set(n.id, nextRow++);
+  }
   return { depth, row };
 }
 
@@ -109,8 +113,9 @@ export function layoutFlow(g: DraftGraph): FlowLayout {
   }
   const nodes: FlowNode[] = slots.map(({ n, d, r }) => {
     const h = heightOf(n);
-    const x = PAD + d * (FLOW_NODE_W + GAP_X);
-    const top = rowTop.get(r)! + (rowH.get(r)! - h) / 2;
+    // A step the person has placed stays where they put it; everything else keeps its automatic slot.
+    const x = n.position?.x ?? PAD + d * (FLOW_NODE_W + GAP_X);
+    const top = n.position?.y ?? rowTop.get(r)! + (rowH.get(r)! - h) / 2;
     const outputs: FlowPort[] =
       n.kind === 'branch'
         ? [

@@ -30,7 +30,10 @@ export type IconName =
   | 'image'
   | 'table'
   | 'code'
-  | 'x';
+  | 'x'
+  | 'back'
+  | 'unlink'
+  | 'tidy';
 
 const PATHS: Record<IconName, string> = {
   workspaces: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
@@ -65,6 +68,9 @@ const PATHS: Record<IconName, string> = {
   table: 'M4 5h16v14H4zM4 10h16M4 15h16M10 5v14',
   code: 'M9 8l-5 4 5 4M15 8l5 4-5 4',
   x: 'M6 6l12 12M18 6L6 18',
+  back: 'M19 12H5M11 6l-6 6 6 6',
+  unlink: 'M9 15l6-6M7 17l-1 1a3 3 0 0 1-4-4l3-3M17 7l1-1a3 3 0 0 1 4 4l-3 3',
+  tidy: 'M4 6h10M4 12h16M4 18h10',
 };
 
 /** Decorative only: every use sits next to visible text, so it is hidden from assistive technology. */

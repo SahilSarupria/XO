@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { formatOutput, layoutGraph, NODE_H, NODE_W } from '../domain/graph';
+import { Icon } from './icons';
 import { formatMs, runRow, runsOf, shortRunId, stepRecord } from '../domain/executions';
 import { replayFrame } from '../domain/replay';
 import { tidyName } from '../domain/work';
@@ -95,13 +96,25 @@ function RunView(props: { run: WorkflowRun; executions: readonly Execution[]; ca
         <div className="wf-scroll ex-scroll">
           <div className="wf-stage" style={{ width: layout.width, height: layout.height }}>
             <svg className="wf-edges" width={layout.width} height={layout.height} aria-hidden="true">
-              {layout.edges.map((e, i) => (
-                <path
-                  key={e.id}
-                  d={e.path}
-                  data-taken={(stateOf.get(ordered[i]?.stepId ?? '')?.state ?? 'upcoming') === 'done' ? 'true' : 'false'}
-                />
-              ))}
+              <defs>
+                <marker id="ex-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M 1 1 L 9 5 L 1 9 z" className="ex-arrow" />
+                </marker>
+                <marker id="ex-arrow-on" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M 1 1 L 9 5 L 1 9 z" className="ex-arrow ex-arrow-on" />
+                </marker>
+              </defs>
+              {layout.edges.map((e, i) => {
+                const taken = (stateOf.get(ordered[i]?.stepId ?? '')?.state ?? 'upcoming') === 'done';
+                return (
+                  <path
+                    key={e.id}
+                    d={e.path}
+                    data-taken={taken ? 'true' : 'false'}
+                    markerEnd={`url(#${taken ? 'ex-arrow-on' : 'ex-arrow'})`}
+                  />
+                );
+              })}
             </svg>
             <ol className="wf-nodes" aria-label="Steps in the order they ran">
               {layout.nodes.map((n, i) => {
@@ -120,13 +133,20 @@ function RunView(props: { run: WorkflowRun; executions: readonly Execution[]; ca
                       aria-pressed={focusStep === step.stepId}
                       onClick={() => setSelectedStep(step.stepId)}
                     >
-                      <span className="wf-dot" aria-hidden="true" />
-                      <span className="wf-node-name" title={step.capabilityName}>
-                        {tidyName(step.capabilityName, 40)}
+                      <span className="wf-dot" aria-hidden="true">
+                        <Icon
+                          name={n.kind === 'human' ? 'user' : state === 'done' ? 'check' : state === 'failed' ? 'x' : 'xos'}
+                          size={18}
+                        />
                       </span>
-                      <span className="wf-node-sub">
-                        {REPLAY_STATE_LABEL[state]}
-                        {state === 'done' && rec?.durationMs !== undefined ? ` · ${formatMs(rec.durationMs)}` : ''}
+                      <span className="ex-text">
+                        <span className="wf-node-name" title={step.capabilityName}>
+                          {tidyName(step.capabilityName, 40)}
+                        </span>
+                        <span className="wf-node-sub">
+                          {REPLAY_STATE_LABEL[state]}
+                          {state === 'done' && rec?.durationMs !== undefined ? ` · ${formatMs(rec.durationMs)}` : ''}
+                        </span>
                       </span>
                     </button>
                   </li>

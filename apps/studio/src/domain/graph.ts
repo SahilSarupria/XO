@@ -28,12 +28,12 @@ export interface GraphLayout {
   readonly height: number;
 }
 
-export const NODE_W = 176;
-export const NODE_H = 78;
-const GAP_X = 52;
-const GAP_Y = 64;
+export const NODE_W = 208;
+export const NODE_H = 68;
+const GAP_X = 76;
+const GAP_Y = 56;
 const PAD = 40;
-export const COLUMNS = 6;
+export const COLUMNS = 5;
 
 export function layoutGraph(steps: readonly WorkflowStepSummary[], caps: readonly Capability[] | undefined): GraphLayout {
   const byId = new Map((caps ?? []).map((c) => [c.capabilityId, c]));

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
@@ -9,6 +9,7 @@ import { openScreen } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 type Edge = { from: string; to: string; when?: string };
+type VNode = { id: string; position?: { x: number; y: number } };
 
 async function openEditor(api: FakeXo): Promise<U> {
   const user = userEvent.setup();
@@ -115,6 +116,68 @@ describe('Workflow editor side panel', () => {
     expect(within(tabs).getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
     await user.click(within(canvas()).getByRole('button', { name: /^Record before payment/ }));
     expect(within(tabs).getByRole('tab', { name: 'Step' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+const lastNodes = (api: FakeXo) =>
+  (api.calls.filter((x) => /workflow-definitions\/validate$/.test(x.path)).at(-1)?.body as { nodes: VNode[] } | undefined)?.nodes;
+
+describe('Workflow canvas: connect, disconnect and place steps', () => {
+  it('click an output dot, then a step, to connect them; the old target is left unconnected and the platform re-validates', async () => {
+    const api = new FakeXo();
+    const user = await openEditor(api);
+    await user.click(within(canvas()).getByRole('button', { name: 'Connect from Start' }));
+    await user.click(within(canvas()).getByRole('button', { name: /^Review not covered/ }));
+    await waitFor(() => expect(lastValidate(api)).toEqual(expect.arrayContaining([{ from: 'n0', to: 'n2' }])));
+    expect(lastValidate(api)).not.toEqual(expect.arrayContaining([{ from: 'n0', to: 'n1' }]));
+  });
+
+  it('Escape abandons a half-made connection; clicking a step then just selects it', async () => {
+    const api = new FakeXo();
+    const user = await openEditor(api);
+    const before = api.calls.length;
+    await user.click(within(canvas()).getByRole('button', { name: 'Connect from Start' }));
+    await user.keyboard('{Escape}');
+    await user.click(within(canvas()).getByRole('button', { name: /^Review not covered/ }));
+    expect(within(canvas()).getByRole('button', { name: /^Review not covered/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(api.calls.slice(before).filter((c) => /validate$/.test(c.path))).toHaveLength(0);
+  });
+
+  it('a connection can be removed from its own control, leaving both steps', async () => {
+    const api = new FakeXo();
+    const user = await openEditor(api);
+    await user.click(within(canvas()).getByRole('button', { name: /^Disconnect Record before payment from Review not covered/ }));
+    await waitFor(() => expect(lastValidate(api)).not.toEqual(expect.arrayContaining([{ from: 'n1', to: 'n2' }])));
+    expect(within(canvas()).getByText('4 nodes')).toBeInTheDocument();
+    // The end of that path is open again, so it offers an add stub.
+    expect(within(canvas()).getByRole('button', { name: 'Add a step after Record before payment' })).toBeInTheDocument();
+  });
+
+  it('dragging a step places it, saves the position with the draft, and "Tidy up" forgets it', async () => {
+    const api = new FakeXo();
+    const user = await openEditor(api);
+    const card = within(canvas()).getByRole('button', { name: /^Review not covered/ });
+    // jsdom has no PointerEvent; React listens by event name, so a MouseEvent carries the coordinates.
+    const ptr = (type: string, x: number, y: number) =>
+      fireEvent(card, new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y }));
+    ptr('pointerdown', 300, 300);
+    ptr('pointermove', 420, 360);
+    ptr('pointerup', 420, 360);
+    await waitFor(() => expect(lastNodes(api)?.find((x) => x.id === 'n2')?.position).toBeDefined());
+    const moved = lastNodes(api)!.find((x) => x.id === 'n2')!.position!;
+    expect(moved.x % 12).toBe(0);
+    expect(moved.y % 12).toBe(0);
+    expect(lastNodes(api)!.filter((x) => x.position !== undefined)).toHaveLength(1);
+    await user.click(within(canvas()).getByRole('button', { name: 'Tidy up' }));
+    await waitFor(() => expect(lastNodes(api)!.every((x) => x.position === undefined)).toBe(true));
+    expect(within(canvas()).queryByRole('button', { name: 'Tidy up' })).not.toBeInTheDocument();
+  });
+
+  it('a viewer sees no output dots to connect from, and cannot drag', async () => {
+    const api = new FakeXo();
+    api.studio.role = 'viewer';
+    await openEditor(api);
+    expect(within(canvas()).queryByRole('button', { name: /^(Connect from|Disconnect) / })).not.toBeInTheDocument();
   });
 });
 

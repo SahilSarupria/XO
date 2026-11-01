@@ -83,6 +83,14 @@ const nodeSchema = obj(
     id: str,
     kind: { type: 'string', enum: ['trigger', 'compile', 'validate', 'capability', 'branch', 'human_review', 'action'] },
     label: str,
+    position: {
+      type: 'object',
+      description:
+        'Optional. Where the editor draws the node, in whole pixels (0-100000). Presentation only: it never affects validation or runs.',
+      properties: { x: { type: 'integer', minimum: 0, maximum: 100000 }, y: { type: 'integer', minimum: 0, maximum: 100000 } },
+      required: ['x', 'y'],
+      additionalProperties: false,
+    },
     config: {
       type: 'object',
       additionalProperties: true,

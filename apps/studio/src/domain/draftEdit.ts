@@ -281,3 +281,52 @@ export function openOutputs(g: DraftGraph, id: string): readonly ('gte' | 'lt' |
   if (n.kind === 'branch') return (['gte', 'lt'] as const).filter((s) => !have.has(s));
   return have.size === 0 ? [undefined] : [];
 }
+
+// ------------------------------------------------------------------ connect, disconnect, position
+/** Mirrors the platform's bound; positions are whole pixels in 0..MAX_COORD. */
+export const MAX_COORD = 100_000;
+const snapCoord = (v: number) => Math.min(MAX_COORD, Math.max(0, Math.round(Number.isFinite(v) ? v : 0)));
+
+/**
+ * Makes `from` (on its `when` side, for a branch) lead to `to`, replacing whatever that output led to before. A step has
+ * one output and a branch has two, so the previous target is left unconnected rather than duplicated. Returns the graph
+ * unchanged for a self-connection, an unknown step, the wrong kind of output, or a connection that already exists.
+ * Whether the result is a valid workflow (a loop, a second start, a dangling step) is the platform's call, as always.
+ */
+export function connect(g: DraftGraph, from: string, to: string, when?: 'gte' | 'lt'): DraftGraph {
+  const a = byId(g, from);
+  const b = byId(g, to);
+  if (a === undefined || b === undefined || from === to) return g;
+  if ((a.kind === 'branch') !== (when !== undefined)) return g;
+  const existing = outOf(g, from).find((e) => e.when === when);
+  if (existing?.to === to) return g;
+  const edge = when !== undefined ? { from, to, when } : { from, to };
+  return { nodes: g.nodes, edges: [...(existing === undefined ? g.edges : without(g.edges, [existing])), edge] };
+}
+
+/** Removes the connection leaving `from` (on `when`, for a branch) towards `to`. The steps stay; only the line goes. */
+export function disconnect(g: DraftGraph, from: string, to: string, when?: 'gte' | 'lt'): DraftGraph {
+  const hit = g.edges.find((e) => e.from === from && e.to === to && e.when === when);
+  return hit === undefined ? g : { nodes: g.nodes, edges: without(g.edges, [hit]) };
+}
+
+/** Pins a step where the person dropped it. Coordinates are rounded and kept inside the platform's bounds. */
+export function setPosition(g: DraftGraph, id: string, x: number, y: number): DraftGraph {
+  const n = byId(g, id);
+  if (n === undefined) return g;
+  const position = { x: snapCoord(x), y: snapCoord(y) };
+  if (n.position?.x === position.x && n.position.y === position.y) return g;
+  return { nodes: g.nodes.map((m) => (m.id === id ? { ...m, position } : m)), edges: g.edges };
+}
+
+/** Forgets every pinned position, so the whole drawing is laid out automatically again. */
+export function clearPositions(g: DraftGraph): DraftGraph {
+  if (!g.nodes.some((n) => n.position !== undefined)) return g;
+  return {
+    nodes: g.nodes.map((n) => {
+      const { position: _gone, ...rest } = n;
+      return rest;
+    }),
+    edges: g.edges,
+  };
+}

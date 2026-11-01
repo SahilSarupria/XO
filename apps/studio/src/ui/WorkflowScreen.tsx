@@ -7,6 +7,7 @@ import { ActionNoticeView } from './actions';
 import { can } from '../domain/access';
 import type { WorkspaceRole } from '../platform/wire';
 import { Badge, Button, EmptyState } from './primitives';
+import { Icon } from './icons';
 import { DraftInspector, DraftPalette } from './DraftEditor';
 import { FlowCanvas, type InsertTarget, type NodeBadge } from './FlowCanvas';
 import { useWorkflowDraft } from './useWorkflowDraft';
@@ -35,14 +36,15 @@ export function WorkflowBar(props: {
   ];
   return (
     <header className="wf-bar">
-      <nav className="wf-crumbs" aria-label="Breadcrumb">
-        <button type="button" className="crumb-link" onClick={props.onBack}>
-          Workflows
+      <div className="wf-head">
+        <button type="button" className="wf-back" aria-label="Back to Workflows" title="Back to Workflows" onClick={props.onBack}>
+          <Icon name="back" size={18} />
+          <span aria-hidden="true">Back</span>
         </button>
-        <span aria-hidden="true"> / </span>
-        <h1 className="wf-title">{workflowTitle(props.workflow)}</h1>
+        {/* The page stays named for screen readers; the name is shown in the Settings tab. */}
+        <h1 className="visually-hidden">{workflowTitle(props.workflow)}</h1>
         <Badge tone={props.status.tone}>{props.status.label}</Badge>
-      </nav>
+      </div>
       <div className="wf-tabs" role="tablist" aria-label="Workflow views">
         {tabs.map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={props.tab === id} onClick={() => props.onTab(id)}>

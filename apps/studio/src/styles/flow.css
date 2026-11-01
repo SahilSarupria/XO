@@ -571,3 +571,159 @@ g[data-hover='true'] > .nf-edge {
     display: none;
   }
 }
+
+/* ---- back button in the workflow header */
+.wf-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.wf-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.35rem 0.8rem 0.35rem 0.6rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.wf-back:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.wf-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- placing and connecting steps */
+.nf[data-editable='true'] .nf-node {
+  cursor: grab;
+}
+.nf[data-linking='true'],
+.nf[data-linking='true'] .nf-node {
+  cursor: crosshair;
+}
+.nf[data-linking='true'] .nf-node[data-link-target='true']:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-wash);
+}
+.nf-port-btn {
+  /* The dot stays small; the clickable area around it is generous. */
+  right: auto;
+  margin: -6px 0 0 -6px;
+  padding: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+.nf-port-btn::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+.nf-port-btn:hover,
+.nf-port-btn[data-armed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.nf-port-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.nf-link {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+.nf-cut:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-wash);
+}
+
+/* ---- Executions graph: the same card language as the editor, read-only, with the run's state on each step */
+.ex-canvas {
+  background-image: radial-gradient(var(--border-strong) 1px, transparent 1.2px);
+}
+.ex-scroll .wf-edges path {
+  stroke-width: 2;
+}
+.ex-arrow {
+  fill: var(--border-strong);
+}
+.ex-arrow-on {
+  fill: var(--accent);
+}
+.ex-scroll .wf-node {
+  --kind: var(--accent);
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--s-3);
+  padding: 0 var(--s-3);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition:
+    border-color var(--motion),
+    box-shadow var(--motion),
+    opacity var(--motion);
+}
+.ex-scroll .wf-node[data-kind='human'] {
+  --kind: var(--violet);
+}
+.ex-scroll .wf-node:hover {
+  border-color: var(--text-faint);
+}
+.ex-scroll .wf-node:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.ex-scroll .wf-node[aria-pressed='true'] {
+  border-color: var(--kind);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--kind) 18%, transparent);
+}
+.ex-scroll .wf-node .wf-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  border-radius: 10px;
+  color: var(--kind);
+  background: var(--surface-3);
+  background: color-mix(in srgb, var(--kind) 16%, transparent);
+}
+.ex-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ex-scroll .wf-node-sub {
+  font-family: inherit;
+}
+.ex-scroll .wf-node[data-state='done'] {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
+}
+.ex-scroll .wf-node[data-state='waiting'] {
+  --kind: var(--warning);
+  border-color: var(--warning);
+}
+.ex-scroll .wf-node[data-state='failed'] {
+  --kind: var(--danger);
+  border-color: var(--danger);
+}
+.ex-scroll .wf-node[data-state='failed'] .wf-dot,
+.ex-scroll .wf-node[data-state='waiting'] .wf-dot {
+  background: color-mix(in srgb, var(--kind) 16%, transparent);
+}
+.ex-scroll .wf-node[data-current='true'] {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--kind) 22%, transparent);
+}

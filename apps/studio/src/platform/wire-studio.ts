@@ -561,6 +561,8 @@ export interface DraftNode {
   readonly kind: DraftNodeKind;
   readonly label?: string;
   readonly config: Readonly<Record<string, unknown>>;
+  /** Where the editor draws it (whole pixels). Presentation only; absent means "place automatically". */
+  readonly position?: { readonly x: number; readonly y: number };
 }
 export interface DraftEdge {
   readonly from: string;

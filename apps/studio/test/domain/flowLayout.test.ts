@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { insertNode, insertOnEdge, openOutputs, type DraftGraph } from '../../src/domain/draftEdit';
+import {
+  clearPositions,
+  connect,
+  disconnect,
+  insertNode,
+  insertOnEdge,
+  MAX_COORD,
+  openOutputs,
+  setPosition,
+  type DraftGraph,
+} from '../../src/domain/draftEdit';
 import { FLOW_BRANCH_H, FLOW_NODE_H, FLOW_NODE_W, curve, layoutFlow } from '../../src/domain/flowLayout';
 import type { DraftNode } from '../../src/platform/wire-studio';
 
@@ -114,5 +124,71 @@ describe('layoutFlow', () => {
   it('draws a backwards connection as a loop, not a straight line through the node', () => {
     expect(curve({ x: 300, y: 100 }, { x: 40, y: 100 })).toContain(' S ');
     expect(curve({ x: 100, y: 100 }, { x: 400, y: 200 })).not.toContain(' S ');
+  });
+});
+
+describe('connect and disconnect', () => {
+  it('points a step at another, replacing what its output led to before', () => {
+    const g = chain('t', 'a', 'b');
+    expect(pairs(connect(g, 't', 'b'))).toEqual(['a>b', 't>b']);
+  });
+
+  it('connects the two sides of a branch independently, and only with a side', () => {
+    let g = insertNode(chain('t', 'a'), n('br', 'branch'), 'a');
+    g = { ...g, nodes: [...g.nodes, n('x'), n('y')] };
+    g = connect(connect(g, 'br', 'x', 'gte'), 'br', 'y', 'lt');
+    expect(pairs(g)).toEqual(['a>br', 'br>xgte', 'br>ylt', 't>a']);
+    expect(connect(g, 'br', 'x')).toBe(g);
+    expect(connect(chain('t', 'a'), 't', 'a', 'gte')).toEqual(chain('t', 'a'));
+  });
+
+  it('ignores a connection to itself, to an unknown step, or one that already exists', () => {
+    const g = chain('t', 'a');
+    expect(connect(g, 'a', 'a')).toBe(g);
+    expect(connect(g, 'a', 'nope')).toBe(g);
+    expect(connect(g, 'nope', 'a')).toBe(g);
+    expect(connect(g, 't', 'a')).toBe(g);
+  });
+
+  it('removes only the line, leaving both steps', () => {
+    const g = disconnect(chain('t', 'a', 'b'), 'a', 'b');
+    expect(pairs(g)).toEqual(['t>a']);
+    expect(g.nodes).toHaveLength(3);
+    const same = chain('t', 'a');
+    expect(disconnect(same, 'a', 't')).toBe(same);
+  });
+});
+
+describe('positions', () => {
+  it('pins a step, rounded and kept inside the platform bounds, and leaves the rest alone', () => {
+    const g = chain('t', 'a');
+    const p = setPosition(g, 'a', 100.6, -20);
+    expect(p.nodes.find((x) => x.id === 'a')?.position).toEqual({ x: 101, y: 0 });
+    expect(p.nodes.find((x) => x.id === 't')?.position).toBeUndefined();
+    expect(setPosition(g, 'a', 1e9, 5).nodes[1]?.position).toEqual({ x: MAX_COORD, y: 5 });
+    expect(setPosition(g, 'nope', 1, 1)).toBe(g);
+    expect(setPosition(p, 'a', 101, 0)).toBe(p);
+  });
+
+  it('draws a pinned step exactly where it was placed, with its ports and connections following it', () => {
+    const g = setPosition(chain('t', 'a', 'b'), 'a', 600, 300);
+    const l = layoutFlow(g);
+    const a = l.nodes.find((p) => p.node.id === 'a')!;
+    expect([a.x, a.y]).toEqual([600, 300]);
+    expect(a.input).toEqual({ x: 600, y: 300 + FLOW_NODE_H / 2 });
+    const into = l.edges.find((e) => e.to === 'a')!;
+    expect(into.path.endsWith(`${a.input.x} ${a.input.y}`)).toBe(true);
+    // The drawing grows to hold it.
+    expect(l.width).toBeGreaterThanOrEqual(600 + FLOW_NODE_W);
+    expect(l.height).toBeGreaterThanOrEqual(300 + FLOW_NODE_H);
+  });
+
+  it('forgets every pinned position, returning the same automatic drawing', () => {
+    const g = chain('t', 'a', 'b');
+    const pinned = setPosition(setPosition(g, 'a', 500, 40), 'b', 900, 400);
+    const back = clearPositions(pinned);
+    expect(back.nodes.every((x) => x.position === undefined)).toBe(true);
+    expect(layoutFlow(back)).toEqual(layoutFlow(g));
+    expect(clearPositions(g)).toBe(g);
   });
 });

@@ -211,3 +211,40 @@ test('permissions, deletion and audit', async () => {
     assert.ok(events.includes('workflow.definition_saved') && events.includes('workflow.definition_deleted'));
   });
 });
+
+test('a node position is optional presentation data: stored and returned as given, never part of validation, and strictly bounded', async () => {
+  await withWs(async ({ server, base }) => {
+    const input = triage();
+    (input.nodes[0] as Record<string, unknown>)['position'] = { x: 48, y: 120 };
+    const saved = await server.request('POST', base, input);
+    assert.equal(saved.status, 201, saved.bodyText);
+    const got = (await server.request('GET', `${base}/${saved.json<{ definitionId: string }>().definitionId}`)).json<{
+      nodes: { id: string; position?: { x: number; y: number } }[];
+    }>();
+    assert.deepEqual(got.nodes[0]?.position, { x: 48, y: 120 });
+    assert.equal(got.nodes[1]?.position, undefined, 'a node without a position is left to automatic placement');
+  });
+
+  const withPos = (position: unknown) => {
+    const input = triage();
+    (input.nodes[0] as Record<string, unknown>)['position'] = position;
+    return input;
+  };
+  for (const bad of [
+    { x: -1, y: 0 },
+    { x: 0, y: 100001 },
+    { x: 1.5, y: 0 },
+    { x: '3', y: 0 },
+    { x: 0 },
+    { x: 0, y: 0, z: 1 },
+    [1, 2],
+    'a',
+  ]) {
+    assert.throws(() => parseDefinitionInput(withPos(bad)), /position/, JSON.stringify(bad));
+  }
+  assert.deepEqual(parseDefinitionInput(withPos({ x: 0, y: 100000 })).nodes[0]?.position, { x: 0, y: 100000 });
+  // Moving a node changes nothing the platform judges.
+  const a = analyzeDefinition(parseDefinitionInput(triage()));
+  const b = analyzeDefinition(parseDefinitionInput(withPos({ x: 900, y: 40 })));
+  assert.deepEqual(b, a);
+});
