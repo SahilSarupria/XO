@@ -32,3 +32,4 @@ export * from './agent/server.js';
 export * from './agent/client.js';
 export * from './cloud/index.js';
 export * from './knowledge/index.js';
+export * from './sdk/index.js';

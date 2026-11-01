@@ -604,21 +604,48 @@ export async function queryKnowledge(
   query: KnowledgeQuery,
   ctx: ConnectorContext,
 ): Promise<Result<KnowledgeAnswer, DiscoveryError>> {
+  const batch = await queryKnowledgeBatch(model, [query], ctx);
+  if (!batch.ok) return batch;
+  const first = batch.value[0];
+  return first !== undefined ? ok(first) : err(internalError(new Error('empty batch'), 'knowledge query'));
+}
+
+/** At most this many selectors share one decision, one audit record and one visibility pass (used by the SDK's context assembly). */
+export const MAX_BATCH_QUERIES = 8;
+
+/**
+ * Several selectors answered from ONE consistent view: one authorization decision, one write-ahead audit record, one visibility pass.
+ * All selectors must share the same `asOf` and `limits` (the first one's); a batch is exactly as strict as the equivalent single queries.
+ */
+export async function queryKnowledgeBatch(
+  model: KnowledgeModel,
+  queries: readonly KnowledgeQuery[],
+  ctx: ConnectorContext,
+): Promise<Result<readonly KnowledgeAnswer[], DiscoveryError>> {
   const who = preconditions(ctx, QUERY_PERMISSION);
   if (!who.ok) return who;
   const principal = who.value;
-  const limits = resolveLimits(query.limits);
+  if (!Array.isArray(queries) || queries.length === 0 || queries.length > MAX_BATCH_QUERIES)
+    return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'a batch holds 1 to 8 queries', { field: 'queries' }));
+  const head = queries[0] as KnowledgeQuery;
+  if (queries.some((q) => q.asOf !== head.asOf))
+    return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'every query of a batch must share one asOf', { field: 'asOf' }));
+  const limits = resolveLimits(head.limits);
   if (!limits.ok) return limits;
-  const asOf = parseAsOf(query, ctx);
+  const asOf = parseAsOf(head, ctx);
   if (!asOf.ok) return asOf;
-  const requested = query.limit ?? limits.value.maxResults;
-  if (!Number.isSafeInteger(requested) || requested < 1)
-    return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the result limit is not acceptable', { field: 'limit' }));
-  let cap = requested;
-  // ENFORCE:query-result-bounded
-  if (cap > limits.value.maxResults) cap = limits.value.maxResults;
-  if (!['entities', 'relationships', 'claims', 'conflicts', 'documents'].includes(query.select))
-    return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the query selector is not acceptable', { field: 'select' }));
+  const caps: number[] = [];
+  for (const query of queries) {
+    const requested = query.limit ?? limits.value.maxResults;
+    if (!Number.isSafeInteger(requested) || requested < 1)
+      return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the result limit is not acceptable', { field: 'limit' }));
+    let cap = requested;
+    // ENFORCE:query-result-bounded
+    if (cap > limits.value.maxResults) cap = limits.value.maxResults;
+    caps.push(cap);
+    if (!['entities', 'relationships', 'claims', 'conflicts', 'documents'].includes(query.select))
+      return err(discoveryError(DiscoveryErrorCode.MALFORMED_INPUT, 'the query selector is not acceptable', { field: 'select' }));
+  }
 
   const { gate, scope } = await authorizeFor(
     ctx,
@@ -651,20 +678,23 @@ export async function queryKnowledge(
   if (!session.ok) return session;
 
   let withheldCount = 0;
-  const answer = await finishWork(
+  const answers = await finishWork(
     session.value,
-    async (): Promise<Result<KnowledgeAnswer & { commit?: () => void }, DiscoveryError>> => {
+    async (): Promise<Result<{ answers: readonly KnowledgeAnswer[]; commit?: () => void }, DiscoveryError>> => {
       const seen = await visibleView(model, ctx, principal, asOf.value, limits.value, new Deadline(limits.value.timeBudgetMs));
       if (!seen.ok) return seen;
       withheldCount = seen.value.withheld;
-      const picked = select(seen.value.view, query);
-      const items = picked.slice(0, cap);
-      return ok({ select: query.select, asOf: asOf.value, items, truncated: picked.length > cap });
+      const out = queries.map((query, i): KnowledgeAnswer => {
+        const picked = select(seen.value.view, query);
+        const cap = caps[i] ?? limits.value.maxResults;
+        return { select: query.select, asOf: asOf.value, items: picked.slice(0, cap), truncated: picked.length > cap };
+      });
+      return ok({ answers: out });
     },
-    (a) => ({ counts: { evidence: a.items.length, skipped: withheldCount, errors: 0 } }),
+    (a) => ({ counts: { evidence: a.answers.reduce((n, x) => n + x.items.length, 0), skipped: withheldCount, errors: 0 } }),
   );
-  if (!answer.ok) return answer;
-  return ok({ select: answer.value.select, asOf: answer.value.asOf, items: answer.value.items, truncated: answer.value.truncated });
+  if (!answers.ok) return answers;
+  return ok(answers.value.answers);
 }
 
 function select(view: View, q: KnowledgeQuery): readonly KnowledgeItem[] {
