@@ -38,6 +38,10 @@ export class SimulatedModel implements ModelProvider {
     const lastTool = [...req.messages].reverse().find((m) => m.role === 'tool');
     const usage = { inputTokens: Math.ceil(req.messages.reduce((s, m) => s + m.content.length, 0) / 4), outputTokens: 40 };
     const hasTool = req.tools?.some((t) => t.name === 'evaluate_decision_tree') === true;
+    const wantsEvidence =
+      req.tools?.some(
+        (t) => t.name === 'evaluate_decision_tree' && 'evidence' in ((t.inputSchema as { properties?: object }).properties ?? {}),
+      ) === true;
 
     if (hasTool && task !== undefined && lastTool === undefined) {
       return {
@@ -46,7 +50,18 @@ export class SimulatedModel implements ModelProvider {
         modelUsed: 'sim-1',
         finishReason: 'tool_use',
         toolCalls: [
-          { id: `sim_${this.calls}`, name: 'evaluate_decision_tree', input: { tree_id: 'claim_adjudication', facts: task.statedFacts } },
+          {
+            id: `sim_${this.calls}`,
+            name: 'evaluate_decision_tree',
+            input: {
+              tree_id: 'claim_adjudication',
+              facts: task.statedFacts,
+              // plumbing only: when the layer asks for evidence, quote the whole claim for every fact
+              ...(wantsEvidence
+                ? { evidence: Object.fromEntries(Object.keys(task.statedFacts).map((k) => [k, { quote: task.narrative, derived: true }])) }
+                : {}),
+            },
+          },
         ],
       };
     }

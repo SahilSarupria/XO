@@ -73,3 +73,9 @@ outside this table. Division by zero and unknown identifiers are errors. `&&`/`|
 
 - The interactive TUI still has its own provider flags; only `xo run`, `xo ask`, `xo ab-eval` and `xo desk` are operator-config only.
 - Package-format migrations (`manifest-migration`) are covered for manifests; component-format migrations are not yet specified.
+
+## Fact grounding (opt-in: `createCapabilityLayer(bundle, { requireEvidence: true })`)
+
+Measured finding (gemini-3.1-flash-lite, 10 abstain tasks): when a needed fact was absent from the claim, the model invented `damage_pct: 100` in 10/10 tool calls and the tree computed a payout from it.
+With `requireEvidence`, `evaluate_decision_tree` requires `evidence: { fact: { quote, derived? } }`. `XoExecutor` refuses the call (`UNGROUNDED_FACTS`) when a fact has no quote, the quote is not verbatim in the case text, or a numeric value is not a number in its quote (unless `derived`).
+Limits: it makes invention visible, not impossible. A model can quote real text it misreads, or mark an invented value `derived` with an unrelated quote. Whether it fixes abstention on a real model is **unmeasured** until `xo_tools_grounded` is run live.

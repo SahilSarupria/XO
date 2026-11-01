@@ -6,3 +6,4 @@ export * from './context.js';
 export * from './agent.js';
 export * from './executor.js';
 export * from './integrity.js';
+export * from './grounding.js';

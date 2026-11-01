@@ -5,7 +5,7 @@ import { OUTPUT_CONTRACT } from '../scenario/freight/gold-xo.js';
 import type { FreightTask } from '../scenario/freight/generate.js';
 import { manualMarkdown, PROMPT_ONLY_BRIEF } from '../scenario/freight/rules.js';
 
-export type ArmId = 'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_router' | 'compiled_context';
+export type ArmId = 'plain' | 'prompt' | 'dump' | 'xo_context' | 'xo_tools' | 'xo_tools_grounded' | 'xo_router' | 'compiled_context';
 
 export interface ArmRun {
   readonly output: Record<string, unknown> | null;
@@ -100,8 +100,11 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
     latencyMs: r.latencyMs,
     ...(r.error !== undefined ? { error: r.error } : {}),
   });
-  const xo = (bundle: PackageBundle, tools: boolean, withTrees: boolean): XoExecutor => {
-    const layer = createCapabilityLayer(bundle, { host: { family: 'claude', capabilities: tools ? ['chat', 'tool_use'] : ['chat'] } });
+  const xo = (bundle: PackageBundle, tools: boolean, withTrees: boolean, requireEvidence = false): XoExecutor => {
+    const layer = createCapabilityLayer(bundle, {
+      host: { family: 'claude', capabilities: tools ? ['chat', 'tool_use'] : ['chat'] },
+      ...(requireEvidence ? { requireEvidence: true } : {}),
+    });
     return new XoExecutor(
       layer,
       {
@@ -120,6 +123,7 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
   const manual = manualMarkdown(o.handbook);
   const goldContext = xo(o.gold, false, false);
   const goldTools = xo(o.gold, true, false);
+  const goldToolsGrounded = xo(o.gold, true, false, true);
   const goldRouter = xo(o.gold, true, true);
   const compiledContext = o.compiled !== undefined ? xo(o.compiled, false, false) : undefined;
 
@@ -161,6 +165,12 @@ export function buildArms(o: ArmFactoryOptions): Record<ArmId, Arm> {
       label: 'XO L3: + decision-tree tool + safety gate',
       input: 'narrative',
       run: async (t) => fromExecutor(await goldTools.execute({ text: t.narrative })),
+    },
+    xo_tools_grounded: {
+      id: 'xo_tools_grounded',
+      label: 'XO L3 + fact grounding: every tool fact needs a verbatim quote from the claim',
+      input: 'narrative',
+      run: async (t) => fromExecutor(await goldToolsGrounded.execute({ text: t.narrative })),
     },
     xo_router: {
       id: 'xo_router',

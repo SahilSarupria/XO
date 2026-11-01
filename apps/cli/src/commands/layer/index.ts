@@ -59,7 +59,7 @@ const fail = (s: string): number => (process.stderr.write(`error: ${s}\n`), 1);
 
 /** Cheapest set that still answers "does XO beat the same model alone / with the whole manual pasted in?" (+ the free router arm). */
 const LEAN_ARMS: ArmId[] = ['plain', 'dump', 'xo_tools', 'xo_router'];
-const ALL_ARMS: ArmId[] = ['plain', 'prompt', 'dump', 'xo_context', 'xo_tools', 'xo_router'];
+const ALL_ARMS: ArmId[] = ['plain', 'prompt', 'dump', 'xo_context', 'xo_tools', 'xo_tools_grounded', 'xo_router'];
 
 export function registerCommands(registry: CommandRegistry): void {
   registry.declareSubsystem(SUBSYSTEM, 'detachable intelligence layer: ask, A/B evaluation, compiler gap, unattended desk');

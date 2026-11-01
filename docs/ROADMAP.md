@@ -30,7 +30,8 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 - [x] Cost per task and per correct task (`--price-in/--price-out`), tested
 - [x] `xo ab-compare` side-by-side of runs
 - [x] Retrieval recall@9 at scale: 92–93% from 141 to 2,021 nodes (`scripts/bench-scale-accuracy.mjs`)
-- [ ] Abstain set not yet run on a real model; no second scenario; no refuse/ambiguous strata beyond missing-fact
+- [x] Abstain set run on gemini-3.1-flash-lite (n=10): plain 10%, dump 0%, xo_tools 0% pass; xo_tools invented damage_pct in 10/10 calls. Fix built: `xo_tools_grounded` arm (fact grounding), live result pending
+- [ ] Not yet: no second scenario; no refuse/ambiguous strata beyond missing-fact
 
 ## F. Release
 

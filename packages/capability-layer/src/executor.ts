@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ModelProvider } from '@xo/ai-core';
 import { runAgent, type ToolCallRecord } from './agent.js';
 import { assembleContext } from './context.js';
+import { checkGrounding } from './grounding.js';
 import { evaluateTree, parseTrees, type DecisionTree, type TreeEvaluation } from './decision-tree.js';
 import type { CapabilityLayer, SafetyDecision } from './layer.js';
 
@@ -130,7 +131,30 @@ export class XoExecutor {
   }
 
   /** Routes the model's evaluate_decision_tree calls through the same (possibly sandboxed) evaluator as the deterministic path. */
-  private async runTool(name: string, input: Readonly<Record<string, unknown>>): Promise<{ isError: boolean; content: string }> {
+  private async runTool(
+    name: string,
+    input: Readonly<Record<string, unknown>>,
+    caseText: string,
+  ): Promise<{ isError: boolean; content: string }> {
+    if (name === 'evaluate_decision_tree' && this.layer.requiresEvidence) {
+      const all = this.layer.decisionTrees();
+      const id = typeof input['tree_id'] === 'string' ? input['tree_id'] : all.length === 1 ? all[0]?.id : undefined;
+      const tree = all.find((t) => t.id === id);
+      const facts = typeof input['facts'] === 'object' && input['facts'] !== null ? (input['facts'] as Record<string, unknown>) : {};
+      if (tree !== undefined) {
+        const g = checkGrounding(tree, facts, input['evidence'], caseText);
+        if (!g.ok)
+          return {
+            isError: true,
+            content: JSON.stringify({
+              ok: false,
+              error: 'UNGROUNDED_FACTS',
+              ungrounded: g.ungrounded,
+              hint: 'Remove any fact the case text does not state. If a fact the tree needs is not in the case, do not guess it: report it as missing and escalate.',
+            }),
+          };
+      }
+    }
     if (name === 'evaluate_decision_tree' && this.opts.evaluate !== undefined) {
       const id = typeof input['tree_id'] === 'string' ? input['tree_id'] : this.trees.length === 1 ? this.trees[0]?.id : undefined;
       const tree = this.trees.find((t) => t.id === id);
@@ -241,7 +265,7 @@ export class XoExecutor {
         model: this.opts.model,
         systemPrompt: ctx.systemPrompt,
         tools: ctx.tools,
-        executeTool: (n, i) => this.runTool(n, i),
+        executeTool: (n, i) => this.runTool(n, i, input.text),
         temperature: this.opts.temperature ?? 0,
         ...(this.opts.maxOutputTokens !== undefined ? { maxOutputTokens: this.opts.maxOutputTokens } : {}),
         ...(this.opts.maxTokensPerRequest !== undefined ? { maxTotalTokens: this.opts.maxTokensPerRequest } : {}),

@@ -61,6 +61,10 @@ export interface CapabilityLayer {
   weightsPatch(): null;
   safetyGate(ctx: { readonly input?: string; readonly output?: Readonly<Record<string, unknown>> }): SafetyDecision;
   emitLoadReceipt(): LoadReceipt;
+  /** True when tool calls must carry evidence for each fact (see grounding.ts); enforced by XoExecutor, which knows the case text. */
+  readonly requiresEvidence: boolean;
+  /** The decision trees this layer exposes as tools (empty when the host lacks tool use). */
+  decisionTrees(): readonly DecisionTree[];
 }
 
 export interface LayerOptions {
@@ -71,6 +75,8 @@ export interface LayerOptions {
   readonly integrity?: IntegrityOptions['integrity'];
   /** Operator trust policy; when set, the package must verify against it (signatures, publisher, roles). */
   readonly trust?: IntegrityOptions['trust'];
+  /** Require a verbatim evidence quote for every fact passed to a decision tree. Off by default (existing behaviour). */
+  readonly requireEvidence?: boolean;
 }
 
 interface PromptStrategies {
@@ -232,12 +238,20 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
           .join('\n');
         defs.push({
           name: 'evaluate_decision_tree',
-          description: `Run one of this expert package's decision trees deterministically over facts you extracted from the case. Returns the outcome, the rules applied and a step trace. If a needed fact is missing it tells you which; supply only facts the case actually states.\nAvailable trees:\n${catalog}`,
+          description: `Run one of this expert package's decision trees deterministically over facts you extracted from the case. Returns the outcome, the rules applied and a step trace. If a needed fact is missing it tells you which; supply only facts the case actually states.${options.requireEvidence === true ? ' You MUST also pass `evidence`: for EVERY fact you supply, an object {quote, derived?} where quote is a verbatim excerpt of the case text that states it (an array of excerpts if you computed it from several, with derived: true). Facts without a verbatim quote are rejected. If the case text does not state a fact the tree needs, do not guess a value: say it is missing and escalate.' : ''}\nAvailable trees:\n${catalog}`,
           inputSchema: {
             type: 'object',
             properties: {
               tree_id: { type: 'string', enum: trees.map((t) => t.id) },
               facts: { type: 'object', description: 'fact name → value, using exactly the input names listed for the tree' },
+              ...(options.requireEvidence === true
+                ? {
+                    evidence: {
+                      type: 'object',
+                      description: 'fact name → {quote: verbatim excerpt(s) of the case, derived?: true if computed from the quote}',
+                    },
+                  }
+                : {}),
             },
             required: ['facts'],
           },
@@ -317,6 +331,9 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
       }
       return { allowed: !violations.some((v) => v.action === 'block'), violations, ...(override !== undefined ? { override } : {}) };
     },
+
+    requiresEvidence: options.requireEvidence === true,
+    decisionTrees: () => trees,
 
     emitLoadReceipt(): LoadReceipt {
       const body = {

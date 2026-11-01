@@ -104,6 +104,8 @@ export function buildReport(records: readonly EvalRecord[], meta: Omit<EvalRepor
     ['xo_tools', 'plain'],
     ['xo_tools', 'prompt'],
     ['xo_tools', 'dump'],
+    ['xo_tools_grounded', 'xo_tools'],
+    ['xo_tools_grounded', 'dump'],
     ['xo_context', 'prompt'],
     ['xo_context', 'dump'],
     ['xo_router', 'dump'],
