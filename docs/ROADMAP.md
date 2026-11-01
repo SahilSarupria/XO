@@ -50,7 +50,7 @@ All items below are **unmeasured**; the only measured results remain section A (
 
 - [x] A. Workflow IR 1.0: types, published JSON Schema, fail-closed validator, graph/state semantics, negotiation, pure decide evaluator, conformance vectors, `workflows` package component (manifest, Merkle, layer, L3), freight reference workflow (`docs/WORKFLOW_IR.md`)
 - [ ] A (remaining): `xo workflow validate` CLI entry; compiler emission of workflows
-- [ ] B. Connectors (HTTP, MCP, file, SMTP), grants, sandboxes, vault
+- [~] B. Connectors: framework, grants, dry-run, vault/redaction, HTTP, file done (`docs/CONNECTORS.md`); MCP client, SMTP, Slack/webhook-out, database, sandboxes, external-vault adapters not done
 - [ ] C. Durable runs, retries, circuit breakers, compensation runner, on-disk ledger segments
 - [ ] D. Approvals (API, roles, signatures)
 - [ ] E. Determinization (compile-time analysis exists only as the declaration-based `determinismReport`), structured-first routing, promotion loop, shadow mode, authority limits
