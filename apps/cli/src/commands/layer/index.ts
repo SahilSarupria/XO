@@ -74,6 +74,8 @@ export function registerCommands(registry: CommandRegistry): void {
       '                                         XO_MODEL, XO_PROVIDER (default anthropic) and the provider API key variable.\n' +
       '                                         --self-test uses simulated models to validate the harness (NOT a measurement).',
     run: async (args) => {
+      if (args.positionals.length > 0)
+        return fail(`unexpected argument(s): ${args.positionals.join(' ')} — flags need two dashes (e.g. --task-set abstain)`);
       const selfTest = args.flags['self-test'] === true;
       const seedFlag = flag(args.flags, 'seed');
       const styleFlag = flag(args.flags, 'style') ?? 'standard';
