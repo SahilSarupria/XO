@@ -3,8 +3,7 @@ import { mkdtemp, readFile, symlink, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import type {
-  ConnectorError} from '../src/index.js';
+import type { ConnectorError } from '../src/index.js';
 import {
   ConnectorHost,
   MapVault,

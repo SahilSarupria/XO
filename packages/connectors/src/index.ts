@@ -4,3 +4,4 @@ export * from './host.js';
 export * from './net.js';
 export * from './http.js';
 export * from './file.js';
+export * from './mcp.js';
