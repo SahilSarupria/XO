@@ -44,6 +44,9 @@ export interface ServerDeps {
   readonly importFetch?: RegisterRoutesDeps['importFetch'];
   /** Test seam: replaces how chat turns a provider id into a model provider. */
   readonly chatProviderFactory?: RegisterRoutesDeps['chatProviderFactory'];
+  /** Customer intelligence chat: plug the C6 Knowledge SDK and the capability runtime in here. */
+  readonly intelligenceKnowledge?: RegisterRoutesDeps['intelligenceKnowledge'];
+  readonly intelligenceCapabilities?: RegisterRoutesDeps['intelligenceCapabilities'];
   /**
    * Injected directly when a caller already has one (e.g.
    * `test-helpers.ts`'s `TestServer`, which provisions a temp-dir-backed
@@ -195,6 +198,8 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     workspaceDataConfig,
     ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}),
     ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}),
+    ...(deps.intelligenceKnowledge !== undefined ? { intelligenceKnowledge: deps.intelligenceKnowledge } : {}),
+    ...(deps.intelligenceCapabilities !== undefined ? { intelligenceCapabilities: deps.intelligenceCapabilities } : {}),
   });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   if (passwordBundle !== undefined) {

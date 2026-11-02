@@ -22,6 +22,12 @@ const OPEN_TO_ANY_MEMBER: Readonly<Record<string, string>> = {
   'DELETE /workspaces/{workspaceId}/chats/{threadId}': 'deletes the caller’s own private chat',
   'POST /workspaces/{workspaceId}/chats/{threadId}/messages':
     'conversation only; verified below to mutate nothing outside the chat and audit stores',
+  'POST /workspaces/{workspaceId}/intelligence/conversations': 'creates the caller’s own private conversation; touches no workspace state',
+  'DELETE /workspaces/{workspaceId}/intelligence/conversations/{conversationId}': 'deletes the caller’s own private conversation',
+  'POST /workspaces/{workspaceId}/intelligence/conversations/{conversationId}/turns':
+    'customer chat: ASK/DECIDE read authorized knowledge; DO only proposes (never runs); LEARN only files a claim for review; verified in intelligence-routes.test.ts to write nothing outside conversation, learning-queue and audit stores',
+  'POST /workspaces/{workspaceId}/intelligence/conversations/{conversationId}/messages/{messageId}/feedback':
+    'files a feedback claim in the review queue; changes no answer or knowledge',
   'POST /workspaces/{workspaceId}/notifications/read': 'moves the caller’s own read marker',
   'POST /workspaces/{workspaceId}/workflow-definitions/validate': 'pure analysis; stores nothing',
   'POST /workspaces/{workspaceId}/packages/resolve':

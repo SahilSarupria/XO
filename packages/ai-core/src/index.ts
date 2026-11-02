@@ -12,4 +12,5 @@ export * from './cache.js';
 export * from './cost.js';
 export * from './model-selection.js';
 export * from './router.js';
+export * from './conversation.js';
 export * from './providers/index.js';

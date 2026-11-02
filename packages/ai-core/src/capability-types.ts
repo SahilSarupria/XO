@@ -11,6 +11,17 @@ import type { ProviderId, TokenUsage } from './provider-types.js';
 export type CapabilityId =
   'extractEntities' | 'extractKnowledge' | 'extractReasoning' | 'extractCapabilities' | 'extractDecisionGraph' | 'extractConstraints';
 
+/**
+ * Tasks served by `ConversationLayer` (conversation.ts) — the conversational counterpart to the six document
+ * extraction capabilities above. They exist so a deployment can route, say, cheap intent routing to a small model and
+ * grounded answering to a larger one through the same `ModelSelectionPolicy`, without any caller naming a vendor.
+ */
+export type ConversationTaskId =
+  'conversation.route' | 'conversation.answer' | 'conversation.decide' | 'conversation.propose' | 'conversation.learn';
+
+/** Anything `ModelSelectionPolicy` can route: an extraction capability or a conversation task. */
+export type SelectableTaskId = CapabilityId | ConversationTaskId;
+
 export interface SourceExcerpt {
   readonly text: string;
   readonly documentPath: string;

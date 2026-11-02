@@ -33,6 +33,8 @@ export const AUDIT_EVENTS = [
   'xo.installed',
   'xo.uninstalled',
   'chat.message',
+  'intelligence.turn',
+  'intelligence.feedback',
   'access.denied',
   'audit.exported',
 ] as const;

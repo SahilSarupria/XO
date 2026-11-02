@@ -4,22 +4,57 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../../packages/types" },
-    { "path": "../../packages/errors" },
-    { "path": "../../packages/logger" },
-    { "path": "../../packages/crypto" },
-    { "path": "../../packages/storage" },
-    { "path": "../../packages/package-sdk" },
-    { "path": "../../packages/registry-core" },
-    { "path": "../../packages/registry" },
-    { "path": "../../packages/ai-core" },
-    { "path": "../../packages/runtime" },
-    { "path": "../../packages/xoir" },
-    { "path": "../../packages/compiler" },
-    { "path": "../../packages/capability-contract" },
-    { "path": "../../packages/permissions" },
-    { "path": "../../packages/workflow-composer" }
+    {
+      "path": "../../packages/types"
+    },
+    {
+      "path": "../../packages/errors"
+    },
+    {
+      "path": "../../packages/logger"
+    },
+    {
+      "path": "../../packages/crypto"
+    },
+    {
+      "path": "../../packages/storage"
+    },
+    {
+      "path": "../../packages/package-sdk"
+    },
+    {
+      "path": "../../packages/registry-core"
+    },
+    {
+      "path": "../../packages/registry"
+    },
+    {
+      "path": "../../packages/ai-core"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../../packages/xoir"
+    },
+    {
+      "path": "../../packages/compiler"
+    },
+    {
+      "path": "../../packages/capability-contract"
+    },
+    {
+      "path": "../../packages/permissions"
+    },
+    {
+      "path": "../../packages/workflow-composer"
+    },
+    {
+      "path": "../../packages/intelligence"
+    }
   ]
 }

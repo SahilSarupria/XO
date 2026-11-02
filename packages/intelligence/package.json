@@ -1,0 +1,32 @@
+{
+  "name": "@xo/intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The XO Intelligence Orchestrator — the layer between a customer-facing experience (chat) and the AI provider. Understands what the user wants and handles it through ASK -> DECIDE -> DO -> LEARN, grounded only in authorized organizational knowledge, with cited, honest-about-uncertainty answers. Provider-neutral: it talks to @xo/ai-core's ConversationLayer and never to a vendor.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/ai-core": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
+    "@xo/types": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/testing": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}
