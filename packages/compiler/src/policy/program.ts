@@ -20,6 +20,8 @@ export interface PolicyFact {
   readonly enum?: readonly string[];
   /** normally computed from case text (a day count between two dates) rather than quoted */
   readonly derivable?: boolean;
+  /** an input standing in for an amount the document never calculates (a threshold reads it); a reviewer's settlement step can compute it */
+  readonly standsForAmount?: boolean;
 }
 
 export interface StepSource {

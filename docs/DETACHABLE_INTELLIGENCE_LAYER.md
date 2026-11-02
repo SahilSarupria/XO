@@ -79,10 +79,11 @@ table), an independent oracle, and 56 seeded cases over 12 strata (window bounda
 authority limit, rental cap …). The manual was written after the compiler's rule shapes were fixed and was **not** used to
 tune extraction. Scoring runs the production path (`compileSources`) and the same fact-binder proxy as freight.
 
-| step                                               | decision sentences understood | agreement (decision + payout) | confidently wrong |
-| -------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------- |
-| untuned compiler, as first run                     | 4 / 16                        | 7 %                           | 0 (fails closed)  |
-| after operator review of the review list (9 edits) | all 16 resolved               | 100 %                         | 0                 |
+| step                                                                                      | decision sentences understood | agreement (decision + payout) | confidently wrong |
+| ----------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------- |
+| untuned compiler, as first run                                                            | 4 / 16                        | 7 %                           | 0 (fails closed)  |
+| after generic shapes learned from a _separate_ dev manual (expense approval: 2/12 → 7/13) | 5 / 18                        | 7 %                           | 0 (fails closed)  |
+| after operator review of the review list (9 edits)                                        | all 16 resolved               | 100 %                         | 0                 |
 
 Read this honestly:
 
@@ -95,6 +96,7 @@ Read this honestly:
   were placed by list position instead of document position; an unconditional settlement step stated early made later
   checks (the authority limit) unreachable — a confident wrong approve; review decisions that depend on each other
   failed in document order (now applied to a fixpoint); structural constants 0 and 1 no longer need to appear in the quote.
+- Generic shapes added from the dev manual (not from insurance): "above $N needs <T> approval", "over $N is only payable if <Y> is attached" (+ its restating sentence), "<X> is never reimbursable". Caveat: I had already seen the insurance sentences, so treat the insurance result as held-out in intent, not in strict isolation. A threshold on an uncalculated amount now reads a stand-in input that a reviewed settlement step computes.
 - One tree input (a yes/no derived from a count) cannot be read by the proxy binder; the reviewed run uses an explicit
   operator field mapping for it. A live model reading the tool schema is the real test.
 - The live comparison (compiled vs hand-written XO with a real model on this domain) is not run: it needs an API key and

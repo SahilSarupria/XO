@@ -206,10 +206,27 @@ export function addProposal(
   const step = stepFromProposal(p, c, `${origin}${index}`, (c.order ?? 1000) + index / 10000, origin);
   // a finish step that pays an amount needs an output field to put it in, when the document gave none
   const needsAmountField = p.step.kind === 'finish' && p.step.amount !== undefined && program.amountField === undefined;
+  // a settlement step that computes the amount also defines the stand-in input a threshold reads
+  const standIn =
+    p.step.kind === 'finish' && p.step.amount !== undefined ? program.facts.find((f) => f.standsForAmount === true) : undefined;
+  const defineStandIn: Step[] =
+    standIn !== undefined && p.step.kind === 'finish' && p.step.amount !== undefined
+      ? [
+          {
+            id: `${origin}${index}_amount`,
+            order: (c.order ?? 1000) + index / 10000,
+            kind: 'assign',
+            set: { [standIn.name]: p.step.amount.replace(/^=/, '') },
+            note: p.quote,
+            source: { rule: c.rule, section: c.section, sentence: c.sentence },
+            origin,
+          },
+        ]
+      : [];
   const candidate: PolicyProgram = {
     ...program,
-    facts: [...program.facts, ...newFacts],
-    steps: [...program.steps, step],
+    facts: [...program.facts.filter((f) => f !== standIn), ...newFacts],
+    steps: [...program.steps, step, ...defineStandIn],
     ...(needsAmountField ? { amountField: 'amount_usd' } : {}),
   };
   // the synthesized tree must not get worse: every problem it has now, it had before

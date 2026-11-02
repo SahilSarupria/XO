@@ -2,6 +2,7 @@ import type { PolicyEntry } from './segment.js';
 import type { PolicyTable } from './from-document.js';
 import {
   FactRegistry,
+  MONEY_NOUNS,
   identifier,
   fmtNum,
   nameTokens,
@@ -342,6 +343,7 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
 
   // ── pass 2: shapes, in document order ──────────────────────────────────────────────────────────────────────────
   order = 0;
+  let prevHit: string | undefined;
   for (const e of ruleEntries) {
     for (const raw of e.sentences) {
       order++;
@@ -622,6 +624,76 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
         );
         if (/never approves? more than/i.test(s)) invariants.push({ kind: 'authority_limit', limit, target, sentence: s });
         hit = 'threshold';
+      } else if (
+        (x = m(
+          new RegExp(
+            String.raw`^(?:(?:Any|An?|The)\s+)?(.+?) (?:worth )?(?:above|over|more than|exceeding) \$([\d,]+),? (?:needs?|requires?) (?:approval (?:from|by) )?(?:the )?${TARGET}(?: approval)?${END_TARGET}`,
+          ),
+        ))
+      ) {
+        // "<thing> above $N needs <T> approval" — an authority limit on that thing's amount
+        const limit = money(x[2]!);
+        const target = x[3]!.trim();
+        const subject = x[1]!.split(/\s+(?:to|worth|of|for)\s+/)[0]!;
+        const head = singular(wordsOf(subject).slice(-1)[0] ?? 'amount');
+        const amountLike = MONEY_NOUNS.has(head) || head === amountNoun;
+        let quantity = amountCalc;
+        if (amountLike) quantities.set(amountCalc, amountCalc);
+        else
+          quantity = reg.declare(`${subject} amount`, 'number', {
+            forceName: `${identifier(subject, 3)}_usd`,
+            description: `value of the ${trimPhrase(subject)} in USD`,
+          });
+        gate(
+          e,
+          s,
+          sc,
+          `${quantity} > ${fmtNum(limit)}`,
+          { decision: 'escalate', target, reason: reasonOf(e) },
+          `${subject} above ${fmtNum(limit)}`,
+        );
+        hit = 'threshold';
+      } else if (
+        (x = m(
+          /^(?:(?:Any|An?|The)\s+)?(.+?) over \$([\d,]+) is only (?:reimbursable|payable|covered|approved|eligible) if (?:an? |the )?(.+?) is (attached|filed|provided|submitted|included|recorded)\b/i,
+        ))
+      ) {
+        // "<thing> over $N is only <payable> if <Y> is attached" — over the floor, deny unless the evidence is present
+        const floor = money(x[2]!);
+        const subject = x[1]!;
+        const amountFact = reg.declare(`${subject} amount`, 'number', {
+          forceName: `${identifier(subject, 3)}_usd`,
+          description: `value of the ${trimPhrase(subject)} in USD`,
+        });
+        const ev = reg.declare(`${x[3]} ${x[4]}`, 'boolean', {
+          forceName: `${identifier(x[3]!, 3)}_${x[4]!.toLowerCase()}`,
+          description: `true if ${trimPhrase(x[3]!)} is ${x[4]!.toLowerCase()}`,
+        });
+        gate(
+          e,
+          s,
+          sc,
+          `${amountFact} > ${fmtNum(floor)} && ${ev} == false`,
+          { decision: 'deny', reason: reasonOf(e) },
+          `${subject} over ${fmtNum(floor)} without ${trimPhrase(x[3]!)}`,
+        );
+        hit = 'evidence_required';
+      } else if (
+        (x = m(/^If there is no (.+?), the [a-z ]+ (?:is|are) (?:rejected|denied|declined)\.?$/i)) &&
+        prevHit === 'evidence_required'
+      ) {
+        hit = 'restates_previous';
+      } else if (
+        (x = m(
+          /^(?:(?:Any|An?|The)\s+)?([A-Za-z][A-Za-z ]*?) (?:is|are) never (?:reimbursable|reimbursed|payable|covered|approved|eligible)\.?$/i,
+        ))
+      ) {
+        const fact = reg.declare(`${x[1]} present`, 'boolean', {
+          forceName: identifier(x[1]!, 3),
+          description: `true if the case involves ${trimPhrase(x[1]!)}`,
+        });
+        gate(e, s, sc, `${fact} == true`, { decision: 'deny', reason: reasonOf(e) }, `${trimPhrase(x[1]!)} is never allowed`);
+        hit = 'never_allowed';
       } else if (/(?:escalated|denied)(?: or (?:escalated|denied))? \w+ (?:are|is) not paid\b/i.test(s)) {
         invariants.push({ kind: 'zero_amount_on', decisions: ['deny', 'escalate'], sentence: s });
         hit = 'invariant';
@@ -645,6 +717,7 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
       }
 
       if (hit !== undefined) hitNote(e, s, hit);
+      prevHit = hit;
       if (NORMATIVE.test(s) || /\d/.test(s) || hit !== undefined) {
         decisionSentences++;
         if (hit === undefined) unrecognized.push({ order, rule: ruleTag(e), section: e.section, sentence: s });
@@ -763,7 +836,10 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
     }
   }
 
-  const facts = reg.list();
+  const standIn = !calcDefined && mentionsCalc ? `total_${amountNoun === '' ? 'amount' : amountNoun}` : undefined;
+  const facts = reg
+    .list()
+    .map((f) => (standIn !== undefined && f.name.startsWith(standIn) && f.type === 'number' ? { ...f, standsForAmount: true } : f));
   const program: PolicyProgram = {
     title,
     facts,
