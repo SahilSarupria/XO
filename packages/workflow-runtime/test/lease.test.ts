@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { ConnectorError, ConnectorHost, MapVault, type Connector } from '@xo/connectors';
 import { validateWorkflowComponent, type WorkflowComponent } from '@xo/workflow-ir';
-import type { LeaseError} from '../src/index.js';
+import type { LeaseError } from '../src/index.js';
 import { LeaseAuthority, LeasedRunStore, LedgerReplica, RunStore, WorkflowRunner } from '../src/index.js';
 
 const component = (): WorkflowComponent => {

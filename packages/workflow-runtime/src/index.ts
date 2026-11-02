@@ -7,3 +7,5 @@ export * from './shadow.js';
 export * from './promote.js';
 export * from './lease.js';
 export * from './replica.js';
+export * from './explain.js';
+export * from './audit.js';

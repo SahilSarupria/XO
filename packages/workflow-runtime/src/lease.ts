@@ -127,7 +127,8 @@ export class LeaseAuthority implements LeaseClient {
   assertCurrent(runId: string, owner: string, token: number): Promise<void> {
     return this.serial(runId, async () => {
       const s = await this.load(runId);
-      if (s.owner !== owner || s.token !== token || this.now() > s.expiresAt) throw new LeaseError('LOST', `fenced: token ${token} is not the current lease for ${runId}`);
+      if (s.owner !== owner || s.token !== token || this.now() > s.expiresAt)
+        throw new LeaseError('LOST', `fenced: token ${token} is not the current lease for ${runId}`);
     });
   }
 

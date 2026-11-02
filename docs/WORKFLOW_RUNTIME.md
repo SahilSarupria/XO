@@ -77,3 +77,14 @@ distribution are the operator's job; one process per run still applies.
   full IR validation re-run). The live component is never mutated, and the result still has to be packaged, signed and installed. Limits: one output
   field, no multi-feature interactions, learned rules may only read workflow inputs of the same name, the CLI `xo promote` is **not built** (library only),
   and nothing is measured on real data.
+
+## Explain and audit export (section G, partial)
+
+`xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]` rebuilds a run from its hash-verified journal: inputs, the steps that ran or were
+skipped, extracted facts, rules fired, the source provenance the compiler recorded on each step, every connector call with request hash, response hash, duration and idempotency key,
+approvals with reviewer and role, escalations, and the total model calls (0 on a deterministic path). Call hashes are journaled for new runs; older journals show `-`.
+It reads the journal and the workflow document only; **it does not recover which package nodes justified a decision beyond the `provenance` strings the compiler put on steps**.
+
+`xo flow audit-export ... --run-ids a,b --key <pem> --out bundle.json` writes a signed bundle: the journal slices, workflow id/version and the SHA-256 of the workflow component bytes,
+the operator's connector grants, an optional manifest and load receipt, a Merkle root over run head hashes, and an Ed25519 signature. `xo flow audit-verify bundle.json --pubkey <pem>`
+re-checks the signature, the root and every hash chain with nothing else (exit 3 on any problem). Key management is the operator's job.

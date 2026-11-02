@@ -883,10 +883,13 @@ export class WorkflowRunner {
     }
     if (!this.breakers.allow(step.connector))
       return { ok: false, code: 'CIRCUIT_OPEN', message: `circuit open for connector "${step.connector}"` };
+    const requestHash = sha256Hex(canonicalJson({ c: step.connector, o: step.operation, a: values }));
+    const startedAt = this.now();
     await store.append(runId, 'call_intent', {
       step: step.id,
       connector: step.connector,
       operation: step.operation,
+      requestHash,
       ...(key !== undefined ? { key } : {}),
     });
     let sem = this.sems.get(step.connector);
@@ -916,7 +919,15 @@ export class WorkflowRunner {
       release();
     }
     // Journal failures must propagate (they are a crash, not a step failure), so this sits outside the try above.
-    await store.append(runId, 'call_outcome', { step: step.id, ok: true, data: callResult.data, dryRun: callResult.dryRun });
+    await store.append(runId, 'call_outcome', {
+      step: step.id,
+      ok: true,
+      data: callResult.data,
+      dryRun: callResult.dryRun,
+      requestHash,
+      responseHash: sha256Hex(canonicalJson(callResult.data)),
+      durationMs: this.now() - startedAt,
+    });
     return { ok: true, data: callResult.data };
   }
 }

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { DecisionTree } from '@xo/capability-layer';
 import { parseTrees } from '@xo/capability-layer';
@@ -19,6 +19,11 @@ import {
   StaticReviewerRegistry,
   WorkflowRunner,
   compareShadow,
+  buildAuditBundle,
+  explainRun,
+  renderExplanation,
+  verifyAuditBundle,
+  type AuditBundle,
   type Reviewer,
 } from '@xo/workflow-runtime';
 import { createXoServer } from '@xo/server';
@@ -44,6 +49,9 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
+      'xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]   Why a run did what it did, from its verified journal\n' +
+      'xo flow audit-export <workflows.json> --workflow <id> --runs <dir> --run-ids a,b --key <pem> --out <file> [--policy p.json] [--signer name]   Signed audit bundle\n' +
+      'xo flow audit-verify <bundle.json> --pubkey <pem>   Verify signature, merkle root, hash chains\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
       'xo flow run <workflows.json> --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
@@ -103,6 +111,54 @@ export function registerCommands(registry: CommandRegistry): void {
           const r = await runner.start({ inputs: JSON.parse(inputRaw), ...(dedupe !== undefined ? { dedupeKey: dedupe } : {}) });
           out(JSON.stringify(r, null, 2));
           return r.state === 'completed' ? 0 : r.state === 'escalated' || r.state === 'waiting' ? 2 : 3;
+        }
+        if (sub === 'explain') {
+          const id = flag(args.flags, 'workflow');
+          const runs = flag(args.flags, 'runs');
+          const runId = flag(args.flags, 'run');
+          if (id === undefined || runs === undefined || runId === undefined)
+            return fail('--workflow, --runs and --run <run id> are required');
+          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          if (wf === undefined) return fail(`unknown workflow ${id}`);
+          const x = await explainRun(new RunStore(resolve(runs)), wf, runId);
+          out(args.flags['json'] === true ? JSON.stringify(x, null, 2) : renderExplanation(x));
+          return 0;
+        }
+        if (sub === 'audit-export') {
+          const id = flag(args.flags, 'workflow');
+          const runs = flag(args.flags, 'runs');
+          const ids = flag(args.flags, 'run-ids');
+          const keyFile = flag(args.flags, 'key');
+          const outFile = flag(args.flags, 'out');
+          if (id === undefined || runs === undefined || ids === undefined || keyFile === undefined || outFile === undefined)
+            return fail('--workflow, --runs, --run-ids a,b, --key <ed25519 private pem>, --out <file> are required');
+          const bytes = readFileSync(resolve(file));
+          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          if (wf === undefined) return fail(`unknown workflow ${id}`);
+          const grantsPath = flag(args.flags, 'policy');
+          const grants: Record<string, string[]> = {};
+          if (grantsPath !== undefined)
+            for (const [c, v] of Object.entries((JSON.parse(readFileSync(resolve(grantsPath), 'utf8')) as ConnectorPolicy).connectors))
+              grants[c] = [...v.grant];
+          const bundle = await buildAuditBundle({
+            store: new RunStore(resolve(runs)),
+            runIds: ids.split(',').map((x) => x.trim()),
+            workflow: { id: wf.id, version: wf.version },
+            componentBytes: bytes,
+            connectorGrants: grants,
+            signer: flag(args.flags, 'signer') ?? 'unknown',
+            privateKeyPem: readFileSync(resolve(keyFile), 'utf8'),
+          });
+          writeFileSync(resolve(outFile), `${JSON.stringify(bundle, null, 2)}\n`);
+          out(`wrote ${outFile}: ${bundle.runs.length} run(s), merkle root ${bundle.merkleRoot}`);
+          return 0;
+        }
+        if (sub === 'audit-verify') {
+          const pub = flag(args.flags, 'pubkey');
+          if (pub === undefined) return fail('--pubkey <ed25519 public pem> is required');
+          const v = verifyAuditBundle(JSON.parse(readFileSync(resolve(file), 'utf8')) as AuditBundle, readFileSync(resolve(pub), 'utf8'));
+          out(v.ok ? 'VERIFIED: signature, merkle root and every hash chain check out' : `FAILED:\n  ${v.problems.join('\n  ')}`);
+          return v.ok ? 0 : 3;
         }
         if (sub === 'compare') {
           const id = flag(args.flags, 'workflow');
