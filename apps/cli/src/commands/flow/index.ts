@@ -11,7 +11,7 @@ import {
   WorkflowLoadError,
   type WorkflowComponent,
 } from '@xo/workflow-ir';
-import { RunStore, WorkflowRunner } from '@xo/workflow-runtime';
+import { RunStore, WorkflowRunner, compareShadow } from '@xo/workflow-runtime';
 import type { CommandRegistry } from '../../command-registry.js';
 
 const SUBSYSTEM = 'flow';
@@ -32,6 +32,7 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
+      'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
       'xo flow run <workflows.json> --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
@@ -85,11 +86,39 @@ export function registerCommands(registry: CommandRegistry): void {
             connectors: new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() }),
             trees: treeMap,
             dryRun: args.flags['dry-run'] === true,
+            shadow: args.flags['shadow'] === true,
           });
           const dedupe = flag(args.flags, 'dedupe');
           const r = await runner.start({ inputs: JSON.parse(inputRaw), ...(dedupe !== undefined ? { dedupeKey: dedupe } : {}) });
           out(JSON.stringify(r, null, 2));
           return r.state === 'completed' ? 0 : r.state === 'escalated' || r.state === 'waiting' ? 2 : 3;
+        }
+        if (sub === 'compare') {
+          const id = flag(args.flags, 'workflow');
+          const runs = flag(args.flags, 'runs');
+          const human = flag(args.flags, 'human');
+          const key = flag(args.flags, 'key');
+          const field = flag(args.flags, 'field');
+          if (id === undefined || runs === undefined || human === undefined || key === undefined || field === undefined)
+            return fail('--workflow, --runs, --human <csv>, --key <input> and --field <result> are required');
+          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          if (wf === undefined) return fail(`unknown workflow ${id}`);
+          const rep = await compareShadow(new RunStore(resolve(runs)), wf, readFileSync(resolve(human), 'utf8'), {
+            keyInput: key,
+            resultField: field,
+          });
+          out(
+            JSON.stringify(
+              {
+                ...rep,
+                rows: undefined,
+                note: 'agreement with the supplied human decisions on these cases only; not an accuracy claim about production',
+              },
+              null,
+              2,
+            ),
+          );
+          return rep.disagree === 0 ? 0 : 2;
         }
         return fail(`unknown subcommand "${sub}"`);
       } catch (e) {

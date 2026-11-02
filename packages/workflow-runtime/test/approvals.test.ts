@@ -5,8 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { ConnectorHost, MapVault, type Connector } from '@xo/connectors';
 import { validateWorkflowComponent, type WorkflowComponent } from '@xo/workflow-ir';
-import type {
-  ApprovalError} from '../src/index.js';
+import type { ApprovalError } from '../src/index.js';
 import {
   RunStore,
   StaticReviewerRegistry,

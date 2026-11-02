@@ -35,6 +35,7 @@ import {
   type SignedDecision,
 } from './approvals.js';
 import type { JournalEntry, RunStore } from './journal.js';
+import { ExtractionMemo, type UsageCaps } from './limits.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
 
 /** What this runner implements. `for_each` and `wait_event` are not built yet; `approve` needs `approvals` options; workflows needing them are refused whole. */
@@ -79,6 +80,11 @@ export interface RunnerOptions {
   /** Max concurrent calls per connector. Default 4. */
   readonly connectorConcurrency?: number;
   /** Required to run workflows with approve steps. */
+  /** Shadow mode: decide everything, execute NO connector call; each would-be action is journaled as `shadow_action`. */
+  readonly shadow?: boolean;
+  readonly caps?: UsageCaps;
+  /** Directory for extraction memoization. Identical normalized cases reuse validated facts instead of calling the model. */
+  readonly memoDir?: string;
   readonly approvals?: { readonly reviewers: ReviewerRegistry; readonly sink?: ApprovalSink };
 }
 
@@ -113,6 +119,7 @@ interface RunRec {
   inputs: Record<string, unknown>;
   startedAt: number;
   dryRun: boolean;
+  shadow: boolean;
   steps: Map<string, StepRec>;
   order: string[];
   result?: Record<string, unknown>;
@@ -143,6 +150,7 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         inputs: d['inputs'],
         startedAt: d['startedAtMs'],
         dryRun: d['dryRun'] === true,
+        shadow: d['shadow'] === true,
         steps: new Map(),
         order: [],
       };
@@ -289,6 +297,7 @@ export class WorkflowRunner {
       inputs: req.inputs,
       triggerId: req.triggerId ?? null,
       dryRun: this.o.dryRun === true,
+      shadow: this.o.shadow === true,
       startedAtMs: this.now(),
     });
     return { ...(await this.drive(runId)), accepted: true };
@@ -623,6 +632,14 @@ export class WorkflowRunner {
       }
     }
 
+    if (hasSideEffects(step) && !rec.shadow && !rec.dryRun && this.o.caps !== undefined) {
+      try {
+        if (!(await this.o.caps.consume('effects')))
+          return this.escalate(runId, step.id, 'DAILY_CAP', 'the daily limit on side-effecting calls is reached');
+      } catch (e) {
+        return this.escalate(runId, step.id, 'CAPS_UNAVAILABLE', (e as Error).message);
+      }
+    }
     const maxAttempts = step.retry?.maxAttempts ?? 1;
     let lastCode = 'FAILED';
     let lastMessage = 'step failed';
@@ -740,6 +757,19 @@ export class WorkflowRunner {
         code: 'EXTRACTION_UNAVAILABLE',
         message: 'structured input was incomplete and no text/extractor is available to read the facts',
       };
+    const memo = this.o.memoDir !== undefined ? new ExtractionMemo(this.o.memoDir) : undefined;
+    const memoKey = ExtractionMemo.key(step.instruction, fields, text);
+    const hit = await memo?.get(memoKey);
+    if (hit !== undefined && Object.entries(fields).every(([k, spec]) => k in hit && typeProblem(k, spec, hit[k]) === undefined))
+      return { kind: 'ok', outputs: Object.fromEntries(Object.keys(fields).map((k) => [k, hit[k] ?? null])), modelCalls: 0 };
+    if (this.o.caps !== undefined) {
+      try {
+        if (!(await this.o.caps.consume('modelCalls')))
+          return { kind: 'escalate', code: 'DAILY_CAP', message: 'the daily limit on model calls is reached' };
+      } catch (e) {
+        return { kind: 'escalate', code: 'CAPS_UNAVAILABLE', message: (e as Error).message };
+      }
+    }
     try {
       const r = await this.o.extractor.extract({ instruction: step.instruction, text, fields, grounding: step.grounding ?? 'none' });
       if (r.modelCalls > (step.maxModelCalls ?? 1))
@@ -748,7 +778,9 @@ export class WorkflowRunner {
         .map(([k, spec]) => (k in r.facts ? typeProblem(k, spec, r.facts[k]) : spec.nullable === true ? undefined : `${k} missing`))
         .filter((p) => p !== undefined);
       if (problems.length > 0) return { kind: 'escalate', code: 'EXTRACTION_INVALID', message: problems.join('; ') };
-      return { kind: 'ok', outputs: Object.fromEntries(Object.keys(fields).map((k) => [k, r.facts[k] ?? null])), modelCalls: r.modelCalls };
+      const facts = Object.fromEntries(Object.keys(fields).map((k) => [k, r.facts[k] ?? null]));
+      await memo?.set(memoKey, facts as Record<string, Scalar>);
+      return { kind: 'ok', outputs: facts, modelCalls: r.modelCalls };
     } catch (e) {
       return { kind: 'fail', code: 'FAILED', message: (e as Error).message };
     }
@@ -782,6 +814,18 @@ export class WorkflowRunner {
       if (rendered === undefined)
         return { ok: false, code: 'KEY_UNRESOLVED', message: 'idempotency key could not be rendered; refusing to call' };
       key = externalIdempotencyKey(this.wf, step.id, rendered);
+    }
+    if (rec.shadow) {
+      const declared = Object.fromEntries(Object.keys(step.outputs ?? {}).map((k) => [k, null]));
+      await store.append(runId, 'shadow_action', {
+        step: step.id,
+        connector: step.connector,
+        operation: step.operation,
+        sideEffect: step.sideEffect,
+        args: values as Record<string, unknown>,
+      });
+      await store.append(runId, 'call_outcome', { step: step.id, ok: true, data: declared, dryRun: true });
+      return { ok: true, data: declared };
     }
     if (!this.breakers.allow(step.connector))
       return { ok: false, code: 'CIRCUIT_OPEN', message: `circuit open for connector "${step.connector}"` };

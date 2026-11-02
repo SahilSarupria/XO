@@ -42,6 +42,7 @@ into the desk `HashChainLedger`, bounded in-memory windows and segment recovery 
 - Authority ceilings and the kill switch are checked in the runner only; they are not a substitute for upstream controls.
 
 ## Human approval (section D, backend only)
+
 An `approve` step parks its run and builds an `ApprovalRequest`: the case (step inputs), evidence fields the author named, the decision trace
 (rules fired by upstream decide steps), the connector operations that depend on the step (the proposed actions), whether edits are allowed, and an
 expiry. Delivery: an `ApprovalSink` callback; `directoryApprovalSink(dir)` writes `<approvalId>.json` atomically for a frontend or poller.
@@ -58,3 +59,21 @@ completes the step with `decision: rejected` (downstream `runIf` decides what ha
 
 Limits: the reviewer registry is a static in-process list (a trust-policy file loader comes with section G); key custody, rotation and revocation
 distribution are the operator's job; one process per run still applies.
+
+## Determinization controls (section E, partial)
+
+- **Structured-first routing:** an `extract` step with `structuredFirst` and a complete, valid `structured` input makes **zero model calls**
+  (tested). Free text goes through the injected extractor once; validated results are memoized on disk by the normalized case (whitespace collapsed),
+  so an identical case never re-invokes the model. A damaged or invalid memo entry is a miss. Not measured: hit rates on real traffic.
+- **Shadow mode** (`shadow: true`, `xo flow run --shadow`): everything decides, **no connector call is made**, each would-be action is journaled as
+  `shadow_action`. `xo flow compare` reads human decisions from a CSV and reports agree / disagree / deferred (the workflow escalated) / missing, with
+  agreement among cases it chose to decide. It describes only the cases supplied; it is not an accuracy claim.
+- **Authority limits:** per-workflow ceilings (IR `authority`), a kill switch, and persisted daily caps on side effects and on model calls (`UsageCaps`).
+  All fail closed: an unreadable counter file escalates (`CAPS_UNAVAILABLE`), an exhausted cap escalates (`DAILY_CAP`). Spend in currency is not tracked,
+  only call counts. Caps are per directory and single-process.
+- **Promotion loop** (`proposeRules`, `validatePatch`, `signPatchAcceptance`, `applyPatch`): learns from logged human decisions, **never auto-applies**.
+  It proposes single-condition rules (equality, `<=`, `>=`) with support at least 5 and zero counterexamples, validates them against **every** logged case,
+  and only a trusted publisher's verifying signature over the exact patch lets `applyPatch` return a new workflow version (patch+1, learned rules first,
+  full IR validation re-run). The live component is never mutated, and the result still has to be packaged, signed and installed. Limits: one output
+  field, no multi-feature interactions, learned rules may only read workflow inputs of the same name, the CLI `xo promote` is **not built** (library only),
+  and nothing is measured on real data.

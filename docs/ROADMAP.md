@@ -53,7 +53,7 @@ All items below are **unmeasured**; the only measured results remain section A (
 - [~] B. Connectors: framework, grants, dry-run, vault/redaction, HTTP, file done (`docs/CONNECTORS.md`); MCP client, SMTP, Slack/webhook-out, database, sandboxes, external-vault adapters not done
 - [~] C. Durable runner done (`docs/WORKFLOW_RUNTIME.md`): on-disk hash-chained journal, at-most-once accept, crash-safe resume with same idempotency key, retries/backoff/jitter, breakers, per-connector concurrency, compensation, ceilings, kill switch, run cap, dry-run, `xo flow`. Not done: rate limiting, dead-letter store, bounded ledger window and segments, SMTP delivery, TUI flag unification, approve/forEach/event waits
 - [~] D. Approvals: requests, signed decisions (approve/reject/edit), roles, replay and cross-run protection, timeouts escalate, journaled (`docs/WORKFLOW_RUNTIME.md`). Not done: HTTP routes, webhook/SMTP delivery, trust-policy file, CLI commands
-- [ ] E. Determinization (compile-time analysis exists only as the declaration-based `determinismReport`), structured-first routing, promotion loop, shadow mode, authority limits
+- [~] E. Done (runtime library, unmeasured): structured-first routing + extraction memoization, shadow mode + `xo flow compare`, ceilings/kill switch/daily caps, promotion loop (propose, shadow-validate, signed accept, new version). Not done: compiler-side determinism analysis with source provenance and review items, `xo promote` CLI, spend (currency) caps
 - [ ] F. Local/server runners, lease protocol, ledger sync, `@xo/sdk`
 - [ ] G. Package lifecycle commands, audit export, `xo explain`
 - [ ] H. Compiler quality, efficiency, provider parity tests, `docs/ACCEPTANCE_CRITERIA.md`
