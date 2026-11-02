@@ -113,3 +113,18 @@ export async function scoreSecondDomain(
     disagreements,
   };
 }
+
+/** Share of the gold facts that appear together in one compiled knowledge node (the same test freight uses). */
+export async function insuranceKnowledgeCoverage(
+  art?: PolicyArtifacts,
+): Promise<{ readonly present: number; readonly total: number; readonly missing: readonly string[] }> {
+  const { INSURANCE_GOLD_FACTS } = await import('../scenario/insurance/gold-xo.js');
+  const a = art ?? (await compileInsurance());
+  const texts = a.knowledge.nodes.map((n) => `${n.properties.title} ${n.properties.text}`);
+  const have = INSURANCE_GOLD_FACTS.filter((f) => texts.some((t) => f.patterns.every((p) => p.test(t))));
+  return {
+    present: have.length,
+    total: INSURANCE_GOLD_FACTS.length,
+    missing: INSURANCE_GOLD_FACTS.filter((f) => !have.includes(f)).map((f) => f.id),
+  };
+}

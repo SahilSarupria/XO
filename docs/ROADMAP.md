@@ -16,7 +16,7 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 - [x] Tree synthesis is domain-neutral (policy program IR); wired into `xo create`; negation, tables, PDF filters, workflow section split fixed
 - [~] Model-assisted clause extraction + review ledger built, scripted-model tests only; not run live
 - [~] Second domain (insurance triage) built and measured offline: untuned 7 %, 100 % after review (see DETACHABLE_INTELLIGENCE_LAYER.md)
-- [ ] Valid uplift run with `--include-compiled` on freight and insurance (needs API key); hand-written gold XO for insurance
+- [ ] Valid uplift run with `--include-compiled` on freight and insurance (needs API key); arm runner for insurance tasks (the hand-written gold XO now exists)
 
 ## C. Integration
 

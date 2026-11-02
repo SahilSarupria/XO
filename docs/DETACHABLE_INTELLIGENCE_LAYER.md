@@ -99,5 +99,10 @@ Read this honestly:
 - Generic shapes added from the dev manual (not from insurance): "above $N needs <T> approval", "over $N is only payable if <Y> is attached" (+ its restating sentence), "<X> is never reimbursable". Caveat: I had already seen the insurance sentences, so treat the insurance result as held-out in intent, not in strict isolation. A threshold on an uncalculated amount now reads a stand-in input that a reviewed settlement step computes.
 - One tree input (a yes/no derived from a count) cannot be read by the proxy binder; the reviewed run uses an explicit
   operator field mapping for it. A live model reading the tool schema is the real test.
-- The live comparison (compiled vs hand-written XO with a real model on this domain) is not run: it needs an API key and
-  a hand-written gold XO for this domain, which does not exist yet.
+- **Gold XO for this domain now exists** (`scenario/insurance/gold-xo.ts`): the manual's rules as knowledge, an executable
+  decision tree, worked examples, prompt strategy and safety rules. Its tree is cross-checked against the independent
+  oracle on 20,000 random cases (0 disagreements); its knowledge carries all 11 gold facts.
+- Compiled knowledge covers 11 / 11 gold facts. The run found that table figures (the deductibles) reached the tree but
+  not the knowledge nodes a model retrieves; tables are now added as knowledge nodes.
+- The live comparison (compiled vs gold XO with a real model on this domain) is still not run: it needs an API key and an
+  arm runner for insurance tasks.

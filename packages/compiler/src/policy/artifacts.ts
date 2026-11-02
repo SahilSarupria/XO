@@ -77,7 +77,22 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
     const segmented = segmentPolicyText(s.text);
     for (const e of segmented) entries.push({ ...e, index: entries.length });
   }
-  const knowledge = buildPolicyKnowledge(entries, sources.map((s) => s.sourcePath ?? s.title ?? 'policy').join(', '));
+  const built = buildPolicyKnowledge(entries, sources.map((s) => s.sourcePath ?? s.title ?? 'policy').join(', '));
+  // a table's figures must be retrievable as knowledge, not only compiled into a lookup
+  const tableNodes = sources
+    .flatMap((s) => s.tables ?? [])
+    .map((t, i) => ({
+      id: `table_${i + 1}`,
+      kind: 'rule' as const,
+      properties: {
+        title: t.caption.replace(/\*\*/g, '').trim().slice(0, 80) || `Table ${i + 1}`,
+        section: 'Tables',
+        text: `${t.caption.replace(/\*\*/g, '').trim()} ${t.rows.map((r) => `${t.header[0] ?? 'row'} ${r[0]}: ${t.header[1] ?? 'value'} ${r.slice(1).join(' / ')}`).join('; ')}.`,
+      },
+      confidence: 1,
+      provenance: { source: sources[0]?.sourcePath ?? 'policy', origin: 'policy-synthesis' as const, entry: -1 },
+    }));
+  const knowledge = tableNodes.length === 0 ? built : { ...built, nodes: [...built.nodes, ...tableNodes] };
   const title = sources[0]?.title ?? /^#\s+(.+?)\s*$/m.exec(sources[0]?.text ?? '')?.[1] ?? 'the policy document';
   const extraction =
     options.extraction ??

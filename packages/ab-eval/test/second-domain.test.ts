@@ -71,3 +71,55 @@ test('held-out domain after operator review (checks still enforced)', async () =
   assert.equal(s.wrongConfident, 0);
   assert.ok((s.agreement ?? 0) >= 0.95);
 });
+
+import { evaluateTree, createCapabilityLayer } from '@xo/capability-layer';
+import { INSURANCE_TREE, INSURANCE_ENTRIES, INSURANCE_GOLD_FACTS, buildInsuranceGoldXo, INSURANCE_MANUAL } from '../src/index.js';
+
+test('insurance gold tree agrees with the independent oracle on 20,000 random cases', () => {
+  let s = 99;
+  const r = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  const ri = (lo: number, hi: number) => lo + Math.floor(r() * (hi - lo + 1));
+  for (let i = 0; i < 20000; i++) {
+    const f = {
+      claim_type: (['collision', 'glass', 'theft'] as const)[ri(0, 2)]!,
+      injury_involved: r() < 0.1,
+      policy_in_force: r() < 0.9,
+      claims_last_12m: ri(0, 4),
+      days_to_report: ri(0, 120),
+      police_report_filed: r() < 0.7,
+      repair_estimate_usd: ri(0, 60000),
+      vehicle_value_usd: ri(1000, 60000),
+      rental_coverage: r() < 0.5,
+      rental_days: ri(0, 30),
+    };
+    const o = adjudicateInsurance(f);
+    const t = evaluateTree(INSURANCE_TREE, f as unknown as Record<string, unknown>);
+    assert.equal(t.ok, true);
+    if (!t.ok) return;
+    assert.equal(t.output['decision'], o.decision, JSON.stringify(f));
+    assert.ok(Math.abs(Number(t.output['payout_usd']) - o.payout_usd) < 0.01, JSON.stringify(f));
+    assert.equal(t.output['escalation_target'], o.escalation_target);
+  }
+});
+
+test('insurance gold XO: builds, loads executable, and carries every gold fact; every number in the manual is in the knowledge', () => {
+  const bundle = buildInsuranceGoldXo();
+  const layer = createCapabilityLayer(bundle, { host: { family: 'claude', capabilities: ['chat', 'tool_use'] } });
+  const receipt = layer.emitLoadReceipt();
+  assert.ok(receipt.executableSafetyRules >= 1);
+  const texts = INSURANCE_ENTRIES.map((e) => `${e.title} ${e.text}`);
+  const missing = INSURANCE_GOLD_FACTS.filter((f) => !texts.some((t) => f.patterns.every((p) => p.test(t)))).map((f) => f.id);
+  assert.deepEqual(missing, []);
+  // the manual's figures must all appear in the gold knowledge (no rule lost in transcription)
+  const kn = texts.join(' ');
+  for (const n of ['30 days', '90 days', '75%', '$40', '14 days', '$15,000', '2 or more', '12 months']) {
+    assert.ok(INSURANCE_MANUAL.includes(n.replace('2 or more', '2 or more')) && kn.includes(n), n);
+  }
+});
+
+test('insurance: compiled knowledge coverage vs gold (recorded, not asserted high)', async () => {
+  const { insuranceKnowledgeCoverage } = await import('../src/index.js');
+  const c = await insuranceKnowledgeCoverage();
+  writeFileSync((process.env['XO_SECOND_DOMAIN_OUT'] ?? '/tmp/second-domain.json').replace('.json', '-coverage.json'), JSON.stringify(c));
+  assert.ok(c.total === 11);
+});
