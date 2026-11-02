@@ -5,3 +5,5 @@ export * from './approvals.js';
 export * from './limits.js';
 export * from './shadow.js';
 export * from './promote.js';
+export * from './lease.js';
+export * from './replica.js';

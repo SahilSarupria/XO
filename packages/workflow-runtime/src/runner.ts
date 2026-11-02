@@ -34,7 +34,8 @@ import {
   type ReviewerRegistry,
   type SignedDecision,
 } from './approvals.js';
-import type { JournalEntry, RunStore } from './journal.js';
+import type { JournalEntry, RunStoreLike } from './journal.js';
+import { LeaseError, type LeaseClient } from './lease.js';
 import { ExtractionMemo, type UsageCaps } from './limits.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
 
@@ -65,7 +66,20 @@ export interface Escalation {
 export interface RunnerOptions {
   readonly component: WorkflowComponent;
   readonly workflowId: string;
-  readonly store: RunStore;
+  readonly store: RunStoreLike;
+  /**
+   * Run ownership. When set, every start/resume/decision first acquires the run's lease, heartbeats while driving, and releases after.
+   * `attach/detach` bind the fencing token to the store you passed (a LeasedRunStore, or the remote store from @xo/sdk).
+   */
+  readonly lease?: {
+    readonly client: LeaseClient;
+    readonly owner: string;
+    readonly ttlMs: number;
+    /** 0 disables the timer (tests drive heartbeats by hand). Default ttlMs/3. */
+    readonly heartbeatEveryMs?: number;
+    readonly attach: (runId: string, token: number) => void;
+    readonly detach: (runId: string) => void;
+  };
   readonly connectors: ConnectorHost;
   readonly trees?: ReadonlyMap<string, DecisionTree>;
   readonly extractor?: Extractor;
@@ -291,21 +305,54 @@ export class WorkflowRunner {
         : `run_${sha256Hex(`${this.wf.id}:${this.now()}:${this.random()}`).slice(0, 32)}`);
     const created = await this.o.store.create(runId);
     if (!created) return { ...(await this.status(runId)), accepted: false };
-    await this.o.store.append(runId, 'run_started', {
-      workflow: this.wf.id,
-      version: this.wf.version,
-      inputs: req.inputs,
-      triggerId: req.triggerId ?? null,
-      dryRun: this.o.dryRun === true,
-      shadow: this.o.shadow === true,
-      startedAtMs: this.now(),
+    return this.withLease(runId, async () => {
+      await this.o.store.append(runId, 'run_started', {
+        workflow: this.wf.id,
+        version: this.wf.version,
+        inputs: req.inputs,
+        triggerId: req.triggerId ?? null,
+        dryRun: this.o.dryRun === true,
+        shadow: this.o.shadow === true,
+        startedAtMs: this.now(),
+      });
+      return { ...(await this.drive(runId)), accepted: true };
     });
-    return { ...(await this.drive(runId)), accepted: true };
   }
 
   /** Continues a run from its journal: after a crash, after a timer elapses, or after a kill-switch is cleared. */
   async resume(runId: string): Promise<RunResult> {
-    return { ...(await this.drive(runId)), accepted: false };
+    return this.withLease(runId, async () => ({ ...(await this.drive(runId)), accepted: false }));
+  }
+
+  /**
+   * Holds the run's lease around `fn`. Losing it (heartbeat refused, or a fenced write refused) stops the runner: it throws LeaseError('LOST')
+   * and must not retry; reconcile by reading status from the authoritative journal.
+   */
+  private async withLease<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+    const l = this.o.lease;
+    if (l === undefined) return fn();
+    const lease = await l.client.acquire(runId, l.owner, l.ttlMs);
+    l.attach(runId, lease.token);
+    let lost: LeaseError | undefined;
+    const every = l.heartbeatEveryMs ?? Math.floor(l.ttlMs / 3);
+    const timer =
+      every > 0
+        ? setInterval(() => {
+            l.client.heartbeat(runId, l.owner, lease.token, l.ttlMs).catch((e: unknown) => {
+              lost = e instanceof LeaseError ? e : new LeaseError('LOST', (e as Error).message);
+            });
+          }, every)
+        : undefined;
+    timer?.unref();
+    try {
+      const r = await fn();
+      if (lost !== undefined) throw lost;
+      return r;
+    } finally {
+      if (timer !== undefined) clearInterval(timer);
+      l.detach(runId);
+      await l.client.release(runId, l.owner, lease.token).catch(() => undefined);
+    }
   }
 
   async status(runId: string): Promise<Omit<RunResult, 'accepted'>> {
@@ -324,7 +371,13 @@ export class WorkflowRunner {
     const out: RunResult[] = [];
     for (const id of await this.o.store.list()) {
       const rec = replayRun(await this.o.store.read(id), this.wf, id);
-      if (rec?.state === 'waiting' || rec?.state === 'running') out.push(await this.resume(id));
+      if (rec?.state !== 'waiting' && rec?.state !== 'running') continue;
+      try {
+        out.push(await this.resume(id));
+      } catch (e) {
+        if (e instanceof LeaseError && e.code === 'HELD') continue; // another runner owns it; not ours to touch
+        throw e;
+      }
     }
     return out;
   }
@@ -532,18 +585,19 @@ export class WorkflowRunner {
    */
   async decideApproval(runId: string, d: SignedDecision): Promise<RunResult> {
     if (this.o.approvals === undefined) throw new Error('this runner has no approvals configuration');
+    return this.withLease(runId, () => this.decideLocked(runId, d));
+  }
+
+  private async decideLocked(runId: string, d: SignedDecision): Promise<RunResult> {
     const rec = replayRun(await this.o.store.read(runId), this.wf, runId);
     if (rec === undefined) throw new ApprovalError('UNKNOWN_APPROVAL', `unknown run ${runId}`);
     const pending = [...rec.steps.entries()].find(([, s]) => s.approval?.request.approvalId === d.payload.approvalId);
     if (pending === undefined) throw new ApprovalError('UNKNOWN_APPROVAL', 'no such approval request on this run');
     const [stepId, sr] = pending;
+    const reviewers = this.o.approvals?.reviewers;
+    if (reviewers === undefined) throw new Error('this runner has no approvals configuration');
     if (sr.state !== 'waiting') throw new ApprovalError('ALREADY_DECIDED', 'this approval was already decided or is no longer pending');
-    const { role, outputs } = verifyDecision(
-      (sr.approval as { request: ApprovalRequest }).request,
-      d,
-      this.o.approvals.reviewers,
-      this.now(),
-    );
+    const { role, outputs } = verifyDecision((sr.approval as { request: ApprovalRequest }).request, d, reviewers, this.now());
     await this.o.store.append(runId, 'approval_decided', {
       step: stepId,
       approvalId: d.payload.approvalId,

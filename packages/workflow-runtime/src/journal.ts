@@ -21,7 +21,15 @@ export class JournalCorruptError extends Error {
   }
 }
 
-const RUN_ID = /^[A-Za-z0-9_-]{1,96}$/;
+/** What the runner needs from a journal. `RunStore` is the local disk implementation; leased and remote stores implement it too. */
+export interface RunStoreLike {
+  create(runId: string): Promise<boolean>;
+  append(runId: string, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry>;
+  read(runId: string): Promise<JournalEntry[]>;
+  list(): Promise<string[]>;
+}
+
+export const RUN_ID = /^[A-Za-z0-9_-]{1,96}$/;
 const GENESIS = '0'.repeat(64);
 
 /**
@@ -32,7 +40,7 @@ const GENESIS = '0'.repeat(64);
  *
  * One process may write a run at a time. Cross-process exclusion is the lease protocol (section F), not this class.
  */
-export class RunStore {
+export class RunStore implements RunStoreLike {
   private readonly tails = new Map<string, { seq: number; hash: string }>();
   private readonly queues = new Map<string, Promise<unknown>>();
   constructor(
@@ -142,6 +150,43 @@ export class RunStore {
       prev = hash;
     }
     return out;
+  }
+
+  /**
+   * Appends entries produced elsewhere (ledger replication). Every entry must extend the current tail exactly: right seq, right
+   * prev hash, valid own hash. Anything else is refused whole; nothing is merged or rewritten.
+   */
+  async ingest(runId: string, entries: readonly JournalEntry[]): Promise<void> {
+    const prior = this.queues.get(runId) ?? Promise.resolve();
+    const next = prior.then(async () => {
+      await this.repairTornTail(runId);
+      const have = await this.read(runId);
+      let seq = have.at(-1)?.seq ?? 0;
+      let prev = have.at(-1)?.hash ?? GENESIS;
+      const lines: string[] = [];
+      for (const e of entries) {
+        const { hash, ...body } = e;
+        if (e.seq !== seq + 1 || e.prev !== prev || sha256Hex(canonicalJson(body)) !== hash)
+          throw new JournalCorruptError(runId, `replicated entry ${e.seq} does not extend the chain`);
+        lines.push(JSON.stringify(e));
+        seq = e.seq;
+        prev = hash;
+      }
+      if (lines.length === 0) return;
+      const fh = await open(join(this.path(runId), 'journal.jsonl'), 'a');
+      try {
+        await fh.write(`${lines.join('\n')}\n`);
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      this.tails.set(runId, { seq, hash: prev });
+    });
+    this.queues.set(
+      runId,
+      next.catch(() => undefined),
+    );
+    return next;
   }
 
   async list(): Promise<string[]> {
