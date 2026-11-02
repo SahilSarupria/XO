@@ -6,3 +6,6 @@ export * from './eval/runner.js';
 export * from './eval/report.js';
 export * from './eval/sim-models.js';
 export * from './eval/compiler-target.js';
+export * from './scenario/insurance/index.js';
+export * from './eval/second-domain.js';
+export * from './eval/second-domain-review.js';

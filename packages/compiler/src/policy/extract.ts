@@ -42,6 +42,8 @@ export interface RecognizedClause {
   readonly sentence: string;
 }
 export interface UnrecognizedClause {
+  /** position in the document; steps added from this clause keep it, so review does not reorder the policy */
+  readonly order?: number;
   readonly rule: string;
   readonly section: string;
   readonly sentence: string;
@@ -56,7 +58,7 @@ export interface Extraction {
 }
 
 const NORMATIVE =
-  /\b(must|shall|never|only|escalat\w*|den(?:y|ied|ies)|payable|not (?:be )?(?:paid|compensable|excluded|covered)|is excluded|within|at least|more than|no (?:deductible|declared)|routed|referred|approv\w*|reimburs\w*|regardless|no matter|requires?|prohibited|forbidden|may not|cannot|do not|don't)\b|\$\d/i;
+  /\b(must|shall|never|only|escalat\w*|den(?:y|ied|ies)|payable|not (?:be )?(?:paid|compensable|excluded|covered)|is excluded|within|at least|more than|no (?:deductible|declared)|pays?|routed|referred|approv\w*|reimburs\w*|regardless|no matter|requires?|prohibited|forbidden|may not|cannot|do not|don't)\b|\$\d/i;
 
 const BACKGROUND_SECTION = /\b(?:background|about|overview|introduction|glossary|handbook|appendix|contact|history|notes?)\b/i;
 const TARGET = "([A-Z][A-Za-z0-9&' ]*?)";
@@ -402,7 +404,7 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
       } else if (
         (x = m(
           new RegExp(
-            String.raw`^(?:An?|The|Any)?\s*([^,;]+?) (?:is|are|must be|shall be) (?:escalated|routed|referred|sent|forwarded) to (?:the )?${TARGET}${END_TARGET}`,
+            String.raw`^(?:(?:Any|An?|The)\s+)?([^,;]+?) (?:is|are|must be|shall be) (?:escalated|routed|referred|sent|forwarded) to (?:the )?${TARGET}${END_TARGET}`,
           ),
         ))
       ) {
@@ -643,9 +645,9 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
       }
 
       if (hit !== undefined) hitNote(e, s, hit);
-      if (NORMATIVE.test(s) || hit !== undefined) {
+      if (NORMATIVE.test(s) || /\d/.test(s) || hit !== undefined) {
         decisionSentences++;
-        if (hit === undefined) unrecognized.push({ rule: ruleTag(e), section: e.section, sentence: s });
+        if (hit === undefined) unrecognized.push({ order, rule: ruleTag(e), section: e.section, sentence: s });
       }
     }
   }

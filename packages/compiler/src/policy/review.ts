@@ -40,33 +40,48 @@ export function applyReviewDecisions(
   const refused: { sentence: string; reasons: string[] }[] = [];
   const closed = new Set<string>();
   let n = accepted.length;
-  for (const d of decisions) {
-    const item = review.find((r) => r.sentence === d.sentence);
-    const clause: UnrecognizedClause | undefined = extraction.unrecognized.find((u) => u.sentence === d.sentence);
-    if (item === undefined || clause === undefined) {
-      refused.push({ sentence: d.sentence, reasons: ['no such item awaiting review'] });
-      continue;
-    }
-    if (d.action === 'reject') {
-      rejected.push({ sentence: d.sentence, ...(d.note ? { note: d.note } : {}) });
+  // Decisions may depend on one another (one rule's expression reads a quantity another defines), so apply them in
+  // passes until no further decision can be applied; whatever is still refused then is reported with its reasons.
+  let pending: ReviewDecision[] = [...decisions];
+  let lastReasons = new Map<string, string[]>();
+  for (let pass = 0; pass < 8 && pending.length > 0; pass++) {
+    const next: ReviewDecision[] = [];
+    lastReasons = new Map();
+    for (const d of pending) {
+      const item = review.find((r) => r.sentence === d.sentence);
+      const clause: UnrecognizedClause | undefined = extraction.unrecognized.find((u) => u.sentence === d.sentence);
+      if (item === undefined || clause === undefined) {
+        lastReasons.set(d.sentence, ['no such item awaiting review']);
+        continue;
+      }
+      if (d.action === 'reject') {
+        rejected.push({ sentence: d.sentence, ...(d.note ? { note: d.note } : {}) });
+        closed.add(d.sentence);
+        continue;
+      }
+      const proposal = d.action === 'edit' ? d.proposal : item.proposal;
+      if (proposal === undefined) {
+        lastReasons.set(d.sentence, ['nothing to accept: provide an edited proposal']);
+        continue;
+      }
+      n += 1;
+      const res = addProposal(program, proposal, clause, 'operator', n);
+      if ('reasons' in res) {
+        lastReasons.set(d.sentence, res.reasons);
+        next.push(d);
+        continue;
+      }
+      program = res.program;
+      accepted.push({ sentence: d.sentence, proposal });
       closed.add(d.sentence);
-      continue;
     }
-    const proposal = d.action === 'edit' ? d.proposal : item.proposal;
-    if (proposal === undefined) {
-      refused.push({ sentence: d.sentence, reasons: ['nothing to accept: provide an edited proposal'] });
-      continue;
+    if (next.length === pending.filter((d) => d.action !== 'reject').length && next.length === pending.length) {
+      pending = next;
+      break;
     }
-    n += 1;
-    const res = addProposal(program, proposal, clause, 'operator', n);
-    if ('reasons' in res) {
-      refused.push({ sentence: d.sentence, reasons: res.reasons });
-      continue;
-    }
-    program = res.program;
-    accepted.push({ sentence: d.sentence, proposal });
-    closed.add(d.sentence);
+    pending = next;
   }
+  for (const d of pending) refused.push({ sentence: d.sentence, reasons: lastReasons.get(d.sentence) ?? ['could not be applied'] });
   return {
     extraction: { ...extraction, program, unrecognized: extraction.unrecognized.filter((u) => !closed.has(u.sentence)) },
     ledger: { accepted, rejected },

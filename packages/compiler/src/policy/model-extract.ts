@@ -143,7 +143,9 @@ export function checkProposal(p: ClauseProposal, sentence: string, program: Poli
       if (OPERATORS.has(id)) continue;
       if (!declared.has(id) && !defined.has(id)) reasons.push(`expression reads undeclared name "${id}"`);
     }
-    for (const n of numberLiterals(expr)) if (!evidence.has(n)) reasons.push(`number ${n} in "${expr}" does not appear in the quoted text`);
+    // 0 and 1 are structural ("otherwise nothing", unit factors), not figures the document states
+    for (const n of numberLiterals(expr))
+      if (n !== 0 && n !== 1 && !evidence.has(n)) reasons.push(`number ${n} in "${expr}" does not appear in the quoted text`);
     for (const lit of stringLiterals(expr))
       if (quoteNorm !== '' && !quoteNorm.includes(norm(lit))) {
         // a label value may be a snake_case rendering of words in the quote
@@ -182,7 +184,7 @@ const stepFromProposal = (p: ClauseProposal, c: UnrecognizedClause, id: string, 
     ...base,
     kind: 'finish',
     ...(s.when ? { when: s.when } : {}),
-    ...(s.amount ? { amount: s.amount } : {}),
+    ...(s.amount ? { amount: s.amount.startsWith('=') ? s.amount : `=round(${s.amount}, 2)` } : {}),
     outcome: { decision: s.decision, reason: s.reason },
   };
 };
@@ -201,8 +203,15 @@ export function addProposal(
   const newFacts: PolicyFact[] = p.facts
     .filter((f) => !known.has(f.name))
     .map((f) => ({ name: f.name, type: f.type, description: f.description, ...(f.enum ? { enum: f.enum } : {}) }));
-  const step = stepFromProposal(p, c, `${origin}${index}`, 1000 + index, origin);
-  const candidate: PolicyProgram = { ...program, facts: [...program.facts, ...newFacts], steps: [...program.steps, step] };
+  const step = stepFromProposal(p, c, `${origin}${index}`, (c.order ?? 1000) + index / 10000, origin);
+  // a finish step that pays an amount needs an output field to put it in, when the document gave none
+  const needsAmountField = p.step.kind === 'finish' && p.step.amount !== undefined && program.amountField === undefined;
+  const candidate: PolicyProgram = {
+    ...program,
+    facts: [...program.facts, ...newFacts],
+    steps: [...program.steps, step],
+    ...(needsAmountField ? { amountField: 'amount_usd' } : {}),
+  };
   // the synthesized tree must not get worse: every problem it has now, it had before
   const before = new Set(synthesizeTree(program).treeProblems);
   const fresh = synthesizeTree(candidate).treeProblems.filter((x) => !before.has(x));

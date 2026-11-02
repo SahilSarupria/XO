@@ -42,7 +42,9 @@ const defines = (s: Step): string[] => (s.kind === 'assign' ? Object.keys(s.set)
 
 /** stable topological order: a step that defines a quantity comes before every step that reads it */
 function orderSteps(steps: readonly Step[]): { ordered: Step[]; cyclic: boolean } {
-  const by = [...steps].sort((a, b) => a.order - b.order);
+  // an unconditional settlement step is the default outcome: it comes after every check, wherever the document states it
+  const key = (s: Step): number => (s.kind === 'finish' && s.when === undefined ? s.order + 1e9 : s.order);
+  const by = [...steps].sort((a, b) => key(a) - key(b));
   const definers = new Map<string, Step[]>();
   for (const s of by) for (const d of defines(s)) definers.set(d, [...(definers.get(d) ?? []), s]);
   const deps = new Map<Step, Set<Step>>();

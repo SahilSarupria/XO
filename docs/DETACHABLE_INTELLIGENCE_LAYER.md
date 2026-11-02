@@ -71,3 +71,31 @@ Compiler defects fixed in this pass: negated instructions ("Do not create a miss
 capabilities; the production compile path (`compileSources`, `xo create`) now synthesizes the tree, typed capability and
 decision/escalation/risk/prohibition nodes; tables become lookups; ASCII85/ASCIIHex/RunLength/LZW PDF streams decode;
 source-sequence edges no longer chain different sections into one catch-all workflow.
+
+## Second domain (held-out): Meridian Mutual auto-claims triage — measured offline
+
+A second, hand-written scenario (`packages/ab-eval/src/scenario/insurance`): a 10-rule manual in ordinary prose (with a
+table), an independent oracle, and 56 seeded cases over 12 strata (window boundaries, the 75 % total-loss boundary,
+authority limit, rental cap …). The manual was written after the compiler's rule shapes were fixed and was **not** used to
+tune extraction. Scoring runs the production path (`compileSources`) and the same fact-binder proxy as freight.
+
+| step                                               | decision sentences understood | agreement (decision + payout) | confidently wrong |
+| -------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------- |
+| untuned compiler, as first run                     | 4 / 16                        | 7 %                           | 0 (fails closed)  |
+| after operator review of the review list (9 edits) | all 16 resolved               | 100 %                         | 0                 |
+
+Read this honestly:
+
+- Out of the box the pattern extractor understands only the sentence shapes it was built for; on a new manual most rules
+  go to the review list and the tree escalates on those paths. That is the fail-closed behaviour working, not a pass.
+- The 100 % is _after_ review, and the same author wrote the manual, the oracle and the review decisions, so it shows the
+  loop and its checks work end to end — not that a customer's reviewer would get every rule right.
+- Generic defects found by this run and then fixed (disclosed, not tuning): the "Any …" regex left a stray "y" in fact
+  names; number-bearing and "pays" sentences were silently dropped instead of listed for review; steps added in review
+  were placed by list position instead of document position; an unconditional settlement step stated early made later
+  checks (the authority limit) unreachable — a confident wrong approve; review decisions that depend on each other
+  failed in document order (now applied to a fixpoint); structural constants 0 and 1 no longer need to appear in the quote.
+- One tree input (a yes/no derived from a count) cannot be read by the proxy binder; the reviewed run uses an explicit
+  operator field mapping for it. A live model reading the tool schema is the real test.
+- The live comparison (compiled vs hand-written XO with a real model on this domain) is not run: it needs an API key and
+  a hand-written gold XO for this domain, which does not exist yet.

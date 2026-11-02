@@ -15,7 +15,8 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 - [~] Held-out recall 77–79% (target 80%); tree agreement 100% (offline, heuristic fact binder)
 - [x] Tree synthesis is domain-neutral (policy program IR); wired into `xo create`; negation, tables, PDF filters, workflow section split fixed
 - [~] Model-assisted clause extraction + review ledger built, scripted-model tests only; not run live
-- [ ] Valid uplift run with `--include-compiled` (needs API key); second domain's held-out manual
+- [~] Second domain (insurance triage) built and measured offline: untuned 7 %, 100 % after review (see DETACHABLE_INTELLIGENCE_LAYER.md)
+- [ ] Valid uplift run with `--include-compiled` on freight and insurance (needs API key); hand-written gold XO for insurance
 
 ## C. Integration
 
