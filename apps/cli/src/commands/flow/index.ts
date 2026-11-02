@@ -11,7 +11,18 @@ import {
   WorkflowLoadError,
   type WorkflowComponent,
 } from '@xo/workflow-ir';
-import { RunStore, WorkflowRunner, compareShadow } from '@xo/workflow-runtime';
+import {
+  LeaseAuthority,
+  LeasedRunStore,
+  LedgerReplica,
+  RunStore,
+  StaticReviewerRegistry,
+  WorkflowRunner,
+  compareShadow,
+  type Reviewer,
+} from '@xo/workflow-runtime';
+import { createXoServer } from '@xo/server';
+import { join } from 'node:path';
 import type { CommandRegistry } from '../../command-registry.js';
 
 const SUBSYSTEM = 'flow';
@@ -131,6 +142,91 @@ export function registerCommands(registry: CommandRegistry): void {
           );
           return 3;
         }
+        return fail((e as Error).message);
+      }
+    },
+  });
+
+  registry.register({
+    name: 'serve',
+    subsystem: SUBSYSTEM,
+    usage:
+      'xo serve --workflows <workflows.json> --runs <dir> [--policy <policy.json>] [--trees <file>] [--approvers <reviewers.json>] [--port 7433] [--host 127.0.0.1] [--allow-remote]\n' +
+      '                  Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). The bearer token is read from XO_SERVER_TOKEN (>= 24 chars), never from a flag.\n' +
+      '                  Binds to loopback by default. There is no TLS: use a TLS proxy for anything but localhost.',
+    run: async (args) => {
+      const token = process.env['XO_SERVER_TOKEN'];
+      if (token === undefined || token.length < 24) return fail('set XO_SERVER_TOKEN to a secret of at least 24 characters');
+      const file = flag(args.flags, 'workflows');
+      const runs = flag(args.flags, 'runs');
+      if (file === undefined || runs === undefined) return fail('--workflows and --runs are required');
+      try {
+        const trees = flag(args.flags, 'trees');
+        const comp = load(file, trees);
+        const policyPath = flag(args.flags, 'policy');
+        const policy: ConnectorPolicy & { fileRoots?: Record<string, Record<string, string>> } =
+          policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
+        const implementations: Record<string, Connector> = {};
+        for (const c of comp.connectors) {
+          const roots = policy.fileRoots?.[c.id];
+          if (c.kind === 'file' && roots !== undefined) implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576 });
+        }
+        const treeMap = new Map<string, DecisionTree>();
+        if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
+        const approvers = flag(args.flags, 'approvers');
+        const reviewers: Reviewer[] = approvers !== undefined ? JSON.parse(readFileSync(resolve(approvers), 'utf8')) : [];
+        const base = resolve(runs);
+        const store = new RunStore(join(base, 'journal'));
+        const authority = new LeaseAuthority(join(base, 'leases'), store);
+        const replica = new LedgerReplica(join(base, 'forks'), store);
+        const leased = new LeasedRunStore(authority, store);
+        const connectors = new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() });
+        const runners: Record<string, WorkflowRunner> = {};
+        const skipped: string[] = [];
+        for (const wf of comp.workflows) {
+          try {
+            runners[wf.id] = new WorkflowRunner({
+              component: comp,
+              workflowId: wf.id,
+              store: leased,
+              connectors,
+              trees: treeMap,
+              ...(reviewers.length > 0 ? { approvals: { reviewers: new StaticReviewerRegistry(reviewers) } } : {}),
+              lease: {
+                client: authority,
+                owner: 'server',
+                ttlMs: 30_000,
+                attach: (id, t) => leased.attach(id, 'server', t),
+                detach: (id) => leased.detach(id),
+              },
+            });
+          } catch (e) {
+            skipped.push(`${wf.id}: ${(e as Error).message}`);
+          }
+        }
+        if (Object.keys(runners).length === 0) return fail(`no workflow can run on this server:\n  ${skipped.join('\n  ')}`);
+        const host = flag(args.flags, 'host') ?? '127.0.0.1';
+        const api = createXoServer({
+          token,
+          host,
+          port: Number(flag(args.flags, 'port') ?? '7433'),
+          allowRemote: args.flags['allow-remote'] === true,
+          runners,
+          store,
+          authority,
+          replica,
+          trees: treeMap,
+        });
+        const a = await api.listen();
+        out(`xo serve listening on http://${a.host}:${a.port} (workflows: ${Object.keys(runners).join(', ')})`);
+        for (const s of skipped) out(`  skipped ${s}`);
+        await new Promise<void>((done) => {
+          process.once('SIGINT', done);
+          process.once('SIGTERM', done);
+        });
+        await api.close();
+        return 0;
+      } catch (e) {
         return fail((e as Error).message);
       }
     },

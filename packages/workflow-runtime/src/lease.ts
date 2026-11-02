@@ -123,6 +123,14 @@ export class LeaseAuthority implements LeaseClient {
     return s.owner === null ? undefined : { runId, owner: s.owner, token: s.token, expiresAt: s.expiresAt };
   }
 
+  /** Throws LOST unless (owner, token) is the current, unexpired lease. Used to fence replication pushes at the authoritative ledger. */
+  assertCurrent(runId: string, owner: string, token: number): Promise<void> {
+    return this.serial(runId, async () => {
+      const s = await this.load(runId);
+      if (s.owner !== owner || s.token !== token || this.now() > s.expiresAt) throw new LeaseError('LOST', `fenced: token ${token} is not the current lease for ${runId}`);
+    });
+  }
+
   /** Append that is valid only while the caller still holds the current, unexpired lease. Check and write share one critical section. */
   fencedAppend(runId: string, owner: string, token: number, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry> {
     return this.serial(runId, async () => {

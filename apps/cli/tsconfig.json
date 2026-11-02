@@ -79,6 +79,9 @@
     },
     {
       "path": "../../packages/workflow-runtime"
+    },
+    {
+      "path": "../../packages/server"
     }
   ]
 }

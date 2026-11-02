@@ -41,7 +41,8 @@
     "@xo/capability-layer": "0.1.0",
     "@xo/workflow-ir": "0.1.0",
     "@xo/connectors": "0.1.0",
-    "@xo/workflow-runtime": "0.1.0"
+    "@xo/workflow-runtime": "0.1.0",
+    "@xo/server": "0.1.0"
   },
   "devDependencies": {
     "tsx": "^4.16.0",

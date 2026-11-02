@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../capability-layer"
+    },
+    {
+      "path": "../workflow-ir"
+    },
+    {
+      "path": "../workflow-runtime"
+    },
+    {
+      "path": "../package-sdk"
+    },
+    {
+      "path": "../types"
+    }
+  ]
+}
