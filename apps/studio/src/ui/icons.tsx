@@ -33,7 +33,11 @@ export type IconName =
   | 'x'
   | 'back'
   | 'unlink'
-  | 'tidy';
+  | 'tidy'
+  | 'warn'
+  | 'dots'
+  | 'chevron'
+  | 'key';
 
 const PATHS: Record<IconName, string> = {
   workspaces: 'M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z',
@@ -71,6 +75,10 @@ const PATHS: Record<IconName, string> = {
   back: 'M19 12H5M11 6l-6 6 6 6',
   unlink: 'M9 15l6-6M7 17l-1 1a3 3 0 0 1-4-4l3-3M17 7l1-1a3 3 0 0 1 4 4l-3 3',
   tidy: 'M4 6h10M4 12h16M4 18h10',
+  warn: 'M12 4l9 16H3zM12 10v5M12 18h.01',
+  dots: 'M5 12h.01M12 12h.01M19 12h.01',
+  chevron: 'M9 6l6 6-6 6',
+  key: 'M8 19a4 4 0 1 0 0-8 4 4 0 0 0 0 8M11 12l9-9M16 7l3 3',
 };
 
 /** Decorative only: every use sits next to visible text, so it is hidden from assistive technology. */

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findStart, openWorkflow } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const posts = (api: FakeXo, suffix: string) => api.calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix));
@@ -30,7 +30,7 @@ async function returnToInterruptedRun(api: FakeXo): Promise<U> {
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await go(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('button', { name: /approve this step/i });
   api.interruptRun(api.workflowRuns[0]!);
   cleanup(); // the browser is closed; the person returns later
@@ -47,6 +47,7 @@ describe('an interrupted process is discoverable', () => {
     expect(await screen.findByText('Stopped — can be continued')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^inbox.*1 need attention/i })).toBeInTheDocument();
     await go(user, 'Work');
+    await openWorkflow(user);
     expect(await screen.findByRole('button', { name: /continue in tasks/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /start this process/i })).not.toBeInTheDocument(); // never a second run
     await go(user, 'Activity');

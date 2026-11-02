@@ -1,0 +1,704 @@
+/*
+ * Workflows page: one card per workflow, a "needs you" card, filters, and the details panel.
+ * Tokens only. Roomy on purpose: 16px text, 44px+ controls, generous padding.
+ */
+.wn {
+  margin: 0 0 var(--s-6);
+  padding: var(--s-5) var(--s-6);
+  background: var(--warning-wash);
+  border: 1px solid var(--warning);
+  border-radius: 16px;
+}
+.wn h3 {
+  margin: 0 0 2px;
+  font-size: var(--text-lg);
+}
+.wn-sub {
+  margin: 0 0 var(--s-3);
+  color: var(--text-muted);
+}
+.wn ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wn li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) 0;
+  border-top: 1px solid color-mix(in srgb, var(--warning) 25%, transparent);
+}
+.wn-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--warning);
+}
+.wn-ic[data-kind='failed'] {
+  color: var(--danger);
+}
+.wn-ic[data-kind='rules'] {
+  color: var(--info);
+}
+.wn-text {
+  flex: 1;
+  min-width: 0;
+}
+.wn-text small {
+  display: block;
+  color: var(--text-muted);
+}
+.wn-more {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+}
+
+/* filters */
+.wf-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.wf-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.wf-pills button {
+  min-height: 2.75rem;
+  padding: 0 var(--s-5);
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.wf-pills button small {
+  margin-left: 0.25rem;
+  color: var(--text-faint);
+  font-size: inherit;
+}
+.wf-pills button:hover {
+  color: var(--text);
+}
+.wf-pills button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--text-faint);
+}
+.wf-pills button:focus-visible,
+.wc-open:focus-visible,
+.wc-more:focus-visible,
+.wp-x:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.wf-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  margin-left: auto;
+  padding: 0 var(--s-4);
+  color: var(--text-faint);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+.wf-search input {
+  min-width: 10rem;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 0;
+}
+.wf-search input:focus-visible {
+  outline: none;
+}
+.wf-search:focus-within {
+  border-color: var(--accent);
+}
+
+/* cards */
+.wc-grid-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  padding: var(--s-5) var(--s-6);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transition:
+    border-color var(--motion),
+    background var(--motion);
+}
+.wc:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.wc[data-selected='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.wc-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.wc-name {
+  flex: 1;
+  min-width: 0;
+}
+.wc-name h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: 1.3;
+}
+.wc-open {
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+/* the title is the card's one tab stop, and its click area is the whole card */
+.wc-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+}
+.wc-sub {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+.wc-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.75rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-3);
+}
+.wc-status::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.wc-status[data-tone='success'] {
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+.wc-status[data-tone='warning'] {
+  color: var(--warning);
+  background: var(--warning-wash);
+}
+.wc-status[data-tone='danger'] {
+  color: var(--danger);
+  background: var(--danger-wash);
+}
+.wc-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5) var(--s-6);
+}
+.wc-wide {
+  grid-column: 1 / -1;
+}
+.wc-label {
+  display: block;
+  margin-bottom: var(--s-2);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.wc-foot .wc-label {
+  margin: 0;
+}
+.wc-muted {
+  color: var(--text-muted);
+}
+.wc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wc-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem 0.2rem 0.5rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.wc-spark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--accent);
+}
+.wc-spark {
+  color: var(--text-muted);
+}
+.wc-spark svg {
+  color: var(--accent);
+}
+.wc-bar {
+  display: flex;
+  gap: 2px;
+  height: 0.65rem;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border-radius: 999px;
+}
+.wc-bar span[data-who='xo'],
+.wf-legend i[data-who='xo'] {
+  background: var(--accent);
+}
+.wc-bar span[data-who='person'],
+.wf-legend i[data-who='person'] {
+  background: var(--warning);
+}
+.wc-barnote {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.wc-barnote b {
+  color: var(--text);
+}
+.wc-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.wc-chip {
+  padding: 0.15rem 0.8rem;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border-radius: 999px;
+}
+.wc-chip[data-tone='warning'] {
+  color: var(--warning);
+  background: var(--warning-wash);
+}
+.wc-chip[data-tone='danger'] {
+  color: var(--danger);
+  background: var(--danger-wash);
+}
+.wc-chip[data-tone='ok'] {
+  padding-left: 0;
+  background: none;
+}
+.wc-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* the small ⋯ menu sits above the card's click area */
+.wc-menu {
+  position: relative;
+  z-index: 2;
+}
+.wc-more {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.wc-more:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.wc-menu-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: var(--s-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+.wc-menu-list button {
+  min-height: 2.5rem;
+  padding: 0 var(--s-4);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.wc-menu-list button:hover,
+.wc-menu-list button:focus-visible {
+  outline: none;
+  background: var(--surface-3);
+}
+
+.wf-legend {
+  display: flex;
+  gap: var(--s-5);
+  margin: var(--s-5) 0 var(--s-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.wf-legend i {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.35rem;
+  border-radius: 3px;
+}
+.wf-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+/* first-time state */
+.wf-first {
+  padding: var(--s-8) var(--s-6);
+  text-align: center;
+  background: var(--surface-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: 20px;
+}
+.wf-first h3 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--text-xl);
+}
+.wf-first > p {
+  max-width: 34rem;
+  margin: 0 auto var(--s-6);
+  color: var(--text-muted);
+}
+.wf-first ol {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-4);
+  max-width: 54rem;
+  margin: 0 auto var(--s-6);
+  padding: 0;
+  text-align: left;
+  list-style: none;
+}
+.wf-first li {
+  padding: var(--s-4);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.wf-first li[data-now='true'] {
+  border-color: var(--accent);
+}
+.wf-first li span {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-bottom: var(--s-3);
+  font-weight: 800;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+}
+.wf-first li[data-now='true'] span {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.wf-first li b {
+  display: block;
+}
+.wf-first li small {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* details panel */
+.wp-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.wp-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.5);
+}
+.wp {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(38rem, 100%);
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -24px 0 60px rgb(0 0 0 / 0.5);
+}
+.wp-body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-6);
+  overflow-y: auto;
+}
+.wp-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.wp-top h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+  line-height: 1.25;
+}
+.wp-lead {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+}
+.wp-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-left: auto;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.wp-x:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.wp-now {
+  margin: var(--s-5) 0 var(--s-6);
+  padding: var(--s-4) var(--s-5);
+  background: var(--info-wash);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+  border-radius: 14px;
+}
+.wp-now b {
+  color: var(--info);
+}
+.wp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: var(--s-6) 0 var(--s-2);
+}
+.wp-head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.wp-head span {
+  color: var(--text-muted);
+}
+.wp-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wp-checks > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4) 0;
+  border-top: 1px solid var(--border);
+}
+.wp-checks > li > div {
+  flex: 1;
+  min-width: 0;
+}
+.wp-checks small {
+  display: block;
+  color: var(--text-muted);
+}
+.wp-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  font-weight: 800;
+  border-radius: 50%;
+}
+.wp-checks li[data-state='ok'] .wp-mark {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.wp-checks li[data-state='todo'] .wp-mark {
+  color: var(--warning);
+  border: 2.5px solid var(--warning);
+}
+.wp-checks li[data-state='half'] .wp-mark {
+  color: var(--info);
+  border: 2.5px solid var(--info);
+}
+.wp-needs {
+  margin: var(--s-1) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.wp-how {
+  margin: var(--s-5) 0 0;
+  padding: var(--s-4) var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.wp-how summary {
+  font-weight: 650;
+  cursor: pointer;
+}
+.wp-runs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wp-runs li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+}
+.wp-runs small {
+  margin-left: auto;
+  color: var(--text-faint);
+}
+.wp-run-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.wp-run-dot[data-tone='success'] {
+  background: var(--accent);
+}
+.wp-run-dot[data-tone='warning'] {
+  background: var(--warning);
+}
+.wp-run-dot[data-tone='danger'] {
+  background: var(--danger);
+}
+.wp-bar {
+  padding: var(--s-4) var(--s-6) var(--s-5);
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-strong);
+}
+.wp-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.wp-grow {
+  flex: 1;
+}
+.wp-hint {
+  margin: var(--s-3) 0 0;
+  color: var(--text-muted);
+}
+
+/* narrower windows */
+@media (max-width: 64rem) {
+  .wc-grid-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wf-first ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 44rem) {
+  .wc-head {
+    flex-wrap: wrap;
+  }
+  .wc-name {
+    flex-basis: calc(100% - 3.5rem);
+  }
+  .wc-status {
+    order: 3;
+  }
+  .wc-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wn li {
+    flex-wrap: wrap;
+  }
+  .wn li .btn {
+    width: 100%;
+  }
+  .wf-search {
+    margin-left: 0;
+    width: 100%;
+  }
+  .wf-first ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wp-actions {
+    flex-wrap: wrap;
+  }
+  .wp-checks > li {
+    flex-wrap: wrap;
+  }
+  .wp-checks > li .btn {
+    width: 100%;
+  }
+}

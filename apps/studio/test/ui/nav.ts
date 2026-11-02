@@ -29,3 +29,30 @@ export async function chooseFromMenu(user: U, name: RegExp | string, role: 'menu
 export const setDetailLevel = (user: U, mode: 'user' | 'builder') =>
   chooseFromMenu(user, mode === 'builder' ? 'Builder mode' : 'User mode', 'menuitemradio');
 export const signOutViaMenu = (user: U) => chooseFromMenu(user, 'Sign out');
+
+/**
+ * On the Workflows page a workflow is a card; its details (and the Start button) are in a panel that opens when the
+ * card is chosen. Opens the first workflow's panel if it is not open yet, then returns the Start/continue controls.
+ */
+export async function openWorkflow(user: U): Promise<void> {
+  if (screen.queryByRole('dialog') !== null) return;
+  const title = await waitForTitle();
+  await user.click(title);
+  await screen.findByRole('dialog');
+}
+async function waitForTitle(): Promise<HTMLElement> {
+  for (let i = 0; i < 100; i++) {
+    const el = document.querySelector<HTMLElement>('[data-wf-open]');
+    if (el !== null) return el;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('No workflow card appeared');
+}
+export async function findStart(user: U): Promise<HTMLElement> {
+  await openWorkflow(user);
+  return screen.findByRole('button', { name: /start this process/i });
+}
+export async function findViewGraph(user: U): Promise<HTMLElement> {
+  await openWorkflow(user);
+  return screen.findByRole('button', { name: /view graph of/i });
+}

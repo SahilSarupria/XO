@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findViewGraph } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 type Edge = { from: string; to: string; when?: string };
@@ -26,7 +26,7 @@ async function analysed(api: FakeXo): Promise<U> {
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await openScreen(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /view graph of/i }));
+  await user.click(await findViewGraph(user));
   await screen.findByRole('region', { name: 'Workflow graph' });
   const palette = screen.getByRole('complementary', { name: 'Node palette' });
   await within(palette).findByRole('button', { name: 'Branch on confidence' }); // the platform has answered what it can run

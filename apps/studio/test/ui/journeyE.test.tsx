@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { chooseFromMenu, openScreen } from './nav';
+import { chooseFromMenu, openScreen, findStart } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -39,7 +39,7 @@ async function returnAfter(api: FakeXo, change: (run: Record<string, any>) => vo
   let user = await open(api);
   await analyse(user);
   await go(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('button', { name: /approve this step/i });
   change(api.workflowRuns[0]!);
   cleanup();
