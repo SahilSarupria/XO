@@ -152,8 +152,8 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo serve --workflows <workflows.json> --runs <dir> [--policy <policy.json>] [--trees <file>] [--approvers <reviewers.json>] [--port 7433] [--host 127.0.0.1] [--allow-remote]\n' +
-      '                  Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). The bearer token is read from XO_SERVER_TOKEN (>= 24 chars), never from a flag.\n' +
-      '                  Binds to loopback by default. There is no TLS: use a TLS proxy for anything but localhost.',
+      '                        Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). The bearer token is read from XO_SERVER_TOKEN (>= 24 chars), never from a flag.\n' +
+      '                        Binds to loopback by default. There is no TLS: use a TLS proxy for anything but localhost.',
     run: async (args) => {
       const token = process.env['XO_SERVER_TOKEN'];
       if (token === undefined || token.length < 24) return fail('set XO_SERVER_TOKEN to a secret of at least 24 characters');
