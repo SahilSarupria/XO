@@ -2,6 +2,7 @@ import type { DecisionTree } from '@xo/capability-layer';
 import { ConnectorError, type ConnectorHost, type Json } from '@xo/connectors';
 import {
   DETERMINISTIC_HOST,
+  approvalIdentity,
   backoffDelayMs,
   canonicalJson,
   compensationPlan,
@@ -25,11 +26,19 @@ import {
   type WorkflowHostSupport,
 } from '@xo/workflow-ir';
 import { CircuitBreakers, Semaphore } from './breaker.js';
+import {
+  ApprovalError,
+  verifyDecision,
+  type ApprovalRequest,
+  type ApprovalSink,
+  type ReviewerRegistry,
+  type SignedDecision,
+} from './approvals.js';
 import type { JournalEntry, RunStore } from './journal.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
 
-/** What this runner implements. `for_each`, `approve` and `wait_event` are not built yet (sections D/F); workflows needing them are refused whole. */
-export const RUNNER_FEATURES = ['wait_timer', 'compensation', 'model_extract', 'lookup', 'rules', 'authority_ceilings'] as const;
+/** What this runner implements. `for_each` and `wait_event` are not built yet; `approve` needs `approvals` options; workflows needing them are refused whole. */
+export const RUNNER_FEATURES = ['approve', 'wait_timer', 'compensation', 'model_extract', 'lookup', 'rules', 'authority_ceilings'] as const;
 
 export interface Extractor {
   extract(req: {
@@ -69,6 +78,8 @@ export interface RunnerOptions {
   readonly breakers?: CircuitBreakers;
   /** Max concurrent calls per connector. Default 4. */
   readonly connectorConcurrency?: number;
+  /** Required to run workflows with approve steps. */
+  readonly approvals?: { readonly reviewers: ReviewerRegistry; readonly sink?: ApprovalSink };
 }
 
 export interface RunResult {
@@ -92,7 +103,9 @@ interface StepRec {
   outputs?: Record<string, unknown>;
   callOutcome?: { ok: boolean; data?: Json; code?: string };
   waitUntil?: number;
+  approval?: { request: ApprovalRequest; deadline: number };
   modelCalls: number;
+  rulesFired?: string[];
 }
 interface RunRec {
   runId: string;
@@ -152,6 +165,7 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         s.state = 'succeeded';
         s.outputs = d['outputs'];
         s.modelCalls = d['modelCalls'] ?? 0;
+        if (d['rulesFired'] !== undefined) s.rulesFired = d['rulesFired'];
         rec.order.push(d['step']);
         break;
       }
@@ -165,6 +179,19 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         const s = step(d['step']);
         s.state = 'waiting';
         s.waitUntil = d['until'];
+        break;
+      }
+      case 'approval_requested': {
+        const s = step(d['step']);
+        s.state = 'waiting';
+        s.approval = { request: d['request'], deadline: Date.parse(d['request'].expiresAt) };
+        break;
+      }
+      case 'approval_decided': {
+        const s = step(d['step']);
+        s.state = 'succeeded';
+        s.outputs = d['outputs'];
+        rec.order.push(d['step']);
         break;
       }
       case 'step_cancelled':
@@ -221,7 +248,9 @@ export class WorkflowRunner {
     if (wf === undefined) throw new Error(`workflow "${o.workflowId}" is not in this component`);
     const support: WorkflowHostSupport = {
       ...DETERMINISTIC_HOST,
-      features: [...RUNNER_FEATURES].filter((f) => f !== 'model_extract' || o.extractor !== undefined),
+      features: [...RUNNER_FEATURES].filter(
+        (f) => (f !== 'model_extract' || o.extractor !== undefined) && (f !== 'approve' || o.approvals !== undefined),
+      ),
       modelCapabilities: o.extractor !== undefined ? ['structured_output'] : [],
     };
     const neg = negotiateWorkflows({ ...o.component, workflows: [wf] }, support);
@@ -313,6 +342,12 @@ export class WorkflowRunner {
           return this.escalate(runId, null, 'RUN_TIMEOUT', `run exceeded ${this.wf.runTimeoutMs}ms`);
 
         const states = new Map([...rec.steps].map(([id, s]) => [id, s.state] as const));
+        // approval requests that outlived their deadline escalate; they are never approved by default
+        for (const [id, s] of rec.steps)
+          if (s.state === 'waiting' && s.approval !== undefined && this.now() >= s.approval.deadline) {
+            await store.append(runId, 'step_failed', { step: id, code: 'APPROVAL_TIMEOUT', message: 'no decision before the deadline' });
+            return this.escalate(runId, id, 'APPROVAL_TIMEOUT', `approval ${s.approval.request.approvalId} expired without a decision`);
+          }
         // due timers
         for (const [id, s] of rec.steps)
           if (s.state === 'waiting' && s.waitUntil !== undefined && this.now() >= s.waitUntil)
@@ -356,8 +391,8 @@ export class WorkflowRunner {
           const parked = open.filter(([, s]) => s.state === 'waiting');
           if (parked.length > 0 && open.every(([, s]) => s.state === 'waiting' || s.state === 'pending')) {
             if (rec.state !== 'waiting') await store.append(runId, 'run_state', { state: 'waiting' });
-            const until = Math.min(...parked.map(([, s]) => s.waitUntil ?? Infinity));
-            if (this.o.sleep === undefined || until === Infinity) break; // leave it to tick()
+            const until = Math.min(...parked.map(([, s]) => s.waitUntil ?? s.approval?.deadline ?? Infinity));
+            if (this.o.sleep === undefined || until === Infinity || parked.some(([, s]) => s.approval !== undefined)) break; // leave it to tick() / decide()
             await this.sleep(Math.max(0, until - this.now()));
             continue;
           }
@@ -424,6 +459,93 @@ export class WorkflowRunner {
       }
     }
     return out;
+  }
+
+  private buildRequest(
+    runId: string,
+    step: Extract<Step, { type: 'approve' }>,
+    values: Record<string, unknown>,
+    rec: RunRec,
+  ): ApprovalRequest {
+    const now = this.now();
+    const editable = Object.fromEntries(Object.entries(step.outputs ?? {}).filter(([k]) => k !== 'decision'));
+    const dependents = this.wf.steps
+      .filter((s) => (s.type === 'act' || s.type === 'compensate') && closureHas(this.wf, s.id, step.id))
+      .map((s) => `${(s as ActStep).connector}.${(s as ActStep).operation} (${(s as ActStep).sideEffect}) in step ${s.id}`);
+    const render = (t: string): string =>
+      t.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, p: string) => {
+        if (p === 'workflow.id') return this.wf.id;
+        if (p === 'workflow.version') return this.wf.version;
+        if (p === 'step.id') return step.id;
+        const r = this.resolveRef(p, rec);
+        return r.found && r.value !== null ? String(r.value) : '(unknown)';
+      });
+    return {
+      approvalId: approvalIdentity(this.wf, step.id, { runId, index: 0 }),
+      runId,
+      workflow: this.wf.id,
+      version: this.wf.version,
+      step: step.id,
+      roles: step.roles,
+      summary: render(step.summary),
+      case: values,
+      evidence: Object.fromEntries((step.evidence ?? []).map((k) => [k, values[k] ?? null])),
+      trace: [...rec.steps]
+        .filter(([, s]) => s.rulesFired !== undefined)
+        .map(([id, s]) => ({ step: id, rulesFired: s.rulesFired as string[] })),
+      proposedActions: dependents,
+      allowEdit: step.allowEdit === true,
+      editable,
+      requestedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + step.timeoutMs).toISOString(),
+    };
+  }
+
+  /** Pending approval requests across runs (for a frontend to list). Auditors and anyone else read the same data; deciding needs a signed decision. */
+  async listApprovals(): Promise<ApprovalRequest[]> {
+    const out: ApprovalRequest[] = [];
+    for (const id of await this.o.store.list()) {
+      const rec = replayRun(await this.o.store.read(id), this.wf, id);
+      if (rec === undefined) continue;
+      for (const s of rec.steps.values()) if (s.state === 'waiting' && s.approval !== undefined) out.push(s.approval.request);
+    }
+    return out;
+  }
+
+  async getApproval(approvalId: string): Promise<ApprovalRequest | undefined> {
+    return (await this.listApprovals()).find((r) => r.approvalId === approvalId);
+  }
+
+  /**
+   * Applies a signed reviewer decision, then continues the run. Refusals (unknown/expired/already-decided request, unknown or revoked
+   * reviewer, bad signature, role not permitted, bad edits) throw ApprovalError and change nothing. The decision is journaled with its
+   * signature, so `xo explain` and audits can re-verify it later.
+   */
+  async decideApproval(runId: string, d: SignedDecision): Promise<RunResult> {
+    if (this.o.approvals === undefined) throw new Error('this runner has no approvals configuration');
+    const rec = replayRun(await this.o.store.read(runId), this.wf, runId);
+    if (rec === undefined) throw new ApprovalError('UNKNOWN_APPROVAL', `unknown run ${runId}`);
+    const pending = [...rec.steps.entries()].find(([, s]) => s.approval?.request.approvalId === d.payload.approvalId);
+    if (pending === undefined) throw new ApprovalError('UNKNOWN_APPROVAL', 'no such approval request on this run');
+    const [stepId, sr] = pending;
+    if (sr.state !== 'waiting') throw new ApprovalError('ALREADY_DECIDED', 'this approval was already decided or is no longer pending');
+    const { role, outputs } = verifyDecision(
+      (sr.approval as { request: ApprovalRequest }).request,
+      d,
+      this.o.approvals.reviewers,
+      this.now(),
+    );
+    await this.o.store.append(runId, 'approval_decided', {
+      step: stepId,
+      approvalId: d.payload.approvalId,
+      reviewerId: d.payload.reviewerId,
+      role,
+      action: d.payload.action,
+      outputs,
+      payload: d.payload as unknown as Record<string, unknown>,
+      signature: d.signature,
+    });
+    return { ...(await this.drive(runId)), accepted: false };
   }
 
   private async escalate(
@@ -516,6 +638,11 @@ export class WorkflowRunner {
         });
         return undefined;
       }
+      if (r.kind === 'approval') {
+        await store.append(runId, 'approval_requested', { step: step.id, request: r.request as unknown as Record<string, unknown> });
+        await this.o.approvals?.sink?.(r.request);
+        return undefined;
+      }
       if (r.kind === 'wait') {
         await store.append(runId, 'wait_started', { step: step.id, until: r.until });
         return undefined;
@@ -574,7 +701,7 @@ export class WorkflowRunner {
         };
       }
       case 'approve':
-        return { kind: 'escalate', code: 'UNSUPPORTED_APPROVE', message: 'approval steps are not supported by this runner' };
+        return { kind: 'approval', request: this.buildRequest(runId, step, values, rec) };
       case 'act':
       case 'compensate': {
         const r = await this.callConnector(runId, step, rec, false, sr);
@@ -699,7 +826,15 @@ export class WorkflowRunner {
 type StepOutcome =
   | { kind: 'ok'; outputs: Record<string, unknown>; modelCalls?: number; rulesFired?: string[] }
   | { kind: 'wait'; until: number }
+  | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'fail'; code: string; message: string }
   | { kind: 'escalate'; code: string; message: string; extra?: Partial<Escalation> };
 
 export { replayRun as _replayRun };
+
+function closureHas(wf: WorkflowDef, stepId: string, target: string, seen = new Set<string>()): boolean {
+  const s = wf.steps.find((x) => x.id === stepId);
+  if (s === undefined || seen.has(stepId)) return false;
+  seen.add(stepId);
+  return (s.needs ?? []).some((n) => n === target || closureHas(wf, n, target, seen));
+}

@@ -40,3 +40,21 @@ into the desk `HashChainLedger`, bounded in-memory windows and segment recovery 
 - The journal detects tampering after the fact; it does not stop a user with disk access from deleting a whole run directory.
 - Timers need `tick()` to be called; there is no scheduler daemon yet.
 - Authority ceilings and the kill switch are checked in the runner only; they are not a substitute for upstream controls.
+
+## Human approval (section D, backend only)
+An `approve` step parks its run and builds an `ApprovalRequest`: the case (step inputs), evidence fields the author named, the decision trace
+(rules fired by upstream decide steps), the connector operations that depend on the step (the proposed actions), whether edits are allowed, and an
+expiry. Delivery: an `ApprovalSink` callback; `directoryApprovalSink(dir)` writes `<approvalId>.json` atomically for a frontend or poller.
+Webhook and SMTP delivery for approvals are **not built**, and there is **no HTTP route yet** (the `/v1/approvals` surface is section F). The runner
+API a frontend will sit behind is `listApprovals()`, `getApproval(id)` and `decideApproval(runId, signedDecision)`.
+
+A decision is `approve`, `reject` or `edit_and_approve`, signed with the reviewer's Ed25519 key over the canonical decision payload. The runner refuses, and
+changes nothing, on: unknown or revoked reviewer, bad signature (including a flipped action), a decision bound to another run/step/approval, a reviewer
+with no permitted role, edits that are not allowed or do not match the declared output type, an expired request, or a second decision. Roles are
+`publisher, reviewer, installer, auditor`; **auditors are read-only and can never decide**, even if a workflow lists the role. The approval id is
+derived from workflow, version, step and run, so a decision cannot be replayed on another run. The accepted decision, reviewer, role and signature
+are written to the journal, so audits can re-verify it. **Timeouts escalate (`APPROVAL_TIMEOUT`); no code path approves by default.** A rejection
+completes the step with `decision: rejected` (downstream `runIf` decides what happens); extra edit outputs are `null` on rejection.
+
+Limits: the reviewer registry is a static in-process list (a trust-policy file loader comes with section G); key custody, rotation and revocation
+distribution are the operator's job; one process per run still applies.
