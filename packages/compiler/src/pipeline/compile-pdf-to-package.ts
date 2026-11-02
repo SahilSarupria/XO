@@ -65,6 +65,7 @@ export async function compilePdfToPackage(
     identity: options.identity,
     metadata,
     upstreamDiagnostics: compiled.value.diagnostics,
+    ...(compiled.value.policy !== undefined ? { policy: compiled.value.policy } : {}),
   });
   if (!packaged.ok) return err(packaged.error);
 

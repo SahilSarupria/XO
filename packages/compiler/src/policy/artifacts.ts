@@ -1,8 +1,10 @@
 import type { DecisionTree } from '@xo/capability-layer';
 import type { PolicyKnowledge } from './knowledge.js';
 import { buildPolicyKnowledge } from './knowledge.js';
-import { extractRules, type RuleSet } from './rules.js';
+import { extractProgram, type Extraction, type UnrecognizedClause } from './extract.js';
+import type { PolicyProgram } from './program.js';
 import { synthesizeSafetyRules, synthesizeStrategies, synthesizeTraces, synthesizeTree } from './synthesize.js';
+import type { PolicyTable } from './from-document.js';
 import { segmentPolicyText, type PolicyEntry } from './segment.js';
 import { buildClassificationSpec, type ClassificationGlossaryInput, type ClassificationReport } from './classification.js';
 
@@ -28,6 +30,8 @@ export interface PolicyPromptStrategies {
 export interface PolicyArtifacts {
   readonly entries: readonly PolicyEntry[];
   readonly knowledge: PolicyKnowledge;
+  /** The domain-neutral program the tree was built from — what a reviewer reads and what model proposals are checked against. */
+  readonly program: PolicyProgram;
   /** Executable trees (`@xo/capability-layer` format). Absent when no decidable rules were found. */
   readonly trees?: readonly DecisionTree[];
   /** One JSON object per line (worked examples). */
@@ -41,7 +45,7 @@ export interface PolicyArtifacts {
 export interface PolicyReview {
   readonly decisionSentences: number;
   readonly recognizedSentences: number;
-  readonly unrecognized: RuleSet['unrecognized'];
+  readonly unrecognized: readonly UnrecognizedClause[];
   readonly failClosedPaths: readonly string[];
   readonly treeProblems: readonly string[];
   /** For each closed-set input with a glossary: what the document defines, what it does not, and what the model alone decides. */
@@ -51,6 +55,8 @@ export interface PolicyReview {
 
 export interface PolicySource {
   readonly text: string;
+  /** tables found in the source (pulled out of `text` by `policyTextFromParsed`) */
+  readonly tables?: readonly PolicyTable[];
   readonly title?: string;
   readonly sourcePath?: string;
 }
@@ -58,6 +64,11 @@ export interface PolicySource {
 export interface PolicyOptions {
   /** Customer-supplied glossary for closed-set inputs the document does not define (labelled `operator` in provenance). */
   readonly glossary?: ClassificationGlossaryInput;
+  /**
+   * Clause proposals to use INSTEAD OF the pattern extraction (already verified by `checkProposal`, see
+   * model-extract.ts) — or merged with it by the caller. When absent the deterministic extraction is used.
+   */
+  readonly extraction?: Extraction;
 }
 
 export function synthesizePolicyArtifacts(sources: readonly PolicySource[], options: PolicyOptions = {}): PolicyArtifacts {
@@ -67,28 +78,49 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
     for (const e of segmented) entries.push({ ...e, index: entries.length });
   }
   const knowledge = buildPolicyKnowledge(entries, sources.map((s) => s.sourcePath ?? s.title ?? 'policy').join(', '));
-  const title = sources[0]?.title ?? 'the policy document';
-  const rules = extractRules(entries);
-  const synth = synthesizeTree(rules, title);
+  const title = sources[0]?.title ?? /^#\s+(.+?)\s*$/m.exec(sources[0]?.text ?? '')?.[1] ?? 'the policy document';
+  const extraction =
+    options.extraction ??
+    extractProgram(
+      entries,
+      title,
+      sources.flatMap((s) => s.tables ?? []),
+    );
+  const program = extraction.program;
+  const synth = synthesizeTree(program);
   let tree = synth.tree !== undefined && synth.treeProblems.length === 0 ? synth.tree : undefined;
+
   let classificationReport: ClassificationReport | undefined;
-  if (tree !== undefined && tree.inputs.some((i) => i.name === 'commodity_class')) {
-    const gateClasses = rules.gates.filter((g) => g.variable === 'commodity_class').map((g) => String(g.value));
-    const classes = [
-      ...new Set([...rules.rates.map((r) => r.cls), ...gateClasses, ...(rules.temperature.perishableOnly ? ['perishable'] : [])]),
-    ];
-    const built = buildClassificationSpec('commodity_class', tree, entries, classes, gateClasses, options.glossary);
-    classificationReport = built.report;
-    if (built.spec !== undefined) {
-      const spec = built.spec;
-      tree = { ...tree, inputs: tree.inputs.map((i) => (i.name === 'commodity_class' ? { ...i, classification: spec } : i)) };
+  if (tree !== undefined) {
+    // the closed-set input a glossary classifies: the one the glossary names, else the string input with the most classes
+    const candidates = tree.inputs.filter((i) => i.type === 'string' && i.enum !== undefined && i.name !== program.kindVar);
+    const field =
+      options.glossary?.field !== undefined
+        ? candidates.find((i) => i.name === options.glossary!.field)
+        : candidates.sort((a, b) => b.enum!.length - a.enum!.length)[0];
+    if (field !== undefined && field.enum !== undefined && field.enum.length > 0) {
+      const gateClasses = [
+        ...new Set(
+          program.steps.flatMap((st) =>
+            st.kind === 'gate' && st.outcome.decision === 'escalate'
+              ? [...st.when.matchAll(new RegExp(`${field.name} == '([^']+)'`, 'g'))].map((m) => m[1]!)
+              : [],
+          ),
+        ),
+      ];
+      const built = buildClassificationSpec(field.name, tree, entries, [...field.enum], gateClasses, options.glossary);
+      classificationReport = built.report;
+      if (built.spec !== undefined) {
+        const spec = built.spec;
+        tree = { ...tree, inputs: tree.inputs.map((i) => (i.name === field.name ? { ...i, classification: spec } : i)) };
+      }
     }
   }
-  const traces = tree !== undefined ? synthesizeTraces(tree) : '';
+  const traces = tree !== undefined ? synthesizeTraces(tree, program.kindVar, program.amountField) : '';
   const review: PolicyReview = {
-    decisionSentences: rules.decisionSentences,
-    recognizedSentences: rules.decisionSentences - rules.unrecognized.length,
-    unrecognized: rules.unrecognized,
+    decisionSentences: extraction.decisionSentences,
+    recognizedSentences: extraction.decisionSentences - extraction.unrecognized.length,
+    unrecognized: extraction.unrecognized,
     failClosedPaths: synth.failClosedPaths,
     treeProblems: synth.treeProblems,
     ...(classificationReport !== undefined ? { classification: classificationReport } : {}),
@@ -97,10 +129,11 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
   return {
     entries,
     knowledge,
+    program,
     ...(tree !== undefined ? { trees: [tree] } : {}),
     ...(traces !== '' ? { reasoningTraces: traces } : {}),
-    ...(tree !== undefined ? { promptStrategies: synthesizeStrategies(rules, title, true) } : {}),
-    ...(tree !== undefined ? { safetyRules: synthesizeSafetyRules(rules) } : {}),
+    ...(tree !== undefined ? { promptStrategies: synthesizeStrategies(program, title, true) } : {}),
+    ...(tree !== undefined ? { safetyRules: synthesizeSafetyRules(program) } : {}),
     review,
   };
 }

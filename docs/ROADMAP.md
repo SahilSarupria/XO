@@ -12,7 +12,10 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 ## B. Compiler
 
 - [x] 7/7 compiler-gap checks on standard seeds
-- [~] Held-out recall 77–79% (target 80%); tree agreement 100%
+- [~] Held-out recall 77–79% (target 80%); tree agreement 100% (offline, heuristic fact binder)
+- [x] Tree synthesis is domain-neutral (policy program IR); wired into `xo create`; negation, tables, PDF filters, workflow section split fixed
+- [~] Model-assisted clause extraction + review ledger built, scripted-model tests only; not run live
+- [ ] Valid uplift run with `--include-compiled` (needs API key); second domain's held-out manual
 
 ## C. Integration
 

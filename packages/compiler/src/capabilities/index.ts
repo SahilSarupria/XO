@@ -12,3 +12,4 @@ export * from './merge.js';
 export * from './relationship-builder.js';
 export * from './graph.js';
 export * from './capability-extractor.js';
+export * from './negation.js';

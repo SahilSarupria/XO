@@ -124,17 +124,136 @@ function paethPredictor(a: number, b: number, c: number): number {
  * (by far the most common filter for text/content streams produced by
  * real-world PDF writers, and the only filter cross-reference streams and
  * compressed object streams are ever written with in practice) is
- * implemented, via Node's built-in `zlib` — no external dependency, plus
+ * implemented via Node's built-in `zlib`; ASCIIHex, ASCII85, RunLength and LZW are implemented in this file — no external dependency, plus
  * the `/DecodeParms` PNG/TIFF predictor reversal above, since a huge
  * fraction of real-world FlateDecode streams are predictor-encoded and
  * silently skipping that step doesn't fail loudly, it just produces
- * plausible-looking wrong bytes. `ASCIIHexDecode`/`ASCII85Decode`/
- * `LZWDecode`/`DCTDecode` (JPEG, for image XObjects) are explicitly
- * unsupported: a stream using one of those throws `PDF_UNSUPPORTED_FEATURE`
+ * plausible-looking wrong bytes. `DCTDecode`/`JPXDecode`/`CCITTFaxDecode`/`JBIG2Decode`
+ * (image codecs) are explicitly unsupported: a stream using one of those throws `PDF_UNSUPPORTED_FEATURE`
  * rather than silently returning wrong bytes — see this package's README
  * for the consequence (image-only pages using those filters are exactly
  * the case `requiresOcr` is meant to flag instead of mis-parsing).
  */
+/** ASCIIHexDecode: pairs of hex digits, whitespace ignored, `>` ends the data, an odd final digit is padded with 0. */
+export function decodeAsciiHex(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let high = -1;
+  for (const b of input) {
+    if (b === 0x3e) break; // '>'
+    let v: number;
+    if (b >= 0x30 && b <= 0x39) v = b - 0x30;
+    else if (b >= 0x41 && b <= 0x46) v = b - 0x41 + 10;
+    else if (b >= 0x61 && b <= 0x66) v = b - 0x61 + 10;
+    else if (b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09 || b === 0x0c || b === 0x00) continue;
+    else throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCIIHexDecode: invalid byte 0x${b.toString(16)}`);
+    if (high < 0) high = v;
+    else {
+      out.push((high << 4) | v);
+      high = -1;
+    }
+  }
+  if (high >= 0) out.push(high << 4);
+  return Uint8Array.from(out);
+}
+
+/** ASCII85Decode (ISO 32000-1 §7.4.3): 5 chars -> 4 bytes, `z` = four zero bytes, `~>` ends the data, optional `<~` prefix. */
+export function decodeAscii85(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  const group: number[] = [];
+  let i = 0;
+  if (input[0] === 0x3c && input[1] === 0x7e) i = 2; // '<~'
+  const flush = (n: number): void => {
+    // n = number of valid chars in `group` (2..5); pad with 'u' (84)
+    let value = 0;
+    for (let k = 0; k < 5; k += 1) value = value * 85 + (k < n ? group[k]! : 84);
+    const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    for (let k = 0; k < n - 1; k += 1) out.push(bytes[k]!);
+  };
+  for (; i < input.length; i += 1) {
+    const b = input[i]!;
+    if (b === 0x7e) break; // '~' (of '~>')
+    if (b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09 || b === 0x0c || b === 0x00) continue;
+    if (b === 0x7a) {
+      if (group.length !== 0) throw new PdfError(ErrorCode.PDF_MALFORMED, 'ASCII85Decode: "z" inside a group');
+      out.push(0, 0, 0, 0);
+      continue;
+    }
+    if (b < 0x21 || b > 0x75) throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCII85Decode: invalid byte 0x${b.toString(16)}`);
+    group.push(b - 0x21);
+    if (group.length === 5) {
+      flush(5);
+      group.length = 0;
+    }
+  }
+  if (group.length === 1) throw new PdfError(ErrorCode.PDF_MALFORMED, 'ASCII85Decode: dangling single character');
+  if (group.length > 1) flush(group.length);
+  return Uint8Array.from(out);
+}
+
+/** RunLengthDecode (§7.4.5): length byte 0..127 copies n+1 literals, 129..255 repeats the next byte 257-n times, 128 ends. */
+export function decodeRunLength(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let i = 0;
+  while (i < input.length) {
+    const n = input[i]!;
+    i += 1;
+    if (n === 128) break;
+    if (n < 128) {
+      for (let k = 0; k <= n && i < input.length; k += 1) out.push(input[i++]!);
+    } else {
+      const v = input[i++];
+      if (v === undefined) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: truncated run');
+      for (let k = 0; k < 257 - n; k += 1) out.push(v);
+    }
+  }
+  return Uint8Array.from(out);
+}
+
+/** LZWDecode (§7.4.4): variable-width codes 9..12 bits, MSB first, clear=256, EOD=257, `EarlyChange` default 1. */
+export function decodeLzw(input: Uint8Array, earlyChange = 1): Uint8Array {
+  const out: number[] = [];
+  let table: number[][] = [];
+  const reset = (): void => {
+    table = [];
+    for (let c = 0; c < 256; c += 1) table.push([c]);
+    table.push([], []); // 256 clear, 257 EOD placeholders
+  };
+  reset();
+  let bits = 9;
+  let buf = 0;
+  let nbits = 0;
+  let prev: number[] | undefined;
+  for (const byte of input) {
+    buf = (buf << 8) | byte;
+    nbits += 8;
+    while (nbits >= bits) {
+      const code = (buf >> (nbits - bits)) & ((1 << bits) - 1);
+      nbits -= bits;
+      buf &= (1 << nbits) - 1;
+      if (code === 256) {
+        reset();
+        bits = 9;
+        prev = undefined;
+        continue;
+      }
+      if (code === 257) return Uint8Array.from(out);
+      let entry: number[];
+      if (code < table.length) entry = table[code]!;
+      else if (code === table.length && prev !== undefined) entry = [...prev, prev[0]!];
+      else throw new PdfError(ErrorCode.PDF_MALFORMED, 'LZWDecode: invalid code');
+      for (const v of entry) out.push(v);
+      if (prev !== undefined) table.push([...prev, entry[0]!]);
+      prev = entry;
+      const size = table.length + earlyChange;
+      if (size >= 2048) bits = 12;
+      else if (size >= 1024) bits = 11;
+      else if (size >= 512) bits = 10;
+      else bits = 9;
+    }
+  }
+  return Uint8Array.from(out);
+}
+
 export function decodeStream(stream: PdfStream): Uint8Array {
   let bytes = stream.rawBytes;
   const names = filterNames(stream);
@@ -149,6 +268,24 @@ export function decodeStream(stream: PdfStream): Uint8Array {
         }
         bytes = applyPredictor(bytes, decodeParmsFor(stream, i, names.length));
         break;
+      case 'ASCIIHexDecode':
+      case 'AHx':
+        bytes = decodeAsciiHex(bytes);
+        break;
+      case 'ASCII85Decode':
+      case 'A85':
+        bytes = decodeAscii85(bytes);
+        break;
+      case 'RunLengthDecode':
+      case 'RL':
+        bytes = decodeRunLength(bytes);
+        break;
+      case 'LZWDecode':
+      case 'LZW': {
+        const parms = decodeParmsFor(stream, i, names.length);
+        bytes = applyPredictor(decodeLzw(bytes, numParam(parms, 'EarlyChange', 1)), parms);
+        break;
+      }
       default:
         throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `Unsupported stream filter "${name}"`);
     }

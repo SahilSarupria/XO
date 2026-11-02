@@ -117,6 +117,7 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
       identity: { name, version, creatorDid },
       metadata,
       upstreamDiagnostics: compiled.value.diagnostics,
+      ...(compiled.value.policy !== undefined ? { policy: compiled.value.policy } : {}),
     });
     if (!packaged.ok) return failWith(packaged.error.message);
 

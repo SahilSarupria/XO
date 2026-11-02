@@ -49,16 +49,25 @@ access, no `eval`, and a fixed function table.
   timestamp window plus idempotency keys. Linux-only network isolation. `xo run` (legacy ExecutionEngine path)
   remains gated; the new commands are the enabled AI path.
 
-## Compiler gap (measured, no model involved) — the target for step 5
+## Compiler gap (measured, no model involved)
 
-| check                                                       | target   | now                |
-| ----------------------------------------------------------- | -------- | ------------------ |
-| knowledge coverage vs gold                                  | ≥ 90 %   | 71 % (12/17 facts) |
-| retrieval recall@9 vs gold                                  | ≥ 80 %   | 35 % (gold: 100 %) |
-| executable decision tree                                    | yes      | none               |
-| worked examples / prompt strategy / executable safety rules | ≥ 1 each | 0 / no / 0         |
-| real-model uplift ratio (compiled − plain) / (gold − plain) | ≥ 0.8    | _needs an API key_ |
+Offline `xo compiler-gap` on the freight manual: all checks pass (knowledge coverage 100 %, recall 82 %, tree agreement
+100 %, 7 worked examples, 3 executable safety rules). Caveats, stated plainly:
 
-Concrete compiler defects found: normative sentences are filed under `safety_rules` instead of the knowledge
-graph (the runtime now indexes them as constraints, +18 pts); bold run-in headings leave truncated `definition`
-fields; no way to mark always-applicable "gate" rules; no co-application edges; no tree synthesis.
+- The tree is synthesized by a **domain-neutral** policy program (`packages/compiler/src/policy`): facts, steps and
+  names come from the document's own words, and no freight vocabulary is in the code (tested on a vendor-invoice
+  document the code never saw). Recognition is by sentence _shape_; a normative sentence in another shape goes to a
+  review list and the tree escalates on any path that depends on it (UNFORMALIZED_RULE).
+- Tree agreement offline uses a heuristic fact binder (`ab-eval/src/eval/bind-facts.ts`) to map compiled inputs to the
+  oracle's fact names. It is a proxy; the live uplift arm is the real test.
+- Model-assisted extraction (`model-extract.ts`) is built and tested with scripted models only. Each proposal must quote
+  its sentence verbatim, every number must appear in the quote, expressions must parse over declared facts, and the
+  tree must not get worse; failures go to the review list. Human decisions (`review.ts`: accept/edit/reject) persist as
+  a ledger replayed on recompile. **Not yet run against a live model.**
+- Real-model uplift ratio (compiled − plain) / (gold − plain), target ≥ 0.8: _needs an API key_ —
+  `xo ab-eval --arms compiled_context,xo_context --seed 31337 --style variant --include-compiled`.
+
+Compiler defects fixed in this pass: negated instructions ("Do not create a missing receipt") no longer become
+capabilities; the production compile path (`compileSources`, `xo create`) now synthesizes the tree, typed capability and
+decision/escalation/risk/prohibition nodes; tables become lookups; ASCII85/ASCIIHex/RunLength/LZW PDF streams decode;
+source-sequence edges no longer chain different sections into one catch-all workflow.

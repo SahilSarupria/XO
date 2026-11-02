@@ -11,6 +11,8 @@ import type { PolicyEntry } from './segment.js';
  * The report says, per class, which source covers it and which classes have no coverage at all (the model alone decides those).
  */
 export interface ClassificationGlossaryInput {
+  /** the tree input this glossary classifies; default: the closed-set string input with the most classes */
+  readonly field?: string;
   readonly entries: readonly { readonly term: string; readonly value: string; readonly note?: string }[];
   /** classes where a miss is costly (default: every class a gate in the document escalates on) */
   readonly highRisk?: readonly string[];

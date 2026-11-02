@@ -5,7 +5,7 @@ import { toWorkflowEvidenceRef } from './types.js';
 import type { CandidateWorkflow, CandidateWorkflowStep, CompositionOptions, StepPrecedenceRationale, WorkflowGap } from './types.js';
 import { CandidateWorkflowId, CandidateWorkflowStepId } from './types.js';
 import { getCapabilityDescription, getCapabilityName, getDeclaredDependencies, getEmbeddedContractId } from './capability-node.js';
-import { deriveConflictPairs, derivePrecedenceFacts, type PrecedenceFact } from './precedence.js';
+import { deriveConflictPairs, derivePrecedenceFacts, isSequenceEdgeKind, type PrecedenceFact } from './precedence.js';
 import { deterministicTopologicalOrder } from './toposort.js';
 import { computeProcessGrouping } from './process-grouping.js';
 import { WorkflowCompositionError } from './errors.js';
@@ -93,14 +93,42 @@ function getProcessMembershipKeys(graph: XoirGraph, node: XoirNode): readonly st
   return [...keys];
 }
 
+function sectionKeyOf(graph: XoirGraph, id: XoirNodeId): string | undefined {
+  const n = graph.getNode(id);
+  if (!n.ok) return undefined;
+  for (const ref of n.value.metadata.sourceRefs) {
+    if (ref.sectionPath && ref.sectionPath.length > 0) return ref.sectionPath.join(' > ');
+  }
+  return undefined;
+}
+
+function sameSection(graph: XoirGraph, a: XoirNodeId, b: XoirNodeId, sizes: ReadonlyMap<string, number>): boolean {
+  const ka = sectionKeyOf(graph, a);
+  const kb = sectionKeyOf(graph, b);
+  // a section is a process boundary only if it groups several capabilities; a one-capability "section"
+  // (e.g. one record of a structured file) says nothing about process membership, so it never separates
+  if (ka !== undefined && (sizes.get(ka) ?? 0) < 2) return true;
+  if (kb !== undefined && (sizes.get(kb) ?? 0) < 2) return true;
+  // no section evidence on either side (structured/JSON sources): nothing to separate on, keep the join
+  return ka === undefined || kb === undefined || ka === kb;
+}
+
 /** Groups scoped capability ids into connected components using direct capability edges and authoritative Process membership evidence. */
 function connectedComponents(graph: XoirGraph, scope: ReadonlySet<XoirNodeId>): readonly (readonly XoirNodeId[])[] {
   const adjacency = new Map<XoirNodeId, Set<XoirNodeId>>();
   for (const id of scope) adjacency.set(id, new Set());
+  const sectionSizes = new Map<string, number>();
+  for (const id of scope) {
+    const k = sectionKeyOf(graph, id);
+    if (k !== undefined) sectionSizes.set(k, (sectionSizes.get(k) ?? 0) + 1);
+  }
 
   // 1. Direct or indirect capability-capability edges
   for (const edge of graph.allEdges()) {
     if (!scope.has(edge.fromId) || !scope.has(edge.toId)) continue;
+    // Source-derived positional sequence ("this unit follows that one in the document") only joins steps
+    // of the same section; chaining across sections is what produced one catch-all workflow.
+    if (isSequenceEdgeKind(edge.kind) && !sameSection(graph, edge.fromId, edge.toId, sectionSizes)) continue;
     adjacency.get(edge.fromId)!.add(edge.toId);
     adjacency.get(edge.toId)!.add(edge.fromId);
   }

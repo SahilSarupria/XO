@@ -73,7 +73,7 @@ export type TreeEvaluation =
   | { readonly ok: false; readonly error: 'invalid_facts'; readonly problems: readonly string[] }
   | { readonly ok: false; readonly error: 'tree_error'; readonly message: string };
 
-const MAX_STEPS = 64;
+const MAX_STEPS = 256;
 
 /** Returns the problems with a tree definition (empty = well-formed): dangling edges, bad syntax, unreachable start. */
 export function validateTree(tree: DecisionTree): string[] {

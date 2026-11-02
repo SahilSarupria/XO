@@ -1,3 +1,4 @@
+import { isNegatedAt } from './negation.js';
 import { ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { KnowledgeGraph, KnowledgeNode, KnowledgeProvenance } from '../knowledge/types.js';
@@ -383,7 +384,21 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
 
     for (const sentence of splitSentences(unit.content)) {
       const words = splitWords(sentence.text);
-      const match = findCapabilityVerb(words);
+      // A verb inside a prohibition ("Do not create a missing receipt") is the opposite of a capability, so it is
+      // skipped and the scan continues past it: "…; instead notify the claimant" still yields "Notify". The
+      // prohibition itself is kept elsewhere (see negation.ts / extractProhibitions) as a safety constraint.
+      let match: ReturnType<typeof findCapabilityVerb>;
+      let from = 0;
+      for (;;) {
+        const found = findCapabilityVerb(words.slice(from));
+        match = found === undefined ? undefined : { ...found, wordIndex: found.wordIndex + from };
+        if (match === undefined || !isNegatedAt(words, match.wordIndex)) break;
+        from = match.wordIndex + 1;
+        if (from >= words.length) {
+          match = undefined;
+          break;
+        }
+      }
       if (!match) continue;
 
       const rawObjectWords = words

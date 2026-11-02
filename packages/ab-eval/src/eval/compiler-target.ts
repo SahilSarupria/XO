@@ -5,6 +5,8 @@ import type { PackageBundle } from '@xo/package-sdk';
 import { GOLD_FACTS, type GoldFact } from '../scenario/freight/gold-facts.js';
 import type { FreightTask } from '../scenario/freight/generate.js';
 import { manualMarkdown } from '../scenario/freight/rules.js';
+import { FREIGHT_TREE } from '../scenario/freight/gold-xo.js';
+import { bindFacts, type Binding } from './bind-facts.js';
 
 /** Thresholds a compiler build must reach for "the compiled XO is as good as the hand-authored one" to be claimed. */
 export const COMPILER_TARGETS = {
@@ -30,6 +32,8 @@ export interface PackageScore {
   readonly k: number;
   readonly executableTrees: number;
   readonly treeAgreement: number | null;
+  /** how the compiled tree's inputs were read from the oracle's case facts (see bind-facts.ts) */
+  readonly binding: readonly Binding[];
   readonly traces: number;
   readonly hasPromptStrategies: boolean;
   readonly executableSafetyRules: number;
@@ -70,11 +74,14 @@ export function scorePackage(bundle: PackageBundle, tasks: readonly FreightTask[
 
   const trees = parseTrees(JSON.parse(text(comp(bundle, 'decision_trees')) || 'null') ?? undefined) ?? [];
   let agreement: number | null = null;
+  let binding: Binding[] = [];
   if (trees.length > 0) {
     const tree = trees[0]!;
     let ok = 0;
     for (const t of tasks) {
-      const r = evaluateTree(tree, t.statedFacts as Record<string, unknown>);
+      const bound = bindFacts(tree.inputs, FREIGHT_TREE.inputs, t.statedFacts as Record<string, unknown>);
+      binding = bound.binding;
+      const r = evaluateTree(tree, bound.facts);
       if (
         r.ok &&
         r.output['decision'] === t.expected.decision &&
@@ -94,6 +101,7 @@ export function scorePackage(bundle: PackageBundle, tasks: readonly FreightTask[
     k,
     executableTrees: trees.length,
     treeAgreement: agreement,
+    binding,
     traces: text(comp(bundle, 'reasoning_traces'))
       .split('\n')
       .filter((l) => l.trim()).length,
