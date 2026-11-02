@@ -49,9 +49,9 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 All items below are **unmeasured**; the only measured results remain section A (freight claims only).
 
 - [x] A. Workflow IR 1.0: types, published JSON Schema, fail-closed validator, graph/state semantics, negotiation, pure decide evaluator, conformance vectors, `workflows` package component (manifest, Merkle, layer, L3), freight reference workflow (`docs/WORKFLOW_IR.md`)
-- [ ] A (remaining): `xo workflow validate` CLI entry; compiler emission of workflows
+- [~] A (remaining): `xo flow validate|report` exist; compiler emission of workflows not done
 - [~] B. Connectors: framework, grants, dry-run, vault/redaction, HTTP, file done (`docs/CONNECTORS.md`); MCP client, SMTP, Slack/webhook-out, database, sandboxes, external-vault adapters not done
-- [ ] C. Durable runs, retries, circuit breakers, compensation runner, on-disk ledger segments
+- [~] C. Durable runner done (`docs/WORKFLOW_RUNTIME.md`): on-disk hash-chained journal, at-most-once accept, crash-safe resume with same idempotency key, retries/backoff/jitter, breakers, per-connector concurrency, compensation, ceilings, kill switch, run cap, dry-run, `xo flow`. Not done: rate limiting, dead-letter store, bounded ledger window and segments, SMTP delivery, TUI flag unification, approve/forEach/event waits
 - [ ] D. Approvals (API, roles, signatures)
 - [ ] E. Determinization (compile-time analysis exists only as the declaration-based `determinismReport`), structured-first routing, promotion loop, shadow mode, authority limits
 - [ ] F. Local/server runners, lease protocol, ledger sync, `@xo/sdk`

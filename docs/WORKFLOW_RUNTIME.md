@@ -1,0 +1,42 @@
+# Workflow runtime (`@xo/workflow-runtime`, `xo flow`)
+
+A durable, resumable runner for Workflow IR 1.0. Unmeasured: no load, latency, or accuracy numbers exist for it.
+
+## Try it (no network, no API key)
+
+`npm run build && sh examples/workflows/refund-desk/run.sh` validates, reports, runs a deterministic refund workflow, replays the same event
+(not re-executed), and shows an undecidable case escalating. The CLI command is `xo flow` (the name `xo workflow` already belongs to the older composer).
+`xo flow run` exit codes: 0 completed, 2 escalated or waiting, 3 failed or refused.
+
+## What it implements
+
+Decide (tree, rules, formula, lookup), branch, act, compensate, escalate, extract (structured passthrough; free text only via an injected
+`Extractor`), timer waits, retries with backoff and jitter, per-connector circuit breakers and concurrency limits, authority ceilings, a kill switch,
+a whole-run wall-clock cap, dry-run. **Not implemented:** `approve` steps, `wait` on events, `forEach` (a workflow that needs them is refused whole at
+construction), rate limiting, a dead-letter queue (exhausted steps escalate or fail), the free-text `Extractor` itself (an interface only).
+
+## Journal
+
+`<runs>/<runId>/journal.jsonl`: append-only, fsynced per entry, each entry hashes the previous one. State is rebuilt by replaying it. A torn last line
+from a crash is dropped and repaired; any other break is `JournalCorruptError` and the run is not resumed. This journal is the run ledger; folding it
+into the desk `HashChainLedger`, bounded in-memory windows and segment recovery are **not done**.
+
+## Guarantees
+
+- **At-most-once acceptance:** a run id (or dedupe key) creates its directory atomically; a second start returns the existing state with `accepted:false`.
+- **Recorded outcome before the next step:** `call_intent` is durable before an external call, `call_outcome` after it and before anything depends on it.
+  After a crash, a recorded outcome is reused and never re-called.
+- **Same key on takeover:** an intent without an outcome is called again with the **same** external idempotency key (derived from workflow, step and
+  rendered key). Journal write failures propagate as crashes, not as step failures.
+- **Fail closed:** undecidable, missing-fact, ungranted, unresolvable-key, over-ceiling, kill-switched and timed-out cases escalate or refuse; nothing defaults.
+- **Compensation:** on `onError: compensate`, completed write steps with a declared `compensatedBy` are undone in reverse completion order; if any
+  completed write has none, or an undo fails, the run **escalates and names what could not be undone**. Irreversible steps cannot be undone.
+
+## NOT guaranteed (read this)
+
+- **Not exactly-once.** Execution is at-least-once: a crash between the external call and its journaled outcome causes a second call. An external
+  system that ignores idempotency keys can see a duplicate in that window. Transient failures may also be retried; each retry reuses the key.
+- One process per run: there is no cross-process lock or lease yet (section F). Two runners driving the same run directory can race.
+- The journal detects tampering after the fact; it does not stop a user with disk access from deleting a whole run directory.
+- Timers need `tick()` to be called; there is no scheduler daemon yet.
+- Authority ceilings and the kill switch are checked in the runner only; they are not a substitute for upstream controls.

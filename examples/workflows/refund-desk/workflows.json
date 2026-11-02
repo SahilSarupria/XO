@@ -1,0 +1,53 @@
+{
+  "formatVersion": "1.0",
+  "semanticsVersion": "1.0",
+  "connectors": [{ "id": "desk_out", "kind": "file", "operations": [{ "name": "write_record", "sideEffect": "write" }] }],
+  "workflows": [
+    {
+      "id": "refund_desk",
+      "version": "1.0.0",
+      "description": "Refunds up to 100 are approved by rule, 100-1000 need a person, anything else is refused. Fully deterministic: no model, no network.",
+      "triggers": [{ "id": "api", "kind": "api" }],
+      "inputs": { "order_id": { "type": "string", "required": true }, "amount": { "type": "number", "required": true } },
+      "steps": [
+        {
+          "id": "decide_refund",
+          "type": "decide",
+          "determinism": "deterministic",
+          "timeoutMs": 1000,
+          "inputs": { "amount": { "from": "input.amount" } },
+          "method": {
+            "kind": "rules",
+            "rules": [
+              { "id": "auto_small", "when": "amount > 0 && amount <= 100", "set": { "verdict": "approve" } },
+              { "id": "refuse_huge", "when": "amount > 1000", "set": { "verdict": "refuse" } }
+            ],
+            "onNoMatch": "escalate"
+          },
+          "outputs": { "verdict": { "type": "enum", "enum": ["approve", "refuse"] } }
+        },
+        {
+          "id": "record",
+          "type": "act",
+          "determinism": "deterministic",
+          "needs": ["decide_refund"],
+          "timeoutMs": 5000,
+          "connector": "desk_out",
+          "operation": "write_record",
+          "sideEffect": "write",
+          "idempotencyKey": "refund:{{input.order_id}}",
+          "inputs": {
+            "root": { "const": "out" },
+            "path": { "const": "refunds.jsonl.d/record.json" },
+            "content": { "from": "steps.decide_refund.verdict" }
+          }
+        }
+      ],
+      "result": { "verdict": { "from": "steps.decide_refund.verdict" } },
+      "maxConcurrency": 2,
+      "runTimeoutMs": 60000,
+      "cancellation": { "onCancel": "abandon" },
+      "requiresFeatures": ["rules"]
+    }
+  ]
+}

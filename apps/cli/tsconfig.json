@@ -4,7 +4,9 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
     {
       "path": "../../packages/types"
@@ -68,6 +70,15 @@
     },
     {
       "path": "../../packages/capability-layer"
+    },
+    {
+      "path": "../../packages/workflow-ir"
+    },
+    {
+      "path": "../../packages/connectors"
+    },
+    {
+      "path": "../../packages/workflow-runtime"
     }
   ]
 }
