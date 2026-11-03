@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import type { ConnectorError} from '../src/index.js';
+import type { ConnectorError } from '../src/index.js';
 import { ConnectorHost, MapVault, mcpConnector, validateArgs, type McpConnector } from '../src/index.js';
 
 const SERVER_JS = `

@@ -5,3 +5,4 @@ export * from './net.js';
 export * from './http.js';
 export * from './file.js';
 export * from './mcp.js';
+export * from './smtp.js';

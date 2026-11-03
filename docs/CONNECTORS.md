@@ -1,7 +1,7 @@
 # Connectors (`@xo/connectors`)
 
-The only path from a workflow to the outside world. Implemented: framework, grants, dry-run, secret vault + redaction, **HTTP**, **file** and **MCP client** connectors.
-**Not implemented yet:** SMTP, Slack webhook, webhook-out, database, sandboxed code steps, external-vault adapters, durable retries/breakers (section C). Nothing here is measured.
+The only path from a workflow to the outside world. Implemented: framework, grants, dry-run, secret vault + redaction, **HTTP**, **file**, **MCP client** and **SMTP** connectors.
+**Not implemented yet:** Slack webhook, webhook-out, database, sandboxed code steps, external-vault adapters, durable retries/breakers (section C). Nothing here is measured.
 
 ## Order of checks (every one fails closed)
 
@@ -51,3 +51,13 @@ Tool-reported errors become refusals. HTTP requires https (or an explicit privat
 does **not** confine its filesystem or network access. `sandboxWrapper` lets the operator prefix a real sandbox (for example `bwrap` or a container runner); on macOS and Windows no
 equivalent is provided here. The existing Node permission-model sandbox in `@xo/automation` applies to code evaluation, not to arbitrary MCP server commands, and is **not** wired to MCP.
 Not implemented: MCP resources/prompts, server-initiated requests (ignored), per-server rate limits, restarting a crashed server mid-run beyond the next call.
+
+## SMTP (`smtpConnector`, `nodeSmtpTransport`)
+
+Operation `send` (write): `{ to, subject, body }`. Recipients must be in `allowedRecipientDomains` (an empty list refuses everything), at most 5 by default; CR/LF/NUL in any
+field is refused (header injection); the body is sent base64 so it cannot inject headers or end DATA early. Transport is injectable. The built-in one speaks SMTP over implicit TLS or
+STARTTLS (TLS 1.2+), **refuses to send credentials or continue in clear text**, and treats 5xx replies as permanent refusals. `security: 'none'` exists only for loopback test servers.
+**No idempotency in SMTP:** the Message-ID is derived from the idempotency key so receivers can dedupe, but a retry after an ambiguous failure can deliver two copies.
+Not implemented: attachments, HTML bodies, certificate pinning, DKIM, OAuth, bounce handling. Tested against a fake loopback server only; **not tested against a real mail server**.
+`connectorApprovalSink` / `connectorEscalationSink` (`@xo/workflow-runtime`) deliver approval requests and escalations through any such connector via the same grants; a delivery failure throws.
+Slack-compatible webhook, webhook-out and database connectors are **not implemented**.

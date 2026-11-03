@@ -3,13 +3,14 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { ConnectorHost, MapVault, type Connector } from '@xo/connectors';
+import { ConnectorHost, MapVault, smtpConnector, type Connector } from '@xo/connectors';
 import { validateWorkflowComponent, type WorkflowComponent } from '@xo/workflow-ir';
 import type { ApprovalError } from '../src/index.js';
 import {
   RunStore,
   StaticReviewerRegistry,
   WorkflowRunner,
+  connectorApprovalSink,
   directoryApprovalSink,
   generateReviewerKeys,
   signDecision,
@@ -275,5 +276,37 @@ describe('adversarial', () => {
         }),
       /approve/,
     );
+  });
+});
+
+describe('delivery through a connector (SMTP)', () => {
+  it('sends the approval request by email through grants and recipient allowlists, and a delivery failure surfaces instead of being swallowed', async () => {
+    const sent: { to: readonly string[]; subject: string; body: string; messageId: string }[] = [];
+    const comp = { connectors: [{ id: 'mail', kind: 'smtp' as const, operations: [{ name: 'send', sideEffect: 'write' as const }] }] };
+    const mk = (domains: string[]) =>
+      new ConnectorHost({
+        component: comp,
+        policy: { connectors: { mail: { grant: ['send'] } } },
+        implementations: {
+          mail: smtpConnector(
+            { host: 'x', port: 1, security: 'tls', from: 'desk@corp.example', allowedRecipientDomains: domains, maxBodyBytes: 20_000 },
+            { send: async (m) => void sent.push(m) },
+          ),
+        },
+        vault: new MapVault({}),
+      });
+    const s = await setup();
+    s.mk();
+    const r = await s.mk().start({ inputs: { amount: 120, claim: 'c1' } });
+    const req = s.sunk[0]!;
+    await connectorApprovalSink({ host: mk(['corp.example']), connector: 'mail', operation: 'send', to: ['reviewer@corp.example'] })(req);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0]!.body, new RegExp(req.approvalId));
+    assert.equal(sent[0]!.messageId, req.approvalId);
+    await assert.rejects(
+      connectorApprovalSink({ host: mk(['other.example']), connector: 'mail', operation: 'send', to: ['reviewer@corp.example'] })(req),
+      (e: Error & { code?: string }) => e.code === 'DENIED',
+    );
+    void r;
   });
 });

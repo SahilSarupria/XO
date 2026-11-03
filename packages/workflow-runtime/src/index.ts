@@ -9,3 +9,4 @@ export * from './lease.js';
 export * from './replica.js';
 export * from './explain.js';
 export * from './audit.js';
+export * from './delivery.js';
