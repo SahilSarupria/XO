@@ -34,6 +34,7 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
             return true;
           },
           remove: async () => {},
+          rate: async () => true,
         },
         xos: [],
         onOpenSettings: () => {},
@@ -69,9 +70,9 @@ describe('Home command bar', () => {
     expect(onChip).toHaveBeenCalledWith('create');
   });
 
-  it('the Ask mode control is shown as unavailable, not as a working control', () => {
+  it('the Auto control is shown as unavailable, not as a working control', () => {
     render(<Harness />);
-    expect(screen.getByText('Ask ▾')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText('Auto ▾')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('opens the full-screen chat as soon as the bar is focused, and closes on Escape', async () => {

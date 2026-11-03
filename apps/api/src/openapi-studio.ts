@@ -625,10 +625,18 @@ export const studioPaths = {
     post: {
       summary: 'Send a message; XO works out whether it is an ASK, DECIDE, DO or LEARN and responds',
       description:
-        'ASK answers only from organizational evidence the knowledge system (C6) returns for the caller, with verified citations, stated contradictions and gaps, and a confidence level; with no evidence (or no knowledge source connected) the model is not asked to answer. DECIDE returns options, consequences, risks and an advisory recommendation, dropped if it cites nothing. DO proposes one capability the caller is authorized to use, with validated inputs, and NEVER runs it (status \"proposed\", requiresApproval true). LEARN files a correction, outcome or feedback for authorized review (status pending_review) and never edits knowledge. The model comes from workspace Settings (primary, then fallback); credentials are server-side only. Nothing is saved if every model fails. The audit entry records route, confidence, counts and cost — never text.',
+        'ASK answers only from evidence the knowledge source returns for the caller (until C6 is connected: the knowledge graphs and capabilities of XOs installed in the workspace), with verified citations, stated contradictions and gaps, and a confidence level; with no evidence (or no knowledge source connected) the model is not asked to answer. DECIDE returns options, consequences, risks and an advisory recommendation, dropped if it cites nothing. DO proposes one capability the caller is authorized to use, with validated inputs, and NEVER runs it (status \"proposed\", requiresApproval true). LEARN files a correction, outcome or feedback for authorized review (status pending_review) and never edits knowledge. The model comes from workspace Settings (primary, then fallback); credentials are server-side only. Nothing is saved if every model fails. The audit entry records route, confidence, counts and cost — never text.',
       'x-xo-permission': 'read',
       parameters: [WS, pathParam('conversationId')],
-      requestBody: body(obj({ message: { type: 'string', maxLength: 8000 } }, ['message'])),
+      requestBody: body(
+        obj(
+          {
+            message: { type: 'string', maxLength: 8000 },
+            attach: { ...arr(str), maxItems: 5, description: 'Names of installed XOs to restrict knowledge to' },
+          },
+          ['message'],
+        ),
+      ),
       responses: {
         '201': ok('{ conversationId, title, userMessage, assistantMessage } — assistantMessage.result is the TurnResult'),
         '400': R_400,

@@ -186,6 +186,8 @@ export interface TurnInput {
   readonly history?: readonly HistoryTurn[];
   /** The id this turn will be stored under; recorded on LEARN events about it. */
   readonly turnId?: string;
+  /** Restrict knowledge retrieval to these source names (forwarded to the knowledge port as a hint). */
+  readonly scope?: readonly string[];
   /** Ordered model candidates (primary first). Omit to use the ConversationLayer's own policy. */
   readonly modelCandidates?: readonly { readonly providerId: string; readonly model: string }[];
   readonly traceId?: string;

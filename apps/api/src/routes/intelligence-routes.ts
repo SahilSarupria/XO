@@ -1,13 +1,7 @@
 import { ConversationLayer } from '@xo/ai-core';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
-import {
-  IntelligenceOrchestrator,
-  UnconfiguredKnowledgePort,
-  type CapabilityPort,
-  type HistoryTurn,
-  type KnowledgePort,
-  type Principal,
-} from '@xo/intelligence';
+import { PackageInstaller } from '@xo/package-sdk';
+import { IntelligenceOrchestrator, type CapabilityPort, type HistoryTurn, type KnowledgePort, type Principal } from '@xo/intelligence';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -16,6 +10,7 @@ import {
   callerIdentityId,
   requireOwnedWorkspace,
   requirePermission,
+  workspacePackagesStore,
   workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -26,6 +21,7 @@ import { envProviderFactory, type ProviderFactory } from '../chat/model-provider
 import { usableModelChoices } from '../chat/usable-models.js';
 import { FsConversationStore, MAX_CONVERSATIONS_PER_IDENTITY, type Conversation } from '../intelligence/conversation-store.js';
 import { FsLearningPort } from '../intelligence/learning-store.js';
+import { InstalledXoKnowledgePort } from '../intelligence/installed-xo-knowledge.js';
 
 /**
  * XO Customer Chat — the intelligence experience. One conversation endpoint, no modes: each message is understood as
@@ -38,13 +34,14 @@ import { FsLearningPort } from '../intelligence/learning-store.js';
 
 export interface IntelligenceRouteOptions {
   readonly providerFactory?: ProviderFactory;
-  /** The C6 boundary, per workspace. Default: not configured — the chat says so instead of guessing. */
+  /** The C6 boundary, per workspace. Default: the interim adapter over XOs installed in the workspace (`InstalledXoKnowledgePort`). */
   readonly knowledge?: (workspace: WorkspaceRecord) => KnowledgePort;
   /** DO. Default: none — DO is reported unavailable. */
   readonly capabilities?: (workspace: WorkspaceRecord) => CapabilityPort | undefined;
 }
 
 const MAX_MESSAGE_CHARS = 8000;
+const MAX_ATTACHED = 5;
 const DEFAULT_TITLE = 'New conversation';
 
 function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiRequest) => Promise<ApiResponse> {
@@ -135,11 +132,29 @@ export function registerIntelligenceRoutes(
   const postTurn = async (req: ApiRequest) => {
     const { workspace, principal } = await context(req);
     const conversation = await owned(req, workspace);
-    const body = await req.json<{ message?: unknown }>();
+    const body = await req.json<{ message?: unknown; attach?: unknown }>();
     if (!body.ok) throw body.error;
     const message = body.value?.message;
+    const attach = body.value?.attach;
     if (typeof message !== 'string' || message.trim().length === 0 || message.length > MAX_MESSAGE_CHARS) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, `"message" must be a non-empty string of at most ${MAX_MESSAGE_CHARS} characters`);
+    }
+
+    let scope: string[] = [];
+    if (attach !== undefined) {
+      if (
+        !Array.isArray(attach) ||
+        attach.length > MAX_ATTACHED ||
+        !attach.every((a) => typeof a === 'string' && a.length > 0 && a.length <= 200)
+      ) {
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, `"attach" must be an array of at most ${MAX_ATTACHED} installed XO names`);
+      }
+      scope = [...new Set(attach as string[])];
+      const installed = await new PackageInstaller(workspacePackagesStore(workspace, dataConfig)).listInstalled();
+      for (const name of scope) {
+        if (!installed.some((i) => i.name === name))
+          throw new XoError(ErrorCode.INVALID_ARGUMENT, `"${name}" is not an installed XO in this workspace`);
+      }
     }
 
     const stateStore = workspaceStateStore(workspace, dataConfig);
@@ -148,7 +163,7 @@ export function registerIntelligenceRoutes(
 
     const orchestrator = new IntelligenceOrchestrator({
       model,
-      knowledge: options.knowledge?.(workspace) ?? new UnconfiguredKnowledgePort(),
+      knowledge: options.knowledge?.(workspace) ?? new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)),
       ...(options.capabilities?.(workspace) !== undefined ? { capabilities: options.capabilities(workspace) as CapabilityPort } : {}),
       learning: new FsLearningPort(stateStore),
     });
@@ -168,6 +183,7 @@ export function registerIntelligenceRoutes(
       principal,
       message,
       history,
+      ...(scope.length > 0 ? { scope } : {}),
       modelCandidates: usable.map((c) => ({ providerId: c.provider, model: c.model })),
       traceId: `${conversation.conversationId}`,
     });

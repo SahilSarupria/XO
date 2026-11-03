@@ -48,6 +48,7 @@ interface FakeChat {
     at: string;
     model?: { provider: string; model: string };
     attachedXos?: string[];
+    result?: Record<string, unknown>;
   }>;
 }
 export interface FakeCase {
@@ -141,6 +142,10 @@ export class StudioFake {
   chats: FakeChat[] = [];
   /** What the platform's model returns, or an error status to simulate a failure. */
   chatReply: string | { fail: number; code: string; message: string } = 'Here is an answer.';
+  /** The structured result attached to the assistant message; default is a cited, high-confidence ASK. */
+  chatResult: Record<string, unknown> | undefined;
+  ratings: Array<{ messageId: string; rating: string }> = [];
+  turnBodies: Array<{ message: string; attach?: string[] }> = [];
   drafts: FakeDraft[] = [];
   /** definitionIds a run was actually started for (a test asserts none was started when the platform refused). */
   runsStarted: string[] = [];
@@ -568,54 +573,75 @@ export class StudioFake {
       return reply(201, src);
     }
 
-    // ---- chat
-    if (method === 'GET' && rest === '/chats')
+    // ---- chat (the intelligence conversation)
+    if (method === 'GET' && rest === '/intelligence/conversations')
       return reply(200, {
-        threads: this.chats.map((c) => ({ threadId: c.threadId, title: c.title, updatedAt: c.updatedAt, messageCount: c.messages.length })),
+        conversations: this.chats.map((c) => ({
+          conversationId: c.threadId,
+          title: c.title,
+          updatedAt: c.updatedAt,
+          messageCount: c.messages.length,
+        })),
       });
-    if (method === 'POST' && rest === '/chats') {
+    if (method === 'POST' && rest === '/intelligence/conversations') {
       const c: FakeChat = {
-        threadId: `cht_${String(++this.n).padStart(32, '0')}`,
-        title: typeof body['title'] === 'string' ? body['title'] : 'New chat',
+        threadId: `cnv_${String(++this.n).padStart(32, '0')}`,
+        title: typeof body['title'] === 'string' ? body['title'] : 'New conversation',
         updatedAt: new Date().toISOString(),
         messages: [],
       };
       this.chats.unshift(c);
-      return reply(201, { threadId: c.threadId, title: c.title, updatedAt: c.updatedAt, messageCount: 0, messages: [] });
+      return reply(201, { conversationId: c.threadId, title: c.title, updatedAt: c.updatedAt, messageCount: 0, messages: [] });
     }
-    if ((m = rest.match(/^\/chats\/([^/]+)$/))) {
+    if ((m = rest.match(/^\/intelligence\/conversations\/([^/]+)$/))) {
       const c = this.chats.find((x) => x.threadId === m![1]);
-      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'chat not found');
-      if (method === 'GET') return reply(200, { threadId: c.threadId, title: c.title, updatedAt: c.updatedAt, messages: c.messages });
+      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
+      if (method === 'GET') return reply(200, { conversationId: c.threadId, title: c.title, updatedAt: c.updatedAt, messages: c.messages });
       if (method === 'DELETE') {
         this.chats = this.chats.filter((x) => x !== c);
         return reply(200, { deleted: c.threadId });
       }
     }
-    if (method === 'POST' && (m = rest.match(/^\/chats\/([^/]+)\/messages$/))) {
+    if (method === 'POST' && (m = rest.match(/^\/intelligence\/conversations\/([^/]+)\/messages\/([^/]+)\/feedback$/))) {
+      if (this.chats.find((x) => x.threadId === m![1]) === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
+      this.ratings.push({ messageId: m[2] as string, rating: String(body['rating']) });
+      return reply(201, { eventId: `lrn_${++this.n}`, status: 'pending_review' });
+    }
+    if (method === 'POST' && (m = rest.match(/^\/intelligence\/conversations\/([^/]+)\/turns$/))) {
       const c = this.chats.find((x) => x.threadId === m![1]);
-      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'chat not found');
+      if (c === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
       if (typeof this.chatReply !== 'string') return err(this.chatReply.fail, this.chatReply.code, this.chatReply.message);
       const at = new Date().toISOString();
       const attach = Array.isArray(body['attach']) ? (body['attach'] as string[]) : undefined;
-      const user = {
-        messageId: `msg_${++this.n}`,
-        role: 'user' as const,
-        content: String(body['content']),
-        at,
-        ...(attach !== undefined ? { attachedXos: attach } : {}),
-      };
+      const user = { messageId: `msg_${++this.n}`, role: 'user' as const, content: String(body['message']), at };
       const bot = {
         messageId: `msg_${++this.n}`,
         role: 'assistant' as const,
         content: this.chatReply,
         at,
-        model: { provider: 'anthropic', model: 'test-model' },
+        result: this.chatResult ?? {
+          route: 'ask',
+          confidence: 'high',
+          grounded: true,
+          citations: [
+            {
+              index: 1,
+              evidenceId: 'e1',
+              sourceName: 'burglary_policy',
+              asOf: '2026-10-30T00:00:00Z',
+              excerpt: 'Cover needs visible forced entry.',
+            },
+          ],
+          notices: [],
+          ask: { followUps: [] },
+          usage: { calls: [{ task: 'conversation.answer', provider: 'anthropic', model: 'test-model' }] },
+        },
       };
-      if (c.messages.length === 0 && c.title === 'New chat') c.title = user.content.slice(0, 60);
+      this.turnBodies.push({ message: user.content, ...(attach !== undefined ? { attach } : {}) });
+      if (c.messages.length === 0 && c.title === 'New conversation') c.title = user.content.slice(0, 60);
       c.messages.push(user, bot);
       c.updatedAt = at;
-      return reply(201, { threadId: c.threadId, title: c.title, userMessage: user, assistantMessage: bot });
+      return reply(201, { conversationId: c.threadId, title: c.title, userMessage: user, assistantMessage: bot });
     }
 
     // ---- workflow drafts

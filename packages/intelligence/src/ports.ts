@@ -13,6 +13,8 @@ export interface KnowledgeQuery {
   /** A self-contained question (follow-ups already resolved against the conversation). */
   readonly query: string;
   readonly limit: number;
+  /** Optional hint: restrict retrieval to these source names (e.g. XOs the user attached with @name). */
+  readonly scope?: readonly string[];
 }
 
 export type KnowledgeResult =

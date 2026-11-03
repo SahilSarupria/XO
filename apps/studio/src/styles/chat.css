@@ -239,3 +239,37 @@ button.chat-tag {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* Answer details: how XO understood the message, how sure it is, and what it rests on. */
+.chat-answer {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.chat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+}
+.chat-sources {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.chat-notices {
+  display: grid;
+  gap: 0.25rem;
+}
+.chat-proposal {
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  opacity: 0.95;
+}
+.chat-rate {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0;
+}

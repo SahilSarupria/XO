@@ -284,7 +284,12 @@ export class IntelligenceOrchestrator {
   ): Promise<{ status: 'ok'; prepared: PreparedEvidence[] } | { status: 'unavailable'; reason: 'not_configured' | 'error' }> {
     try {
       const result = await withTimeout(
-        this.options.knowledge.retrieve({ principal: ctx.input.principal, query, limit: this.limits.retrievalLimit }),
+        this.options.knowledge.retrieve({
+          principal: ctx.input.principal,
+          query,
+          limit: this.limits.retrievalLimit,
+          ...(ctx.input.scope !== undefined && ctx.input.scope.length > 0 ? { scope: ctx.input.scope } : {}),
+        }),
         this.limits.retrievalTimeoutMs,
       );
       if (result.status === 'unavailable') return result;

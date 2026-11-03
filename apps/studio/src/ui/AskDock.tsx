@@ -154,8 +154,12 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             }}
           />
           {props.variant === 'home' && !props.open ? (
-            <span className="cmdbar-pill" aria-disabled="true" title="Ask is the only mode">
-              Ask ▾
+            <span
+              className="cmdbar-pill"
+              aria-disabled="true"
+              title="XO works out whether you are asking, deciding, doing or correcting — there is no mode to pick"
+            >
+              Auto ▾
             </span>
           ) : null}
           <kbd className="cmdbar-kbd">{props.variant === 'home' ? '⌘K' : '⌘J'}</kbd>
@@ -187,10 +191,18 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
               {props.chat.thread === undefined && !props.chat.loadingThread ? (
                 <div className="askdock-welcome">
                   <h3>What can XO help with?</h3>
-                  <p className="muted">Your message goes to the model your workspace has selected. Type @ to attach an installed XO.</p>
+                  <p className="muted">
+                    Ask a question, weigh a decision, request an action or correct an answer — XO works out which. Answers come from your
+                    installed XOs, with sources. Type @ to focus on one.
+                  </p>
                 </div>
               ) : (
-                <ChatLog thread={props.chat.thread} loading={props.chat.loadingThread} sending={props.chat.sending} />
+                <ChatLog
+                  thread={props.chat.thread}
+                  loading={props.chat.loadingThread}
+                  sending={props.chat.sending}
+                  onRate={props.chat.rate}
+                />
               )}
             </div>
             <div className="askdock-foot">

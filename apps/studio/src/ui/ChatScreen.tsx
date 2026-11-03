@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { describeProblem } from '../domain/review';
 import { chatHint, groupByDay, matchXos, mentionQuery, type Attachable } from '../domain/chat';
 import type { ApiProblem } from '../platform/client';
-import type { ChatSummary, ChatThreadFull } from '../platform/wire-studio';
+import type { ChatMessage, ChatSummary, ChatThreadFull, TurnRoute } from '../platform/wire-studio';
 import { Button, ProblemNotice, Skeleton } from './primitives';
 import type { ChatController } from './useChat';
 import '../styles/chat.css';
@@ -33,8 +33,105 @@ export function ChatProblem(props: { problem: ApiProblem; onOpenSettings: () => 
   );
 }
 
+const ROUTE_LABEL: Record<TurnRoute, string> = {
+  ask: 'Ask',
+  decide: 'Decide',
+  do: 'Do',
+  learn: 'Learn',
+  converse: 'Chat',
+  clarify: 'Question',
+};
+const CONFIDENCE_LABEL = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence', none: '' } as const;
+
+/**
+ * What an assistant answer rests on and how sure it is: how XO understood the message (ASK, DECIDE, DO or LEARN),
+ * confidence, the sources it cited, anything that weakens it, a proposed action (never run from here), and a way to
+ * say whether it helped. Rendered from the platform's own result, never composed here.
+ */
+export function AnswerDetails(props: {
+  message: ChatMessage;
+  onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+}) {
+  const r = props.message.result;
+  const [rated, setRated] = useState<'helpful' | 'unhelpful' | 'failed' | undefined>();
+  if (r === undefined) return null;
+  const rate = async (rating: 'helpful' | 'unhelpful') => {
+    if (props.onRate === undefined) return;
+    setRated((await props.onRate(props.message.messageId, rating)) ? rating : 'failed');
+  };
+  return (
+    <div className="chat-answer">
+      <p className="chat-meta small">
+        <span className="chat-chip" data-route={r.route}>
+          {ROUTE_LABEL[r.route]}
+        </span>
+        {CONFIDENCE_LABEL[r.confidence] !== '' ? <span className="chat-chip">{CONFIDENCE_LABEL[r.confidence]}</span> : null}
+        {r.route === 'ask' || r.route === 'decide' ? (
+          <span className="chat-chip">{r.grounded ? 'Backed by sources' : 'Not backed by sources'}</span>
+        ) : null}
+      </p>
+      {r.proposal !== undefined ? (
+        <div className="chat-proposal" role="group" aria-label="Proposed action">
+          <p>
+            <strong>Proposed: {r.proposal.capabilityName}</strong> — not run. It needs approval first.
+          </p>
+          {r.proposal.inputs.length > 0 ? (
+            <ul className="bare-list small">
+              {r.proposal.inputs.map((i) => (
+                <li key={i.name}>
+                  {i.name}: {i.value}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      {r.citations.length > 0 ? (
+        <ol className="chat-sources small" aria-label="Sources">
+          {r.citations.map((c) => (
+            <li key={c.index} value={c.index}>
+              <span>{c.sourceName}</span>
+              {c.asOf !== undefined ? <span className="muted"> · as of {c.asOf.slice(0, 10)}</span> : null}
+              <span className="muted"> — {c.excerpt}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {r.notices.length > 0 ? (
+        <ul className="bare-list small chat-notices" aria-label="Things to know about this answer">
+          {r.notices.map((n) => (
+            <li key={n.code}>⚠ {n.message}</li>
+          ))}
+        </ul>
+      ) : null}
+      {props.onRate !== undefined && r.route !== 'clarify' && r.route !== 'learn' ? (
+        <p className="chat-rate small">
+          {rated === 'helpful' || rated === 'unhelpful' ? (
+            <span role="status">Thanks — recorded for review.</span>
+          ) : (
+            <>
+              <button type="button" className="chat-link" onClick={() => void rate('helpful')}>
+                Helpful
+              </button>
+              <button type="button" className="chat-link" onClick={() => void rate('unhelpful')}>
+                Not helpful
+              </button>
+              {rated === 'failed' ? <span role="status"> Couldn't record that.</span> : null}
+            </>
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** The messages of one conversation, as a polite live log. Shared by the full Chat screen and the Ask XO drawer. */
-export function ChatLog(props: { thread: ChatThreadFull | undefined; loading?: boolean; sending?: boolean }) {
+export function ChatLog(props: {
+  thread: ChatThreadFull | undefined;
+  loading?: boolean;
+  sending?: boolean;
+  onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+}) {
   const { thread } = props;
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -58,6 +155,9 @@ export function ChatLog(props: { thread: ChatThreadFull | undefined; loading?: b
                   </span>
                 ))}
               </p>
+            ) : null}
+            {m.role === 'assistant' ? (
+              <AnswerDetails message={m} {...(props.onRate !== undefined ? { onRate: props.onRate } : {})} />
             ) : null}
             {m.role === 'assistant' && m.model !== undefined ? (
               <p className="muted small chat-model">
@@ -133,7 +233,7 @@ export function ChatComposer(props: {
         id={inputId}
         rows={2}
         value={text}
-        placeholder="Reply, or type @ to attach an installed XO…"
+        placeholder="Ask, decide, request, or correct — or type @ to focus on an installed XO…"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
@@ -162,8 +262,13 @@ export function ChatComposer(props: {
         >
           Attach
         </button>
-        <button type="button" className="chat-pill" aria-disabled="true" title="Ask is the only mode">
-          Ask ▾
+        <button
+          type="button"
+          className="chat-pill"
+          aria-disabled="true"
+          title="XO works out whether you are asking, deciding, doing or correcting — there is no mode to pick"
+        >
+          Auto ▾
         </button>
         <button type="button" className="chat-pill" aria-disabled="true" title="Choose the model under Settings → Models and runtime">
           Runtime ▾
@@ -268,7 +373,7 @@ export function ChatScreen(props: { chat: ChatController; xos: readonly Attachab
           <span className="chat-chip">private to you</span>
         </header>
         {chat.problem !== undefined ? <ChatProblem problem={chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
-        <ChatLog thread={chat.thread} loading={chat.loadingThread} sending={chat.sending} />
+        <ChatLog thread={chat.thread} loading={chat.loadingThread} sending={chat.sending} onRate={chat.rate} />
         <ChatComposer xos={props.xos} onSend={chat.send} disabled={chat.sending} />
       </section>
 

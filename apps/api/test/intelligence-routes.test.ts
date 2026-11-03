@@ -2,9 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ScriptableTestProvider, jsonResponse, type ModelProvider } from '@xo/ai-core';
 import { StaticKnowledgePort, type KnowledgePort, type Principal } from '@xo/intelligence';
+import { packBundle } from '@xo/package-sdk';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { TestServer, withTempDir } from './test-helpers.js';
+import { buildFixtureBundle } from './fixtures.js';
 
 const j = (o: object) => ({ kind: 'success' as const, response: jsonResponse(o, { inputTokens: 10, outputTokens: 5 }, 'gemini-test') });
 const route = (r: object = {}) => ({
@@ -113,7 +115,7 @@ test('ASK end to end: grounded, cited answer is returned, persisted with its str
   );
 });
 
-test('with no knowledge source connected the chat says so and the model is never asked to answer', async () => {
+test('with nothing installed the chat finds no sources and the model is never asked to answer', async () => {
   const p = new ScriptableTestProvider('gemini', [j(route())]);
   await withApp({ gemini: p }, undefined, async ({ server, base }) => {
     const id = await start(server, base);
@@ -122,10 +124,52 @@ test('with no knowledge source connected the chat says so and the model is never
     ).json<Turn>();
     assert.deepEqual(
       t.assistantMessage.result.notices.map((n) => n.code),
-      ['knowledge_unavailable'],
+      ['no_sources_found'],
     );
     assert.equal(t.assistantMessage.result.confidence, 'none');
     assert.equal(p.callLog.length, 1);
+  });
+});
+
+test('default knowledge source: answers from the knowledge graph of an XO installed in the workspace, and @attach scopes it', async () => {
+  const graph = {
+    nodes: [{ id: 'n1', label: 'Forced entry exclusion', definition: 'Burglary cover applies only where there is visible forced entry.' }],
+    edges: [],
+  };
+  const p = new ScriptableTestProvider('gemini', [
+    j(route({ standaloneQuery: 'forced entry burglary cover' })),
+    j(answer({ answer: 'Burglary cover needs visible forced entry [E1].' })),
+    j(route({ standaloneQuery: 'forced entry burglary cover' })),
+  ]);
+  await withApp({ gemini: p }, undefined, async ({ server, base }) => {
+    for (const name of ['burglary_policy', 'other_policy']) {
+      const pkgId = (
+        await server.request(
+          'POST',
+          `${base}/registry/packages`,
+          Buffer.from(
+            await packBundle(buildFixtureBundle({ name, knowledgeGraph: name === 'burglary_policy' ? graph : { nodes: [], edges: [] } })),
+          ),
+        )
+      ).json<{ id: string }>().id;
+      assert.equal((await server.request('POST', `${base}/library/installs`, { packageId: pkgId })).status, 201);
+    }
+    const id = await start(server, base);
+    const url = `${base}/intelligence/conversations/${id}/turns`;
+    const t = (await server.request('POST', url, { message: 'Does burglary cover need forced entry?' })).json<Turn>();
+    assert.equal(t.assistantMessage.result.grounded, true);
+    assert.equal(t.assistantMessage.result.citations[0]?.sourceName, 'burglary_policy');
+    assert.match(p.callLog[1]!.messages.at(-1)!.content, /Forced entry exclusion/);
+
+    // Scoped to a different XO, the burglary knowledge is out of reach, so there is nothing to answer from.
+    const scoped = (
+      await server.request('POST', url, { message: 'Does burglary cover need forced entry?', attach: ['other_policy'] })
+    ).json<Turn>();
+    assert.deepEqual(
+      scoped.assistantMessage.result.notices.map((n) => n.code),
+      ['no_sources_found'],
+    );
+    assert.equal((await server.request('POST', url, { message: 'hi', attach: ['not_installed'] })).status, 400);
   });
 });
 

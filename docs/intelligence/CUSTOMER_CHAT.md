@@ -1,6 +1,6 @@
 # XO Customer Chat — Intelligence Specification
 
-**Status:** Implemented (AI layer, API, in-memory ports). **Not yet implemented:** the customer-facing UI, the C6 Knowledge SDK adapter, chat-initiated execution. See §10.
+**Status:** Implemented: AI layer, API, Studio chat wired to it, interim knowledge source (installed XOs). **Not yet implemented:** the C6 Knowledge SDK adapter, chat-initiated execution, the LEARN review workflow. See §10 and §11.
 
 ## 1. The model: ASK → DECIDE → DO → LEARN
 
@@ -16,6 +16,12 @@ XO's customer-facing intelligence is one loop, and **the customer never chooses 
 A fifth path, `converse` (greetings, "what can you do?"), exists for usability. It is **not** part of the loop and touches no organizational data.
 
 The loop is the product. The layers below exist so each step can be trusted: the knowledge system decides what may be seen, the orchestrator decides how it is handled, the model only reads and writes within those limits.
+
+## 1a. Where it runs today: Studio chat
+
+Studio's chat (the full-screen Chat and the Ask XO dock) now runs on this layer: `XoClient` calls `/intelligence/conversations` and the screen renders what the platform returns — how XO understood the message (Ask / Decide / Do / Learn), confidence, the sources cited, notices that weaken the answer, a proposed action marked "not run", and Helpful / Not helpful. There is no mode picker (the control reads "Auto"). `@name` focuses an answer on an installed XO (`attach`).
+
+Until C6 is connected, answers come from the **knowledge graphs and declared capabilities of the XOs installed in the workspace** (`InstalledXoKnowledgePort`, `apps/api/src/intelligence/`). This is an interim, deliberately naive source (word overlap, no embeddings, no connected enterprise sources); `intelligenceKnowledge` in the server deps replaces it with C6. The old `/chats` routes still exist in the API but Studio no longer calls them.
 
 ## 2. Customer Chat is not the Developer Assistant
 
@@ -119,14 +125,31 @@ Gemini adapter fixes made on the way: safety-blocked and empty candidates no lon
 
 `@xo/ai-core` (conversation layer, Gemini adapter), `@xo/intelligence` (29 tests: every path above, authorization, injection, timeouts, failures), and `apps/api` (end to end through HTTP, including that a Viewer's adversarial prompts write only to conversation, learning-queue and audit stores). The repo's route-authorization audit and OpenAPI sync tests cover the new routes.
 
-## 10. Not done, and decisions needed
+## 10. Using it now (Studio)
 
-1. **UI.** No customer chat screen exists; this delivers the AI layer and API.
-2. **C6.** Without an adapter, the chat answers "no organizational knowledge source is connected". Wire it with `createHttpServer({ intelligenceKnowledge: (workspace) => c6Adapter })`. If C6's real shape differs from `KnowledgePort`, adapt at the boundary — do not bend the orchestrator.
-3. **Executing DO.** Proposals are not executable from chat. The runtime's AI-assisted execution route is currently disabled because capability-level authorization is not enforced on that path; DO should execute only through the approval flow once it is. Wiring `CapabilityPort` to the runtime's capability registry (with per-principal authorization) is the prerequisite.
-4. **LEARN review.** Events queue as `pending_review`; no reviewer workflow or write-back exists. Until it does, LEARN changes nothing about future answers by design.
-5. **Streaming.** Responses are returned whole. `ConversationLayer` is the place to add `converseStream`; Gemini's adapter does not implement streaming yet.
-6. **DECIDE simulation** ("simulate impact when supported by available models") is not built.
-7. **Tool-calling branch.** `feat/gemini-tool-calling` is on a separate lineage from `studio/*` and was not merged. This design deliberately avoids provider tool calling (structured output instead) so it does not depend on it.
-8. **Live provider verification.** All model behaviour is tested against scripted providers. No real Gemini call was made; prompt quality and the router's accuracy need evaluation against real traffic and a multi-provider comparison.
-9. **Gemini model list** in `ai-core` still names `gemini-1.5-*`; models are chosen per workspace in Settings, but the descriptor list is stale.
+Select a model in Settings → Models (server-side credentials required, e.g. `GEMINI_API_KEY`), install an XO that has a knowledge graph, open Chat or the Ask XO bar, and:
+
+- **Ask** about what is in an installed XO ("Does burglary cover need forced entry?") → cited answer, confidence, sources, follow-ups.
+- **Decide** ("Should we expedite this?") → options, risks, an advisory recommendation — only when grounded in a source.
+- **Correct** ("That's wrong, …") or press **Not helpful** → filed as `pending_review`; answers do not change.
+- **Request an action** → only if a capability port is wired (none is by default), so today you are told no actions are available.
+- `@name` focuses on one installed XO. Chats are private to you.
+
+## 11. Not done, and what stands between this and production
+
+1. **Real knowledge (C6).** The interim source is installed XOs only. No Microsoft 365 / SharePoint / CRM, no per-user authorization of organizational data, no reconciliation across sources, no embeddings. This is the largest gap.
+2. **DO is not usable.** No capability port is wired, and chat-initiated execution is disabled upstream until capability-level authorization is enforced on the execution path. Needs: a runtime-backed `CapabilityPort` with per-principal authorization, plus an approve-and-run flow from the chat card.
+3. **LEARN is a queue, not a loop.** Claims land as `pending_review`; there is no reviewer UI, no write-back into knowledge, no outcome tracking, nothing that improves answers.
+4. **Never run against a real model.** All verification used scripted providers and a Gemini-protocol stand-in. Prompt quality, routing accuracy, citation faithfulness and calibration are unmeasured. Needs an evaluation set and a multi-provider comparison.
+5. **No streaming**, so every reply waits for two or more model calls. Needs `converseStream` in `ConversationLayer`, a Gemini streaming adapter, and an SSE route.
+6. **Latency/cost controls.** Two model calls per turn; no response caching, no per-workspace spend limits or rate limits at the API, no routing on a smaller model by default.
+7. **Context handling.** History is trimmed by turn count, not tokens; no summarization; evidence limits are fixed constants; no re-ranking.
+8. **Observability.** Per-turn usage and audit metadata exist, but no tracing spans, dashboards, or answer-quality sampling.
+9. **Conversation storage** is one JSON file per conversation with a 400-message cap and a full scan to list; fine for a pilot, not for scale. Stored results include source excerpts, so retention and deletion policy matter.
+10. **UI gaps.** Follow-up suggestions are carried in the result but not shown as clickable; no citation drill-down to the source; no streaming or stop button; no live browser testing was done (see §12).
+11. **Security review.** Prompt-injection handling is escaping plus instructions, with tests; it has not been red-teamed. Tenant isolation relies on workspace stores and ownership checks.
+12. **Smaller items:** DECIDE simulation not built; `feat/gemini-tool-calling` not merged; the Gemini model list in `ai-core` is stale (`gemini-1.5-*`); `ConversationLayer` duplicates ~40 lines of orchestration from `AiCapabilityLayer` that should be factored into a shared pool.
+
+## 12. How this was verified
+
+Unit and integration tests in `@xo/ai-core`, `@xo/intelligence` and `apps/api`; Studio component tests; a Studio-client → real API → real `GeminiProvider` → local Gemini-protocol server test (`apps/studio/test/contract/studio-chat-intelligence.test.ts`); full repo build and Studio production build. **Not done:** driving the Studio UI in a real browser, or calling a real model.

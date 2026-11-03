@@ -68,7 +68,7 @@ describe('ChatLog and ChatComposer', () => {
 
   it('controls that do nothing are announced as unavailable', () => {
     render(<ChatComposer xos={xos} onSend={async () => true} />);
-    for (const name of ['Attach', 'Ask ▾', 'Runtime ▾'])
+    for (const name of ['Attach', 'Auto ▾', 'Runtime ▾'])
       expect(screen.getByRole('button', { name })).toHaveAttribute('aria-disabled', 'true');
   });
 });
@@ -94,8 +94,8 @@ describe('Ask XO is backed by the platform', () => {
     const log = within(panel).getByRole('log', { name: 'Messages' });
     expect(await within(log).findByText('Here is an answer.')).toBeInTheDocument();
     expect(within(log).getByText('Answered by anthropic · test-model')).toBeInTheDocument();
-    expect(posts(api, /\/chats$/)).toHaveLength(1);
-    expect(posts(api, /\/messages$/)).toHaveLength(1);
+    expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(1);
+    expect(posts(api, /\/turns$/)).toHaveLength(1);
     expect(within(panel).getByText('Today')).toBeInTheDocument();
     expect(within(panel).getAllByText(/private to you/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Preview')).not.toBeInTheDocument();
@@ -110,12 +110,12 @@ describe('Ask XO is backed by the platform', () => {
     const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
     await within(panel).findByText('Here is an answer.');
     await user.type(screen.getByLabelText('Ask XO'), 'second{enter}');
-    await waitFor(() => expect(posts(api, /\/messages$/)).toHaveLength(2));
-    expect(posts(api, /\/chats$/)).toHaveLength(1);
+    await waitFor(() => expect(posts(api, /\/turns$/)).toHaveLength(2));
+    expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(1);
     const side = within(panel).getByRole('navigation', { name: 'Conversations' });
     await user.click(within(side).getByRole('button', { name: /new chat/i }));
     await user.type(screen.getByLabelText('Ask XO'), 'other topic{enter}');
-    await waitFor(() => expect(posts(api, /\/chats$/)).toHaveLength(2));
+    await waitFor(() => expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(2));
     await waitFor(() =>
       expect(
         within(side)
@@ -140,8 +140,8 @@ describe('Ask XO is backed by the platform', () => {
     await user.type(screen.getByLabelText('Ask XO'), 'review @bur');
     await user.click(await screen.findByRole('button', { name: '@burglary-policy' }));
     await user.type(screen.getByLabelText('Ask XO'), 'it{enter}');
-    await waitFor(() => expect(posts(api, /\/messages$/)).toHaveLength(1));
-    expect((posts(api, /\/messages$/)[0]!.body as { attach: string[] }).attach).toEqual(['burglary-policy']);
+    await waitFor(() => expect(posts(api, /\/turns$/)).toHaveLength(1));
+    expect((posts(api, /\/turns$/)[0]!.body as { attach: string[] }).attach).toEqual(['burglary-policy']);
   });
 
   it('when no model is available (412), shows the platform message, points to Settings → Models and runtime, and keeps the text', async () => {
@@ -189,5 +189,43 @@ describe('Ask XO is backed by the platform', () => {
     expect(screen.getByLabelText('Ask XO')).toHaveFocus();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Ask XO conversation' })).not.toBeInTheDocument());
+  });
+});
+
+describe('answers show how XO understood the message and what it rests on', () => {
+  it('shows the route, confidence, sources and a way to rate an answer; a rating is sent to the platform', async () => {
+    const api = new FakeXo();
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'does burglary cover need forced entry?{enter}');
+    const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
+    const log = within(panel).getByRole('log', { name: 'Messages' });
+    expect(await within(log).findByText('Ask')).toBeInTheDocument();
+    expect(within(log).getByText('High confidence')).toBeInTheDocument();
+    expect(within(log).getByText('Backed by sources')).toBeInTheDocument();
+    const sources = within(log).getByRole('list', { name: 'Sources' });
+    expect(within(sources).getByText('burglary_policy')).toBeInTheDocument();
+    await user.click(within(log).getByRole('button', { name: 'Not helpful' }));
+    expect(await within(log).findByText(/recorded for review/)).toBeInTheDocument();
+    expect(api.studio.ratings).toEqual([{ messageId: expect.any(String), rating: 'unhelpful' }]);
+  });
+
+  it('says plainly when an answer is not backed by sources, and shows a proposed action as not run', async () => {
+    const api = new FakeXo();
+    api.studio.chatResult = {
+      route: 'do',
+      confidence: 'none',
+      grounded: false,
+      citations: [],
+      notices: [{ code: 'action_needs_input', message: 'Missing or unusable input: assignee.' }],
+      proposal: { capabilityName: 'Create task', inputs: { title: 'Chase broker' } },
+      usage: { calls: [] },
+    };
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'create a task to chase the broker{enter}');
+    const log = within(await screen.findByRole('dialog', { name: 'Ask XO conversation' })).getByRole('log', { name: 'Messages' });
+    const proposal = await within(log).findByRole('group', { name: 'Proposed action' });
+    expect(within(proposal).getByText(/not run/)).toBeInTheDocument();
+    expect(within(log).getByText(/Missing or unusable input: assignee/)).toBeInTheDocument();
+    expect(within(log).queryByText('Backed by sources')).not.toBeInTheDocument();
   });
 });
