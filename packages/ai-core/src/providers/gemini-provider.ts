@@ -154,6 +154,9 @@ export class GeminiProvider implements ModelProvider {
     for (const p of parts) {
       const fc = p.functionCall;
       if (fc === undefined || typeof fc.name !== 'string' || fc.name.length === 0) continue;
+      // Fail closed like the OpenAI-compatible adapters: a call whose arguments are not a JSON object is never executed as `{}`.
+      if (fc.args !== undefined && (typeof fc.args !== 'object' || fc.args === null || Array.isArray(fc.args)))
+        throw new AiError(ErrorCode.AI_PROVIDER_REQUEST_FAILED, `gemini: tool call "${fc.name}" arguments are not a JSON object`);
       const source = freeformByTool.get(fc.name);
       const args = restoreFreeform(fc.args ?? {}, source) as JsonObject;
       toolCalls.push({
@@ -164,6 +167,12 @@ export class GeminiProvider implements ModelProvider {
       });
     }
 
+    // A reply cut off by the token limit may carry truncated arguments; refuse it (same rule as the OpenAI-compatible adapters).
+    if (toolCalls.length > 0 && candidate.finishReason === 'MAX_TOKENS')
+      throw new AiError(
+        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
+        'gemini: tool call arrived on a length-truncated reply; refusing to act on possibly cut-off arguments',
+      );
     return {
       text,
       usage: usageOf(data),
