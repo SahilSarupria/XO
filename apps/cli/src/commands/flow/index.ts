@@ -6,6 +6,7 @@ import { ConnectorHost, EnvVault, fileConnector, type Connector, type ConnectorP
 import {
   DETERMINISTIC_HOST,
   determinismReport,
+  linkWorkflowComponents,
   loadWorkflowComponent,
   negotiateWorkflows,
   WorkflowLoadError,
@@ -52,6 +53,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]   Why a run did what it did, from its verified journal\n' +
       'xo flow audit-export <workflows.json> --workflow <id> --runs <dir> --run-ids a,b --key <pem> --out <file> [--policy p.json] [--signer name]   Signed audit bundle\n' +
       'xo flow audit-verify <bundle.json> --pubkey <pem>   Verify signature, merkle root, hash chains\n' +
+      'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
       'xo flow run <workflows.json> --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
@@ -159,6 +161,30 @@ export function registerCommands(registry: CommandRegistry): void {
           const v = verifyAuditBundle(JSON.parse(readFileSync(resolve(file), 'utf8')) as AuditBundle, readFileSync(resolve(pub), 'utf8'));
           out(v.ok ? 'VERIFIED: signature, merkle root and every hash chain check out' : `FAILED:\n  ${v.problems.join('\n  ')}`);
           return v.ok ? 0 : 3;
+        }
+        if (sub === 'link') {
+          const files = args.positionals.slice(1);
+          const names = (flag(args.flags, 'names') ?? '').split(',').filter((x) => x !== '');
+          if (files.length < 2) return fail('usage: xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]');
+          const order = (flag(args.flags, 'order') ?? '').split(',').filter((x) => x !== '');
+          const inputs = files.map((f, i) => ({ xo: names[i] ?? f, component: load(f) }));
+          const r = linkWorkflowComponents(inputs, { order });
+          if (flag(args.flags, 'out') !== undefined && !r.hasUnresolved)
+            writeFileSync(resolve(flag(args.flags, 'out') as string), `${JSON.stringify(r.component, null, 2)}\n`);
+          out(
+            JSON.stringify(
+              {
+                workflows: r.component.workflows.map((w) => w.id),
+                overlaps: r.overlaps,
+                conflicts: r.conflicts,
+                blocked: r.blocked,
+                unresolved: r.hasUnresolved,
+              },
+              null,
+              2,
+            ),
+          );
+          return r.hasUnresolved ? 2 : 0;
         }
         if (sub === 'compare') {
           const id = flag(args.flags, 'workflow');

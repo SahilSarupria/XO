@@ -8,3 +8,4 @@ export * from './evaluate.js';
 export * from './negotiate.js';
 export * from './analysis.js';
 export * from './load.js';
+export * from './link.js';

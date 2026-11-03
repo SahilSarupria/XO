@@ -68,3 +68,12 @@ refused whole, never run with part dropped. Identical valid inputs and workflow 
 ## Not covered yet
 
 Runner, connectors, run store, approvals, shadow mode, determinism analysis in the compiler, `xo` CLI commands for workflows, SDK/HTTP API.
+
+## Loading several XOs together (`linkWorkflowComponents`, `xo flow link`)
+
+Workflows from more than one XO can be loaded side by side under a declared `PrecedencePolicy` (`order`: XO ids, highest first). Identical definitions (same workflow or connector in two
+XOs) are reported as overlaps and deduplicated. A **differing** definition is a conflict resolved only by precedence; an XO not in the order cannot win. Two workflows claiming the same
+webhook route or watched-directory source are also conflicts. Anything the policy cannot decide is **blocked and reported** (exit code 2 from the CLI) and never merged or guessed; a workflow that
+depends on a blocked connector is blocked too. The merged component is re-validated in tests. Scope limits: this links the **workflow component only**. It does not link the knowledge graphs,
+decision trees, safety rules or memory of the packages (the compiler-side linker in `EXPERIENCE_COMPILER.md` §5 is a separate, unbuilt piece), it does not rename colliding workflows, and
+decision-tree ids referenced by workflows from different XOs are not cross-checked for collisions. Unmeasured.
