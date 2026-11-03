@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { createServer } from 'node:http';
+import { clarify, measureCompile } from '@xo/compiler';
 import {
   AutomationEngine,
   CronTrigger,
@@ -251,6 +252,44 @@ export function registerCommands(registry: CommandRegistry): void {
         out(gap.passed ? '\ncompiled XO meets the parity bar' : '\ncompiled XO does NOT yet meet the parity bar');
       }
       return gap.passed ? 0 : 2;
+    },
+  });
+
+  registry.register({
+    name: 'compile-review',
+    subsystem: SUBSYSTEM,
+    usage:
+      'xo compile-review <manual.md> [--json]\n' +
+      '                                     Compile a manual (no model) and list what the compiler could not work out as plain-English questions, with timing and quality numbers. Exit 2 while blocking questions remain.',
+    run: async (args) => {
+      const file = args.positionals[0];
+      if (file === undefined) return fail('give the path of a manual (.md or .txt)');
+      if (!existsSync(file)) return fail(`no such file: ${file}`);
+      const text = readFileSync(file, 'utf8');
+      const { artifacts, report } = await measureCompile(text, file.replace(/^.*\//, '').replace(/\.[^.]+$/, ''), file);
+      const questions = clarify({
+        program: artifacts.program,
+        recognized: [],
+        unrecognized: artifacts.review.unrecognized,
+        decisionSentences: artifacts.review.decisionSentences,
+      });
+      if (args.flags['json'] === true) out(JSON.stringify({ report, questions }, null, 2));
+      else {
+        const q = report.quality;
+        out(
+          `Understood ${q.understood} of ${q.decisionSentences} rule sentences (${Math.round(q.understoodRatio * 100)}%) in ${report.compileMs} ms`,
+        );
+        out(
+          `${q.rules} rules, ${q.inputs} inputs, ${q.blockingQuestions} blocking question(s), ${questions.length - q.blockingQuestions} optional`,
+        );
+        questions.forEach((x, i) =>
+          out(
+            `\n${i + 1}. [${x.blocking ? 'needs an answer' : 'optional'}] ${x.prompt}${x.suggestion !== undefined ? `\n   suggested: ${x.suggestion}` : ''}`,
+          ),
+        );
+        if (questions.length === 0) out('\nNothing left to ask.');
+      }
+      return questions.some((x) => x.blocking) ? 2 : 0;
     },
   });
 

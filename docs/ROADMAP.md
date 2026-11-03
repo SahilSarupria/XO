@@ -16,6 +16,7 @@ Legend: [x] done and tested · [~] done with a stated caveat · [ ] not done
 - [x] Tree synthesis is domain-neutral (policy program IR); wired into `xo create`; negation, tables, PDF filters, workflow section split fixed
 - [~] Model-assisted clause extraction + review ledger built, scripted-model tests only; not run live
 - [~] Second domain (insurance triage) built and measured offline: untuned 7 %, 100 % after review (see DETACHABLE_INTELLIGENCE_LAYER.md)
+- [x] Clarification engine (`policy/clarify.ts`, `xo compile-review`), input contract + operator field mapping, manual diff + stale-ruling detection, compile telemetry, corpus regression suite (4 manuals, stored baselines)
 - [ ] Valid uplift run with `--include-compiled` on freight and insurance (needs API key); arm runner for insurance tasks (the hand-written gold XO now exists)
 
 ## C. Integration

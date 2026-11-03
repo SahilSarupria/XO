@@ -123,3 +123,17 @@ test('insurance: compiled knowledge coverage vs gold (recorded, not asserted hig
   writeFileSync((process.env['XO_SECOND_DOMAIN_OUT'] ?? '/tmp/second-domain.json').replace('.json', '-coverage.json'), JSON.stringify(c));
   assert.ok(c.total === 11);
 });
+
+test('explicit field mapping (no heuristic binder) reproduces the reviewed result, and an unmapped input fails closed', async () => {
+  const { compileInsuranceReviewed, scoreWithMapping, INSURANCE_FIELD_MAP } = await import('../src/index.js');
+  const run = await compileInsuranceReviewed();
+  const full = scoreWithMapping(run.artifacts, INSURANCE_FIELD_MAP);
+  assert.equal(full.unmappedInputs.length, 0);
+  assert.equal(full.agreement, 1);
+  assert.equal(full.wrongConfident, 0);
+  const { rental_days: _drop, ...partial } = INSURANCE_FIELD_MAP;
+  const gap = scoreWithMapping(run.artifacts, partial);
+  assert.deepEqual(gap.unmappedInputs, ['rental_days']);
+  assert.equal(gap.wrongConfident, 0, 'a missing mapping must never produce a confident wrong answer');
+  assert.ok(gap.agreement < 1);
+});

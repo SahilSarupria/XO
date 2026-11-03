@@ -9,3 +9,7 @@ export * from './from-document.js';
 export * from './to-graph.js';
 export * from './model-extract.js';
 export * from './review.js';
+export * from './clarify.js';
+export * from './input-contract.js';
+export * from './version.js';
+export * from './telemetry.js';
