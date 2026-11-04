@@ -98,7 +98,7 @@ export class InstalledXoKnowledgePort implements KnowledgePort {
       }
 
       scored.sort((a, b) => b.score - a.score);
-      return { status: 'ok', evidence: scored.slice(0, query.limit).map((s) => s.evidence) };
+      return { status: 'ok', method: 'lexical', evidence: scored.slice(0, query.limit).map((s) => s.evidence) };
     } catch {
       return { status: 'unavailable', reason: 'error' };
     }

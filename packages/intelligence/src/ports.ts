@@ -18,7 +18,17 @@ export interface KnowledgeQuery {
 }
 
 export type KnowledgeResult =
-  | { readonly status: 'ok'; readonly evidence: readonly Evidence[] }
+  | {
+      readonly status: 'ok';
+      readonly evidence: readonly Evidence[];
+      /**
+       * How the evidence was found. A `lexical` source matches words, not meaning, so related material that uses
+       * different words can be missed; the orchestrator tells the user so. Omit only if genuinely unknown.
+       */
+      readonly method?: 'lexical' | 'semantic' | 'hybrid';
+      /** Sources that exist for this principal but could not be searched right now (so the result may be incomplete). */
+      readonly unsearchedSources?: readonly string[];
+    }
   | { readonly status: 'unavailable'; readonly reason: 'not_configured' | 'error' };
 
 /**

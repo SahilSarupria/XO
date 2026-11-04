@@ -71,7 +71,9 @@ export type NoticeCode =
   | 'action_unavailable'
   | 'action_needs_input'
   | 'learning_unavailable'
-  | 'routing_low_confidence';
+  | 'routing_low_confidence'
+  | 'keyword_search_only'
+  | 'sources_unsearched';
 
 /** A machine-readable reason the answer is weaker or different than the user might assume. */
 export interface Notice {

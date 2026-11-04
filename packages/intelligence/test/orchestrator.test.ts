@@ -121,7 +121,7 @@ test('ASK: invented citations are removed and flagged; an answer that cites noth
   assert.equal(r.text, 'It is delayed.');
   assert.equal(r.grounded, false);
   assert.equal(r.confidence, 'low');
-  assert.deepEqual(r.notices.map((n) => n.code).sort(), ['citations_removed', 'ungrounded_answer']);
+  assert.deepEqual(r.notices.map((n) => n.code).sort(), ['citations_removed', 'keyword_search_only', 'ungrounded_answer']);
 });
 
 test('ASK: sources that conflict are shown, and confidence cannot stay "high"', async () => {
@@ -463,4 +463,37 @@ test('cost and provider are reported per call, including a fallback', async () =
     ],
   );
   assert.equal(typeof r.usage.totalCostUsd, 'number');
+});
+
+// -------------------------------------------------------------------------------- retrieval honesty
+
+test('a keyword-only source is disclosed to the user; a semantic one is not flagged', async () => {
+  const lexical = scripted(route(), askOut());
+  const a = await turn(
+    new IntelligenceOrchestrator({ model: lexical.model, knowledge: new StaticKnowledgePort(evidence) }),
+    'status of Project Alpha',
+  );
+  assert.ok(a.notices.some((n) => n.code === 'keyword_search_only'));
+
+  const semantic: KnowledgePort = { retrieve: async () => ({ status: 'ok', method: 'semantic', evidence }) };
+  const s = scripted(route(), askOut());
+  const b = await turn(new IntelligenceOrchestrator({ model: s.model, knowledge: semantic }), 'status of Project Alpha');
+  assert.ok(!b.notices.some((n) => n.code === 'keyword_search_only'));
+});
+
+test('sources that could not be searched are named, and cap confidence at "medium"', async () => {
+  const partial: KnowledgePort = {
+    retrieve: async () => ({ status: 'ok', method: 'semantic', evidence, unsearchedSources: ['SharePoint'] }),
+  };
+  const { model } = scripted(route(), askOut({ confidence: 'high' }));
+  const r = await turn(new IntelligenceOrchestrator({ model, knowledge: partial }), 'status of Project Alpha');
+  assert.equal(r.confidence, 'medium');
+  assert.match(r.notices.find((n) => n.code === 'sources_unsearched')?.message ?? '', /SharePoint/);
+
+  const none: KnowledgePort = {
+    retrieve: async () => ({ status: 'ok', method: 'semantic', evidence: [], unsearchedSources: ['SharePoint'] }),
+  };
+  const b = scripted(route());
+  const empty = await turn(new IntelligenceOrchestrator({ model: b.model, knowledge: none }), 'status of Project Alpha');
+  assert.match(empty.text, /couldn't search: SharePoint/);
 });

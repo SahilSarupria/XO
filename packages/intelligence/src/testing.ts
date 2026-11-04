@@ -39,7 +39,7 @@ export class StaticKnowledgePort implements KnowledgePort {
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, query.limit);
-    return { status: 'ok', evidence: scored.map((x) => ({ ...x.e, score: x.score })) };
+    return { status: 'ok', method: 'lexical', evidence: scored.map((x) => ({ ...x.e, score: x.score })) };
   }
 }
 

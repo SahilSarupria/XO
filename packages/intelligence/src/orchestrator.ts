@@ -96,6 +96,10 @@ interface Routing {
   readonly standaloneQuery: string;
 }
 
+type Retrieved =
+  | { status: 'ok'; prepared: PreparedEvidence[]; method?: 'lexical' | 'semantic' | 'hybrid'; unsearched: readonly string[] }
+  | { status: 'unavailable'; reason: 'not_configured' | 'error' };
+
 type Body = Omit<TurnResult, 'routing' | 'usage' | 'notices'>;
 
 const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
@@ -278,10 +282,7 @@ export class IntelligenceOrchestrator {
     };
   }
 
-  private async retrieve(
-    ctx: Ctx,
-    query: string,
-  ): Promise<{ status: 'ok'; prepared: PreparedEvidence[] } | { status: 'unavailable'; reason: 'not_configured' | 'error' }> {
+  private async retrieve(ctx: Ctx, query: string): Promise<Retrieved> {
     try {
       const result = await withTimeout(
         this.options.knowledge.retrieve({
@@ -293,7 +294,12 @@ export class IntelligenceOrchestrator {
         this.limits.retrievalTimeoutMs,
       );
       if (result.status === 'unavailable') return result;
-      return { status: 'ok', prepared: prepareEvidence(result.evidence, this.limits.evidence) };
+      return {
+        status: 'ok',
+        prepared: prepareEvidence(result.evidence, this.limits.evidence),
+        ...(result.method !== undefined ? { method: result.method } : {}),
+        unsearched: (result.unsearchedSources ?? []).slice(0, 10),
+      };
     } catch (error) {
       // The cause stays in the log; the user is told only that knowledge could not be reached.
       this.logger.warn('knowledge retrieval failed', {
@@ -305,12 +311,7 @@ export class IntelligenceOrchestrator {
   }
 
   /** The refusal used by ASK and DECIDE when there is nothing to ground an answer in. Costs no model call. */
-  private ungroundable(
-    ctx: Ctx,
-    routing: Routing,
-    route: 'ask' | 'decide',
-    retrieved: { status: 'unavailable'; reason: 'not_configured' | 'error' } | { status: 'ok'; prepared: PreparedEvidence[] },
-  ): TurnResult {
+  private ungroundable(ctx: Ctx, routing: Routing, route: 'ask' | 'decide', retrieved: Retrieved): TurnResult {
     let text: string;
     if (retrieved.status === 'unavailable') {
       const unreachable = retrieved.reason === 'error';
@@ -323,6 +324,7 @@ export class IntelligenceOrchestrator {
         route === 'ask'
           ? "I couldn't find anything about that in the sources you have access to. It may not be written down, or you may not have access to where it is."
           : "I couldn't find enough in the sources you have access to to base a recommendation on, so I won't guess.";
+      if (retrieved.unsearched.length > 0) text += ` I also couldn't search: ${retrieved.unsearched.join(', ')}.`;
       ctx.notices.push({ code: 'no_sources_found', message: text });
     }
     return this.done(ctx, routing, { route, text, confidence: 'none', grounded: false, citations: [], evidenceConsidered: 0 });
@@ -334,6 +336,7 @@ export class IntelligenceOrchestrator {
     const retrieved = await this.retrieve(ctx, routing.standaloneQuery);
     if (retrieved.status === 'unavailable' || retrieved.prepared.length === 0) return ok(this.ungroundable(ctx, routing, 'ask', retrieved));
     const { prepared } = retrieved;
+    this.noteRetrieval(ctx, retrieved);
 
     const res = await this.structured<AskOutput>(
       ctx,
@@ -358,6 +361,7 @@ export class IntelligenceOrchestrator {
       ctx.notices.push({ code: 'ungrounded_answer', message: 'This answer is not tied to any of your sources, so treat it with caution.' });
     }
     confidence = this.applyConflictCap(ctx, confidence, contradictions);
+    if (retrieved.unsearched.length > 0) confidence = capConfidence(confidence, 'medium');
     this.noteDropped(ctx, registry);
 
     const text = this.compose(answer.length > 0 ? answer : "I couldn't put together an answer from the sources.", contradictions, gaps);
@@ -389,6 +393,7 @@ export class IntelligenceOrchestrator {
     if (retrieved.status === 'unavailable' || retrieved.prepared.length === 0)
       return ok(this.ungroundable(ctx, routing, 'decide', retrieved));
     const { prepared } = retrieved;
+    this.noteRetrieval(ctx, retrieved);
 
     const res = await this.structured<DecideOutput>(
       ctx,
@@ -445,6 +450,7 @@ export class IntelligenceOrchestrator {
     }
     if (options.length === 0) confidence = capConfidence(confidence, 'low');
     confidence = this.applyConflictCap(ctx, confidence, contradictions);
+    if (retrieved.unsearched.length > 0) confidence = capConfidence(confidence, 'medium');
     this.noteDropped(ctx, registry);
 
     const gaps = clean(out.gaps, 6);
@@ -516,6 +522,23 @@ export class IntelligenceOrchestrator {
     if (contradictions.length === 0) return confidence;
     ctx.notices.push({ code: 'contradiction_detected', message: 'Your sources disagree on part of this; both sides are shown below.' });
     return capConfidence(confidence, 'medium');
+  }
+
+  /** Tells the user how the evidence was found and what could not be searched — limits of the source, not of the model. */
+  private noteRetrieval(ctx: Ctx, retrieved: Extract<Retrieved, { status: 'ok' }>): void {
+    if (retrieved.method === 'lexical') {
+      ctx.notices.push({
+        code: 'keyword_search_only',
+        message:
+          'These sources were found by matching keywords, not meaning, so relevant material that uses different words may be missing.',
+      });
+    }
+    if (retrieved.unsearched.length > 0) {
+      ctx.notices.push({
+        code: 'sources_unsearched',
+        message: `I couldn't search ${retrieved.unsearched.join(', ')} just now, so this may be incomplete.`,
+      });
+    }
   }
 
   private noteDropped(ctx: Ctx, registry: CitationRegistry): void {

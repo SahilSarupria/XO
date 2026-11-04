@@ -21,6 +21,7 @@
     { "path": "packages/compiler" },
     { "path": "packages/ai-core" },
     { "path": "packages/intelligence" },
+    { "path": "packages/intelligence-eval" },
     { "path": "packages/package-sdk" },
     { "path": "packages/runtime-core" },
     { "path": "packages/runtime" },

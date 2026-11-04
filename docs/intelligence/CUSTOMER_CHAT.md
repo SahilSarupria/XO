@@ -137,10 +137,10 @@ Select a model in Settings → Models (server-side credentials required, e.g. `G
 
 ## 11. Not done, and what stands between this and production
 
-1. **Real knowledge (C6).** The interim source is installed XOs only. No Microsoft 365 / SharePoint / CRM, no per-user authorization of organizational data, no reconciliation across sources, no embeddings. This is the largest gap.
+1. **Real knowledge (C6).** Not integrated: C6 is not available to build against (see [C6_INTEGRATION.md](./C6_INTEGRATION.md) for the requirements, the acceptance procedure and what is needed). The interim source is installed XOs only, found by keyword matching (the chat now says so on every answer). No Microsoft 365 / SharePoint / CRM, no per-user authorization of organizational data, no reconciliation across sources, no embeddings. This is the largest gap.
 2. **DO is not usable.** No capability port is wired, and chat-initiated execution is disabled upstream until capability-level authorization is enforced on the execution path. Needs: a runtime-backed `CapabilityPort` with per-principal authorization, plus an approve-and-run flow from the chat card.
 3. **LEARN is a queue, not a loop.** Claims land as `pending_review`; there is no reviewer UI, no write-back into knowledge, no outcome tracking, nothing that improves answers.
-4. **Never run against a real model.** All verification used scripted providers and a Gemini-protocol stand-in. Prompt quality, routing accuracy, citation faithfulness and calibration are unmeasured. Needs an evaluation set and a multi-provider comparison.
+4. **Never run against a real model.** An evaluation suite now exists (91 items, [EVALUATION.md](./EVALUATION.md)) and passes in oracle mode, which validates the plumbing only. No live run has been made, so routing accuracy, answer quality, citation faithfulness and calibration of any real model are still unmeasured. Needs a live run, real expert-labelled questions, and a multi-provider comparison.
 5. **No streaming**, so every reply waits for two or more model calls. Needs `converseStream` in `ConversationLayer`, a Gemini streaming adapter, and an SSE route.
 6. **Latency/cost controls.** Two model calls per turn; no response caching, no per-workspace spend limits or rate limits at the API, no routing on a smaller model by default.
 7. **Context handling.** History is trimmed by turn count, not tokens; no summarization; evidence limits are fixed constants; no re-ranking.
