@@ -1,3 +1,5 @@
+import { synthesizePolicyArtifacts, type PolicyArtifacts } from '../policy/artifacts.js';
+import { policyTextFromParsed } from '../policy/from-document.js';
 import { err, ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -35,6 +37,8 @@ export interface CompiledPdfResult extends CompiledXoirResult {
   readonly loadedDocument: LoadedPdfDocument;
   /** Stage 3's output — exposed for callers that want unit-level provenance (`experienceDocument.units[].provenance`) without re-deriving it from the final XOIR graph. */
   readonly experienceDocument: ExperienceDocument;
+  /** Executable decision logic read from the same document (see `CompileSourcesResult.policy`); absent when it states no decidable rules. */
+  readonly policy?: PolicyArtifacts;
 }
 
 /** First page-level heading in the parsed structural tree, if any — the natural document title for a form/report/contract whose first line of real content usually *is* its title (matches every one of this package's real-world regression fixtures: "CLAIM FORM FOR HEALTH INSURANCE POLICIES...", "Claim Form - Part B", etc.). */
@@ -144,5 +148,17 @@ export async function compilePdfToXoir(
   );
   if (!compiled.ok) return err(compiled.error);
 
-  return ok({ ...compiled.value, loadedDocument, experienceDocument });
+  // Policy synthesis must never fail a compilation: a document it cannot read simply yields no tree.
+  let policy: PolicyArtifacts | undefined;
+  try {
+    const rendered = policyTextFromParsed(parsedDocument, documentTitle);
+    const synthesized = synthesizePolicyArtifacts([{ text: rendered.text, tables: rendered.tables, title: documentTitle, sourcePath }]);
+    if (synthesized.trees !== undefined) policy = synthesized;
+  } catch (cause) {
+    options.logger?.warn('Policy synthesis failed; compiling without decision logic', {
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
+
+  return ok({ ...compiled.value, loadedDocument, experienceDocument, ...(policy !== undefined ? { policy } : {}) });
 }

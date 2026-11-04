@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { XoirGraph, XoirGraphId, XoirNodeId } from '@xo/xoir';
+import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId } from '@xo/xoir';
 import { composeWorkflows } from '../src/compose.js';
 import {
   buildCorporateLawyerFixtureGraph,
@@ -306,4 +306,48 @@ test('sanity: fixture graph REQUIRES edges resolve through XoirGraph.getNode/get
   if (edge.ok) {
     assert.equal(edge.value.kind, 'REQUIRES');
   }
+});
+
+// ---------------------------------------------------------------------------
+// Source-derived sequence edges never chain steps across sections
+// ---------------------------------------------------------------------------
+
+test('custom:sequence edges join steps within one section but never merge different sections into one workflow', () => {
+  const graph = XoirGraph.create(XoirGraphId('multi-section'));
+  const now = () => '2026-08-23T00:00:00.000Z';
+  const add = (id: string, section: string): void => {
+    const r = graph.createAndAddNode({
+      id: XoirNodeId(id),
+      kind: 'capability',
+      properties: { name: id, description: id },
+      confidence: 0.9,
+      sourceRefs: [{ documentPath: 'm.md', locator: id, sectionPath: [section] }],
+      now,
+    });
+    assert.equal(r.ok, true);
+  };
+  const seq = (a: string, b: string): void => {
+    const r = graph.createAndAddEdge({
+      id: XoirEdgeId(`seq_${a}_${b}`),
+      kind: 'custom:sequence' as never,
+      fromId: XoirNodeId(a),
+      toId: XoirNodeId(b),
+      confidence: 0.8,
+      sourceRefs: [],
+      now,
+    } as never);
+    assert.equal(r.ok, true);
+  };
+  for (const id of ['a1', 'a2', 'a3']) add(id, 'Intake');
+  for (const id of ['b1', 'b2', 'b3']) add(id, 'Payment');
+  seq('a1', 'a2');
+  seq('a2', 'a3');
+  seq('a3', 'b1'); // adjacent across the section boundary
+  seq('b1', 'b2');
+  seq('b2', 'b3');
+  const result = composeWorkflows(graph, { now });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const sets = result.value.map((w) => [...w.sourceCapabilityIds].sort().join(','));
+  assert.deepEqual(sets.sort(), ['a1,a2,a3', 'b1,b2,b3']);
 });

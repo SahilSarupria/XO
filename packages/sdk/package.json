@@ -1,0 +1,29 @@
+{
+  "name": "@xo/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed client for the XO local HTTP API (runs, approvals, loader resolution, receipts, leases, ledger sync). Backend only.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test"
+  },
+  "dependencies": {
+    "@xo/workflow-runtime": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0",
+    "@xo/server": "0.1.0",
+    "@xo/ab-eval": "0.1.0"
+  }
+}

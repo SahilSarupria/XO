@@ -72,7 +72,8 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo create <source>... [--name <n>] [--version <v>] [--creator-did <did>]\n' +
       '      [--domain <text>] [--description <text>] [--out <file.xo>]\n' +
       '      [--sign] [--signer-did <did>] [--key-out <prefix>] [--domain-hint <text>] [--json]\n' +
-      '                                         Compile source(s) straight through to a signed, validated .xo',
+      '      [--workflow-report <file.json>] [--no-workflows]\n      [--review-ledger <rulings.json>] [--decision-sink file|none]   (flags go after the sources)\n' +
+      '                                         Compile source(s) straight through to a signed, validated .xo (with a workflows component when the sources state decidable rules)',
     run: async (args) => {
       const sources = args.positionals;
       if (sources.length === 0) {
@@ -88,8 +89,15 @@ export function registerCommands(registry: CommandRegistry): void {
       const signerDid = requireFlag(args.flags, 'signer-did');
       const keyOut = requireFlag(args.flags, 'key-out');
       const domainHint = requireFlag(args.flags, 'domain-hint');
+      const workflowReport = requireFlag(args.flags, 'workflow-report');
+      const reviewLedger = requireFlag(args.flags, 'review-ledger');
+      const decisionSink = requireFlag(args.flags, 'decision-sink');
       return printResult(
         await createCommand({
+          noWorkflows: args.flags['no-workflows'] === true,
+          ...(workflowReport !== undefined ? { workflowReport } : {}),
+          ...(reviewLedger !== undefined ? { reviewLedger } : {}),
+          ...(decisionSink !== undefined ? { decisionSink: decisionSink as 'file' | 'none' } : {}),
           sources,
           sign: args.flags['sign'] === true,
           json: args.flags['json'] === true,

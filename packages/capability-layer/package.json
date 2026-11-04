@@ -1,0 +1,31 @@
+{
+  "name": "@xo/capability-layer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SPECIFICATION.md §2.3 CapabilityLayer binding: turns an XO package bundle into prompt fragments, retrieval, exemplars, decision-tree tools and a safety gate, and runs a tool-calling loop against any @xo/ai-core ModelProvider.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/ai-core": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/package-sdk": "0.1.0",
+    "@xo/types": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

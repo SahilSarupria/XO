@@ -5,7 +5,8 @@ import { requireFlag } from '../../flags.js';
 import { runCommand } from './run.js';
 import { workflowCommand } from './workflow.js';
 import { demoCommand, isKnownScenario, knownScenarioNames } from './demo.js';
-import { resolveProvider } from './provider-factory.js';
+import { err, ok } from '@xo/types';
+import { resolveOperatorProvider } from '../layer/operator-provider.js';
 
 const SUBSYSTEM = 'runtime';
 
@@ -27,7 +28,7 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo run <capabilityId> --input "<text>" --store <dir>\n' +
       '      [--provider anthropic|openai|azure-openai|gemini|ollama] [--model <id>]\n' +
-      '      [--api-key <key>] [--base-url <url>] [--endpoint <url>] [--api-version <v>]\n' +
+      '      (credentials/endpoint: environment only — XO_PROVIDER, XO_MODEL, <vendor>_API_KEY, XO_PROVIDER_BASE_URL)\n' +
       '      [--token-budget <n>] [--max-tokens <n>] [--host-family <family>] [--host-capability <cap>]...\n' +
       '      [--grant <permissionId>]... [--json]\n' +
       '                                         Plan and execute a capability against an installed package',
@@ -47,18 +48,28 @@ export function registerCommands(registry: CommandRegistry): void {
       // a provider is real work (an API key check, for most providers)
       // that a deterministic capability must never pay for or fail on.
       const providerFlag = requireFlag(args.flags, 'provider');
-      const apiKeyFlag = requireFlag(args.flags, 'api-key');
-      const baseUrlFlag = requireFlag(args.flags, 'base-url');
-      const endpointFlag = requireFlag(args.flags, 'endpoint');
-      const apiVersionFlag = requireFlag(args.flags, 'api-version');
-      const lazyResolveProvider = () =>
-        resolveProvider({
-          ...(providerFlag !== undefined ? { provider: providerFlag } : {}),
-          ...(apiKeyFlag !== undefined ? { apiKey: apiKeyFlag } : {}),
-          ...(baseUrlFlag !== undefined ? { baseUrl: baseUrlFlag } : {}),
-          ...(endpointFlag !== undefined ? { endpoint: endpointFlag } : {}),
-          ...(apiVersionFlag !== undefined ? { apiVersion: apiVersionFlag } : {}),
+      // Operator-config model (same as `ask` / `ab-eval`): credentials and endpoints come from the environment, never from flags —
+      // a secret on the command line lands in shell history and process listings, and a caller-chosen URL is a request-forgery primitive.
+      const refused = ['api-key', 'base-url', 'endpoint', 'api-version'].filter((f) => requireFlag(args.flags, f) !== undefined);
+      if (refused.length > 0) {
+        process.stderr.write(
+          `error: ${refused.map((f) => `--${f}`).join(', ')} ${refused.length > 1 ? 'are' : 'is'} no longer accepted by "xo run". ` +
+            'Configure the provider in the environment instead: XO_PROVIDER, XO_MODEL, the vendor key variable (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT), ' +
+            'and optionally XO_PROVIDER_BASE_URL (allowlisted hosts only; XO_ALLOW_CUSTOM_ENDPOINT=1 to extend).\n',
+        );
+        return 1;
+      }
+      const modelFlag = requireFlag(args.flags, 'model');
+      const lazyResolveProvider = () => {
+        const op = resolveOperatorProvider({
+          ...process.env,
+          ...(providerFlag !== undefined ? { XO_PROVIDER: providerFlag } : {}),
+          ...(modelFlag !== undefined ? { XO_MODEL: modelFlag } : {}),
+          // `run` always names its model through --model or XO_MODEL; if neither is set the capability's own default applies downstream.
+          ...(modelFlag === undefined && process.env['XO_MODEL'] === undefined ? { XO_MODEL: 'default' } : {}),
         });
+        return op.ok ? ok(op.value.provider) : err(op.error);
+      };
 
       const model = requireFlag(args.flags, 'model');
       const query = requireFlag(args.flags, 'query');

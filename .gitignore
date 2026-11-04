@@ -36,3 +36,4 @@ apps/*/test/**/*.js.map
 
 # Studio local workspace state and generated compile outputs (never source)
 .xo-studio/
+examples/host-app-demo/halvorsen.xo

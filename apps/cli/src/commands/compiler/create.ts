@@ -1,6 +1,6 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
-import { compileSources, packageXoirGraph, type CompileSourcesOptions } from '@xo/compiler';
+import { compileSources, packageXoirGraph, type CompileSourcesOptions, type ReviewLedger, type WorkflowEmission } from '@xo/compiler';
 import { nodesOfKind } from '@xo/xoir';
 import { PackageSigner, packBundle } from '@xo/package-sdk';
 import { authoringValidator } from '../../package-trust.js';
@@ -23,6 +23,14 @@ export interface CreateOptions {
   readonly keyOut?: string;
   readonly domainHint?: string;
   readonly json?: boolean;
+  /** Skip emitting the `workflows` component (it is emitted by default when the sources state decidable rules). */
+  readonly noWorkflows?: boolean;
+  /** Write the full workflow determinism/provenance report (JSON) to this path. */
+  readonly workflowReport?: string;
+  /** JSON file of reviewer rulings ({accepted, rejected}) replayed over the extraction; resolving review items releases held approvals. */
+  readonly reviewLedger?: string;
+  /** Where non-escalated decisions go: `file` (default) or `none` (the run result is the decision; no action, nothing to bind). */
+  readonly decisionSink?: 'file' | 'none';
 }
 
 /**
@@ -85,8 +93,26 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
     // compile calls below — see this function's doc comment.
     const now = new Date().toISOString();
     const nowFn = () => now;
+    let ledger: ReviewLedger | undefined;
+    if (options.reviewLedger !== undefined) {
+      const parsed = await readLedger(options.reviewLedger);
+      if (typeof parsed === 'string') return failWith(parsed);
+      ledger = parsed;
+    }
+    if (options.decisionSink !== undefined && options.decisionSink !== 'file' && options.decisionSink !== 'none')
+      return failWith(`--decision-sink must be "file" or "none", got "${String(options.decisionSink)}"`);
     const compileOptions: CompileSourcesOptions = {
       now: nowFn,
+      policy: {
+        ...(ledger !== undefined ? { ledger } : {}),
+        workflows:
+          options.noWorkflows === true
+            ? false
+            : {
+                version: options.version ?? '0.1.0',
+                ...(options.decisionSink !== undefined ? { decisionSink: options.decisionSink } : {}),
+              },
+      },
       ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
     };
 
@@ -117,8 +143,35 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
       identity: { name, version, creatorDid },
       metadata,
       upstreamDiagnostics: compiled.value.diagnostics,
+      ...(compiled.value.policy !== undefined ? { policy: compiled.value.policy } : {}),
     });
     if (!packaged.ok) return failWith(packaged.error.message);
+
+    const workflowEmission = compiled.value.policy?.workflows;
+    const workflowProblems = compiled.value.policy?.workflowProblems;
+    if (options.workflowReport !== undefined) {
+      if (workflowEmission === undefined)
+        return failWith(
+          `--workflow-report requested but no workflow was emitted${workflowProblems !== undefined ? `: ${workflowProblems.join('; ')}` : ' (no decidable rules were found in the sources, or --no-workflows was given)'}`,
+        );
+      await writeFile(options.workflowReport, `${JSON.stringify(workflowEmission.report, null, 2)}\n`, 'utf8');
+    }
+    const workflowSummary =
+      workflowEmission === undefined
+        ? undefined
+        : {
+            workflows: workflowEmission.report.workflows.map((w) => ({
+              workflow: w.workflow,
+              counts: w.counts,
+              ratio: w.ratio,
+              path: w.path,
+              needsModel: w.needsModel,
+              nonDeterministic: w.nonDeterministic.length,
+            })),
+            capabilities: workflowEmission.report.capabilities,
+            reviewItems: workflowEmission.report.reviewItems.length,
+            label: workflowEmission.report.label,
+          };
 
     let bundle: PackageBundle = packaged.value.bundle;
     const signLines: string[] = [];
@@ -172,6 +225,8 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
           resolvedCapabilities,
           loweredCapabilities: lowered,
           capabilityOutcomes: packaged.value.capabilities.outcomes,
+          workflows: workflowSummary ?? null,
+          workflowProblems: workflowProblems ?? null,
           deterministic,
           signed: options.sign === true,
           packageValid: validation.valid,
@@ -209,6 +264,7 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
             `  ${discoveredCapabilities - resolvedCapabilities} discovered but not resolved (no deterministic binding, or binding unresolved/ambiguous/denied — see "xo capabilities" for per-capability detail)`,
           ]
         : []),
+      ...workflowLines(workflowEmission, workflowProblems, options.noWorkflows === true, options.workflowReport),
       '',
       'Provenance:',
       `  ${compiled.value.graph.allNodes().every((n) => n.metadata.sourceRefs.length > 0) ? 'preserved on every node' : 'present, but not every node carries a sourceRef — see diagnostics'}`,
@@ -233,4 +289,69 @@ export async function createCommand(options: CreateOptions): Promise<CommandResu
   } finally {
     await collected.cleanup();
   }
+}
+
+function workflowLines(
+  emission: WorkflowEmission | undefined,
+  problems: readonly string[] | undefined,
+  skipped: boolean,
+  reportPath: string | undefined,
+): string[] {
+  if (skipped) return ['', 'Workflows:', '  skipped (--no-workflows)'];
+  if (emission === undefined) {
+    return [
+      '',
+      'Workflows:',
+      problems !== undefined
+        ? `  none emitted: ${problems.slice(0, 3).join('; ')}`
+        : '  none emitted (the sources state no decidable rules)',
+    ];
+  }
+  const out: string[] = ['', `Workflows: (${emission.report.label})`];
+  for (const w of emission.report.workflows) {
+    out.push(
+      `  ${w.workflow} [${w.path}]: ${w.counts.deterministic} deterministic, ${w.counts.model_assisted} model-assisted, ${w.counts.human} human step(s); ratio ${w.ratio.toFixed(2)}; ${w.needsModel ? 'needs a model (free-text reading)' : 'runs with no model'}`,
+    );
+    for (const n of w.nonDeterministic.slice(0, 8))
+      out.push(`    - ${n.step} [${n.class}] ${n.cause}${n.blocking ? ' (fails closed)' : ''}: ${n.reason}`);
+    if (w.nonDeterministic.length > 8) out.push(`    ... and ${w.nonDeterministic.length - 8} more (see --workflow-report)`);
+  }
+  for (const c of emission.report.capabilities) {
+    out.push(
+      `  capability "${c.capability}": ${c.recognizedSentences}/${c.decisionSentences} decision sentences recognized${c.unrecognizedSentences > 0 ? `, ${c.unrecognizedSentences} unrecognized -> review` : ''}; outcomes: ${c.outcomes.join(', ')}`,
+    );
+  }
+  for (const l of emission.report.limits)
+    if (
+      l.startsWith('The compiled tree reaches no approving outcome') ||
+      l.startsWith('An approving rule is recognized') ||
+      l.startsWith('No action is emitted')
+    )
+      out.push(`  note: ${l}`);
+  if (reportPath !== undefined) out.push(`  report written to ${reportPath}`);
+  return out;
+}
+
+/** Reads and shape-checks a reviewer-ruling file; returns an error message string on any problem (never trusts the file). */
+async function readLedger(path: string): Promise<ReviewLedger | string> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(path, 'utf8'));
+  } catch (e) {
+    return `--review-ledger ${path}: ${(e as Error).message}`;
+  }
+  const o = raw as { accepted?: unknown; rejected?: unknown } | null;
+  if (typeof o !== 'object' || o === null || !Array.isArray(o.accepted) || !Array.isArray(o.rejected))
+    return `--review-ledger ${path}: expected {"accepted": [...], "rejected": [...]}`;
+  for (const [i, a] of (o.accepted as unknown[]).entries()) {
+    const x = a as { sentence?: unknown; proposal?: unknown } | null;
+    if (typeof x !== 'object' || x === null || typeof x.sentence !== 'string' || typeof x.proposal !== 'object' || x.proposal === null)
+      return `--review-ledger ${path}: accepted[${i}] needs a "sentence" string and a "proposal" object`;
+  }
+  for (const [i, r] of (o.rejected as unknown[]).entries()) {
+    const x = r as { sentence?: unknown; note?: unknown } | null;
+    if (typeof x !== 'object' || x === null || typeof x.sentence !== 'string' || (x.note !== undefined && typeof x.note !== 'string'))
+      return `--review-ledger ${path}: rejected[${i}] needs a "sentence" string (and an optional "note" string)`;
+  }
+  return raw as ReviewLedger;
 }

@@ -13,6 +13,11 @@ function toStopReason(finishReason: ProviderResponse['finishReason']): StopReaso
       return 'content_filtered';
     case 'error':
       return 'error';
+    case 'tool_use':
+      // The legacy runtime path never offers tools to a provider, so a
+      // tool_use finish here is unexpected. Fail closed rather than widen
+      // StopReason; tool loops live in @xo/capability-layer.
+      return 'error';
   }
 }
 

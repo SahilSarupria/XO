@@ -1,3 +1,4 @@
+import { candidateIsNegated } from './negation.js';
 import { ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -73,7 +74,10 @@ export class HybridCapabilityExtractor implements CapabilityExtractor {
       return ok(structural);
     }
 
-    const aiCaps = aiResult.value.capabilities.map((c) => ({ ...c, extractorName: this.aiExtractor!.name }));
+    // a model can also read a prohibition as an action; the same negation check applies to what it proposes
+    const aiCaps = aiResult.value.capabilities
+      .filter((c) => !candidateIsNegated(c.description, c.name))
+      .map((c) => ({ ...c, extractorName: this.aiExtractor!.name }));
 
     return ok({
       capabilities: [...structural.capabilities, ...aiCaps],

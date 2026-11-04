@@ -1,3 +1,4 @@
+import { fromWireToolCalls, toWireMessages, toWireTools, type WireToolCall } from './openai-tools.js';
 import { AiError, ErrorCode } from '@xo/errors';
 import type { ModelProvider, ProviderCapabilityDescriptor, ProviderRequest, ProviderResponse } from '../provider-types.js';
 
@@ -8,7 +9,7 @@ export interface OllamaProviderOptions {
 }
 
 interface OllamaChatResponse {
-  readonly message: { readonly content: string };
+  readonly message: { readonly content: string; readonly tool_calls?: readonly WireToolCall[] };
   readonly prompt_eval_count?: number;
   readonly eval_count?: number;
   readonly done_reason?: string;
@@ -46,6 +47,7 @@ export class OllamaProvider implements ModelProvider {
       supportsStreaming: true,
       supportsStructuredOutput: false,
       supportsVision: false,
+      supportsToolCalling: true,
       maxContextTokens: 8_192,
     };
   }
@@ -57,7 +59,8 @@ export class OllamaProvider implements ModelProvider {
       body: JSON.stringify({
         model: request.model,
         stream: false,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: toWireMessages(request.messages, { argsAsObject: true }),
+        tools: toWireTools(request),
         options: { temperature: request.temperature, num_predict: request.maxOutputTokens },
       }),
     });
@@ -68,11 +71,18 @@ export class OllamaProvider implements ModelProvider {
     }
 
     const data = (await response.json()) as OllamaChatResponse;
+    const toolCalls = fromWireToolCalls(data.message.tool_calls, 'ollama_call');
+    if (toolCalls.length > 0 && data.done_reason === 'length')
+      throw new AiError(
+        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
+        'Ollama returned tool calls on a length-truncated reply; refusing to run them',
+      );
     return {
       text: data.message.content,
       usage: { inputTokens: data.prompt_eval_count ?? 0, outputTokens: data.eval_count ?? 0 },
       modelUsed: request.model,
-      finishReason: data.done_reason === 'length' ? 'length' : 'stop',
+      finishReason: toolCalls.length > 0 ? 'tool_use' : data.done_reason === 'length' ? 'length' : 'stop',
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 }

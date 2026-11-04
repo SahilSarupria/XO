@@ -1,0 +1,29 @@
+{
+  "name": "@xo/automation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unattended XO workflows: triggers (schedule, file drop, signed webhook), a sandboxed decision-tree evaluator, a tamper-evident run ledger, and an engine with idempotency, retries, dead-lettering, crash recovery and a human-escalation outbox.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/capability-layer": "0.1.0",
+    "@xo/package-sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

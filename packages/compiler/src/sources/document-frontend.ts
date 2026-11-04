@@ -20,6 +20,25 @@ function isDocumentSourceInput(input: unknown): input is DocumentSourceInput {
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const PIPE_SEPARATOR_RE = /^\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?$/;
+
+/** cells of a `| a | b |` row, or `undefined` when the line is not a pipe-table row */
+function pipeCells(line: string): string[] | undefined {
+  if (!line.includes('|')) return undefined;
+  const inner = line.replace(/^\|/, '').replace(/\|$/, '');
+  const cells = inner.split('|').map((c) => c.trim());
+  return cells.length >= 2 && cells.some((c) => c.length > 0) ? cells : undefined;
+}
+
+/** cells of a column-aligned text row (two or more spaces, or a tab, between cells), or `undefined` */
+function alignedCells(line: string): string[] | undefined {
+  const cells = line
+    .trim()
+    .split(/\t+|\s{2,}/)
+    .map((c) => c.trim())
+    .filter((c) => c.length > 0);
+  return cells.length >= 2 ? cells : undefined;
+}
 const LIST_ITEM_RE = /^(\d+[.)]|[-*+])\s+(.*)$/;
 
 /**
@@ -88,10 +107,34 @@ function classifyLines(text: string): UnplacedBlock[] {
     paragraphLines = [];
   };
 
-  for (const rawLine of lines) {
+  // Table rows: a pipe row, or a column-aligned row that has a neighbour with the same number of cells (a single line with
+  // a double space in it is prose, not a table). Rows become `table_row` blocks, which downstream extraction quarantines.
+  const trimmed = lines.map((l) => l.trim());
+  const rowCells = trimmed.map((l, i): string[] | undefined => {
+    if (l.length === 0 || HEADING_RE.test(l) || (LIST_ITEM_RE.test(l) && !l.includes('|'))) return undefined;
+    const piped = pipeCells(l);
+    if (piped !== undefined) return piped;
+    const aligned = alignedCells(l);
+    if (aligned === undefined) return undefined;
+    const same = (j: number): boolean => alignedCells(trimmed[j] ?? '')?.length === aligned.length;
+    return same(i - 1) || same(i + 1) ? aligned : undefined;
+  });
+
+  for (let li = 0; li < lines.length; li++) {
+    const rawLine = lines[li]!;
     const line = rawLine.trim();
     if (line.length === 0) {
       flushParagraph();
+      continue;
+    }
+    if (PIPE_SEPARATOR_RE.test(line) && line.includes('-') && line.includes('|')) {
+      flushParagraph();
+      continue;
+    }
+    const cells = rowCells[li];
+    if (cells !== undefined) {
+      flushParagraph();
+      blocks.push({ kind: 'table_row', cells });
       continue;
     }
 

@@ -11,6 +11,9 @@ import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../cap
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
 import { extractReasoningGraph, type ReasoningExtractionOptions } from '../reasoning/reasoning-extractor.js';
 import { compileXoir } from './compile.js';
+import { synthesizePolicyArtifacts, type PolicyArtifacts, type PolicyOptions, type PolicySource } from '../policy/artifacts.js';
+import { policyTextFromParsed } from '../policy/from-document.js';
+import { policyCapability, policyReasoningNodes } from '../policy/to-graph.js';
 import type { CompiledXoirResult } from './types.js';
 import { createDefaultSourceFrontendRegistry } from '../sources/default-registry.js';
 import type { SourceFrontendRegistry } from '../sources/registry.js';
@@ -49,6 +52,11 @@ export interface SourceCompilationReport {
 }
 
 export interface CompileSourcesResult extends CompiledXoirResult {
+  /**
+   * Executable decision logic read from the same documents (decision tree, safety rules, worked examples, review report).
+   * Absent when no document in the run states decidable rules. Pass it to `packageXoirGraph({ policy })`.
+   */
+  readonly policy?: PolicyArtifacts;
   /** One entry per input, in input order — always present even for inputs that contributed zero units, so a caller can see exactly what happened to every source it submitted (Stage 8 §14's "must not silently pass through"). */
   readonly sources: readonly SourceCompilationReport[];
 }
@@ -61,6 +69,8 @@ export interface CompileSourcesOptions {
   readonly aiCore?: KnowledgeExtractionOptions['aiCore'] & CapabilityExtractionOptions['aiCore'] & ReasoningExtractionOptions['aiCore'];
   readonly domainHint?: string;
   readonly focusQuestion?: string;
+  /** Policy synthesis runs by default; `false` skips it. `glossary` is the operator's closed-set classification glossary. */
+  readonly policy?: false | PolicyOptions;
 }
 
 /**
@@ -139,6 +149,7 @@ export async function compileSources(
   }
 
   const experienceDocuments: ExperienceDocument[] = [];
+  const policySources: PolicySource[] = [];
   const sourceReports: SourceCompilationReport[] = [];
   const qualityDiagnostics: Diagnostic[] = [];
   // P0.9A area D ("Source quality surfaced"): every `document`-kind
@@ -192,6 +203,15 @@ export async function compileSources(
       continue;
     }
 
+    if (options.policy !== false) {
+      const rendered = policyTextFromParsed(source.content.parsed, source.content.documentTitle);
+      policySources.push({
+        text: rendered.text,
+        tables: rendered.tables,
+        sourcePath: source.sourcePath,
+        ...(source.content.documentTitle !== undefined ? { title: source.content.documentTitle } : {}),
+      });
+    }
     const experienceDocument = await chunkDocument(source.content.parsed, source.sourceId, source.content.documentTitle);
     experienceDocuments.push(experienceDocument);
     sourceReports.push({
@@ -246,13 +266,43 @@ export async function compileSources(
   const capabilityWithMintedRules =
     mintedCapabilities.length > 0 ? { ...capability, capabilities: [...capability.capabilities, ...mintedCapabilities] } : capability;
 
+  // Policy synthesis must never fail a compilation: a document it cannot read simply yields no tree.
+  let policy: PolicyArtifacts | undefined;
+  if (options.policy !== false && policySources.length > 0) {
+    try {
+      const synthesized = synthesizePolicyArtifacts(policySources, options.policy ?? {});
+      if (synthesized.trees !== undefined) policy = synthesized;
+    } catch (cause) {
+      options.logger?.warn('Policy synthesis failed; compiling without decision logic', {
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
+    }
+  }
+
+  // The decision logic is also expressed in the graph: escalation / risk / decision / prohibition nodes with their source
+  // sentence, and one typed, deterministic capability bound to the tree. Appended after rule-level minting on purpose.
+  let reasoningForXoir = reasoning;
+  let capabilityForXoir = capabilityWithMintedRules;
+  if (policy?.trees?.[0] !== undefined) {
+    const known = new Set(reasoning.nodes.map((n) => n.id as string));
+    const extra = policyReasoningNodes(policy.program, experienceDocuments).filter((n) => !known.has(n.id as string));
+    reasoningForXoir = { ...reasoning, nodes: [...reasoning.nodes, ...extra] };
+    capabilityForXoir = {
+      ...capabilityWithMintedRules,
+      capabilities: [...capabilityWithMintedRules.capabilities, policyCapability(policy.program, policy.trees[0], experienceDocuments)],
+    };
+  }
+
   const compileOptions = {
     ...(options.graphId !== undefined ? { graphId: options.graphId } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
     ...(options.logger !== undefined ? { logger: options.logger } : {}),
   };
 
-  const compiled = await compileXoir({ kind: 'combined', knowledge, capability: capabilityWithMintedRules, reasoning }, compileOptions);
+  const compiled = await compileXoir(
+    { kind: 'combined', knowledge, capability: capabilityForXoir, reasoning: reasoningForXoir },
+    compileOptions,
+  );
   if (!compiled.ok) return err(compiled.error);
 
   // P0.9A area D: attach the per-source quality assessment collected
@@ -292,7 +342,12 @@ export async function compileSources(
     );
   }
 
-  return ok({ ...compiled.value, diagnostics: [...qualityDiagnostics, ...compiled.value.diagnostics], sources: sourceReports });
+  return ok({
+    ...compiled.value,
+    diagnostics: [...qualityDiagnostics, ...compiled.value.diagnostics],
+    sources: sourceReports,
+    ...(policy !== undefined ? { policy } : {}),
+  });
 }
 
 /** Single-source convenience wrapper over `compileSources` — the common case (one PDF, one HTML page, ...) without the caller needing to think about the array/merge machinery at all. */
