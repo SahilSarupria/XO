@@ -13,3 +13,4 @@ export * from './capability-mapping.js';
 export * from './manifest.js';
 export * from './manager.js';
 export * from './principal.js';
+export * from './authorization.js';

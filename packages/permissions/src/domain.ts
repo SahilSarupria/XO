@@ -23,6 +23,7 @@ export const PERMISSION_DOMAINS = [
   'data',
   'package',
   'runtime',
+  'audit',
 ] as const;
 
 export type PermissionDomain = (typeof PERMISSION_DOMAINS)[number];

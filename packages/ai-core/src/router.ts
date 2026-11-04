@@ -1,5 +1,5 @@
 import { err, ok, type Result } from '@xo/types';
-import { AiError, ErrorCode } from '@xo/errors';
+import { AiError, ErrorCode, assertNotAuditData } from '@xo/errors';
 import type { Logger } from '@xo/logger';
 import { noopLogger } from '@xo/logger';
 import type { Tracer, Meter } from '@xo/observability';
@@ -151,6 +151,14 @@ export class AiCapabilityLayer {
       const startedAt = performance.now();
       span.setAttribute('capability', capability);
       span.setAttribute('trace_id', request.traceId);
+
+      // P1.0 M4 model exclusion: restricted audit data is never sent to a model provider (input or excerpt).
+      try {
+        assertNotAuditData(request.input, 'an AI provider request');
+        assertNotAuditData(request.excerpt, 'an AI provider request');
+      } catch (error) {
+        return err(error as AiError);
+      }
 
       let template;
       try {

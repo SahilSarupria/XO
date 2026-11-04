@@ -108,7 +108,7 @@ test('acquisition before the source is authorized and validated is refused', asy
   });
 });
 
-test('out-of-scope keys are rejected BEFORE the gate is asked and before any read', async () => {
+test('out-of-scope keys are rejected before any read; string-shape violations before the gate, filesystem-dependent ones only after it', async () => {
   await withSandbox(async ({ root, outside }) => {
     await put(join(root, 'ok.txt'), 'x');
     await put(join(outside, 'secret.txt'), 'top secret INV-9999');
@@ -116,21 +116,21 @@ test('out-of-scope keys are rejected BEFORE the gate is asked and before any rea
     await symlink(outside, join(root, 'linkdir'));
     const inner = allowRoot(root, ['filesystem.list', 'filesystem.read']);
     const { deps, sourceId } = await discovered(root, inner);
-    const { port, calls } = counting(inner);
-    const bad: [string, string][] = [
+
+    // Pure string-shape violations: rejected without consulting the gate and without any filesystem access.
+    const lexical: [string, string][] = [
       ['../outside/secret.txt', 'dot_or_empty_segment'],
       ['a/../../outside/secret.txt', 'dot_or_empty_segment'],
       [join(outside, 'secret.txt'), 'absolute_or_backslash'],
       ['..\\outside\\secret.txt', 'absolute_or_backslash'],
       ['', 'invalid_key'],
       ['ok.txt\0.png', 'invalid_key'],
-      ['link.txt', 'symlink_not_followed'],
-      ['linkdir/secret.txt', 'symlink_not_followed'],
       ['./ok.txt', 'dot_or_empty_segment'],
     ];
-    for (const [key, reason] of bad) {
+    const pre = counting(inner);
+    for (const [key, reason] of lexical) {
       // a valid key mixed in must not make the request partially succeed
-      const r = await acquire(deps, sourceId, root, ['ok.txt', key], port);
+      const r = await acquire(deps, sourceId, root, ['ok.txt', key], pre.port);
       assert.equal(r.ok, false, `expected rejection of ${JSON.stringify(key)}`);
       if (!r.ok) {
         assert.equal(r.error.code, DiscoveryErrorCode.SCOPE_VIOLATION, JSON.stringify(key));
@@ -138,7 +138,24 @@ test('out-of-scope keys are rejected BEFORE the gate is asked and before any rea
         assert.equal(JSON.stringify(r.error).includes('top secret'), false);
       }
     }
-    assert.equal(calls.length, 0, 'the gate must not be consulted for a request that is already out of scope');
+    assert.equal(pre.calls.length, 0, 'the gate must not be consulted for a key that is malformed on its face');
+
+    // Filesystem-dependent violations (symlinks) are only examined AFTER the read decision, and still before any read.
+    const post = counting(inner);
+    for (const key of ['link.txt', 'linkdir/secret.txt']) {
+      const r = await acquire(deps, sourceId, root, ['ok.txt', key], post.port);
+      assert.equal(r.ok, false, `expected rejection of ${JSON.stringify(key)}`);
+      if (!r.ok) {
+        assert.equal(r.error.code, DiscoveryErrorCode.SCOPE_VIOLATION, JSON.stringify(key));
+        assert.equal(r.error.context['reason'], 'symlink_not_followed', JSON.stringify(key));
+        assert.equal(JSON.stringify(r.error).includes('top secret'), false);
+      }
+    }
+    assert.ok(post.calls.length > 0, 'the gate is consulted before the filesystem is examined');
+    assert.ok(
+      post.calls.every((c) => c.permission === 'filesystem.read'),
+      'only the read permission is requested for acquisition',
+    );
   });
 });
 

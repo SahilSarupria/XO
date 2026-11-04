@@ -1,0 +1,30 @@
+{
+  "name": "@xo/audit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P1.0 M4 — durable audit foundation: typed event contract, durable-receipt semantics, fsync-backed JSONL store, retention/purge, and audit-access authorization.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/errors": "0.1.0",
+    "@xo/permissions": "0.1.0",
+    "@xo/types": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}
