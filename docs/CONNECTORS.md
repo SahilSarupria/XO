@@ -33,6 +33,10 @@ egress proxy for hostile networks.
 Logical roots only; lexical checks plus `realpath` confinement (symlink escapes refused). `write_record` is create-only via atomic `link`: an identical
 replay is a no-op, different content is refused, and a crash never leaves a half-written target.
 
+`createRoots` (default **off**) lets the connector create a missing root directory (mode 0700) on the first **write**; reads never create anything and the
+filesystem root is never created or used. It exists so an operator does not have to `mkdir` before the first run, while a typo in a bound path still fails
+closed by default. `xo flow run` / `xo serve` turn it on, because the root path comes from the operator's own policy file. Library users opt in explicitly.
+
 ## Tests
 
 `packages/connectors/test/connectors.test.ts` (17): ungranted/undeclared refusal, dry-run, secret redaction, prompt-injection text inert, SSRF, traversal,

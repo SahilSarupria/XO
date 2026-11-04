@@ -137,8 +137,13 @@ export function policyReasoningNodes(program: PolicyProgram, docs: readonly Expe
 }
 
 /** the decision tree as a capability with a typed, deterministic signature */
+/** The canonical name of the capability a policy compiles to; shared so reports name it exactly as the manifest does. */
+export function policyCapabilityName(program: PolicyProgram): string {
+  return `Decide ${program.title.replace(/\s+/g, ' ').trim()}`.slice(0, 120);
+}
+
 export function policyCapability(program: PolicyProgram, tree: DecisionTree, docs: readonly ExperienceDocument[]): Capability {
-  const name = `Decide ${program.title.replace(/\s+/g, ' ').trim()}`.slice(0, 120);
+  const name = policyCapabilityName(program);
   const outputs = [
     { name: 'decision', description: 'the outcome the document prescribes (approve, deny, escalate, …)' },
     ...(program.amountField !== undefined ? [{ name: program.amountField, description: 'amount to pay; 0 unless the outcome pays' }] : []),

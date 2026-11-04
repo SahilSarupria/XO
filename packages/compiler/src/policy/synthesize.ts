@@ -24,6 +24,17 @@ export interface SynthesisResult {
   readonly treeProblems: readonly string[];
   /** case kinds (or "decision") for which the document gave no complete outcome — they escalate instead of deciding */
   readonly failClosedPaths: readonly string[];
+  /**
+   * Rules whose approving outcome was recognized but is HELD: a case that would be approved escalates instead
+   * (`APPROVAL_HELD_UNREVIEWED_RULES`), because decision sentences the compiler did not understand are still open and
+   * an approval would silently ignore them. Resolving the review items releases the hold.
+   */
+  readonly heldApprovals: readonly string[];
+}
+
+export interface SynthesisOptions {
+  /** Turn every approving outcome into an escalation (see {@link SynthesisResult.heldApprovals}). */
+  readonly holdApprovals?: boolean;
 }
 
 const reads = (s: Step): Set<string> => {
@@ -43,7 +54,14 @@ const defines = (s: Step): string[] => (s.kind === 'assign' ? Object.keys(s.set)
 /** stable topological order: a step that defines a quantity comes before every step that reads it */
 function orderSteps(steps: readonly Step[]): { ordered: Step[]; cyclic: boolean } {
   // an unconditional settlement step is the default outcome: it comes after every check, wherever the document states it
-  const key = (s: Step): number => (s.kind === 'finish' && s.when === undefined ? s.order + 1e9 : s.order);
+  // An approving step is evaluated after every deny/escalate rule, wherever the document states it: an approval must
+  // never pre-empt a rule that would have refused the case. An unconditional settlement is the very last default.
+  const key = (s: Step): number =>
+    s.kind === 'finish' && s.when === undefined
+      ? s.order + 2e9
+      : s.kind === 'finish' && s.outcome.decision === 'approve'
+        ? s.order + 1e9
+        : s.order;
   const by = [...steps].sort((a, b) => key(a) - key(b));
   const definers = new Map<string, Step[]>();
   for (const s of by) for (const d of defines(s)) definers.set(d, [...(definers.get(d) ?? []), s]);
@@ -64,10 +82,11 @@ function orderSteps(steps: readonly Step[]): { ordered: Step[]; cyclic: boolean 
   return { ordered: out, cyclic: false };
 }
 
-export function synthesizeTree(p: PolicyProgram): SynthesisResult {
+export function synthesizeTree(p: PolicyProgram, options: SynthesisOptions = {}): SynthesisResult {
   const failClosedPaths: string[] = [];
+  const heldApprovals: string[] = [];
   const problems: string[] = [];
-  if (!p.steps.some((s) => s.kind === 'gate')) return { treeProblems: [], failClosedPaths };
+  if (!p.steps.some((s) => s.kind === 'gate')) return { treeProblems: [], failClosedPaths, heldApprovals };
 
   const { ordered, cyclic } = orderSteps(p.steps);
   if (cyclic) problems.push('steps depend on each other in a cycle; falling back to document order');
@@ -179,7 +198,19 @@ export function synthesizeTree(p: PolicyProgram): SynthesisResult {
       inner = s.id;
     } else {
       const f: FinishStep = s;
-      const l = leaf(f.outcome.decision, f.outcome.target, f.outcome.reason, f.amount, f.note, rule);
+      const approving = f.outcome.decision !== 'deny' && f.outcome.decision !== 'escalate';
+      const held = approving && options.holdApprovals === true;
+      if (held) heldApprovals.push(rule !== '' ? rule : s.id);
+      const l = held
+        ? leaf(
+            'escalate',
+            humanTarget,
+            'APPROVAL_HELD_UNREVIEWED_RULES',
+            undefined,
+            'an approving rule applies, but decision sentences are still unreviewed — escalated instead of approved',
+            rule,
+          )
+        : leaf(f.outcome.decision, f.outcome.target, f.outcome.reason, f.amount, f.note, rule);
       if (f.when !== undefined) {
         nodes[s.id] = { type: 'branch', test: f.when, then: l, else: next, rule, note: f.note };
         inner = s.id;
@@ -237,7 +268,7 @@ export function synthesizeTree(p: PolicyProgram): SynthesisResult {
     nodes,
   };
   problems.push(...validateTree(tree));
-  return { tree, treeProblems: problems, failClosedPaths: [...new Set(failClosedPaths)] };
+  return { tree, treeProblems: problems, failClosedPaths: [...new Set(failClosedPaths)], heldApprovals: [...new Set(heldApprovals)] };
 }
 
 export function synthesizeSafetyRules(p: PolicyProgram): PolicySafetyRule[] {

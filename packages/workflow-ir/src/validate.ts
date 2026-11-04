@@ -69,6 +69,8 @@ const PATHLIKE = /^(\/|[A-Za-z]:[\\/]|\\\\|~\/)|(^|[\\/])\.\.([\\/]|$)|^file:\/\
 const ENDPOINT = /^[a-z][a-z0-9+.-]*:\/\//i;
 const SECRETLIKE =
   /(sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[abprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{20,})/;
+/** True when a string looks like a credential. The same test the validator applies to every string in a document; exported so producers can scrub quoted text before it reaches a portable component or a report. */
+export const looksLikeSecret = (s: string): boolean => SECRETLIKE.test(s);
 const PROVIDER = /\b(gemini|openai|gpt-?\d|chatgpt|claude|anthropic|llama|ollama|azure openai|mistral)\b/i;
 const CRON_FIELD = /^[0-9*/,-]+$/;
 const FREE_TEXT_KEYS = new Set(['instruction', 'summary', 'reason', 'description', 'message']);

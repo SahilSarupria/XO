@@ -18,6 +18,7 @@
     { "path": "../storage" },
     { "path": "../crypto" },
     { "path": "../ai-core" },
-    { "path": "../capability-layer" }
+    { "path": "../capability-layer" },
+    { "path": "../workflow-ir" }
   ]
 }

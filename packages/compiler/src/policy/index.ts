@@ -13,3 +13,4 @@ export * from './clarify.js';
 export * from './input-contract.js';
 export * from './version.js';
 export * from './telemetry.js';
+export * from './workflow-emit.js';

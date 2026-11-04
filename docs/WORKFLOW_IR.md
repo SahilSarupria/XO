@@ -67,7 +67,7 @@ refused whole, never run with part dropped. Identical valid inputs and workflow 
 
 ## Not covered yet
 
-Runner, connectors, run store, approvals, shadow mode, determinism analysis in the compiler, `xo` CLI commands for workflows, SDK/HTTP API.
+Runner, connectors, run store, approvals, shadow mode, `xo` CLI commands for workflows, SDK/HTTP API are documented in `WORKFLOW_RUNTIME.md`. The compiler emits workflows from policy documents (next section); it does not yet emit them from sources other than policy text.
 
 ## Loading several XOs together (`linkWorkflowComponents`, `xo flow link`)
 
@@ -77,3 +77,52 @@ webhook route or watched-directory source are also conflicts. Anything the polic
 depends on a blocked connector is blocked too. The merged component is re-validated in tests. Scope limits: this links the **workflow component only**. It does not link the knowledge graphs,
 decision trees, safety rules or memory of the packages (the compiler-side linker in `EXPERIENCE_COMPILER.md` §5 is a separate, unbuilt piece), it does not rename colliding workflows, and
 decision-tree ids referenced by workflows from different XOs are not cross-checked for collisions. Unmeasured.
+
+## Compiling policy documents into workflows (`xo create`, `packages/compiler/src/policy/workflow-emit.ts`)
+
+`xo create <policy.md> --sign` lowers the **same** program, decision tree and review data the `decision_trees` component comes from into a
+`workflows/workflows.json` component, validates it with `validateWorkflowComponent` and `validateAgainstBundle` against exactly the tree it ships
+with, and packages it (not required, hashed, signed, loaded as L3 like any component). Nothing re-reads the document, so the two cannot drift.
+
+Two workflows are emitted per policy, because a runner refuses any workflow containing an `extract` step when it has no model (negotiation, not
+a choice made here):
+
+- `<id>_structured`: facts arrive as typed inputs; no model step. Negotiation against the model-free reference host confirms it runs with no model.
+- `<id>_from_text`: adds the single grounded, model-assisted `extract_facts` step (`quote_required`). Refused on a runner with no extractor.
+
+Steps: `extract_facts` (text only) -> `decide_case` (the compiled tree) -> `route` -> `record_fields` (formula) -> `record_decision` (idempotent
+`write_record`) -> `escalate_to_human`. Every step that carries content from the document has `provenance` (rule tag or section plus the source
+sentence, clipped to the schema's limits).
+
+**What is and is not decided automatically.**
+
+- A rule the compiler did not recognize has no step. Every path that reaches it ends in the tree's `UNFORMALIZED_RULE` escalation, and the sentence is
+  listed as a review item with its reason. Sentences that read as granting discretion are reported as `judgement_call` (a keyword heuristic that a
+  reviewer should confirm; it never decides anything).
+- **Approvals are held while any decision sentence is unreviewed.** An approving outcome ("Otherwise the request is approved", "If X, ... is
+  approved", "The desk pays the <quantity>") is recognized, but while review items are open it is turned into an escalation with reason code
+  `APPROVAL_HELD_UNREVIEWED_RULES`: an approval would otherwise silently ignore rules the compiler did not understand. Resolving every review item
+  releases the hold. A reviewer rules on sentences in a JSON file passed as `xo create ... --review-ledger rulings.json`:
+  `{"accepted": [{"sentence": "...", "proposal": <ClauseProposal>}], "rejected": [{"sentence": "...", "note": "guidance, not a rule"}]}`
+  (proposals are re-checked by the compiler; a ruling for a sentence not in the document is inert and cannot release a hold).
+- An approving step is always evaluated **after** every deny/escalate rule, wherever the document states it, so an approval never pre-empts a refusal.
+- The approval patterns abstain (leave the sentence unrecognized) when the sentence is negated or qualified ("never", "not", "unless", "only",
+  "and", "or", digits, "may", ...), and when the document defines case kinds but the sentence carries no scope. They do not guess.
+- Today's extractor recognizes only a small set of sentence shapes, so most real manuals will still have review items and therefore held approvals
+  until a reviewer works through them. That is the intended, fail-closed behaviour, not a bug.
+
+**Where decisions go (`--decision-sink`).** The policy names no external system, so the sink is the operator's choice, never inferred:
+`file` (default) records each non-escalated decision through a `file` connector the operator binds (`decisions/<route>/<case_id>.json`,
+content `decision=...;reason_code=...;amount=...;case_id=...`; policy-computed fields come first and the caller-supplied `case_id` is last so it
+cannot forge an earlier field); `none` emits no connector and no action, and the decision is the run result for the host to act on. Slack,
+webhook-out and database sinks arrive with those connectors (not built). Not yet constrained: `case_id` is free text (IR 1.0 has no `pattern`
+constraint); the file connector refuses `..`, absolute and empty path segments, but other characters pass.
+
+**The compile-time report** (`--workflow-report <file>` writes JSON, and a summary is printed): per workflow and per capability the counts of
+deterministic / model-assisted / human steps and their ratio; for every non-deterministic step its exact cause (`free_text_input`,
+`documented_escalation`, `unrecognized_rule`, `judgement_call`) with provenance; the review items; held approvals; and a `limits` list. Every
+figure is labelled **declared, not measured**: it counts declared step classes and recognized sentences and says nothing about accuracy, real-case
+coverage, cost or savings. Ratios are dominated by the fixed step structure (a short workflow with one human step cannot exceed ~0.8).
+
+**Credentials in source text.** Quoted policy sentences are scrubbed with the validator's own secret test (`looksLikeSecret`) before they reach the
+component or the report. Other components (decision tree notes, knowledge graph) carry source sentences too and are **not** scrubbed by this change.

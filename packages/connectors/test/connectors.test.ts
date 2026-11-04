@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -299,5 +300,41 @@ describe('file connector confinement', () => {
       idempotencyKey: 'k',
     });
     assert.equal(await code(p), 'DENIED');
+  });
+});
+
+describe('file connector: createRoots (opt-in, never by default)', () => {
+  const call = (cfg: Parameters<typeof fileConnector>[0], op: 'read_file' | 'write_record', args: Record<string, unknown>) =>
+    fileConnector(cfg).operations[op]!.execute(args as never, {} as never);
+
+  it('fails closed on a missing root by default, and creates it (0700) only when asked, on write only', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'xo-root-'));
+    const root = join(base, 'not-yet');
+    await assert.rejects(call({ roots: { out: root }, maxBytes: 100 }, 'write_record', { root: 'out', path: 'a/b.txt', content: 'x' }));
+    assert.equal(existsSync(root), false, 'a root was created without the operator opting in');
+    await call({ roots: { out: root }, maxBytes: 100, createRoots: true }, 'write_record', { root: 'out', path: 'a/b.txt', content: 'x' });
+    assert.equal(await readFile(join(root, 'a', 'b.txt'), 'utf8'), 'x');
+    assert.equal((await stat(root)).mode & 0o777, 0o700);
+    const other = join(base, 'read-only-root');
+    await assert.rejects(call({ roots: { out: other }, maxBytes: 100, createRoots: true }, 'read_file', { root: 'out', path: 'a.txt' }));
+    assert.equal(existsSync(other), false, 'a READ created a directory');
+  });
+
+  it('still confines paths when createRoots is on (traversal and absolute paths are refused, nothing is created outside)', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'xo-root-adv-'));
+    const cfg = { roots: { out: join(base, 'root') }, maxBytes: 100, createRoots: true };
+    for (const path of ['../escape.txt', 'a/../../escape.txt', '/etc/x', 'a//b']) {
+      await assert.rejects(call(cfg, 'write_record', { root: 'out', path, content: 'x' }), undefined, path);
+    }
+    assert.equal(existsSync(join(base, 'escape.txt')), false);
+    // the filesystem root itself is never created or used as a root
+    await assert.rejects(
+      call({ roots: { out: '/' }, maxBytes: 100, createRoots: true }, 'write_record', {
+        root: 'out',
+        path: 'zz-xo-test.txt',
+        content: 'x',
+      }),
+    );
+    assert.equal(existsSync('/zz-xo-test.txt'), false);
   });
 });

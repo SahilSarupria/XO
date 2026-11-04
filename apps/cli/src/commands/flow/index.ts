@@ -96,7 +96,8 @@ export function registerCommands(registry: CommandRegistry): void {
           const implementations: Record<string, Connector> = {};
           for (const c of comp.connectors) {
             const roots = policy.fileRoots?.[c.id];
-            if (c.kind === 'file' && roots !== undefined) implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576 });
+            if (c.kind === 'file' && roots !== undefined)
+              implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576, createRoots: true });
           }
           const treeMap = new Map<string, DecisionTree>();
           if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
@@ -251,7 +252,8 @@ export function registerCommands(registry: CommandRegistry): void {
         const implementations: Record<string, Connector> = {};
         for (const c of comp.connectors) {
           const roots = policy.fileRoots?.[c.id];
-          if (c.kind === 'file' && roots !== undefined) implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576 });
+          if (c.kind === 'file' && roots !== undefined)
+            implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576, createRoots: true });
         }
         const treeMap = new Map<string, DecisionTree>();
         if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);

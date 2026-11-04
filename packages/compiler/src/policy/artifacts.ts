@@ -7,6 +7,8 @@ import { synthesizeSafetyRules, synthesizeStrategies, synthesizeTraces, synthesi
 import type { PolicyTable } from './from-document.js';
 import { segmentPolicyText, type PolicyEntry } from './segment.js';
 import { buildClassificationSpec, type ClassificationGlossaryInput, type ClassificationReport } from './classification.js';
+import { applyLedger, type ReviewLedger } from './review.js';
+import { emitPolicyWorkflows, type WorkflowEmission, type WorkflowEmitOptions } from './workflow-emit.js';
 
 /**
  * Everything the policy-synthesis stage contributes to a package, in exactly the formats `@xo/capability-layer`
@@ -40,6 +42,10 @@ export interface PolicyArtifacts {
   readonly safetyRules?: readonly PolicySafetyRule[];
   /** What the extractor understood and what it did not — the thing a human reviews before trusting the tree. */
   readonly review: PolicyReview;
+  /** The `workflows` component lowered from this policy, with its determinism/provenance report. Absent when there is no tree or emission failed. */
+  readonly workflows?: WorkflowEmission;
+  /** Why no workflow was emitted, when one was expected (emission never fails a compilation). */
+  readonly workflowProblems?: readonly string[];
 }
 
 export interface PolicyReview {
@@ -47,6 +53,12 @@ export interface PolicyReview {
   readonly recognizedSentences: number;
   readonly unrecognized: readonly UnrecognizedClause[];
   readonly failClosedPaths: readonly string[];
+  /**
+   * Rules with a recognized approving outcome that is held while any decision sentence is unreviewed: cases that would be
+   * approved escalate (`APPROVAL_HELD_UNREVIEWED_RULES`) instead. Empty when nothing is held. Resolving every review
+   * item (accept, edit or reject it in a `ReviewLedger`) releases the hold.
+   */
+  readonly heldApprovals: readonly string[];
   readonly treeProblems: readonly string[];
   /** For each closed-set input with a glossary: what the document defines, what it does not, and what the model alone decides. */
   readonly classification?: ClassificationReport;
@@ -69,6 +81,13 @@ export interface PolicyOptions {
    * model-extract.ts) — or merged with it by the caller. When absent the deterministic extraction is used.
    */
   readonly extraction?: Extraction;
+  /**
+   * Reviewer decisions (accepted / edited / rejected clauses, see review.ts) replayed over the pattern extraction, so a
+   * human can resolve review items from a file. Ignored when `extraction` is given (the caller already applied them).
+   */
+  readonly ledger?: ReviewLedger;
+  /** Workflow emission runs by default when a tree was synthesized; `false` skips it. */
+  readonly workflows?: false | WorkflowEmitOptions;
 }
 
 export function synthesizePolicyArtifacts(sources: readonly PolicySource[], options: PolicyOptions = {}): PolicyArtifacts {
@@ -96,13 +115,17 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
   const title = sources[0]?.title ?? /^#\s+(.+?)\s*$/m.exec(sources[0]?.text ?? '')?.[1] ?? 'the policy document';
   const extraction =
     options.extraction ??
-    extractProgram(
-      entries,
-      title,
-      sources.flatMap((s) => s.tables ?? []),
-    );
+    (() => {
+      const patterns = extractProgram(
+        entries,
+        title,
+        sources.flatMap((s) => s.tables ?? []),
+      );
+      return options.ledger !== undefined ? applyLedger(patterns, options.ledger) : patterns;
+    })();
   const program = extraction.program;
-  const synth = synthesizeTree(program);
+  // An approval must not silently ignore a rule the compiler did not understand: while any decision sentence is open, approvals are held.
+  const synth = synthesizeTree(program, { holdApprovals: extraction.unrecognized.length > 0 });
   let tree = synth.tree !== undefined && synth.treeProblems.length === 0 ? synth.tree : undefined;
 
   let classificationReport: ClassificationReport | undefined;
@@ -137,11 +160,12 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
     recognizedSentences: extraction.decisionSentences - extraction.unrecognized.length,
     unrecognized: extraction.unrecognized,
     failClosedPaths: synth.failClosedPaths,
+    heldApprovals: synth.heldApprovals,
     treeProblems: synth.treeProblems,
     ...(classificationReport !== undefined ? { classification: classificationReport } : {}),
     status: 'unreviewed',
   };
-  return {
+  const base: PolicyArtifacts = {
     entries,
     knowledge,
     program,
@@ -151,4 +175,7 @@ export function synthesizePolicyArtifacts(sources: readonly PolicySource[], opti
     ...(tree !== undefined ? { safetyRules: synthesizeSafetyRules(program) } : {}),
     review,
   };
+  if (tree === undefined || options.workflows === false) return base;
+  const emitted = emitPolicyWorkflows(base, options.workflows ?? {});
+  return emitted.emission !== undefined ? { ...base, workflows: emitted.emission } : { ...base, workflowProblems: emitted.problems };
 }

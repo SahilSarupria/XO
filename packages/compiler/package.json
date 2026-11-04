@@ -30,7 +30,8 @@
     "@xo/package-sdk": "0.1.0",
     "@xo/capability-contract": "0.1.0",
     "@xo/capability-layer": "0.1.0",
-    "@xo/permissions": "0.1.0"
+    "@xo/permissions": "0.1.0",
+    "@xo/workflow-ir": "0.1.0"
   },
   "devDependencies": {
     "@xo/workflow-composer": "0.1.0",

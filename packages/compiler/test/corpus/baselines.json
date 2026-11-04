@@ -1,11 +1,11 @@
 {
   "expense-approval.md": {
-    "decisionSentences": 13,
+    "decisionSentences": 14,
     "understood": 7,
-    "understoodRatio": 0.538,
-    "unrecognized": 6,
-    "openQuestions": 8,
-    "blockingQuestions": 7,
+    "understoodRatio": 0.5,
+    "unrecognized": 7,
+    "openQuestions": 9,
+    "blockingQuestions": 8,
     "failClosedPaths": 1,
     "treeProblems": 0,
     "hasTree": true,

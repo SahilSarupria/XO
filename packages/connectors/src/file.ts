@@ -6,6 +6,12 @@ export interface FileConfig {
   /** Logical root id -> absolute directory, bound by the operator. Workflows only ever name the logical id. */
   readonly roots: Readonly<Record<string, string>>;
   readonly maxBytes: number;
+  /**
+   * Create a missing root directory (mode 0700) on the first WRITE instead of failing. Off by default: a typo in an
+   * operator-bound path then fails closed rather than silently creating a new directory. Reads never create anything,
+   * and the filesystem root is never created or used.
+   */
+  readonly createRoots?: boolean;
 }
 
 /** Validates a root-relative path lexically (no traversal, no absolute paths, no NUL/backslash). */
@@ -26,7 +32,9 @@ async function confined(
   if (typeof rootId !== 'string' || cfg.roots[rootId] === undefined) throw new ConnectorError('DENIED', 'unknown root');
   const prob = relativePathProblem(args['path']);
   if (prob !== undefined) throw new ConnectorError('DENIED', `path refused: ${prob}`);
-  const rootReal = await realpath(resolve(cfg.roots[rootId] as string));
+  const rootPath = resolve(cfg.roots[rootId] as string);
+  if (forWrite && cfg.createRoots === true && rootPath !== sep) await mkdir(rootPath, { recursive: true, mode: 0o700 });
+  const rootReal = await realpath(rootPath);
   const full = resolve(rootReal, join(...(args['path'] as string).split('/')));
   if (!full.startsWith(rootReal + sep)) throw new ConnectorError('DENIED', 'path escapes the root');
   if (forWrite) await mkdir(dirname(full), { recursive: true });

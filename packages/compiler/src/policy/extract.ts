@@ -58,8 +58,16 @@ export interface Extraction {
   readonly decisionSentences: number;
 }
 
+/**
+ * Words that make an approval sentence conditional or negated in ways the approval patterns cannot read. A sentence
+ * containing one is never turned into an approval: it stays unrecognized and goes to a reviewer.
+ * (Without this, "The desk never pays the claim" would read as a settlement.)
+ */
+const APPROVAL_BLOCKERS =
+  /\b(?:never|not|no|cannot|can't|won't|unless|except|only|but|however|although|provided|subject|may|might|should|must not|if not|and|or)\b|[;$\d]/i;
+
 const NORMATIVE =
-  /\b(must|shall|never|only|escalat\w*|den(?:y|ied|ies)|payable|not (?:be )?(?:paid|compensable|excluded|covered)|is excluded|within|at least|more than|no (?:deductible|declared)|pays?|routed|referred|approv\w*|reimburs\w*|regardless|no matter|requires?|prohibited|forbidden|may not|cannot|do not|don't)\b|\$\d/i;
+  /\b(must|shall|never|only|escalat\w*|den(?:y|ied|ies)|payable|not (?:be )?(?:paid|compensable|excluded|covered)|is excluded|within|at least|more than|no (?:deductible|declared)|pays?|routed|referred|approv\w*|reject\w*|declin\w*|refus\w*|ineligible|not eligible|disqualif\w*|turned down|reimburs\w*|regardless|no matter|requires?|prohibited|forbidden|may not|cannot|do not|don't)\b|\$\d/i;
 
 const BACKGROUND_SECTION = /\b(?:background|about|overview|introduction|glossary|handbook|appendix|contact|history|notes?)\b/i;
 const TARGET = "([A-Z][A-Za-z0-9&' ]*?)";
@@ -684,6 +692,20 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
       ) {
         hit = 'restates_previous';
       } else if (
+        (sc !== undefined || kinds.length === 0) &&
+        !(e.sentences.indexOf(raw) > 0 && prevHit === undefined) &&
+        (x = m(/^If there is no (.+?), the [a-z ]+ (?:is|are) (?:rejected|denied|declined)\.?$/i))
+      ) {
+        // standalone form: a missing yes/no item refuses the case (when the previous sentence already stated it, it was a restatement, above)
+        const fact =
+          reg.find(x[1]!) ??
+          reg.declare(`${x[1]} present`, 'boolean', {
+            forceName: identifier(x[1]!, 3),
+            description: `true if the case has ${trimPhrase(x[1]!)}`,
+          });
+        gate(e, s, sc, `${fact} == false`, { decision: 'deny', reason: reasonOf(e) }, `no ${trimPhrase(x[1]!)}`);
+        hit = 'gate';
+      } else if (
         (x = m(
           /^(?:(?:Any|An?|The)\s+)?([A-Za-z][A-Za-z ]*?) (?:is|are) never (?:reimbursable|reimbursed|payable|covered|approved|eligible)\.?$/i,
         ))
@@ -694,6 +716,56 @@ export function extractProgram(entries: readonly PolicyEntry[], title: string, t
         });
         gate(e, s, sc, `${fact} == true`, { decision: 'deny', reason: reasonOf(e) }, `${trimPhrase(x[1]!)} is never allowed`);
         hit = 'never_allowed';
+      } else if (
+        !APPROVAL_BLOCKERS.test(s) &&
+        (sc !== undefined || kinds.length === 0) &&
+        (x = m(
+          /^(?:Otherwise|If none of (?:the|these) (?:above|preceding) (?:rules|checks|conditions) (?:applies|apply|is met|are met)|(?:Any|An?|Every) (?:[a-z]+ ){0,3}that (?:passes|clears|meets|satisfies) (?:all|every|each)(?: of)? (?:the )?(?:above |preceding |these )?(?:checks|rules|conditions|criteria|requirements)),? (?:the |it |that |this )?(?:[a-z]+ ){0,3}?(?:is|are|will be|shall be) approved\b/i,
+        ))
+      ) {
+        // "Otherwise the request is approved": the default outcome once no earlier rule has refused or escalated the case
+        finish(
+          e,
+          s,
+          sc,
+          undefined,
+          { decision: 'approve', reason: 'APPROVED' },
+          undefined,
+          'approved when no rule refuses or escalates it',
+        );
+        hit = 'approval';
+      } else if (
+        !APPROVAL_BLOCKERS.test(s) &&
+        (sc !== undefined || kinds.length === 0) &&
+        (x = m(
+          /^(?:If|When) (?:the |a |an )?([a-z][a-z ]{2,60}?), the (?:[a-z]+ ){0,3}?(?:is|are|will be|shall be) approved(?: automatically)?\.?$/i,
+        ))
+      ) {
+        // "If the customer is a verified member, the request is approved": one plain yes/no fact; anything compound is left to a reviewer
+        const fact = reg.declare(boolPhrase(x[1]!), 'boolean', { description: `true if ${trimPhrase(x[1]!)}` });
+        finish(e, s, sc, `${fact} == true`, { decision: 'approve', reason: reasonOf(e) }, undefined, trimPhrase(x[1]!));
+        hit = 'approval';
+      } else if (
+        !APPROVAL_BLOCKERS.test(s) &&
+        (sc !== undefined || kinds.length === 0) &&
+        amountField !== undefined &&
+        (x = m(
+          /^(?:The|Our) (?:[a-z]+ ){0,2}?(?:pays|reimburses|refunds|credits) (?:the )?([a-z]+(?: [a-z]+){0,2})(?: of the [a-z ]+)?\.?$/i,
+        ))
+      ) {
+        // "The desk pays the replacement value": the settlement. It approves the case and states the amount; the amount is
+        // read from an existing numeric fact when the document already named it, otherwise one new fact for the reviewer to supply
+        const amountFact = reg.find(x[1]!) ?? reg.declare(x[1]!, 'number', { description: `${trimPhrase(x[1]!)} in USD` });
+        finish(
+          e,
+          s,
+          sc,
+          undefined,
+          { decision: 'approve', reason: 'APPROVED' },
+          `=round(${amountFact}, 2)`,
+          `pays the ${trimPhrase(x[1]!)}`,
+        );
+        hit = 'approval';
       } else if (/(?:escalated|denied)(?: or (?:escalated|denied))? \w+ (?:are|is) not paid\b/i.test(s)) {
         invariants.push({ kind: 'zero_amount_on', decisions: ['deny', 'escalate'], sentence: s });
         hit = 'invariant';

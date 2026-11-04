@@ -23,6 +23,7 @@ function jsonBytes(value: unknown): Uint8Array {
 }
 
 import type { PolicyArtifacts } from '../policy/artifacts.js';
+import { WORKFLOW_COMPONENT_PATH } from '@xo/workflow-ir';
 
 export interface PackageXoirIdentity {
   readonly name: string;
@@ -272,7 +273,41 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
     reason: 'no fine-tuning/weights pipeline exists in this compiler',
   };
 
-  const nonKnowledgeGraphInputs = [decisionTrees, caseLibrary, memoryGraph, reasoningTraces, promptStrategies, safetyRules, benchmarkSuite]
+  // `workflows` is lowered from the same policy program the decision tree comes from (policy/workflow-emit.ts); it is
+  // already validated there against exactly the tree this package ships.
+  const policyWorkflows = policy?.workflows;
+  const workflows: ComponentBuildResult =
+    policyWorkflows !== undefined
+      ? {
+          input: { kind: 'workflows', path: WORKFLOW_COMPONENT_PATH, data: jsonBytes(policyWorkflows.component), required: false },
+          summary: {
+            kind: 'workflows',
+            included: true,
+            nodeCount: policyWorkflows.component.workflows.length,
+            reason: 'lowered from the source policy (decision tree + review data); determinism classes are declared, not measured',
+          },
+        }
+      : {
+          summary: {
+            kind: 'workflows',
+            included: false,
+            reason:
+              policy?.workflowProblems !== undefined
+                ? `workflow emission failed: ${policy.workflowProblems.slice(0, 3).join('; ')}`
+                : 'no policy-synthesis tree was produced for this compilation, so no workflow was emitted',
+          },
+        };
+
+  const nonKnowledgeGraphInputs = [
+    decisionTrees,
+    caseLibrary,
+    memoryGraph,
+    reasoningTraces,
+    promptStrategies,
+    safetyRules,
+    benchmarkSuite,
+    workflows,
+  ]
     .map((b) => b.input)
     .filter((i): i is ComponentInput => i !== undefined);
   const includedKinds: ComponentKind[] = [
@@ -332,7 +367,17 @@ export function packageXoirGraph(graph: XoirGraph, options: PackageXoirOptions):
     'no concept/fact/heuristic/preference/capability nodes in this XOIR graph',
   );
 
-  const built = [knowledge, decisionTrees, caseLibrary, memoryGraph, reasoningTraces, promptStrategies, safetyRules, benchmarkSuite];
+  const built = [
+    knowledge,
+    decisionTrees,
+    caseLibrary,
+    memoryGraph,
+    reasoningTraces,
+    promptStrategies,
+    safetyRules,
+    benchmarkSuite,
+    workflows,
+  ];
   const includedInputs = built.map((b) => b.input).filter((i): i is ComponentInput => i !== undefined);
 
   let builder = ManifestBuilder.create()
