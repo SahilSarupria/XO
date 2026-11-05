@@ -21,9 +21,9 @@ defineConnectorContract('filesystem', async () => {
     deps: { registry, inventory: new EnvironmentInventory() },
     connectorId: FILESYSTEM_CONNECTOR_ID,
     sourceType: 'local_filesystem',
-    scope: { kind: 'filesystem_root', root },
+    scope: { kind: 'filesystem_root', root, includeKeys: ['INV-1001.txt', 'notes.md'] },
     readKeys: ['INV-1001.txt', 'notes.md'],
-    supportsSync: false,
+    supportsSync: true,
     supportsHealth: false,
     cleanup: () => rm(base, { recursive: true, force: true }),
   };

@@ -33,3 +33,4 @@ export * from './agent/client.js';
 export * from './cloud/index.js';
 export * from './knowledge/index.js';
 export * from './sdk/index.js';
+export { queryCapabilities, CAPABILITY_PROBES, type CapabilityName, type CapabilitySet } from './capabilities.js';

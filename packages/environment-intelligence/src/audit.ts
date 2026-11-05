@@ -43,7 +43,9 @@ export type AuditOperation =
   /** C5: a read of derived knowledge by a caller (its own authority; every query is audited). */
   | 'query_knowledge'
   /** C5: a human-review decision on derived knowledge (entity merge / conflict resolution). */
-  | 'review_knowledge';
+  | 'review_knowledge'
+  /** C7: a capability query (what the caller may do), asked of the same gate that enforces the actions; every query is audited. */
+  | 'query_capabilities';
 
 /**
  * - `attempt`:    write-ahead record, accepted BEFORE protected evidence is read.
@@ -205,6 +207,7 @@ const OPERATIONS: ReadonlySet<string> = new Set([
   'derive_knowledge',
   'query_knowledge',
   'review_knowledge',
+  'query_capabilities',
 ]);
 const TOP_KEYS: ReadonlySet<string> = new Set([
   'idempotencyKey',
