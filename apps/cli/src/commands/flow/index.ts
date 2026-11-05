@@ -30,6 +30,7 @@ import {
 import { createXoServer } from '@xo/server';
 import { join } from 'node:path';
 import type { CommandRegistry } from '../../command-registry.js';
+import { capsFromFlags, extractorFor } from './extractor.js';
 
 const SUBSYSTEM = 'flow';
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
@@ -55,7 +56,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow audit-verify <bundle.json> --pubkey <pem>   Verify signature, merkle root, hash chains\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
-      'xo flow run <workflows.json> --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
+      'xo flow run <workflows.json> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
       const [sub, file] = args.positionals;
@@ -101,12 +102,20 @@ export function registerCommands(registry: CommandRegistry): void {
           }
           const treeMap = new Map<string, DecisionTree>();
           if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
+          const ex = extractorFor(comp, id);
+          if (!ex.ok) return fail(ex.error);
+          const memoDir = flag(args.flags, 'memo-dir');
+          const caps = capsFromFlags(args.flags, resolve(runs));
+          if (!caps.ok) return fail(caps.error);
           const runner = new WorkflowRunner({
             component: comp,
             workflowId: id,
             store: new RunStore(resolve(runs)),
             connectors: new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() }),
             trees: treeMap,
+            ...(ex.value !== undefined ? { extractor: ex.value } : {}),
+            ...(memoDir !== undefined ? { memoDir: resolve(memoDir) } : {}),
+            ...(caps.value !== undefined ? { caps: caps.value } : {}),
             dryRun: args.flags['dry-run'] === true,
             shadow: args.flags['shadow'] === true,
           });
@@ -236,6 +245,7 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo serve --workflows <workflows.json> --runs <dir> [--policy <policy.json>] [--trees <file>] [--approvers <reviewers.json>] [--port 7433] [--host 127.0.0.1] [--allow-remote]\n' +
       '                        Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). The bearer token is read from XO_SERVER_TOKEN (>= 24 chars), never from a flag.\n' +
+      '                        Free-text workflows use the operator model (XO_PROVIDER/XO_MODEL/<vendor>_API_KEY, optional XO_EXTRACTOR_*); workflows that need none never read it. [--memo-dir <dir>] reuses validated facts for identical cases. [--daily-model-calls <n>] [--daily-effects <n>] persisted daily caps (exceeding one escalates, never drops).\n' +
       '                        Binds to loopback by default. There is no TLS: use a TLS proxy for anything but localhost.',
     run: async (args) => {
       const token = process.env['XO_SERVER_TOKEN'];
@@ -257,6 +267,9 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         const treeMap = new Map<string, DecisionTree>();
         if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
+        const memoDir = flag(args.flags, 'memo-dir');
+        const caps = capsFromFlags(args.flags, resolve(runs));
+        if (!caps.ok) return fail(caps.error);
         const approvers = flag(args.flags, 'approvers');
         const reviewers: Reviewer[] = approvers !== undefined ? JSON.parse(readFileSync(resolve(approvers), 'utf8')) : [];
         const base = resolve(runs);
@@ -269,12 +282,16 @@ export function registerCommands(registry: CommandRegistry): void {
         const skipped: string[] = [];
         for (const wf of comp.workflows) {
           try {
+            const ex = extractorFor(comp, wf.id);
+            if (!ex.ok) throw new Error(ex.error);
             runners[wf.id] = new WorkflowRunner({
               component: comp,
               workflowId: wf.id,
               store: leased,
               connectors,
               trees: treeMap,
+              ...(ex.value !== undefined ? { extractor: ex.value } : {}),
+              ...(memoDir !== undefined ? { memoDir: resolve(memoDir) } : {}),
               ...(reviewers.length > 0 ? { approvals: { reviewers: new StaticReviewerRegistry(reviewers) } } : {}),
               lease: {
                 client: authority,

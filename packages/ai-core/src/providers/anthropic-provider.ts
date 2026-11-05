@@ -105,7 +105,10 @@ export class AnthropicProvider implements ModelProvider {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      throw new AiError(ErrorCode.AI_PROVIDER_REQUEST_FAILED, `Anthropic API returned ${response.status}: ${body}`);
+      throw new AiError(
+        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
+        `Anthropic API returned ${response.status}: ${this.options.apiKey.length > 0 ? body.split(this.options.apiKey).join('[redacted]') : body}`,
+      );
     }
 
     const data = (await response.json()) as AnthropicMessagesResponse;

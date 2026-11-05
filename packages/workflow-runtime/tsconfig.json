@@ -2,5 +2,5 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "outDir": "dist", "rootDir": "src" },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../workflow-ir" }, { "path": "../connectors" }, { "path": "../capability-layer" }]
+  "references": [{ "path": "../workflow-ir" }, { "path": "../connectors" }, { "path": "../capability-layer" }, { "path": "../ai-core" }]
 }

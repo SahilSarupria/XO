@@ -38,6 +38,7 @@ import type { JournalEntry, RunStoreLike } from './journal.js';
 import { LeaseError, type LeaseClient } from './lease.js';
 import { ExtractionMemo, type UsageCaps } from './limits.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
+import { isExtractionRefusal } from './extraction-refusal.js';
 
 /** What this runner implements. `for_each` and `wait_event` are not built yet; `approve` needs `approvals` options; workflows needing them are refused whole. */
 export const RUNNER_FEATURES = ['approve', 'wait_timer', 'compensation', 'model_extract', 'lookup', 'rules', 'authority_ceilings'] as const;
@@ -48,6 +49,8 @@ export interface Extractor {
     readonly text?: string;
     readonly fields: Readonly<Record<string, FieldSpec>>;
     readonly grounding: 'none' | 'quote_required';
+    /** The step's model-call budget; an extractor must never make more calls than this (and must report the true count). */
+    readonly maxModelCalls?: number;
   }): Promise<{ readonly facts: Readonly<Record<string, Scalar>>; readonly modelCalls: number }>;
 }
 
@@ -141,6 +144,17 @@ interface RunRec {
 }
 
 const TRANSIENT = new Set(['FAILED', 'TIMEOUT', 'CIRCUIT_OPEN']);
+/** Bounded wait: a hung model call must not hang a run. (The underlying request cannot be cancelled through `Extractor`; it is abandoned, and its late result is ignored.) */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  // a late rejection from the abandoned call must not become an unhandled rejection
+  p.catch(() => undefined);
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
 const sleepReal = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, runId: string): RunRec | undefined {
@@ -825,7 +839,17 @@ export class WorkflowRunner {
       }
     }
     try {
-      const r = await this.o.extractor.extract({ instruction: step.instruction, text, fields, grounding: step.grounding ?? 'none' });
+      const r = await withTimeout(
+        this.o.extractor.extract({
+          instruction: step.instruction,
+          text,
+          fields,
+          grounding: step.grounding ?? 'none',
+          maxModelCalls: step.maxModelCalls ?? 1,
+        }),
+        step.timeoutMs,
+        `extraction exceeded the step timeout (${step.timeoutMs} ms)`,
+      );
       if (r.modelCalls > (step.maxModelCalls ?? 1))
         return { kind: 'escalate', code: 'MODEL_CALL_BUDGET', message: 'extractor exceeded the step model-call budget' };
       const problems = Object.entries(fields)
@@ -836,6 +860,8 @@ export class WorkflowRunner {
       await memo?.set(memoKey, facts as Record<string, Scalar>);
       return { kind: 'ok', outputs: facts, modelCalls: r.modelCalls };
     } catch (e) {
+      // an answer that cannot be verified is a case for a person, not a retry and not a guess
+      if (isExtractionRefusal(e)) return { kind: 'escalate', code: e.code, message: e.message };
       return { kind: 'fail', code: 'FAILED', message: (e as Error).message };
     }
   }

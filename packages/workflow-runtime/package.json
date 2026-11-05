@@ -20,6 +20,7 @@
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
   "dependencies": {
+    "@xo/ai-core": "0.1.0",
     "@xo/capability-layer": "0.1.0",
     "@xo/connectors": "0.1.0",
     "@xo/workflow-ir": "0.1.0"

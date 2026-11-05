@@ -146,7 +146,7 @@ const SAFE_DECISION = /^[A-Za-z0-9_ -]{1,64}$/;
  * does not decide anything, and a hit is labelled as such in the report.
  */
 const JUDGEMENT =
-  /\b(discretion|judg(?:e)?ment|case[- ]by[- ]case|deems?|reasonable|appropriate|at (?:its|their|the desk's) (?:option|choice)|may (?:use|exercise|choose|decide|elect|offer|waive|grant|consider)|where (?:necessary|appropriate)|circumstances|seems?)\b/i;
+  /\b(discretion|judg(?:e)?ment|case[- ]by[- ]case|deems?|reasonable|appropriate|at (?:its|their|the [a-z]+'s) (?:option|choice)|may (?:use|exercise|choose|decide|elect|offer|waive|grant|consider)|where (?:necessary|appropriate)|circumstances|seems?)\b/i;
 
 const WITHHELD = '(source sentence withheld: it looks like a credential)';
 /** Quoted policy text is scrubbed with the validator's own secret test before it can reach the component OR the report. */
