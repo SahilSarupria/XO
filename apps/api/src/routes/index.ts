@@ -17,6 +17,8 @@ import type { PermissionManager } from '@xo/permissions';
 import type { AuditAccessController, AuditSink } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
+import { registerConnectRoutes } from './connect-routes.js';
+import type { ConnectService } from '@xo/connect';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -29,6 +31,8 @@ export interface RegisterRoutesDeps {
   /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
   readonly auditSink: AuditSink;
   readonly auditAccess: AuditAccessController;
+  /** C7 — optional. When absent the `/connect/*` routes are not registered (404), never half-working. */
+  readonly connect?: ConnectService;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -46,4 +50,5 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
+  if (deps.connect !== undefined) registerConnectRoutes(router, deps.connect);
 }

@@ -20,6 +20,7 @@
     "@xo/audit": "0.1.0",
     "@xo/capability-contract": "0.1.0",
     "@xo/compiler": "0.1.0",
+    "@xo/connect": "0.1.0",
     "@xo/crypto": "0.1.0",
     "@xo/errors": "0.1.0",
     "@xo/logger": "0.1.0",

@@ -15,9 +15,13 @@ import type { WorkspaceStore } from './workspace/workspace.js';
 import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
+import type { ConnectService } from '@xo/connect';
 import { registerRoutes } from './routes/index.js';
 import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
+import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
+import { establishAuthenticatedPrincipal } from '@xo/permissions';
+import { join } from 'node:path';
 import { AuditService } from './audit/audit-service.js';
 
 export interface ServerDeps {
@@ -58,6 +62,21 @@ export interface ServerDeps {
   readonly auditSink?: AuditSink;
   /** Principal kinds that may even be considered for `audit.read`/`audit.purge` (default `['service']`; the policy still decides). */
   readonly auditAccessKinds?: readonly ('human' | 'service')[];
+  /** C7 — optional Connect application service (see `@xo/connect`). Supplied by the host's composition root. */
+  readonly connect?: ConnectService;
+  /**
+   * C7 — when set (and no `connect` is supplied) the server builds the Connect service itself, from ITS permission manager and ITS audit
+   * sink, with Connect's durable state in this directory. A host-supplied `auditSink` MUST have been created with
+   * `EI_AUDIT_EXTENSION_SCHEMAS` (exported by `@xo/connect`), or every Connect operation fails closed.
+   */
+  readonly connectStateDir?: string;
+  /**
+   * The service principal Connect's durable state runs as (default `xo-connect`). The policy MUST allow it `audit.read`: starting the
+   * durable store needs a single-use audit read grant for it, and without one every Connect operation fails closed.
+   */
+  readonly connectServiceId?: string;
+  /** Receives the Connect runtime built from `connectStateDir`, so the host can `await runtime.close()` at shutdown. */
+  readonly onConnectRuntime?: (runtime: ConnectRuntime) => void;
 }
 
 function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
@@ -100,7 +119,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   if (deps.auditSink === undefined && process.env['NODE_ENV'] === 'production') {
     throw new AuditError(ErrorCode.AUDIT_CONFIG_INVALID, 'a durable audit sink is required in production (see XO_AUDIT_* configuration)');
   }
-  const auditSink = deps.auditSink ?? new NonProductionAuditSink();
+  const auditSink = deps.auditSink ?? new NonProductionAuditSink(undefined, { extensionSchemas: EI_AUDIT_EXTENSION_SCHEMAS });
   if (auditSink.mode === 'non-production') {
     deps.logger?.warn('AUDIT IS RUNNING IN NON-PRODUCTION MODE: audit events are volatile (process memory only) and are NOT durable');
   }
@@ -109,7 +128,36 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     permissionManager,
     ...(deps.auditAccessKinds !== undefined ? { allowedPrincipalKinds: deps.auditAccessKinds } : {}),
   });
-  registerRoutes(router, { workspaceStore, workspaceDataConfig, permissionManager, audit, auditSink, auditAccess });
+  let connect = deps.connect;
+  if (connect === undefined && deps.connectStateDir !== undefined) {
+    const svc = establishAuthenticatedPrincipal({ kind: 'service', id: deps.connectServiceId ?? 'xo-connect' });
+    if (!svc.ok) throw svc.error;
+    const runtime = createConnectRuntime({
+      permissionManager,
+      auditSink,
+      stateDir: join(deps.connectStateDir, 'connect'),
+      durable: {
+        dir: join(deps.connectStateDir, 'ei'),
+        readGrant: async () => {
+          const granted = await auditAccess.authorize(svc.value, 'read');
+          if (!granted.ok) throw granted.error;
+          return granted.value;
+        },
+        principal: svc.value,
+      },
+    });
+    deps.onConnectRuntime?.(runtime);
+    connect = runtime.service;
+  }
+  registerRoutes(router, {
+    workspaceStore,
+    workspaceDataConfig,
+    permissionManager,
+    audit,
+    auditSink,
+    auditAccess,
+    ...(connect !== undefined ? { connect } : {}),
+  });
   return router;
 }
 
