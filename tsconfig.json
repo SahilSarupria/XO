@@ -26,6 +26,7 @@
     { "path": "packages/permissions" },
     { "path": "packages/audit" },
     { "path": "packages/environment-intelligence" },
+    { "path": "packages/connect" },
     { "path": "packages/registry-core" },
     { "path": "packages/registry" },
     { "path": "packages/atlas" },

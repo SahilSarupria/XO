@@ -1,0 +1,31 @@
+{
+  "name": "@xo/connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "XO Connect application logic (C7). Interface-neutral business logic for connecting sources, over the Environment Intelligence backend. No UI, no Studio imports; read-only toward sources.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test"
+  },
+  "dependencies": {
+    "@xo/audit": "0.1.0",
+    "@xo/environment-intelligence": "0.1.0",
+    "@xo/permissions": "0.1.0",
+    "@xo/types": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/testing": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}
