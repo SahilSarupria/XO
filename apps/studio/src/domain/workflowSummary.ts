@@ -1,4 +1,4 @@
-import type { Capability, Workflow, WorkflowRun } from '../platform/wire';
+import type { Capability, Workflow, WorkflowControl, WorkflowMode, WorkflowRun } from '../platform/wire';
 import type { OutcomeTone } from './review';
 import { describeRun, findActiveRun, humanStepCount, startReadiness, workflowTitle } from './work';
 
@@ -9,14 +9,14 @@ import { describeRun, findActiveRun, humanStepCount, startReadiness, workflowTit
  * not here at all, so the page cannot show them by accident. When the platform starts reporting them, they are added to
  * this one place.
  */
-export type NeedKind = 'decision' | 'failed' | 'rules' | 'blocked' | 'checking' | 'clear';
+export type NeedKind = 'decision' | 'failed' | 'rules' | 'practice' | 'limit' | 'blocked' | 'checking' | 'clear';
 export interface Need {
   readonly kind: NeedKind;
   /** The chip text. */
   readonly text: string;
   readonly tone: OutcomeTone | 'ok';
 }
-export type FilterKey = 'all' | 'needs' | 'inprogress' | 'ready' | 'blocked';
+export type FilterKey = 'all' | 'needs' | 'inprogress' | 'ready' | 'blocked' | 'live' | 'shadow' | 'paused';
 
 export interface WorkflowSummary {
   readonly workflow: Workflow;
@@ -25,7 +25,17 @@ export interface WorkflowSummary {
   /** The line under the name: how many steps, and how many need a person. */
   readonly sub: string;
   /** The status pill. Same words as before the redesign. */
-  readonly status: { readonly label: string; readonly tone: OutcomeTone };
+  readonly status: {
+    readonly label: string;
+    readonly tone: OutcomeTone;
+    /** Set when the pill shows the workflow's mode (live, shadow, paused) rather than its readiness. */ readonly mode?: WorkflowMode;
+  };
+  /** What the platform reports about the workflow's controls; `undefined` on a platform that does not report them yet. */
+  readonly control: WorkflowControl | undefined;
+  /** How it can start. "Someone starts it" is always there; the others only when switched on, and `active` says whether they are firing now. */
+  readonly triggers: readonly { readonly kind: 'manual' | 'webhook' | 'schedule'; readonly label: string; readonly active: boolean }[];
+  /** Practice runs a reviewer has not judged yet. */
+  readonly unreviewedCases: number;
   /** The one thing that needs the person most, or "clear". */
   readonly need: Need;
   /** Names of steps whose rules still need approval. */
@@ -40,6 +50,15 @@ export interface WorkflowSummary {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** "Every 30 minutes", "Every 2 hours", "Every day". */
+export function describeEvery(minutes: number): string {
+  if (minutes % 1440 === 0) return minutes === 1440 ? 'Every day' : `Every ${minutes / 1440} days`;
+  if (minutes % 60 === 0) return minutes === 60 ? 'Every hour' : `Every ${minutes / 60} hours`;
+  return `Every ${minutes} minutes`;
+}
+const MODE_LABEL: Readonly<Record<WorkflowMode, string>> = { draft: 'Draft', shadow: 'Shadow', live: 'Live', paused: 'Paused' };
+export const modeLabel = (m: WorkflowMode): string => MODE_LABEL[m];
 
 /** Runs of this workflow started in the 7 days up to `now`, counted per day (index 6 is today). */
 export function weekOfRuns(runs: readonly WorkflowRun[], workflowId: string, now: number): { total: number; perDay: number[] } {
@@ -65,6 +84,9 @@ export function summarizeWorkflow(
   capsFailed: boolean,
   runs: readonly WorkflowRun[],
   now: number,
+  control?: WorkflowControl,
+  /** The workspace-wide pause is on. */
+  allPaused = false,
 ): WorkflowSummary {
   const ready = startReadiness(w, caps);
   const active = findActiveRun(runs, w.workflowId, w.compilationId);
@@ -73,7 +95,7 @@ export function summarizeWorkflow(
   const person = humanStepCount(w, caps);
   const split = person === undefined ? undefined : { xo: w.stepCount - person, person };
 
-  const status =
+  const readinessStatus =
     active !== undefined
       ? { label: describeRun(active).label, tone: describeRun(active).tone }
       : {
@@ -88,7 +110,18 @@ export function summarizeWorkflow(
                   : 'Checking…',
           tone: (ready.canStart ? 'success' : 'warning') as OutcomeTone,
         };
+  // A workflow that is live, practising or paused shows that; a draft keeps the readiness words (they say what is missing).
+  const mode = control?.mode;
+  const status =
+    mode === 'live'
+      ? { label: 'Live', tone: 'success' as OutcomeTone, mode }
+      : mode === 'shadow'
+        ? { label: 'Shadow', tone: 'neutral' as OutcomeTone, mode }
+        : mode === 'paused'
+          ? { label: 'Paused', tone: 'warning' as OutcomeTone, mode }
+          : readinessStatus;
 
+  const unreviewedCases = control === undefined ? 0 : control.shadowCases.filter((c) => c.judgement === undefined).length;
   let need: Need;
   if (active !== undefined && (active.status === 'waiting_for_human' || active.status === 'interrupted')) {
     need = { kind: 'decision', text: 'A person must decide', tone: 'warning' };
@@ -97,6 +130,14 @@ export function summarizeWorkflow(
   } else if (active === undefined && ready.needApproval.length > 0) {
     const n = ready.needApproval.length;
     need = { kind: 'rules', text: `${n} ${plural(n, 'rule', 'rules')} to approve`, tone: 'warning' };
+  } else if (control !== undefined && control.mode === 'shadow' && unreviewedCases > 0) {
+    need = {
+      kind: 'practice',
+      text: `${unreviewedCases} ${plural(unreviewedCases, 'case', 'cases')} to review`,
+      tone: 'warning',
+    };
+  } else if (control !== undefined && control.limits.dailyRunCap !== undefined && control.limits.runsToday >= control.limits.dailyRunCap) {
+    need = { kind: 'limit', text: 'Daily limit reached', tone: 'neutral' };
   } else if (!w.executable) {
     need = { kind: 'blocked', text: 'Can’t run yet', tone: 'neutral' };
   } else if (caps === undefined) {
@@ -106,14 +147,21 @@ export function summarizeWorkflow(
   }
 
   const filters = new Set<FilterKey>(['all']);
-  if (need.kind === 'decision' || need.kind === 'failed' || need.kind === 'rules') filters.add('needs');
+  if (need.kind === 'decision' || need.kind === 'failed' || need.kind === 'rules' || need.kind === 'practice') filters.add('needs');
   if (active !== undefined) filters.add('inprogress');
   else if (ready.canStart) filters.add('ready');
   if (!w.executable) filters.add('blocked');
+  if (mode === 'live' || mode === 'shadow' || mode === 'paused') filters.add(mode);
 
   const sub =
     `${w.stepCount} ${plural(w.stepCount, 'step', 'steps')}` +
     (person !== undefined && person > 0 ? ` · ${person} ${plural(person, 'needs', 'need')} a person` : '');
+
+  const firing = control !== undefined && !allPaused && (mode === 'shadow' || mode === 'live');
+  const triggers: WorkflowSummary['triggers'][number][] = [{ kind: 'manual', label: 'Someone starts it', active: true }];
+  if (control?.triggers.webhook === true) triggers.push({ kind: 'webhook', label: 'Webhook', active: firing });
+  if (control?.triggers.schedule !== undefined)
+    triggers.push({ kind: 'schedule', label: describeEvery(control.triggers.schedule.everyMinutes), active: firing });
 
   return {
     workflow: w,
@@ -121,6 +169,9 @@ export function summarizeWorkflow(
     title: workflowTitle(w),
     sub,
     status,
+    control,
+    triggers,
+    unreviewedCases,
     need,
     needApproval: ready.needApproval,
     active,
@@ -134,7 +185,7 @@ export function summarizeWorkflow(
 export interface NeedItem {
   readonly workflowId: string;
   readonly title: string;
-  readonly kind: 'decision' | 'failed' | 'rules';
+  readonly kind: 'decision' | 'failed' | 'rules' | 'practice';
   readonly sentence: string;
   readonly action: string;
 }
@@ -157,14 +208,23 @@ export function needItems(all: readonly WorkflowSummary[]): NeedItem[] {
         sentence: `${n} ${plural(n, 'rule needs', 'rules need')} your approval before this can start`,
         action: 'Review rules',
       });
+    } else if (k === 'practice') {
+      const n = s.unreviewedCases;
+      out.push({
+        workflowId: s.id,
+        title: s.title,
+        kind: k,
+        sentence: `${n} practice ${plural(n, 'case is', 'cases are')} waiting for your judgement`,
+        action: 'Review cases',
+      });
     }
   }
-  const rank = { decision: 0, failed: 1, rules: 2 } as const;
+  const rank = { decision: 0, failed: 1, rules: 2, practice: 3 } as const;
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
 }
 
 export function countFilters(all: readonly WorkflowSummary[]): Record<FilterKey, number> {
-  const c: Record<FilterKey, number> = { all: 0, needs: 0, inprogress: 0, ready: 0, blocked: 0 };
+  const c: Record<FilterKey, number> = { all: 0, needs: 0, inprogress: 0, ready: 0, blocked: 0, live: 0, shadow: 0, paused: 0 };
   for (const s of all) for (const f of s.filters) c[f] += 1;
   return c;
 }

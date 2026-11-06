@@ -1,6 +1,7 @@
 import { ConsoleLogger } from '@xo/logger';
 import { loadConfig } from './config.js';
 import { createHttpServer } from './server.js';
+import { schedulerDepsFrom, startScheduler } from './workflow-controls/scheduler.js';
 
 export { createHttpServer, buildRouter } from './server.js';
 export type { ServerDeps } from './server.js';
@@ -20,6 +21,12 @@ if (isMainModule()) {
     server.listen(config.port, config.host, () => {
       logger.info(`listening on http://${config.host}:${config.port}`);
     });
+    // Schedule triggers fire from this process. Set XO_SCHEDULER=off to turn them off (for example on a second instance).
+    if (process.env['XO_SCHEDULER'] !== 'off') {
+      const stop = startScheduler(schedulerDepsFrom(config.workspacesDir, config.workspaceDataDir, (line) => logger.warn(line)));
+      server.on('close', stop);
+      logger.info('schedule triggers are on (XO_SCHEDULER=off to disable)');
+    }
   } catch (cause) {
     // Invalid or incomplete authentication configuration must stop startup visibly, never degrade silently.
     logger.error(`refusing to start: ${cause instanceof Error ? cause.message : 'invalid configuration'}`);

@@ -12,6 +12,9 @@ import {
   parseSource,
   parseSourceList,
   parseWorkflowList,
+  parseWorkflowControl,
+  parseWorkflowControls,
+  parsePauseState,
   parseWorkflowRun,
   parseWorkflowRunList,
   parseWorkspace,
@@ -26,6 +29,9 @@ import {
   type RegistryPackage,
   type Source,
   type Workflow,
+  type WorkflowControl,
+  type WorkflowControls,
+  type WorkflowMode,
   type WorkflowRun,
   type Workspace,
   type WorkspaceRole,
@@ -583,6 +589,73 @@ export class XoClient {
       // With a key, the platform returns the ORIGINAL run for a retry of the same request instead of creating another.
       ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
     });
+  }
+  // ---- workflow controls (mode, triggers, limit, sign-off, practice review, pause). The platform decides; these just ask.
+  getWorkflowControls(ws: string): Promise<Result<WorkflowControls>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-controls`, parseWorkflowControls);
+  }
+  setWorkflowMode(ws: string, workflowId: string, compilationId: string, mode: WorkflowMode): Promise<Result<WorkflowControl>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/mode`,
+      (b) => parseWorkflowControl(b),
+      this.json({ compilationId, mode }),
+    );
+  }
+  /** `null` removes the limit. */
+  setWorkflowLimit(ws: string, workflowId: string, compilationId: string, dailyRunCap: number | null): Promise<Result<WorkflowControl>> {
+    return this.call(
+      'PUT',
+      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/limits`,
+      (b) => parseWorkflowControl(b),
+      this.json({ compilationId, dailyRunCap }),
+    );
+  }
+  setWorkflowTriggers(
+    ws: string,
+    workflowId: string,
+    compilationId: string,
+    change: { webhook?: boolean; schedule?: { everyMinutes: number; input?: Record<string, unknown> } | null },
+  ): Promise<Result<WorkflowControl>> {
+    return this.call(
+      'PUT',
+      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/triggers`,
+      (b) => parseWorkflowControl(b),
+      this.json({ compilationId, ...change }),
+    );
+  }
+  signOffWorkflow(ws: string, workflowId: string, compilationId: string): Promise<Result<WorkflowControl>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/sign-off`,
+      (b) => parseWorkflowControl(b),
+      this.json({ compilationId }),
+    );
+  }
+  reviewPracticeRun(
+    ws: string,
+    workflowId: string,
+    compilationId: string,
+    workflowExecutionId: string,
+    judgement: 'automatic' | 'person',
+  ): Promise<Result<WorkflowControl>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-controls/workflows/${enc(workflowId)}/shadow-reviews`,
+      (b) => parseWorkflowControl(b),
+      this.json({ compilationId, workflowExecutionId, judgement }),
+    );
+  }
+  pauseEverything(ws: string, reason?: string): Promise<Result<{ paused: boolean; reason?: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-controls/pause`,
+      parsePauseState,
+      this.json(reason !== undefined && reason.trim() !== '' ? { reason: reason.trim() } : {}),
+    );
+  }
+  resumeEverything(ws: string): Promise<Result<{ paused: boolean; reason?: string }>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-controls/resume`, parsePauseState, this.json({}));
   }
   listWorkflowRuns(ws: string): Promise<Result<WorkflowRun[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-executions`, parseWorkflowRunList);

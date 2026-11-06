@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { countFilters, matchesQuery, needItems, summarizeWorkflow, type FilterKey } from '../domain/workflowSummary';
-import type { Capability, Compilation, Workflow, WorkflowRun } from '../platform/wire';
+import type { Capability, Compilation, Workflow, WorkflowControls, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import { Icon } from './icons';
 import { Button, EmptyState, Section } from './primitives';
 import { WorkflowCard } from './WorkflowCards';
 import { WorkflowPanel } from './WorkflowPanel';
+import { WorkspacePause } from './WorkspacePause';
 import '../styles/workflows.css';
 
 /**
@@ -37,6 +38,9 @@ const FILTERS: readonly { key: FilterKey; label: string }[] = [
   { key: 'inprogress', label: 'In progress' },
   { key: 'ready', label: 'Ready to start' },
   { key: 'blocked', label: 'Can’t run yet' },
+  { key: 'live', label: 'Live' },
+  { key: 'shadow', label: 'Shadow' },
+  { key: 'paused', label: 'Paused' },
 ];
 
 export function WorkSection(props: {
@@ -47,6 +51,9 @@ export function WorkSection(props: {
   /** The capability list failed to load, so approvals cannot be checked. Distinct from "still loading". */
   capsFailed: boolean;
   runs: readonly WorkflowRun[];
+  /** Mode, triggers, limit, sign-off and the workspace pause, when the platform reports them. */
+  controls?: WorkflowControls | undefined;
+  role?: WorkspaceRole | undefined;
   onChanged: () => void;
   goToSetup: () => void;
   goToTasks: () => void;
@@ -58,8 +65,19 @@ export function WorkSection(props: {
     [props.workflows, props.compilation],
   );
   const summaries = useMemo(
-    () => here.map((w) => summarizeWorkflow(w, props.caps, props.capsFailed, props.runs, Date.now())),
-    [here, props.caps, props.capsFailed, props.runs],
+    () =>
+      here.map((w) =>
+        summarizeWorkflow(
+          w,
+          props.caps,
+          props.capsFailed,
+          props.runs,
+          Date.now(),
+          props.controls?.deployments.find((d) => d.workflowId === w.workflowId && d.compilationId === w.compilationId),
+          props.controls?.paused === true,
+        ),
+      ),
+    [here, props.caps, props.capsFailed, props.runs, props.controls],
   );
   const counts = useMemo(() => countFilters(summaries), [summaries]);
   const needs = useMemo(() => needItems(summaries), [summaries]);
@@ -119,6 +137,9 @@ export function WorkSection(props: {
         </EmptyState>
       ) : (
         <>
+          {props.controls !== undefined ? (
+            <WorkspacePause workspaceId={props.workspaceId} controls={props.controls} role={props.role} onChanged={props.onChanged} />
+          ) : null}
           {needs.length > 0 ? (
             <section className="wn" aria-labelledby="wn-h">
               <h3 id="wn-h">{needs.length === 1 ? '1 thing needs you' : `${needs.length} things need you`}</h3>
@@ -135,7 +156,18 @@ export function WorkSection(props: {
                     </div>
                     <Button
                       variant={n === needs[0] ? 'primary' : 'secondary'}
-                      onClick={n.kind === 'decision' ? props.goToTasks : n.kind === 'failed' ? props.goToActivity : props.goToSetup}
+                      onClick={
+                        n.kind === 'decision'
+                          ? props.goToTasks
+                          : n.kind === 'failed'
+                            ? props.goToActivity
+                            : n.kind === 'practice'
+                              ? () => {
+                                  const el = document.querySelector<HTMLElement>(`[data-wf-open="${n.workflowId}"]`);
+                                  if (el !== null) open(n.workflowId, el);
+                                }
+                              : props.goToSetup
+                      }
                     >
                       {n.action}
                     </Button>
@@ -197,6 +229,8 @@ export function WorkSection(props: {
           caps={props.caps}
           capsFailed={props.capsFailed}
           runs={props.runs}
+          role={props.role}
+          allPaused={props.controls?.paused === true}
           onClose={close}
           onChanged={props.onChanged}
           goToSetup={props.goToSetup}

@@ -272,3 +272,19 @@ export function withInterrupted(record: WorkflowExecutionRecord): WorkflowExecut
   const index = firstRunnableStepIndex(candidate);
   return { ...candidate, currentStepIndex: index >= 0 ? index : record.currentStepIndex };
 }
+
+/**
+ * A shadow run reached a step that needs a person. Nothing is asked of anyone: the run ends here as `succeeded`, the
+ * remaining steps are `skipped`, and the shadow marker records which step would have needed a person.
+ */
+export function withShadowStop(record: WorkflowExecutionRecord, index: number, now: string): WorkflowExecutionRecord {
+  const stepName = record.steps[index]?.capabilityName;
+  return {
+    ...withoutKeys(record, ['pendingHumanTask', 'currentStepExecutionId']),
+    steps: record.steps.map((s, i) => (i >= index && s.status === 'pending' ? { ...s, status: 'skipped' as const } : s)),
+    status: 'succeeded',
+    currentStepIndex: null,
+    completedAt: now,
+    shadow: { outcome: 'would_escalate', stepIndex: index, ...(stepName !== undefined ? { stepName } : {}) },
+  };
+}

@@ -409,3 +409,92 @@ describe('workflow drafts', () => {
     expect(must(await owner.deleteDraft(ws, created.definitionId)).deleted).toBe(created.definitionId);
   });
 });
+
+describe('workflow controls (real platform)', () => {
+  it('modes, sign-off, limits, triggers, practice runs and the pause behave as the platform decides, through the real client and parsers', async () => {
+    const workflows = must(await owner.listWorkflows(ws));
+    const wf = workflows.find((w) => w.executable);
+    expect(wf, 'the compiled fixture policy yields a runnable workflow').toBeDefined();
+    const id = wf!.workflowId;
+    const compilationId = wf!.compilationId;
+    const control = async () =>
+      must(await owner.getWorkflowControls(ws)).deployments.find((d) => d.workflowId === id && d.compilationId === compilationId)!;
+
+    // Defaults, and what each role may do.
+    const first = await control();
+    expect(first.mode).toBe('draft');
+    expect(first.readiness.map((r) => r.id)).toEqual(['rules', 'runnable', 'signed', 'limits', 'practice']);
+    expect(first.canGoLive).toBe(false); // no sign-off, no limit and no practice yet, whatever else is approved
+    denied(await viewer.setWorkflowMode(ws, id, compilationId, 'shadow'));
+    denied(await viewer.pauseEverything(ws));
+    denied(await viewer.signOffWorkflow(ws, id, compilationId));
+
+    // If the rules are not approved yet, practising is refused in the platform's words (other tests may already have approved them).
+    if (first.readiness.find((r) => r.id === 'rules')?.ok === false) {
+      const early = await owner.setWorkflowMode(ws, id, compilationId, 'shadow');
+      expect(early.ok).toBe(false);
+      if (!early.ok) {
+        expect(early.problem.status).toBe(412);
+        expect(early.problem.message).toMatch(/rule/i);
+      }
+    }
+    for (const step of wf!.steps) must(await owner.approveCapability(ws, compilationId, step.capabilityId));
+
+    must(await owner.setWorkflowLimit(ws, id, compilationId, 3));
+    const bad = await owner.setWorkflowLimit(ws, id, compilationId, 0);
+    expect(bad.ok).toBe(false);
+    must(await owner.signOffWorkflow(ws, id, compilationId));
+    expect((await control()).signOff?.current).toBe(true);
+    expect(must(await owner.setWorkflowMode(ws, id, compilationId, 'shadow')).mode).toBe('shadow');
+
+    // A practice run through the real runner: finishes at once, asks nobody, is marked as practice.
+    const started = await fetch(`${base}/workspaces/${ws}/workflows/${encodeURIComponent(id)}/executions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${ownerKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ compilationId, input: RULE_INPUT }),
+    });
+    expect(started.status).toBe(201);
+    const runId = ((await started.json()) as { workflowExecutionId: string }).workflowExecutionId;
+    const run = must(await owner.getWorkflowRun(ws, runId));
+    expect(run.shadow).toBeDefined();
+    expect(run.status).toBe('succeeded');
+    expect(run.shadow?.outcome).toMatch(/^would_/);
+
+    const practised = await control();
+    expect(practised.shadow.runs).toBe(1);
+    expect(practised.shadowCases[0]?.workflowExecutionId).toBe(runId);
+    const judged = must(
+      await owner.reviewPracticeRun(
+        ws,
+        id,
+        compilationId,
+        runId,
+        practised.shadowCases[0]?.outcome === 'would_complete' ? 'automatic' : 'person',
+      ),
+    );
+    expect(judged.shadow).toMatchObject({ reviewed: 1, agreed: 1 });
+
+    // Everything needed: it may go live; triggers and the schedule validate.
+    expect((await control()).canGoLive).toBe(true);
+    const hook = must(
+      await owner.setWorkflowTriggers(ws, id, compilationId, { webhook: true, schedule: { everyMinutes: 5, input: RULE_INPUT } }),
+    );
+    expect(hook.triggers.webhook).toBe(true);
+    expect(hook.triggers.schedule).toMatchObject({ everyMinutes: 5, input: RULE_INPUT });
+    expect((await owner.setWorkflowTriggers(ws, id, compilationId, { schedule: { everyMinutes: 4 } })).ok).toBe(false);
+    expect(must(await owner.setWorkflowMode(ws, id, compilationId, 'live')).mode).toBe('live');
+
+    // The pause stops every start with a 412, and resuming lifts it.
+    must(await owner.pauseEverything(ws, 'contract test'));
+    expect(must(await owner.getWorkflowControls(ws)).paused).toBe(true);
+    const refused = await owner.startWorkflow(ws, id, compilationId);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.problem.status).toBe(412);
+    must(await owner.resumeEverything(ws));
+    expect(must(await owner.getWorkflowControls(ws)).paused).toBe(false);
+
+    // Leave the shared fixture as other tests expect it: back to a draft with nothing switched on.
+    must(await owner.setWorkflowTriggers(ws, id, compilationId, { webhook: false, schedule: null }));
+    must(await owner.setWorkflowMode(ws, id, compilationId, 'draft'));
+  });
+});

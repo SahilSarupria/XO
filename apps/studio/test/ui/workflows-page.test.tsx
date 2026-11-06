@@ -49,7 +49,9 @@ describe('Workflows page: first time', () => {
 
 describe('Workflows page: cards', () => {
   it('shows each workflow as one card with only what the platform reports, and nothing it does not', async () => {
-    await analysed(new FakeXo());
+    const api = new FakeXo();
+    api.supportsControls = false; // a platform that does not report modes, triggers, limits or sign-off
+    await analysed(api);
     const cards = screen.getByRole('list', { name: 'Workflows' });
     expect(cards.querySelectorAll('.wc')).toHaveLength(1);
     const card = cards.querySelector<HTMLElement>('.wc')!;
@@ -110,7 +112,9 @@ describe('Workflows page: cards', () => {
 
 describe('Workflows page: details panel', () => {
   it('opens from the card, is named, shows the real checklist, and the URL follows the open workflow', async () => {
-    const user = await analysed(new FakeXo());
+    const api = new FakeXo();
+    api.supportsControls = false;
+    const user = await analysed(api);
     await user.click(title());
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
@@ -131,6 +135,15 @@ describe('Workflows page: details panel', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(window.location.hash).toBe('#/work');
     await waitFor(() => expect(document.activeElement).toBe(title()));
+  });
+
+  it('Escape closes it even after clicking a spot with nothing to focus, where the keyboard would otherwise be on the page body', async () => {
+    const user = await analysed(new FakeXo());
+    await user.click(title());
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByText('Recent runs')); // plain text: nothing to focus
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('keeps Tab inside the panel while it is open', async () => {

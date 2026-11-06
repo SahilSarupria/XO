@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { describeRun, tidyName } from '../domain/work';
 import type { WorkflowSummary } from '../domain/workflowSummary';
-import type { Capability, WorkflowRun } from '../platform/wire';
+import type { Capability, WorkflowRun, WorkspaceRole } from '../platform/wire';
 import { ActionNoticeView } from './actions';
 import { Icon } from './icons';
 import { Button, formatWhen } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
+import { WorkflowModeControls } from './WorkflowModeControls';
 
 /**
  * The details of one workflow, in a panel beside the list. It holds everything needed to act on it: what is still
@@ -19,6 +20,8 @@ export function WorkflowPanel(props: {
   caps: readonly Capability[] | undefined;
   capsFailed: boolean;
   runs: readonly WorkflowRun[];
+  role?: WorkspaceRole | undefined;
+  allPaused?: boolean;
   onClose: () => void;
   onChanged: () => void;
   goToSetup: () => void;
@@ -29,7 +32,13 @@ export function WorkflowPanel(props: {
   const { mode } = useSession();
   const { s } = props;
   const w = s.workflow;
-  const { start, busy, notice, ready, active } = useStartWorkflow({ ...props, workflow: w });
+  // A practice run asks nobody and finishes at once, so its result is shown right here instead of moving to Activity.
+  const practiceNow = s.control?.mode === 'shadow';
+  const { start, busy, notice, ready, active } = useStartWorkflow({
+    ...props,
+    workflow: w,
+    goToActivity: practiceNow ? () => undefined : props.goToActivity,
+  });
   const root = useRef<HTMLElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const runView = active === undefined ? undefined : describeRun(active);
@@ -43,13 +52,22 @@ export function WorkflowPanel(props: {
     closeBtn.current?.focus();
   }, []);
 
+  // Escape closes the panel from anywhere while it is open: clicking a non-interactive spot inside it moves keyboard focus to the page body.
+  const onClose = props.onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Leave Escape to an open menu or field that handles it itself.
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('[role="menu"], [role="alertdialog"]') != null) return;
+      onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   // Keep keyboard focus inside the panel while it is open; Escape closes it.
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      props.onClose();
-      return;
-    }
     if (e.key !== 'Tab' || root.current === null) return;
     const items = Array.from(
       root.current.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'),
@@ -66,6 +84,17 @@ export function WorkflowPanel(props: {
     }
   };
 
+  // The platform refuses a start while everything or this workflow is paused, or today's limit is used; say so up front.
+  const ctl = s.control;
+  const blocked =
+    props.allPaused === true
+      ? 'Everything is paused for this workspace. Resume it on the Workflows page.'
+      : ctl?.mode === 'paused'
+        ? 'This workflow is paused. Resume it above first.'
+        : ctl?.limits.dailyRunCap !== undefined && ctl.limits.runsToday >= ctl.limits.dailyRunCap
+          ? `It has reached its limit of ${ctl.limits.dailyRunCap} ${ctl.limits.dailyRunCap === 1 ? 'run' : 'runs'} today.`
+          : undefined;
+  const practice = ctl?.mode === 'shadow';
   const rulesDone = props.caps !== undefined && ready.needApproval.length === 0;
   const checks = [
     { done: rulesDone, key: 'rules' },
@@ -84,7 +113,7 @@ export function WorkflowPanel(props: {
   return (
     <div className="wp-layer">
       <div className="wp-scrim" onClick={props.onClose} aria-hidden="true" />
-      <aside ref={root} className="wp" role="dialog" aria-modal="true" aria-labelledby="wp-title" onKeyDown={onKeyDown}>
+      <aside ref={root} className="wp" role="dialog" aria-modal="true" aria-labelledby="wp-title" tabIndex={-1} onKeyDown={onKeyDown}>
         <div className="wp-body">
           <div className="wp-top">
             <div>
@@ -162,6 +191,14 @@ export function WorkflowPanel(props: {
               </li>
             ) : null}
           </ul>
+
+          <WorkflowModeControls
+            workspaceId={props.workspaceId}
+            s={s}
+            role={props.role}
+            allPaused={props.allPaused === true}
+            onChanged={props.onChanged}
+          />
 
           <details className="wp-how">
             <summary>See how it works</summary>
@@ -267,14 +304,19 @@ export function WorkflowPanel(props: {
               <Button
                 variant="primary"
                 className="btn-lg"
-                disabled={busy || !ready.canStart}
+                disabled={busy || !ready.canStart || blocked !== undefined}
                 onClick={start}
                 aria-describedby={`why-${w.workflowId}`}
               >
-                {busy ? 'Starting…' : 'Start this process'}
+                {busy ? 'Starting…' : practice ? 'Start a practice run' : 'Start this process'}
               </Button>
             )}
           </div>
+          {active === undefined && ready.canStart && blocked !== undefined ? (
+            <p id={`why-${w.workflowId}`} className="wp-hint">
+              {blocked}
+            </p>
+          ) : null}
           {active === undefined && !ready.canStart && ready.reason !== undefined ? (
             <p id={`why-${w.workflowId}`} className="wp-hint">
               {props.capsFailed && props.caps === undefined

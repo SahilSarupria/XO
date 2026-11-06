@@ -35,7 +35,16 @@ export function WorkflowCard(props: {
           </h3>
           <p className="wc-sub">{s.sub}</p>
         </div>
-        <span className="wc-status" data-tone={s.status.tone}>
+        <span
+          className="wc-status"
+          data-tone={s.status.tone}
+          data-mode={s.status.mode}
+          title={
+            s.status.mode === 'shadow'
+              ? 'Shadow: it practises on real cases and stops before any step that needs a person. Nobody is asked.'
+              : undefined
+          }
+        >
           {s.status.label}
         </span>
         <CardMenu title={s.title} onOpen={(el) => props.onOpen(s.id, el)} onGraph={() => props.onGraph(s.id)} />
@@ -45,10 +54,23 @@ export function WorkflowCard(props: {
         <div className="wc-field">
           <span className="wc-label">Starts when</span>
           <ul className="wc-chips">
-            <li title="Someone starts it from this page. Schedules and other triggers are not available yet.">
-              <Icon name="play" size={14} />
-              Someone starts it
-            </li>
+            {s.triggers.map((t) => (
+              <li
+                key={t.kind}
+                data-active={t.active}
+                title={
+                  t.kind === 'manual'
+                    ? 'Someone starts it from the Workflows page.'
+                    : t.active
+                      ? 'Switched on and firing.'
+                      : 'Switched on, but waiting: it fires only while the workflow is practising or live and nothing is paused.'
+                }
+              >
+                <Icon name={t.kind === 'manual' ? 'play' : t.kind === 'webhook' ? 'link' : 'bolt'} size={14} />
+                {t.label}
+                {t.kind !== 'manual' && !t.active ? <span className="wc-waiting"> (waiting)</span> : null}
+              </li>
+            ))}
           </ul>
         </div>
         <div className="wc-field">

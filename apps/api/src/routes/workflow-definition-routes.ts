@@ -22,6 +22,8 @@ import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
 import { loadDraftFacts, DRAFT_WORKFLOW_PREFIX } from '../workflows/draft-workflow.js';
 import { IDEMPOTENCY_KEY_HEADER, parseIdempotencyKey } from '../workflows/workflow-idempotency.js';
+import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
+import { enforceNotPaused } from '../workflow-controls/service.js';
 import { startWorkflowExecutionDetailed, toWorkflowExecutionView, type WorkflowRunnerContext } from '../workflows/workflow-runner.js';
 import { WorkflowConflictError } from '../workflows/workflow-execution.js';
 import { nodeKindSupport, type DefinitionInput } from '../workflow-definitions/definition.js';
@@ -218,6 +220,8 @@ export function registerWorkflowDefinitionRoutes(router: Router, workspaceStore:
       workflowStore: new FsWorkflowExecutionStore(workspaceWorkflowExecutionsStore(w, dataConfig)),
     };
     const plan = analysis.plan;
+    // The workspace-wide pause stops a saved draft from starting too.
+    await enforceNotPaused(new FsControlsStore(workspaceStateStore(w, dataConfig), w.workspaceId));
     const idempotencyKey = parseIdempotencyKey(req.headers[IDEMPOTENCY_KEY_HEADER]);
     const { record, replayed } = await startWorkflowExecutionDetailed(ctx, {
       compilationId: plan.compilationId,

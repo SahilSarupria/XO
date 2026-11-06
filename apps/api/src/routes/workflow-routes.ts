@@ -1,5 +1,5 @@
 import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
-import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { ErrorCode, XoError } from '@xo/errors';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -9,27 +9,20 @@ import {
   requirePermission,
   requirePrincipal,
   requireOwnedWorkspace,
-  workspaceCompilationsStore,
-  workspaceApprovalsStore,
-  workspaceExecutionsStore,
-  workspaceWorkflowExecutionsStore,
+  workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
-import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
-import { FsApprovalStore } from '../approvals/fs-approval-store.js';
-import { isApproved } from '../approvals/approval.js';
-import { FsExecutionStore } from '../executions/fs-execution-store.js';
-import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
-import { composeCompilationWorkflows, resolveWorkflow, buildWorkflowView, type WorkflowView } from '../workflows/workflow-catalog.js';
+import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
+import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
+import { startGated } from '../workflow-controls/service.js';
 import { IDEMPOTENCY_KEY_HEADER, parseIdempotencyKey } from '../workflows/workflow-idempotency.js';
 import {
   getWorkflowExecution,
   listWorkflowExecutions,
   resumeWorkflowExecution,
-  startWorkflowExecutionDetailed,
   toWorkflowExecutionView,
   type ResumeWorkflowRequest,
   type WorkflowRunnerContext,
@@ -93,16 +86,7 @@ function boundedPlainObject(value: unknown, field: string, maxBytes: number): Re
 
 export function registerWorkflowRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
   function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal, req: ApiRequest): WorkflowRunnerContext {
-    const authentication = toRecordedAuthentication(req.authentication);
-    return {
-      workspace,
-      principal,
-      ...(authentication !== undefined ? { authentication } : {}),
-      compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
-      approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
-      executionStore: new FsExecutionStore(workspaceExecutionsStore(workspace, dataConfig)),
-      workflowStore: new FsWorkflowExecutionStore(workspaceWorkflowExecutionsStore(workspace, dataConfig)),
-    };
+    return makeRunnerContext(workspace, principal, dataConfig, toRecordedAuthentication(req.authentication));
   }
 
   // GET /workspaces/:workspaceId/workflows[?compilationId=]
@@ -111,33 +95,7 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
     const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const only = req.query.get('compilationId');
 
-    const listed = await ctx.compilationStore.list();
-    if (!listed.ok) throw listed.error;
-    const compilations = listed.value.filter((c) => c.status === 'succeeded' && (only === null || c.compilationId === only));
-    if (only !== null && compilations.length === 0) throw new NotFoundError(`compilation "${only}"`);
-
-    const workflows: WorkflowView[] = [];
-    const unavailable: { compilationId: string; errorCode: string; errorMessage: string }[] = [];
-    for (const compilation of compilations) {
-      const graphJson = await ctx.compilationStore.getCompiledGraph(compilation.compilationId);
-      const composed = graphJson.ok
-        ? composeCompilationWorkflows(graphJson.value, compilation.completedAt ?? compilation.createdAt)
-        : undefined;
-      if (!graphJson.ok || composed === undefined || !composed.ok) {
-        const error = !graphJson.ok ? graphJson.error : (composed as { error: XoError }).error;
-        unavailable.push({ compilationId: compilation.compilationId, errorCode: error.code, errorMessage: error.message });
-        continue;
-      }
-      for (const workflow of composed.value.workflows) {
-        const resolved = resolveWorkflow(composed.value.graph, workflow);
-        const approved = new Set<string>();
-        for (const step of workflow.steps) {
-          const approval = await ctx.approvalStore.get(compilation.compilationId, step.capabilityId);
-          if (approval.ok && isApproved(approval.value)) approved.add(step.capabilityId);
-        }
-        workflows.push(buildWorkflowView(compilation.compilationId, compilation.sourceId, resolved, approved));
-      }
-    }
+    const { workflows, unavailable } = await loadWorkflowViews(ctx, only ?? undefined);
     return json(200, { workflows, ...(unavailable.length > 0 ? { unavailableCompilations: unavailable } : {}) });
   }
 
@@ -158,12 +116,19 @@ export function registerWorkflowRoutes(router: Router, workspaceStore: Workspace
 
     const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const idempotencyKey = parseIdempotencyKey(req.headers[IDEMPOTENCY_KEY_HEADER]);
-    const { record, replayed } = await startWorkflowExecutionDetailed(ctx, {
-      compilationId: body['compilationId'],
-      workflowId,
-      input,
-      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-    });
+    // The gate: everything-paused, this workflow paused, today's limit. A workflow in practice mode runs as practice.
+    const { record, replayed } = await startGated(
+      new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId),
+      ctx,
+      {
+        compilationId: body['compilationId'],
+        workflowId,
+        input,
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+      },
+      'manual',
+      new Date(),
+    );
     if (!replayed) {
       await recordAudit(req, workspace, dataConfig, {
         event: 'workflow.started',
