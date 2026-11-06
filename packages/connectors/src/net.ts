@@ -14,6 +14,8 @@ export function isPrivateAddress(addr: string): boolean {
       const lo = parseInt(hex[2] as string, 16);
       return isPrivateAddress(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
     }
+    // NAT64 (64:ff9b::/96), 6to4 (2002::/16), Teredo (2001::/32) and the documentation range can embed or alias private IPv4 space: refuse them outright
+    if (/^(64:ff9b:|2002:|2001:0{0,3}:|2001:db8)/.test(a)) return true;
     return a === '::' || a === '::1' || a.startsWith('fc') || a.startsWith('fd') || /^fe[89ab]/.test(a) || a.startsWith('ff');
   }
   const p = a.split('.').map(Number) as [number, number, number, number];

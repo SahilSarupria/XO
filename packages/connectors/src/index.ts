@@ -6,3 +6,7 @@ export * from './http.js';
 export * from './file.js';
 export * from './mcp.js';
 export * from './smtp.js';
+export * from './egress.js';
+export * from './webhook.js';
+export * from './database.js';
+export * from './sqlite-driver.js';

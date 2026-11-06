@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { DecisionTree } from '@xo/capability-layer';
 import { parseTrees } from '@xo/capability-layer';
-import { ConnectorHost, EnvVault, fileConnector, type Connector, type ConnectorPolicy } from '@xo/connectors';
+import { ConnectorHost, EnvVault, type ConnectorPolicy } from '@xo/connectors';
 import {
   DETERMINISTIC_HOST,
   determinismReport,
@@ -30,6 +30,7 @@ import {
 import { createXoServer } from '@xo/server';
 import { join } from 'node:path';
 import type { CommandRegistry } from '../../command-registry.js';
+import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
 import { capsFromFlags, extractorFor } from './extractor.js';
 
 const SUBSYSTEM = 'flow';
@@ -92,14 +93,11 @@ export function registerCommands(registry: CommandRegistry): void {
           if (id === undefined || runs === undefined || inputRaw === undefined) return fail('--workflow, --input and --runs are required');
           const comp = load(file, trees);
           const policyPath = flag(args.flags, 'policy');
-          const policy: ConnectorPolicy & { fileRoots?: Record<string, Record<string, string>> } =
+          const policy: OperatorPolicyFile =
             policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
-          const implementations: Record<string, Connector> = {};
-          for (const c of comp.connectors) {
-            const roots = policy.fileRoots?.[c.id];
-            if (c.kind === 'file' && roots !== undefined)
-              implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576, createRoots: true });
-          }
+          const bound = await buildImplementations(comp, policy);
+          if (!bound.ok) return fail(bound.error);
+          const implementations = bound.value;
           const treeMap = new Map<string, DecisionTree>();
           if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
           const ex = extractorFor(comp, id);
@@ -257,14 +255,11 @@ export function registerCommands(registry: CommandRegistry): void {
         const trees = flag(args.flags, 'trees');
         const comp = load(file, trees);
         const policyPath = flag(args.flags, 'policy');
-        const policy: ConnectorPolicy & { fileRoots?: Record<string, Record<string, string>> } =
+        const policy: OperatorPolicyFile =
           policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
-        const implementations: Record<string, Connector> = {};
-        for (const c of comp.connectors) {
-          const roots = policy.fileRoots?.[c.id];
-          if (c.kind === 'file' && roots !== undefined)
-            implementations[c.id] = fileConnector({ roots, maxBytes: 1_048_576, createRoots: true });
-        }
+        const bound = await buildImplementations(comp, policy);
+        if (!bound.ok) return fail(bound.error);
+        const implementations = bound.value;
         const treeMap = new Map<string, DecisionTree>();
         if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
         const memoDir = flag(args.flags, 'memo-dir');

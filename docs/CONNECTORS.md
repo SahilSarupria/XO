@@ -65,3 +65,43 @@ STARTTLS (TLS 1.2+), **refuses to send credentials or continue in clear text**, 
 Not implemented: attachments, HTML bodies, certificate pinning, DKIM, OAuth, bounce handling. Tested against a fake loopback server only; **not tested against a real mail server**.
 `connectorApprovalSink` / `connectorEscalationSink` (`@xo/workflow-runtime`) deliver approval requests and escalations through any such connector via the same grants; a delivery failure throws.
 Slack-compatible webhook, webhook-out and database connectors are **not implemented**.
+
+## Operator bindings (`--policy`, key `bindings`)
+
+A package declares connectors by id and kind only. The operator's policy file binds each id: `"bindings": { "<id>": { ... } }`, with the settings of that
+connector's kind. `fileRoots` (older spelling) still works for file connectors. Unknown keys, bindings for ids the package does not declare, a binding named
+in both spellings, malformed values and unbuildable connectors are **errors at start-up** that name the binding; a declared connector with no binding has no
+implementation, so calling it fails closed. Bindable today: `file`, `http`, `webhook_out`, `slack_webhook`, `database` (sqlite), `smtp`. Not yet: `mcp` (see item 4).
+
+## Outbound webhooks (`webhook_out`, `slack_webhook`) and `egress`
+
+Both send to a destination the **operator** binds; a workflow can never name a host, path, header or method (any extra argument is refused). Both go through `egress`:
+
+1. https only (plain http only with `allowPrivateNetwork`, for local development);
+2. no credentials in the URL (`https://allowed@evil/`);
+3. the host is on `allowedHosts` — exact, or `*.suffix` for subdomains (never a substring; the apex is not a subdomain). IP addresses are refused as allowlist entries;
+4. the port is the scheme default unless listed in `allowedPorts`;
+5. the name is resolved **once**; every returned address must be public (a name with one public and one private record is refused; IPv4-mapped, NAT64, 6to4,
+   Teredo and documentation IPv6 ranges are refused);
+6. the connection goes to that **vetted address** (with the original `Host` and TLS name), so a second DNS answer cannot redirect it. This closes the DNS-rebinding
+   race for these connectors. **The older `http` connector still resolves and then connects by name, so that race is still open there.**
+7. redirects are refused; request and response sizes and the whole exchange (abort signal) are bounded.
+
+`webhook_out` — operation `post` (write): `{ body, event? }`. Sends JSON with an `idempotency-key` header and, when `signingSecret` (a declared secret _name_) is set,
+`x-xo-timestamp` and `x-xo-signature: v1=HMAC-SHA256(key, "<timestamp>.<raw body>")`. The **receiver** must reject old timestamps (replay) and compare in constant
+time. 5xx is a retryable failure; 4xx is returned as `ok: false`. `slack_webhook` — operation `post_message` (write): `{ text }`. The incoming-webhook **URL is a
+secret** (`webhookSecret` names it); default allowlist `hooks.slack.com`, extend it for Slack-compatible receivers. Text is escaped (`& < >`), so untrusted case text
+cannot carry `<!channel>`, `<@U…>` or disguised links; over-long text is refused, not cut. Errors never contain the URL or signing key (scrubbed). Not covered:
+Slack blocks/attachments/threads, and delivery confirmation beyond the HTTP status (idempotency depends on the receiver honouring the key; see item 8).
+
+## Read-only database (`database`)
+
+Operation `query` (read): `{ statement: <id>, params?: { name: value } }`. A workflow never sends SQL: it names an operator-declared statement and supplies its typed
+parameters (`string`, `integer`, `number`, `boolean`, optionally nullable), bound **positionally** by the driver, never spliced into SQL. Every statement is vetted when
+the connector is built — one statement, starts with `SELECT`/`WITH`, comments and quoted text stripped before the keyword check, no write/DDL/session/file/sleep
+words, no backslash or dollar quoting, placeholders match the declared parameters — and a bad statement stops start-up. Rows (default 1000, hard 100 000), result bytes
+and time are bounded; a result over the row limit is **refused** unless `onOverflow: "truncate"`. Driver errors are reduced to a coarse class (they can carry connection
+strings or the bound values). **The real boundary is a database role that can only SELECT; only the operator can create it.** The bundled SQLite driver
+(`{"driver":{"type":"sqlite","path":"..."}}`, Node's experimental `node:sqlite`) opens the file read-only at the engine and refuses to create a missing file, but its
+API is synchronous, so a slow query cannot be interrupted: use it for local files. Networked databases are supplied by an embedding application as a `DbDriver`
+(none ships). Not covered: write operations (refused by the IR validator), result-set joins across databases, row-level access control.
