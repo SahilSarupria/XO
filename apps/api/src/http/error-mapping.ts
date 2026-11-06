@@ -203,6 +203,17 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUTH_PROVIDER_UNAVAILABLE]: 503,
   [ErrorCode.AUTH_CHALLENGE_INVALID]: 401,
   [ErrorCode.AUTH_RATE_LIMITED]: 429,
+  // Audit (from c0.3's @xo/audit, mappings identical to c0.3's API): a required audit write that cannot be confirmed means the
+  // operation was refused (503: retry later); denial is 403; invalid event / bad config are server-side defects; integrity and
+  // lifecycle failures are never a client error and the operation fails closed.
+  [ErrorCode.AUDIT_UNAVAILABLE]: 503,
+  [ErrorCode.AUDIT_EVENT_INVALID]: 500,
+  [ErrorCode.AUDIT_ACCESS_DENIED]: 403,
+  [ErrorCode.AUDIT_CONFIG_INVALID]: 500,
+  [ErrorCode.AUDIT_CONFLICT]: 500,
+  [ErrorCode.AUDIT_ORDER_VIOLATION]: 500,
+  [ErrorCode.AUDIT_CORRUPT]: 503,
+  [ErrorCode.AUDIT_LOCKED]: 503,
 };
 
 const DEFAULT_STATUS = 500;

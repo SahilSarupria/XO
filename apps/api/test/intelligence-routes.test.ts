@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ScriptableTestProvider, jsonResponse, type ModelProvider } from '@xo/ai-core';
+import { isAuthenticatedPrincipal } from '@xo/permissions';
 import { StaticKnowledgePort, type KnowledgePort, type Principal } from '@xo/intelligence';
 import { packBundle } from '@xo/package-sdk';
 import { readdir, readFile } from 'node:fs/promises';
@@ -352,5 +353,34 @@ test('a Viewer asking XO to act, approve or delete changes nothing but conversat
         await server.stop();
       }
     }),
+  );
+});
+
+test('the server-minted credential reaches the knowledge system, belongs to the caller, and is never echoed back or stored', async () => {
+  const seen: Principal[] = [];
+  const spy: KnowledgePort = {
+    retrieve: async (q) => {
+      seen.push(q.principal);
+      return { status: 'ok', evidence: [] };
+    },
+  };
+  const p = new ScriptableTestProvider('gemini', [j(route())]);
+  await withApp(
+    { gemini: p },
+    () => spy,
+    async ({ server, base }) => {
+      const colleague = await server.issueAdditionalIdentity('colleague');
+      await server.request('POST', `${base}/members`, { identityId: 'colleague', role: 'viewer' });
+      const id = await start(server, base, as(colleague));
+      const r = await server.request('POST', `${base}/intelligence/conversations/${id}/turns`, { message: 'status?' }, as(colleague));
+      assert.equal(r.status, 201);
+      const cred = seen[0]?.authenticated;
+      assert.ok(isAuthenticatedPrincipal(cred), 'a genuine AuthenticatedPrincipal, not a plain object');
+      assert.equal((cred as { id: string }).id, 'colleague');
+      assert.equal(seen[0]?.identityId, (cred as { id: string }).id);
+      assert.doesNotMatch(r.bodyText, /authenticated|kind"\s*:\s*"(human|service)"/);
+      const stored = (await server.request('GET', `${base}/intelligence/conversations/${id}`, undefined, as(colleague))).bodyText;
+      assert.doesNotMatch(stored, /"authenticated"/);
+    },
   );
 });

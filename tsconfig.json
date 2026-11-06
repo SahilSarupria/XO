@@ -22,6 +22,7 @@
     { "path": "packages/ai-core" },
     { "path": "packages/intelligence" },
     { "path": "packages/intelligence-eval" },
+    { "path": "packages/intelligence-c6" },
     { "path": "packages/package-sdk" },
     { "path": "packages/runtime-core" },
     { "path": "packages/runtime" },

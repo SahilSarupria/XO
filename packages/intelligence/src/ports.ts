@@ -17,6 +17,11 @@ export interface KnowledgeQuery {
   readonly scope?: readonly string[];
 }
 
+/**
+ * `unavailable` reasons: `not_configured` (no knowledge system for this workspace), `error` (it failed or timed out —
+ * nothing partial was used), `denied` (the knowledge system refused this caller for the whole operation; it is NOT used
+ * to say that specific restricted material exists, which a knowledge system must never reveal).
+ */
 export type KnowledgeResult =
   | {
       readonly status: 'ok';
@@ -29,7 +34,7 @@ export type KnowledgeResult =
       /** Sources that exist for this principal but could not be searched right now (so the result may be incomplete). */
       readonly unsearchedSources?: readonly string[];
     }
-  | { readonly status: 'unavailable'; readonly reason: 'not_configured' | 'error' };
+  | { readonly status: 'unavailable'; readonly reason: 'not_configured' | 'error' | 'denied' };
 
 /**
  * The C6 Knowledge SDK boundary.

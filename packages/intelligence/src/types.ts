@@ -22,6 +22,12 @@ export interface Principal {
   readonly identityId: string;
   readonly workspaceId: string;
   readonly role: string;
+  /**
+   * The platform's authenticated credential for this caller (for C6: an `@xo/permissions` AuthenticatedPrincipal),
+   * carried UNTOUCHED to the ports that need it. The orchestrator never inspects, logs or stores it. Set it only from
+   * the server-side authentication boundary — never from request input.
+   */
+  readonly authenticated?: unknown;
 }
 
 export interface HistoryTurn {
@@ -63,6 +69,7 @@ export type Confidence = 'high' | 'medium' | 'low' | 'none';
 
 export type NoticeCode =
   | 'knowledge_unavailable'
+  | 'knowledge_denied'
   | 'no_sources_found'
   | 'ungrounded_answer'
   | 'contradiction_detected'
