@@ -17,6 +17,8 @@ export const SECTIONS = [
   'contracts',
   'platform',
   'library',
+  'connect',
+  'knowledge',
   'audit',
   'settings',
 ] as const;

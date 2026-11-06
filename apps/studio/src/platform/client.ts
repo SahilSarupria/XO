@@ -30,6 +30,28 @@ import {
   type Workspace,
   type WorkspaceRole,
 } from './wire';
+import { parseReview, parseSearch, type KnowledgeEnvelope, type ReviewData, type SearchData } from './wire-knowledge';
+import {
+  parseActionResult,
+  parseCatalog,
+  parseConnectCapabilities,
+  parseConnectDashboard,
+  parseConnectSource,
+  parseConnectSourceList,
+  parseFolderPreview,
+  parseRemovalPreview,
+  parseRemovalResult,
+  parseSourceFolderView,
+  type SourceFolderView,
+  type ActionResult,
+  type AddSourceEntry,
+  type ConnectCapabilities,
+  type ConnectDashboard,
+  type ConnectSource,
+  type FolderPreview,
+  type RemovalPreview,
+  type RemovalResult,
+} from './wire-connect';
 import {
   parseAnalysis,
   parseAuditPage,
@@ -245,6 +267,83 @@ export class XoClient {
   }
   getApiDescription(): Promise<Result<ApiDescription>> {
     return this.call('GET', '/openapi.json', parseApiDescription);
+  }
+
+  // ---- Connect (C7). Contract: packages/connect/docs/HTTP_CONTRACT.md. Every action is decided again by the server; these only call it.
+  /** Keyword search (C6 does not interpret questions). Results are the caller's visible scope only. */
+  knowledgeSearch(q: string, limit?: number): Promise<Result<KnowledgeEnvelope<SearchData>>> {
+    const qs = new URLSearchParams({ q, ...(limit !== undefined ? { limit: String(limit) } : {}) });
+    return this.call('GET', `/connect/knowledge?${qs.toString()}`, parseSearch);
+  }
+  knowledgeSelect(
+    select: 'entities' | 'relationships' | 'claims' | 'conflicts' | 'documents',
+    limit?: number,
+  ): Promise<Result<KnowledgeEnvelope<SearchData>>> {
+    const qs = new URLSearchParams({ select, ...(limit !== undefined ? { limit: String(limit) } : {}) });
+    return this.call('GET', `/connect/knowledge?${qs.toString()}`, parseSearch);
+  }
+  knowledgeReview(): Promise<Result<KnowledgeEnvelope<ReviewData>>> {
+    return this.call('GET', '/connect/knowledge/review', parseReview);
+  }
+  connectCatalog(): Promise<Result<AddSourceEntry[]>> {
+    return this.call('GET', '/connect/catalog', parseCatalog);
+  }
+  connectDashboard(): Promise<Result<ConnectDashboard>> {
+    return this.call('GET', '/connect/dashboard', parseConnectDashboard);
+  }
+  connectCapabilities(): Promise<Result<ConnectCapabilities>> {
+    return this.call('GET', '/connect/capabilities', parseConnectCapabilities);
+  }
+  connectSources(): Promise<Result<ConnectSource[]>> {
+    return this.call('GET', '/connect/sources', parseConnectSourceList);
+  }
+  connectSource(id: string): Promise<Result<ConnectSource>> {
+    return this.call('GET', `/connect/sources/${encodeURIComponent(id)}`, (b) => parseConnectSource(b));
+  }
+  connectSourceFolder(id: string): Promise<Result<SourceFolderView>> {
+    return this.call('GET', `/connect/sources/${encodeURIComponent(id)}/folder`, parseSourceFolderView);
+  }
+  connectPreviewFolder(root: string, excludedNames?: readonly string[]): Promise<Result<FolderPreview>> {
+    return this.call(
+      'POST',
+      '/connect/local-folders/preview',
+      parseFolderPreview,
+      this.json({ root, ...(excludedNames !== undefined ? { excludedNames } : {}) }),
+    );
+  }
+  connectFolder(root: string, includeKeys: readonly string[], excludedNames?: readonly string[]): Promise<Result<ActionResult>> {
+    return this.call(
+      'POST',
+      '/connect/local-folders',
+      parseActionResult,
+      this.json({ root, includeKeys, ...(excludedNames !== undefined ? { excludedNames } : {}) }),
+    );
+  }
+  connectSelection(id: string, includeKeys: readonly string[], excludedNames?: readonly string[]): Promise<Result<ActionResult>> {
+    return this.call(
+      'POST',
+      `/connect/sources/${encodeURIComponent(id)}/selection`,
+      parseActionResult,
+      this.json({ includeKeys, ...(excludedNames !== undefined ? { excludedNames } : {}) }),
+    );
+  }
+  connectRead(id: string): Promise<Result<ActionResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/read`, parseActionResult, this.json({}));
+  }
+  connectCheck(id: string): Promise<Result<ActionResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/check`, parseActionResult, this.json({}));
+  }
+  connectDisconnect(id: string): Promise<Result<ActionResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/disconnect`, parseActionResult, this.json({}));
+  }
+  connectReconnect(id: string): Promise<Result<ActionResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/reconnect`, parseActionResult, this.json({}));
+  }
+  connectRemovalPreview(id: string): Promise<Result<RemovalPreview>> {
+    return this.call('GET', `/connect/sources/${encodeURIComponent(id)}/removal`, parseRemovalPreview);
+  }
+  connectRemove(id: string): Promise<Result<RemovalResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/remove`, parseRemovalResult, this.json({}));
   }
 
   // ---- workspaces

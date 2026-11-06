@@ -4,6 +4,8 @@ import type { StartTarget } from '../domain/start';
 import { recordedNotes, standaloneExecutions } from '../domain/work';
 import type { Compilation, Workspace } from '../platform/wire';
 import { ActivitySection } from './ActivitySection';
+import { ConnectSection } from './ConnectSection';
+import { KnowledgeSection } from './KnowledgeSection';
 import { ContextSection } from './ContextSection';
 import { HomeSection } from './HomeSection';
 import { TasksSection } from './TasksSection';
@@ -64,6 +66,8 @@ const PAGE_LABEL: Record<View, string> = {
   contracts: 'Contracts',
   platform: 'Platform',
   library: 'Library',
+  connect: 'Connect',
+  knowledge: 'Knowledge',
   audit: 'Audit log',
   settings: 'Settings',
 };
@@ -252,6 +256,12 @@ export function WorkspaceView(props: {
       </NavItem>
       <NavItem current={navCurrent} id="library" icon="library" hint="Browse XOs" onSelect={setView}>
         Library
+      </NavItem>
+      <NavItem current={navCurrent} id="connect" icon="link" hint="Bring in your data" onSelect={setView}>
+        Connect
+      </NavItem>
+      <NavItem current={navCurrent} id="knowledge" icon="search" hint="What XO has learned" onSelect={setView}>
+        Knowledge
       </NavItem>
       <NavItem current={navCurrent} id="activity" icon="activity" hint="What has been run" onSelect={setView}>
         Activity
@@ -510,6 +520,8 @@ export function WorkspaceView(props: {
           onChanged={refreshAll}
         />
       ) : null}
+      {view === 'connect' ? <ConnectSection /> : null}
+      {view === 'knowledge' ? <KnowledgeSection /> : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (
           <Skeleton label="Loading activity" />

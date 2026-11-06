@@ -1,0 +1,84 @@
+/* Connect (C7). Tokens only; no raw colours. */
+.connect-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.connect-stats .card strong {
+  display: block;
+  font-size: var(--text-2xl);
+}
+.connect-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--s-5);
+  display: grid;
+  gap: var(--s-3);
+}
+.connect-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-4);
+}
+.connect-row-end {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.connect-add {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--s-4);
+}
+.connect-add-card h4 {
+  margin: 0 0 var(--s-2);
+}
+.connect-tree {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--s-3);
+  background: var(--surface-1);
+}
+.connect-tree-list {
+  list-style: none;
+  margin: 0;
+  padding-left: var(--s-4);
+}
+.connect-tree > .connect-tree-list {
+  padding-left: 0;
+}
+.connect-history {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.connect-screen .input {
+  width: 100%;
+  max-width: 32rem;
+  background: var(--surface-1);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+}
+.connect-screen .input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Summary cards stack label above value (the base .card lays children out in a row). */
+.connect-stats .card {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--s-2);
+}
+.connect-stats .card p {
+  margin: 0;
+}

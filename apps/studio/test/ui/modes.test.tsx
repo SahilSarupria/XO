@@ -59,7 +59,7 @@ describe('mode: default, switching and persistence', () => {
     const user = await open(new FakeXo());
     expect(await modeChoice(user, 'User mode')).toBe('true');
     expect(await modeChoice(user, 'Builder mode')).toBe('false');
-    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log']);
+    expect(navLabels()).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'Activity', 'Audit log']);
     expect(screen.queryByRole('group', { name: /builder tools/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/· Builder/)).not.toBeInTheDocument(); // the card names the mode only when it is Builder
   });
@@ -73,6 +73,8 @@ describe('mode: default, switching and persistence', () => {
       'My XOs',
       'Inbox',
       'Library',
+      'Connect',
+      'Knowledge',
       'Activity',
       'Audit log',
       'Contracts',

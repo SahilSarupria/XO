@@ -74,7 +74,7 @@ describe('app frame', () => {
       .getAllByRole('button')
       .filter((b) => b.classList.contains('nav-item'))
       .map((b) => b.querySelector('.nav-label')?.textContent);
-    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Activity', 'Audit log']);
+    expect(labels).toEqual(['Home', 'Workflows', 'My XOs', 'Inbox', 'Library', 'Connect', 'Knowledge', 'Activity', 'Audit log']);
   });
 
   it('shows where you are in the sidebar, with no breadcrumb or mode badge, and keeps the page named for screen readers', async () => {
