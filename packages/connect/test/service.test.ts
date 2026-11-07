@@ -264,3 +264,15 @@ test('previewSource lists the folder with the current selection, only for the ow
   const stopped = await s.svc.previewSource(alice, src.id);
   assert.ok(!stopped.ok && stopped.error.code === 'conflict');
 });
+
+test('removeLearned is unavailable on a host that keeps nothing, and refuses other principals and bad input before anything changes', async () => {
+  const s = setup();
+  const src = await connect(s, ['a.txt', 'b.txt']);
+  const none = await s.svc.removeLearned(alice, src.id, { keys: ['a.txt'] });
+  assert.ok(!none.ok && none.error.code === 'unavailable');
+  const after = await s.svc.getSource(alice, src.id);
+  assert.ok(after.ok && after.value.selection.includedItems === 2, 'nothing changed');
+  for (const keys of [[], ['../x'], Array.from({ length: 201 }, (_, i) => `f${i}`)])
+    assert.ok(!(await s.svc.removeLearned(alice, src.id, { keys })).ok);
+  assert.ok(!(await s.svc.removeLearned(bob, src.id, { keys: ['a.txt'] })).ok);
+});

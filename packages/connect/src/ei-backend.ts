@@ -13,6 +13,7 @@ import {
   type KnowledgeModel,
   type KnowledgePlatform,
   purgeSourceEvidence,
+  removeResourceEvidence,
   revokeSourceEvidence,
   type EvidenceLedger,
   discoverSource,
@@ -141,7 +142,11 @@ export function createEiLocalFolderBackend(options: EiLocalFolderBackendOptions)
               {
                 sourceId: SourceId(request.sourceId),
                 kind: 'document_content',
-                scope: { ...scopeOf(request.root, request.excludedNames, options.knowledge !== undefined), includeKeys: request.keys },
+                scope: {
+                  ...scopeOf(request.root, request.excludedNames, options.knowledge !== undefined),
+                  includeKeys: request.keys,
+                  ...((request.epoch ?? 0) > 0 ? { epoch: request.epoch } : {}),
+                },
               },
               contextFor(principal),
             );
@@ -206,6 +211,21 @@ export function createEiLocalFolderBackend(options: EiLocalFolderBackendOptions)
               partial,
               errorCodes,
             });
+          },
+          async removeEvidenceItems(
+            principal: AuthenticatedPrincipal,
+            request: { readonly sourceId: string; readonly keys: readonly string[] },
+          ): Promise<ConnectResult<{ readonly itemsRetired: number }>> {
+            const kn = options.knowledge;
+            const holders: EvidencePurgeTarget[] = kn === undefined ? [] : [kn.model, { purge: async (ids) => kn.staging.drop(ids) }];
+            const r = await removeResourceEvidence(
+              { inventory: deps.inventory },
+              { sourceId: SourceId(request.sourceId), kind: 'document_content', resourceKeys: request.keys, targets: holders },
+              contextFor(principal),
+            );
+            if (!r.ok) return fail(r.error);
+            kn?.model.sweep(options.ledger as EvidenceLedger);
+            return okResult({ itemsRetired: r.value.evidenceIds.length });
           },
           evidenceCount(sourceId: string): number {
             return (options.ledger as EvidenceLedger).idsOf(SourceId(sourceId), ['released']).length;

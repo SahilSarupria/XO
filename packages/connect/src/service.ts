@@ -14,6 +14,9 @@ import {
   type AddSourceEntry,
   type ConnectFolderRequest,
   type ConnectResult,
+  type ItemRemovalRequest,
+  type ItemRemovalResult,
+  MAX_REMOVAL_ITEMS,
   type RemovalPreview,
   type SourceFolderView,
   type RemovalResult,
@@ -82,6 +85,15 @@ export interface ConnectService {
    * then is the source forgotten. Files in the folder are never touched. This is source-wide; removing one item's evidence is separate work.
    */
   removeSource(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<RemovalResult>>;
+  /**
+   * "Remove what XO learned" for chosen items: takes them out of the chosen set first (so no read learns them again), then retires what
+   * XO kept from them. Separate from excluding (which keeps what was learned) and from removing the whole source. Files are never touched.
+   */
+  removeLearned(
+    principal: AuthenticatedPrincipal,
+    sourceId: string,
+    request: ItemRemovalRequest,
+  ): Promise<ConnectResult<ItemRemovalResult>>;
   disconnect(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<ActionResult>>;
   reconnect(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<ActionResult>>;
 }
@@ -499,6 +511,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
                 excludedNames: config.excludedNames,
                 keys: scoped,
                 presentKeys: toRead,
+                epoch: config.epoch ?? 0,
               });
               if (!out.ok) {
                 errorCodes.push(out.error.code);
@@ -626,6 +639,75 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
             return UNAVAILABLE<RemovalResult>();
           }
           return okResult({ removed: true, evidenceItemsRetired: retired, sourceFilesChanged: false });
+        });
+      } finally {
+        reading.delete(key);
+      }
+    },
+
+    async removeLearned(p, sourceId, request) {
+      if (!authed(p)) return unauth();
+      {
+        const g = await gate(p, 'manageSources');
+        if (g) return g;
+      }
+      if (request === null || typeof request !== 'object') return failResult('invalid_request', 'the request is not valid');
+      const keys = cleanKeys(request.keys);
+      if (keys === undefined || keys.length === 0 || keys.length > MAX_REMOVAL_ITEMS)
+        return failResult('invalid_request', `name between 1 and ${MAX_REMOVAL_ITEMS} items`);
+      if (backend.removeEvidenceItems === undefined)
+        return failResult('unavailable', 'this host does not keep what it reads, so there is nothing to remove');
+      const first = await loadState();
+      if (first === undefined) return UNAVAILABLE();
+      if (own(first, p, sourceId) === undefined) return NOT_FOUND();
+      const key = configKey(p.id, sourceId);
+      if (reading.has(key)) return failResult('conflict', 'a read of this source is running; try again when it finishes');
+      reading.add(key);
+      try {
+        // 1. Stop reading these items (fail-safe direction: a failure after this leaves them unread, never re-learned).
+        const stopped = await serial(async () => {
+          const state = await loadState();
+          if (state === undefined) return UNAVAILABLE<number>();
+          const c = own(state, p, sourceId);
+          if (c === undefined) return NOT_FOUND<number>();
+          const drop = new Set(keys);
+          const next: SourceConfig = { ...c, includeKeys: c.includeKeys.filter((k) => !drop.has(k)), epoch: (c.epoch ?? 0) + 1 };
+          const unchosen = c.includeKeys.length - next.includeKeys.length;
+          const withHistory: SourceConfig =
+            unchosen === 0
+              ? c
+              : {
+                  ...next,
+                  history: withEvent(c, {
+                    at: clock.now().toISOString(),
+                    kind: 'selection_changed',
+                    includedItems: next.includeKeys.length,
+                  }),
+                };
+          if (unchosen > 0 && !(await persist(state, withHistory))) return UNAVAILABLE<number>();
+          return okResult(unchosen);
+        });
+        if (!stopped.ok) return stopped;
+        // 2. Retire what was kept from them.
+        const r = await backend.removeEvidenceItems(p, { sourceId, keys });
+        if (!r.ok) return r;
+        return await serial(async () => {
+          const state = await loadState();
+          if (state === undefined) return UNAVAILABLE<ItemRemovalResult>();
+          const c = own(state, p, sourceId);
+          if (c === undefined) return NOT_FOUND<ItemRemovalResult>();
+          const next: SourceConfig = {
+            ...c,
+            history: withEvent(c, { at: clock.now().toISOString(), kind: 'learned_removed', retired: r.value.itemsRetired }),
+          };
+          if (!(await persist(state, next))) return UNAVAILABLE<ItemRemovalResult>();
+          return okResult({
+            removed: true,
+            evidenceItemsRetired: r.value.itemsRetired,
+            itemsNoLongerRead: stopped.value,
+            sourceFilesChanged: false,
+            source: detail(next),
+          });
         });
       } finally {
         reading.delete(key);

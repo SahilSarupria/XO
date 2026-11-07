@@ -402,3 +402,75 @@ test('D-1(a): a record file with ANY record it does not understand is refused wh
     }
   });
 });
+
+test('REMOVE learned (per item): stops reading the items, retires what was kept, leaves everything else and the files alone', async () => {
+  await withDirs(async (d) => {
+    await writeFile(join(d.root, 'org.json'), ORG_FILE);
+    await writeFile(join(d.root, 'b.md'), 'policy limit 500');
+    const rt = boot(d);
+    try {
+      const c = await rt.service.connectFolder(alice, { root: d.root, includeKeys: ['org.json', 'b.md'] });
+      assert.ok(c.ok);
+      const id = c.value.source.id;
+      assert.ok((await rt.service.readNow(alice, id)).ok);
+      assert.ok(count(await rt.service.searchKnowledge(alice, { query: 'PRJ-2042' })) > 0);
+      const before = await rt.service.previewRemoval(alice, id);
+      assert.ok(before.ok);
+
+      const r = await rt.service.removeLearned(alice, id, { keys: ['org.json'] });
+      assert.ok(r.ok, JSON.stringify(r));
+      assert.equal(r.value.itemsNoLongerRead, 1);
+      assert.equal(r.value.evidenceItemsRetired, 1);
+      assert.equal(r.value.sourceFilesChanged, false);
+      assert.deepEqual(r.value.source.selection, { includedItems: 1, excludedNames: 0 });
+      assert.equal(r.value.source.history.at(-1)?.kind, 'learned_removed');
+      assert.equal(count(await rt.service.searchKnowledge(alice, { query: 'PRJ-2042' })), 0, 'what was derived from the item is gone');
+      assert.equal(await readFile(join(d.root, 'org.json'), 'utf8'), ORG_FILE, 'the file is untouched');
+      const after = await rt.service.previewRemoval(alice, id);
+      assert.ok(after.ok && after.value.evidenceItems === before.value.evidenceItems - 1, 'other evidence is untouched');
+
+      // The next read does not learn it again, because it is no longer chosen.
+      const again = await rt.service.readNow(alice, id);
+      assert.ok(again.ok);
+      assert.equal(count(await rt.service.searchKnowledge(alice, { query: 'PRJ-2042' })), 0);
+      // Another principal cannot do it; bad input is refused.
+      assert.ok(!(await rt.service.removeLearned(principal('mallory'), id, { keys: ['b.md'] })).ok);
+      for (const keys of [[], ['../x'], ['/abs']]) assert.ok(!(await rt.service.removeLearned(alice, id, { keys })).ok);
+      // Choosing it again learns it again (a new, authorized read).
+      assert.ok((await rt.service.updateSelection(alice, id, { includeKeys: ['org.json', 'b.md'] })).ok);
+      assert.ok((await rt.service.readNow(alice, id)).ok);
+      assert.ok(count(await rt.service.searchKnowledge(alice, { query: 'PRJ-2042' })) > 0);
+    } finally {
+      await rt.close();
+    }
+  });
+});
+
+test('REMOVE learned fails safe: without data.delete the items are no longer read, and what was kept stays and is reported', async () => {
+  await withDirs(async (d) => {
+    await writeFile(join(d.root, 'org.json'), ORG_FILE);
+    const rt = boot(
+      d,
+      GRANTS.filter((r) => !JSON.stringify(r).includes('data.delete')),
+    );
+    try {
+      const c = await rt.service.connectFolder(alice, { root: d.root, includeKeys: ['org.json'] });
+      assert.ok(c.ok);
+      const id = c.value.source.id;
+      assert.ok((await rt.service.readNow(alice, id)).ok);
+      const r = await rt.service.removeLearned(alice, id, { keys: ['org.json'] });
+      assert.ok(!r.ok && r.error.code === 'denied');
+      const got = await rt.service.getSource(alice, id);
+      assert.ok(got.ok);
+      assert.equal(got.value.selection.includedItems, 0, 'reading stopped');
+      const p = await rt.service.previewRemoval(alice, id);
+      assert.ok(p.ok && p.value.evidenceItems >= 1, 'nothing was retired');
+      assert.ok(
+        count(await rt.service.searchKnowledge(alice, { query: 'PRJ-2042' })) > 0,
+        'what was learned is still there, and the user was told removal was refused',
+      );
+    } finally {
+      await rt.close();
+    }
+  });
+});

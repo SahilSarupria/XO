@@ -152,3 +152,43 @@ test('real host over HTTP: knowledge routes answer from C6 (empty for free text,
     }
   });
 });
+
+test('real host over HTTP: a structured record file becomes knowledge; removing what was learned for that item takes it away', async () => {
+  await withTree(async ({ root, state }) => {
+    await writeFile(
+      join(root, 'org.json'),
+      JSON.stringify({
+        schema: 'ei.org-record.v1',
+        records: [
+          {
+            type: 'work_item',
+            project: { kind: 'project', ids: { project_key: 'PRJ-2042' } },
+            owner: { kind: 'person', ids: { email: 'priya.sharma@contoso.example' } },
+            status: 'active',
+          },
+        ],
+      }),
+    );
+    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    try {
+      const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['org.json', 'a.txt'] });
+      const id = c.json<{ source: { id: string } }>().source.id;
+      const r = await server.request('POST', `/connect/sources/${id}/read`);
+      const rep = r
+        .json<{ source: { history: { read?: { assertionsAdded?: number; notUnderstood?: number } }[] } }>()
+        .source.history.at(-1)?.read;
+      assert.ok((rep?.assertionsAdded ?? 0) > 0);
+      assert.equal(rep?.notUnderstood, 1);
+      const found = await server.request('GET', '/connect/knowledge?q=PRJ-2042');
+      assert.ok(found.json<{ data: { statements: unknown[] } }>().data.statements.length > 0);
+      const rm = await server.request('POST', `/connect/sources/${id}/items/remove`, { keys: ['org.json'] });
+      assert.equal(rm.status, 200);
+      assert.equal(rm.json<{ itemsNoLongerRead: number }>().itemsNoLongerRead, 1);
+      const gone = await server.request('GET', '/connect/knowledge?q=PRJ-2042');
+      assert.equal(gone.json<{ data: { statements: unknown[] } }>().data.statements.length, 0);
+      assert.equal((await server.request('POST', `/connect/sources/${id}/items/remove`, { keys: [] })).status, 400);
+    } finally {
+      await server.stop();
+    }
+  });
+});

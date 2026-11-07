@@ -124,6 +124,12 @@ export function registerConnectRoutes(router: Router, connect: ConnectService): 
   router.get('/connect/sources/:id/removal', async (req) =>
     respond(await connect.previewRemoval(requirePrincipal(req), req.params['id'] ?? '')),
   );
+  router.post('/connect/sources/:id/items/remove', async (req) => {
+    const principal = requirePrincipal(req);
+    const b = await body(req);
+    if (!b.ok) return b.response;
+    return respond(await connect.removeLearned(principal, req.params['id'] ?? '', { keys: b.value['keys'] as string[] }));
+  });
   router.post('/connect/sources/:id/remove', async (req) =>
     respond(await connect.removeSource(requirePrincipal(req), req.params['id'] ?? '')),
   );

@@ -68,7 +68,7 @@ export interface SourceCard {
   readonly dataProvenance: 'live';
 }
 
-export type HistoryKind = 'connected' | 'read' | 'selection_changed' | 'disconnected' | 'reconnected';
+export type HistoryKind = 'connected' | 'read' | 'selection_changed' | 'learned_removed' | 'disconnected' | 'reconnected';
 
 /** Result of one read. Counts only; no names, paths or content. */
 export interface ReadReport {
@@ -100,6 +100,8 @@ export interface HistoryEvent {
   readonly kind: HistoryKind;
   readonly read?: ReadReport;
   readonly includedItems?: number;
+  /** For `learned_removed`: pieces of retained evidence retired. */
+  readonly retired?: number;
 }
 
 export interface SourceDetail extends SourceCard {
@@ -225,6 +227,24 @@ export interface RemovalResult {
   /** The source and its retained evidence are gone; files in the folder are untouched. */
   readonly sourceFilesChanged: false;
 }
+
+export interface ItemRemovalRequest {
+  /** Resource keys of the items whose retained evidence should be retired. Bounded (`MAX_INCLUDE_KEYS` is not the limit: see `MAX_REMOVAL_ITEMS`). */
+  readonly keys: readonly string[];
+}
+
+/** "Remove what XO learned" for chosen items. Separate from excluding and from removing the source. */
+export interface ItemRemovalResult {
+  readonly removed: true;
+  /** Pieces of retained evidence retired (items that held none are simply not counted). */
+  readonly evidenceItemsRetired: number;
+  /** The items were also taken out of the chosen set, because a later read would otherwise learn them again. */
+  readonly itemsNoLongerRead: number;
+  readonly sourceFilesChanged: false;
+  readonly source: SourceDetail;
+}
+
+export const MAX_REMOVAL_ITEMS = 200;
 
 // -- bounds ------------------------------------------------------------------------------------------------------------
 

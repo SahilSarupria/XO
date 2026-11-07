@@ -53,6 +53,7 @@ export interface ReadRequest extends ListRequest {
   readonly keys: readonly string[];
   /** The subset of `keys` that currently exists and is readable as text. Used to re-read content when knowledge is re-derived. */
   readonly presentKeys?: readonly string[];
+  readonly epoch?: number;
 }
 
 /**
@@ -74,6 +75,14 @@ export interface LocalFolderBackend {
   ingest?(principal: AuthenticatedPrincipal, request: ReadRequest): Promise<ConnectResult<IngestOutcome>>;
   /** OPTIONAL. How much retained evidence the source holds. */
   evidenceCount?(sourceId: string): number;
+  /**
+   * OPTIONAL. Retires the retained evidence of specific items (and removes what was derived from it) through the platform gate. The caller
+   * must also stop reading the items, or the next read learns them again.
+   */
+  removeEvidenceItems?(
+    principal: AuthenticatedPrincipal,
+    request: { readonly sourceId: string; readonly keys: readonly string[] },
+  ): Promise<ConnectResult<{ readonly itemsRetired: number }>>;
   /** OPTIONAL. Revokes then purges all retained evidence of the source (fail-safe order), through the platform gate. */
   removeEvidence?(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<{ readonly itemsRetired: number }>>;
 }
@@ -98,6 +107,8 @@ export interface SourceConfig {
   readonly disconnected: boolean;
   readonly createdAt: string;
   readonly lastReadAt?: string;
+  /** Bumped whenever retained evidence is retired, so the next read is a full read rather than "unchanged". */
+  readonly epoch?: number;
   readonly history: readonly HistoryEvent[];
 }
 
