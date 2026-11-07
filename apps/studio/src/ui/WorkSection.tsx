@@ -202,7 +202,14 @@ export function WorkSection(props: {
           ) : (
             <ul className="wc-grid-list" aria-label="Workflows">
               {shown.map((s) => (
-                <WorkflowCard key={s.id} s={s} selected={s.id === openId} onOpen={open} onGraph={props.onOpenGraph} />
+                <WorkflowCard
+                  key={s.id}
+                  s={s}
+                  selected={s.id === openId}
+                  halted={props.controls?.paused === true}
+                  onOpen={open}
+                  onGraph={props.onOpenGraph}
+                />
               ))}
             </ul>
           )}

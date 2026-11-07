@@ -952,3 +952,75 @@
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+/* ---- a live workflow: black metal, with a teal line travelling round its outline */
+@property --wc-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.wc[data-live='true'] {
+  /* Dark in both themes, so this card carries its own text colours. */
+  --text: #ecebe6;
+  --text-muted: #a8a69d;
+  --text-faint: #8f8d84;
+  --border: #2e3033;
+  --border-strong: #404347;
+  --bg-sunken: #0a0b0c;
+  --surface-3: #2a2d30;
+  --wc-metal:
+    linear-gradient(115deg, transparent 0 36%, var(--metal-sheen) 46%, transparent 56% 100%),
+    linear-gradient(160deg, var(--metal-1), var(--metal-2) 55%, var(--metal-3));
+  color: var(--text);
+  background: var(--wc-metal);
+  border-color: transparent;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent),
+    0 0 26px -10px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.wc[data-live='true']:hover {
+  background: var(--wc-metal);
+  filter: brightness(1.1);
+}
+.wc[data-live='true'][data-selected='true'] {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 26px -8px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+/* The travelling line: a conic gradient clipped to a 2px ring just inside the card's edge. */
+.wc[data-live='true']::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 3px;
+  border-radius: 17px;
+  background: conic-gradient(
+    from var(--wc-angle),
+    transparent 0deg 170deg,
+    color-mix(in srgb, var(--accent) 28%, transparent) 260deg,
+    var(--accent) 346deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  animation: wc-crawl 4.5s linear infinite;
+  pointer-events: none;
+}
+@keyframes wc-crawl {
+  to {
+    --wc-angle: 360deg;
+  }
+}
+/* Without motion, the outline is simply lit (a steady teal edge) rather than travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .wc[data-live='true']::before {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+}

@@ -6,6 +6,8 @@ import { Icon } from './icons';
 export function WorkflowCard(props: {
   s: WorkflowSummary;
   selected: boolean;
+  /** Everything is paused: a live workflow is not running, so it must not look like it is. */
+  halted?: boolean;
   onOpen: (id: string, opener: HTMLElement) => void;
   onGraph: (id: string) => void;
 }) {
@@ -18,7 +20,12 @@ export function WorkflowCard(props: {
   const personPct = s.split === undefined || n === 0 ? 0 : (s.split.person / n) * 100;
 
   return (
-    <li className="wc" data-selected={props.selected} data-active={s.active !== undefined}>
+    <li
+      className="wc"
+      data-selected={props.selected}
+      data-active={s.active !== undefined}
+      data-live={s.status.mode === 'live' && props.halted !== true}
+    >
       <div className="wc-head">
         <div className="wc-name">
           <h3>

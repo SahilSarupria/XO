@@ -288,3 +288,28 @@ describe('the needs-you card for practice', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 });
+
+describe('the live card', () => {
+  const liveCards = () => cards().querySelectorAll('.wc[data-live="true"]');
+
+  it.each([
+    ['live', 1],
+    ['draft', 0],
+    ['shadow', 0],
+    ['paused', 0],
+  ] as const)('a %s workflow: %i live-styled card(s)', async (mode, expected) => {
+    const api = approved();
+    api.controls.mode = mode;
+    await analysed(api);
+    expect(liveCards().length).toBe(expected);
+  });
+
+  it('when everything is paused, a live workflow stops looking like it is running', async () => {
+    const api = approved();
+    api.controls.mode = 'live';
+    api.controls.paused = true;
+    await analysed(api);
+    expect(within(cards()).getByText('Live')).toBeInTheDocument(); // still labelled live
+    expect(liveCards().length).toBe(0);
+  });
+});
