@@ -37,6 +37,8 @@ export interface ConnectRuntimeOptions {
   /** Directory for Connect's own durable state (selection, history, stop flag). */
   readonly stateDir: string;
   readonly clock?: ConnectClock;
+  /** Allow reading folders on this machine. Default FALSE: see `ConnectServiceOptions.localFolders`. */
+  readonly localFolders?: boolean;
   /** Turns retained evidence into knowledge. Default: `FileRecordsDeriver` (structured record files and single-record payloads only; never guesses). */
   readonly deriver?: Deriver;
   /**
@@ -138,6 +140,7 @@ export function createConnectRuntime(options: ConnectRuntimeOptions): ConnectRun
     backend,
     store: new FileConnectStateStore(options.stateDir),
     access: createEiCapabilityProbe(contextFor),
+    localFolders: options.localFolders === true,
     clock,
     ...(knowledge !== undefined ? { knowledge } : {}),
   });

@@ -12,7 +12,7 @@ const setup = () => {
   const backend = new FakeBackend();
   backend.entries = [entry('a.txt'), entry('b.txt'), entry('c.txt'), entry('sub/d.txt'), entry('img.bin', false)];
   const store = new FlakyStore(new InMemoryConnectStateStore());
-  const svc = createConnectService({ backend, store, clock: { now: () => new Date('2026-11-02T00:00:00Z') } });
+  const svc = createConnectService({ localFolders: true, backend, store, clock: { now: () => new Date('2026-11-02T00:00:00Z') } });
   return { backend, store, svc };
 };
 const connect = async (s: ReturnType<typeof setup>, keys = ['a.txt', 'b.txt', 'c.txt', 'sub/d.txt', 'img.bin'], who = alice) => {
@@ -216,15 +216,15 @@ test('file store: durable across instances, atomic, and corrupt state is an erro
   try {
     const backend = new FakeBackend();
     backend.entries = [entry('a.txt')];
-    const a = createConnectService({ backend, store: new FileConnectStateStore(dir) });
+    const a = createConnectService({ localFolders: true, backend, store: new FileConnectStateStore(dir) });
     const c = await a.connectFolder(alice, { root: '/data/x', includeKeys: ['a.txt'] });
     assert.ok(c.ok);
-    const b = createConnectService({ backend, store: new FileConnectStateStore(dir) });
+    const b = createConnectService({ localFolders: true, backend, store: new FileConnectStateStore(dir) });
     const l = await b.listSources(alice);
     assert.ok(l.ok && l.value.length === 1);
     await writeFile(join(dir, 'connect-state.json'), '{not json');
     await assert.rejects(new FileConnectStateStore(dir).load(), ConnectStateError);
-    const broken = await createConnectService({ backend, store: new FileConnectStateStore(dir) }).listSources(alice);
+    const broken = await createConnectService({ localFolders: true, backend, store: new FileConnectStateStore(dir) }).listSources(alice);
     assert.ok(!broken.ok && broken.error.code === 'unavailable');
     await writeFile(join(dir, 'connect-state.json'), JSON.stringify({ version: 1, sources: { 'x/y': { ownerId: 'z' } } }));
     await assert.rejects(new FileConnectStateStore(dir).load(), ConnectStateError);
@@ -275,4 +275,27 @@ test('removeLearned is unavailable on a host that keeps nothing, and refuses oth
   for (const keys of [[], ['../x'], Array.from({ length: 201 }, (_, i) => `f${i}`)])
     assert.ok(!(await s.svc.removeLearned(alice, src.id, { keys })).ok);
   assert.ok(!(await s.svc.removeLearned(bob, src.id, { keys: ['a.txt'] })).ok);
+});
+
+test('local folders are OFF unless the host enables them: the catalog says so and no folder operation reaches the backend', async () => {
+  const backend = new FakeBackend();
+  backend.entries = [entry('a.txt')];
+  const svc = createConnectService({ backend, store: new InMemoryConnectStateStore() });
+  const local = svc.catalog().find((e) => e.kind === 'local_folder');
+  assert.equal(local?.availability, 'coming_soon');
+  assert.match(local?.note ?? '', /needs the XO desktop connection/);
+  assert.ok(!svc.catalog().some((e) => e.availability === 'available'));
+  const calls = [
+    await svc.previewFolder(alice, { root: '/data' }),
+    await svc.connectFolder(alice, { root: '/data', includeKeys: ['a.txt'] }),
+    await svc.previewSource(alice, 'x'),
+    await svc.readNow(alice, 'x'),
+    await svc.checkSource(alice, 'x'),
+    await svc.reconnect(alice, 'x'),
+    await svc.updateSelection(alice, 'x', { includeKeys: ['a.txt'] }),
+  ];
+  for (const r of calls) assert.ok(!r.ok && r.error.code === 'unavailable');
+  assert.equal(backend.listCalls, 0, 'nothing on the server disk was listed');
+  const dash = await svc.dashboard(alice);
+  assert.ok(dash.ok, 'the rest of Connect keeps working');
 });

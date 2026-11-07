@@ -57,7 +57,7 @@ const build = (authorization: AuthorizationPort) => {
     authorization,
   });
   const backend = createEiLocalFolderBackend({ deps, contextFor });
-  const svc = createConnectService({ backend, store: new InMemoryConnectStateStore() });
+  const svc = createConnectService({ localFolders: true, backend, store: new InMemoryConnectStateStore() });
   return { svc, backend, deps };
 };
 const allow = (root: string) =>

@@ -51,7 +51,7 @@ class Backend implements LocalFolderBackend {
 
 const withServer = async (fn: (s: TestServer, b: Backend) => Promise<void>): Promise<void> => {
   const backend = new Backend();
-  const connect = createConnectService({ backend, store: new InMemoryConnectStateStore() });
+  const connect = createConnectService({ localFolders: true, backend, store: new InMemoryConnectStateStore() });
   const server = await TestServer.start({ connect });
   try {
     await fn(server, backend);

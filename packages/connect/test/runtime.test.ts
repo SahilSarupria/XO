@@ -34,6 +34,7 @@ async function withDir(fn: (d: { root: string; state: string }) => Promise<void>
 }
 const runtime = (rules: PolicyRule[], state: string) =>
   createConnectRuntime({
+    localFolders: true,
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy(rules) }),
     audit: new InMemoryAuditRecorder(),
     stateDir: state,
@@ -109,7 +110,7 @@ test('connect state survives a restart; the platform record does not, and says s
 
 test('a failing or non-allow gate never yields capabilities', async () => {
   const mk = (probe: CapabilityProbe) =>
-    createConnectService({ backend: new FakeBackend(), store: new InMemoryConnectStateStore(), access: probe });
+    createConnectService({ localFolders: true, backend: new FakeBackend(), store: new InMemoryConnectStateStore(), access: probe });
   const p = principal('alice');
   const down = mk({ probe: async () => failResult('unavailable', 'x', true) });
   const r = await down.listSources(p);
@@ -119,12 +120,13 @@ test('a failing or non-allow gate never yields capabilities', async () => {
       okResult({ viewSources: false, manageSources: false, readKnowledge: false, reviewKnowledge: false, advisory: true as const }),
   });
   assert.ok(!(await none.listSources(p)).ok);
-  const noGate = createConnectService({ backend: new FakeBackend(), store: new InMemoryConnectStateStore() });
+  const noGate = createConnectService({ localFolders: true, backend: new FakeBackend(), store: new InMemoryConnectStateStore() });
   const c = await noGate.capabilities(p);
   assert.ok(!c.ok && c.error.code === 'unavailable', 'no gate configured is unavailable, not allowed');
   const fb = new FakeBackend();
   fb.entries = [entry('a.txt')];
   const view = createConnectService({
+    localFolders: true,
     backend: fb,
     store: new InMemoryConnectStateStore(),
     access: {

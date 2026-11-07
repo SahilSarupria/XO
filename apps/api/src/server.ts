@@ -74,6 +74,12 @@ export interface ServerDeps {
    * The service principal Connect's durable state runs as (default `xo-connect`). The policy MUST allow it `audit.read`: starting the
    * durable store needs a single-use audit read grant for it, and without one every Connect operation fails closed.
    */
+  /**
+   * Let Connect read folders on THIS machine (default false). Enable only for a single-machine deployment where the API runs next to the
+   * user's folders (self-hosted desktop, development). A hosted API must leave it off: it cannot see a user's computer and must not let
+   * users point it at paths on the server.
+   */
+  readonly connectLocalFolders?: boolean;
   readonly connectServiceId?: string;
   /** Receives the Connect runtime built from `connectStateDir`, so the host can `await runtime.close()` at shutdown. */
   readonly onConnectRuntime?: (runtime: ConnectRuntime) => void;
@@ -136,6 +142,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       permissionManager,
       auditSink,
       stateDir: join(deps.connectStateDir, 'connect'),
+      localFolders: deps.connectLocalFolders === true,
       durable: {
         dir: join(deps.connectStateDir, 'ei'),
         readGrant: async () => {

@@ -51,6 +51,12 @@ export interface ConnectServiceOptions {
   readonly clock?: ConnectClock;
   /** Asks the platform gate what the caller may do. When supplied, listing needs `viewSources` and every change or read needs `manageSources`; denial or failure refuses. */
   readonly access?: CapabilityProbe;
+  /**
+   * Whether this host may read folders on ITS OWN machine. Off unless the host says so: a hosted API cannot see a user's computer, and
+   * must not let users point it at paths on the server's disk. When off, the catalog says folder reading needs the desktop connection and
+   * every folder operation is refused as `unavailable` before anything is listed or read.
+   */
+  readonly localFolders?: boolean;
   /** Read-only knowledge (C6 SDK). Absent when the host has no durable state: then knowledge is reported as not available. */
   readonly knowledge?: KnowledgePort;
 }
@@ -97,6 +103,9 @@ export interface ConnectService {
   disconnect(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<ActionResult>>;
   reconnect(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<ActionResult>>;
 }
+
+export const LOCAL_FOLDER_UNAVAILABLE_NOTE =
+  'Reading folders on your computer needs the XO desktop connection, which is not available in this deployment yet.';
 
 export const CATALOG: readonly AddSourceEntry[] = Object.freeze([
   Object.freeze({
@@ -176,6 +185,8 @@ const UNAVAILABLE = <T>(): ConnectResult<T> => failResult('unavailable', 'Connec
 export function createConnectService(options: ConnectServiceOptions): ConnectService {
   const { backend, store } = options;
   const clock: ConnectClock = options.clock ?? { now: () => new Date() };
+  const localFolders = options.localFolders === true;
+  const NO_LOCAL = <T>(): ConnectResult<T> => failResult('unavailable', LOCAL_FOLDER_UNAVAILABLE_NOTE);
 
   // Mutations are serialized so two requests cannot lose each other's update (the store replaces the whole state).
   let chain: Promise<unknown> = Promise.resolve();
@@ -273,7 +284,12 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
   };
 
   return {
-    catalog: () => CATALOG,
+    catalog: () =>
+      localFolders
+        ? CATALOG
+        : CATALOG.map((e) =>
+            e.kind === 'local_folder' ? { kind: e.kind, availability: 'coming_soon' as const, note: LOCAL_FOLDER_UNAVAILABLE_NOTE } : e,
+          ),
 
     async searchKnowledge(p, request) {
       if (!authed(p)) return unauth();
@@ -336,6 +352,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async previewFolder(p, request) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -363,6 +380,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async previewSource(p, sourceId) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -379,6 +397,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async connectFolder(p, request) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -413,6 +432,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async updateSelection(p, sourceId, request) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -449,6 +469,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async readNow(p, sourceId) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -578,6 +599,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async checkSource(p, sourceId) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;
@@ -738,6 +760,7 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
     async reconnect(p, sourceId) {
       if (!authed(p)) return unauth();
+      if (!localFolders) return NO_LOCAL();
       {
         const g = await gate(p, 'manageSources');
         if (g) return g;

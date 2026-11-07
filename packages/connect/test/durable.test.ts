@@ -64,6 +64,7 @@ async function withDirs(fn: (d: Dirs) => Promise<void>): Promise<void> {
 }
 const boot = (d: Dirs, rules: PolicyRule[] = GRANTS, readGrant = grantMinter(), deriver?: Deriver) =>
   createConnectRuntime({
+    localFolders: true,
     ...(deriver !== undefined ? { deriver } : {}),
     permissionManager: new PermissionManager({ policy: new RuleBasedPolicy(rules) }),
     audit: new InMemoryAuditRecorder(),

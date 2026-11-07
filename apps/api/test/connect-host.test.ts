@@ -37,7 +37,11 @@ async function withTree(fn: (t: { root: string; state: string }) => Promise<void
 
 test('real host: HTTP journey through the real permission gate and the real audit sink', async () => {
   await withTree(async ({ root, state }) => {
-    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+    });
     try {
       const caps = await server.request('GET', '/connect/capabilities');
       assert.equal(caps.status, 200);
@@ -58,6 +62,7 @@ test('real host: no grants means the gate refuses every Connect operation', asyn
   await withTree(async ({ root, state }) => {
     const server = await TestServer.start({
       connectStateDir: state,
+      connectLocalFolders: true,
       permissionPolicy: new RuleBasedPolicy([rule('audit.read', 'xo-connect')]),
     });
     try {
@@ -79,7 +84,12 @@ test('real host: no grants means the gate refuses every Connect operation', asyn
 test('real host: capability queries and operations reach the platform audit sink', async () => {
   await withTree(async ({ root, state }) => {
     const sink = new NonProductionAuditSink();
-    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS), auditSink: sink });
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+      auditSink: sink,
+    });
     try {
       // This sink was NOT built with the EI extension schema: Connect must fail closed, not silently skip auditing.
       const caps = await server.request('GET', '/connect/capabilities');
@@ -96,6 +106,7 @@ test('real host: durable state needs its service principal to be allowed audit.r
   await withTree(async ({ state }) => {
     const server = await TestServer.start({
       connectStateDir: state,
+      connectLocalFolders: true,
       permissionPolicy: new RuleBasedPolicy(GRANTS.filter((g) => g.match?.principalId !== 'xo-connect')),
     });
     try {
@@ -109,7 +120,11 @@ test('real host: durable state needs its service principal to be allowed audit.r
 
 test('real host over HTTP: read retains evidence, removal previews and removes it, files are untouched', async () => {
   await withTree(async ({ root, state }) => {
-    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+    });
     try {
       const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['a.txt'] });
       const id = c.json<{ source: { id: string } }>().source.id;
@@ -131,7 +146,11 @@ test('real host over HTTP: read retains evidence, removal previews and removes i
 
 test('real host over HTTP: knowledge routes answer from C6 (empty for free text, which the shipped deriver does not understand)', async () => {
   await withTree(async ({ root, state }) => {
-    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+    });
     try {
       const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['a.txt'] });
       const id = c.json<{ source: { id: string } }>().source.id;
@@ -169,7 +188,11 @@ test('real host over HTTP: a structured record file becomes knowledge; removing 
         ],
       }),
     );
-    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+    });
     try {
       const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['org.json', 'a.txt'] });
       const id = c.json<{ source: { id: string } }>().source.id;
@@ -187,6 +210,22 @@ test('real host over HTTP: a structured record file becomes knowledge; removing 
       const gone = await server.request('GET', '/connect/knowledge?q=PRJ-2042');
       assert.equal(gone.json<{ data: { statements: unknown[] } }>().data.statements.length, 0);
       assert.equal((await server.request('POST', `/connect/sources/${id}/items/remove`, { keys: [] })).status, 400);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+test('real host: local folders are off by default, so a hosted API never lists its own disk', async () => {
+  await withTree(async ({ root, state }) => {
+    const server = await TestServer.start({ connectStateDir: state, permissionPolicy: new RuleBasedPolicy(GRANTS) });
+    try {
+      const cat = await server.request('GET', '/connect/catalog');
+      const local = cat.json<{ sources: { kind: string; availability: string }[] }>().sources.find((x) => x.kind === 'local_folder');
+      assert.equal(local?.availability, 'coming_soon');
+      assert.equal((await server.request('POST', '/connect/local-folders/preview', { root })).status, 503);
+      assert.equal((await server.request('POST', '/connect/local-folders', { root, includeKeys: ['a.txt'] })).status, 503);
+      assert.equal((await server.request('GET', '/connect/dashboard')).status, 200);
     } finally {
       await server.stop();
     }
