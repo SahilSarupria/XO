@@ -73,6 +73,7 @@ function external(onCall?: (op: string) => Promise<void>) {
   const calls: string[] = [];
   const op = (name: string) => ({
     sideEffect: 'write' as const,
+    idempotency: 'supports_key' as const, // this fake dedupes on the key
     execute: async (_a: unknown, ctx: { idempotencyKey?: string }) => {
       calls.push(`${name}:${ctx.idempotencyKey}`);
       await onCall?.(name);

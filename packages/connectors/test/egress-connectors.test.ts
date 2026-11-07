@@ -797,3 +797,37 @@ describe('through the ConnectorHost (declared -> granted -> implemented -> secre
     assert.equal(web.seen.length, 0, 'a dry run sent something');
   });
 });
+
+describe('egress: which failures prove nothing was sent (so a retry cannot duplicate)', () => {
+  it('connection refused is "not sent"; a timeout mid-exchange is NOT', async () => {
+    const policy = {
+      allowedHosts: ['hook.test'],
+      allowedPorts: [1],
+      allowPrivateNetwork: true,
+      maxRequestBytes: 100,
+      maxResponseBytes: 100,
+    };
+    const refused = await egress(
+      { url: 'http://hook.test:1/', method: 'POST', headers: {}, body: '{}', signal: new AbortController().signal },
+      policy,
+      { resolve: async () => ['127.0.0.1'] },
+    ).catch((e: unknown) => e);
+    assert.ok(refused instanceof ConnectorError);
+    assert.equal(refused.effect, 'none', 'ECONNREFUSED can only happen before the request is written');
+    const server = createServer(() => undefined);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as { port: number }).port;
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 30);
+    const hung = await egress(
+      { url: `http://hook.test:${port}/`, method: 'POST', headers: {}, body: '{}', signal: ac.signal },
+      { ...policy, allowedPorts: [port] },
+      { resolve: async () => ['127.0.0.1'] },
+    ).catch((e: unknown) => e);
+    server.closeAllConnections();
+    server.close();
+    assert.ok(hung instanceof ConnectorError);
+    assert.equal(hung.code, 'TIMEOUT');
+    assert.equal(hung.effect, undefined, 'a timeout after the request was written MUST be treated as possibly delivered');
+  });
+});

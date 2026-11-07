@@ -17,6 +17,7 @@ import {
   LeasedRunStore,
   LedgerReplica,
   RunStore,
+  reconcile,
   StaticReviewerRegistry,
   WorkflowRunner,
   compareShadow,
@@ -50,6 +51,7 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'flow',
     subsystem: SUBSYSTEM,
     usage:
+      'xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
       'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
       'xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]   Why a run did what it did, from its verified journal\n' +
@@ -61,7 +63,28 @@ export function registerCommands(registry: CommandRegistry): void {
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
       const [sub, file] = args.positionals;
-      if (file === undefined || sub === undefined) return fail('usage: xo flow <validate|report|run> <workflows.json>');
+      if (sub === 'reconcile') {
+        // needs only the run directory: it reads journals and calls nothing
+        const runs = flag(args.flags, 'runs');
+        if (runs === undefined) return fail('usage: xo flow reconcile --runs <dir> [--json]');
+        const rep = await reconcile(new RunStore(resolve(runs)));
+        if (args.flags['json'] === true) out(JSON.stringify(rep, null, 2));
+        else {
+          out(
+            `${rep.runs} run(s) read; ${rep.effects.filter((e) => e.status === 'resolved').length} external write(s) settled without a plain outcome, ${rep.effects.filter((e) => e.status !== 'resolved').length} need attention.`,
+          );
+          for (const e of rep.effects)
+            out(
+              `  [${e.status}] run ${e.runId} step ${e.step}: ${e.connector}.${e.operation}${e.key !== undefined ? ` key ${e.key}` : ''} (intent ${e.intentAt}) — ${e.detail}`,
+            );
+          if (rep.needsAttention)
+            out(
+              'Resume pending runs with the runner; for [ambiguous] entries check the destination by hand. Nothing was sent or changed by this command.',
+            );
+        }
+        return rep.needsAttention ? 1 : 0;
+      }
+      if (file === undefined || sub === undefined) return fail('usage: xo flow <validate|report|run|reconcile> <workflows.json>');
       try {
         const trees = flag(args.flags, 'trees');
         if (sub === 'validate') {

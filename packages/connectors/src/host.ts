@@ -1,5 +1,13 @@
 import { canonicalJson, sha256Hex, type ConnectorDecl, type WorkflowComponent } from '@xo/workflow-ir';
-import { ConnectorError, type CallRecord, type Connector, type ConnectorPolicy, type ConnectorResult, type Json } from './types.js';
+import {
+  ConnectorError,
+  type CallRecord,
+  type Connector,
+  type ConnectorPolicy,
+  type ConnectorResult,
+  type IdempotencyAttestation,
+  type Json,
+} from './types.js';
 import { Redactor, type SecretVault } from './vault.js';
 
 export interface ConnectorHostOptions {
@@ -36,6 +44,44 @@ export class ConnectorHost {
   readonly redactor = new Redactor();
   constructor(private readonly o: ConnectorHostOptions) {
     for (const c of o.component.connectors) this.declared.set(c.id, c);
+    this.validateAttestations();
+  }
+
+  /** Refuses to start on an attestation that names an undeclared operation or a lookup that is not a declared, granted read. A wrong attestation is a duplicate waiting to happen. */
+  private validateAttestations(): void {
+    for (const [cid, pol] of Object.entries(this.o.policy.connectors)) {
+      for (const [opName, a] of Object.entries(pol.idempotency ?? {})) {
+        const where = `idempotency attestation for ${cid}.${opName}`;
+        const decl = this.declared.get(cid)?.operations.find((x) => x.name === opName);
+        if (decl === undefined) throw new Error(`${where}: that operation is not declared by this package`);
+        if (decl.sideEffect === 'read') throw new Error(`${where}: reads need no attestation`);
+        if (a.mode !== 'supports_key' && a.mode !== 'supports_lookup' && a.mode !== 'none')
+          throw new Error(`${where}: mode must be supports_key, supports_lookup or none`);
+        if (a.mode !== 'supports_lookup') {
+          if (a.lookup !== undefined) throw new Error(`${where}: "lookup" applies only to supports_lookup`);
+          continue;
+        }
+        const l = a.lookup;
+        if (l === undefined) throw new Error(`${where}: supports_lookup needs a "lookup"`);
+        const ld = this.declared.get(cid)?.operations.find((x) => x.name === l.operation);
+        if (ld === undefined || ld.sideEffect !== 'read')
+          throw new Error(`${where}: lookup operation "${l.operation}" must be a declared read operation of the same connector`);
+        if (!pol.grant.includes(l.operation)) throw new Error(`${where}: lookup operation "${l.operation}" is not granted`);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*){0,2}$/.test(l.foundWhen?.field ?? ''))
+          throw new Error(`${where}: foundWhen.field must be a dot path of at most 3 names`);
+        if (l.foundWhen.equals === undefined) throw new Error(`${where}: foundWhen.equals is required`);
+      }
+    }
+  }
+
+  /**
+   * What the destination of a write operation can guarantee, as far as anyone has attested. The operator's attestation wins; otherwise what the
+   * implementation itself guarantees; otherwise `none`.
+   */
+  idempotencyOf(connector: string, operation: string): IdempotencyAttestation {
+    const attested = this.o.policy.connectors[connector]?.idempotency?.[operation];
+    if (attested !== undefined) return attested;
+    return { mode: this.o.implementations[connector]?.operations[operation]?.idempotency ?? 'none' };
   }
 
   /** Grants actually usable: declared AND granted AND implemented. Useful for `xo` diagnostics and negotiation. */
@@ -147,7 +193,7 @@ export class ConnectorHost {
     } catch (e) {
       const ce = e instanceof ConnectorError ? e : new ConnectorError('FAILED', (e as Error).message);
       finish({ sideEffect: se, outcome: 'error', errorCode: ce.code });
-      throw new ConnectorError(ce.code, this.redactor.redact(ce.message));
+      throw new ConnectorError(ce.code, this.redactor.redact(ce.message), ce.effect);
     } finally {
       clearTimeout(timer);
     }

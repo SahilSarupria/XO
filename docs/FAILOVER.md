@@ -57,8 +57,9 @@ Anchoring of the ledger (the existing automation anchor) is not wired to this jo
 
 ## NOT guaranteed
 
-- **Not exactly-once.** A call in flight when the lease is lost completes at the external system; the takeover then repeats it with the same key. A system that honours
-  idempotency keys dedupes it; a system that does **not** can see a duplicate. A crash at the wrong instant on one runner can do the same (see `WORKFLOW_RUNTIME.md`).
+- **Not exactly-once.** A call in flight when the lease is lost completes at the external system. The takeover finds an intent with no outcome and **settles it by the
+  destination's attested capability** (`WORKFLOW_RUNTIME.md`, "Duplicate-call window"): same key for destinations that dedupe, a lookup first for those that can answer, and an
+  `AMBIGUOUS_EFFECT` escalation (never a silent second write) for those that can do neither or are unattested. A crash at the wrong instant on one runner can do the same (see `WORKFLOW_RUNTIME.md`).
 - Clock skew between runner and server can shorten or lengthen a lease from the runner's point of view; the server's clock decides expiry. Keep heartbeats well inside the TTL.
 - The authority is a single process with file-backed state: it is a single point of failure, and two server processes on one directory are unsupported.
 - A fully offline local runner holds no server lease. If the server also runs that run (for example a duplicate trigger), the two can diverge; that shows up as a fork or a `HELD`

@@ -114,6 +114,20 @@ export async function egress(req: EgressRequest, policy: EgressPolicy, deps: Egr
   return res;
 }
 
+/** Errors that can only happen before the request is written: a retry cannot duplicate anything. (A timeout or a reset mid-exchange is NOT in this list.) */
+const NOT_SENT = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'CERT_HAS_EXPIRED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+]);
+
 /** Connects to the pinned address, sends the original Host, and verifies TLS against the original name. */
 function nodeTransport(req: VettedRequest, pinned: { readonly address: string }, policy: EgressPolicy): Promise<EgressResponse> {
   return new Promise<EgressResponse>((resolve, reject) => {
@@ -160,8 +174,16 @@ function nodeTransport(req: VettedRequest, pinned: { readonly address: string },
         res.on('error', (e) => reject(new ConnectorError('FAILED', e.message)));
       },
     );
-    r.on('error', (e) =>
-      reject(e instanceof ConnectorError ? e : new ConnectorError(e.name === 'AbortError' ? 'TIMEOUT' : 'FAILED', e.message)),
+    r.on('error', (e: NodeJS.ErrnoException) =>
+      reject(
+        e instanceof ConnectorError
+          ? e
+          : new ConnectorError(
+              e.name === 'AbortError' ? 'TIMEOUT' : 'FAILED',
+              e.message,
+              NOT_SENT.has(String(e.code)) ? 'none' : undefined,
+            ),
+      ),
     );
     if (req.body !== undefined) r.write(req.body);
     r.end();

@@ -12,8 +12,32 @@ export interface OperationContext {
   readonly signal: AbortSignal;
 }
 
+/**
+ * What a destination can guarantee about a repeated write. This is a property of the SYSTEM at the other end, not of this code, so unless the
+ * implementation can prove it (the file connector's create-only write) the default is `none`: an unknown destination is treated as one that duplicates.
+ *  - `supports_key`: the destination deduplicates on the idempotency key we send, so re-sending after an unknown outcome is safe;
+ *  - `supports_lookup`: the destination can be asked whether the effect already exists (an operator-declared read), so we can check before repeating;
+ *  - `none`: neither. After an unknown outcome the write is NEVER repeated automatically; a person decides.
+ */
+export type IdempotencySupport = 'supports_key' | 'supports_lookup' | 'none';
+
+/** The operator's statement, per operation, about the destination. Lives next to the grant because only the operator knows the destination. */
+export interface IdempotencyAttestation {
+  readonly mode: IdempotencySupport;
+  /** Required for `supports_lookup`: a declared, granted READ operation of the same connector that finds a prior effect. */
+  readonly lookup?: {
+    readonly operation: string;
+    /** Arguments for the read. String values may contain `{key}` (the external idempotency key) and `{arg.<name>}` (a scalar argument of the write); substitutions are URL-encoded. */
+    readonly args: Readonly<Record<string, Json>>;
+    /** The effect EXISTS iff the read's result has `field` (dot path, up to 3 segments) strictly equal to `equals`. Anything else is "not found", an error is "unknown". */
+    readonly foundWhen: { readonly field: string; readonly equals: Json };
+  };
+}
+
 export interface ConnectorOperation {
   readonly sideEffect: SideEffect;
+  /** Only when the implementation itself guarantees it (e.g. a create-only write); otherwise the operator attests, or it is `none`. */
+  readonly idempotency?: IdempotencySupport;
   readonly execute: (args: Readonly<Record<string, Json>>, ctx: OperationContext) => Promise<Json>;
 }
 
@@ -24,7 +48,17 @@ export interface Connector {
 
 /** The host operator's local policy: which declared connectors/operations are granted and how they bind to this machine. */
 export interface ConnectorPolicy {
-  readonly connectors: Readonly<Record<string, { readonly grant: readonly string[]; readonly config?: Readonly<Record<string, Json>> }>>;
+  readonly connectors: Readonly<
+    Record<
+      string,
+      {
+        readonly grant: readonly string[];
+        readonly config?: Readonly<Record<string, Json>>;
+        /** Per-operation attestation about the destination's duplicate protection. Absent means `none`. */
+        readonly idempotency?: Readonly<Record<string, IdempotencyAttestation>>;
+      }
+    >
+  >;
 }
 
 export type ConnectorErrorCode =
@@ -43,6 +77,8 @@ export class ConnectorError extends Error {
   constructor(
     readonly code: ConnectorErrorCode,
     message: string,
+    /** `none`: failed BEFORE anything could have reached the destination (so repeating cannot duplicate). Default: unknown, which is treated as possibly-delivered. */
+    readonly effect?: 'none',
   ) {
     super(message);
     this.name = 'ConnectorError';

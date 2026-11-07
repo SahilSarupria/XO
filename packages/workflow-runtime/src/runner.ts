@@ -125,6 +125,8 @@ interface StepRec {
   attempt: number;
   outputs?: Record<string, unknown>;
   callOutcome?: { ok: boolean; data?: Json; code?: string };
+  /** An external call was journalled as about to happen. Cleared only by an outcome or by proof that nothing was sent. */
+  callIntent?: { requestHash?: string; key?: string; ts: string };
   waitUntil?: number;
   approval?: { request: ApprovalRequest; deadline: number };
   modelCalls: number;
@@ -191,6 +193,19 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         const s = step(d['step']);
         s.state = 'running';
         s.attempt = d['attempt'];
+        break;
+      }
+      case 'call_intent':
+        step(d['step']).callIntent = {
+          ts: e.ts,
+          ...(d['requestHash'] !== undefined ? { requestHash: d['requestHash'] } : {}),
+          ...(d['key'] !== undefined ? { key: d['key'] } : {}),
+        };
+        break;
+      case 'call_not_sent': {
+        // the failure provably happened before anything reached the destination: the pending intent no longer means "may have taken effect"
+        const s = step(d['step']);
+        delete s.callIntent;
         break;
       }
       case 'call_outcome':
@@ -790,6 +805,8 @@ export class WorkflowRunner {
       case 'act':
       case 'compensate': {
         const r = await this.callConnector(runId, step, rec, false, sr);
+        // an unknown outcome on a destination that cannot dedupe is for a person: never retried, never failed quietly
+        if (!r.ok && r.code === 'AMBIGUOUS_EFFECT') return { kind: 'escalate', code: r.code, message: r.message };
         if (!r.ok) return { kind: 'fail', code: r.code, message: r.message };
         const data = r.data;
         const outs: Record<string, unknown> = {};
@@ -867,6 +884,96 @@ export class WorkflowRunner {
   }
 
   /**
+   * Called before a write is (re-)sent. If the journal shows an earlier attempt of THIS step whose outcome was never recorded (a crash, or a timeout),
+   * that attempt may have taken effect. What happens next depends on what the destination can guarantee (see `IdempotencySupport`):
+   *   none            -> escalate AMBIGUOUS_EFFECT; the write is never repeated automatically;
+   *   supports_key    -> send again with the SAME key; the destination deduplicates;
+   *   supports_lookup -> ask the destination first: found -> adopt its answer and do not write; confirmed absent -> write; lookup failed -> escalate.
+   * Every decision is journalled so `reconcile` and `explain` can show what happened and why.
+   */
+  private async settlePriorAttempt(
+    runId: string,
+    step: ActStep | CompensateStep,
+    values: Record<string, unknown>,
+    key: string | undefined,
+    requestHash: string,
+  ): Promise<{ kind: 'clear' } | { kind: 'adopted'; data: Json } | { kind: 'ambiguous'; message: string }> {
+    const { store } = this.o;
+    const fresh = replayRun(await store.read(runId), this.wf, runId)?.steps.get(step.id);
+    const intent = fresh?.callIntent;
+    if (intent === undefined || fresh?.callOutcome !== undefined) return { kind: 'clear' };
+    const cap = this.o.connectors.idempotencyOf(step.connector, step.operation);
+    const where = `${step.connector}.${step.operation}`;
+    const note = (type: string, data: Record<string, unknown>) =>
+      store.append(runId, type, {
+        step: step.id,
+        connector: step.connector,
+        operation: step.operation,
+        mode: cap.mode,
+        intentAt: intent.ts,
+        ...(key !== undefined ? { key } : {}),
+        requestHash,
+        ...data,
+      });
+    const ambiguous = async (why: string): Promise<{ kind: 'ambiguous'; message: string }> => {
+      const message = `an earlier attempt of ${where} (journalled ${intent.ts}) has no recorded outcome and may have taken effect; ${why}. A person must check the destination${key !== undefined ? ` (idempotency key ${key})` : ''} and decide`;
+      await note('effect_ambiguous', { reason: why });
+      return { kind: 'ambiguous', message };
+    };
+    if (cap.mode === 'none')
+      return ambiguous('this destination has no duplicate protection (idempotency: none), so the write is not repeated automatically');
+    if (cap.mode === 'supports_key') {
+      if (key === undefined) return ambiguous('the destination dedupes on a key, but this step defines none');
+      await note('effect_retry_same_key', {});
+      return { kind: 'clear' };
+    }
+    const lookup = cap.lookup;
+    if (lookup === undefined) return ambiguous('the lookup attestation is missing');
+    const args: Record<string, Json> = {};
+    for (const [k, v] of Object.entries(lookup.args)) {
+      if (typeof v !== 'string') {
+        args[k] = v;
+        continue;
+      }
+      let missing: string | undefined;
+      args[k] = v.replace(/\{(key|arg\.[A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
+        const val = name === 'key' ? key : values[name.slice(4)];
+        if (val === undefined || val === null || typeof val === 'object') {
+          missing = name;
+          return '';
+        }
+        return encodeURIComponent(String(val));
+      });
+      if (missing !== undefined) return ambiguous(`the lookup needs {${missing}}, which is not available`);
+    }
+    let found: boolean;
+    let data: Json;
+    try {
+      const res = await this.o.connectors.call({
+        connector: step.connector,
+        operation: lookup.operation,
+        args,
+        runId,
+        stepId: step.id,
+        timeoutMs: step.timeoutMs,
+      });
+      data = res.data;
+      let cur: unknown = data;
+      for (const seg of lookup.foundWhen.field.split('.'))
+        cur = typeof cur === 'object' && cur !== null ? (cur as Record<string, unknown>)[seg] : undefined;
+      found = JSON.stringify(cur) === JSON.stringify(lookup.foundWhen.equals);
+    } catch (e) {
+      return ambiguous(
+        `checking the destination failed (${e instanceof ConnectorError ? e.code : 'ERROR'}), so it is still unknown whether the effect exists`,
+      );
+    }
+    await note('effect_lookup', { found });
+    if (!found) return { kind: 'clear' };
+    await store.append(runId, 'call_outcome', { step: step.id, ok: true, data, adopted: true, via: 'lookup', requestHash });
+    return { kind: 'adopted', data };
+  }
+
+  /**
    * Journal discipline for an external call: `call_intent` is durable BEFORE the call, `call_outcome` AFTER and BEFORE the next step.
    * After a crash: outcome present => reuse it, never call again; intent without outcome => call again with the SAME key (the
    * external system dedupes if it supports idempotency; if it does not, a duplicate is possible and is documented, not hidden).
@@ -910,6 +1017,11 @@ export class WorkflowRunner {
     if (!this.breakers.allow(step.connector))
       return { ok: false, code: 'CIRCUIT_OPEN', message: `circuit open for connector "${step.connector}"` };
     const requestHash = sha256Hex(canonicalJson({ c: step.connector, o: step.operation, a: values }));
+    if (hasSideEffects(step) && !rec.dryRun) {
+      const settled = await this.settlePriorAttempt(runId, step, values, key, requestHash);
+      if (settled.kind === 'adopted') return { ok: true, data: settled.data };
+      if (settled.kind === 'ambiguous') return { ok: false, code: 'AMBIGUOUS_EFFECT', message: settled.message };
+    }
     const startedAt = this.now();
     await store.append(runId, 'call_intent', {
       step: step.id,
@@ -938,8 +1050,10 @@ export class WorkflowRunner {
     } catch (e) {
       const ce = e instanceof ConnectorError ? e : new ConnectorError('FAILED', (e as Error).message);
       if (TRANSIENT.has(ce.code)) this.breakers.failure(step.connector);
-      // Permanent refusals are final and recorded; transient failures are not recorded as outcomes so a retry may call again with the same key.
+      // Permanent refusals are final and recorded. A transient failure is NOT an outcome: the destination may have acted, so the intent stays pending and
+      // the next attempt must settle it (see settlePriorAttempt) before sending again. Unless the failure proves nothing was sent.
       if (!TRANSIENT.has(ce.code)) await store.append(runId, 'call_outcome', { step: step.id, ok: false, code: ce.code });
+      else if (ce.effect === 'none') await store.append(runId, 'call_not_sent', { step: step.id, code: ce.code });
       return { ok: false, code: ce.code, message: ce.message };
     } finally {
       release();

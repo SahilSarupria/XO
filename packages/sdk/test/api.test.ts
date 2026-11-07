@@ -17,7 +17,7 @@ import {
   signDecision,
 } from '@xo/workflow-runtime';
 import { buildGoldXo, freightClaimWorkflowIr } from '@xo/ab-eval';
-import type { XoApiError} from '../src/index.js';
+import type { XoApiError } from '../src/index.js';
 import { XoClient, replicateRun } from '../src/index.js';
 
 const TOKEN = 'test-token-0123456789-abcdefghij';
@@ -86,6 +86,7 @@ function external(onCall?: (op: string) => Promise<void>) {
   const effects: string[] = [];
   const op = (name: string) => ({
     sideEffect: 'write' as const,
+    idempotency: 'supports_key' as const, // this fake dedupes on the key
     execute: async (_a: unknown, ctx: { idempotencyKey?: string }) => {
       await onCall?.(name);
       if (ctx.idempotencyKey !== undefined && seen.has(ctx.idempotencyKey)) return { dup: true };

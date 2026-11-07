@@ -26,16 +26,17 @@ into the desk `HashChainLedger`, bounded in-memory windows and segment recovery 
 - **At-most-once acceptance:** a run id (or dedupe key) creates its directory atomically; a second start returns the existing state with `accepted:false`.
 - **Recorded outcome before the next step:** `call_intent` is durable before an external call, `call_outcome` after it and before anything depends on it.
   After a crash, a recorded outcome is reused and never re-called.
-- **Same key on takeover:** an intent without an outcome is called again with the **same** external idempotency key (derived from workflow, step and
-  rendered key). Journal write failures propagate as crashes, not as step failures.
+- **An intent without an outcome is settled before anything is sent again** (see "Duplicate-call window" below): what happens depends on what the destination
+  can guarantee, and an unattested destination is treated as one that cannot dedupe. When a call is re-sent it uses the **same** external idempotency key
+  (derived from workflow, step and rendered key). Journal write failures propagate as crashes, not as step failures.
 - **Fail closed:** undecidable, missing-fact, ungranted, unresolvable-key, over-ceiling, kill-switched and timed-out cases escalate or refuse; nothing defaults.
 - **Compensation:** on `onError: compensate`, completed write steps with a declared `compensatedBy` are undone in reverse completion order; if any
   completed write has none, or an undo fails, the run **escalates and names what could not be undone**. Irreversible steps cannot be undone.
 
 ## NOT guaranteed (read this)
 
-- **Not exactly-once.** Execution is at-least-once: a crash between the external call and its journaled outcome causes a second call. An external
-  system that ignores idempotency keys can see a duplicate in that window. Transient failures may also be retried; each retry reuses the key.
+- **Not exactly-once, and never claimed to be.** Exactly-once against an arbitrary external system is impossible: after a crash or timeout the runner cannot know
+  whether the destination acted. What is guaranteed is described precisely under "Duplicate-call window"; the residual risk is named there and surfaced by `xo flow reconcile`.
 - One process per run: there is no cross-process lock or lease yet (section F). Two runners driving the same run directory can race.
 - The journal detects tampering after the fact; it does not stop a user with disk access from deleting a whole run directory.
 - Timers need `tick()` to be called; there is no scheduler daemon yet.
@@ -88,3 +89,33 @@ It reads the journal and the workflow document only; **it does not recover which
 `xo flow audit-export ... --run-ids a,b --key <pem> --out bundle.json` writes a signed bundle: the journal slices, workflow id/version and the SHA-256 of the workflow component bytes,
 the operator's connector grants, an optional manifest and load receipt, a Merkle root over run head hashes, and an Ed25519 signature. `xo flow audit-verify bundle.json --pubkey <pem>`
 re-checks the signature, the root and every hash chain with nothing else (exit 3 on any problem). Key management is the operator's job.
+
+## Duplicate-call window (what is guaranteed, what is not)
+
+The journal is a transactional outbox: `call_intent` is durable **before** an external write is sent and `call_outcome` after. The window is an intent with no outcome
+(the process died mid-call, or the call timed out). Before a write is sent again the runner **settles** that earlier attempt according to what the destination can
+guarantee. That is a property of the _system at the other end_, so the operator states it per operation next to the grant, in the `--policy` file:
+
+    "connectors": { "bank": { "grant": ["pay", "find"], "idempotency": {
+      "pay": { "mode": "supports_lookup",
+               "lookup": { "operation": "find", "args": { "id": "{arg.order}" }, "foundWhen": { "field": "found", "equals": true } } } } } }
+
+| Attested mode                                | After an unknown outcome the runner…                                                                                                                                                                                                               | Residual risk                                                                                                                                   |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `supports_key`                               | re-sends under the **same** key; the destination deduplicates                                                                                                                                                                                      | the destination's dedupe window/semantics; a destination that claims this and does not                                                          |
+| `supports_lookup`                            | **asks the destination first** (a declared, granted read; `{key}` and `{arg.name}` are substituted, URL-encoded). Found → adopts the answer and does **not** write. Confirmed absent → writes. Lookup fails or cannot be filled in → **escalates** | eventual consistency (a lookup that lags the write); the lookup's result must expose the step's declared outputs or the step fails `BAD_RESULT` |
+| `none` (the default for anything unattested) | **never writes again automatically**; escalates `AMBIGUOUS_EFFECT` with the connector, operation, journal time and idempotency key                                                                                                                 | the effect may or may not have happened; a person must look. This is real work, not a guarantee                                                 |
+
+Built in: the file connector's create-only write is `supports_key` (a repeat is a no-op, different content is refused). Every other connector is `none` until the operator attests.
+A failure that **proves nothing was sent** (connection refused, DNS failure, TLS certificate rejected before the request is written) is journalled `call_not_sent` and is retried
+automatically in every mode; a timeout or a reset mid-exchange is _not_ in that class. Attestations are validated when the host starts: an unknown operation, a lookup that is not a
+declared and granted read, or a malformed `foundWhen` refuses to start.
+
+`xo flow reconcile --runs <dir>` reads the journals (it calls nothing) and lists every external write that is `pending` (resume the run), `ambiguous` (a person must check the
+destination) or `resolved` by lookup/same-key re-send. Exit code 1 means something needs attention, so it can run from cron.
+
+**What is tested:** for each of the three modes, a crash before and after **every** journal append of a two-write workflow, restarted over the same external system, asserts the
+destination never sees a second effect for any item, that `supports_*` runs always complete with every item effected once, and that `none` runs either complete or escalate
+`AMBIGUOUS_EFFECT` (and that reconcile flags it). Plus in-process timeouts after the effect, a lookup that confirms absence, a lookup that fails, and attestation validation. This is a
+fake destination: it shows the runner's logic, not any real system's behaviour. **Not covered:** two runners driving one run directory (item 9), a destination that lies about its
+guarantees, side effects outside connectors (compensation by a person), and the journal being deleted wholesale.

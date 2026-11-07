@@ -67,6 +67,8 @@ export function fileConnector(cfg: FileConfig): Connector {
       },
       write_record: {
         sideEffect: 'write',
+        // create-only: writing the same record again is a no-op and different content is refused, so a repeat can never duplicate
+        idempotency: 'supports_key',
         execute: async (args) => {
           const content = typeof args['content'] === 'string' ? args['content'] : JSON.stringify(args['content'] ?? null);
           if (Buffer.byteLength(content) > cfg.maxBytes) throw new ConnectorError('DENIED', 'content exceeds maxBytes');

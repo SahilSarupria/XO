@@ -19,6 +19,7 @@ function external(opts: { failFirst?: number; failCode?: ConnectorError['code'] 
       get: { sideEffect: 'read', execute: async () => ({ v: 1 }) },
       pay: {
         sideEffect: 'write',
+        idempotency: 'supports_key', // this fake dedupes on the key, like a payment API
         execute: async (args, ctx) => {
           calls.push({ op: 'pay', ...(ctx.idempotencyKey !== undefined ? { key: ctx.idempotencyKey } : {}) });
           if (failures > 0) {
@@ -33,6 +34,7 @@ function external(opts: { failFirst?: number; failCode?: ConnectorError['code'] 
       },
       refund: {
         sideEffect: 'write',
+        idempotency: 'supports_key',
         execute: async (args, ctx) => {
           calls.push({ op: 'refund', ...(ctx.idempotencyKey !== undefined ? { key: ctx.idempotencyKey } : {}) });
           effects.push(`refund:${String(args['amount'])}`);
