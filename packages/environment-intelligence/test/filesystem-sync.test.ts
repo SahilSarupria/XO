@@ -7,10 +7,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { PermissionManager, RuleBasedPolicy, parsePermissionId } from '@xo/permissions';
 import { MockClock } from '@xo/testing';
 import {
   ConnectorRegistry,
   DiscoveryErrorCode,
+  PermissionManagerAuthorization,
+  type AuthorizationPort,
   EiStateStore,
   EnvironmentInventory,
   EvidenceLedger,
@@ -18,6 +21,8 @@ import {
   discoverSource,
   ingestSource,
   syncSource,
+  removeResourceEvidence,
+  resourceDigestOf,
   type ConnectorContext,
   type FilesystemScope,
   type SourceId,
@@ -34,7 +39,7 @@ interface Env {
   readonly ledger: EvidenceLedger;
   readonly store: EiStateStore;
   readonly recorder: FlakyRecorder;
-  readonly authz: ScriptedAuthorization;
+  readonly authz: AuthorizationPort;
   readonly ctx: ConnectorContext;
   readonly scope: (keys: readonly string[]) => FilesystemScope;
   readonly sourceId: SourceId;
@@ -42,7 +47,7 @@ interface Env {
   readonly baseline: number;
 }
 
-async function env(base: string, allow: { list?: boolean; read?: boolean; ingest?: boolean } = {}): Promise<Env> {
+async function env(base: string, allow: { list?: boolean; read?: boolean; ingest?: boolean; remove?: boolean } = {}): Promise<Env> {
   const root = join(await realpath(base), 'docs');
   const outside = join(await realpath(base), 'outside');
   await mkdir(join(root, 'sub'), { recursive: true });
@@ -62,8 +67,8 @@ async function env(base: string, allow: { list?: boolean; read?: boolean; ingest
   registry.register(new LocalFilesystemConnector());
   const clock = new MockClock('2026-11-02T00:00:00.000Z');
   const recorder = new FlakyRecorder(clock);
-  const a = { list: true, read: true, ingest: true, ...allow };
-  const authz = new ScriptedAuthorization((r) =>
+  const a = { list: true, read: true, ingest: true, remove: true, ...allow };
+  const scripted = new ScriptedAuthorization((r) =>
     r.operation === 'ingest_source'
       ? a.ingest
       : r.permission === 'filesystem.list'
@@ -72,6 +77,17 @@ async function env(base: string, allow: { list?: boolean; read?: boolean; ingest
           ? a.read
           : false,
   );
+  // Resource-scoped decisions (evidence removal) come from the REAL platform permission manager, as in production.
+  const del = parsePermissionId('data.delete');
+  if (!del.ok) throw new Error('permission id');
+  const platform = new PermissionManagerAuthorization(
+    new PermissionManager({
+      policy: new RuleBasedPolicy(
+        a.remove ? [{ id: 'del', effect: 'ALLOW', match: { permission: del.value.id, principalId: TEST_PRINCIPAL.id } }] : [],
+      ),
+    }),
+  );
+  const authz: AuthorizationPort = { decide: (r) => (r.permission === 'data.delete' ? platform.decide(r) : scripted.decide(r)) };
   const ctx: ConnectorContext = { clock, authorization: authz, principal: TEST_PRINCIPAL, audit: recorder, ledger, state: opened.value };
   const deps = { registry, inventory };
   const scope = (keys: readonly string[]): FilesystemScope => ({ kind: 'filesystem_root', root, includeKeys: keys });
@@ -91,6 +107,9 @@ async function env(base: string, allow: { list?: boolean; read?: boolean; ingest
     sourceId: run.value.record.source.sourceId,
   };
 }
+
+const idFor = (e: Env, items: readonly { resourceDigest: string; evidenceId: string }[], key: string): string | undefined =>
+  items.find((i) => i.resourceDigest === resourceDigestOf(e.sourceId, 'document_content', key))?.evidenceId;
 
 const sync = (e: Env, keys: readonly string[], cursor?: string) =>
   syncSource(
@@ -269,6 +288,114 @@ test('structuredRecords is opt-in and strict: only an exact record file carries 
     for (const k of keys.filter((k) => k !== 'org.json'))
       assert.equal(payloadOf(on, k)?.['records'], undefined, `${k} must not carry records`);
     assert.doesNotMatch(JSON.stringify(on.value.evidence), /secret-text/, 'content of non-record files is never retained');
+    await e.store.close();
+  });
+});
+
+test('REMOVE (per item): retires only the named items, immediately, durably; the source stays; exclusion is the caller job', async () => {
+  await withSandbox(async ({ base }) => {
+    const e = await env(base);
+    const scope = e.scope(['a.txt', 'b.md', 'sub/c.txt']);
+    const req = { sourceId: e.sourceId, kind: 'document_content' as const, scope };
+    const first = await ingestSource(e.deps, req, e.ctx);
+    assert.ok(first.ok);
+    const byKey = new Map(['a.txt', 'b.md', 'sub/c.txt'].map((k) => [k, idFor(e, first.value.items, k)]));
+    const seen: boolean[] = [];
+    const holder = { purge: async (ids: readonly never[]) => void seen.push(ids.every((id) => e.ledger.isEligible(id) === false)) };
+
+    const r = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: ['b.md', 'never-ingested.txt'], targets: [holder] },
+      e.ctx,
+    );
+    assert.ok(r.ok, r.ok ? '' : r.error.code);
+    assert.deepEqual(r.value.evidenceIds, [byKey.get('b.md')]);
+    assert.equal(e.ledger.isEligible(byKey.get('b.md') as never), false);
+    assert.equal(e.ledger.isEligible(byKey.get('a.txt') as never), true);
+    assert.equal(e.ledger.isEligible(byKey.get('sub/c.txt') as never), true);
+    assert.deepEqual(seen, [true], 'holders delete only after the evidence is already ineligible');
+    assert.equal(e.deps.inventory.get(e.sourceId)?.axes.authorization, 'granted', 'the source itself is untouched');
+    const ev = e.recorder.inner.events().filter((x) => x.operation === 'purge_evidence');
+    assert.deepEqual(
+      ev.map((x) => x.phase),
+      ['attempt', 'terminal'],
+    );
+
+    // NOTE (documented on removeResourceEvidence): a later authorized read that returns an item releases its evidence again, by design. A
+    // caller that removes what was learned from an item must also take the item out of scope, or the next read learns it again.
+    await e.store.close();
+  });
+});
+
+test('REMOVE survives a restart: the journal replays the tombstone and the evidence stays retired', async () => {
+  await withSandbox(async ({ base }) => {
+    const e = await env(base);
+    const scope = e.scope(['a.txt', 'b.md']);
+    const first = await ingestSource(e.deps, { sourceId: e.sourceId, kind: 'document_content', scope }, e.ctx);
+    assert.ok(first.ok);
+    const byKey = new Map(['a.txt', 'b.md'].map((k) => [k, idFor(e, first.value.items, k)]));
+    const r = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: ['b.md'] },
+      e.ctx,
+    );
+    assert.ok(r.ok);
+    await e.store.close();
+
+    const reopened = await EiStateStore.open({ dir: join(base, 'state') });
+    assert.ok(reopened.ok);
+    const ledger = new EvidenceLedger();
+    const started = await reopened.value.start({
+      grant: await readGrant(),
+      trust: { principal: TEST_PRINCIPAL },
+      inventory: new EnvironmentInventory(),
+      ledger,
+    });
+    assert.ok(started.ok);
+    assert.equal(ledger.isEligible(byKey.get('b.md') as never), false, 'removed evidence does not come back');
+    assert.equal(ledger.isEligible(byKey.get('a.txt') as never), true);
+    assert.equal(reopened.value.ingestedResources(e.sourceId).size, 1, 'the index forgot the removed item');
+    await reopened.value.close();
+  });
+});
+
+test('REMOVE is gated, bounded and needs the durable store', async () => {
+  await withSandbox(async ({ base }) => {
+    const e = await env(base, { remove: false });
+    const scope = e.scope(['a.txt']);
+    const first = await ingestSource(e.deps, { sourceId: e.sourceId, kind: 'document_content', scope }, e.ctx);
+    assert.ok(first.ok);
+    const denied = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: ['a.txt'] },
+      e.ctx,
+    );
+    assert.ok(!denied.ok);
+    assert.equal(e.ledger.isEligible(first.value.items[0]?.evidenceId as never), true, 'without data.delete nothing is retired');
+    await e.store.close();
+  });
+  await withSandbox(async ({ base }) => {
+    const e = await env(base);
+    const many = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: Array.from({ length: 201 }, (_, i) => `f${i}`) },
+      e.ctx,
+    );
+    assert.ok(!many.ok && many.error.code === DiscoveryErrorCode.LIMIT_EXCEEDED);
+    const none = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: [] },
+      e.ctx,
+    );
+    assert.ok(!none.ok);
+    const { state: _state, ...noState } = e.ctx;
+    void _state;
+    const nostate = await removeResourceEvidence(
+      { inventory: e.deps.inventory },
+      { sourceId: e.sourceId, kind: 'document_content', resourceKeys: ['a.txt'] },
+      noState,
+    );
+    assert.ok(!nostate.ok && nostate.error.code === DiscoveryErrorCode.STATE_UNAVAILABLE);
     await e.store.close();
   });
 });

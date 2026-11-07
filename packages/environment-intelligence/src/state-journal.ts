@@ -51,7 +51,11 @@ export const EI_STATE_EXTENSION_SCHEMA: AuditExtensionSchema = {
     operationId: { kind: 'id', optional: true },
     sourceId: { kind: 'id', optional: true },
     ids: { kind: 'list', max: 5000, of: { kind: 'id' }, optional: true },
-    kind: { kind: 'enum', values: ['revoke', 'purge', 'revoked', 'purged', 'deleted', 'access_lost', 'superseded'], optional: true },
+    kind: {
+      kind: 'enum',
+      values: ['revoke', 'purge', 'revoked', 'purged', 'deleted', 'access_lost', 'superseded', 'removed'],
+      optional: true,
+    },
     // C4 (additive): `pairs` are `<resourceDigest>:<evidenceId>` entries (digests only, never a resource key or locator). `cp` is one
     // ingestion checkpoint. `cursor` is persisted only when it satisfies the `id` kind, so the global secret filter applies to it.
     pairs: { kind: 'list', max: 5000, of: { kind: 'id' }, optional: true },
@@ -155,7 +159,11 @@ interface SourceSnapshot {
 }
 
 /** C4: why an ingested item stopped being eligible. */
-export type RetireReason = 'deleted' | 'access_lost' | 'superseded';
+/**
+ * Why an indexed piece of evidence was retired. `removed` (C7) is a USER-initiated retirement of the evidence of chosen items, distinct from
+ * the item having been deleted at its origin, superseded by newer content, or the source's access having been lost.
+ */
+export type RetireReason = 'deleted' | 'access_lost' | 'superseded' | 'removed';
 
 interface CheckpointSnapshot {
   readonly seq: number;
@@ -433,7 +441,7 @@ function fold(events: readonly AuditEvent[]): Result<Folded, DiscoveryError> {
       const pairs = parsePairs(x['pairs']);
       const kind = x['kind'];
       if (!Array.isArray(ids) || ids.some((i) => typeof i !== 'string') || pairs === undefined) return bad();
-      if (kind !== 'deleted' && kind !== 'access_lost' && kind !== 'superseded') return bad();
+      if (kind !== 'deleted' && kind !== 'access_lost' && kind !== 'superseded' && kind !== 'removed') return bad();
       f.ledger.purgeIds(
         op,
         (ids as string[]).map((i) => EvidenceId(i)),
@@ -982,6 +990,60 @@ export class EiStateStore {
         ...(cursor !== undefined ? { cursor } : {}),
       });
       return ok({ seq, changed: true });
+    });
+  }
+
+  /**
+   * C7. Retires the retained evidence of specific resources at the user's request, without touching the source or its checkpoint.
+   *
+   * Same discipline as the retirements inside `commitIngestion`: the ledger purge comes FIRST (ineligible immediately, and the safe
+   * direction), then the tombstone is journaled with reason `removed`, then the in-memory index follows the durable record. A tombstone the
+   * journal rejects poisons the store (fail closed), because memory is then ahead of the journal. Replay applies the same tombstone, so a
+   * restart cannot bring removed evidence back. Items not in the index are ignored (idempotent); nothing is retired that was not indexed.
+   */
+  retireEvidence(
+    trust: AuditTrust,
+    args: { operationId: string; sourceId: string; items: readonly { readonly rd: string; readonly evidenceId: string }[] },
+  ): Promise<Result<{ readonly retired: readonly string[] }, DiscoveryError>> {
+    return this.serialize(async () => {
+      const pairOf = (x: { rd: string; evidenceId: string }): string => `${x.rd}:${x.evidenceId}`;
+      if (
+        !validId(args.operationId, MAX_KEY_ID) ||
+        !validId(args.sourceId, MAX_KEY_ID) ||
+        args.items.length > CHUNK ||
+        !args.items.every((x) => /^[0-9a-f]{24}$/.test(x.rd) && validId(x.evidenceId) && validId(pairOf(x)))
+      )
+        return err(stateError('checkpoint', 'rejected'));
+      if (!this.operational) return err(stateError('checkpoint', 'not_operational'));
+      const index = this.resources.get(args.sourceId);
+      const gone = args.items.filter((i) => index?.get(i.rd)?.has(i.evidenceId) === true);
+      if (gone.length === 0) return ok({ retired: [] });
+      this.ledger?.purgeIds(
+        args.operationId,
+        gone.map((g) => EvidenceId(g.evidenceId)),
+      );
+      const ids = [...new Set(gone.map((g) => g.evidenceId))].sort();
+      const w = await this.append(
+        trust,
+        {
+          rec: 'tombstone',
+          operationId: args.operationId,
+          sourceId: args.sourceId,
+          reason: 'removed',
+          ids,
+          pairs: gone.map(pairOf).sort(),
+          key: `rmv:${args.operationId}`.slice(0, 200),
+        },
+        'tombstone',
+        { poisonOnReject: true },
+      );
+      if (!w.ok) return w;
+      for (const g of gone) {
+        const set = index?.get(g.rd);
+        set?.delete(g.evidenceId);
+        if (set !== undefined && set.size === 0) index?.delete(g.rd);
+      }
+      return ok({ retired: ids });
     });
   }
 

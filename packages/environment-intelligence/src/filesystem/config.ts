@@ -26,6 +26,12 @@ export interface FilesystemScope extends DiscoveryScopeBase {
    * ever retained: free text, and JSON that is not a record file, still yield only a digest, a length and strict business tokens.
    */
   readonly structuredRecords?: boolean;
+  /**
+   * C7, additive. Ignored by the connector. It is part of the scope, so changing it starts a NEW ingestion binding: the next sync is a
+   * full read instead of "unchanged since the last checkpoint". A caller that retires retained evidence while the same items stay in scope
+   * (or are chosen again) uses it so the removed evidence is not mistaken for already-ingested.
+   */
+  readonly epoch?: number;
 }
 
 export interface FilesystemLimits {
