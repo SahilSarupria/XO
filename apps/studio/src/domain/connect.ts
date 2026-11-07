@@ -110,6 +110,19 @@ export function readSummary(r: ReadReport): string {
   return parts.join(' ');
 }
 
+/** What "Remove what XO learned" does, said before it happens. Separate from excluding (keeps what was learned) and removing the source. */
+export function removeLearnedSentences(chosen: number): readonly string[] {
+  return [
+    `XO will stop reading ${plural(chosen, 'selected item')} and retire what it kept from ${chosen === 1 ? 'it' : 'them'}, so nothing XO derived from ${chosen === 1 ? 'it' : 'them'} is shown any more.`,
+    'Your files are not touched, and other items are not affected.',
+    'Choose an item again later and XO will read it afresh.',
+  ];
+}
+
+export function removeLearnedResult(r: { evidenceItemsRetired: number; itemsNoLongerRead: number }): string {
+  return `${plural(r.evidenceItemsRetired, 'piece')} of evidence retired. ${plural(r.itemsNoLongerRead, 'item')} no longer read. Your files were not changed.`;
+}
+
 export function effectsSentence(e: ActionEffects): string {
   switch (e.futureReads) {
     case 'stopped':

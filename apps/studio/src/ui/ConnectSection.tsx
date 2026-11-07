@@ -11,6 +11,8 @@ import {
   plural,
   readSummary,
   removalSentences,
+  removeLearnedResult,
+  removeLearnedSentences,
   selectionSummary,
   stateView,
   toggleNode,
@@ -342,6 +344,7 @@ function SourceDetail(props: { id: string; capabilities: ConnectCapabilities | u
   const [note, setNote] = useState<string | undefined>(undefined);
   const [problem, setProblem] = useState<Extract<Result<unknown>, { ok: false }>['problem'] | undefined>(undefined);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeItems, setRemoveItems] = useState(false);
 
   if (load.state.phase === 'loading') return <Skeleton label="Loading this source" rows={3} />;
   if (load.state.phase === 'error' && load.state.stale === undefined)
@@ -415,6 +418,7 @@ function SourceDetail(props: { id: string; capabilities: ConnectCapabilities | u
             Reconnect
           </Button>
         ) : null}
+        {actions.includes('change_selection') ? <Button onClick={() => setRemoveItems(true)}>Remove what XO learned…</Button> : null}
         {actions.includes('remove') ? (
           <Button variant="danger" onClick={() => setConfirmRemove(true)}>
             Remove source…
@@ -428,6 +432,17 @@ function SourceDetail(props: { id: string; capabilities: ConnectCapabilities | u
         </p>
       ) : null}
 
+      {removeItems ? (
+        <RemoveLearnedPanel
+          id={source.id}
+          onCancel={() => setRemoveItems(false)}
+          onDone={(text) => {
+            setRemoveItems(false);
+            setNote(text);
+            load.reload();
+          }}
+        />
+      ) : null}
       {confirmRemove ? (
         <RemoveDialog
           id={source.id}
@@ -447,11 +462,13 @@ function SourceDetail(props: { id: string; capabilities: ConnectCapabilities | u
               ? readSummary(h.read)
               : h.kind === 'connected'
                 ? `Connected with ${plural(h.includedItems ?? 0, 'chosen item')}.`
-                : h.kind === 'selection_changed'
-                  ? `Selection changed to ${plural(h.includedItems ?? 0, 'chosen item')}.`
-                  : h.kind === 'disconnected'
-                    ? 'Disconnected.'
-                    : 'Reconnected.'}
+                : h.kind === 'learned_removed'
+                  ? `Removed what XO learned from items (${plural(h.retired ?? 0, 'piece')} of evidence retired).`
+                  : h.kind === 'selection_changed'
+                    ? `Selection changed to ${plural(h.includedItems ?? 0, 'chosen item')}.`
+                    : h.kind === 'disconnected'
+                      ? 'Disconnected.'
+                      : 'Reconnected.'}
           </li>
         ))}
       </ul>
@@ -484,6 +501,62 @@ function RemoveDialog(props: { id: string; name: string; onCancel: () => void; o
         </Button>
         <Button variant="danger" pending={busy} disabled={preview.state.phase !== 'ready'} onClick={() => void remove()}>
           Remove source
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RemoveLearnedPanel(props: { id: string; onCancel: () => void; onDone: (text: string) => void }) {
+  const { client } = useSession();
+  const folder = useLoad(() => client.connectSourceFolder(props.id), [props.id]);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Extract<Result<unknown>, { ok: false }>['problem'] | undefined>(undefined);
+  if (folder.state.phase === 'loading') return <Spinner label="Listing your selected items" />;
+  if (folder.state.phase === 'error') return <ProblemNotice problem={folder.state.problem} onRetry={folder.reload} />;
+  const chosen = folder.state.value.preview.entries.filter(
+    (e) => folder.state.phase === 'ready' && folder.state.value.selectedKeys.includes(e.key),
+  );
+  const run = async (): Promise<void> => {
+    setBusy(true);
+    setProblem(undefined);
+    const r = await client.connectRemoveLearned(props.id, [...picked]);
+    setBusy(false);
+    if (!r.ok) return setProblem(r.problem);
+    props.onDone(removeLearnedResult(r.value));
+  };
+  return (
+    <div className="notice notice-danger" role="alertdialog" aria-label="Remove what XO learned">
+      <strong>Remove what XO learned from selected items</strong>
+      {chosen.length === 0 ? <p>No items are selected right now.</p> : null}
+      <ul className="connect-tree-list">
+        {chosen.map((e) => (
+          <li key={e.key}>
+            <label>
+              <input
+                type="checkbox"
+                checked={picked.has(e.key)}
+                onChange={() => {
+                  const next = new Set(picked);
+                  if (next.has(e.key)) next.delete(e.key);
+                  else next.add(e.key);
+                  setPicked(next);
+                }}
+              />{' '}
+              {e.key}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {picked.size > 0 ? removeLearnedSentences(picked.size).map((t) => <p key={t}>{t}</p>) : null}
+      {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+      <div className="row">
+        <Button variant="quiet" onClick={props.onCancel}>
+          Cancel
+        </Button>
+        <Button variant="danger" pending={busy} disabled={picked.size === 0} onClick={() => void run()}>
+          Remove what XO learned
         </Button>
       </div>
     </div>

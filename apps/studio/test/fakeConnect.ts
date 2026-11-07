@@ -207,6 +207,18 @@ export class FakeConnect {
         s.selectedKeys = (body?.['includeKeys'] as string[]) ?? [];
         return reply(200, { source: this.card(s, true), effects: this.effects(s.selectedKeys.length < before ? 'narrowed' : 'widened') });
       }
+      if (action === 'items/remove') {
+        const keys = (body?.['keys'] as string[]) ?? [];
+        s.selectedKeys = s.selectedKeys.filter((k) => !keys.includes(k));
+        s.history.push({ at: '2026-11-02T03:00:00.000Z', kind: 'learned_removed', retired: keys.length });
+        return reply(200, {
+          removed: true,
+          evidenceItemsRetired: keys.length,
+          itemsNoLongerRead: keys.length,
+          sourceFilesChanged: false,
+          source: this.card(s, true),
+        });
+      }
       if (action === 'remove') {
         this.sources = this.sources.filter((x) => x.id !== s.id);
         return reply(200, { removed: true, evidenceItemsRetired: 4, sourceFilesChanged: false });

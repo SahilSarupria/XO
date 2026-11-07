@@ -44,9 +44,10 @@ export interface ReadReport {
 
 export interface HistoryEvent {
   readonly at: string;
-  readonly kind: 'connected' | 'read' | 'selection_changed' | 'disconnected' | 'reconnected';
+  readonly kind: 'connected' | 'read' | 'selection_changed' | 'learned_removed' | 'disconnected' | 'reconnected';
   readonly read?: ReadReport;
   readonly includedItems?: number;
+  readonly retired?: number;
 }
 
 export interface ConnectSource {
@@ -152,11 +153,13 @@ export function parseReadReport(v: unknown, path = 'read'): ReadReport {
 function parseHistory(v: unknown, path: string): HistoryEvent {
   const o = obj(v, path);
   const includedItems = o['includedItems'] === undefined ? undefined : num(o['includedItems'], `${path}.includedItems`);
+  const retired = o['retired'] === undefined ? undefined : num(o['retired'], `${path}.retired`);
   return {
     at: str(o['at'], `${path}.at`),
-    kind: oneOf(o['kind'], ['connected', 'read', 'selection_changed', 'disconnected', 'reconnected'], `${path}.kind`),
+    kind: oneOf(o['kind'], ['connected', 'read', 'selection_changed', 'learned_removed', 'disconnected', 'reconnected'], `${path}.kind`),
     ...(o['read'] !== undefined ? { read: parseReadReport(o['read'], `${path}.read`) } : {}),
     ...(includedItems !== undefined ? { includedItems } : {}),
+    ...(retired !== undefined ? { retired } : {}),
   };
 }
 
@@ -285,5 +288,25 @@ export function parseSourceFolderView(v: unknown): SourceFolderView {
     preview: parseFolderPreview(o['preview']),
     selectedKeys: arr(o['selectedKeys'], 'selectedKeys').map((k, i) => str(k, `selectedKeys[${i}]`)),
     excludedNames: arr(o['excludedNames'], 'excludedNames').map((k, i) => str(k, `excludedNames[${i}]`)),
+  };
+}
+
+export interface ItemRemovalResult {
+  readonly removed: true;
+  readonly evidenceItemsRetired: number;
+  readonly itemsNoLongerRead: number;
+  readonly sourceFilesChanged: false;
+  readonly source: ConnectSource;
+}
+export function parseItemRemovalResult(v: unknown): ItemRemovalResult {
+  const o = obj(v, 'body');
+  if (o['removed'] !== true) throw new WireParseError('removed', 'true');
+  if (o['sourceFilesChanged'] !== false) throw new WireParseError('sourceFilesChanged', 'false');
+  return {
+    removed: true,
+    evidenceItemsRetired: num(o['evidenceItemsRetired'], 'evidenceItemsRetired'),
+    itemsNoLongerRead: num(o['itemsNoLongerRead'], 'itemsNoLongerRead'),
+    sourceFilesChanged: false,
+    source: parseConnectSource(o['source'], 'source'),
   };
 }

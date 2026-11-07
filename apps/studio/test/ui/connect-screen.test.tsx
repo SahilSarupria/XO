@@ -174,4 +174,22 @@ describe('Connect screen', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText('Microsoft 365')).not.toBeInTheDocument();
   });
+
+  it('remove what XO learned: separate from excluding, says it stops reading and retires, shows the result', async () => {
+    const { api, connect } = setup();
+    const user = await open(connect, api);
+    await addFolder(user);
+    await user.click(screen.getByRole('checkbox', { name: /limits\.md/ }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm selection' }));
+    await user.click(await screen.findByRole('button', { name: 'Remove what XO learned…' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'Remove what XO learned' });
+    expect(within(dialog).getByRole('button', { name: 'Remove what XO learned' })).toBeDisabled();
+    await user.click(await within(dialog).findByRole('checkbox', { name: /a\.txt/ }));
+    expect(within(dialog).getByText(/stop reading 1 selected item and retire what it kept from it/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Your files are not touched, and other items are not affected/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Remove what XO learned' }));
+    expect(await screen.findByText(/1 piece of evidence retired. 1 item no longer read. Your files were not changed./)).toBeInTheDocument();
+    expect(connect.calls.find((c) => c.path.endsWith('/items/remove'))?.body).toEqual({ keys: ['a.txt'] });
+    expect(await screen.findByText(/Removed what XO learned from items/)).toBeInTheDocument();
+  });
 });

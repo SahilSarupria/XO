@@ -41,6 +41,8 @@ import {
   parseFolderPreview,
   parseRemovalPreview,
   parseRemovalResult,
+  parseItemRemovalResult,
+  type ItemRemovalResult,
   parseSourceFolderView,
   type SourceFolderView,
   type ActionResult,
@@ -341,6 +343,9 @@ export class XoClient {
   }
   connectRemovalPreview(id: string): Promise<Result<RemovalPreview>> {
     return this.call('GET', `/connect/sources/${encodeURIComponent(id)}/removal`, parseRemovalPreview);
+  }
+  connectRemoveLearned(id: string, keys: readonly string[]): Promise<Result<ItemRemovalResult>> {
+    return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/items/remove`, parseItemRemovalResult, this.json({ keys }));
   }
   connectRemove(id: string): Promise<Result<RemovalResult>> {
     return this.call('POST', `/connect/sources/${encodeURIComponent(id)}/remove`, parseRemovalResult, this.json({}));
