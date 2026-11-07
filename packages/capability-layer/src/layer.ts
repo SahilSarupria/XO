@@ -1,7 +1,7 @@
 import { verifyBundle, type IntegrityOptions } from './integrity.js';
 import type { ProviderToolDefinition } from '@xo/ai-core';
 import { Ed25519Signer, Sha256Hasher } from '@xo/crypto';
-import type { PackageBundle } from '@xo/package-sdk';
+import { componentHostProblem, selectFamilyDeclaration, type PackageBundle } from '@xo/package-sdk';
 import type { ComponentKind, HostCapability, ModelFamily } from '@xo/types';
 import { evaluateTree, parseTrees, type DecisionTree } from './decision-tree.js';
 import { evaluateExpression, type Scope } from './expr.js';
@@ -54,6 +54,7 @@ export interface ToolResult {
 /** SPECIFICATION.md §2.3, made concrete. `weightsPatch` is always null in this build (no L4). */
 export interface CapabilityLayer {
   systemPromptFragments(): string[];
+  /** Empty when the host lacks `tool_use`: such a host is served context-only (see `assembleContext`), never handed tools it cannot call. */
   toolDefinitions(): ProviderToolDefinition[];
   executeTool(name: string, input: Readonly<Record<string, unknown>>): ToolResult;
   retrieve(query: string, k: number): GraphNode[];
@@ -146,23 +147,33 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
     ...(options.now !== undefined ? { now: options.now } : {}),
   });
   const manifest = bundle.manifest;
-  const entry =
-    manifest.compatibility.modelFamilies.find((f) => f.family === options.host.family) ??
-    manifest.compatibility.modelFamilies.find((f) => f.family === 'generic');
-  const declaredConsumes = new Set<ComponentKind>(entry?.consumes ?? []);
+  // The same selection the loader/resolve API uses: the host's own family if it has what that family needs, else the manifest's `generic` family
+  // if it has what THAT needs, else nothing. Safety rules are local and need no model capability, so they are consumed whatever the family.
+  const selection = selectFamilyDeclaration(manifest, options.host);
+  const declaredConsumes = new Set<ComponentKind>(selection.declaration?.consumes ?? []);
+  declaredConsumes.add('safety_rules');
   const hostHas = (c: HostCapability): boolean => options.host.capabilities.includes(c);
 
   const consumed: ComponentKind[] = [];
   const skipped: { kind: ComponentKind; reason: string }[] = [];
   const present = bundle.components.map((c) => c.kind);
-  const decide = (kind: ComponentKind, extra?: { ok: boolean; reason: string }): boolean => {
+  const decide = (kind: ComponentKind): boolean => {
     if (!present.includes(kind)) return false;
     if (!declaredConsumes.has(kind)) {
-      skipped.push({ kind, reason: `manifest does not list it as consumable by family "${options.host.family}"` });
+      skipped.push({
+        kind,
+        reason:
+          selection.declaration === undefined
+            ? `${selection.degradedBecause ?? 'no family declaration fits this host'}, so only the safety rules are used`
+            : selection.degradedBecause !== undefined
+              ? `served from family "${selection.usedFamily}" (${selection.degradedBecause}), which does not list it`
+              : `manifest does not list it as consumable by family "${options.host.family}"`,
+      });
       return false;
     }
-    if (extra !== undefined && !extra.ok) {
-      skipped.push({ kind, reason: extra.reason });
+    const problem = componentHostProblem(kind, options.host);
+    if (problem !== undefined) {
+      skipped.push({ kind, reason: problem });
       return false;
     }
     consumed.push(kind);
@@ -171,10 +182,7 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
 
   const useKnowledge = decide('knowledge_graph');
   const useTraces = decide('reasoning_traces');
-  const useTrees = decide('decision_trees', {
-    ok: hostHas('tool_use'),
-    reason: 'host lacks tool_use, so decision trees cannot be exposed as callable tools',
-  });
+  const useTrees = decide('decision_trees');
   const useStrategies = decide('prompt_strategies');
   const useSafety = decide('safety_rules');
   // Workflows are data a workflow runner executes (docs/WORKFLOW_IR.md); the layer only verifies and hands over the bytes.
@@ -235,6 +243,9 @@ export function createCapabilityLayer(bundle: PackageBundle, options: LayerOptio
     },
 
     toolDefinitions(): ProviderToolDefinition[] {
+      // A host that cannot call tools is offered none (passing tools to such a model is an API error at best). It still gets the context-only level:
+      // `assembleContext` puts retrieved knowledge and exemplars into the prompt, and `safetyGate` still applies.
+      if (!hostHas('tool_use')) return [];
       const defs: ProviderToolDefinition[] = [];
       if (trees.length > 0) {
         const catalog = trees

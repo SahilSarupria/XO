@@ -34,14 +34,14 @@ Guarantees:
 
 `manifest.formatVersion` is `"1.0"`. Components (by `kind`):
 
-| kind                | file (conventional)             | shape                                                                                                           |
-| ------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `knowledge_graph`   | `knowledge/graph.json`          | `{ nodes: [{ id, kind, pinned?, properties: { title?, text, keywords? } }], edges: [{ from, to, kind }] }`      |
-| `decision_trees`    | `reasoning/decision_trees.json` | `{ trees: [{ id, description, inputs[], start, nodes{} }] }`; node types `branch`, `compute`, `leaf`            |
-| `reasoning_traces`  | `reasoning/traces.jsonl`        | one JSON object per line: `{ id, task_type, scenario, steps[], conclusion, confidence, provenance }`            |
-| `prompt_strategies` | `prompting/strategies.json`     | `{ persona, fragments: [{ id?, text, requires? }] }`                                                            |
+| kind                | file (conventional)             | shape                                                                                                                                                   |
+| ------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `knowledge_graph`   | `knowledge/graph.json`          | `{ nodes: [{ id, kind, pinned?, properties: { title?, text, keywords? } }], edges: [{ from, to, kind }] }`                                              |
+| `decision_trees`    | `reasoning/decision_trees.json` | `{ trees: [{ id, description, inputs[], start, nodes{} }] }`; node types `branch`, `compute`, `leaf`                                                    |
+| `reasoning_traces`  | `reasoning/traces.jsonl`        | one JSON object per line: `{ id, task_type, scenario, steps[], conclusion, confidence, provenance }`                                                    |
+| `prompt_strategies` | `prompting/strategies.json`     | `{ persona, fragments: [{ id?, text, requires? }] }`                                                                                                    |
 | `workflows`         | `workflows/workflows.json`      | Workflow IR 1.0, see `docs/WORKFLOW_IR.md`. The layer verifies and hands over the bytes (`componentBytes`); `@xo/workflow-ir` parses them. Counts as L3 |
-| `safety_rules`      | `safety/rules.json`             | `{ rules: [{ id, applies_to: 'input'\|'output', when, action: 'block'\|'warn', message?, override_output? }] }` |
+| `safety_rules`      | `safety/rules.json`             | `{ rules: [{ id, applies_to: 'input'\|'output', when, action: 'block'\|'warn', message?, override_output? }] }`                                         |
 
 Retrieval semantics: BM25 with multi-query reciprocal-rank fusion; `pinned: true` nodes are always returned first; node `kind` is a prior
 (`rule` 2, `procedure` 2, `heuristic` 1.5, `constraint` 1.5, `background`/`glossary` 0.7); one-hop expansion along `applies_with`, `requires`,
@@ -102,3 +102,20 @@ Entries carry an origin: `manual` (a definitional sentence of the compiled docum
 **For the Halvorsen manual: it defines no goods for any class** (all five classes are `notDefinedByManual`), so the lookup rests entirely on the operator glossary in `scenario/freight/glossary.ts`. That glossary was written with knowledge of the task domain: its score on generated claims is an upper bound, not evidence about unseen goods (unknown goods fall back to the model and are flagged). Free-text claimant names ("Delacroix Foods") are a false-positive hazard; a test guards against it.
 
 Opt-in: `buildGoldXo({ classification: true })`, arm `xo_tools_classified`, `compileManual({ glossary })`. The default arms are unchanged, so earlier measurements remain valid. **Not yet measured on a live model.**
+
+## Host capabilities and graceful degradation
+
+One function (`selectFamilyDeclaration`, `@xo/package-sdk`) decides which of a manifest's family declarations serves a host. The capability layer and the loader/resolve API both
+use it, together with one table of what each component needs from a host (`componentHostProblem`), so they cannot disagree. Nothing in the layer names a model vendor: families are
+opaque strings and capabilities are whatever the host reports (`chat`, `tool_use`, `long_context`).
+
+- **No `chat`**: no declaration serves the host (level L0). It is still given the local safety rules.
+- **Its own family is declared**: it is served from that declaration even if it lacks capabilities the family lists as `minCapability`; the shortfall is reported, and each component that
+  needs a missing capability is skipped on its own, with the reason in the load receipt. Today the only per-component need is: **decision trees need `tool_use`** (they are exposed as callable
+  tools). A chat-only host therefore reaches the context-only level (knowledge and reasoning exemplars as context: L1/L2), is handed **no tool definitions**, and keeps the safety gate.
+- **Its family is not declared**: the manifest's `generic` family if there is one, otherwise nothing (L0).
+- **Safety rules are always consumed**, whatever the family or capabilities: they are local, need no model capability, and are a required component. (Before this, a host whose family was
+  undeclared silently lost them.)
+
+Not covered: the spec's L2 note that exemplars want `long_context` is **not** enforced (a chat-only host still receives them); L4 (weights) is not implemented; and which capabilities a
+host reports is taken on trust.
