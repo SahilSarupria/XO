@@ -192,4 +192,13 @@ describe('Connect screen', () => {
     expect(connect.calls.find((c) => c.path.endsWith('/items/remove'))?.body).toEqual({ keys: ['a.txt'] });
     expect(await screen.findByText(/Removed what XO learned from items/)).toBeInTheDocument();
   });
+
+  it('when the deployment cannot read local folders, the screen says so and offers no folder button', async () => {
+    const { api, connect } = setup();
+    connect.localFolders = false;
+    await open(connect, api);
+    expect(await screen.findByText(/needs the XO desktop connection, which is not available in this deployment yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose folder' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Coming soon')).toHaveLength(3);
+  });
 });

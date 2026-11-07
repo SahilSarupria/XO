@@ -49,6 +49,7 @@ export class FakeConnect {
   manage = true;
   capsStatus = 200;
   malformedCatalog = false;
+  localFolders = true;
   calls: Array<{ method: string; path: string; body?: Json }> = [];
   report: Json = {
     requested: 2,
@@ -138,7 +139,13 @@ export class FakeConnect {
       if (this.malformedCatalog) return reply(200, { sources: [{ kind: 'microsoft_365', availability: 'maybe' }] });
       return reply(200, {
         sources: [
-          { kind: 'local_folder', availability: 'available', note: 'Needs the XO desktop connection.' },
+          this.localFolders
+            ? { kind: 'local_folder', availability: 'available', note: 'Needs the XO desktop connection.' }
+            : {
+                kind: 'local_folder',
+                availability: 'coming_soon',
+                note: 'Reading folders on your computer needs the XO desktop connection, which is not available in this deployment yet.',
+              },
           {
             kind: 'microsoft_365',
             availability: 'coming_soon',
