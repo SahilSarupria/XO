@@ -37,7 +37,7 @@ describe('ChatLog and ChatComposer', () => {
     expect(log).toHaveAttribute('aria-live', 'polite');
     expect(within(log).getByText('hello')).toBeInTheDocument();
     expect(within(log).getByText('@burglary-policy')).toBeInTheDocument();
-    expect(within(log).getByText('Answered by anthropic · test-model')).toBeInTheDocument();
+    expect(within(log).getByText('anthropic · test-model')).toBeInTheDocument();
   });
 
   it('sends on Enter, keeps Shift+Enter for a new line, ignores empty messages, and clears only after a successful send', async () => {
@@ -93,7 +93,7 @@ describe('Ask XO is backed by the platform', () => {
     const panel = await screen.findByRole('dialog', { name: 'Ask XO conversation' });
     const log = within(panel).getByRole('log', { name: 'Messages' });
     expect(await within(log).findByText('Here is an answer.')).toBeInTheDocument();
-    expect(within(log).getByText('Answered by anthropic · test-model')).toBeInTheDocument();
+    expect(within(log).getByText('anthropic · test-model')).toBeInTheDocument();
     expect(posts(api, /\/intelligence\/conversations$/)).toHaveLength(1);
     expect(posts(api, /\/turns$/)).toHaveLength(1);
     expect(within(panel).getByText('Today')).toBeInTheDocument();
@@ -201,7 +201,9 @@ describe('answers show how XO understood the message and what it rests on', () =
     const log = within(panel).getByRole('log', { name: 'Messages' });
     expect(await within(log).findByText('Ask')).toBeInTheDocument();
     expect(within(log).getByText('High confidence')).toBeInTheDocument();
-    expect(within(log).getByText('Backed by sources')).toBeInTheDocument();
+    // Sources are collapsed to a one-line summary until opened, so the answer is what you read first.
+    expect(within(log).getByText('1 source')).toBeInTheDocument();
+    await user.click(within(log).getByText('1 source'));
     const sources = within(log).getByRole('list', { name: 'Sources' });
     expect(within(sources).getByText('burglary_policy')).toBeInTheDocument();
     await user.click(within(log).getByRole('button', { name: 'Not helpful' }));
@@ -226,6 +228,103 @@ describe('answers show how XO understood the message and what it rests on', () =
     const proposal = await within(log).findByRole('group', { name: 'Proposed action' });
     expect(within(proposal).getByText(/not run/)).toBeInTheDocument();
     expect(within(log).getByText(/Missing or unusable input: assignee/)).toBeInTheDocument();
-    expect(within(log).queryByText('Backed by sources')).not.toBeInTheDocument();
+    expect(within(log).queryByText(/source/)).not.toBeInTheDocument();
+  });
+});
+
+describe('reading an answer', () => {
+  const result = (over: Record<string, unknown> = {}) => ({
+    route: 'ask' as const,
+    confidence: 'medium' as const,
+    grounded: true,
+    citations: [
+      { index: 1, sourceName: 'Aastha.pdf', asOf: '2026-11-08T00:00:00Z', excerpt: 'Capability "Generate MIS reports" … Found on page 2.' },
+      { index: 2, sourceName: 'Aastha.pdf', excerpt: 'Capability "Map CRM records" … Found on page 1.' },
+    ],
+    notices: [] as { code: string; message: string }[],
+    followUps: [] as string[],
+    ...over,
+  });
+  const thread = (content: string, r: ReturnType<typeof result>) => ({
+    threadId: 't',
+    title: 'T',
+    updatedAt: '2026-11-08T10:00:00Z',
+    messageCount: 2,
+    messages: [
+      { messageId: 'u', role: 'user' as const, content: 'q', at: '2026-11-08T10:00:00Z' },
+      {
+        messageId: 'a',
+        role: 'assistant' as const,
+        content,
+        at: '2026-11-08T10:00:01Z',
+        result: r,
+        model: { provider: 'gemini', model: 'gemini-x' },
+      },
+    ],
+  });
+
+  it('turns model text into paragraphs and bullet lists instead of one run-on paragraph', () => {
+    render(<ChatLog thread={thread('You can automate:\n- Reports [1]\n- Mapping [2]\n\nAsk me more.', result())} />);
+    const log = screen.getByRole('log', { name: 'Messages' });
+    expect(
+      within(log)
+        .getAllByRole('listitem')
+        .filter((li) => /Reports|Mapping/.test(li.textContent ?? '')),
+    ).toHaveLength(2);
+    expect(within(log).getByText('You can automate:')).toBeInTheDocument();
+    expect(within(log).getByText('Ask me more.')).toBeInTheDocument();
+  });
+
+  it('shows markup in a reply as plain text, never as HTML', () => {
+    render(<ChatLog thread={thread('<img src=x onerror=alert(1)> and **bold**', result())} />);
+    const log = screen.getByRole('log', { name: 'Messages' });
+    expect(log.querySelector('img')).toBeNull();
+    expect(within(log).getByText('bold').tagName).toBe('STRONG');
+    expect(log.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('a citation marker opens the sources and the sources are collapsed until then', async () => {
+    const user = userEvent.setup();
+    render(<ChatLog thread={thread('Reports are possible [1].', result())} />);
+    const log = screen.getByRole('log', { name: 'Messages' });
+    const details = log.querySelector('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(within(log).getByText('2 sources')).toBeInTheDocument();
+    await user.click(within(log).getByRole('button', { name: 'Source 1' }));
+    await waitFor(() => expect(details.open).toBe(true));
+    expect(within(log).getByRole('list', { name: 'Sources' })).toBeInTheDocument();
+  });
+
+  it('does not repeat a notice that says the same thing as the reply, and does not label a non-claim as unbacked', () => {
+    const msg = "I couldn't find anything about that.";
+    render(
+      <ChatLog
+        thread={thread(
+          msg,
+          result({ grounded: false, confidence: 'none', citations: [], notices: [{ code: 'no_sources_found', message: msg }] }),
+        )}
+      />,
+    );
+    const log = screen.getByRole('log', { name: 'Messages' });
+    expect(within(log).getAllByText(msg)).toHaveLength(1);
+    expect(within(log).queryByText(/Not backed/)).not.toBeInTheDocument();
+  });
+
+  it('flags a confident-looking answer that cites nothing', () => {
+    render(<ChatLog thread={thread('Probably yes.', result({ grounded: false, confidence: 'low', citations: [] }))} />);
+    expect(screen.getByText(/Not backed by any source/)).toBeInTheDocument();
+  });
+
+  it('offers follow-up questions on the latest answer only, and sends the one you pick', async () => {
+    const user = userEvent.setup();
+    const onFollowUp = vi.fn();
+    render(<ChatLog thread={thread('Done.', result({ followUps: ['Which can run today?'] }))} onFollowUp={onFollowUp} />);
+    await user.click(screen.getByRole('button', { name: 'Which can run today?' }));
+    expect(onFollowUp).toHaveBeenCalledWith('Which can run today?');
+  });
+
+  it('says which provider and model wrote the answer', () => {
+    render(<ChatLog thread={thread('Done.', result())} />);
+    expect(screen.getByText('gemini · gemini-x')).toBeInTheDocument();
   });
 });

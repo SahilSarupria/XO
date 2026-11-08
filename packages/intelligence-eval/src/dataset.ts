@@ -753,4 +753,7 @@ export const DATASET: readonly EvalItem[] = [
     { role: 'user', content: 'Should we expedite?' },
     { role: 'assistant', content: 'Suggested: expedite [1].', turnId: 'turn_r2', citedEvidenceIds: ['d06'] },
   ]),
+  // Questions about XO itself are answered from the catalog of connected sources, never sent to retrieval.
+  route('rte-15', 'what kind of information do u have access to', 'converse'),
+  route('rte-16', 'which of my documents can you search?', 'converse'),
 ];

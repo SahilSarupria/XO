@@ -21,7 +21,7 @@ The loop is the product. The layers below exist so each step can be trusted: the
 
 Studio's chat (the full-screen Chat and the Ask XO dock) now runs on this layer: `XoClient` calls `/intelligence/conversations` and the screen renders what the platform returns — how XO understood the message (Ask / Decide / Do / Learn), confidence, the sources cited, notices that weaken the answer, a proposed action marked "not run", and Helpful / Not helpful. There is no mode picker (the control reads "Auto"). `@name` focuses an answer on an installed XO (`attach`).
 
-Until C6 is connected, answers come from the **knowledge graphs and declared capabilities of the XOs installed in the workspace** (`InstalledXoKnowledgePort`, `apps/api/src/intelligence/`). This is an interim, deliberately naive source (word overlap, no embeddings, no connected enterprise sources); `intelligenceKnowledge` in the server deps replaces it with C6. The old `/chats` routes still exist in the API but Studio no longer calls them.
+Until C6 is connected, answers come from two interim sources, searched together (`CompositeKnowledgePort`, `apps/api/src/intelligence/`): **the knowledge graphs and capabilities of the XOs installed in the workspace** (`InstalledXoKnowledgePort`) and **the files uploaded to the workspace and what Studio compiled from them** — the capabilities discovered, their page provenance, and the extracted knowledge (`WorkspaceSourcesKnowledgePort`). A file that was uploaded but never compiled is reported as exactly that. Both are deliberately naive (word overlap, no embeddings, no connected enterprise sources) and say so on every answer; `intelligenceKnowledge` in the server deps replaces them with C6. Questions about XO itself ("what do you have access to?") are answered from a catalog of these sources (`KnowledgePort.describe`), not by searching. The old `/chats` routes still exist in the API but Studio no longer calls them.
 
 ## 2. Customer Chat is not the Developer Assistant
 
@@ -129,7 +129,7 @@ Gemini adapter fixes made on the way: safety-blocked and empty candidates no lon
 
 Select a model in Settings → Models (server-side credentials required, e.g. `GEMINI_API_KEY`), install an XO that has a knowledge graph, open Chat or the Ask XO bar, and:
 
-- **Ask** about what is in an installed XO ("Does burglary cover need forced entry?") → cited answer, confidence, sources, follow-ups.
+- **Ask** about what is in an installed XO or an uploaded-and-compiled file ("Does burglary cover need forced entry?", "what can I automate with Aastha.pdf?") → cited answer, confidence, sources, follow-ups.
 - **Decide** ("Should we expedite this?") → options, risks, an advisory recommendation — only when grounded in a source.
 - **Correct** ("That's wrong, …") or press **Not helpful** → filed as `pending_review`; answers do not change.
 - **Request an action** → only if a capability port is wired (none is by default), so today you are told no actions are available.
