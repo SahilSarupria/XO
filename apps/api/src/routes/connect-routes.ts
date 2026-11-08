@@ -75,6 +75,18 @@ export function registerConnectRoutes(router: Router, connect: ConnectService): 
     return respond(await connect.knowledgeReviewQueue(requirePrincipal(req), asOf ?? undefined));
   });
 
+  /** Records a human review decision (C6 enforces human principal, review authority and visibility). Body: a C6 `ReviewRequest`. */
+  router.post('/connect/knowledge/review/decisions', async (req) => {
+    const principal = requirePrincipal(req);
+    const b = await body(req);
+    if (!b.ok) return b.response;
+    return respond(await connect.submitKnowledgeReview(principal, b.value as never), 201);
+  });
+  router.get('/connect/knowledge/review/decisions', async (req) => {
+    const r = await connect.knowledgeDecisions(requirePrincipal(req));
+    return r.ok ? json(200, { decisions: r.value }) : respond(r);
+  });
+
   router.get('/connect/dashboard', async (req) => respond(await connect.dashboard(requirePrincipal(req))));
 
   router.get('/connect/sources', async (req) => {

@@ -38,8 +38,15 @@ import {
   type LocalFolderBackend,
   type SourceConfig,
 } from './ports.js';
+import type { ReviewRequest } from '@xo/environment-intelligence';
 import { deriveState } from './state.js';
-import type { KnowledgePort, KnowledgeReviewResponse, KnowledgeSearchRequest, KnowledgeSearchResponse } from './knowledge.js';
+import type {
+  DecisionSummary,
+  KnowledgePort,
+  KnowledgeReviewResponse,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResponse,
+} from './knowledge.js';
 
 export interface ConnectClock {
   now(): Date;
@@ -69,6 +76,16 @@ export interface ConnectService {
   searchKnowledge(principal: AuthenticatedPrincipal, request: KnowledgeSearchRequest): Promise<ConnectResult<KnowledgeSearchResponse>>;
   /** C6 review queue (conflicts, single-source inferences, weak merges). Read-only; deciding is separate, gated work. */
   knowledgeReviewQueue(principal: AuthenticatedPrincipal, asOf?: string): Promise<ConnectResult<KnowledgeReviewResponse>>;
+  /**
+   * Records a human review decision through C6 (human principals with review authority who can see what they decide about; audited,
+   * attributed, reversible). Durable: if it cannot be saved it is not applied. Decisions never alter evidence.
+   */
+  submitKnowledgeReview(
+    principal: AuthenticatedPrincipal,
+    decision: ReviewRequest,
+  ): Promise<ConnectResult<{ readonly decisionId: string; readonly operationId: string }>>;
+  /** Who decided what and when (no subjects). Needs the review capability. */
+  knowledgeDecisions(principal: AuthenticatedPrincipal): Promise<ConnectResult<readonly DecisionSummary[]>>;
   dashboard(principal: AuthenticatedPrincipal): Promise<ConnectResult<DashboardSummary>>;
   listSources(principal: AuthenticatedPrincipal): Promise<ConnectResult<readonly SourceCard[]>>;
   getSource(principal: AuthenticatedPrincipal, sourceId: string): Promise<ConnectResult<SourceDetail>>;
@@ -202,7 +219,10 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
 
   const authed = (p: unknown): p is AuthenticatedPrincipal => isAuthenticatedPrincipal(p);
   /** Fail closed: with a probe configured, a missing capability or a failed probe refuses before anything else happens. */
-  const gate = async (p: AuthenticatedPrincipal, need: 'viewSources' | 'manageSources'): Promise<ConnectResult<never> | undefined> => {
+  const gate = async (
+    p: AuthenticatedPrincipal,
+    need: 'viewSources' | 'manageSources' | 'reviewKnowledge',
+  ): Promise<ConnectResult<never> | undefined> => {
     if (options.access === undefined) return undefined;
     const caps = await options.access.probe(p);
     if (!caps.ok) return caps;
@@ -295,6 +315,22 @@ export function createConnectService(options: ConnectServiceOptions): ConnectSer
       if (!authed(p)) return unauth();
       if (options.knowledge === undefined) return failResult('unavailable', 'knowledge is not available on this host');
       return options.knowledge.search(p, request);
+    },
+
+    async submitKnowledgeReview(p, decision) {
+      if (!authed(p)) return unauth();
+      if (options.knowledge === undefined) return failResult('unavailable', 'knowledge is not available on this host');
+      if (decision === null || typeof decision !== 'object') return failResult('invalid_request', 'the decision is not valid');
+      return options.knowledge.submitReview(p, decision);
+    },
+
+    async knowledgeDecisions(p) {
+      if (!authed(p)) return unauth();
+      if (options.knowledge === undefined) return failResult('unavailable', 'knowledge is not available on this host');
+      if (options.access === undefined) return failResult('unavailable', 'no authorization gate is configured for Connect');
+      const g = await gate(p, 'reviewKnowledge');
+      if (g) return g;
+      return okResult(options.knowledge.decisionHistory());
     },
 
     async knowledgeReviewQueue(p, asOf) {

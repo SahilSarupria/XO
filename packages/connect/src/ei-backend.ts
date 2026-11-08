@@ -26,6 +26,7 @@ import {
 } from '@xo/environment-intelligence';
 import { failResult, okResult, type ConnectResult, type FolderEntry } from './contract.js';
 import type { KnowledgePort } from './knowledge.js';
+import type { DecisionStore } from './decisions.js';
 import type { CapabilityProbe, IngestOutcome, Listing, LocalFolderBackend, ReadOutcome, ReadRequest, SourceFacts } from './ports.js';
 
 export interface EiLocalFolderBackendOptions {
@@ -307,6 +308,8 @@ const fromSdk = <T>(
 export function createEiKnowledgePort(options: {
   readonly model: KnowledgeModel;
   readonly platform: () => KnowledgePlatform;
+  /** Where decisions are made durable. Without it decisions live in memory only. */
+  readonly decisions?: DecisionStore;
 }): KnowledgePort {
   let sdk: ReturnType<typeof createKnowledgeSdk> | undefined;
   const get = (): ReturnType<typeof createKnowledgeSdk> =>
@@ -325,6 +328,23 @@ export function createEiKnowledgePort(options: {
     async reviewQueue(principal, asOf) {
       return fromSdk(await get().reviewQueue({ principal, ...(asOf !== undefined ? { asOf } : {}) }));
     },
+    async submitReview(principal, decision) {
+      const before = options.model.decisions();
+      const r = fromSdk(await get().submitReview({ principal, decision }));
+      if (!r.ok || options.decisions === undefined) return r;
+      try {
+        await options.decisions.save(options.model.decisions());
+        return r;
+      } catch {
+        // Not durable means not applied: put the model back exactly as it was, so memory never runs ahead of the saved decisions.
+        const keep = new Set(before.map((d) => d.id));
+        for (const d of options.model.decisions()) if (!keep.has(d.id)) options.model.removeDecision(d.id);
+        for (const d of before) options.model.addDecision(d);
+        return failResult('unavailable', 'the decision could not be saved, so it was not applied', true);
+      }
+    },
+    decisionHistory: () =>
+      options.model.decisions().map((d) => ({ id: d.id, kind: d.kind, principalId: d.principalId, decidedAt: d.decidedAt })),
     assertionCount: () => options.model.size,
   };
 }

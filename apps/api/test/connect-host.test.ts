@@ -231,3 +231,43 @@ test('real host: local folders are off by default, so a hosted API never lists i
     }
   });
 });
+
+test('real host over HTTP: review decisions need a HUMAN principal (C6); an API-key service identity is refused and nothing is decided', async () => {
+  await withTree(async ({ root, state }) => {
+    const rec = (title: string) =>
+      JSON.stringify({
+        schema: 'ei.org-record.v1',
+        records: [{ type: 'directory_entry', person: { kind: 'person', ids: { email: 'priya.sharma@contoso.example' } }, title }],
+      });
+    await writeFile(join(root, 't1.json'), rec('Senior Finance Manager'));
+    await writeFile(join(root, 't2.json'), rec('Finance Director'));
+    const server = await TestServer.start({
+      connectStateDir: state,
+      connectLocalFolders: true,
+      permissionPolicy: new RuleBasedPolicy(GRANTS),
+    });
+    try {
+      const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['t1.json', 't2.json'] });
+      const id = c.json<{ source: { id: string } }>().source.id;
+      await server.request('POST', `/connect/sources/${id}/read`);
+      const conflicts = await server.request('GET', '/connect/knowledge?select=conflicts');
+      const st = conflicts.json<{ data: { statements: { item: { id: string; state: string } }[] } }>().data.statements;
+      assert.equal(st.length, 1);
+      const r = await server.request('POST', '/connect/knowledge/review/decisions', {
+        action: 'resolve_conflict',
+        conflictId: st[0]?.item.id,
+        winner: 'Finance Director',
+      });
+      assert.equal(r.status, 403, 'only a human principal may decide');
+      const again = await server.request('GET', '/connect/knowledge?select=conflicts');
+      assert.equal(again.json<{ data: { statements: { item: { state: string } }[] } }>().data.statements[0]?.item.state, 'open');
+      assert.equal(
+        (await server.request('POST', '/connect/knowledge/review/decisions', Buffer.from('nope'), { 'content-type': 'application/json' }))
+          .status,
+        400,
+      );
+    } finally {
+      await server.stop();
+    }
+  });
+});

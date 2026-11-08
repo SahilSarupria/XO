@@ -21,6 +21,7 @@ import { createEiCapabilityProbe, createEiKnowledgePort, createEiLocalFolderBack
 import { FileConnectStateStore } from './store.js';
 import { stagingConnector } from './staging.js';
 import { FileRecordsDeriver } from './deriver.js';
+import { FileDecisionStore } from './decisions.js';
 import { createConnectService, type ConnectClock, type ConnectService } from './service.js';
 
 export interface ConnectRuntimeOptions {
@@ -86,6 +87,7 @@ export function createConnectRuntime(options: ConnectRuntimeOptions): ConnectRun
     options.audit ??
     new CanonicalAuditRecorder(options.auditSink as AuditSink, { allowVolatileReceipt: options.auditSink?.mode === 'non-production' });
   const registry = new ConnectorRegistry();
+  const decisionStore = new FileDecisionStore(options.stateDir);
   const staging = options.durable !== undefined ? new EvidenceStaging() : undefined;
   const model = options.durable !== undefined ? new KnowledgeModel() : undefined;
   registry.register(staging !== undefined ? stagingConnector(new LocalFilesystemConnector(), staging) : new LocalFilesystemConnector());
@@ -107,7 +109,10 @@ export function createConnectRuntime(options: ConnectRuntimeOptions): ConnectRun
               inventory,
               ledger: ledger as EvidenceLedger,
             });
-            return { ok: started.ok };
+            if (!started.ok) return { ok: false };
+            // Review decisions are durable and re-applied before anything is served; an unreadable file fails closed.
+            for (const d of await decisionStore.load()) (model as KnowledgeModel).addDecision(d);
+            return { ok: true };
           } catch {
             return { ok: false };
           }
@@ -132,6 +137,7 @@ export function createConnectRuntime(options: ConnectRuntimeOptions): ConnectRun
   const knowledge =
     model !== undefined && ledger !== undefined
       ? createEiKnowledgePort({
+          decisions: decisionStore,
           model,
           platform: () => ({ clock, authorization, audit, ledger, ...(store !== undefined ? { state: store } : {}) }),
         })

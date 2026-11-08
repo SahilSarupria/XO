@@ -475,3 +475,135 @@ test('REMOVE learned fails safe: without data.delete the items are no longer rea
     }
   });
 });
+
+const rec = (title: string) =>
+  JSON.stringify({
+    schema: 'ei.org-record.v1',
+    records: [{ type: 'directory_entry', person: { kind: 'person', ids: { email: 'priya.sharma@contoso.example' } }, title }],
+  });
+
+type ConflictView = { statements: { text: string; status: string; item: { id: string; claims: { value: string }[]; state: string } }[] };
+const conflicts = async (svc: ReturnType<typeof boot>['service']) => {
+  const r = await svc.searchKnowledge(alice, { query: { select: 'conflicts' } as never });
+  assert.ok(r.ok);
+  return (r.value.data as unknown as ConflictView).statements;
+};
+
+async function seedConflict(d: Dirs, rt: ReturnType<typeof boot>) {
+  await writeFile(join(d.root, 't1.json'), rec('Senior Finance Manager'));
+  await writeFile(join(d.root, 't2.json'), rec('Finance Director'));
+  const c = await rt.service.connectFolder(alice, { root: d.root, includeKeys: ['t1.json', 't2.json'] });
+  assert.ok(c.ok);
+  assert.ok((await rt.service.readNow(alice, c.value.source.id)).ok);
+  return c.value.source.id;
+}
+
+test('REVIEW decisions are durable: a resolved conflict stays resolved across a restart, and undoing it stays undone', async () => {
+  await withDirs(async (d) => {
+    const first = boot(d);
+    let id: string;
+    try {
+      id = await seedConflict(d, first);
+      const open = await conflicts(first.service);
+      assert.equal(open.length, 1, 'two files disagree about the title');
+      const conflictId = open[0]?.item.id as string;
+      assert.equal(open[0]?.item.state, 'open');
+      assert.ok(first.service.catalog().length > 0);
+
+      const decided = await first.service.submitKnowledgeReview(alice, {
+        action: 'resolve_conflict',
+        conflictId,
+        winner: 'Finance Director',
+      });
+      assert.ok(decided.ok, JSON.stringify(decided));
+      assert.equal((await conflicts(first.service))[0]?.item.state, 'resolved');
+      const hist = await first.service.knowledgeDecisions(alice);
+      assert.ok(hist.ok && hist.value.length === 1 && hist.value[0]?.principalId === 'alice' && hist.value[0]?.kind === 'resolve_conflict');
+      assert.ok(!JSON.stringify(hist.value).includes('Finance Director'), 'history carries no subjects or values');
+    } finally {
+      await first.close();
+    }
+
+    const second = boot(d);
+    try {
+      assert.equal(
+        (await second.service.knowledgeDecisions(alice)).ok &&
+          ((await second.service.knowledgeDecisions(alice)) as { value: unknown[] }).value.length,
+        1,
+        'the decision survived the restart',
+      );
+      assert.ok((await second.service.readNow(alice, id)).ok);
+      const after = await conflicts(second.service);
+      assert.equal(after[0]?.item.state, 'resolved', 'the conflict is still resolved after re-deriving');
+      // Undo it, restart again: it stays undone.
+      const decisionId = ((await second.service.knowledgeDecisions(alice)) as { value: { id: string }[] }).value[0]?.id as string;
+      assert.ok((await second.service.submitKnowledgeReview(alice, { action: 'revoke_decision', decisionId })).ok);
+      assert.equal((await conflicts(second.service))[0]?.item.state, 'open');
+    } finally {
+      await second.close();
+    }
+    const third = boot(d);
+    try {
+      assert.ok((await third.service.readNow(alice, id)).ok);
+      assert.equal((await conflicts(third.service))[0]?.item.state, 'open');
+      assert.equal(((await third.service.knowledgeDecisions(alice)) as { value: unknown[] }).value.length, 0);
+    } finally {
+      await third.close();
+    }
+  });
+});
+
+test('REVIEW authority is enforced by C6 and the review capability gates the history', async () => {
+  await withDirs(async (d) => {
+    const rt = boot(d);
+    try {
+      await seedConflict(d, rt);
+      const conflictId = (await conflicts(rt.service))[0]?.item.id as string;
+      const mallory = principal('mallory');
+      const denied = await rt.service.submitKnowledgeReview(mallory, {
+        action: 'resolve_conflict',
+        conflictId,
+        winner: 'Finance Director',
+      });
+      assert.ok(!denied.ok && denied.error.code === 'denied');
+      assert.equal((await conflicts(rt.service))[0]?.item.state, 'open', 'nothing was decided');
+      const history = await rt.service.knowledgeDecisions(mallory);
+      assert.ok(!history.ok && history.error.code === 'denied');
+      assert.ok(!(await rt.service.submitKnowledgeReview(alice, null as never)).ok);
+      assert.ok(!(await rt.service.submitKnowledgeReview(alice, { action: 'resolve_conflict', conflictId: 'nope', winner: 'x' })).ok);
+    } finally {
+      await rt.close();
+    }
+  });
+});
+
+test('REVIEW fails safe: a decision that cannot be saved is not applied, and an unreadable decision file fails the host closed', async () => {
+  await withDirs(async (d) => {
+    const rt = boot(d);
+    try {
+      await seedConflict(d, rt);
+      const conflictId = (await conflicts(rt.service))[0]?.item.id as string;
+      // Make saving impossible: a directory where the decisions file must be replaced.
+      await mkdir(join(d.state, 'review-decisions.json'), { recursive: true });
+      const r = await rt.service.submitKnowledgeReview(alice, { action: 'resolve_conflict', conflictId, winner: 'Finance Director' });
+      assert.ok(!r.ok && r.error.code === 'unavailable' && r.error.retryable);
+      assert.equal((await conflicts(rt.service))[0]?.item.state, 'open', 'not durable means not applied');
+      const hist = await rt.service.knowledgeDecisions(alice);
+      assert.ok(hist.ok && hist.value.length === 0);
+    } finally {
+      await rt.close();
+    }
+  });
+  await withDirs(async (d) => {
+    await mkdir(d.state, { recursive: true });
+    await writeFile(join(d.state, 'review-decisions.json'), '{not json');
+    const rt = boot(d);
+    try {
+      assert.deepEqual(await rt.ready, { ok: false });
+      const l = await rt.service.listSources(alice);
+      assert.ok(!l.ok && l.error.code === 'unavailable');
+    } finally {
+      await rt.close();
+    }
+  });
+});

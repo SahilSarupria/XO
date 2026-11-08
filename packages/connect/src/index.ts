@@ -13,3 +13,4 @@ export { createConnectRuntime, EI_AUDIT_EXTENSION_SCHEMAS, type ConnectRuntime, 
 export * from './knowledge.js';
 export { stagingConnector } from './staging.js';
 export { FileRecordsDeriver } from './deriver.js';
+export { FileDecisionStore, InMemoryDecisionStore, DecisionStoreError, type DecisionStore } from './decisions.js';
