@@ -36,6 +36,7 @@ const seed = (c: FakeConnect) => {
       status: 'conflicted',
       reviewRequired: true,
       evidence: [ev(2, 'srcAAAAAAAAAAAA'), ev(3, 'srcBBBBBBBBBBBB')],
+      item: { type: 'conflict', id: 'cfl_1', state: 'open', claims: [{ value: '500000' }, { value: '300000' }] },
     }),
   ];
 };
@@ -143,5 +144,54 @@ describe('Knowledge screen', () => {
     await user.click(screen.getByRole('tab', { name: 'Facts' }));
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(screen.queryByText('Priya Sharma has title Senior Finance Manager')).not.toBeInTheDocument();
+  });
+
+  it('a non-reviewer sees the conflict and is told only a reviewer can decide; no decision controls, no history tab', async () => {
+    const { api, connect } = setup();
+    const user = await open(connect, api);
+    await user.click(screen.getByRole('tab', { name: 'Conflicts' }));
+    expect(await screen.findByText(/only a reviewer can decide it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Decide' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Review history' })).not.toBeInTheDocument();
+  });
+
+  it('a reviewer decides a conflict (recorded, reversible, evidence kept) and can undo it from the history', async () => {
+    const { api, connect } = setup();
+    connect.reviewer = true;
+    const user = await open(connect, api);
+    await user.click(screen.getByRole('tab', { name: 'Conflicts' }));
+    await user.click(await screen.findByRole('button', { name: 'Decide' }));
+    const group = await screen.findByRole('group', { name: 'Decide this conflict' });
+    expect(within(group).getByRole('button', { name: 'Record decision' })).toBeDisabled();
+    expect(
+      within(group).getByText(/recorded with your name and the time, can be undone, and never changes the evidence/),
+    ).toBeInTheDocument();
+    await user.click(within(group).getByRole('radio', { name: '300000' }));
+    await user.click(within(group).getByRole('button', { name: 'Record decision' }));
+    expect(await screen.findByText(/A reviewer decided this. Both values and their sources are kept./)).toBeInTheDocument();
+    expect(connect.calls.find((c) => c.path.endsWith('/review/decisions') && c.method === 'POST')?.body).toEqual({
+      action: 'resolve_conflict',
+      conflictId: 'cfl_1',
+      winner: '300000',
+    });
+    await user.click(screen.getByRole('tab', { name: 'Review history' }));
+    expect(await screen.findByText('Resolved a conflict')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo decision' }));
+    expect(await screen.findByText('No decisions yet')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Conflicts' }));
+    expect(await screen.findByRole('button', { name: 'Decide' })).toBeInTheDocument();
+  });
+
+  it('if the server refuses a decision (for example the caller is not a human principal), the user is told and nothing changes', async () => {
+    const { api, connect } = setup();
+    connect.reviewer = true;
+    connect.decisionStatus = 403;
+    const user = await open(connect, api);
+    await user.click(screen.getByRole('tab', { name: 'Conflicts' }));
+    await user.click(await screen.findByRole('button', { name: 'Decide' }));
+    await user.click(await screen.findByRole('radio', { name: '500000' }));
+    await user.click(screen.getByRole('button', { name: 'Record decision' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByText(/A reviewer decided this/)).not.toBeInTheDocument();
   });
 });

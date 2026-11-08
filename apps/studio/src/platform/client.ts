@@ -30,7 +30,16 @@ import {
   type Workspace,
   type WorkspaceRole,
 } from './wire';
-import { parseReview, parseSearch, type KnowledgeEnvelope, type ReviewData, type SearchData } from './wire-knowledge';
+import {
+  parseDecisionAck,
+  parseDecisions,
+  parseReview,
+  parseSearch,
+  type DecisionSummary,
+  type KnowledgeEnvelope,
+  type ReviewData,
+  type SearchData,
+} from './wire-knowledge';
 import {
   parseActionResult,
   parseCatalog,
@@ -283,6 +292,24 @@ export class XoClient {
   ): Promise<Result<KnowledgeEnvelope<SearchData>>> {
     const qs = new URLSearchParams({ select, ...(limit !== undefined ? { limit: String(limit) } : {}) });
     return this.call('GET', `/connect/knowledge?${qs.toString()}`, parseSearch);
+  }
+  /** A human review decision. The server (C6) decides whether this caller may; Studio only offers it to callers with the review capability. */
+  knowledgeResolveConflict(
+    conflictId: string,
+    winner: string | number | boolean,
+  ): Promise<Result<{ decisionId: string; operationId: string }>> {
+    return this.call(
+      'POST',
+      '/connect/knowledge/review/decisions',
+      parseDecisionAck,
+      this.json({ action: 'resolve_conflict', conflictId, winner }),
+    );
+  }
+  knowledgeRevokeDecision(decisionId: string): Promise<Result<{ decisionId: string; operationId: string }>> {
+    return this.call('POST', '/connect/knowledge/review/decisions', parseDecisionAck, this.json({ action: 'revoke_decision', decisionId }));
+  }
+  knowledgeDecisions(): Promise<Result<DecisionSummary[]>> {
+    return this.call('GET', '/connect/knowledge/review/decisions', parseDecisions);
   }
   knowledgeReview(): Promise<Result<KnowledgeEnvelope<ReviewData>>> {
     return this.call('GET', '/connect/knowledge/review', parseReview);

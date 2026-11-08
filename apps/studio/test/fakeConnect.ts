@@ -67,6 +67,9 @@ export class FakeConnect {
   /** Knowledge the fake returns (C6 KnowledgeResponse shape). */
   statements: Json[] = [];
   knowledgeStatus = 200;
+  reviewer = false;
+  decisionStatus = 200;
+  decisions: Json[] = [];
   constructor(private readonly inner: FakeXo) {}
 
   private kenv = (data: Json): Json => ({
@@ -120,6 +123,28 @@ export class FakeConnect {
       });
       return reply(200, this.kenv({ statements: rows, truncated: false }));
     }
+    if (path === '/connect/knowledge/review/decisions') {
+      if (method === 'GET') return this.reviewer ? reply(200, { decisions: this.decisions }) : denied();
+      if (this.decisionStatus !== 200) return err(this.decisionStatus, 'denied', 'the principal is not authorized for this operation');
+      const conflict = this.statements.find((st) => (st['item'] as Json | undefined)?.['id'] === body?.['conflictId']);
+      if (body?.['action'] === 'resolve_conflict' && conflict !== undefined) {
+        (conflict['item'] as Json)['state'] = 'resolved';
+        this.decisions.push({
+          id: `dec_${this.decisions.length + 1}`,
+          kind: 'resolve_conflict',
+          principalId: 'dana',
+          decidedAt: '2026-11-04T11:00:00.000Z',
+        });
+        return reply(201, { decisionId: `dec_${this.decisions.length}`, operationId: 'op_1' });
+      }
+      if (body?.['action'] === 'revoke_decision') {
+        this.decisions = this.decisions.filter((d) => d['id'] !== body['decisionId']);
+        for (const st of this.statements)
+          if ((st['item'] as Json | undefined)?.['state'] === 'resolved') (st['item'] as Json)['state'] = 'open';
+        return reply(201, { decisionId: String(body['decisionId']), operationId: 'op_2' });
+      }
+      return err(400, 'invalid_request', 'the decision is not valid');
+    }
     if (method === 'GET' && path === '/connect/knowledge/review') {
       const items = this.statements
         .filter((st) => st['reviewRequired'] === true)
@@ -134,7 +159,13 @@ export class FakeConnect {
     if (method === 'GET' && path === '/connect/capabilities')
       return this.capsStatus !== 200
         ? err(this.capsStatus, 'unavailable', 'the authorization gate could not answer')
-        : reply(200, { viewSources: true, manageSources: this.manage, readKnowledge: true, reviewKnowledge: false, advisory: true });
+        : reply(200, {
+            viewSources: true,
+            manageSources: this.manage,
+            readKnowledge: true,
+            reviewKnowledge: this.reviewer,
+            advisory: true,
+          });
     if (method === 'GET' && path === '/connect/catalog') {
       if (this.malformedCatalog) return reply(200, { sources: [{ kind: 'microsoft_365', availability: 'maybe' }] });
       return reply(200, {

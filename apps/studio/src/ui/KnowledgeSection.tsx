@@ -2,6 +2,9 @@ import { useState } from 'react';
 import type { ReviewItem, Statement } from '../platform/wire-knowledge';
 import {
   KNOWLEDGE_TABS,
+  RESOLVE_NOTE,
+  REVIEWER_NEEDED,
+  decisionKindLabel,
   evidencePanel,
   reviewKindLabel,
   sourcesLine,
@@ -22,11 +25,15 @@ export function KnowledgeSection() {
   const [query, setQuery] = useState('');
   const [submitted, setSubmitted] = useState('');
   const [open, setOpen] = useState<Statement | undefined>(undefined);
+  const { client } = useSession();
+  const caps = useLoad(() => client.connectCapabilities(), []);
+  const canReview = caps.state.phase === 'ready' && caps.state.value.reviewKnowledge;
+  const [refresh, setRefresh] = useState(0);
 
   return (
     <Section title="Knowledge" lede="What XO has learned from your connected sources. You see only what your own access allows.">
       <div className="knowledge-tabs" role="tablist" aria-label="Knowledge views">
-        {KNOWLEDGE_TABS.map((t) => (
+        {KNOWLEDGE_TABS.filter((t) => t.id !== 'history' || canReview).map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -70,13 +77,44 @@ export function KnowledgeSection() {
               {submitted === '' ? (
                 <EmptyState title="Search what XO knows">Type a name, an id such as a project key, or a word.</EmptyState>
               ) : (
-                <Results key={`q:${submitted}`} mode={{ q: submitted }} onOpen={setOpen} />
+                <Results
+                  key={`q:${submitted}:${refresh}`}
+                  mode={{ q: submitted }}
+                  onOpen={setOpen}
+                  canReview={canReview}
+                  onDecided={() => setRefresh((n) => n + 1)}
+                />
               )}
             </>
           ) : null}
-          {tab === 'entities' ? <Results key="entities" mode={{ select: 'entities' }} onOpen={setOpen} /> : null}
-          {tab === 'claims' ? <Results key="claims" mode={{ select: 'claims' }} onOpen={setOpen} /> : null}
-          {tab === 'conflicts' ? <Results key="conflicts" mode={{ select: 'conflicts' }} onOpen={setOpen} /> : null}
+          {tab === 'entities' ? (
+            <Results
+              key={`entities:${refresh}`}
+              mode={{ select: 'entities' }}
+              onOpen={setOpen}
+              canReview={canReview}
+              onDecided={() => setRefresh((n) => n + 1)}
+            />
+          ) : null}
+          {tab === 'claims' ? (
+            <Results
+              key={`claims:${refresh}`}
+              mode={{ select: 'claims' }}
+              onOpen={setOpen}
+              canReview={canReview}
+              onDecided={() => setRefresh((n) => n + 1)}
+            />
+          ) : null}
+          {tab === 'conflicts' ? (
+            <Results
+              key={`conflicts:${refresh}`}
+              mode={{ select: 'conflicts' }}
+              onOpen={setOpen}
+              canReview={canReview}
+              onDecided={() => setRefresh((n) => n + 1)}
+            />
+          ) : null}
+          {tab === 'history' ? <DecisionHistory /> : null}
           {tab === 'review' ? <ReviewQueue onOpen={setOpen} /> : null}
         </div>
         {open !== undefined ? <EvidencePanelView statement={open} onClose={() => setOpen(undefined)} /> : null}
@@ -87,7 +125,7 @@ export function KnowledgeSection() {
 
 type Mode = { readonly q: string } | { readonly select: 'entities' | 'relationships' | 'claims' | 'conflicts' | 'documents' };
 
-function Results(props: { mode: Mode; onOpen: (s: Statement) => void }) {
+function Results(props: { mode: Mode; onOpen: (s: Statement) => void; canReview?: boolean; onDecided?: () => void }) {
   const { client } = useSession();
   const load = useLoad(() => ('q' in props.mode ? client.knowledgeSearch(props.mode.q) : client.knowledgeSelect(props.mode.select)), []);
   if (load.state.phase === 'loading') return <Skeleton label="Loading knowledge" rows={3} />;
@@ -110,7 +148,13 @@ function Results(props: { mode: Mode; onOpen: (s: Statement) => void }) {
       <p className="muted small">{uncertaintyLine(uncertainty)}</p>
       <ul className="knowledge-list">
         {data.statements.map((s) => (
-          <StatementCard key={s.ref} statement={s} onOpen={() => props.onOpen(s)} />
+          <StatementCard
+            key={s.ref}
+            statement={s}
+            canReview={props.canReview === true}
+            onDecided={props.onDecided ?? (() => undefined)}
+            onOpen={() => props.onOpen(s)}
+          />
         ))}
       </ul>
       {data.truncated ? <p className="notice notice-warning">Showing the first results. Narrow your search to see the rest.</p> : null}
@@ -118,8 +162,10 @@ function Results(props: { mode: Mode; onOpen: (s: Statement) => void }) {
   );
 }
 
-function StatementCard(props: { statement: Statement; onOpen: () => void }) {
+function StatementCard(props: { statement: Statement; onOpen: () => void; canReview: boolean; onDecided: () => void }) {
   const v = statusView(props.statement);
+  const [deciding, setDeciding] = useState(false);
+  const c = props.statement.conflict;
   return (
     <li className={`card knowledge-card knowledge-${v.tone}`}>
       <div>
@@ -133,7 +179,30 @@ function StatementCard(props: { statement: Statement; onOpen: () => void }) {
         <Badge tone={v.tone}>{v.label}</Badge>
         <span className="muted small">{sourcesLine(props.statement)}</span>
         <Button onClick={props.onOpen}>Evidence</Button>
+        {c !== undefined && c.state === 'open' && props.canReview ? (
+          <Button variant="primary" onClick={() => setDeciding(true)}>
+            Decide
+          </Button>
+        ) : null}
       </div>
+      {c !== undefined && c.state === 'open' && !props.canReview ? (
+        <p className="muted small knowledge-row-note">A reviewer needs to decide. {REVIEWER_NEEDED}</p>
+      ) : null}
+      {c !== undefined && c.state === 'resolved' ? (
+        <p className="muted small knowledge-row-note">A reviewer decided this. Both values and their sources are kept.</p>
+      ) : null}
+      {deciding && c !== undefined ? (
+        <div className="knowledge-row-note">
+          <Decide
+            conflict={c}
+            onCancel={() => setDeciding(false)}
+            onDone={() => {
+              setDeciding(false);
+              props.onDecided();
+            }}
+          />
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -197,5 +266,80 @@ function EvidencePanelView(props: { statement: Statement; onClose: () => void })
       <p>{p.ifRemoved}</p>
       <p className="muted small">{p.visibility}</p>
     </aside>
+  );
+}
+
+function Decide(props: { conflict: NonNullable<Statement['conflict']>; onDone: () => void; onCancel: () => void }) {
+  const { client } = useSession();
+  const [pick, setPick] = useState<number | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Parameters<typeof ProblemNotice>[0]['problem'] | undefined>(undefined);
+  const decide = async (): Promise<void> => {
+    if (pick === undefined) return;
+    setBusy(true);
+    setProblem(undefined);
+    const r = await client.knowledgeResolveConflict(props.conflict.id, props.conflict.values[pick] as string | number | boolean);
+    setBusy(false);
+    if (!r.ok) return setProblem(r.problem);
+    props.onDone();
+  };
+  return (
+    <div className="notice" role="group" aria-label="Decide this conflict">
+      <strong>Which value is right?</strong>
+      {props.conflict.values.map((v, i) => (
+        <label key={String(v)}>
+          <input type="radio" name="winner" checked={pick === i} onChange={() => setPick(i)} /> {String(v)}
+        </label>
+      ))}
+      <p className="muted small">{RESOLVE_NOTE}</p>
+      {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+      <div className="row">
+        <Button variant="quiet" onClick={props.onCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" pending={busy} disabled={pick === undefined} onClick={() => void decide()}>
+          Record decision
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function DecisionHistory() {
+  const { client } = useSession();
+  const load = useLoad(() => client.knowledgeDecisions(), []);
+  const [busy, setBusy] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<Parameters<typeof ProblemNotice>[0]['problem'] | undefined>(undefined);
+  if (load.state.phase === 'loading') return <Skeleton label="Loading review history" rows={2} />;
+  if (load.state.phase === 'error') return <ProblemNotice problem={load.state.problem} onRetry={load.reload} />;
+  const undo = async (id: string): Promise<void> => {
+    setBusy(id);
+    setProblem(undefined);
+    const r = await client.knowledgeRevokeDecision(id);
+    setBusy(undefined);
+    if (!r.ok) return setProblem(r.problem);
+    load.reload();
+  };
+  if (load.state.value.length === 0)
+    return <EmptyState title="No decisions yet">Decisions made by reviewers appear here, with who decided and when.</EmptyState>;
+  return (
+    <>
+      {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
+      <ul className="knowledge-list">
+        {load.state.value.map((d) => (
+          <li key={d.id} className="card knowledge-card">
+            <div>
+              <strong>{decisionKindLabel(d.kind)}</strong>
+              <p className="muted small">
+                By {d.principalId} · {formatWhen(d.decidedAt)}
+              </p>
+            </div>
+            <Button pending={busy === d.id} onClick={() => void undo(d.id)}>
+              Undo decision
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

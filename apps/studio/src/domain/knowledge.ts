@@ -59,12 +59,22 @@ export function evidencePanel(s: Statement): EvidencePanel {
   };
 }
 
+/** What a person without review authority is told, and what a reviewer is offered. No role names: only the capability. */
+export const REVIEWER_NEEDED = 'You can see this, but only a reviewer can decide it.';
+
+export const decisionKindLabel = (k: 'approve_merge' | 'block_merge' | 'resolve_conflict'): string =>
+  k === 'resolve_conflict' ? 'Resolved a conflict' : k === 'approve_merge' ? 'Approved a match' : 'Blocked a match';
+
+export const RESOLVE_NOTE =
+  'Your decision is recorded with your name and the time, can be undone, and never changes the evidence: both values and their sources are kept.';
+
 export const KNOWLEDGE_TABS = [
   { id: 'search', label: 'Search' },
   { id: 'entities', label: 'People and things' },
   { id: 'claims', label: 'Facts' },
   { id: 'conflicts', label: 'Conflicts' },
   { id: 'review', label: 'Needs review' },
+  { id: 'history', label: 'Review history' },
 ] as const;
 export type KnowledgeTab = (typeof KNOWLEDGE_TABS)[number]['id'];
 
