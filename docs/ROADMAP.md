@@ -78,7 +78,7 @@ Ticks mean built, tested offline, documented, and merged to the feature branch. 
 - [ ] 9. Approval webhook delivery, trust-policy file loader, approval CLI, `xo install|list|verify|update|remove` audit, cross-XO linking of knowledge/trees/safety, multi-process lease authority — **not started**
 - [ ] 10. Efficiency (H2): coalescing, prompt budgeting, hot-path reuse, low-resource mode, whole-run wall-clock cap — **not started** (a step timeout now bounds extraction)
 - [x] 11. Capability detection and graceful degradation
-- [~] 12. This checklist, `ROADMAP.md`, `ACCEPTANCE_CRITERIA.md`: updated; the PR description is drafted but not applied
+- [~] 12. This checklist and `ROADMAP.md` are updated; `ACCEPTANCE_CRITERIA.md` only for the duplicate-call row; **the PR description and the plain-language "what you can automate today" paragraph are not written yet**
 
 **Deferred by instruction (unchanged):** live model evals, new benchmark domains, a second provider's live run, cost and hardware benchmarks.
 
