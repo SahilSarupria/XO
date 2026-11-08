@@ -34,6 +34,36 @@ export interface ServerOptions {
   readonly now?: () => number;
 }
 
+export interface HostResolution {
+  readonly level: string;
+  readonly consumed: readonly string[];
+  readonly skipped: readonly { readonly kind: string; readonly reason: string }[];
+  /** What a model-free runner can do with the package's workflows, or `{ refused: true }` when its workflows do not load. */
+  readonly workflows: unknown;
+  readonly receipt: ReturnType<ReturnType<typeof createCapabilityLayer>['emitLoadReceipt']>;
+}
+
+/**
+ * What a host would get from a package: the level, what it consumes and skips (with reasons), and how the package's workflows negotiate on the
+ * reference model-free runner. The ONE implementation behind `POST /v1/loader/resolve` and `xo flow resolve`. Loading verifies component hashes; it throws
+ * on a tampered package.
+ */
+export function resolveForHost(
+  bundle: PackageBundle,
+  host: { readonly family: string; readonly capabilities: readonly string[] },
+): HostResolution {
+  const layer = createCapabilityLayer(bundle, { host: { family: host.family as ModelFamily, capabilities: host.capabilities as never } });
+  const receipt = layer.emitLoadReceipt();
+  let workflows: unknown = null;
+  try {
+    const wf = workflowsFromLayer(layer);
+    if (wf !== undefined) workflows = negotiateWorkflows(wf.component as WorkflowComponent, DETERMINISTIC_HOST);
+  } catch (e) {
+    workflows = { refused: true, reason: (e as Error).message };
+  }
+  return { level: receipt.level, consumed: receipt.consumed, skipped: receipt.skipped, workflows, receipt };
+}
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -263,18 +293,10 @@ export function createXoServer(o: ServerOptions): {
       const h = b['host'] as { family?: unknown; capabilities?: unknown } | undefined;
       if (typeof h?.family !== 'string' || !Array.isArray(h.capabilities) || !h.capabilities.every((c) => typeof c === 'string'))
         throw new HttpError(400, 'BAD_REQUEST', 'host.family and host.capabilities are required');
-      const layer = createCapabilityLayer(o.bundle, { host: { family: h.family as ModelFamily, capabilities: h.capabilities as never } });
-      const receipt = layer.emitLoadReceipt();
-      let workflows: unknown = null;
-      try {
-        const wf = workflowsFromLayer(layer);
-        if (wf !== undefined) workflows = negotiateWorkflows(wf.component as WorkflowComponent, DETERMINISTIC_HOST);
-      } catch (e) {
-        workflows = { refused: true, reason: (e as Error).message };
-      }
-      receipts.push(receipt);
+      const resolved = resolveForHost(o.bundle, { family: h.family, capabilities: h.capabilities as string[] });
+      receipts.push(resolved.receipt);
       if (receipts.length > 1000) receipts.shift();
-      return { status: 200, body: { level: receipt.level, consumed: receipt.consumed, skipped: receipt.skipped, workflows, receipt } };
+      return { status: 200, body: resolved };
     }
 
     if (p[1] === 'receipts' && p.length === 2) return (only('GET'), { status: 200, body: { receipts: receipts.slice(-100) } });

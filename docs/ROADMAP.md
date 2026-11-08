@@ -72,7 +72,7 @@ Ticks mean built, tested offline, documented, and merged to the feature branch. 
 - [x] 3. Slack, webhook-out and read-only database connectors (+ operator bindings)
 - [ ] 4. Real sandboxing of MCP servers and code-bearing steps — **not started**
 - [ ] 5. `xo promote` CLI, `forEach`, event waits, rate limiting, dead-letter store, bounded ledger window — **not started** (`RUNNER_FEATURES` still refuses `forEach`/event waits whole, correctly)
-- [ ] 6. `xo serve --bundle`, `xo flow resolve`, journal anchoring, embed-in-app example — **not started**
+- [~] 6. `xo serve --bundle`, `xo flow run --bundle`, `xo flow resolve` done and tested (verified package, fail-closed trust, same resolve logic as the HTTP endpoint, a real `xo serve --bundle` process tested); **journal anchoring and the embed-in-app example are not done**
 - [ ] 7. Server beyond localhost (TLS, mTLS, scoped/rotating/expiring tokens, hardening doc) — **not started**: `xo serve` still has no TLS and one shared token
 - [~] 8. Duplicate-call window: strongest honest mitigations built and fault-injected; **residual risk remains** and is documented (destinations that lie, lagging lookups, two runners on one run directory, effects outside connectors)
 - [ ] 9. Approval webhook delivery, trust-policy file loader, approval CLI, `xo install|list|verify|update|remove` audit, cross-XO linking of knowledge/trees/safety, multi-process lease authority — **not started**

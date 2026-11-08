@@ -119,3 +119,16 @@ destination never sees a second effect for any item, that `supports_*` runs alwa
 `AMBIGUOUS_EFFECT` (and that reconcile flags it). Plus in-process timeouts after the effect, a lookup that confirms absence, a lookup that fails, and attestation validation. This is a
 fake destination: it shows the runner's logic, not any real system's behaviour. **Not covered:** two runners driving one run directory (item 9), a destination that lies about its
 guarantees, side effects outside connectors (compensation by a person), and the journal being deleted wholesale.
+
+## Running a signed package (`--bundle`)
+
+`xo flow run`, `xo serve` and `xo flow resolve` accept `--bundle <package.xo | directory holding exactly one .xo>` instead of loose files. The workflows and decision trees are then read
+from the **verified package**: it unpacks, its structure, component hashes and Merkle root validate, the operator's package-trust policy (the same one `xo install`/`verify` use) accepts it, and
+the workflow component is validated against the trees that package ships. **With no trust policy configured this fails closed**; `XO_TRUST_MODE=development` is the only way to run an
+unverified package, and every run says `trust: unverified [mode=development]` and prints the development warning. `--bundle` cannot be combined with `<workflows.json>` / `--trees` (it
+would be unclear which workflows the signature covers). `xo serve --bundle` also backs `POST /v1/loader/resolve` and `GET /v1/receipts` with the package.
+
+`xo flow resolve --bundle <pkg> --family <name> [--capabilities chat,tool_use] [--json]` prints what that host would get (level, consumed and skipped components with reasons, how the
+package's workflows negotiate on a model-free runner). It calls the same `resolveForHost` function as the HTTP endpoint, and a test asserts the two answers are identical.
+
+**Not done from this item:** anchoring the new journal with the existing ledger anchoring, the "embed in your app" example, and `xo flow validate|report --bundle`.

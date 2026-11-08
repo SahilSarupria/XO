@@ -28,10 +28,11 @@ import {
   type AuditBundle,
   type Reviewer,
 } from '@xo/workflow-runtime';
-import { createXoServer } from '@xo/server';
+import { createXoServer, resolveForHost } from '@xo/server';
 import { join } from 'node:path';
 import type { CommandRegistry } from '../../command-registry.js';
 import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
+import { loadWorkflowBundle, type LoadedWorkflowBundle } from './bundle.js';
 import { capsFromFlags, extractorFor } from './extractor.js';
 
 const SUBSYSTEM = 'flow';
@@ -39,6 +40,39 @@ const out = (s: string): void => void process.stdout.write(`${s}\n`);
 const fail = (s: string): number => (process.stderr.write(`error: ${s}\n`), 1);
 const flag = (f: Readonly<Record<string, string | boolean>>, n: string): string | undefined =>
   typeof f[n] === 'string' ? (f[n] as string) : undefined;
+
+/**
+ * The workflows and trees to run or serve: from a VERIFIED package (`--bundle`) or from loose files. Mixing them is refused, because then it would not be
+ * clear which workflows the signature covers.
+ */
+async function inputsFrom(
+  flags: Readonly<Record<string, string | boolean>>,
+  file: string | undefined,
+): Promise<
+  { ok: true; comp: WorkflowComponent; treeMap: Map<string, DecisionTree>; loaded?: LoadedWorkflowBundle } | { ok: false; error: string }
+> {
+  const bundlePath = flag(flags, 'bundle');
+  const trees = flag(flags, 'trees');
+  if (bundlePath !== undefined) {
+    if (file !== undefined || trees !== undefined)
+      return { ok: false, error: '--bundle replaces <workflows.json> and --trees; do not pass both' };
+    const loaded = await loadWorkflowBundle(bundlePath);
+    if (!loaded.ok) return { ok: false, error: loaded.error };
+    for (const w of loaded.value.warnings) out(w);
+    out(`package: ${loaded.value.bundle.manifest.name}@${loaded.value.bundle.manifest.version} — trust: ${loaded.value.trust}`);
+    return { ok: true, comp: loaded.value.component, treeMap: new Map(loaded.value.trees.map((t) => [t.id, t])), loaded: loaded.value };
+  }
+  if (file === undefined) return { ok: false, error: 'give <workflows.json> (or --bundle <package.xo>)' };
+  const treeMap = new Map<string, DecisionTree>();
+  if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
+  return { ok: true, comp: load(file, trees), treeMap };
+}
+
+/** Subcommands other than `run` and `serve` always work from a loose file; the usage check has already refused its absence, this narrows the type. */
+function requireFile(file: string | undefined): string {
+  if (file === undefined) throw new Error('a <workflows.json> argument is required');
+  return file;
+}
 
 function load(path: string, treesPath?: string): WorkflowComponent {
   const trees = treesPath !== undefined ? JSON.parse(readFileSync(resolve(treesPath), 'utf8')) : undefined;
@@ -51,7 +85,8 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'flow',
     subsystem: SUBSYSTEM,
     usage:
-      'xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
+      'xo flow resolve --bundle <package.xo|dir> --family <name> [--capabilities chat,tool_use] [--json]   What a host would get from a verified package (same logic as /v1/loader/resolve)\n' +
+      '      xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
       'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
       'xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]   Why a run did what it did, from its verified journal\n' +
@@ -59,7 +94,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow audit-verify <bundle.json> --pubkey <pem>   Verify signature, merkle root, hash chains\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
-      'xo flow run <workflows.json> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
+      'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
       const [sub, file] = args.positionals;
@@ -84,11 +119,35 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         return rep.needsAttention ? 1 : 0;
       }
-      if (file === undefined || sub === undefined) return fail('usage: xo flow <validate|report|run|reconcile> <workflows.json>');
+      if (sub === 'resolve') {
+        const bundlePath = flag(args.flags, 'bundle');
+        const family = flag(args.flags, 'family');
+        if (bundlePath === undefined || family === undefined)
+          return fail('usage: xo flow resolve --bundle <package.xo|dir> --family <name> [--capabilities chat,tool_use] [--json]');
+        const loaded = await loadWorkflowBundle(bundlePath);
+        if (!loaded.ok) return fail(loaded.error);
+        for (const w of loaded.value.warnings) out(w);
+        const caps = (flag(args.flags, 'capabilities') ?? '')
+          .split(',')
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0);
+        const r = resolveForHost(loaded.value.bundle, { family, capabilities: caps });
+        if (args.flags['json'] === true) out(JSON.stringify({ trust: loaded.value.trust, ...r }, null, 2));
+        else {
+          out(`trust: ${loaded.value.trust}`);
+          out(`host ${family} [${caps.join(', ')}] reaches ${r.level}`);
+          out(`consumes: ${r.consumed.join(', ') || '(nothing)'}`);
+          for (const k of r.skipped) out(`skips ${k.kind}: ${k.reason}`);
+          out(`workflows on a model-free runner: ${JSON.stringify(r.workflows)}`);
+        }
+        return 0;
+      }
+      if (sub === undefined || (file === undefined && !(args.flags['bundle'] !== undefined && sub === 'run')))
+        return fail('usage: xo flow <validate|report|run|resolve|reconcile> <workflows.json>');
       try {
         const trees = flag(args.flags, 'trees');
         if (sub === 'validate') {
-          const comp = load(file, trees);
+          const comp = load(requireFile(file), trees);
           const n = negotiateWorkflows(comp, DETERMINISTIC_HOST);
           out(`OK · ${comp.workflows.length} workflow(s), ${comp.connectors.length} connector(s)`);
           for (const w of n.runnable)
@@ -97,7 +156,7 @@ export function registerCommands(registry: CommandRegistry): void {
           return 0;
         }
         if (sub === 'report') {
-          for (const wf of load(file, trees).workflows) {
+          for (const wf of load(requireFile(file), trees).workflows) {
             const r = determinismReport(wf);
             out(
               `${wf.id}@${wf.version}: ${r.counts.deterministic}/${wf.steps.length} deterministic by declaration (${r.counts.model_assisted} model-assisted, ${r.counts.human} human). Declared, not measured.`,
@@ -114,15 +173,15 @@ export function registerCommands(registry: CommandRegistry): void {
           const runs = flag(args.flags, 'runs');
           const inputRaw = flag(args.flags, 'input');
           if (id === undefined || runs === undefined || inputRaw === undefined) return fail('--workflow, --input and --runs are required');
-          const comp = load(file, trees);
+          const inputs = await inputsFrom(args.flags, file);
+          if (!inputs.ok) return fail(inputs.error);
+          const { comp, treeMap } = inputs;
           const policyPath = flag(args.flags, 'policy');
           const policy: OperatorPolicyFile =
             policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
           const bound = await buildImplementations(comp, policy);
           if (!bound.ok) return fail(bound.error);
           const implementations = bound.value;
-          const treeMap = new Map<string, DecisionTree>();
-          if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
           const ex = extractorFor(comp, id);
           if (!ex.ok) return fail(ex.error);
           const memoDir = flag(args.flags, 'memo-dir');
@@ -151,7 +210,7 @@ export function registerCommands(registry: CommandRegistry): void {
           const runId = flag(args.flags, 'run');
           if (id === undefined || runs === undefined || runId === undefined)
             return fail('--workflow, --runs and --run <run id> are required');
-          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          const wf = load(requireFile(file), trees).workflows.find((w) => w.id === id);
           if (wf === undefined) return fail(`unknown workflow ${id}`);
           const x = await explainRun(new RunStore(resolve(runs)), wf, runId);
           out(args.flags['json'] === true ? JSON.stringify(x, null, 2) : renderExplanation(x));
@@ -165,8 +224,8 @@ export function registerCommands(registry: CommandRegistry): void {
           const outFile = flag(args.flags, 'out');
           if (id === undefined || runs === undefined || ids === undefined || keyFile === undefined || outFile === undefined)
             return fail('--workflow, --runs, --run-ids a,b, --key <ed25519 private pem>, --out <file> are required');
-          const bytes = readFileSync(resolve(file));
-          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          const bytes = readFileSync(resolve(requireFile(file)));
+          const wf = load(requireFile(file), trees).workflows.find((w) => w.id === id);
           if (wf === undefined) return fail(`unknown workflow ${id}`);
           const grantsPath = flag(args.flags, 'policy');
           const grants: Record<string, string[]> = {};
@@ -189,7 +248,10 @@ export function registerCommands(registry: CommandRegistry): void {
         if (sub === 'audit-verify') {
           const pub = flag(args.flags, 'pubkey');
           if (pub === undefined) return fail('--pubkey <ed25519 public pem> is required');
-          const v = verifyAuditBundle(JSON.parse(readFileSync(resolve(file), 'utf8')) as AuditBundle, readFileSync(resolve(pub), 'utf8'));
+          const v = verifyAuditBundle(
+            JSON.parse(readFileSync(resolve(requireFile(file)), 'utf8')) as AuditBundle,
+            readFileSync(resolve(pub), 'utf8'),
+          );
           out(v.ok ? 'VERIFIED: signature, merkle root and every hash chain check out' : `FAILED:\n  ${v.problems.join('\n  ')}`);
           return v.ok ? 0 : 3;
         }
@@ -225,7 +287,7 @@ export function registerCommands(registry: CommandRegistry): void {
           const field = flag(args.flags, 'field');
           if (id === undefined || runs === undefined || human === undefined || key === undefined || field === undefined)
             return fail('--workflow, --runs, --human <csv>, --key <input> and --field <result> are required');
-          const wf = load(file, trees).workflows.find((w) => w.id === id);
+          const wf = load(requireFile(file), trees).workflows.find((w) => w.id === id);
           if (wf === undefined) return fail(`unknown workflow ${id}`);
           const rep = await compareShadow(new RunStore(resolve(runs)), wf, readFileSync(resolve(human), 'utf8'), {
             keyInput: key,
@@ -273,18 +335,18 @@ export function registerCommands(registry: CommandRegistry): void {
       if (token === undefined || token.length < 24) return fail('set XO_SERVER_TOKEN to a secret of at least 24 characters');
       const file = flag(args.flags, 'workflows');
       const runs = flag(args.flags, 'runs');
-      if (file === undefined || runs === undefined) return fail('--workflows and --runs are required');
+      if (runs === undefined || (file === undefined && flag(args.flags, 'bundle') === undefined))
+        return fail('--runs and (--workflows <file> or --bundle <package.xo|dir>) are required');
       try {
-        const trees = flag(args.flags, 'trees');
-        const comp = load(file, trees);
+        const inputs = await inputsFrom(args.flags, file);
+        if (!inputs.ok) return fail(inputs.error);
+        const { comp, treeMap } = inputs;
         const policyPath = flag(args.flags, 'policy');
         const policy: OperatorPolicyFile =
           policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
         const bound = await buildImplementations(comp, policy);
         if (!bound.ok) return fail(bound.error);
         const implementations = bound.value;
-        const treeMap = new Map<string, DecisionTree>();
-        if (trees !== undefined) for (const t of parseTrees(JSON.parse(readFileSync(resolve(trees), 'utf8'))) ?? []) treeMap.set(t.id, t);
         const memoDir = flag(args.flags, 'memo-dir');
         const caps = capsFromFlags(args.flags, resolve(runs));
         if (!caps.ok) return fail(caps.error);
@@ -335,6 +397,8 @@ export function registerCommands(registry: CommandRegistry): void {
           authority,
           replica,
           trees: treeMap,
+          // a verified package also backs /v1/loader/resolve and /v1/receipts; loose files serve workflows only
+          ...(inputs.loaded !== undefined ? { bundle: inputs.loaded.bundle } : {}),
         });
         const a = await api.listen();
         out(`xo serve listening on http://${a.host}:${a.port} (workflows: ${Object.keys(runners).join(', ')})`);
