@@ -43,33 +43,125 @@ const ROUTE_LABEL: Record<TurnRoute, string> = {
 };
 const CONFIDENCE_LABEL = { high: 'High confidence', medium: 'Medium confidence', low: 'Low confidence', none: '' } as const;
 
+type Block = { kind: 'p'; text: string } | { kind: 'ul'; items: string[] };
+
+/** Splits plain model text into paragraphs and bullet lists. Text only: nothing here can inject markup. */
+export function toBlocks(text: string): Block[] {
+  const out: Block[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trimEnd();
+    const bullet = /^\s*(?:[-*•]\s+)(.*)$/.exec(line);
+    if (bullet !== null) {
+      const last = out[out.length - 1];
+      if (last?.kind === 'ul') last.items.push(bullet[1] as string);
+      else out.push({ kind: 'ul', items: [bullet[1] as string] });
+    } else if (line.trim() === '') {
+      out.push({ kind: 'p', text: '' });
+    } else {
+      const last = out[out.length - 1];
+      if (last?.kind === 'p' && last.text !== '') last.text += `\n${line.trim()}`;
+      else out.push({ kind: 'p', text: line.trim() });
+    }
+  }
+  return out.filter((b) => b.kind === 'ul' || b.text !== '');
+}
+
+/** **bold** and citation markers like [2] or [1, 3]; a marker becomes a button that opens that source. */
+function Inline(props: { text: string; onCite?: (n: number) => void }) {
+  const parts = props.text.split(/(\*\*[^*]+\*\*|\[\d+(?:,\s*\d+)*\])/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
+        const cite = /^\[(\d+(?:,\s*\d+)*)\]$/.exec(part);
+        if (cite === null) return part;
+        return (
+          <sup key={i} className="chat-cites">
+            {(cite[1] as string).split(/,\s*/).map((n) => (
+              <button key={n} type="button" className="chat-cite" aria-label={`Source ${n}`} onClick={() => props.onCite?.(Number(n))}>
+                {n}
+              </button>
+            ))}
+          </sup>
+        );
+      })}
+    </>
+  );
+}
+
+export function MessageText(props: { text: string; onCite?: (n: number) => void }) {
+  return (
+    <div className="chat-text">
+      {toBlocks(props.text).map((b, i) =>
+        b.kind === 'ul' ? (
+          <ul key={i}>
+            {b.items.map((it, j) => (
+              <li key={j}>
+                <Inline text={it} {...(props.onCite !== undefined ? { onCite: props.onCite } : {})} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p key={i}>
+            <Inline text={b.text} {...(props.onCite !== undefined ? { onCite: props.onCite } : {})} />
+          </p>
+        ),
+      )}
+    </div>
+  );
+}
+
+const CONFIDENCE_TONE = { high: 'good', medium: 'warn', low: 'bad', none: 'none' } as const;
+
 /**
  * What an assistant answer rests on and how sure it is: how XO understood the message (ASK, DECIDE, DO or LEARN),
- * confidence, the sources it cited, anything that weakens it, a proposed action (never run from here), and a way to
- * say whether it helped. Rendered from the platform's own result, never composed here.
+ * confidence, the sources it cited, anything that weakens it, a proposed action (never run from here), follow-up
+ * questions, and a way to say whether it helped. Rendered from the platform's own result, never composed here.
  */
 export function AnswerDetails(props: {
   message: ChatMessage;
   onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+  onFollowUp?: (text: string) => void;
+  sourcesOpen?: boolean;
+  onSourcesToggle?: (open: boolean) => void;
+  idPrefix?: string;
 }) {
   const r = props.message.result;
   const [rated, setRated] = useState<'helpful' | 'unhelpful' | 'failed' | undefined>();
-  if (r === undefined) return null;
+  if (r === undefined) {
+    // No structured result (e.g. an older message): still say which model wrote it.
+    return props.message.model === undefined ? null : (
+      <div className="chat-answer">
+        <div className="chat-actions">
+          <span className="chat-model" title="The model that wrote this answer">
+            {props.message.model.provider} · {props.message.model.model}
+          </span>
+        </div>
+      </div>
+    );
+  }
   const rate = async (rating: 'helpful' | 'unhelpful') => {
     if (props.onRate === undefined) return;
     setRated((await props.onRate(props.message.messageId, rating)) ? rating : 'failed');
   };
+  // A notice that repeats the reply word for word adds nothing.
+  const notices = r.notices.filter((n) => n.message.trim() !== props.message.content.trim());
+  const unbacked = (r.route === 'ask' || r.route === 'decide') && !r.grounded && r.confidence !== 'none';
+  const uniqueSources = [...new Set(r.citations.map((c) => c.sourceName))];
   return (
     <div className="chat-answer">
-      <p className="chat-meta small">
-        <span className="chat-chip" data-route={r.route}>
-          {ROUTE_LABEL[r.route]}
-        </span>
-        {CONFIDENCE_LABEL[r.confidence] !== '' ? <span className="chat-chip">{CONFIDENCE_LABEL[r.confidence]}</span> : null}
-        {r.route === 'ask' || r.route === 'decide' ? (
-          <span className="chat-chip">{r.grounded ? 'Backed by sources' : 'Not backed by sources'}</span>
-        ) : null}
-      </p>
+      {r.route !== 'converse' ? (
+        <p className="chat-meta">
+          <span className="chat-route" data-route={r.route}>
+            {ROUTE_LABEL[r.route]}
+          </span>
+          {CONFIDENCE_LABEL[r.confidence] !== '' ? (
+            <span className="chat-conf" data-tone={CONFIDENCE_TONE[r.confidence]}>
+              {CONFIDENCE_LABEL[r.confidence]}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       {r.proposal !== undefined ? (
         <div className="chat-proposal" role="group" aria-label="Proposed action">
           <p>
@@ -87,41 +179,100 @@ export function AnswerDetails(props: {
         </div>
       ) : null}
       {r.citations.length > 0 ? (
-        <ol className="chat-sources small" aria-label="Sources">
-          {r.citations.map((c) => (
-            <li key={c.index} value={c.index}>
-              <span>{c.sourceName}</span>
-              {c.asOf !== undefined ? <span className="muted"> · as of {c.asOf.slice(0, 10)}</span> : null}
-              <span className="muted"> — {c.excerpt}</span>
-            </li>
-          ))}
-        </ol>
+        <details
+          className="chat-sources"
+          open={props.sourcesOpen === true}
+          onToggle={(e) => props.onSourcesToggle?.((e.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary>
+            <span className="chat-sources-title">
+              {r.citations.length} source{r.citations.length === 1 ? '' : 's'}
+            </span>
+            <span className="chat-sources-names">{uniqueSources.join(' · ')}</span>
+          </summary>
+          <ol aria-label="Sources">
+            {r.citations.map((c) => (
+              <li key={c.index} value={c.index} id={`${props.idPrefix ?? 'src'}-${c.index}`}>
+                <span className="chat-src-name">{c.sourceName}</span>
+                {c.asOf !== undefined ? <span className="chat-src-date"> · as of {c.asOf.slice(0, 10)}</span> : null}
+                <blockquote>{c.excerpt}</blockquote>
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
-      {r.notices.length > 0 ? (
-        <ul className="bare-list small chat-notices" aria-label="Things to know about this answer">
-          {r.notices.map((n) => (
-            <li key={n.code}>⚠ {n.message}</li>
+      {unbacked ? <p className="chat-note">Not backed by any source — treat with caution.</p> : null}
+      {notices.length > 0 ? (
+        <ul className="chat-notes" aria-label="Things to know about this answer">
+          {notices.map((n) => (
+            <li key={n.code}>{n.message}</li>
           ))}
         </ul>
       ) : null}
-      {props.onRate !== undefined && r.route !== 'clarify' && r.route !== 'learn' ? (
-        <p className="chat-rate small">
-          {rated === 'helpful' || rated === 'unhelpful' ? (
+      {props.onFollowUp !== undefined && r.followUps.length > 0 ? (
+        <div className="chat-followups" role="group" aria-label="Suggested follow-ups">
+          {r.followUps.map((f) => (
+            <button key={f} type="button" className="chat-followup" onClick={() => props.onFollowUp?.(f)}>
+              {f}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="chat-actions">
+        {props.onRate !== undefined && r.route !== 'clarify' && r.route !== 'learn' ? (
+          rated === 'helpful' || rated === 'unhelpful' ? (
             <span role="status">Thanks — recorded for review.</span>
           ) : (
             <>
-              <button type="button" className="chat-link" onClick={() => void rate('helpful')}>
+              <button type="button" className="chat-act" onClick={() => void rate('helpful')}>
                 Helpful
               </button>
-              <button type="button" className="chat-link" onClick={() => void rate('unhelpful')}>
+              <button type="button" className="chat-act" onClick={() => void rate('unhelpful')}>
                 Not helpful
               </button>
               {rated === 'failed' ? <span role="status"> Couldn't record that.</span> : null}
             </>
-          )}
-        </p>
-      ) : null}
+          )
+        ) : null}
+        {props.message.model !== undefined ? (
+          <span className="chat-model" title="The model that wrote this answer">
+            {props.message.model.provider} · {props.message.model.model}
+          </span>
+        ) : null}
+      </div>
     </div>
+  );
+}
+
+/** One assistant reply: the text, with citation markers that open and scroll to the matching source. */
+function AssistantMessage(props: {
+  message: ChatMessage;
+  onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+  onFollowUp?: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const prefix = `src-${props.message.messageId}`;
+  const cite = (n: number) => {
+    setOpen(true);
+    setTimeout(() => {
+      const el = document.getElementById(`${prefix}-${n}`);
+      el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      el?.setAttribute('data-flash', 'true');
+      setTimeout(() => el?.removeAttribute('data-flash'), 1400);
+    }, 30);
+  };
+  return (
+    <>
+      <MessageText text={props.message.content} onCite={cite} />
+      <AnswerDetails
+        message={props.message}
+        sourcesOpen={open}
+        onSourcesToggle={setOpen}
+        idPrefix={prefix}
+        {...(props.onRate !== undefined ? { onRate: props.onRate } : {})}
+        {...(props.onFollowUp !== undefined ? { onFollowUp: props.onFollowUp } : {})}
+      />
+    </>
   );
 }
 
@@ -131,6 +282,7 @@ export function ChatLog(props: {
   loading?: boolean;
   sending?: boolean;
   onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+  onFollowUp?: (text: string) => void;
 }) {
   const { thread } = props;
   const end = useRef<HTMLDivElement>(null);
@@ -143,36 +295,57 @@ export function ChatLog(props: {
       {props.loading !== true && (thread === undefined || thread.messages.length === 0) ? (
         <p className="muted small">Ask a question. Your conversation is saved and private to you.</p>
       ) : (
-        thread?.messages.map((m) => (
+        thread?.messages.map((m, i) => (
           <div key={m.messageId} className={m.role === 'user' ? 'chat-msg chat-you' : 'chat-msg chat-xo'}>
             <span className="visually-hidden">{m.role === 'user' ? 'You said: ' : 'XO replied: '}</span>
-            <p>{m.content}</p>
-            {m.attachedXos !== undefined && m.attachedXos.length > 0 ? (
-              <p className="chat-attached">
-                {m.attachedXos.map((a) => (
-                  <span key={a} className="chat-tag">
-                    @{a}
-                  </span>
-                ))}
-              </p>
-            ) : null}
             {m.role === 'assistant' ? (
-              <AnswerDetails message={m} {...(props.onRate !== undefined ? { onRate: props.onRate } : {})} />
-            ) : null}
-            {m.role === 'assistant' && m.model !== undefined ? (
-              <p className="muted small chat-model">
-                Answered by {m.model.provider} · {m.model.model}
-              </p>
-            ) : null}
+              <>
+                <span className="chat-avatar" aria-hidden="true">
+                  XO
+                </span>
+                <div className="chat-body">
+                  <AssistantMessage
+                    message={m}
+                    {...(props.onRate !== undefined ? { onRate: props.onRate } : {})}
+                    {...(props.onFollowUp !== undefined && i === (thread?.messages.length ?? 0) - 1
+                      ? { onFollowUp: props.onFollowUp }
+                      : {})}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <p>{m.content}</p>
+                {m.attachedXos !== undefined && m.attachedXos.length > 0 ? (
+                  <p className="chat-attached">
+                    {m.attachedXos.map((a) => (
+                      <span key={a} className="chat-tag">
+                        @{a}
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         ))
       )}
       {props.sending === true ? (
-        <p className="muted small" role="status">
-          Waiting for the model…
-        </p>
+        <div className="chat-msg chat-xo chat-thinking" role="status">
+          <span className="chat-avatar" aria-hidden="true">
+            XO
+          </span>
+          <div className="chat-body">
+            <span className="chat-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="visually-hidden">Waiting for the model…</span>
+          </div>
+        </div>
       ) : null}
-      <div ref={end} />
+      <div ref={end} className="chat-end" />
     </div>
   );
 }
@@ -291,7 +464,7 @@ export function ThreadRow(props: {
 }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <li>
+    <li className="chat-row">
       <button
         type="button"
         className={props.className ?? 'chat-thread'}
@@ -317,7 +490,7 @@ export function ThreadRow(props: {
           </button>
         </span>
       ) : (
-        <button type="button" className="chat-link" aria-label={`Delete ${props.thread.title}`} onClick={() => setConfirming(true)}>
+        <button type="button" className="chat-rowdel" aria-label={`Delete ${props.thread.title}`} onClick={() => setConfirming(true)}>
           Delete
         </button>
       )}
@@ -370,10 +543,16 @@ export function ChatScreen(props: { chat: ChatController; xos: readonly Attachab
       <section className="chat-main" aria-label="Conversation">
         <header className="chat-head">
           <h2>{chat.thread?.title ?? 'New chat'}</h2>
-          <span className="chat-chip">private to you</span>
+          <span className="chat-private">Private to you</span>
         </header>
         {chat.problem !== undefined ? <ChatProblem problem={chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
-        <ChatLog thread={chat.thread} loading={chat.loadingThread} sending={chat.sending} onRate={chat.rate} />
+        <ChatLog
+          thread={chat.thread}
+          loading={chat.loadingThread}
+          sending={chat.sending}
+          onRate={chat.rate}
+          onFollowUp={(t) => void chat.send(t, [])}
+        />
         <ChatComposer xos={props.xos} onSend={chat.send} disabled={chat.sending} />
       </section>
 

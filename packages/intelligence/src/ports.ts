@@ -46,6 +46,18 @@ export type KnowledgeResult =
  */
 export interface KnowledgePort {
   retrieve(query: KnowledgeQuery): Promise<KnowledgeResult>;
+  /**
+   * OPTIONAL. What this knowledge system holds for the principal, in human terms, so XO can answer "what do you have
+   * access to?" truthfully instead of searching for it. Must list only what the principal may see. A system that cannot
+   * enumerate its sources omits this, and XO then says it cannot list them rather than guessing.
+   */
+  describe?(principal: Principal): Promise<KnowledgeCatalog>;
+}
+
+export interface KnowledgeCatalog {
+  readonly sources: readonly { readonly name: string; readonly kind: string; readonly detail?: string }[];
+  /** How it searches, in plain words (e.g. "keyword matching"). */
+  readonly searchMethod?: string;
 }
 
 /** The default until a knowledge system is connected: honest about it, never a guess. */

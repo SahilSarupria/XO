@@ -10,7 +10,9 @@ import {
   callerIdentityId,
   requireOwnedWorkspace,
   requirePermission,
+  workspaceCompilationsStore,
   workspacePackagesStore,
+  workspaceSourcesStore,
   workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -22,6 +24,8 @@ import { usableModelChoices } from '../chat/usable-models.js';
 import { FsConversationStore, MAX_CONVERSATIONS_PER_IDENTITY, type Conversation } from '../intelligence/conversation-store.js';
 import { FsLearningPort } from '../intelligence/learning-store.js';
 import { InstalledXoKnowledgePort } from '../intelligence/installed-xo-knowledge.js';
+import { WorkspaceSourcesKnowledgePort } from '../intelligence/workspace-sources-knowledge.js';
+import { CompositeKnowledgePort } from '../intelligence/composite-knowledge.js';
 
 /**
  * XO Customer Chat — the intelligence experience. One conversation endpoint, no modes: each message is understood as
@@ -34,7 +38,7 @@ import { InstalledXoKnowledgePort } from '../intelligence/installed-xo-knowledge
 
 export interface IntelligenceRouteOptions {
   readonly providerFactory?: ProviderFactory;
-  /** The C6 boundary, per workspace. Default: the interim adapter over XOs installed in the workspace (`InstalledXoKnowledgePort`). */
+  /** The C6 boundary, per workspace. Default: the interim adapter over XOs installed in the workspace (installed XOs plus uploaded files and what was compiled from them). */
   readonly knowledge?: (workspace: WorkspaceRecord) => KnowledgePort;
   /** DO. Default: none — DO is reported unavailable. */
   readonly capabilities?: (workspace: WorkspaceRecord) => CapabilityPort | undefined;
@@ -170,7 +174,18 @@ export function registerIntelligenceRoutes(
 
     const orchestrator = new IntelligenceOrchestrator({
       model,
-      knowledge: options.knowledge?.(workspace) ?? new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)),
+      knowledge:
+        options.knowledge?.(workspace) ??
+        new CompositeKnowledgePort([
+          { name: 'installed XOs', port: new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)) },
+          {
+            name: 'uploaded files',
+            port: new WorkspaceSourcesKnowledgePort(
+              workspaceSourcesStore(workspace, dataConfig),
+              workspaceCompilationsStore(workspace, dataConfig),
+            ),
+          },
+        ]),
       ...(options.capabilities?.(workspace) !== undefined ? { capabilities: options.capabilities(workspace) as CapabilityPort } : {}),
       learning: new FsLearningPort(stateStore),
     });

@@ -18,19 +18,19 @@ node packages/intelligence-eval/dist/cli.js --knowledge-module ./adapter.mjs  # 
 
 Outputs `eval-out/report.json` (per-item checks) and `report.md`. Exit code 1 if any gate fails.
 
-## Dataset (91 items, synthetic)
+## Dataset (93 items, synthetic)
 
-| Category      | Items | What is measured                                                                                                                                                                                 |
-| ------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ask`         | 18    | Answer correctness (required facts), citation of the right documents, grounding                                                                                                                  |
-| `evidence`    | 8     | Citation faithfulness (each fact is in a document the answer **cites**), conflicts surfaced, latest/superseded information preferred                                                             |
-| `retrieval`   | 6     | Paraphrase questions that need more than keyword matching — all marked as known keyword limits                                                                                                   |
-| `decide`      | 10    | Recommendation is an acceptable option, grounded, advisory; **no** recommendation when evidence is thin                                                                                          |
-| `uncertainty` | 10    | Insufficient evidence: no fabricated answer, no confidence claimed, no model-written answer when nothing was retrieved                                                                           |
-| `routing`     | 14    | ASK / DECIDE / DO / LEARN / converse / clarify classification (confusion matrix reported)                                                                                                        |
-| `security`    | 11    | Restricted data never appears **anywhere** — answer, sources, notices, or any prompt sent to the model — plus positive controls proving authorized people _can_ reach it, and an injection email |
-| `feedback`    | 6     | Corrections, outcomes and feedback are recorded with the right kind, against the right earlier answer, with that answer's evidence, held for review                                              |
-| `do`          | 8     | Right capability, exact inputs, missing input asked for, nothing proposed without authorization, nothing executed                                                                                |
+| Category      | Items | What is measured                                                                                                                                                                                                                   |
+| ------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ask`         | 18    | Answer correctness (required facts), citation of the right documents, grounding                                                                                                                                                    |
+| `evidence`    | 8     | Citation faithfulness (each fact is in a document the answer **cites**), conflicts surfaced, latest/superseded information preferred                                                                                               |
+| `retrieval`   | 6     | Paraphrase questions that need more than keyword matching — all marked as known keyword limits                                                                                                                                     |
+| `decide`      | 10    | Recommendation is an acceptable option, grounded, advisory; **no** recommendation when evidence is thin                                                                                                                            |
+| `uncertainty` | 10    | Insufficient evidence: no fabricated answer, no confidence claimed, no model-written answer when nothing was retrieved                                                                                                             |
+| `routing`     | 14    | ASK / DECIDE / DO / LEARN / converse / clarify classification (confusion matrix reported), including that a question about XO itself ("what do you have access to?") is `converse`, answered from the source catalog, not searched |
+| `security`    | 11    | Restricted data never appears **anywhere** — answer, sources, notices, or any prompt sent to the model — plus positive controls proving authorized people _can_ reach it, and an injection email                                   |
+| `feedback`    | 6     | Corrections, outcomes and feedback are recorded with the right kind, against the right earlier answer, with that answer's evidence, held for review                                                                                |
+| `do`          | 8     | Right capability, exact inputs, missing input asked for, nothing proposed without authorization, nothing executed                                                                                                                  |
 
 The corpus (`corpus.ts`) is a fictional freight company: 25 documents, 4 personas (analyst, ops manager, finance, exec) with ACLs; restricted documents carry canary strings; two documents conflict; one policy supersedes another; one document answers only part of a question; one is an untrusted email containing an injection attempt.
 

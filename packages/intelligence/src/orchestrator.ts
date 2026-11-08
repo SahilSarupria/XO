@@ -747,9 +747,11 @@ export class IntelligenceOrchestrator {
   // ---------------------------------------------------------------------------------------------------- CONVERSE
 
   private async converse(ctx: Ctx, routing: Routing): Promise<Result<TurnResult, AiError>> {
+    // XO can only describe its own sources if the knowledge system can enumerate them; otherwise it says it cannot.
+    const catalog = await this.catalog(ctx);
     const res = await this.options.model.converse({
       task: 'conversation.answer',
-      messages: this.build(CONVERSE_PROMPT, ctx, ctx.message),
+      messages: this.build(CONVERSE_PROMPT, ctx, catalog === undefined ? ctx.message : `${catalog}\n\n${ctx.message}`),
       traceId: ctx.traceId,
       maxOutputTokens: 500,
       temperature: 0.4,
@@ -767,6 +769,21 @@ export class IntelligenceOrchestrator {
         evidenceConsidered: 0,
       }),
     );
+  }
+
+  private async catalog(ctx: Ctx): Promise<string | undefined> {
+    const describe = this.options.knowledge.describe?.bind(this.options.knowledge);
+    if (describe === undefined) return undefined;
+    try {
+      const c = await withTimeout(describe(ctx.input.principal), 5000);
+      const lines = c.sources
+        .slice(0, 40)
+        .map((s) => `- ${escapeForPrompt(s.name)} (${escapeForPrompt(s.kind)})${s.detail ? `: ${escapeForPrompt(s.detail)}` : ''}`);
+      return `<xo-catalog search_method="${escapeForPrompt(c.searchMethod ?? 'unspecified').replace(/"/g, '&quot;')}">\n${lines.join('\n') || '(no sources are connected)'}\n</xo-catalog>`;
+    } catch (error) {
+      this.logger.warn('knowledge catalog failed', { traceId: ctx.traceId, error: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    }
   }
 }
 

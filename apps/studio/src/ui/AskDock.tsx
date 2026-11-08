@@ -183,8 +183,14 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
           </nav>
           <div className="askdock-main">
             <header className="askdock-head">
+              <button type="button" className="askdock-close" onClick={close} aria-label="Close chat">
+                <span aria-hidden="true">←</span>
+              </button>
               <h2>{props.chat.thread?.title ?? 'New chat'}</h2>
-              <span className="chat-chip">private to you</span>
+              <span className="chat-private">Private to you</span>
+              <button type="button" className="askdock-newhead" onClick={props.chat.startNew}>
+                New chat
+              </button>
             </header>
             <div className="askdock-body">
               {props.chat.problem !== undefined ? <ChatProblem problem={props.chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
@@ -193,7 +199,7 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
                   <h3>What can XO help with?</h3>
                   <p className="muted">
                     Ask a question, weigh a decision, request an action or correct an answer — XO works out which. Answers come from your
-                    installed XOs, with sources. Type @ to focus on one.
+                    uploaded documents and installed XOs, with sources. Type @ to focus on an installed XO.
                   </p>
                 </div>
               ) : (
@@ -202,6 +208,7 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
                   loading={props.chat.loadingThread}
                   sending={props.chat.sending}
                   onRate={props.chat.rate}
+                  onFollowUp={(t) => void props.chat.send(t, [])}
                 />
               )}
             </div>

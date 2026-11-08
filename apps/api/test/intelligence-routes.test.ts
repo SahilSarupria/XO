@@ -384,3 +384,81 @@ test('the server-minted credential reaches the knowledge system, belongs to the 
     },
   );
 });
+
+const AGREEMENT_MD =
+  '# Vendor Agreement\n\nAcme Corp shall send a confirmation email to the Client upon completion of each milestone.\n\nThe team shall generate a summary report weekly and deliver it to the Client.\nThe team shall notify the Client of any delay within 24 hours.\n';
+
+test('uploaded files are searchable: capabilities compiled from a file answer "what can I automate with <file>?", with the file as the cited source', async () => {
+  const p = new ScriptableTestProvider('gemini', [
+    j(route({ standaloneQuery: 'what can I automate with agreement.md workflows' })),
+    j(answer({ answer: 'You can automate sending the milestone confirmation email and the weekly summary report [E1].' })),
+  ]);
+  await withApp({ gemini: p }, undefined, async ({ server, base }) => {
+    const src = (await server.request('POST', `${base}/sources?filename=agreement.md`, Buffer.from(AGREEMENT_MD))).json<{
+      sourceId: string;
+    }>();
+    assert.equal((await server.request('POST', `${base}/sources/${src.sourceId}/compile`)).status, 201);
+    const id = await start(server, base);
+    const t = (
+      await server.request('POST', `${base}/intelligence/conversations/${id}/turns`, {
+        message: 'explain the workflows I can run using agreement.md, what can I automate?',
+      })
+    ).json<Turn>();
+    assert.equal(t.assistantMessage.result.grounded, true, t.assistantMessage.content);
+    assert.equal(t.assistantMessage.result.citations[0]?.sourceName, 'agreement.md');
+    const prompt = p.callLog[1]!.messages.at(-1)!.content;
+    assert.match(prompt, /Capability "[^"]+" from agreement\.md/);
+    assert.match(prompt, /(can be run|found but not runnable yet)/);
+  });
+});
+
+test('a file that was uploaded but never compiled is reported as exactly that, not as "nothing found"', async () => {
+  const p = new ScriptableTestProvider('gemini', [
+    j(route({ standaloneQuery: 'aastha.pdf workflows' })),
+    j(answer({ answer: 'aastha.pdf has not been compiled yet, so no workflows have been extracted from it [E1].' })),
+  ]);
+  await withApp({ gemini: p }, undefined, async ({ server, base }) => {
+    await server.request('POST', `${base}/sources?filename=aastha.pdf`, Buffer.from('%PDF-1.4 not really'));
+    const id = await start(server, base);
+    const t = (
+      await server.request('POST', `${base}/intelligence/conversations/${id}/turns`, {
+        message: 'what workflows can I run using the aastha.pdf I uploaded?',
+      })
+    ).json<Turn>();
+    assert.equal(t.assistantMessage.result.grounded, true);
+    assert.match(p.callLog[1]!.messages.at(-1)!.content, /"aastha\.pdf".*has not been compiled yet/);
+  });
+});
+
+test('"what information do you have access to?" is answered from the workspace catalog (files and installed XOs), not by searching', async () => {
+  const p = new ScriptableTestProvider('gemini', [
+    j(route({ route: 'converse', standaloneQuery: 'what can you access' })),
+    {
+      kind: 'success' as const,
+      response: {
+        text: 'I can search aastha.pdf and agreement.md by keyword.',
+        usage: { inputTokens: 1, outputTokens: 1 },
+        modelUsed: 'gemini-test',
+        finishReason: 'stop' as const,
+      },
+    },
+  ]);
+  await withApp({ gemini: p }, undefined, async ({ server, base }) => {
+    await server.request('POST', `${base}/sources?filename=aastha.pdf`, Buffer.from('%PDF-1.4 x'));
+    const m = (await server.request('POST', `${base}/sources?filename=agreement.md`, Buffer.from(AGREEMENT_MD))).json<{
+      sourceId: string;
+    }>();
+    await server.request('POST', `${base}/sources/${m.sourceId}/compile`);
+    const id = await start(server, base);
+    const t = (
+      await server.request('POST', `${base}/intelligence/conversations/${id}/turns`, {
+        message: 'what kind of information do u have access to',
+      })
+    ).json<Turn>();
+    assert.equal(t.assistantMessage.result.route, 'converse');
+    const sent = p.callLog[1]!.messages.at(-1)!.content;
+    assert.match(sent, /<xo-catalog search_method="keyword matching">/);
+    assert.match(sent, /aastha\.pdf \(uploaded file\): not compiled yet/);
+    assert.match(sent, /agreement\.md \(uploaded file\): compiled: \d+ capabilities/);
+  });
+});

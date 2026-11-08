@@ -27,7 +27,7 @@ export const ROUTER_PROMPT = [
   '- route "decide": asks what to do, whether they should, to compare options, assess risk or consequences, or get a recommendation.',
   '- route "do": asks for something to be done, created, assigned, sent, triggered or scheduled.',
   '- route "learn": says an earlier answer or recommendation was wrong or incomplete, reports what actually happened, or gives feedback on an answer.',
-  '- route "converse": greetings, thanks, or questions about what you can do. Never use this for anything about the organization.',
+  '- route "converse": greetings, thanks, and questions about XO ITSELF — what you can do, what sources or information you have access to or can search, what is connected, how you work. These are answered from the catalog of connected sources, not by searching them. Never use this for a question about the facts inside the organization\'s sources (people, projects, what a document says).',
   'When unsure between a read-only route and "do", choose the read-only route.',
   'standaloneQuery: rewrite the message so it makes sense with no conversation (resolve "it", "that project", "why?"). If it already does, copy it unchanged.',
   'confidence: 0 to 1 — how sure you are of the route.',

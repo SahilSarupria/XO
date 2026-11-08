@@ -1,5 +1,6 @@
 import { PackageInstaller } from '@xo/package-sdk';
-import type { Evidence, KnowledgePort, KnowledgeQuery, KnowledgeResult } from '@xo/intelligence';
+import type { Evidence, KnowledgeCatalog, KnowledgePort, KnowledgeQuery, KnowledgeResult, Principal } from '@xo/intelligence';
+import { keywords } from './keyword.js';
 import type { BlobStore } from '@xo/storage';
 
 /**
@@ -17,7 +18,7 @@ const MAX_NODES_PER_PACKAGE = 5000;
 const MAX_EXCERPT_CHARS = 1200;
 const TITLE_KEYS = ['label', 'name', 'title', 'term', 'id'] as const;
 
-const tokens = (text: string): string[] => text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
+const tokens = keywords;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -102,5 +103,13 @@ export class InstalledXoKnowledgePort implements KnowledgePort {
     } catch {
       return { status: 'unavailable', reason: 'error' };
     }
+  }
+
+  async describe(_principal: Principal): Promise<KnowledgeCatalog> {
+    const installed = await new PackageInstaller(this.packages).listInstalled();
+    return {
+      sources: installed.map((i) => ({ name: i.name, kind: 'installed XO', detail: `version ${i.version}` })),
+      searchMethod: 'keyword matching',
+    };
   }
 }
