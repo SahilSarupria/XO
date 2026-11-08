@@ -444,7 +444,9 @@ export function buildView(input: ViewInput): View {
     let current: ClaimValue | undefined = valid.length === 1 ? valid[0] : undefined;
     let conflictId: string | undefined;
     if (valid.length > 1) {
-      conflictId = `cfl_${stableDigest(['ei-conflict-v1', pk, ...valid.map((v) => valueKey(v.value))]).slice(0, 24)}`;
+      // The id must not depend on the ORDER the values were observed in: that order follows observation times, which differ on every
+      // re-derivation, and a durable review decision is keyed by this id. Sorted, the same disagreement always has the same id.
+      conflictId = `cfl_${stableDigest(['ei-conflict-v1', pk, ...valid.map((v) => valueKey(v.value)).sort(cmp)]).slice(0, 24)}`;
       const decided = resolve(valid, policy, humanResolve, conflictId);
       conflicts.push({
         type: 'conflict',
