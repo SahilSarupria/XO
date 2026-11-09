@@ -181,7 +181,8 @@ describe('HTTP API: authentication and hardening', () => {
       '/v1/workflows/..%2f/runs',
     ]) {
       const r = await fetch(b.base + p, { headers: { authorization: `Bearer ${TOKEN}` } });
-      assert.ok([400, 404].includes(r.status), `${p} -> ${r.status}`);
+      // 403 is correct for a path that normalises to a route nobody mapped: unmapped routes are admin-only, and this token is not admin
+      assert.ok([400, 403, 404].includes(r.status), `${p} -> ${r.status}`);
     }
   });
   it('oversized bodies, wrong content types, bad JSON and wrong methods are refused', async () => {

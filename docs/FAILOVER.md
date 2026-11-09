@@ -19,10 +19,11 @@ is **not built**; the interface exists. The refund-desk example runs fully offli
 
 ### Hardening note
 
-Binds to `127.0.0.1` unless `--allow-remote` (the container sets it so the published port works; publish on loopback or behind a TLS proxy). **No TLS in this
-process.** Constant-time bearer comparison; no CORS; 1 MiB body cap (413), JSON only (415), strict ids (no path traversal), per-address rate limit (429), generic 500s,
-`no-store`. A single shared token means anyone holding it is fully trusted for the routes above; use separate tokens per deployment and rotate. Adversarial tests:
-`packages/sdk/test/api.test.ts` (auth bypass variants, traversal, oversized body, content type, rate limit, approval replay, stale-token fencing).
+See `docs/SERVER_HARDENING.md` for the full model. In short: loopback by default; any other address needs `--allow-remote`, per-client scoped tokens (`--tokens`; the single shared `XO_SERVER_TOKEN` is
+refused off loopback) and either built-in TLS (`--tls-cert/--tls-key`, optional mutual TLS) or an explicit `--behind-tls-proxy`. Tokens are hashed, scoped (read, run, approve, lease, ledger-sync, admin), expiring and
+revocable on a running server; unmapped routes are admin-only; refusals are audited without credentials. Constant-time comparison; no CORS; 1 MiB body cap (413), JSON only (415), strict ids, per-address rate limit
+(429) before authentication, failed-login lockout, request/header deadlines, generic 500s, `no-store` and security headers. Adversarial tests: `packages/server/test/hardening.test.ts` (real sockets and TLS),
+`apps/cli/test/token-serve.test.ts` (real `xo serve` processes), `packages/sdk/test/api.test.ts` (auth bypass variants, traversal, oversized body, content type, approval replay, stale-token fencing).
 SSRF protection lives in the HTTP connector, not the API surface (the API makes no outbound requests on behalf of callers).
 
 ## Lease protocol

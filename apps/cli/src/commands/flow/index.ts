@@ -28,7 +28,7 @@ import {
   type AuditBundle,
   type Reviewer,
 } from '@xo/workflow-runtime';
-import { createXoServer, resolveForHost } from '@xo/server';
+import { FileTokenStore, createXoServer, fileAuditSink, resolveForHost } from '@xo/server';
 import { join } from 'node:path';
 import type { CommandRegistry } from '../../command-registry.js';
 import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
@@ -327,12 +327,34 @@ export function registerCommands(registry: CommandRegistry): void {
     subsystem: SUBSYSTEM,
     usage:
       'xo serve --workflows <workflows.json> --runs <dir> [--policy <policy.json>] [--trees <file>] [--approvers <reviewers.json>] [--port 7433] [--host 127.0.0.1] [--allow-remote]\n' +
-      '                        Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). The bearer token is read from XO_SERVER_TOKEN (>= 24 chars), never from a flag.\n' +
+      '                        Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). Auth: --tokens <file> (per-client scoped tokens; see `xo token`) or, for loopback only, XO_SERVER_TOKEN (>= 24 chars). Never a token on a flag.\n' +
+      '                        [--tls-cert <pem> --tls-key <pem>] [--tls-ca <pem> --require-client-cert] [--behind-tls-proxy] [--audit-log <file>]: built-in TLS (1.2+), optional mutual TLS, an explicit statement that a proxy you run terminates TLS, and an append-only record of every refusal (no credentials).\n' +
       '                        Free-text workflows use the operator model (XO_PROVIDER/XO_MODEL/<vendor>_API_KEY, optional XO_EXTRACTOR_*); workflows that need none never read it. [--memo-dir <dir>] reuses validated facts for identical cases. [--daily-model-calls <n>] [--daily-effects <n>] persisted daily caps (exceeding one escalates, never drops).\n' +
-      '                        Binds to loopback by default. There is no TLS: use a TLS proxy for anything but localhost.',
+      '                        Binds to loopback by default. A non-loopback --host needs --allow-remote AND (--tls-cert/--tls-key or --behind-tls-proxy) AND --tokens; it is not claimed public-internet-ready (docs/SERVER_HARDENING.md).',
     run: async (args) => {
-      const token = process.env['XO_SERVER_TOKEN'];
-      if (token === undefined || token.length < 24) return fail('set XO_SERVER_TOKEN to a secret of at least 24 characters');
+      // authentication: per-client scoped tokens (--tokens <file>), or the legacy shared secret from the environment (loopback only; the server refuses it elsewhere)
+      const tokensPath = flag(args.flags, 'tokens') ?? process.env['XO_TOKEN_FILE'];
+      const legacy = process.env['XO_SERVER_TOKEN'];
+      if (tokensPath === undefined && (legacy === undefined || legacy.length < 24))
+        return fail(
+          'give --tokens <file> (see `xo token create`), or set XO_SERVER_TOKEN to a secret of at least 24 characters (loopback only)',
+        );
+      if (tokensPath !== undefined && legacy !== undefined) process.stderr.write('note: --tokens is set, so XO_SERVER_TOKEN is ignored\n');
+      let tokenStore: FileTokenStore | undefined;
+      if (tokensPath !== undefined) {
+        try {
+          tokenStore = FileTokenStore.open(resolve(tokensPath));
+        } catch (e) {
+          return fail((e as Error).message);
+        }
+      }
+      const tlsCert = flag(args.flags, 'tls-cert');
+      const tlsKey = flag(args.flags, 'tls-key');
+      const tlsCa = flag(args.flags, 'tls-ca');
+      if ((tlsCert === undefined) !== (tlsKey === undefined)) return fail('--tls-cert and --tls-key go together');
+      if (tlsCert === undefined && (tlsCa !== undefined || args.flags['require-client-cert'] === true))
+        return fail('--tls-ca / --require-client-cert need --tls-cert and --tls-key');
+      const auditPath = flag(args.flags, 'audit-log');
       const file = flag(args.flags, 'workflows');
       const runs = flag(args.flags, 'runs');
       if (runs === undefined || (file === undefined && flag(args.flags, 'bundle') === undefined))
@@ -388,7 +410,19 @@ export function registerCommands(registry: CommandRegistry): void {
         if (Object.keys(runners).length === 0) return fail(`no workflow can run on this server:\n  ${skipped.join('\n  ')}`);
         const host = flag(args.flags, 'host') ?? '127.0.0.1';
         const api = createXoServer({
-          token,
+          ...(tokenStore !== undefined ? { tokens: tokenStore } : { token: legacy as string }),
+          ...(tlsCert !== undefined && tlsKey !== undefined
+            ? {
+                tls: {
+                  cert: readFileSync(resolve(tlsCert)),
+                  key: readFileSync(resolve(tlsKey)),
+                  ...(tlsCa !== undefined ? { ca: readFileSync(resolve(tlsCa)) } : {}),
+                  ...(args.flags['require-client-cert'] === true ? { requireClientCert: true } : {}),
+                },
+              }
+            : {}),
+          ...(args.flags['behind-tls-proxy'] === true ? { behindTlsProxy: true } : {}),
+          ...(auditPath !== undefined ? { audit: fileAuditSink(resolve(auditPath)) } : {}),
           host,
           port: Number(flag(args.flags, 'port') ?? '7433'),
           allowRemote: args.flags['allow-remote'] === true,
@@ -401,7 +435,9 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(inputs.loaded !== undefined ? { bundle: inputs.loaded.bundle } : {}),
         });
         const a = await api.listen();
-        out(`xo serve listening on http://${a.host}:${a.port} (workflows: ${Object.keys(runners).join(', ')})`);
+        out(
+          `xo serve listening on ${tlsCert !== undefined ? 'https' : 'http'}://${a.host}:${a.port} (workflows: ${Object.keys(runners).join(', ')})`,
+        );
         for (const s of skipped) out(`  skipped ${s}`);
         await new Promise<void>((done) => {
           process.once('SIGINT', done);

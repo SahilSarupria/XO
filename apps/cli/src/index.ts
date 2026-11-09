@@ -7,6 +7,7 @@ import { registerCommands as registerCompilerCommands } from './commands/compile
 import { registerCommands as registerRuntimeCommands } from './commands/runtime/index.js';
 import { registerCommands as registerLayerCommands } from './commands/layer/index.js';
 import { registerCommands as registerFlowCommands } from './commands/flow/index.js';
+import { registerCommands as registerTokenCommands } from './commands/token/index.js';
 import { registerCommands as registerRegistryCommands } from './commands/registry/index.js';
 import { registerCommands as registerBenchmarkCommands } from './commands/benchmark/index.js';
 import { registerCommands as registerAiCommands } from './commands/ai/index.js';
@@ -38,6 +39,7 @@ export function buildRegistry(): CommandRegistry {
   registerRuntimeCommands(registry);
   registerLayerCommands(registry);
   registerFlowCommands(registry);
+  registerTokenCommands(registry);
   registerRegistryCommands(registry);
   registerBenchmarkCommands(registry);
   registerAiCommands(registry);

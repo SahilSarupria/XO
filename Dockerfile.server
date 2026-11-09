@@ -1,9 +1,18 @@
 # Server runner for XO workflows (the backup runner in the local-first / server-backup design).
 # Build:  docker build -f Dockerfile.server -t xo-server .
-# Run:    docker run --rm -p 127.0.0.1:7433:7433 \
-#           -e XO_SERVER_TOKEN="$(openssl rand -hex 32)" \
-#           -v "$PWD/data:/data" -v "$PWD/config:/config:ro" xo-server
-# The API has no TLS. Publish the port on loopback only, or put a TLS-terminating proxy in front. Never expose it directly.
+#
+# Inside a container the process must listen on 0.0.0.0 for a published port to work, which counts as a remote binding, so the server demands:
+#   - per-client tokens (--tokens): the single shared XO_SERVER_TOKEN is refused on a remote binding;
+#   - TLS, or your explicit statement that a TLS-terminating proxy you operate sits in front: --tls-cert/--tls-key, or --behind-tls-proxy.
+# Create the token file on the host, owner-only and readable by the container user (uid 10001):
+#   xo token create ops --scopes read,run,approve,lease,ledger-sync --ttl 30d --tokens config/tokens.json
+#   chown 10001 config/tokens.json && chmod 600 config/tokens.json
+# Run (this publishes on loopback only; with --behind-tls-proxy YOU assert that the hop to this port is private and TLS is terminated in front):
+#   docker run --rm -p 127.0.0.1:7433:7433 -v "$PWD/data:/data" -v "$PWD/config:/config:ro" xo-server \
+#     --tokens /config/tokens.json --audit-log /data/audit.jsonl --behind-tls-proxy \
+#     --bundle /config/package.xo --policy /config/policy.json
+# Or terminate TLS here: add  --tls-cert /config/server.crt --tls-key /config/server.key  (and  --tls-ca /config/ca.crt --require-client-cert  for mutual TLS)
+# instead of --behind-tls-proxy. Not claimed ready for direct public exposure: read docs/SERVER_HARDENING.md first.
 FROM node:22-bookworm-slim AS build
 WORKDIR /workspace
 COPY package.json package-lock.json* tsconfig.base.json tsconfig.json ./
@@ -19,6 +28,6 @@ RUN useradd --system --uid 10001 --no-create-home xo && mkdir -p /data && chown 
 USER xo
 VOLUME ["/data"]
 EXPOSE 7433
-# Inside a container the process must listen on 0.0.0.0 for the published port to work; --allow-remote acknowledges that.
+# 0.0.0.0 inside the container + --allow-remote: required for a published port. The server then refuses to start without --tokens and a TLS arrangement (see above).
 ENTRYPOINT ["node", "apps/cli/bin/xo.js", "serve", "--runs", "/data/runs", "--host", "0.0.0.0", "--allow-remote", "--port", "7433"]
-CMD ["--workflows", "/config/workflows.json", "--policy", "/config/policy.json"]
+CMD ["--tokens", "/config/tokens.json", "--workflows", "/config/workflows.json", "--policy", "/config/policy.json"]

@@ -1,8 +1,11 @@
 import { createServer as httpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer as httpsServer } from 'node:https';
 import { timingSafeEqual } from 'node:crypto';
 import { createCapabilityLayer, evaluateTree, type DecisionTree } from '@xo/capability-layer';
 import type { PackageBundle } from '@xo/package-sdk';
 import type { ModelFamily } from '@xo/types';
+import { hasScope, requiredScope, TOKEN_FORMAT, type Scope, type TokenAuthority } from './auth.js';
+import { clean, type AuditEvent, type AuditSink } from './audit.js';
 import { DETERMINISTIC_HOST, negotiateWorkflows, workflowsFromLayer, type WorkflowComponent } from '@xo/workflow-ir';
 import {
   ApprovalError,
@@ -15,13 +18,37 @@ import {
   type WorkflowRunner,
 } from '@xo/workflow-runtime';
 
+export interface TlsOptions {
+  /** PEM private key and certificate chain (strings or buffers). Supplied by the operator; never generated here. */
+  readonly key: string | Buffer;
+  readonly cert: string | Buffer;
+  /** CA certificate(s) that sign the CLIENT certificates you accept. Required for `requireClientCert`. */
+  readonly ca?: string | Buffer;
+  /** Mutual TLS: a client without a certificate signed by `ca` cannot even complete the handshake. It is IN ADDITION to the bearer token, not instead of it. */
+  readonly requireClientCert?: boolean;
+}
+
 export interface ServerOptions {
-  /** Shared secret. At least 24 characters; compared in constant time; never logged. */
-  readonly token: string;
+  /**
+   * Per-client tokens with scopes, expiry and revocation (see auth.ts). This is how the API is meant to be exposed.
+   */
+  readonly tokens?: TokenAuthority;
+  /**
+   * LEGACY single shared secret (at least 24 characters, constant-time compared, never logged). It carries every scope except `admin`, cannot expire or be
+   * revoked, and is REFUSED on any non-loopback binding. Kept for local use and development.
+   */
+  readonly token?: string;
   readonly host?: string;
   readonly port?: number;
-  /** Required to bind anything but loopback. There is no TLS here: put a TLS-terminating proxy in front. */
+  /** Required to bind anything but loopback. */
   readonly allowRemote?: boolean;
+  /** Built-in TLS (TLS 1.2+). Required to bind a non-loopback address unless `behindTlsProxy` says a trusted proxy terminates TLS in front. */
+  readonly tls?: TlsOptions;
+  /**
+   * An explicit statement that something you operate terminates TLS in front of this server and that the hop between is private. It exists so remote
+   * binding without built-in TLS is a deliberate act, never an accident. Nothing here can verify it.
+   */
+  readonly behindTlsProxy?: boolean;
   readonly runners: Readonly<Record<string, WorkflowRunner>>;
   readonly store: RunStore;
   readonly authority: LeaseAuthority;
@@ -29,8 +56,17 @@ export interface ServerOptions {
   readonly bundle?: PackageBundle;
   readonly trees?: ReadonlyMap<string, DecisionTree>;
   readonly maxBodyBytes?: number;
-  /** Requests per minute per client address. Default 240. */
+  /** Requests per minute per client address, counted before authentication. Default 240. */
   readonly rateLimitPerMinute?: number;
+  /** Failed authentications per minute per address before further failures are answered 429 `AUTH_LOCKED`. Default 10. */
+  readonly failedAuthLimitPerMinute?: number;
+  /** Receives every refusal (never a credential). */
+  readonly audit?: AuditSink;
+  /** Whole-request deadline, including a slow body (default 30 000 ms), header deadline (10 000), idle keep-alive (5 000), and how often those are checked (2 000). */
+  readonly requestTimeoutMs?: number;
+  readonly headersTimeoutMs?: number;
+  readonly keepAliveTimeoutMs?: number;
+  readonly timeoutCheckIntervalMs?: number;
   readonly now?: () => number;
 }
 
@@ -79,9 +115,8 @@ const APPROVAL_ID = /^appr_[0-9a-f]{64}$/;
 const WF_ID = /^[a-z][a-z0-9_]{0,63}$/;
 const OWNER = /^[A-Za-z0-9_.:-]{1,64}$/;
 
-function bearerOk(header: string | undefined, token: string): boolean {
-  if (header === undefined || !header.startsWith('Bearer ')) return false;
-  const given = Buffer.from(header.slice(7));
+function legacyOk(presented: string, token: string): boolean {
+  const given = Buffer.from(presented);
   const want = Buffer.from(token);
   return given.length === want.length && timingSafeEqual(given, want);
 }
@@ -124,10 +159,28 @@ export function createXoServer(o: ServerOptions): {
   listen: () => Promise<{ host: string; port: number }>;
   close: () => Promise<void>;
 } {
-  if (o.token.length < 24) throw new Error('server token must be at least 24 characters');
   const host = o.host ?? '127.0.0.1';
-  if (!loopback(host) && o.allowRemote !== true)
-    throw new Error(`refusing to bind ${host}: the API binds to loopback unless allowRemote is set (and then needs a TLS proxy)`);
+  const local = loopback(host);
+  if (o.tokens === undefined && o.token === undefined)
+    throw new Error('refusing to start: no authentication configured (give `tokens`, or a legacy `token` for loopback use)');
+  if (o.token !== undefined && o.token.length < 24) throw new Error('server token must be at least 24 characters');
+  if (!local && o.allowRemote !== true) throw new Error(`refusing to bind ${host}: the API binds to loopback unless allowRemote is set`);
+  if (!local && o.token !== undefined)
+    throw new Error(
+      `refusing to bind ${host} with the legacy shared token: it cannot expire, be revoked or be scoped; use per-client \`tokens\``,
+    );
+  if (!local && o.tls === undefined && o.behindTlsProxy !== true)
+    throw new Error(
+      `refusing to bind ${host} without TLS: give \`tls\`, or set \`behindTlsProxy\` to state that a TLS-terminating proxy you operate sits in front`,
+    );
+  if (o.tls !== undefined && o.behindTlsProxy === true) throw new Error('`tls` and `behindTlsProxy` are alternatives; set one');
+  if (o.tls?.requireClientCert === true && o.tls.ca === undefined)
+    throw new Error('requireClientCert needs the `ca` that signs the client certificates');
+  const secure = o.tls !== undefined || o.behindTlsProxy === true;
+  const audit: AuditSink = o.audit ?? (() => undefined);
+  const failedLimit = o.failedAuthLimitPerMinute ?? 10;
+  const failures = new Map<string, { windowStart: number; n: number }>();
+  const legacyScopes = new Set<Scope>(['read', 'run', 'approve', 'lease', 'ledger-sync']);
   const maxBody = o.maxBodyBytes ?? 1_048_576;
   const now = o.now ?? Date.now;
   const buckets = new Map<string, { windowStart: number; n: number }>();
@@ -140,6 +193,14 @@ export function createXoServer(o: ServerOptions): {
       'content-type': 'application/json',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
+      'x-frame-options': 'DENY',
+      'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+      'referrer-policy': 'no-referrer',
+      'cross-origin-resource-policy': 'same-origin',
+      ...(secure ? { 'strict-transport-security': 'max-age=63072000' } : {}),
+      // a refused request may still be sending a body: do not keep the connection to read it
+      ...(status >= 400 && status !== 404 && status !== 405 && status !== 409 && status !== 422 ? { connection: 'close' } : {}),
+      ...(status === 401 ? { 'www-authenticate': 'Bearer' } : {}),
       'content-length': Buffer.byteLength(text),
     });
     res.end(text);
@@ -303,17 +364,75 @@ export function createXoServer(o: ServerOptions): {
     throw new HttpError(404, 'NOT_FOUND');
   }
 
-  const server = httpServer((req, res) => {
+  /** Bounded, so a flood of distinct addresses cannot grow memory without limit: the oldest entries go first. */
+  const bump = (m: Map<string, { windowStart: number; n: number }>, key: string, t: number): number => {
+    const cur = m.get(key);
+    if (cur === undefined || t - cur.windowStart > 60_000) {
+      m.delete(key);
+      m.set(key, { windowStart: t, n: 1 });
+      if (m.size > 10_000) m.delete(m.keys().next().value as string);
+      return 1;
+    }
+    return ++cur.n;
+  };
+
+  const handler = (req: IncomingMessage, res: ServerResponse): void => {
     void (async () => {
+      const remote = clean(req.socket.remoteAddress ?? 'unknown', 64);
+      const method = req.method ?? 'GET';
+      let pathname = '';
+      const note = (e: Omit<AuditEvent, 'ts' | 'remote' | 'method' | 'path'>): void =>
+        audit({ ts: new Date(now()).toISOString(), remote, method: clean(method, 16), path: clean(pathname), ...e });
       try {
-        const addr = req.socket.remoteAddress ?? 'unknown';
+        // only the two verbs the API uses; anything else (OPTIONS preflights, HEAD, PUT, DELETE, TRACE) is refused before authentication and before any body
+        if (method !== 'GET' && method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
         const t = now();
-        const bkt = buckets.get(addr);
-        if (bkt === undefined || t - bkt.windowStart > 60_000) buckets.set(addr, { windowStart: t, n: 1 });
-        else if (++bkt.n > limit) throw new HttpError(429, 'RATE_LIMITED');
+        if (bump(buckets, remote, t) > limit) {
+          pathname = req.url?.split('?')[0] ?? '';
+          note({ kind: 'rate_limited' });
+          throw new HttpError(429, 'RATE_LIMITED');
+        }
+        if ((req.url ?? '').length > 2048) throw new HttpError(414, 'URI_TOO_LONG');
         const url = new URL(req.url ?? '/', 'http://localhost');
-        const isHealth = url.pathname === '/v1/health';
-        if (!isHealth && !bearerOk(req.headers['authorization'], o.token)) throw new HttpError(401, 'UNAUTHORIZED');
+        pathname = url.pathname;
+        const need = requiredScope(method, url.pathname);
+        if (need !== 'public') {
+          const header = req.headers['authorization'];
+          let reason: string | undefined;
+          let client: { id: string; scopes: ReadonlySet<Scope> } | undefined;
+          if (header === undefined) reason = 'missing';
+          else if (!header.startsWith('Bearer ') || header.length > 300) reason = 'malformed';
+          else {
+            const presented = header.slice(7);
+            const viaTokens = o.tokens !== undefined && TOKEN_FORMAT.test(presented) ? o.tokens.authenticate(presented, t) : undefined;
+            if (viaTokens?.ok === true) client = viaTokens.client;
+            else if (o.token !== undefined && legacyOk(presented, o.token)) client = { id: 'shared-token', scopes: legacyScopes };
+            else
+              reason =
+                viaTokens !== undefined
+                  ? viaTokens.reason
+                  : o.tokens !== undefined && !TOKEN_FORMAT.test(presented) && o.token === undefined
+                    ? 'malformed'
+                    : 'unknown';
+          }
+          if (client === undefined) {
+            note({ kind: reason === 'unavailable' ? 'token_store_unavailable' : 'auth_failure', reason: reason ?? 'unknown' });
+            // cheap, uniform refusal; after too many failures from one address the answer changes to 429 so a guesser learns nothing more and the log is not flooded
+            if (bump(failures, remote, t) > failedLimit) {
+              if (failures.get(remote)?.n === failedLimit + 1) note({ kind: 'auth_lockout' });
+              throw new HttpError(429, 'AUTH_LOCKED');
+            }
+            throw new HttpError(401, 'UNAUTHORIZED');
+          }
+          if (!hasScope(client.scopes, need)) {
+            note({ kind: 'forbidden', clientId: client.id, need });
+            throw new HttpError(
+              403,
+              'FORBIDDEN',
+              `this token cannot ${need === 'admin' ? 'use this route' : `do this (needs scope "${need}")`}`,
+            );
+          }
+        }
         const r = await route(req, url);
         send(res, r.status, r.body);
       } catch (e) {
@@ -322,10 +441,44 @@ export function createXoServer(o: ServerOptions): {
         send(res, 500, { error: 'INTERNAL' }); // never echo internals
       }
     })();
-  });
-  server.requestTimeout = 30_000;
-  server.headersTimeout = 10_000;
+  };
+
+  const timing = {
+    requestTimeout: o.requestTimeoutMs ?? 30_000,
+    headersTimeout: o.headersTimeoutMs ?? 10_000,
+    keepAliveTimeout: o.keepAliveTimeoutMs ?? 5_000,
+    connectionsCheckingInterval: o.timeoutCheckIntervalMs ?? 2_000,
+    maxHeaderSize: 16_384,
+  };
+  const server: Server =
+    o.tls !== undefined
+      ? httpsServer(
+          {
+            key: o.tls.key,
+            cert: o.tls.cert,
+            ...(o.tls.ca !== undefined ? { ca: o.tls.ca } : {}),
+            ...(o.tls.requireClientCert === true ? { requestCert: true, rejectUnauthorized: true } : {}),
+            minVersion: 'TLSv1.2',
+            ...timing,
+          },
+          handler,
+        )
+      : httpServer(timing, handler);
+  server.requestTimeout = timing.requestTimeout;
+  server.headersTimeout = timing.headersTimeout;
+  server.keepAliveTimeout = timing.keepAliveTimeout;
   server.maxHeadersCount = 50;
+  server.maxRequestsPerSocket = 100;
+  server.on('tlsClientError', (err, socket) => {
+    audit({
+      ts: new Date(now()).toISOString(),
+      kind: 'tls_error',
+      remote: clean(socket.remoteAddress ?? 'unknown', 64),
+      method: '-',
+      path: '-',
+      reason: clean(String((err as NodeJS.ErrnoException).code ?? 'handshake failed'), 60),
+    });
+  });
 
   return {
     server,
