@@ -45,7 +45,14 @@ test('real host: HTTP journey through the real permission gate and the real audi
     try {
       const caps = await server.request('GET', '/connect/capabilities');
       assert.equal(caps.status, 200);
-      assert.deepEqual(caps.json(), { viewSources: true, manageSources: true, readKnowledge: true, reviewKnowledge: true, advisory: true });
+      // reviewKnowledge is false for an API-key (service) identity even though it holds data.write: C6 only accepts human decisions.
+      assert.deepEqual(caps.json(), {
+        viewSources: true,
+        manageSources: true,
+        readKnowledge: true,
+        reviewKnowledge: false,
+        advisory: true,
+      });
       const c = await server.request('POST', '/connect/local-folders', { root, includeKeys: ['a.txt'] });
       assert.equal(c.status, 201);
       const id = c.json<{ source: { id: string } }>().source.id;

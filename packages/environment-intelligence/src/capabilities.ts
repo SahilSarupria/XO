@@ -12,6 +12,8 @@ import { ConnectorId } from './ids.js';
  * It is ADVISORY by construction: it tells an interface which actions to offer. Every real action is decided again when it runs, with
  * its own (usually narrower, per-resource) decision, so a stale or wrong answer here can never grant anything.
  *
+ * `reviewKnowledge` additionally requires a human principal: C6 refuses review decisions from anything else, so offering it would be a lie.
+ *
  * Roles do not exist. A capability is a (permission, resource) pair the gate was asked about; nothing else.
  *
  * AUDIT: each probe is audited like any protected operation. An allowed probe is a write-ahead `attempt` accepted BEFORE it counts, then
@@ -76,7 +78,8 @@ export async function queryCapabilities(ctx: ConnectorContext): Promise<Result<C
     }
     // ENFORCE:capabilities-terminal-audit
     if (!closed) return err(terminalNotAccepted());
-    result[probe.name] = true;
+    // C6 only lets a HUMAN principal record a review decision, whatever the gate says, so a non-human is never told it can review.
+    result[probe.name] = probe.name !== 'reviewKnowledge' || ctx.principal?.kind === 'human';
   }
   return ok(Object.freeze({ ...result }) as CapabilitySet);
 }

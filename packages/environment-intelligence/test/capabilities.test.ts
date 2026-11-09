@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PermissionManager, RuleBasedPolicy, parsePermissionId, type PolicyRule } from '@xo/permissions';
+import { PermissionManager, RuleBasedPolicy, establishAuthenticatedPrincipal, parsePermissionId, type PolicyRule } from '@xo/permissions';
 import {
   InMemoryAuditRecorder,
   PermissionManagerAuthorization,
@@ -91,4 +91,12 @@ test('an untrusted port that merely says "allow" does not grant a capability', a
   const r = await queryCapabilities(ctx(forged, new InMemoryAuditRecorder()));
   assert.ok(r.ok);
   assert.deepEqual(r.value, { viewSources: false, manageSources: false, readKnowledge: false, reviewKnowledge: false });
+});
+
+test('review is never offered to a non-human principal, whatever the gate allows (C6 refuses their decisions)', async () => {
+  const svc = establishAuthenticatedPrincipal({ kind: 'service', id: 'svc-1' });
+  assert.ok(svc.ok);
+  const r = await queryCapabilities(ctx(gate(all('svc-1')), new InMemoryAuditRecorder(), svc.value));
+  assert.ok(r.ok);
+  assert.deepEqual(r.value, { viewSources: true, manageSources: true, readKnowledge: true, reviewKnowledge: false });
 });
