@@ -22,10 +22,12 @@ import {
   WorkflowRunner,
   compareShadow,
   buildAuditBundle,
+  eventProblem,
   explainRun,
   renderExplanation,
   verifyAuditBundle,
   type AuditBundle,
+  type EventScalar,
   type Reviewer,
 } from '@xo/workflow-runtime';
 import { FileTokenStore, createXoServer, fileAuditSink, resolveForHost } from '@xo/server';
@@ -34,6 +36,8 @@ import type { CommandRegistry } from '../../command-registry.js';
 import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
 import { loadWorkflowBundle, type LoadedWorkflowBundle } from './bundle.js';
 import { capsFromFlags, extractorFor } from './extractor.js';
+import { PROMOTE_USAGE, runPromote } from './promote.js';
+import { rateLimitsFromFlags, stateStores } from './runtime-options.js';
 
 const SUBSYSTEM = 'flow';
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
@@ -88,13 +92,19 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow resolve --bundle <package.xo|dir> --family <name> [--capabilities chat,tool_use] [--json]   What a host would get from a verified package (same logic as /v1/loader/resolve)\n' +
       '      xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
       'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
+      'xo flow event <workflows.json>|--bundle <pkg> --workflow <id> --runs <dir> --name <event> --correlation <value> --event-id <id> [--input <json payload>]   Deliver one inbound event and resume runs waiting for it (deduplicated by --event-id)\n' +
+      'xo flow dead-letters --runs <dir> [--json]   Steps that ended failed or escalated, stored for a person (read-only)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
       'xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]   Why a run did what it did, from its verified journal\n' +
       'xo flow audit-export <workflows.json> --workflow <id> --runs <dir> --run-ids a,b --key <pem> --out <file> [--policy p.json] [--signer name]   Signed audit bundle\n' +
       'xo flow audit-verify <bundle.json> --pubkey <pem>   Verify signature, merkle root, hash chains\n' +
+      PROMOTE_USAGE.split('\n')
+        .map((l) => l)
+        .join('\n') +
+      '\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
-      'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run\n' +
+      'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run [--rate-limit bank=2:5,slack=1]\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
       const [sub, file] = args.positionals;
@@ -119,6 +129,20 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         return rep.needsAttention ? 1 : 0;
       }
+      if (sub === 'promote') return runPromote(args.positionals, args.flags);
+      if (sub === 'dead-letters') {
+        // reads the dead-letter store only; changes nothing
+        const runs = flag(args.flags, 'runs');
+        if (runs === undefined) return fail('usage: xo flow dead-letters --runs <dir> [--json]');
+        const items = await stateStores(resolve(runs)).deadLetters.list();
+        if (args.flags['json'] === true) out(JSON.stringify(items, null, 2));
+        else {
+          out(`${items.length} dead letter(s). Each is also an escalation or a failed run; none was dropped.`);
+          for (const d of items)
+            out(`  [${d.disposition}] run ${d.runId} step ${d.step}: ${d.code} after ${d.attempts} attempt(s) — ${d.message}`);
+        }
+        return 0;
+      }
       if (sub === 'resolve') {
         const bundlePath = flag(args.flags, 'bundle');
         const family = flag(args.flags, 'family');
@@ -142,7 +166,7 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         return 0;
       }
-      if (sub === undefined || (file === undefined && !(args.flags['bundle'] !== undefined && sub === 'run')))
+      if (sub === undefined || (file === undefined && !(args.flags['bundle'] !== undefined && (sub === 'run' || sub === 'event'))))
         return fail('usage: xo flow <validate|report|run|resolve|reconcile> <workflows.json>');
       try {
         const trees = flag(args.flags, 'trees');
@@ -168,11 +192,12 @@ export function registerCommands(registry: CommandRegistry): void {
           }
           return 0;
         }
-        if (sub === 'run') {
+        if (sub === 'run' || sub === 'event') {
           const id = flag(args.flags, 'workflow');
           const runs = flag(args.flags, 'runs');
           const inputRaw = flag(args.flags, 'input');
-          if (id === undefined || runs === undefined || inputRaw === undefined) return fail('--workflow, --input and --runs are required');
+          if (id === undefined || runs === undefined || (sub === 'run' && inputRaw === undefined))
+            return fail('--workflow, --input and --runs are required');
           const inputs = await inputsFrom(args.flags, file);
           if (!inputs.ok) return fail(inputs.error);
           const { comp, treeMap } = inputs;
@@ -187,10 +212,18 @@ export function registerCommands(registry: CommandRegistry): void {
           const memoDir = flag(args.flags, 'memo-dir');
           const caps = capsFromFlags(args.flags, resolve(runs));
           if (!caps.ok) return fail(caps.error);
+          const limits = rateLimitsFromFlags(
+            args.flags,
+            comp.connectors.map((c) => c.id),
+          );
+          if (!limits.ok) return fail(limits.error);
+          const state = stateStores(resolve(runs));
           const runner = new WorkflowRunner({
             component: comp,
             workflowId: id,
             store: new RunStore(resolve(runs)),
+            ...state,
+            ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
             connectors: new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() }),
             trees: treeMap,
             ...(ex.value !== undefined ? { extractor: ex.value } : {}),
@@ -199,8 +232,27 @@ export function registerCommands(registry: CommandRegistry): void {
             dryRun: args.flags['dry-run'] === true,
             shadow: args.flags['shadow'] === true,
           });
+          if (sub === 'event') {
+            // deliver one inbound event and resume this workflow's runs that wait for it
+            const name = flag(args.flags, 'name');
+            const correlation = flag(args.flags, 'correlation');
+            const eventId = flag(args.flags, 'event-id');
+            if (name === undefined || correlation === undefined || eventId === undefined)
+              return fail('--name, --correlation and --event-id are required (and --input <json payload>, default {})');
+            let payload: unknown;
+            try {
+              payload = inputRaw === undefined ? {} : JSON.parse(inputRaw);
+            } catch {
+              return fail('--input is not valid JSON');
+            }
+            const problem = eventProblem({ name, correlation, eventId, payload });
+            if (problem !== undefined) return fail(`invalid event: ${problem}`);
+            const d = await runner.deliverEvent({ name, correlation, eventId, payload: payload as Record<string, EventScalar> });
+            out(JSON.stringify(d, null, 2));
+            return 0;
+          }
           const dedupe = flag(args.flags, 'dedupe');
-          const r = await runner.start({ inputs: JSON.parse(inputRaw), ...(dedupe !== undefined ? { dedupeKey: dedupe } : {}) });
+          const r = await runner.start({ inputs: JSON.parse(inputRaw as string), ...(dedupe !== undefined ? { dedupeKey: dedupe } : {}) });
           out(JSON.stringify(r, null, 2));
           return r.state === 'completed' ? 0 : r.state === 'escalated' || r.state === 'waiting' ? 2 : 3;
         }
@@ -330,6 +382,7 @@ export function registerCommands(registry: CommandRegistry): void {
       '                        Local HTTP API (runs, approvals, leases, ledger sync, loader resolve). Auth: --tokens <file> (per-client scoped tokens; see `xo token`) or, for loopback only, XO_SERVER_TOKEN (>= 24 chars). Never a token on a flag.\n' +
       '                        [--tls-cert <pem> --tls-key <pem>] [--tls-ca <pem> --require-client-cert] [--behind-tls-proxy] [--audit-log <file>]: built-in TLS (1.2+), optional mutual TLS, an explicit statement that a proxy you run terminates TLS, and an append-only record of every refusal (no credentials).\n' +
       '                        Free-text workflows use the operator model (XO_PROVIDER/XO_MODEL/<vendor>_API_KEY, optional XO_EXTRACTOR_*); workflows that need none never read it. [--memo-dir <dir>] reuses validated facts for identical cases. [--daily-model-calls <n>] [--daily-effects <n>] persisted daily caps (exceeding one escalates, never drops).\n' +
+      '                        [--rate-limit bank=2:5,slack=1] per-connector call limits (calls/second[:burst], per process). Dead letters (<runs>/dead-letters) and inbound events (<runs>/events, POST /v1/events, scope `event`) live under --runs.\n' +
       '                        Binds to loopback by default. A non-loopback --host needs --allow-remote AND (--tls-cert/--tls-key or --behind-tls-proxy) AND --tokens; it is not claimed public-internet-ready (docs/SERVER_HARDENING.md).',
     run: async (args) => {
       // authentication: per-client scoped tokens (--tokens <file>), or the legacy shared secret from the environment (loopback only; the server refuses it elsewhere)
@@ -372,6 +425,11 @@ export function registerCommands(registry: CommandRegistry): void {
         const memoDir = flag(args.flags, 'memo-dir');
         const caps = capsFromFlags(args.flags, resolve(runs));
         if (!caps.ok) return fail(caps.error);
+        const limits = rateLimitsFromFlags(
+          args.flags,
+          comp.connectors.map((c) => c.id),
+        );
+        if (!limits.ok) return fail(limits.error);
         const approvers = flag(args.flags, 'approvers');
         const reviewers: Reviewer[] = approvers !== undefined ? JSON.parse(readFileSync(resolve(approvers), 'utf8')) : [];
         const base = resolve(runs);
@@ -380,6 +438,7 @@ export function registerCommands(registry: CommandRegistry): void {
         const replica = new LedgerReplica(join(base, 'forks'), store);
         const leased = new LeasedRunStore(authority, store);
         const connectors = new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() });
+        const state = stateStores(base);
         const runners: Record<string, WorkflowRunner> = {};
         const skipped: string[] = [];
         for (const wf of comp.workflows) {
@@ -391,6 +450,8 @@ export function registerCommands(registry: CommandRegistry): void {
               workflowId: wf.id,
               store: leased,
               connectors,
+              ...state,
+              ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
               trees: treeMap,
               ...(ex.value !== undefined ? { extractor: ex.value } : {}),
               ...(memoDir !== undefined ? { memoDir: resolve(memoDir) } : {}),
@@ -430,6 +491,7 @@ export function registerCommands(registry: CommandRegistry): void {
           store,
           authority,
           replica,
+          events: state.events,
           trees: treeMap,
           // a verified package also backs /v1/loader/resolve and /v1/receipts; loose files serve workflows only
           ...(inputs.loaded !== undefined ? { bundle: inputs.loaded.bundle } : {}),
