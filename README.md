@@ -152,3 +152,7 @@ in `examples/vertical-test/`.
 ## License
 
 Apache-2.0 — see `LICENSE`.
+
+## Known limitations
+
+Before relying on this repository, read [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): nothing is measured on real traffic or a live model, duplicate external effects remain possible (not exactly-once), and the server is not claimed ready for the public internet.
