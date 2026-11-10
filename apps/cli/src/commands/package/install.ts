@@ -94,6 +94,22 @@ export async function installCommand(options: InstallOptions): Promise<CommandRe
     );
   }
 
+  // Under an enforcing policy a package is only as trusted as what it depends on: a dependency that was admitted without verification
+  // (development mode, or before trust recording existed) must not be vouched for by a signed root. Refused before anything is installed.
+  if (trust.policy.mode === 'enforce') {
+    const records = await installer.listAllInstalledRecords();
+    const unverified = resolveResult.value.resolved.filter((d) => {
+      const rec = records.find((r) => r.name === d.name && r.version === d.version);
+      return rec?.trust?.status !== 'trusted' || rec.trust.mode !== 'enforce';
+    });
+    if (unverified.length > 0)
+      return failWith(
+        `[PACKAGE_DEPENDENCY_UNTRUSTED] dependenc${unverified.length === 1 ? 'y' : 'ies'} not admitted under an enforcing trust policy: ${unverified
+          .map((d) => `${d.name}@${d.version}`)
+          .join(', ')} — reinstall ${unverified.length === 1 ? 'it' : 'them'} under the current policy first. Nothing was installed.`,
+      );
+  }
+
   const installResult = await installer.install(readResult.value, installOptions);
 
   if (!installResult.ok) return failWith(`[${installResult.error.code}] ${installResult.error.message}`);

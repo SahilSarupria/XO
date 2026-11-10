@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   RunStore,
   StaticReviewerRegistry,
+  loadReviewerFile,
   applyPatch,
   casesFromApprovals,
   patchHash,
@@ -11,7 +12,6 @@ import {
   validatePatch,
   type LoggedCase,
   type PatchAcceptance,
-  type Reviewer,
   type RulePatch,
 } from '@xo/workflow-runtime';
 import type { WorkflowComponent } from '@xo/workflow-ir';
@@ -82,7 +82,7 @@ export async function runPromote(positionals: readonly string[], flags: Flags): 
         readJson<RulePatch>(patchPath as string),
         readJson<LoggedCase[]>(casesPath as string),
         readJson<PatchAcceptance>(accPath as string),
-        new StaticReviewerRegistry(readJson<Reviewer[]>(revPath as string)),
+        new StaticReviewerRegistry(loadReviewerFile(resolve(revPath as string))),
       );
       writeFileSync(resolve(dest as string), JSON.stringify(next, null, 2));
       out(

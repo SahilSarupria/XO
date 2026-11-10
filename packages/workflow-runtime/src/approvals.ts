@@ -1,4 +1,5 @@
-import { createPublicKey, generateKeyPairSync, sign as edSign, verify as edVerify } from 'node:crypto';
+import { createHmac, createPublicKey, generateKeyPairSync, sign as edSign, verify as edVerify } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { canonicalJson, type FieldSpec, type ReviewerRole, type Scalar } from '@xo/workflow-ir';
@@ -186,5 +187,130 @@ export function directoryApprovalSink(dir: string): ApprovalSink {
     const tmp = join(dir, `.${r.approvalId}.tmp`);
     await writeFile(tmp, `${JSON.stringify(r, null, 2)}\n`, { flag: 'w' });
     await rename(tmp, join(dir, `${r.approvalId}.json`));
+  };
+}
+
+const REVIEWER_ID = /^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/;
+const ROLES: readonly ReviewerRole[] = ['publisher', 'reviewer', 'installer', 'auditor'];
+const MAX_REVIEWER_FILE = 256 * 1024;
+
+/**
+ * The reviewer trust policy: who may decide, in which roles, under which key. Accepts `[...]` or `{"reviewers":[...]}`. Strict, because this file
+ * is what stands between a stranger's signature and a payment: an unknown field, a bad role, a duplicate id, a key that is not an Ed25519 public key,
+ * or a `revoked` that is not a boolean is an error, never a skipped or defaulted entry. An empty list is an error too (it would silently disable approvals).
+ */
+export function parseReviewers(json: unknown): Reviewer[] {
+  const list = Array.isArray(json) ? json : (json as { reviewers?: unknown } | null)?.reviewers;
+  if (!Array.isArray(list)) throw new Error('reviewer file must be a list of reviewers or {"reviewers": [...]}');
+  if (list.length === 0) throw new Error('reviewer file lists no reviewers');
+  const seen = new Set<string>();
+  return list.map((raw, i) => {
+    const at = `reviewer #${i + 1}`;
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error(`${at} must be an object`);
+    const r = raw as Record<string, unknown>;
+    const stray = Object.keys(r).filter((k) => !['id', 'roles', 'publicKeyPem', 'revoked'].includes(k));
+    if (stray.length > 0) throw new Error(`${at}: unknown field(s) ${stray.join(', ')}`);
+    if (typeof r['id'] !== 'string' || !REVIEWER_ID.test(r['id']))
+      throw new Error(`${at}: id must be 1-128 characters (letters, digits, . _ @ -)`);
+    if (seen.has(r['id'])) throw new Error(`${at}: duplicate reviewer id "${r['id']}"`);
+    seen.add(r['id']);
+    if (!Array.isArray(r['roles']) || r['roles'].length === 0 || r['roles'].some((x) => !ROLES.includes(x as ReviewerRole)))
+      throw new Error(`${at} (${r['id']}): roles must be a non-empty list of ${ROLES.join(', ')}`);
+    if (typeof r['publicKeyPem'] !== 'string') throw new Error(`${at} (${r['id']}): publicKeyPem is required`);
+    try {
+      const k = createPublicKey(r['publicKeyPem']);
+      if (k.asymmetricKeyType !== 'ed25519') throw new Error('not ed25519');
+    } catch {
+      throw new Error(`${at} (${r['id']}): publicKeyPem is not an Ed25519 public key`);
+    }
+    if (r['revoked'] !== undefined && typeof r['revoked'] !== 'boolean')
+      throw new Error(`${at} (${r['id']}): revoked must be true or false`);
+    return {
+      id: r['id'],
+      roles: [...new Set(r['roles'] as ReviewerRole[])],
+      publicKeyPem: r['publicKeyPem'],
+      ...(r['revoked'] === true ? { revoked: true } : {}),
+    };
+  });
+}
+
+export function loadReviewerFile(path: string): Reviewer[] {
+  const raw = readFileSync(path, 'utf8');
+  if (Buffer.byteLength(raw) > MAX_REVIEWER_FILE) throw new Error(`reviewer file is larger than ${MAX_REVIEWER_FILE} bytes`);
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new Error('reviewer file is not valid JSON');
+  }
+  return parseReviewers(json);
+}
+
+export class ApprovalDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApprovalDeliveryError';
+  }
+}
+
+export interface WebhookSinkOptions {
+  readonly fetchImpl?: typeof fetch;
+  readonly sleep?: (ms: number) => Promise<void>;
+  /** Total attempts including the first. Default 3. */
+  readonly attempts?: number;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Posts each new approval request to an endpoint, signed: header `X-XO-Approval-Signature: sha256=<hmac(secret, body)>` and `X-XO-Delivery: <approvalId>`
+ * (the receiver deduplicates on it: delivery is at-least-once, never exactly-once). https only (http for loopback). 4xx other than 408/429 is not retried.
+ * The request body carries the case and its evidence verbatim, so the endpoint must be one you trust with that data. If every attempt fails this throws
+ * `ApprovalDeliveryError`; the runner records that and the approval stays pending and listable (`xo flow approvals list`).
+ */
+export function webhookApprovalSink(url: string, secret: string, o: WebhookSinkOptions = {}): ApprovalSink {
+  const u = new URL(url);
+  const loop = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(u.hostname);
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loop))
+    throw new Error('approval webhook must be https (http only for loopback)');
+  if (u.username !== '' || u.password !== '') throw new Error('approval webhook URL must not carry credentials');
+  if (secret.length < 16) throw new Error('approval webhook secret must be at least 16 characters');
+  const doFetch = o.fetchImpl ?? fetch;
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const attempts = o.attempts ?? 3;
+  const timeoutMs = o.timeoutMs ?? 5000;
+  return async (req) => {
+    const body = JSON.stringify({ event: 'approval.requested', request: req });
+    const headers = {
+      'content-type': 'application/json',
+      'x-xo-delivery': req.approvalId,
+      'x-xo-approval-signature': `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`,
+    };
+    let last = 'no attempt made';
+    for (let i = 1; i <= attempts; i++) {
+      try {
+        const res = await doFetch(url, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(timeoutMs) });
+        if (res.ok) return;
+        last = `endpoint answered ${res.status}`;
+        if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) break; // our request is wrong; retrying cannot fix it
+      } catch (e) {
+        last = e instanceof Error ? e.message : String(e);
+      }
+      if (i < attempts) await sleep(250 * 2 ** (i - 1));
+    }
+    throw new ApprovalDeliveryError(`approval ${req.approvalId} not delivered: ${last}`);
+  };
+}
+
+/** Runs several sinks; all are attempted, and any failure is reported after the rest ran. */
+export function combineSinks(...sinks: readonly ApprovalSink[]): ApprovalSink {
+  return async (r) => {
+    const errors: string[] = [];
+    for (const s of sinks)
+      try {
+        await s(r);
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
+    if (errors.length > 0) throw new ApprovalDeliveryError(errors.join('; '));
   };
 }

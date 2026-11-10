@@ -1039,7 +1039,19 @@ export class WorkflowRunner {
       }
       if (r.kind === 'approval') {
         await store.append(runId, 'approval_requested', { step: step.id, request: r.request as unknown as Record<string, unknown> });
-        await this.o.approvals?.sink?.(r.request);
+        if (this.o.approvals?.sink !== undefined) {
+          // Delivery is a notification, not a decision: a failure is journaled and the approval stays pending (listable, decidable), never lost or auto-resolved.
+          try {
+            await this.o.approvals.sink(r.request);
+            await store.append(runId, 'approval_delivery', { approvalId: r.request.approvalId, ok: true });
+          } catch (e) {
+            await store.append(runId, 'approval_delivery', {
+              approvalId: r.request.approvalId,
+              ok: false,
+              error: (e instanceof Error ? e.message : String(e)).slice(0, 300),
+            });
+          }
+        }
         return undefined;
       }
       if (r.kind === 'wait') {

@@ -107,6 +107,24 @@ is not a measure of accuracy on new ones: not yet measured.
   inside the window, not the link back to genesis; use `read` for full verification). The store caches at most 1024 run tails (LRU) and holds no queue entry for an idle run.
   `read` and replay still load the whole run: the bound is on appends and on `window`, not on a full replay.
 
+## Approvals, packages, linking, single writer
+
+- **Delivery.** `--approval-dir <dir>` writes each new request as a file; `XO_APPROVAL_URL` + `XO_APPROVAL_SECRET` POSTs it signed (`X-XO-Approval-Signature: sha256=<hmac>`, `X-XO-Delivery: <approvalId>` for the receiver to
+  dedupe; https only, loopback http allowed; no redirects; 3 attempts with backoff; 4xx other than 408/429 is not retried). Delivery is at-least-once. A failed delivery is journaled
+  (`approval_delivery` ok:false) and the approval stays pending and listable; it is never auto-resolved. The body carries the case and its evidence, so point it only at an endpoint you trust with that data.
+- **Reviewer trust policy** (`--approvers <reviewers.json>`, also used by `xo flow promote apply`): strict. Unknown fields, bad roles, duplicate ids, empty lists and keys that are not Ed25519 are errors.
+  Without it a workflow with an approve step is refused at start.
+- **`xo flow approvals list|get|decide`** (`--workflow --runs --approvers`; `decide` also `--approval --reviewer --key --action approve|reject|edit_and_approve [--edits] [--comment]`): the decision is signed with the
+  reviewer's own key on the machine running the command and verified by the runner exactly as over HTTP (wrong key, unknown reviewer, replay all refused; nothing changes).
+- **Package audit.** `xo install`, `verify`, `publish`, `run` and the flow `--bundle` loader already refused without a trust policy (tested before this branch). New: under an enforcing policy `xo install` refuses
+  a root whose resolved dependency was admitted without verification (`PACKAGE_DEPENDENCY_UNTRUSTED`; found by probing: before, a signed root was recorded `trusted` over an unsigned dependency).
+  New: `xo list --store <dir>` shows how each package was admitted and exits 1 if any was not admitted as trusted. There is no `xo update` (install the newer version, then `xo uninstall` the old) and no `xo remove` (it is `xo uninstall`);
+  `xo uninstall`, `lock`, `diff`, `fingerprint` take no trust decision. `xo list` reports the verdict recorded at install, it does not re-verify.
+- **Cross-XO linking.** `xo flow link` links workflows and connectors; `xo flow link-artifacts --kind tree|knowledge|safety` links items by id: identical = overlap, differing = the declared `--order` decides, else blocked (exit 2,
+  nothing written; for safety rules the message says not to run the set). Not done: detecting contradictions between DIFFERENT ids (needs semantic comparison), and linking inside the compiler (EIR) rather than between exported items.
+- **Single writer.** `run`, `event`, `approvals decide` and `serve` take `<runs>/.xo-writer.lock` (pid, host). A second process on the directory is refused; a dead holder's lock is taken over; a lock from another host is never taken over.
+  Advisory, one host only; it is not a distributed lease (the `serve` lease authority still covers multiple runners inside one process). A reused pid can make a stale lock look live: delete the file named in the message.
+
 ## Anchoring and embedding
 
 `xo flow run|event` and `xo flow serve` take `--anchor-file <path>` (must be OUTSIDE the runs directory; checked) and/or `XO_ANCHOR_URL` + `XO_ANCHOR_SECRET` (HMAC-signed POST, https or loopback,

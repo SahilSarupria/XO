@@ -8,6 +8,7 @@ import { inspectCommand, inspectInstalledCommand } from './inspect.js';
 import { verifyCommand } from './verify.js';
 import { installCommand } from './install.js';
 import { lockCommand } from './lock.js';
+import { listCommand } from './list.js';
 import { uninstallCommand } from './uninstall.js';
 import { diffCommand } from './diff.js';
 import { fingerprintCommand } from './fingerprint.js';
@@ -178,6 +179,20 @@ export function registerCommands(registry: CommandRegistry): void {
         return 1;
       }
       return printResult(await lockCommand({ nameAtVersion, storeDir }));
+    },
+  });
+
+  registry.register({
+    name: 'list',
+    subsystem: SUBSYSTEM,
+    usage: 'xo list --store <dir> [--json]    Installed packages and how each was admitted (exit 1 if any was not admitted as trusted)',
+    run: async (args) => {
+      const storeDir = requireFlag(args.flags, 'store');
+      if (!storeDir) {
+        process.stdout.write('xo list --store <dir> [--json]\n');
+        return 1;
+      }
+      return printResult(await listCommand({ storeDir, json: args.flags['json'] === true }));
     },
   });
 

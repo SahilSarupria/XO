@@ -157,3 +157,66 @@ export function linkWorkflowComponents(inputs: readonly LinkInput[], policy: Pre
     hasUnresolved: conflicts.some((c) => c.resolution === 'unresolved') || blocked.length > 0,
   };
 }
+
+/**
+ * The same linking discipline for the other things XOs carry and share by id: decision trees, knowledge entries and safety rules
+ * (EXPERIENCE_COMPILER.md §5). An item present in several XOs is an overlap when the definitions are identical (kept once) and a conflict when they
+ * differ. A conflict is decided ONLY by the declared precedence order; with no listed XO among the contenders it is unresolved and BLOCKED, never
+ * guessed or merged field by field. For `safety`, blocking has a stronger consequence: the caller must not run the linked set while any safety rule is
+ * unresolved (`hasUnresolved`), because a missing rule is a weaker XO, not a smaller one.
+ * Not done: judging whether two DIFFERENT ids say contradictory things (that needs semantic comparison; only same-id disagreement is detected).
+ */
+export type ArtifactKind = 'tree' | 'knowledge' | 'safety';
+
+export interface ArtifactSet<T extends { readonly id: string }> {
+  readonly xo: string;
+  readonly items: readonly T[];
+}
+
+export interface ArtifactLink<T extends { readonly id: string }> {
+  readonly kind: ArtifactKind;
+  readonly items: readonly T[];
+  readonly overlaps: readonly { readonly id: string; readonly xos: readonly string[] }[];
+  readonly conflicts: readonly { readonly id: string; readonly xos: readonly string[]; readonly resolution: string }[];
+  /** Ids left out because the conflict was unresolved. */
+  readonly blocked: readonly string[];
+  readonly hasUnresolved: boolean;
+}
+
+export function linkArtifacts<T extends { readonly id: string }>(
+  kind: ArtifactKind,
+  sets: readonly ArtifactSet<T>[],
+  policy: PrecedencePolicy,
+): ArtifactLink<T> {
+  const byId = new Map<string, { xo: string; item: T }[]>();
+  for (const s of sets) {
+    const seen = new Set<string>();
+    for (const item of s.items) {
+      if (seen.has(item.id)) throw new Error(`${s.xo}: duplicate ${kind} id "${item.id}" inside one XO`);
+      seen.add(item.id);
+      byId.set(item.id, [...(byId.get(item.id) ?? []), { xo: s.xo, item }]);
+    }
+  }
+  const items: T[] = [];
+  const overlaps: { id: string; xos: string[] }[] = [];
+  const conflicts: { id: string; xos: string[]; resolution: string }[] = [];
+  const blocked: string[] = [];
+  for (const [id, defs] of [...byId].sort(([a], [b]) => a.localeCompare(b))) {
+    const distinct = new Set(defs.map((d) => fp(d.item)));
+    const xos = defs.map((d) => d.xo);
+    if (distinct.size === 1) {
+      items.push((defs[0] as { item: T }).item);
+      if (defs.length > 1) overlaps.push({ id, xos });
+      continue;
+    }
+    const w = winner(xos, policy);
+    if (w === undefined) {
+      conflicts.push({ id, xos, resolution: 'unresolved' });
+      blocked.push(id);
+    } else {
+      conflicts.push({ id, xos, resolution: `precedence:${w}` });
+      items.push((defs.find((d) => d.xo === w) as { item: T }).item);
+    }
+  }
+  return { kind, items, overlaps, conflicts, blocked, hasUnresolved: blocked.length > 0 };
+}

@@ -7,6 +7,8 @@ import {
   DETERMINISTIC_HOST,
   determinismReport,
   linkWorkflowComponents,
+  linkArtifacts,
+  type ArtifactKind,
   loadWorkflowComponent,
   negotiateWorkflows,
   WorkflowLoadError,
@@ -18,10 +20,11 @@ import {
   LedgerReplica,
   RunStore,
   verifyRunAnchors,
+  ApprovalError,
+  signDecision,
   type RunAnchor,
   type RunStoreLike,
   reconcile,
-  StaticReviewerRegistry,
   WorkflowRunner,
   compareShadow,
   buildAuditBundle,
@@ -31,7 +34,6 @@ import {
   verifyAuditBundle,
   type AuditBundle,
   type EventScalar,
-  type Reviewer,
 } from '@xo/workflow-runtime';
 import { FileTokenStore, createXoServer, fileAuditSink, resolveForHost } from '@xo/server';
 import { join } from 'node:path';
@@ -40,7 +42,7 @@ import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
 import { loadWorkflowBundle, type LoadedWorkflowBundle } from './bundle.js';
 import { capsFromFlags, extractorFor } from './extractor.js';
 import { PROMOTE_USAGE, runPromote } from './promote.js';
-import { anchoringFromFlags, rateLimitsFromFlags, stateStores } from './runtime-options.js';
+import { anchoringFromFlags, approvalsFromFlags, holdWriterLock, rateLimitsFromFlags, stateStores } from './runtime-options.js';
 
 const SUBSYSTEM = 'flow';
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
@@ -92,6 +94,62 @@ function requireFile(file: string | undefined): string {
   return file;
 }
 
+/** `xo flow approvals list|get|decide`. Deciding signs locally with the reviewer's own key; the runner verifies it against the trust policy exactly as it would over HTTP. */
+async function approvalsAction(action: string, runner: WorkflowRunner, flags: Readonly<Record<string, string | boolean>>): Promise<number> {
+  if (action === 'list') {
+    const list = await runner.listApprovals();
+    if (flags['json'] === true) out(JSON.stringify(list, null, 2));
+    else {
+      out(`${list.length} pending approval(s)`);
+      for (const a of list)
+        out(`  ${a.approvalId}  run ${a.runId}  step ${a.step}  roles ${a.roles.join('/')}  expires ${a.expiresAt}\n    ${a.summary}`);
+    }
+    return 0;
+  }
+  const id = flag(flags, 'approval');
+  if (id === undefined) return fail('--approval <id> is required');
+  const req = await runner.getApproval(id);
+  if (req === undefined) return fail(`no pending approval ${id}`);
+  if (action === 'get') {
+    out(JSON.stringify(req, null, 2));
+    return 0;
+  }
+  const keyFile = flag(flags, 'key');
+  const reviewer = flag(flags, 'reviewer');
+  const act = flag(flags, 'action');
+  if (keyFile === undefined || reviewer === undefined || act === undefined || !['approve', 'reject', 'edit_and_approve'].includes(act))
+    return fail(
+      'decide needs --approval <id> --reviewer <id> --key <ed25519 private pem> --action approve|reject|edit_and_approve [--edits <json>] [--comment <text>]',
+    );
+  let edits: Record<string, string | number | boolean | null> = {};
+  const rawEdits = flag(flags, 'edits');
+  if (rawEdits !== undefined)
+    try {
+      edits = JSON.parse(rawEdits) as typeof edits;
+    } catch {
+      return fail('--edits is not valid JSON');
+    }
+  const comment = flag(flags, 'comment');
+  const signed = signDecision(readFileSync(resolve(keyFile), 'utf8'), {
+    v: 1,
+    approvalId: req.approvalId,
+    runId: req.runId,
+    step: req.step,
+    action: act as 'approve' | 'reject' | 'edit_and_approve',
+    edits,
+    reviewerId: reviewer,
+    at: new Date().toISOString(),
+    ...(comment !== undefined ? { comment } : {}),
+  });
+  try {
+    out(JSON.stringify(await runner.decideApproval(req.runId, signed), null, 2));
+    return 0;
+  } catch (e) {
+    if (e instanceof ApprovalError) return fail(`${e.code}: ${e.message}`); // refused: nothing changed
+    throw e;
+  }
+}
+
 function validateComponent(comp: WorkflowComponent): number {
   const n = negotiateWorkflows(comp, DETERMINISTIC_HOST);
   out(`OK · ${comp.workflows.length} workflow(s), ${comp.connectors.length} connector(s)`);
@@ -126,6 +184,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow resolve --bundle <package.xo|dir> --family <name> [--capabilities chat,tool_use] [--json]   What a host would get from a verified package (same logic as /v1/loader/resolve)\n' +
       '      xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
       'xo flow validate <workflows.json>|--bundle <package.xo|dir> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
+      'xo flow approvals list|get|decide <workflows.json>|--bundle <pkg> --workflow <id> --runs <dir> --approvers <reviewers.json> [--approval <id>] [--reviewer <id> --key <pem> --action approve|reject|edit_and_approve [--edits <json>]]   List, show or sign-and-submit a decision. Delivery of new requests: --approval-dir <dir> and/or XO_APPROVAL_URL + XO_APPROVAL_SECRET on run/serve\n' +
       'xo flow event <workflows.json>|--bundle <pkg> --workflow <id> --runs <dir> --name <event> --correlation <value> --event-id <id> [--input <json payload>]   Deliver one inbound event and resume runs waiting for it (deduplicated by --event-id)\n' +
       'xo flow dead-letters --runs <dir> [--json]   Steps that ended failed or escalated, stored for a person (read-only)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
@@ -137,12 +196,16 @@ export function registerCommands(registry: CommandRegistry): void {
         .join('\n') +
       '\n' +
       'xo flow verify-anchors --runs <dir> --anchors <anchors.jsonl> [--json]   Check journals against published anchors (truncation, rebuilt history, removed runs); publish them with --anchor-file <path outside --runs> and/or XO_ANCHOR_URL + XO_ANCHOR_SECRET on run/serve\n' +
+      'xo flow link-artifacts --kind tree|knowledge|safety <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Link trees, knowledge or safety rules by id across XOs (identical = overlap, differing = precedence or blocked, exit 2)\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>|--bundle <pkg>                                            Declared determinism class per step and workflow\n' +
       'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run [--rate-limit bank=2:5,slack=1]\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
-      const [sub, file] = args.positionals;
+      // `xo flow approvals <list|get|decide> [workflows.json]` has one more positional than the other subcommands
+      const sub = args.positionals[0];
+      const action = sub === 'approvals' ? args.positionals[1] : undefined;
+      const file = sub === 'approvals' ? args.positionals[2] : args.positionals[1];
       if (sub === 'reconcile') {
         // needs only the run directory: it reads journals and calls nothing
         const runs = flag(args.flags, 'runs');
@@ -165,6 +228,45 @@ export function registerCommands(registry: CommandRegistry): void {
         return rep.needsAttention ? 1 : 0;
       }
       if (sub === 'promote') return runPromote(args.positionals, args.flags);
+      if (sub === 'link-artifacts') {
+        const kind = flag(args.flags, 'kind');
+        const files = args.positionals.slice(1);
+        if (!['tree', 'knowledge', 'safety'].includes(kind ?? '') || files.length < 2)
+          return fail(
+            'usage: xo flow link-artifacts --kind tree|knowledge|safety <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   (each file: a list of items with an "id", or {"items": [...]})',
+          );
+        const names = (flag(args.flags, 'names') ?? '').split(',').filter((x) => x !== '');
+        const order = (flag(args.flags, 'order') ?? '').split(',').filter((x) => x !== '');
+        const sets = files.map((f, i) => {
+          const raw = JSON.parse(readFileSync(resolve(f), 'utf8')) as unknown;
+          const items = Array.isArray(raw) ? raw : (raw as { items?: unknown })?.items;
+          if (!Array.isArray(items) || items.some((x) => typeof (x as { id?: unknown })?.id !== 'string'))
+            throw new Error(`${f}: expected a list of items that each have a string "id"`);
+          return { xo: names[i] ?? f, items: items as { id: string }[] };
+        });
+        const r = linkArtifacts(kind as ArtifactKind, sets, { order });
+        if (flag(args.flags, 'out') !== undefined && !r.hasUnresolved)
+          writeFileSync(resolve(flag(args.flags, 'out') as string), `${JSON.stringify(r.items, null, 2)}\n`);
+        out(
+          JSON.stringify(
+            {
+              kind: r.kind,
+              items: r.items.map((i) => i.id),
+              overlaps: r.overlaps,
+              conflicts: r.conflicts,
+              blocked: r.blocked,
+              unresolved: r.hasUnresolved,
+            },
+            null,
+            2,
+          ),
+        );
+        if (r.hasUnresolved)
+          process.stderr.write(
+            `${r.blocked.length} ${r.kind} item(s) are unresolved and were left out; nothing was written${kind === 'safety' ? '. Do NOT run the linked set: a missing safety rule is a weaker XO' : ''}.\n`,
+          );
+        return r.hasUnresolved ? 2 : 0;
+      }
       if (sub === 'verify-anchors') {
         const runs = flag(args.flags, 'runs');
         const anchorsPath = flag(args.flags, 'anchors');
@@ -229,7 +331,10 @@ export function registerCommands(registry: CommandRegistry): void {
       if (
         sub === undefined ||
         (file === undefined &&
-          !(args.flags['bundle'] !== undefined && (sub === 'run' || sub === 'event' || sub === 'validate' || sub === 'report')))
+          !(
+            args.flags['bundle'] !== undefined &&
+            (sub === 'run' || sub === 'event' || sub === 'approvals' || sub === 'validate' || sub === 'report')
+          ))
       )
         return fail('usage: xo flow <validate|report|run|resolve|reconcile> <workflows.json>');
       try {
@@ -241,12 +346,19 @@ export function registerCommands(registry: CommandRegistry): void {
           if (sub === 'validate') return validateComponent(src.comp);
           return reportComponent(src.comp);
         }
-        if (sub === 'run' || sub === 'event') {
+        if (sub === 'run' || sub === 'event' || sub === 'approvals') {
           const id = flag(args.flags, 'workflow');
           const runs = flag(args.flags, 'runs');
           const inputRaw = flag(args.flags, 'input');
           if (id === undefined || runs === undefined || (sub === 'run' && inputRaw === undefined))
             return fail('--workflow, --input and --runs are required');
+          if (sub === 'approvals' && !['list', 'get', 'decide'].includes(action ?? ''))
+            return fail(
+              'usage: xo flow approvals <list|get|decide> <workflows.json>|--bundle <pkg> --workflow <id> --runs <dir> --approvers <reviewers.json> [...]',
+            );
+          const approvals = approvalsFromFlags(args.flags);
+          if (!approvals.ok) return fail(approvals.error);
+          if (sub === 'approvals' && approvals.value === undefined) return fail('--approvers <reviewers.json> is required');
           const inputs = await inputsFrom(args.flags, file);
           if (!inputs.ok) return fail(inputs.error);
           const { comp, treeMap } = inputs;
@@ -268,6 +380,10 @@ export function registerCommands(registry: CommandRegistry): void {
             comp.connectors.map((c) => c.id),
           );
           if (!limits.ok) return fail(limits.error);
+          if (!(sub === 'approvals' && action !== 'decide')) {
+            const locked = await holdWriterLock(resolve(runs)); // list/get only read
+            if (!locked.ok) return fail(locked.error);
+          }
           const state = stateStores(resolve(runs));
           const anchoring = anchoringFromFlags(args.flags, resolve(runs));
           if (!anchoring.ok) return fail(anchoring.error);
@@ -278,6 +394,7 @@ export function registerCommands(registry: CommandRegistry): void {
             workflowId: id,
             store: anchoring.value?.wrap(base) ?? base,
             ...state,
+            ...(approvals.value !== undefined ? { approvals: approvals.value } : {}),
             ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
             connectors: new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() }),
             trees: treeMap,
@@ -287,6 +404,7 @@ export function registerCommands(registry: CommandRegistry): void {
             dryRun: args.flags['dry-run'] === true,
             shadow: args.flags['shadow'] === true,
           });
+          if (sub === 'approvals') return approvalsAction(action as string, runner, args.flags);
           if (sub === 'event') {
             // deliver one inbound event and resume this workflow's runs that wait for it
             const name = flag(args.flags, 'name');
@@ -487,12 +605,14 @@ export function registerCommands(registry: CommandRegistry): void {
           comp.connectors.map((c) => c.id),
         );
         if (!limits.ok) return fail(limits.error);
-        const approvers = flag(args.flags, 'approvers');
-        const reviewers: Reviewer[] = approvers !== undefined ? JSON.parse(readFileSync(resolve(approvers), 'utf8')) : [];
+        const approvals = approvalsFromFlags(args.flags);
+        if (!approvals.ok) return fail(approvals.error);
         const base = resolve(runs);
         const store = new RunStore(join(base, 'journal'));
         const authority = new LeaseAuthority(join(base, 'leases'), store);
         const replica = new LedgerReplica(join(base, 'forks'), store);
+        const locked = await holdWriterLock(base);
+        if (!locked.ok) return fail(locked.error);
         const anchoring = anchoringFromFlags(args.flags, base);
         if (!anchoring.ok) return fail(anchoring.error);
         const leased = new LeasedRunStore(authority, store);
@@ -516,7 +636,7 @@ export function registerCommands(registry: CommandRegistry): void {
               trees: treeMap,
               ...(ex.value !== undefined ? { extractor: ex.value } : {}),
               ...(memoDir !== undefined ? { memoDir: resolve(memoDir) } : {}),
-              ...(reviewers.length > 0 ? { approvals: { reviewers: new StaticReviewerRegistry(reviewers) } } : {}),
+              ...(approvals.value !== undefined ? { approvals: approvals.value } : {}),
               lease: {
                 client: authority,
                 owner: 'server',

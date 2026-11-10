@@ -122,3 +122,21 @@ test('--rate-limit is strict: unknown connectors, duplicates, zero rates and jun
     assert.equal(rateLimitsFromFlags({ 'rate-limit': bad }, known).ok, false, bad);
   assert.equal(rateLimitsFromFlags({ 'rate-limit': true }, known).ok, false);
 });
+
+test('a runs directory already driven by another live process is refused (single-writer guard), without touching it', async () => {
+  const { hostname } = await import('node:os');
+  const { mkdirSync, existsSync } = await import('node:fs');
+  await withTempDir('xo-flow-wg-', async (tmp) => {
+    const file = join(tmp, 'wf.json');
+    writeFileSync(file, JSON.stringify(component));
+    const runs = join(tmp, 'runs');
+    mkdirSync(runs, { recursive: true });
+    writeFileSync(join(runs, '.xo-writer.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), startedAt: 'x' })); // a live process that is not us
+    const r = await flow(['run', file], { workflow: 'wf', runs, input: '{"claim":"c"}' });
+    assert.equal(r.code, 1);
+    assert.match(r.err, /only one process may drive a runs directory/);
+    assert.equal(existsSync(join(runs, 'dead-letters')), false);
+    // the same guard covers event delivery
+    assert.equal((await flow(['event', file], { workflow: 'wf', runs, name: 'a', correlation: 'c', 'event-id': 'e' })).code, 1);
+  });
+});

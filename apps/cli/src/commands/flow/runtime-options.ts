@@ -1,8 +1,17 @@
+import { readFileSync, rmSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { FileAnchorSink, WebhookAnchorSink } from '@xo/automation';
 import { err, ok, type Result } from '@xo/types';
 import {
   AnchoredRunStore,
+  WriterLockedError,
+  acquireWriterLock,
+  StaticReviewerRegistry,
+  combineSinks,
+  directoryApprovalSink,
+  loadReviewerFile,
+  webhookApprovalSink,
+  type ApprovalSink,
   FileDeadLetterStore,
   FileEventInbox,
   RateLimiters,
@@ -76,4 +85,70 @@ export function anchoringFromFlags(
           process.stderr.write(`warning: anchor to ${sink} failed for run ${a.runId} seq ${a.seq}: ${e.message}\n`),
       }),
   });
+}
+
+/**
+ * `--approvers <reviewers.json>` (the reviewer trust policy; strict, see `parseReviewers`), `--approval-dir <dir>` (write each request as a file) and/or
+ * `XO_APPROVAL_URL` + `XO_APPROVAL_SECRET` (signed webhook). Without `--approvers` there is no approval support at all: a workflow with an approve step
+ * is refused by the runner rather than waiting for a decision nobody can make.
+ */
+export function approvalsFromFlags(
+  flags: Flags,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Result<{ reviewers: StaticReviewerRegistry; sink?: ApprovalSink } | undefined, string> {
+  const file = flags['approvers'];
+  const dir = flags['approval-dir'];
+  const url = env['XO_APPROVAL_URL'];
+  if (file === undefined) {
+    if (dir !== undefined || url !== undefined)
+      return err('--approval-dir / XO_APPROVAL_URL need --approvers <reviewers.json> (nobody could decide the requests)');
+    return ok(undefined);
+  }
+  if (typeof file !== 'string' || file === '') return err('--approvers needs a path');
+  let reviewers: StaticReviewerRegistry;
+  try {
+    reviewers = new StaticReviewerRegistry(loadReviewerFile(resolve(file)));
+  } catch (e) {
+    return err(`--approvers ${file}: ${(e as Error).message}`);
+  }
+  const sinks: ApprovalSink[] = [];
+  if (dir !== undefined) {
+    if (typeof dir !== 'string' || dir === '') return err('--approval-dir needs a path');
+    sinks.push(directoryApprovalSink(resolve(dir)));
+  }
+  if (url !== undefined) {
+    try {
+      sinks.push(webhookApprovalSink(url, env['XO_APPROVAL_SECRET'] ?? ''));
+    } catch (e) {
+      return err((e as Error).message);
+    }
+  }
+  return ok({ reviewers, ...(sinks.length > 0 ? { sink: sinks.length === 1 ? (sinks[0] as ApprovalSink) : combineSinks(...sinks) } : {}) });
+}
+
+/** Takes the single-writer lock on a runs directory for the life of this process (released on exit, including on error). Refusal is an error message, never a shrug. */
+export async function holdWriterLock(runsDir: string): Promise<Result<undefined, string>> {
+  try {
+    const lock = await acquireWriterLock(runsDir);
+    let done = false;
+    const release = (): void => {
+      if (done) return;
+      done = true;
+      void lock.release();
+    };
+    process.once('exit', () => {
+      try {
+        const file = join(runsDir, '.xo-writer.lock');
+        const held = JSON.parse(readFileSync(file, 'utf8')) as { pid?: number };
+        if (held.pid === process.pid) rmSync(file);
+      } catch {
+        /* gone or not ours */
+      }
+    });
+    process.once('SIGINT', () => (release(), process.exit(130)));
+    process.once('SIGTERM', () => (release(), process.exit(143)));
+    return ok(undefined);
+  } catch (e) {
+    return err(e instanceof WriterLockedError ? e.message : `cannot lock ${runsDir}: ${(e as Error).message}`);
+  }
 }
