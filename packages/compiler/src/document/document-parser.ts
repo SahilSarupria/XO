@@ -10,14 +10,15 @@ import type { ParsedDocument } from './types.js';
  * Stage 2: turns Stage 1's per-page positioned text runs into a
  * structural document tree (headings/paragraphs/lists/footnotes,
  * nested into sections by heading level). Pages flagged
- * `requiresOcr` (see pdf-loader.ts) contribute no lines — there is
+ * `requiresOcr` or that failed to load (see pdf-loader.ts) contribute no lines here — they are recorded
+ * as unaccounted by the coverage ledger (`../pdf/pdf-coverage.ts`), never just dropped. They contribute no lines — there is
  * nothing structural to parse from a page with no extracted text.
  * Entirely deterministic: same `LoadedPdfDocument` in, same
  * `ParsedDocument` out, every time.
  */
 export function parseDocument(document: LoadedPdfDocument): ParsedDocument {
   const pages: PageForClassification[] = document.pages
-    .filter((page) => !page.requiresOcr)
+    .filter((page) => !page.requiresOcr && page.loadFailure === undefined)
     .map((page) => ({
       pageNumber: page.pageNumber,
       mediaBox: page.mediaBox,

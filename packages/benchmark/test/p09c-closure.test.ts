@@ -54,15 +54,20 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
   assert.deepEqual(hist.map((e) => sha256Hex('') && e.reportSha256.slice(0, 16)).sort(), ['1b98f1acd213e750', 'ea4d33081f6b990e']);
   for (const e of hist) assert.equal(sha256Hex(await readFile(join(PKG, e.reportFile), 'utf8')), e.reportSha256, e.reportFile);
   const vh = hist.find((e) => e.suiteId === 'vertical-fixtures')!;
-  assert.equal(vh.knownDrift.length, 6, 'historical known_historical_drift records are not rewritten');
-  assert.equal(vh.declaredGoldenChanges.length, 3);
+  // The six P0.9C-closure records are never rewritten; later controlled refreshes only APPEND declared drift
+  // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md).
+  assert.equal(vh.knownDrift.length, 14, 'the six closure drift records are kept; eight WS1 recall records were appended');
+  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall/.test(d.reason)));
+  assert.equal(vh.declaredGoldenChanges.length, 5);
   assert.equal(hist.find((e) => e.suiteId === 'runtime-mechanics')!.knownDrift.length, 0);
-  for (const e of entries.filter((x) => x.status === 'accepted'))
-    assert.ok(
-      hist.some((h) => h.reportFile === e.predecessor),
-      `${e.suiteId}: predecessor is a retained historical entry`,
-    );
-  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 2);
+  for (const e of entries.filter((x) => x.status === 'accepted')) {
+    // after the P0.9C closure a later refresh archives the previously accepted report instead of a historical entry
+    const retained = hist.some((h) => h.reportFile === e.predecessor);
+    const laterRefresh = e.refreshRecord !== 'baselines/refresh/p09c-final.refresh.json' && e.predecessor?.startsWith('baselines/archive/');
+    assert.ok(retained || laterRefresh, `${e.suiteId}: predecessor is retained`);
+  }
+  // the two P0.9C predecessors plus the accepted vertical-fixtures report superseded by the CR WS1 recall refresh
+  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 3);
 });
 
 test('the refresh record is auditable: both suites refreshed together, every difference accounted for, no regression, evaluation version unchanged', async () => {
@@ -177,8 +182,9 @@ test('Decision C: the manifest schema accepts declaredPopulationChanges and refr
 
 test('frozen: golden expectation fingerprints are unchanged by the closure', async () => {
   const want: Record<string, string> = {
-    'synthetic-claim-rules': 'e3f18bb648927dce',
-    'commercial-property-policy': 'fc7333250a689842',
+    'synthetic-claim-rules': '0a3003db9bfe87de',
+    // CR WS1 recall refresh: clause 4.1's deadline is now a normalised executable rule (see CHANGELOG.md)
+    'commercial-property-policy': '3c735dae96b59f24',
     'aastha-operations': 'bbcc3cdac2c9a97c',
     'burglary-policy-schedule': '2384164b83638c58',
     'multidoc-burglary-claims': '6eb147408d795389',

@@ -8,6 +8,8 @@ export interface TextRun {
   readonly fontSizePt: number;
   readonly x: number;
   readonly y: number;
+  /** Already-decoded Unicode, for a run that did not come from a content stream (text recovered by an OCR or vision tier). When present it is the run's text and `bytes` is ignored. */
+  readonly text?: string;
 }
 
 interface TextState {

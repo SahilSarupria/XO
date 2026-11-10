@@ -54,7 +54,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "5e741c155cc8f7c6183349cc01bafe33620830930335076e8b2706c22101687e",
+      "reportSha256": "8d15c83533aef6b20f05fc6a240a64a34c925edd04349ed46442326dbc35909f",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -118,7 +118,7 @@
               "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
             }
           ],
-          "expectationsFingerprint": "fc7333250a689842",
+          "expectationsFingerprint": "3c735dae96b59f24",
           "goldenState": "recorded"
         },
         {
@@ -174,19 +174,23 @@
               "sha256": "3d6e8087f6dd3ea7330427827c79c0343481b761fa1a249b3c238cda4496acac"
             }
           ],
-          "expectationsFingerprint": "e3f18bb648927dce",
+          "expectationsFingerprint": "0a3003db9bfe87de",
           "goldenState": "recorded"
         }
       ],
       "knownDrift": [],
       "declaredGoldenChanges": [],
       "declaredPopulationChanges": [],
-      "refreshRecord": "baselines/refresh/p09c-final.refresh.json",
-      "predecessor": "baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json",
+      "refreshRecord": "baselines/refresh/ws1-recall.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json",
       "history": [
         {
           "step": "P0.9C final closure",
           "note": "accepted baseline: byte-identical to the final evaluation (reproduced by 3 separate runs); refreshed together with the other suite's baseline; predecessor baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json retained unchanged (sha256 ea4d33081f6b990e373afc592554c5918a4a493fc29ca36abf0fe39508540406); evaluation version unchanged (p0.9c-1)."
+        },
+        {
+          "step": "CR WS1 recall refresh",
+          "note": "accepted baseline refreshed from 5e741c155cc8 to 8d15c83533ae; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
         }
       ]
     },
@@ -402,6 +406,54 @@
           "stage": "capabilities",
           "reason": "intentional post-baseline P0.9A/P0.9B change to capability output; observed summaries identical",
           "evidence": "Step 1 CHANGELOG; not re-verified at field level (hash only)"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "stage": "compile",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "capabilities",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "compile",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "execution",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "stage": "workflows",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "capabilities",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "compile",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "stage": "execution",
+          "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
         }
       ],
       "declaredGoldenChanges": [
@@ -437,6 +489,34 @@
             "producerAttributionCorrectness"
           ],
           "acceptedAt": "CHANGELOG.md, P0.9C Step 4"
+        },
+        {
+          "caseId": "commercial-property-policy",
+          "fromFingerprint": "fc7333250a689842",
+          "toFingerprint": "3c735dae96b59f24",
+          "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30",
+          "affectedMetrics": [
+            "capabilityRecall",
+            "executionClassAccuracy",
+            "executionCorrectness",
+            "resolutionAccuracy",
+            "semanticCorrectness",
+            "semanticPrecision",
+            "semanticRecall"
+          ],
+          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (every affected metric improved; none regressed)"
+        },
+        {
+          "caseId": "synthetic-claim-rules",
+          "fromFingerprint": "e3f18bb648927dce",
+          "toFingerprint": "0a3003db9bfe87de",
+          "reason": "the CRD-02 confidence floor (0.7) is enforced on every automated execution path. The heading-derived 'Claim Assessment' bundle capability scores 0.65 and is now refused, so the rule is exercised through its real rule capability 'Deny The Claim' (0.8, grounded explicit IF/THEN). Same inputs, same expected outputs.",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh (confidence-floor merge); the heading bundle remains in the capabilities golden",
+          "affectedMetrics": [
+            "executionCorrectness"
+          ],
+          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (no metric regressed)"
         }
       ],
       "history": [

@@ -1,0 +1,4028 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "vertical-fixtures",
+  "evaluationVersion": "p0.9c-1",
+  "caseCount": 7,
+  "evaluatedCaseCount": 7,
+  "harnessErrorCount": 0,
+  "measured": true,
+  "aggregate": {
+    "metrics": [
+      {
+        "id": "capabilityPrecision",
+        "stage": "capabilities",
+        "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+        "numerator": 21,
+        "denominator": 22,
+        "ratio": 0.954545,
+        "measured": true,
+        "missing": [],
+        "unexpected": [
+          {
+            "id": "capability|generate via direct sales referral partners digital",
+            "reason": "discovered \"Generate via direct sales referral partners digital\" (resolved/human_in_the_loop) matches no expected capability",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          }
+        ],
+        "mismatched": []
+      },
+      {
+        "id": "capabilityRecall",
+        "stage": "capabilities",
+        "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+        "numerator": 41,
+        "denominator": 46,
+        "ratio": 0.891304,
+        "measured": true,
+        "missing": [
+          {
+            "id": "c7.6-refer-for-coverage-review",
+            "reason": "no discovered capability with name contains \"Referred For Coverage Review\"",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "c7.7-claim-must-be-denied",
+            "reason": "no discovered capability with name contains \"Claim Must Be Denied\"",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "ob-acknowledge-claim-5-days",
+            "reason": "no discovered capability with name contains \"Acknowledge receipt of a claim\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          },
+          {
+            "id": "ob-appoint-loss-adjuster",
+            "reason": "no discovered capability with name contains \"appoint a loss adjuster\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          },
+          {
+            "id": "ob-settle-or-decline-30-days",
+            "reason": "no discovered capability with name contains \"settle or decline a claim\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          }
+        ],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "compileOutcomeAccuracy",
+        "stage": "compile",
+        "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+        "numerator": 7,
+        "denominator": 7,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "crossPathConsistency",
+        "stage": "capabilities",
+        "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+        "numerator": 355,
+        "denominator": 355,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "live_vs_package.binding.match": 23,
+          "live_vs_package.binding.not_comparable": 19,
+          "live_vs_package.contract_embedded.match": 42,
+          "live_vs_package.contract_embedded.not_comparable": 29,
+          "live_vs_package.contract_hash.match": 42,
+          "live_vs_package.execution_outcome.match": 14,
+          "live_vs_package.execution_outcome.not_comparable": 2,
+          "live_vs_package.execution_outcome.not_exercised": 8,
+          "live_vs_package.execution_provenance.match": 14,
+          "live_vs_package.graph_hash.not_comparable": 7,
+          "live_vs_serialized.binding.match": 71,
+          "live_vs_serialized.capability_present.match": 71,
+          "live_vs_serialized.contract_hash.match": 71,
+          "live_vs_serialized.graph_hash.match": 7
+        }
+      },
+      {
+        "id": "dataFlowCorrectness",
+        "stage": "workflows",
+        "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+        "numerator": 3,
+        "denominator": 3,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "executionClassAccuracy",
+        "stage": "capabilities",
+        "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+        "numerator": 33,
+        "denominator": 37,
+        "ratio": 0.891892,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [
+          {
+            "id": "t3.1-request-insurer-statements",
+            "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          },
+          {
+            "id": "ob-notify-insurer-48h",
+            "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          },
+          {
+            "id": "ob-notify-material-change-30d",
+            "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          },
+          {
+            "id": "ob-notify-police",
+            "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          }
+        ],
+        "breakdown": {
+          "deterministic_rule->deterministic_rule": 10,
+          "human_in_the_loop->human_in_the_loop": 16,
+          "human_in_the_loop->not_executable": 4,
+          "not_executable->not_executable": 7
+        }
+      },
+      {
+        "id": "executionCorrectness",
+        "stage": "execution",
+        "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+        "numerator": 29,
+        "denominator": 30,
+        "ratio": 0.966667,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [
+          {
+            "id": "request-statements-is-a-human-task",
+            "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          }
+        ]
+      },
+      {
+        "id": "executionProvenanceAgreement",
+        "stage": "execution",
+        "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+        "numerator": 18,
+        "denominator": 18,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "state.match": 18,
+          "state.not_exercised": 8
+        }
+      },
+      {
+        "id": "observedSourceRefCoverage",
+        "stage": "compile",
+        "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+        "numerator": 484,
+        "denominator": 484,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "producerAttributionCorrectness",
+        "stage": "capabilities",
+        "definition": "located capabilities created by a capability extractor whose producedBy equals the expected producer / such capabilities with an expected producer and an observed producer (P0.9C Step 4)",
+        "numerator": 4,
+        "denominator": 4,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "structured-operation->structured-operation": 4
+        }
+      },
+      {
+        "id": "producerAttributionCoverage",
+        "stage": "compile",
+        "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+        "numerator": 413,
+        "denominator": 413,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "in_population.capability_extractor.attributed": 52,
+          "in_population.knowledge_extractor.attributed": 361,
+          "not_judged.reasoning_extractor.unattributed": 52,
+          "not_judged.rule_minted_capability.unattributed": 19
+        }
+      },
+      {
+        "id": "provenanceChainCoverage",
+        "stage": "capabilities",
+        "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+        "numerator": 71,
+        "denominator": 71,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [],
+        "breakdown": {
+          "binding.resolved": 42,
+          "binding.unresolved": 29,
+          "link.hash_deterministic.ok": 71,
+          "link.nodes_resolve.ok": 71,
+          "link.refs_carried.ok": 71,
+          "link.source_resolves.ok": 71
+        }
+      },
+      {
+        "id": "provenanceCompleteness",
+        "stage": "compile",
+        "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+        "numerator": 59,
+        "denominator": 59,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "resolutionAccuracy",
+        "stage": "capabilities",
+        "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+        "numerator": 33,
+        "denominator": 34,
+        "ratio": 0.970588,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": [
+          {
+            "id": "t3.1-request-insurer-statements",
+            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          }
+        ]
+      },
+      {
+        "id": "semanticCorrectness",
+        "stage": "compile",
+        "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
+        "numerator": 28,
+        "denominator": 29,
+        "ratio": 0.965517,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "semanticPrecision",
+        "stage": "compile",
+        "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
+        "numerator": 22,
+        "denominator": 24,
+        "ratio": 0.916667,
+        "measured": true,
+        "missing": [],
+        "unexpected": [
+          {
+            "id": "heuristic|a flood endorsement is recorded",
+            "reason": "heuristic \"a flood endorsement is recorded\" is not among the expected heuristic facts",
+            "attributedStage": "compile",
+            "caseId": "commercial-property-policy"
+          }
+        ],
+        "mismatched": [
+          {
+            "id": "heuristic|the policy is active",
+            "reason": "heuristic \"the Policy is active\" matched an expected fact but is semantically incorrect",
+            "attributedStage": "compile",
+            "caseId": "commercial-property-policy"
+          }
+        ]
+      },
+      {
+        "id": "semanticRecall",
+        "stage": "compile",
+        "definition": "expected semantic facts located AND correct / expected semantic facts",
+        "numerator": 28,
+        "denominator": 30,
+        "ratio": 0.933333,
+        "measured": true,
+        "missing": [
+          {
+            "id": "definition-premises",
+            "reason": "no concept node matches: definition = \"Premises\"",
+            "attributedStage": "compile",
+            "caseId": "multidoc-burglary-claims"
+          }
+        ],
+        "unexpected": [],
+        "mismatched": [
+          {
+            "id": "r11.1-active-policy-proceed-to-assessment",
+            "reason": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
+            "attributedStage": "compile",
+            "caseId": "commercial-property-policy"
+          }
+        ]
+      },
+      {
+        "id": "spuriousCapabilityAvoidance",
+        "stage": "capabilities",
+        "definition": "forbidden capabilities absent / forbidden capabilities",
+        "numerator": 0,
+        "denominator": 10,
+        "ratio": 0,
+        "measured": true,
+        "missing": [],
+        "unexpected": [
+          {
+            "id": "x-contact-no-email-id",
+            "reason": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
+            "attributedStage": "capabilities",
+            "caseId": "burglary-policy-schedule"
+          },
+          {
+            "id": "x-partner-contact-row",
+            "reason": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
+            "attributedStage": "capabilities",
+            "caseId": "burglary-policy-schedule"
+          },
+          {
+            "id": "x-schedule-action",
+            "reason": "forbidden capability \"Schedule Action\" — not an action in the document",
+            "attributedStage": "capabilities",
+            "caseId": "burglary-policy-schedule"
+          },
+          {
+            "id": "x-record-action",
+            "reason": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-review-action",
+            "reason": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-schedule-action",
+            "reason": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-schedule-fragment-higher-deductible",
+            "reason": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-schedule-fragment-must-bear",
+            "reason": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-schedule-fragment-not-excluded",
+            "reason": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
+            "attributedStage": "capabilities",
+            "caseId": "commercial-property-policy"
+          },
+          {
+            "id": "x-schedule-action",
+            "reason": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
+            "attributedStage": "capabilities",
+            "caseId": "multidoc-burglary-claims"
+          }
+        ],
+        "mismatched": []
+      },
+      {
+        "id": "spuriousFactAvoidance",
+        "stage": "compile",
+        "definition": "forbidden facts absent from the output / forbidden facts",
+        "numerator": 7,
+        "denominator": 8,
+        "ratio": 0.875,
+        "measured": true,
+        "missing": [],
+        "unexpected": [
+          {
+            "id": "x-flood-endorsement-fragment",
+            "reason": "forbidden heuristic \"a flood endorsement is recorded\" — the 'unless a flood endorsement is recorded' exception of clause 7.7 is part of that rule, not a rule of its own",
+            "attributedStage": "compile",
+            "caseId": "commercial-property-policy"
+          }
+        ],
+        "mismatched": []
+      },
+      {
+        "id": "structuredIoAccuracy",
+        "stage": "capabilities",
+        "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+        "numerator": 18,
+        "denominator": 18,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowExecutabilityAccuracy",
+        "stage": "workflows",
+        "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+        "numerator": 7,
+        "denominator": 7,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowPrecision",
+        "stage": "workflows",
+        "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+        "numerator": 3,
+        "denominator": 3,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowRecall",
+        "stage": "workflows",
+        "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+        "numerator": 7,
+        "denominator": 8,
+        "ratio": 0.875,
+        "measured": true,
+        "missing": [
+          {
+            "id": "wf-reconciliation-tasks",
+            "reason": "no workflow with exactly the steps [name contains \"Match CRM records vs\"; name contains \"Verify Expected Brokerage\"; name contains \"Reconcile invoice amounts vs receipt amounts\"; name contains \"Validate TDS and GST\"]",
+            "attributedStage": "workflows",
+            "caseId": "aastha-operations"
+          }
+        ],
+        "unexpected": [],
+        "mismatched": []
+      },
+      {
+        "id": "workflowStructureAccuracy",
+        "stage": "workflows",
+        "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+        "numerator": 10,
+        "denominator": 10,
+        "ratio": 1,
+        "measured": true,
+        "missing": [],
+        "unexpected": [],
+        "mismatched": []
+      }
+    ],
+    "observed": {
+      "nodeCountsByKind": {
+        "capability": 71,
+        "concept": 339,
+        "constraint": 49,
+        "decision_node": 1,
+        "heuristic": 24
+      },
+      "capabilities": {
+        "total": 71,
+        "byResolution": {
+          "resolved": 42,
+          "unresolved": 29
+        },
+        "byExecutionClass": {
+          "deterministic_rule": 23,
+          "human_in_the_loop": 19,
+          "not_executable": 29
+        }
+      },
+      "workflows": {
+        "total": 23,
+        "totalSteps": 71,
+        "byExecutability": {
+          "executable_candidate": 9,
+          "not_executable_yet": 13,
+          "semantically_invalid": 1
+        }
+      },
+      "executions": {
+        "total": 30,
+        "byOutcome": {
+          "invalid_input": 4,
+          "not_executable": 4,
+          "succeeded": 14,
+          "waiting_for_human": 2,
+          "workflow:not_executable_yet": 4,
+          "workflow:waiting_for_human": 2
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "caseId": "aastha-operations",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_98e08887156d2f71",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "pdf",
+              "path": "examples/vertical-test/Aastha.pdf"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "pdf",
+              "path": "examples/vertical-test/Aastha.pdf",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 83,
+            "total": {
+              "producers": {
+                "rule-based": 83
+              },
+              "unattributed": 0
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "rule-based": 16
+                },
+                "unattributed": 0
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 67
+                },
+                "unattributed": 0
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "38a3c448e30be5b2",
+        "capabilities": "974ae71e9bcf8635",
+        "workflows": "e9f3dc7e52518a7a",
+        "execution": "516b1c01b2496d5f"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 16,
+          "concept": 67
+        },
+        "capabilities": {
+          "total": 16,
+          "byResolution": {
+            "resolved": 15,
+            "unresolved": 1
+          },
+          "byExecutionClass": {
+            "human_in_the_loop": 15,
+            "not_executable": 1
+          }
+        },
+        "workflows": {
+          "total": 5,
+          "totalSteps": 16,
+          "byExecutability": {
+            "executable_candidate": 3,
+            "not_executable_yet": 2
+          }
+        },
+        "executions": {
+          "total": 3,
+          "byOutcome": {
+            "not_executable": 1,
+            "waiting_for_human": 1,
+            "workflow:waiting_for_human": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityPrecision",
+          "stage": "capabilities",
+          "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+          "numerator": 15,
+          "denominator": 16,
+          "ratio": 0.9375,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "capability|generate via direct sales referral partners digital",
+              "reason": "discovered \"Generate via direct sales referral partners digital\" (resolved/human_in_the_loop) matches no expected capability",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "mismatched": []
+        },
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 15,
+          "denominator": 15,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 79,
+          "denominator": 79,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.binding.not_comparable": 15,
+            "live_vs_package.contract_embedded.match": 15,
+            "live_vs_package.contract_embedded.not_comparable": 1,
+            "live_vs_package.contract_hash.match": 15,
+            "live_vs_package.execution_outcome.not_comparable": 1,
+            "live_vs_package.execution_outcome.not_exercised": 1,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 16,
+            "live_vs_serialized.capability_present.match": 16,
+            "live_vs_serialized.contract_hash.match": 16,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 14,
+          "denominator": 15,
+          "ratio": 0.933333,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [
+            {
+              "id": "t3.1-request-insurer-statements",
+              "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "breakdown": {
+            "human_in_the_loop->human_in_the_loop": 14,
+            "human_in_the_loop->not_executable": 1
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 2,
+          "denominator": 3,
+          "ratio": 0.666667,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [
+            {
+              "id": "request-statements-is-a-human-task",
+              "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+              "attributedStage": "capabilities"
+            }
+          ]
+        },
+        {
+          "id": "executionProvenanceAgreement",
+          "stage": "execution",
+          "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "state.match": 2,
+            "state.not_exercised": 1
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 83,
+          "denominator": 83,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 83,
+          "denominator": 83,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 16,
+            "in_population.knowledge_extractor.attributed": 67
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 16,
+          "denominator": 16,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.resolved": 15,
+            "binding.unresolved": 1,
+            "link.hash_deterministic.ok": 16,
+            "link.nodes_resolve.ok": 16,
+            "link.refs_carried.ok": 16,
+            "link.source_resolves.ok": 16
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 15,
+          "denominator": 15,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 14,
+          "denominator": 15,
+          "ratio": 0.933333,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [
+            {
+              "id": "t3.1-request-insurer-statements",
+              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+              "attributedStage": "capabilities"
+            }
+          ]
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 2,
+          "denominator": 3,
+          "ratio": 0.666667,
+          "measured": true,
+          "missing": [
+            {
+              "id": "wf-reconciliation-tasks",
+              "reason": "no workflow with exactly the steps [name contains \"Match CRM records vs\"; name contains \"Verify Expected Brokerage\"; name contains \"Reconcile invoice amounts vs receipt amounts\"; name contains \"Validate TDS and GST\"]",
+              "attributedStage": "workflows"
+            }
+          ],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowStructureAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "capability|generate via direct sales referral partners digital",
+          "dimension": "capability",
+          "outcome": "unexpected",
+          "ref": "cap_80dd750291fa0ecabf18d1f05781fa68",
+          "detail": "Generate via direct sales referral partners digital",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "t2.3-generate-policy-booking-report",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_f8582d92317e2012cb86f350b50d7956"
+        },
+        {
+          "id": "t3.1-request-insurer-statements",
+          "dimension": "capability",
+          "outcome": "incorrect",
+          "ref": "cap_ef9c3f234890b96bfafef81f00934385",
+          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "t3.2-map-crm-to-insurer-data",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_270ef87251e2f71815d2ac9b8bb2e21a"
+        },
+        {
+          "id": "t3.3-identify-discrepancies",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_4b778fe3fcad534f782608c8ca4fd244"
+        },
+        {
+          "id": "t3.3a-identify-actual-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_465ecbb6fd440f19e95da381f6413c95"
+        },
+        {
+          "id": "t3.4-match-crm-vs-statements",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_446111482962084dbd823bf37298eff0"
+        },
+        {
+          "id": "t3.4-reconcile-invoice-vs-receipt",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_8bad66a8ca4beb2cd840527c39609400"
+        },
+        {
+          "id": "t3.4-validate-tds-gst",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_b43f07d853c85cc8a14667a8de47c169"
+        },
+        {
+          "id": "t3.4-verify-expected-vs-actual-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_8cd3abab91d849bcdd0122b140313ddb"
+        },
+        {
+          "id": "t4.1-create-invoices-in-tally",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_55493c57e902d8cf730beee1ae77f114"
+        },
+        {
+          "id": "t4.2-calculate-and-book-tds",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_2db5bd2c2810954f26ea0c9517a05199"
+        },
+        {
+          "id": "t4.2-reconcile-invoice-balance",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_514a465c7237745196b431e02887502e"
+        },
+        {
+          "id": "t4.2-record-incoming-payments",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_294ef4795cac6301523332d1e4600f64"
+        },
+        {
+          "id": "t5.1-generate-monthly-mis",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_21dd23446cf05de3535c218df30b9fad"
+        },
+        {
+          "id": "t5.2-calculate-channel-revenue-share",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_e483d9c26d846739090a0e610711e961"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "map-records-escalates",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "request-statements-is-a-human-task",
+          "dimension": "execution",
+          "outcome": "failed",
+          "detail": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "wf-partner-payouts-escalates",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-partner-payouts",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_bb34fe0eb9809315"
+        },
+        {
+          "id": "wf-receipts-and-bookkeeping",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_6acf3e1f2d42b67f"
+        },
+        {
+          "id": "wf-reconciliation-tasks",
+          "dimension": "workflow",
+          "outcome": "missing",
+          "detail": "no workflow with exactly the steps [name contains \"Match CRM records vs\"; name contains \"Verify Expected Brokerage\"; name contains \"Reconcile invoice amounts vs receipt amounts\"; name contains \"Validate TDS and GST\"]",
+          "attributedStage": "workflows"
+        }
+      ]
+    },
+    {
+      "caseId": "burglary-policy-schedule",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_16cd4f9f0545f53e",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "pdf",
+              "path": "examples/vertical-test/burglary-policy.pdf"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": []
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "pdf",
+              "path": "examples/vertical-test/burglary-policy.pdf",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 217,
+            "total": {
+              "producers": {
+                "rule-based": 208
+              },
+              "unattributed": 9
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "rule-based": 6
+                },
+                "unattributed": 1
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 200
+                },
+                "unattributed": 0
+              },
+              "constraint": {
+                "producers": {
+                  "rule-based": 2
+                },
+                "unattributed": 7
+              },
+              "heuristic": {
+                "producers": {},
+                "unattributed": 1
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "not_requested"
+        }
+      },
+      "fingerprints": {
+        "compile": "cecd292133db5979",
+        "capabilities": "68b51db9da6c7125",
+        "workflows": "633ade63efbe8e94",
+        "execution": "4f53cda18c2baa0c"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 7,
+          "concept": 200,
+          "constraint": 9,
+          "heuristic": 1
+        },
+        "capabilities": {
+          "total": 7,
+          "byResolution": {
+            "resolved": 5,
+            "unresolved": 2
+          },
+          "byExecutionClass": {
+            "deterministic_rule": 2,
+            "human_in_the_loop": 3,
+            "not_executable": 2
+          }
+        },
+        "workflows": {
+          "total": 7,
+          "totalSteps": 7,
+          "byExecutability": {
+            "executable_candidate": 5,
+            "not_executable_yet": 2
+          }
+        },
+        "executions": {
+          "total": 0,
+          "byOutcome": {}
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 34,
+          "denominator": 34,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.binding.match": 2,
+            "live_vs_package.binding.not_comparable": 3,
+            "live_vs_package.contract_embedded.match": 5,
+            "live_vs_package.contract_embedded.not_comparable": 2,
+            "live_vs_package.contract_hash.match": 5,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 7,
+            "live_vs_serialized.capability_present.match": 7,
+            "live_vs_serialized.contract_hash.match": 7,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "human_in_the_loop->human_in_the_loop": 1
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 217,
+          "denominator": 217,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 208,
+          "denominator": 208,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 6,
+            "in_population.knowledge_extractor.attributed": 202,
+            "not_judged.reasoning_extractor.unattributed": 8,
+            "not_judged.rule_minted_capability.unattributed": 1
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 7,
+          "denominator": 7,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.resolved": 5,
+            "binding.unresolved": 2,
+            "link.hash_deterministic.ok": 7,
+            "link.nodes_resolve.ok": 7,
+            "link.refs_carried.ok": 7,
+            "link.source_resolves.ok": 7
+          }
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticCorrectness",
+          "stage": "compile",
+          "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticRecall",
+          "stage": "compile",
+          "definition": "expected semantic facts located AND correct / expected semantic facts",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "spuriousCapabilityAvoidance",
+          "stage": "capabilities",
+          "definition": "forbidden capabilities absent / forbidden capabilities",
+          "numerator": 0,
+          "denominator": 3,
+          "ratio": 0,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "x-contact-no-email-id",
+              "reason": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-partner-contact-row",
+              "reason": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-schedule-action",
+              "reason": "forbidden capability \"Schedule Action\" — not an action in the document",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "validate-policy-copy",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_b5d98c4951a707403ac1450bbe1e6c26"
+        },
+        {
+          "id": "x-contact-no-email-id",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_915ec7f5b134c31082b29a710001769a",
+          "detail": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-partner-contact-row",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_dd14c5df01ea19ad29af0357e28556ed",
+          "detail": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-action",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
+          "detail": "forbidden capability \"Schedule Action\" — not an action in the document",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "warranted-clauses-present",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "kn_ba843d1be27ecb09b52d3b3a29acf7dc"
+        },
+        {
+          "id": "warranty-information-incorrect",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_af1b6119a4d68eb55827a43da958075b"
+        }
+      ]
+    },
+    {
+      "caseId": "commercial-property-policy",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_889c8bc8f21c0fb9",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "pdf",
+              "path": "examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "pdf",
+              "path": "examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 144,
+            "total": {
+              "producers": {
+                "rule-based": 84
+              },
+              "unattributed": 60
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "rule-based": 16
+                },
+                "unattributed": 17
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 55
+                },
+                "unattributed": 0
+              },
+              "constraint": {
+                "producers": {
+                  "rule-based": 13
+                },
+                "unattributed": 20
+              },
+              "heuristic": {
+                "producers": {},
+                "unattributed": 23
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "c41e544e619f27c5",
+        "capabilities": "765dc5f5b21e5a85",
+        "workflows": "ea89c30d6a73d9c2",
+        "execution": "1a16e6d6abe790e5"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 33,
+          "concept": 55,
+          "constraint": 33,
+          "heuristic": 23
+        },
+        "capabilities": {
+          "total": 33,
+          "byResolution": {
+            "resolved": 20,
+            "unresolved": 13
+          },
+          "byExecutionClass": {
+            "deterministic_rule": 19,
+            "human_in_the_loop": 1,
+            "not_executable": 13
+          }
+        },
+        "workflows": {
+          "total": 3,
+          "totalSteps": 33,
+          "byExecutability": {
+            "executable_candidate": 1,
+            "not_executable_yet": 1,
+            "semantically_invalid": 1
+          }
+        },
+        "executions": {
+          "total": 17,
+          "byOutcome": {
+            "invalid_input": 2,
+            "not_executable": 1,
+            "succeeded": 11,
+            "waiting_for_human": 1,
+            "workflow:not_executable_yet": 1,
+            "workflow:waiting_for_human": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 16,
+          "denominator": 18,
+          "ratio": 0.888889,
+          "measured": true,
+          "missing": [
+            {
+              "id": "c7.6-refer-for-coverage-review",
+              "reason": "no discovered capability with name contains \"Referred For Coverage Review\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "c7.7-claim-must-be-denied",
+              "reason": "no discovered capability with name contains \"Claim Must Be Denied\"",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 181,
+          "denominator": 181,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.binding.match": 19,
+            "live_vs_package.binding.not_comparable": 1,
+            "live_vs_package.contract_embedded.match": 20,
+            "live_vs_package.contract_embedded.not_comparable": 13,
+            "live_vs_package.contract_hash.match": 20,
+            "live_vs_package.execution_outcome.match": 11,
+            "live_vs_package.execution_outcome.not_comparable": 1,
+            "live_vs_package.execution_outcome.not_exercised": 3,
+            "live_vs_package.execution_provenance.match": 11,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 33,
+            "live_vs_serialized.capability_present.match": 33,
+            "live_vs_serialized.contract_hash.match": 33,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "dataFlowCorrectness",
+          "stage": "workflows",
+          "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 12,
+          "denominator": 12,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "deterministic_rule->deterministic_rule": 8,
+            "human_in_the_loop->human_in_the_loop": 1,
+            "not_executable->not_executable": 3
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 17,
+          "denominator": 17,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionProvenanceAgreement",
+          "stage": "execution",
+          "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+          "numerator": 13,
+          "denominator": 13,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "state.match": 13,
+            "state.not_exercised": 4
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 144,
+          "denominator": 144,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 84,
+          "denominator": 84,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 16,
+            "in_population.knowledge_extractor.attributed": 68,
+            "not_judged.reasoning_extractor.unattributed": 43,
+            "not_judged.rule_minted_capability.unattributed": 17
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 33,
+          "denominator": 33,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.resolved": 20,
+            "binding.unresolved": 13,
+            "link.hash_deterministic.ok": 33,
+            "link.nodes_resolve.ok": 33,
+            "link.refs_carried.ok": 33,
+            "link.source_resolves.ok": 33
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 31,
+          "denominator": 31,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 12,
+          "denominator": 12,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticCorrectness",
+          "stage": "compile",
+          "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
+          "numerator": 21,
+          "denominator": 22,
+          "ratio": 0.954545,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticPrecision",
+          "stage": "compile",
+          "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
+          "numerator": 21,
+          "denominator": 23,
+          "ratio": 0.913043,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "heuristic|a flood endorsement is recorded",
+              "reason": "heuristic \"a flood endorsement is recorded\" is not among the expected heuristic facts",
+              "attributedStage": "compile"
+            }
+          ],
+          "mismatched": [
+            {
+              "id": "heuristic|the policy is active",
+              "reason": "heuristic \"the Policy is active\" matched an expected fact but is semantically incorrect",
+              "attributedStage": "compile"
+            }
+          ]
+        },
+        {
+          "id": "semanticRecall",
+          "stage": "compile",
+          "definition": "expected semantic facts located AND correct / expected semantic facts",
+          "numerator": 21,
+          "denominator": 22,
+          "ratio": 0.954545,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [
+            {
+              "id": "r11.1-active-policy-proceed-to-assessment",
+              "reason": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
+              "attributedStage": "compile"
+            }
+          ]
+        },
+        {
+          "id": "spuriousCapabilityAvoidance",
+          "stage": "capabilities",
+          "definition": "forbidden capabilities absent / forbidden capabilities",
+          "numerator": 0,
+          "denominator": 6,
+          "ratio": 0,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "x-record-action",
+              "reason": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-review-action",
+              "reason": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-schedule-action",
+              "reason": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-schedule-fragment-higher-deductible",
+              "reason": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-schedule-fragment-must-bear",
+              "reason": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "x-schedule-fragment-not-excluded",
+              "reason": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "mismatched": []
+        },
+        {
+          "id": "spuriousFactAvoidance",
+          "stage": "compile",
+          "definition": "forbidden facts absent from the output / forbidden facts",
+          "numerator": 0,
+          "denominator": 1,
+          "ratio": 0,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "x-flood-endorsement-fragment",
+              "reason": "forbidden heuristic \"a flood endorsement is recorded\" — the 'unless a flood endorsement is recorded' exception of clause 7.7 is part of that rule, not a rule of its own",
+              "attributedStage": "compile"
+            }
+          ],
+          "mismatched": []
+        },
+        {
+          "id": "structuredIoAccuracy",
+          "stage": "capabilities",
+          "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+          "numerator": 8,
+          "denominator": 8,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowStructureAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "c10.2-request-information",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_2e78ba265a5b570fb4aac7bd463fbf65"
+        },
+        {
+          "id": "c10.3-reasonable-precautions",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_8ba2d6004e8c5e8fe862e3661b18c05f"
+        },
+        {
+          "id": "c11.2-both-approvals",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_0f731679e7120779542267faaabe10ff"
+        },
+        {
+          "id": "c2.4-manager-approval-over-10k",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_c493de1cb1b111140a468ed462199746"
+        },
+        {
+          "id": "c4.1-notify-within-7-days",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_0c9cb78c4f61ea1ac0064e7040b94e9a"
+        },
+        {
+          "id": "c7.1-manager-approval-required",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_dc2af62fac5cfbcd1062a55466feb741"
+        },
+        {
+          "id": "c7.2-adjuster-assessment",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_919e7e1168250854bfa8b6207edfc4ef"
+        },
+        {
+          "id": "c7.3-manager-approval-not-required",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_2a15163541fa80841ee32ba0602c07b4"
+        },
+        {
+          "id": "c7.6-refer-for-coverage-review",
+          "dimension": "capability",
+          "outcome": "missing",
+          "detail": "no discovered capability with name contains \"Referred For Coverage Review\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "c7.7-claim-must-be-denied",
+          "dimension": "capability",
+          "outcome": "missing",
+          "detail": "no discovered capability with name contains \"Claim Must Be Denied\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "c7.8-police-report",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_29e67c9cb04cc49d926aa954e361835f"
+        },
+        {
+          "id": "c8.1-notification-satisfied",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_049af5a376d66a944d279b554268b0a6"
+        },
+        {
+          "id": "c8.2-notification-not-satisfied",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_5052ddc798d966c25daf561e00b934b6"
+        },
+        {
+          "id": "c9.1-route-to-manager",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_5e64569ea2921ccaafc189dc999c200e"
+        },
+        {
+          "id": "c9.2-assign-adjuster",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_cdb0212b6a590f9771dfe6e319e5c288"
+        },
+        {
+          "id": "c9.3-return-documents",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_e9a78a7405325a8eb55597703246db89"
+        },
+        {
+          "id": "c9.5-record-settlement",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_9bafd1cd47f6e351da34a4c72eee7edc"
+        },
+        {
+          "id": "cA.H-review-not-covered-hitl",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_ce5ac3d1b7e3d22d184b1d089f8c3522"
+        },
+        {
+          "id": "x-record-action",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_7e9fdfdc1b8f0046f2b094ea5f698785",
+          "detail": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-review-action",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_e92290458ae026c1eabe7e113277c644",
+          "detail": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-action",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
+          "detail": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-fragment-higher-deductible",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_696db4008c271cda08da032e8b520a27",
+          "detail": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-fragment-must-bear",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_cd4656f45c9dc594603ff79451c75e1a",
+          "detail": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-fragment-not-excluded",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_98f78bf213471d99293206a28ded9419",
+          "detail": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "A-manager-approval-required",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "A2-approval-over-10k",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "B-manager-approval-not-required",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "B2-no-approval-below-10k",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "C-adjuster-assessment",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "C2-both-approvals",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "E-theft-police-report",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "E2-no-police-report-for-fire",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "F-notification-5-days",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "G-notification-12-days",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "G2-12-days-does-not-satisfy",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "H-coverage-review-human",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "inv-missing-input",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "inv-wrong-type",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "unres-notify-obligation",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-hitl-review",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-notification-pair-refused",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "heuristic|a flood endorsement is recorded",
+          "dimension": "fact",
+          "outcome": "unexpected",
+          "ref": "rn_7f16b1a74d1de0c518757f2664589b45",
+          "detail": "heuristic \"a flood endorsement is recorded\"",
+          "attributedStage": "compile"
+        },
+        {
+          "id": "r11.1-active-policy-proceed-to-assessment",
+          "dimension": "fact",
+          "outcome": "incorrect",
+          "ref": "rn_09075dac2713b22866665184b253622e",
+          "detail": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
+          "attributedStage": "compile"
+        },
+        {
+          "id": "r11.2-both-approvals-over-100k",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_4d06e5fb9cb0d8c3b12174ba824919d7"
+        },
+        {
+          "id": "r11.3-approval-only-between-10k-and-100k",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_a3f00d85d46ace54d87150a869692965"
+        },
+        {
+          "id": "r11.4-block-settlement",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_90c72d60d0eb4be13f44c3064ee08bb1"
+        },
+        {
+          "id": "r11.5-flood-endorsement-exception",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_a9ed09bde34f99edc8b868c2029874b6"
+        },
+        {
+          "id": "r2.4-manager-approval-over-10k",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_a72c16f7239ebed421aa9b1e1a1b53df"
+        },
+        {
+          "id": "r2.5-cap-at-sum-insured",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_792c16746245f610d4b6513f2f50314a"
+        },
+        {
+          "id": "r6.4-materially-incorrect-claim",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_4170a296bae8a16cbea1e1a180c1f8d7"
+        },
+        {
+          "id": "r6.5-materially-incorrect-proposal",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_32e334b6d7be9bfa2e8de08ffa7f7c66"
+        },
+        {
+          "id": "r7.1-approval-over-10k-docs-present",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_17b1801e87282a154715012b5ba15739"
+        },
+        {
+          "id": "r7.2-adjuster-over-100k",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_ad271a864c5fac83e2af35b20c1b4ce5"
+        },
+        {
+          "id": "r7.3-no-approval-at-or-below-10k",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_a742a56d2c07707ecbe8d6ec84ded48f"
+        },
+        {
+          "id": "r7.6-expired-policy-review",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_8235b4ae447907c736c05042befd91be"
+        },
+        {
+          "id": "r7.7-flood-denied",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_148dccec2d3303191fb0894d66048641"
+        },
+        {
+          "id": "r7.8-theft-police-report",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_6c1e3f9e2ff1505089bb6a88a9790c18"
+        },
+        {
+          "id": "r8.1-notification-within-7-days",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_1d6b76fe76f1e2857e1ab86634a2acf1"
+        },
+        {
+          "id": "r8.2-notification-after-7-days",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_6dcfb82a5e9110954ffd74fbfcf1315a"
+        },
+        {
+          "id": "r9.1-route-to-manager",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_32f718e2c377b0874329518f951c06f8"
+        },
+        {
+          "id": "r9.2-assign-loss-adjuster",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_86148ec1ed03ad9aacf00b663bbb6347"
+        },
+        {
+          "id": "r9.3-return-missing-documents",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_0127960bffc478d6065e9d65c8925ac5"
+        },
+        {
+          "id": "r9.4-record-denial-reason",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_1b4543b1848a36f2a2585cec5ab5356c"
+        },
+        {
+          "id": "r9.5-record-settlement-amount",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_9b2c5a4202cf168ed3439283456fc086"
+        },
+        {
+          "id": "x-flood-endorsement-fragment",
+          "dimension": "fact",
+          "outcome": "spurious",
+          "ref": "rn_7f16b1a74d1de0c518757f2664589b45",
+          "detail": "forbidden heuristic \"a flood endorsement is recorded\" — the 'unless a flood endorsement is recorded' exception of clause 7.7 is part of that rule, not a rule of its own",
+          "attributedStage": "compile"
+        },
+        {
+          "id": "wf-hitl-coverage-review",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_9231032b984bfebc"
+        },
+        {
+          "id": "wf-notification-alternatives-not-executable",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_d8db8dadd1386683"
+        }
+      ]
+    },
+    {
+      "caseId": "multidoc-burglary-claims",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_9eaf4efcca458878",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "document",
+              "path": "examples/vertical-test-multidoc/policy.txt"
+            },
+            {
+              "declaredKind": "document",
+              "path": "examples/vertical-test-multidoc/claims-procedure.txt"
+            },
+            {
+              "declaredKind": "document",
+              "path": "examples/vertical-test-multidoc/supporting-rules.txt"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": []
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "document",
+              "path": "examples/vertical-test-multidoc/policy.txt",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            },
+            {
+              "sourceType": "document",
+              "path": "examples/vertical-test-multidoc/claims-procedure.txt",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            },
+            {
+              "sourceType": "document",
+              "path": "examples/vertical-test-multidoc/supporting-rules.txt",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 26,
+            "total": {
+              "producers": {
+                "rule-based": 26
+              },
+              "unattributed": 0
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "rule-based": 9
+                },
+                "unattributed": 0
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 11
+                },
+                "unattributed": 0
+              },
+              "constraint": {
+                "producers": {
+                  "rule-based": 6
+                },
+                "unattributed": 0
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "not_requested"
+        }
+      },
+      "fingerprints": {
+        "compile": "74da042c57124b88",
+        "capabilities": "3d91766715356b5b",
+        "workflows": "4191b6d386070e29",
+        "execution": "4f53cda18c2baa0c"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 9,
+          "concept": 11,
+          "constraint": 6
+        },
+        "capabilities": {
+          "total": 9,
+          "byResolution": {
+            "unresolved": 9
+          },
+          "byExecutionClass": {
+            "not_executable": 9
+          }
+        },
+        "workflows": {
+          "total": 5,
+          "totalSteps": 9,
+          "byExecutability": {
+            "not_executable_yet": 5
+          }
+        },
+        "executions": {
+          "total": 0,
+          "byOutcome": {}
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 3,
+          "denominator": 6,
+          "ratio": 0.5,
+          "measured": true,
+          "missing": [
+            {
+              "id": "ob-acknowledge-claim-5-days",
+              "reason": "no discovered capability with name contains \"Acknowledge receipt of a claim\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "ob-appoint-loss-adjuster",
+              "reason": "no discovered capability with name contains \"appoint a loss adjuster\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "ob-settle-or-decline-30-days",
+              "reason": "no discovered capability with name contains \"settle or decline a claim\"",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 28,
+          "denominator": 28,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.contract_embedded.not_comparable": 9,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 9,
+            "live_vs_serialized.capability_present.match": 9,
+            "live_vs_serialized.contract_hash.match": 9,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 0,
+          "denominator": 3,
+          "ratio": 0,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [
+            {
+              "id": "ob-notify-insurer-48h",
+              "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "ob-notify-material-change-30d",
+              "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "ob-notify-police",
+              "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "breakdown": {
+            "human_in_the_loop->not_executable": 3
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 26,
+          "denominator": 26,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 26,
+          "denominator": 26,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 9,
+            "in_population.knowledge_extractor.attributed": 17
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 9,
+          "denominator": 9,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.unresolved": 9,
+            "link.hash_deterministic.ok": 9,
+            "link.nodes_resolve.ok": 9,
+            "link.refs_carried.ok": 9,
+            "link.source_resolves.ok": 9
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 6,
+          "denominator": 6,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticCorrectness",
+          "stage": "compile",
+          "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
+          "numerator": 3,
+          "denominator": 3,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticRecall",
+          "stage": "compile",
+          "definition": "expected semantic facts located AND correct / expected semantic facts",
+          "numerator": 3,
+          "denominator": 4,
+          "ratio": 0.75,
+          "measured": true,
+          "missing": [
+            {
+              "id": "definition-premises",
+              "reason": "no concept node matches: definition = \"Premises\"",
+              "attributedStage": "compile"
+            }
+          ],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "spuriousCapabilityAvoidance",
+          "stage": "capabilities",
+          "definition": "forbidden capabilities absent / forbidden capabilities",
+          "numerator": 0,
+          "denominator": 1,
+          "ratio": 0,
+          "measured": true,
+          "missing": [],
+          "unexpected": [
+            {
+              "id": "x-schedule-action",
+              "reason": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
+              "attributedStage": "capabilities"
+            }
+          ],
+          "mismatched": []
+        },
+        {
+          "id": "spuriousFactAvoidance",
+          "stage": "compile",
+          "definition": "forbidden facts absent from the output / forbidden facts",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "ob-acknowledge-claim-5-days",
+          "dimension": "capability",
+          "outcome": "missing",
+          "detail": "no discovered capability with name contains \"Acknowledge receipt of a claim\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "ob-appoint-loss-adjuster",
+          "dimension": "capability",
+          "outcome": "missing",
+          "detail": "no discovered capability with name contains \"appoint a loss adjuster\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "ob-notify-insurer-48h",
+          "dimension": "capability",
+          "outcome": "incorrect",
+          "ref": "cap_0c9cb78c4f61ea1ac0064e7040b94e9a",
+          "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "ob-notify-material-change-30d",
+          "dimension": "capability",
+          "outcome": "incorrect",
+          "ref": "cap_e6b4305b43c14b0e9e0fc5ab6d08d5a9",
+          "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "ob-notify-police",
+          "dimension": "capability",
+          "outcome": "incorrect",
+          "ref": "cap_4189650ee39ea40987f33ca4cdba7d34",
+          "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "ob-settle-or-decline-30-days",
+          "dimension": "capability",
+          "outcome": "missing",
+          "detail": "no discovered capability with name contains \"settle or decline a claim\"",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "x-schedule-action",
+          "dimension": "capability",
+          "outcome": "spurious",
+          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
+          "detail": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
+          "attributedStage": "capabilities"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "definition-forcible-and-violent-entry",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "kn_de9b005c9e407502848d2680691eb83f"
+        },
+        {
+          "id": "definition-premises",
+          "dimension": "fact",
+          "outcome": "missing",
+          "detail": "no concept node matches: definition = \"Premises\"",
+          "attributedStage": "compile"
+        },
+        {
+          "id": "duty-notify-police",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "kn_29996f4a2857a3ff378bf8ab7bd5176d"
+        },
+        {
+          "id": "exclusion-employee-theft",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "kn_b44927087e8e49d2e817aaec2e605875"
+        }
+      ]
+    },
+    {
+      "caseId": "openapi-operation-data-flow",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_1acb6dca566d3a11",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "openapi",
+              "path": "examples/vertical-test/openapi-operation-data-flow.json"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "openapi",
+              "path": "examples/vertical-test/openapi-operation-data-flow.json",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 4,
+            "total": {
+              "producers": {
+                "rule-based": 2,
+                "structured-operation": 2
+              },
+              "unattributed": 0
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "structured-operation": 2
+                },
+                "unattributed": 0
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 2
+                },
+                "unattributed": 0
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "ef341a7b7ee5ee97",
+        "capabilities": "7bb847d27b1af85f",
+        "workflows": "38a8ec351a8f9850",
+        "execution": "7157fb8ebaa3a8a7"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 2,
+          "concept": 2
+        },
+        "capabilities": {
+          "total": 2,
+          "byResolution": {
+            "unresolved": 2
+          },
+          "byExecutionClass": {
+            "not_executable": 2
+          }
+        },
+        "workflows": {
+          "total": 1,
+          "totalSteps": 2,
+          "byExecutability": {
+            "not_executable_yet": 1
+          }
+        },
+        "executions": {
+          "total": 2,
+          "byOutcome": {
+            "not_executable": 1,
+            "workflow:not_executable_yet": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityPrecision",
+          "stage": "capabilities",
+          "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 7,
+          "denominator": 7,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.contract_embedded.not_comparable": 2,
+            "live_vs_package.execution_outcome.not_exercised": 1,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 2,
+            "live_vs_serialized.capability_present.match": 2,
+            "live_vs_serialized.contract_hash.match": 2,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "dataFlowCorrectness",
+          "stage": "workflows",
+          "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "not_executable->not_executable": 2
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCorrectness",
+          "stage": "capabilities",
+          "definition": "located capabilities created by a capability extractor whose producedBy equals the expected producer / such capabilities with an expected producer and an observed producer (P0.9C Step 4)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "structured-operation->structured-operation": 2
+          }
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 2,
+            "in_population.knowledge_extractor.attributed": 2
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.unresolved": 2,
+            "link.hash_deterministic.ok": 2,
+            "link.nodes_resolve.ok": 2,
+            "link.refs_carried.ok": 2,
+            "link.source_resolves.ok": 2
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "structuredIoAccuracy",
+          "stage": "capabilities",
+          "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowPrecision",
+          "stage": "workflows",
+          "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowStructureAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "op-calculate-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_26d573d158fb5b8d3c601fa79500cf6f"
+        },
+        {
+          "id": "op-record-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_29628225ec308fd7426f538568b435e8"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "run-unimplemented-operation",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-refused-unimplemented",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-brokerage",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_b6aedc1372ba9932"
+        }
+      ]
+    },
+    {
+      "caseId": "structured-operation-data-flow",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_0fd1e4f4cee16037",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "structured",
+              "path": "examples/vertical-test/structured-operation-data-flow.json",
+              "format": "json"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "structured",
+              "path": "examples/vertical-test/structured-operation-data-flow.json",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 4,
+            "total": {
+              "producers": {
+                "rule-based": 2,
+                "structured-operation": 2
+              },
+              "unattributed": 0
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "structured-operation": 2
+                },
+                "unattributed": 0
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 2
+                },
+                "unattributed": 0
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "e11321bba993f697",
+        "capabilities": "bce544ec3fd9f614",
+        "workflows": "38a8ec351a8f9850",
+        "execution": "7157fb8ebaa3a8a7"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 2,
+          "concept": 2
+        },
+        "capabilities": {
+          "total": 2,
+          "byResolution": {
+            "unresolved": 2
+          },
+          "byExecutionClass": {
+            "not_executable": 2
+          }
+        },
+        "workflows": {
+          "total": 1,
+          "totalSteps": 2,
+          "byExecutability": {
+            "not_executable_yet": 1
+          }
+        },
+        "executions": {
+          "total": 2,
+          "byOutcome": {
+            "not_executable": 1,
+            "workflow:not_executable_yet": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityPrecision",
+          "stage": "capabilities",
+          "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 7,
+          "denominator": 7,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.contract_embedded.not_comparable": 2,
+            "live_vs_package.execution_outcome.not_exercised": 1,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 2,
+            "live_vs_serialized.capability_present.match": 2,
+            "live_vs_serialized.contract_hash.match": 2,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "dataFlowCorrectness",
+          "stage": "workflows",
+          "definition": "data-flow assertions satisfied (proven bindings present, not_proven bindings absent, no extra proven bindings in closed-world workflows) / data-flow assertions, over found workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "not_executable->not_executable": 2
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCorrectness",
+          "stage": "capabilities",
+          "definition": "located capabilities created by a capability extractor whose producedBy equals the expected producer / such capabilities with an expected producer and an observed producer (P0.9C Step 4)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "structured-operation->structured-operation": 2
+          }
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 2,
+            "in_population.knowledge_extractor.attributed": 2
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.unresolved": 2,
+            "link.hash_deterministic.ok": 2,
+            "link.nodes_resolve.ok": 2,
+            "link.refs_carried.ok": 2,
+            "link.source_resolves.ok": 2
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "structuredIoAccuracy",
+          "stage": "capabilities",
+          "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowPrecision",
+          "stage": "workflows",
+          "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowStructureAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "op-calculate-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_26d573d158fb5b8d3c601fa79500cf6f"
+        },
+        {
+          "id": "op-record-brokerage",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_29628225ec308fd7426f538568b435e8"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "run-unimplemented-operation",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-refused-unimplemented",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-brokerage",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_b6aedc1372ba9932"
+        }
+      ]
+    },
+    {
+      "caseId": "synthetic-claim-rules",
+      "status": "evaluated",
+      "entry": "sources",
+      "attribution": {
+        "configurationId": "cfg_6b0e7ca77c84c10d",
+        "configuration": {
+          "evaluationVersion": "p0.9c-1",
+          "entry": "sources",
+          "sources": [
+            {
+              "declaredKind": "document",
+              "path": "examples/vertical-test/synthetic-claim-rules.txt"
+            }
+          ],
+          "compilerOptions": {},
+          "paths": {
+            "host": "benchmark_observer",
+            "graphOrigin": "compiled_sources",
+            "graphForm": "live_graph",
+            "executionPaths": [
+              "direct_capability",
+              "workflow"
+            ]
+          },
+          "ai": "not_exercised"
+        },
+        "observedContext": {
+          "sources": [
+            {
+              "sourceType": "document",
+              "path": "examples/vertical-test/synthetic-claim-rules.txt",
+              "qualityState": "trusted",
+              "semanticExtractionAvailable": true
+            }
+          ],
+          "producerDistribution": {
+            "nodeCount": 6,
+            "total": {
+              "producers": {
+                "rule-based": 4
+              },
+              "unattributed": 2
+            },
+            "byKind": {
+              "capability": {
+                "producers": {
+                  "rule-based": 1
+                },
+                "unattributed": 1
+              },
+              "concept": {
+                "producers": {
+                  "rule-based": 2
+                },
+                "unattributed": 0
+              },
+              "constraint": {
+                "producers": {
+                  "rule-based": 1
+                },
+                "unattributed": 0
+              },
+              "decision_node": {
+                "producers": {},
+                "unattributed": 1
+              }
+            }
+          }
+        }
+      },
+      "stages": {
+        "compile": {
+          "stage": "compile",
+          "status": "ok"
+        },
+        "capabilities": {
+          "stage": "capabilities",
+          "status": "ok"
+        },
+        "workflows": {
+          "stage": "workflows",
+          "status": "ok"
+        },
+        "execution": {
+          "stage": "execution",
+          "status": "ok"
+        }
+      },
+      "fingerprints": {
+        "compile": "4b54ae8b4720ed21",
+        "capabilities": "36776cc6e5380c66",
+        "workflows": "cf4e40f69eb1ba66",
+        "execution": "be73017e79523202"
+      },
+      "observed": {
+        "nodeCountsByKind": {
+          "capability": 2,
+          "concept": 2,
+          "constraint": 1,
+          "decision_node": 1
+        },
+        "capabilities": {
+          "total": 2,
+          "byResolution": {
+            "resolved": 2
+          },
+          "byExecutionClass": {
+            "deterministic_rule": 2
+          }
+        },
+        "workflows": {
+          "total": 1,
+          "totalSteps": 2,
+          "byExecutability": {
+            "not_executable_yet": 1
+          }
+        },
+        "executions": {
+          "total": 6,
+          "byOutcome": {
+            "invalid_input": 2,
+            "succeeded": 3,
+            "workflow:not_executable_yet": 1
+          }
+        }
+      },
+      "metrics": [
+        {
+          "id": "capabilityPrecision",
+          "stage": "capabilities",
+          "definition": "discovered capabilities matched by an expectation / all discovered capabilities (closed-world suites only)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "capabilityRecall",
+          "stage": "capabilities",
+          "definition": "expected capabilities discovered (identity matched) / expected capabilities",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "compileOutcomeAccuracy",
+          "stage": "compile",
+          "definition": "compile outcome (succeeds / fails with the expected code) equals the expected outcome / 1",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "crossPathConsistency",
+          "stage": "capabilities",
+          "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
+          "numerator": 19,
+          "denominator": 19,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "live_vs_package.binding.match": 2,
+            "live_vs_package.contract_embedded.match": 2,
+            "live_vs_package.contract_hash.match": 2,
+            "live_vs_package.execution_outcome.match": 3,
+            "live_vs_package.execution_outcome.not_exercised": 2,
+            "live_vs_package.execution_provenance.match": 3,
+            "live_vs_package.graph_hash.not_comparable": 1,
+            "live_vs_serialized.binding.match": 2,
+            "live_vs_serialized.capability_present.match": 2,
+            "live_vs_serialized.contract_hash.match": 2,
+            "live_vs_serialized.graph_hash.match": 1
+          }
+        },
+        {
+          "id": "executionClassAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "deterministic_rule->deterministic_rule": 2
+          }
+        },
+        {
+          "id": "executionCorrectness",
+          "stage": "execution",
+          "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
+          "numerator": 6,
+          "denominator": 6,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "executionProvenanceAgreement",
+          "stage": "execution",
+          "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
+          "numerator": 3,
+          "denominator": 3,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "state.match": 3,
+            "state.not_exercised": 3
+          }
+        },
+        {
+          "id": "observedSourceRefCoverage",
+          "stage": "compile",
+          "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
+          "numerator": 6,
+          "denominator": 6,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "producerAttributionCoverage",
+          "stage": "compile",
+          "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
+          "numerator": 4,
+          "denominator": 4,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "in_population.capability_extractor.attributed": 1,
+            "in_population.knowledge_extractor.attributed": 3,
+            "not_judged.reasoning_extractor.unattributed": 1,
+            "not_judged.rule_minted_capability.unattributed": 1
+          }
+        },
+        {
+          "id": "provenanceChainCoverage",
+          "stage": "capabilities",
+          "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": [],
+          "breakdown": {
+            "binding.resolved": 2,
+            "link.hash_deterministic.ok": 2,
+            "link.nodes_resolve.ok": 2,
+            "link.refs_carried.ok": 2,
+            "link.source_resolves.ok": 2
+          }
+        },
+        {
+          "id": "provenanceCompleteness",
+          "stage": "compile",
+          "definition": "expected evidence specs satisfied by the located item / evidence specs on located items (facts and capabilities)",
+          "numerator": 3,
+          "denominator": 3,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "resolutionAccuracy",
+          "stage": "capabilities",
+          "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticCorrectness",
+          "stage": "compile",
+          "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticPrecision",
+          "stage": "compile",
+          "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "semanticRecall",
+          "stage": "compile",
+          "definition": "expected semantic facts located AND correct / expected semantic facts",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "spuriousFactAvoidance",
+          "stage": "compile",
+          "definition": "forbidden facts absent from the output / forbidden facts",
+          "numerator": 3,
+          "denominator": 3,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "structuredIoAccuracy",
+          "stage": "capabilities",
+          "definition": "declared input/output parameter sets exactly equal to the expected sets / expected parameter-set assertions",
+          "numerator": 2,
+          "denominator": 2,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowExecutabilityAccuracy",
+          "stage": "workflows",
+          "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowPrecision",
+          "stage": "workflows",
+          "definition": "observed workflows matched by an expectation / all observed workflows (closed-world suites only)",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        },
+        {
+          "id": "workflowRecall",
+          "stage": "workflows",
+          "definition": "expected workflows found (steps match exactly, any order) / expected workflows",
+          "numerator": 1,
+          "denominator": 1,
+          "ratio": 1,
+          "measured": true,
+          "missing": [],
+          "unexpected": [],
+          "mismatched": []
+        }
+      ],
+      "items": [
+        {
+          "id": "cap-claim-assessment",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_127a166917537b0c6ef03f67c3bc9333"
+        },
+        {
+          "id": "cap-deny-the-claim",
+          "dimension": "capability",
+          "outcome": "found",
+          "ref": "cap_rule_389a051e6431d3bcf13d842eeb5279d2"
+        },
+        {
+          "id": "compile",
+          "dimension": "compile",
+          "outcome": "passed"
+        },
+        {
+          "id": "at-threshold",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "below-threshold",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "missing-input",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "over-threshold",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wf-refused-without-proven-order",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "wrong-type",
+          "dimension": "execution",
+          "outcome": "passed"
+        },
+        {
+          "id": "concept-claim-assessment",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "kn_24ef017dda00477d76ccce4a2212f79b"
+        },
+        {
+          "id": "rule-deny-over-10000",
+          "dimension": "fact",
+          "outcome": "found",
+          "ref": "rn_fc3b5ae955472c976c9cb6c9214407f8"
+        },
+        {
+          "id": "wf-assess-then-deny",
+          "dimension": "workflow",
+          "outcome": "found",
+          "ref": "wf_9a17aef9ae48cb1d"
+        }
+      ]
+    }
+  ]
+}

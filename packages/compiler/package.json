@@ -20,19 +20,24 @@
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
   "dependencies": {
-    "@xo/types": "0.1.0",
-    "@xo/errors": "0.1.0",
-    "@xo/logger": "0.1.0",
-    "@xo/xoir": "0.1.0",
+    "@xo/ai-core": "0.1.0",
+    "@xo/capability-contract": "0.1.0",
     "@xo/compiler-core": "0.1.0",
     "@xo/crypto": "0.1.0",
-    "@xo/ai-core": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/logger": "0.1.0",
     "@xo/package-sdk": "0.1.0",
-    "@xo/capability-contract": "0.1.0",
-    "@xo/permissions": "0.1.0"
+    "@xo/permissions": "0.1.0",
+    "@xo/types": "0.1.0",
+    "@xo/xoir": "0.1.0"
   },
   "devDependencies": {
     "@xo/workflow-composer": "0.1.0",
     "tsx": "^4.16.0"
+  },
+  "optionalDependencies": {
+    "@hyzyla/pdfium": "^3.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "tesseract.js": "^7.0.0"
   }
 }

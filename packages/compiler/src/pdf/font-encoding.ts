@@ -100,10 +100,12 @@ function buildFontEncoding(font: PdfDictionary, resolve: ResolveFn): FontEncodin
   // text-extraction-purpose mapping and is authoritative when it exists,
   // for either a standard or a custom-Differences encoding); otherwise fall
   // back to base-encoding + /Differences.
-  if (toUnicode) {
-    return { codeByteWidth: 1, decode: (bytes) => decodeWithMap(bytes, 1, toUnicode) };
-  }
   const table = buildSimpleFontTable(font, resolve);
+  if (toUnicode) {
+    // A /ToUnicode that covers only some codes (very common: writers emit entries just for ligatures or unusual glyphs)
+    // must not erase the rest: unmapped codes fall back to the base encoding + /Differences.
+    return { codeByteWidth: 1, decode: (bytes) => decodeWithMapThenTable(bytes, toUnicode, table) };
+  }
   return { codeByteWidth: 1, decode: (bytes) => decodeWithTable(bytes, table) };
 }
 
@@ -114,6 +116,12 @@ function decodeWithMap(bytes: Uint8Array, codeByteWidth: 1 | 2, map: ReadonlyMap
     for (let j = 0; j < codeByteWidth; j += 1) code = code * 256 + bytes[i + j]!;
     out += map.get(code) ?? REPLACEMENT_CHAR;
   }
+  return out;
+}
+
+function decodeWithMapThenTable(bytes: Uint8Array, map: ReadonlyMap<number, string>, table: readonly string[]): string {
+  let out = '';
+  for (const b of bytes) out += map.get(b) ?? table[b] ?? String.fromCharCode(b);
   return out;
 }
 

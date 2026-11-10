@@ -1,6 +1,7 @@
 import { PdfError, ErrorCode } from '@xo/errors';
 import { Lexer, type Token } from './lexer.js';
 import type { IndirectObject, PdfArray, PdfDictionary, PdfValue } from './types.js';
+import { DEFAULT_PDF_LIMITS, PdfResourceLimitError } from './limits.js';
 
 /** Resolves an indirect `/Length` reference to a byte count. Object parsing happens before xref-based random access exists for every object (chicken-and-egg for the first pass), so this is optional — when absent, a stream's length is instead recovered by scanning forward for `endstream` (see `readStreamBody`). */
 export type LengthResolver = (objectNumber: number, generation: number) => number | undefined;
@@ -17,12 +18,24 @@ const ENDSTREAM_KEYWORD = 'endstream';
  */
 export class ObjectParser {
   private readonly lexer: Lexer;
+  private nesting = 0;
+  /** Zero-copy Buffer view over the same bytes, so `indexOf` never copies the whole file (that was O(file) per stream). */
+  private readonly view: Buffer;
 
   constructor(
     private readonly buf: Uint8Array,
     startOffset: number,
+    private readonly maxNesting: number = DEFAULT_PDF_LIMITS.maxObjectNesting,
   ) {
     this.lexer = new Lexer(buf, startOffset);
+    this.view = Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+
+  private enter(): void {
+    this.nesting += 1;
+    if (this.nesting > this.maxNesting) {
+      throw new PdfResourceLimitError('maxObjectNesting', `object nesting deeper than ${this.maxNesting}`);
+    }
   }
 
   get position(): number {
@@ -79,10 +92,22 @@ export class ObjectParser {
       case 'string':
       case 'hexstring':
         return { kind: 'string', bytes: token.bytes ?? new Uint8Array(0) };
-      case 'array_start':
-        return this.parseArray();
-      case 'dict_start':
-        return this.parseDictionary();
+      case 'array_start': {
+        this.enter();
+        try {
+          return this.parseArray();
+        } finally {
+          this.nesting -= 1;
+        }
+      }
+      case 'dict_start': {
+        this.enter();
+        try {
+          return this.parseDictionary();
+        } finally {
+          this.nesting -= 1;
+        }
+      }
       case 'keyword':
         if (token.text === 'true') return true;
         if (token.text === 'false') return false;
@@ -170,13 +195,12 @@ export class ObjectParser {
   private endstreamFollowsAt(offset: number): boolean {
     let p = offset;
     while (p < this.buf.length && (this.buf[p] === 0x0d || this.buf[p] === 0x0a || this.buf[p] === 0x20 || this.buf[p] === 0x09)) p += 1;
-    const slice = Buffer.from(this.buf.subarray(p, p + ENDSTREAM_KEYWORD.length)).toString('latin1');
-    return slice === ENDSTREAM_KEYWORD;
+    return this.view.toString('latin1', p, Math.min(this.view.length, p + ENDSTREAM_KEYWORD.length)) === ENDSTREAM_KEYWORD;
   }
 
   private findEndstream(from: number): number {
     const needle = Buffer.from(ENDSTREAM_KEYWORD, 'latin1');
-    const idx = Buffer.from(this.buf).indexOf(needle, from);
+    const idx = this.view.indexOf(needle, from);
     if (idx === -1) {
       throw new PdfError(ErrorCode.PDF_MALFORMED, `Could not find "endstream" after byte offset ${from}`);
     }

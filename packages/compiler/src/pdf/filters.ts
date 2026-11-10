@@ -1,6 +1,10 @@
 import { inflateSync } from 'node:zlib';
 import { PdfError, ErrorCode } from '@xo/errors';
 import { isArray, isDictionary, isName, type PdfDictionary, type PdfStream, type PdfValue } from './types.js';
+import { DEFAULT_PDF_LIMITS, PdfResourceLimitError, ResourceMeter } from './limits.js';
+
+/** Used when a caller decodes without a per-document meter: still bounded per stream, never unbounded. */
+const STANDALONE_METER_LIMITS = DEFAULT_PDF_LIMITS;
 
 function filterNames(stream: PdfStream): readonly string[] {
   const filter = stream.dictionary.entries.get('Filter');
@@ -135,23 +139,144 @@ function paethPredictor(a: number, b: number, c: number): number {
  * for the consequence (image-only pages using those filters are exactly
  * the case `requiresOcr` is meant to flag instead of mis-parsing).
  */
-export function decodeStream(stream: PdfStream): Uint8Array {
+export function decodeStream(stream: PdfStream, meter: ResourceMeter = new ResourceMeter(STANDALONE_METER_LIMITS)): Uint8Array {
   let bytes = stream.rawBytes;
   const names = filterNames(stream);
+  const inputBytes = Math.max(1, stream.rawBytes.length);
   names.forEach((name, i) => {
+    const allowance = meter.allowance();
     switch (name) {
       case 'FlateDecode':
       case 'Fl':
         try {
-          bytes = new Uint8Array(inflateSync(Buffer.from(bytes)));
+          // `maxOutputLength` makes zlib stop at the bound instead of materialising a bomb first.
+          bytes = new Uint8Array(inflateSync(bytes, { maxOutputLength: Math.max(1, allowance) }));
         } catch (cause) {
+          if ((cause as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') {
+            throw new PdfResourceLimitError('maxStreamBytes', `stream inflates beyond ${allowance} bytes`);
+          }
           throw new PdfError(ErrorCode.PDF_MALFORMED, 'FlateDecode stream failed to inflate', { cause });
         }
+        enforceRatio(bytes.length, inputBytes, meter);
         bytes = applyPredictor(bytes, decodeParmsFor(stream, i, names.length));
         break;
+      case 'ASCII85Decode':
+      case 'A85':
+        bytes = decodeAscii85(bytes);
+        break;
+      case 'ASCIIHexDecode':
+      case 'AHx':
+        bytes = decodeAsciiHex(bytes);
+        break;
+      case 'RunLengthDecode':
+      case 'RL':
+        bytes = decodeRunLength(bytes, Math.max(1, allowance));
+        break;
+      case 'Crypt':
+        break; // handled by the document's decryptor before filters run
       default:
         throw new PdfError(ErrorCode.PDF_UNSUPPORTED_FEATURE, `Unsupported stream filter "${name}"`);
     }
+    if (bytes.length > allowance) throw new PdfResourceLimitError('maxStreamBytes', `stream decodes beyond ${allowance} bytes`);
   });
+  meter.charge(bytes.length);
   return bytes;
+}
+
+function enforceRatio(outBytes: number, inBytes: number, meter: ResourceMeter): void {
+  const { ratioFloorBytes, maxInflateRatio } = meter.limits;
+  if (outBytes > ratioFloorBytes && outBytes / inBytes > maxInflateRatio) {
+    throw new PdfResourceLimitError('maxInflateRatio', `stream expands ${Math.round(outBytes / inBytes)}x (limit ${maxInflateRatio}x)`);
+  }
+}
+
+const isPdfSpace = (b: number): boolean => b === 0x20 || b === 0x0a || b === 0x0d || b === 0x09 || b === 0x0c || b === 0x00;
+
+/** ASCII85Decode (PDF 32000-1 §7.4.3): 5 chars -> 4 bytes, `z` = four zero bytes, `~>` ends the data. */
+export function decodeAscii85(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  const group: number[] = [];
+  const flush = (count: number): void => {
+    // A short final group of n chars (n >= 2) is padded with 'u' and yields n-1 bytes.
+    const padded = group.concat(new Array<number>(5 - count).fill(84));
+    let value = 0;
+    for (const d of padded) value = value * 85 + d;
+    const bytes = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+    out.push(...bytes.slice(0, count - 1));
+  };
+  let i = 0;
+  // An optional leading `<~` is tolerated.
+  while (i < input.length && isPdfSpace(input[i]!)) i++;
+  if (input[i] === 0x3c && input[i + 1] === 0x7e) i += 2;
+  for (; i < input.length; i++) {
+    const c = input[i]!;
+    if (isPdfSpace(c)) continue;
+    if (c === 0x7e) break; // '~' -> end-of-data marker
+    if (c === 0x7a && group.length === 0) {
+      out.push(0, 0, 0, 0);
+      continue;
+    }
+    if (c < 0x21 || c > 0x75) throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCII85Decode: invalid character 0x${c.toString(16)}`);
+    group.push(c - 0x21);
+    if (group.length === 5) {
+      flush(5);
+      group.length = 0;
+    }
+  }
+  if (group.length === 1) throw new PdfError(ErrorCode.PDF_MALFORMED, 'ASCII85Decode: dangling single character in final group');
+  if (group.length > 1) flush(group.length);
+  return Uint8Array.from(out);
+}
+
+/** ASCIIHexDecode (§7.4.2): hex pairs, whitespace ignored, `>` ends the data, a final odd digit is padded with 0. */
+export function decodeAsciiHex(input: Uint8Array): Uint8Array {
+  const out: number[] = [];
+  let high = -1;
+  for (const c of input) {
+    if (isPdfSpace(c)) continue;
+    if (c === 0x3e) break;
+    const v = c >= 0x30 && c <= 0x39 ? c - 0x30 : c >= 0x41 && c <= 0x46 ? c - 0x37 : c >= 0x61 && c <= 0x66 ? c - 0x57 : -1;
+    if (v < 0) throw new PdfError(ErrorCode.PDF_MALFORMED, `ASCIIHexDecode: invalid character 0x${c.toString(16)}`);
+    if (high < 0) high = v;
+    else {
+      out.push(high * 16 + v);
+      high = -1;
+    }
+  }
+  if (high >= 0) out.push(high * 16);
+  return Uint8Array.from(out);
+}
+
+/** RunLengthDecode (§7.4.5): length byte n: 0-127 copy n+1 literal bytes, 129-255 repeat the next byte 257-n times, 128 = EOD. */
+export function decodeRunLength(input: Uint8Array, maxOut = DEFAULT_PDF_LIMITS.maxStreamBytes): Uint8Array {
+  let out = new Uint8Array(Math.min(Math.max(input.length * 4, 1024), maxOut + 1));
+  let len = 0;
+  const ensure = (extra: number): void => {
+    if (len + extra > maxOut) throw new PdfResourceLimitError('maxStreamBytes', `RunLengthDecode output exceeds ${maxOut} bytes`);
+    if (len + extra > out.length) {
+      const grown = new Uint8Array(Math.min(Math.max(out.length * 2, len + extra), maxOut + 1));
+      grown.set(out.subarray(0, len));
+      out = grown;
+    }
+  };
+  let i = 0;
+  while (i < input.length) {
+    const n = input[i++]!;
+    if (n === 128) break;
+    if (n < 128) {
+      const end = i + n + 1;
+      if (end > input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: literal run overruns the data');
+      ensure(n + 1);
+      out.set(input.subarray(i, end), len);
+      len += n + 1;
+      i = end;
+    } else {
+      if (i >= input.length) throw new PdfError(ErrorCode.PDF_MALFORMED, 'RunLengthDecode: repeat run missing its byte');
+      const count = 257 - n;
+      ensure(count);
+      out.fill(input[i++]!, len, len + count);
+      len += count;
+    }
+  }
+  return out.slice(0, len);
 }

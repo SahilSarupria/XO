@@ -166,7 +166,16 @@ export function createXoirNormalizationPass(): Pass {
         if (!added.ok) throw added.error; // structurally impossible: ids were already unique in the source graph
       }
       for (const edge of collapsedEdges) {
-        if (!normalized.hasNode(edge.fromId) || !normalized.hasNode(edge.toId)) continue; // endpoint dropped upstream — same defensive policy as the Stage 4/5 adapters
+        if (!normalized.hasNode(edge.fromId) || !normalized.hasNode(edge.toId)) {
+          // WS1-10 (audit A1-07): still skipped (same defensive policy as the Stage 4/5 adapters), but no longer silent.
+          diagnostics.push({
+            severity: 'warning',
+            passName: XOIR_NORMALIZATION_PASS_NAME,
+            code: 'normalize/edge-skipped-missing-endpoint',
+            message: `Skipped ${edge.kind} edge "${edge.id}" (${edge.fromId} -> ${edge.toId}): an endpoint node is not present in the graph.`,
+          });
+          continue;
+        }
         if (normalized.getEdge(edge.id).ok) continue; // already inserted (can happen if collapseEquivalentEdges' canonical id collides with another surviving edge's id)
         const added = normalized.addEdge(edge);
         if (!added.ok) throw added.error;

@@ -298,7 +298,7 @@ test('real pipeline (all 8 cases): every compiled capability has a connected cha
       }
     }
   }
-  assert.equal(compiledCaps, 71, 'capabilities across the 7 compiled cases');
+  assert.equal(compiledCaps, 72, 'capabilities across the 7 compiled cases');
   assert.ok(executed >= 20, `executions judged: ${executed}`);
 });
 

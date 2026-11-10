@@ -163,7 +163,7 @@
           "id": "over-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -180,7 +180,7 @@
           "id": "at-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -196,7 +196,7 @@
           "id": "below-threshold",
           "kind": "capability",
           "target": {
-            "equals": "Claim Assessment"
+            "equals": "Deny The Claim"
           },
           "expect": {
             "outcome": "succeeded",
@@ -291,6 +291,40 @@
                 {
                   "path": "structuredCondition.value",
                   "equals": 10000
+                }
+              ],
+              "evidence": {
+                "documentPath": "XO_Commercial_Property_Test_Policy_Compatible.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "r4.1-notify-within-7-days",
+              "kind": "heuristic",
+              "identify": [
+                {
+                  "path": "condition",
+                  "equals": "the days since becoming aware of the loss is at most 7"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "action",
+                  "contains": "must notify the Insurer of a loss"
+                },
+                {
+                  "path": "structuredCondition.type",
+                  "equals": "comparison"
+                },
+                {
+                  "path": "structuredCondition.value",
+                  "equals": 7
+                },
+                {
+                  "path": "structuredCondition.field",
+                  "equals": "the days since becoming aware of the loss"
                 }
               ],
               "evidence": {
@@ -999,10 +1033,18 @@
             {
               "id": "c4.1-notify-within-7-days",
               "name": {
-                "contains": "Notify the Insurer of a loss within"
+                "equals": "Notify the Insurer of a loss within"
               },
-              "resolution": "unresolved",
-              "executionClass": "not_executable"
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule"
+            },
+            {
+              "id": "c4.1-notify-deadline-rule",
+              "name": {
+                "contains": "Must Notify The Insurer Of A Loss Within 7 Days"
+              },
+              "resolution": "resolved",
+              "executionClass": "deterministic_rule"
             },
             {
               "id": "c10.2-request-information",
@@ -1329,15 +1371,36 @@
           }
         },
         {
-          "id": "unres-notify-obligation",
+          "id": "det-notify-deadline-met",
           "kind": "capability",
           "target": {
-            "contains": "Notify the Insurer of a loss within"
+            "contains": "Must Notify The Insurer Of A Loss Within 7 Days"
           },
           "expect": {
-            "outcome": "not_executable"
+            "outcome": "succeeded",
+            "output": {
+              "matched": true
+            }
           },
-          "input": {}
+          "input": {
+            "days_since_becoming_aware_loss": 3
+          }
+        },
+        {
+          "id": "det-notify-deadline-missed",
+          "kind": "capability",
+          "target": {
+            "contains": "Must Notify The Insurer Of A Loss Within 7 Days"
+          },
+          "expect": {
+            "outcome": "succeeded",
+            "output": {
+              "matched": false
+            }
+          },
+          "input": {
+            "days_since_becoming_aware_loss": 30
+          }
         },
         {
           "id": "wf-hitl-review",

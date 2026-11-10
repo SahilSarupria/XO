@@ -60,7 +60,16 @@ export class AzureOpenAiProvider implements ModelProvider {
       body: JSON.stringify({
         max_tokens: request.maxOutputTokens,
         temperature: request.temperature,
-        messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
+        messages: request.messages.map((m) => ({
+          role: m.role,
+          content:
+            m.images !== undefined && m.images.length > 0
+              ? [
+                  { type: 'text', text: m.content },
+                  ...m.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mediaType};base64,${i.dataBase64}` } })),
+                ]
+              : m.content,
+        })),
         response_format: request.responseSchema
           ? { type: 'json_schema', json_schema: { name: 'capability_output', schema: request.responseSchema, strict: true } }
           : undefined,

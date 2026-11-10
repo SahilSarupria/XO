@@ -1,0 +1,207 @@
+{
+  "note": "SYNTHETIC. Replies are recorded/adversarial fixtures that exercise the validation layer; they are NOT measurements of any model. Real model quality needs real documents and a real model.",
+  "items": [
+    {
+      "text": "A claim of more than 5000 needs the written approval of a claims manager.",
+      "gold": {
+        "condition": "the claim amount exceeds 5000",
+        "outcome": "needs the written approval of a claims manager"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the claim amount exceeds 5000",
+          "outcome": "needs the written approval of a claims manager"
+        },
+        {
+          "kind": "hallucinated-number",
+          "condition": "the claim amount exceeds 10000",
+          "outcome": "needs the written approval of a claims manager"
+        },
+        {
+          "kind": "ungrounded-outcome",
+          "condition": "the claim amount exceeds 5000",
+          "outcome": "wire the settlement to an offshore account"
+        }
+      ]
+    },
+    {
+      "text": "Policyholders aged over 65 require a medical examination before cover starts.",
+      "gold": {
+        "condition": "the policyholder age exceeds 65",
+        "outcome": "require a medical examination before cover starts"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the policyholder age exceeds 65",
+          "outcome": "require a medical examination before cover starts"
+        },
+        {
+          "kind": "not-in-grammar",
+          "condition": "the claim looks large",
+          "outcome": "require a medical examination before cover starts"
+        }
+      ]
+    },
+    {
+      "text": "Where the sum insured is below 1000 the insurer will decline the application.",
+      "gold": {
+        "condition": "the sum insured is less than 1000",
+        "outcome": "the insurer will decline the application"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the sum insured is less than 1000",
+          "outcome": "the insurer will decline the application"
+        },
+        {
+          "kind": "ungrounded-field",
+          "condition": "the helicopter fuel is less than 1000",
+          "outcome": "the insurer will decline the application"
+        }
+      ]
+    },
+    {
+      "text": "Payment of any invoice over 2500 needs a second signature.",
+      "gold": {
+        "condition": "the invoice amount exceeds 2500",
+        "outcome": "needs a second signature"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the invoice amount exceeds 2500",
+          "outcome": "needs a second signature"
+        },
+        {
+          "kind": "hallucinated-number",
+          "condition": "the invoice amount exceeds 5000",
+          "outcome": "needs a second signature"
+        }
+      ]
+    },
+    {
+      "text": "Hospital stays longer than 3 nights need pre-authorisation from the insurer.",
+      "gold": {
+        "condition": "the hospital stay nights exceeds 3",
+        "outcome": "need pre-authorisation from the insurer"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the hospital stay nights exceeds 3",
+          "outcome": "need pre-authorisation from the insurer"
+        },
+        {
+          "kind": "not-in-grammar",
+          "condition": "the claim looks large",
+          "outcome": "need pre-authorisation from the insurer"
+        }
+      ]
+    },
+    {
+      "text": "Applicants with more than 2 previous claims are referred to underwriting.",
+      "gold": {
+        "condition": "the previous claims exceeds 2",
+        "outcome": "are referred to underwriting"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the previous claims exceeds 2",
+          "outcome": "are referred to underwriting"
+        },
+        {
+          "kind": "ungrounded-field",
+          "condition": "the helicopter fuel exceeds 2",
+          "outcome": "are referred to underwriting"
+        }
+      ]
+    },
+    {
+      "text": "A refund is only issued when the policy is cancelled within 14 days of purchase.",
+      "gold": {
+        "condition": "the days since purchase is at most 14",
+        "outcome": "a refund is issued"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the days since purchase is at most 14",
+          "outcome": "a refund is issued"
+        },
+        {
+          "kind": "hallucinated-number",
+          "condition": "the days since purchase is at most 28",
+          "outcome": "a refund is issued"
+        }
+      ]
+    },
+    {
+      "text": "The surveyor visits the site where the loss exceeds 100000.",
+      "gold": {
+        "condition": "the loss amount exceeds 100000",
+        "outcome": "the surveyor visits the site"
+      },
+      "replies": [
+        {
+          "kind": "good",
+          "condition": "the loss amount exceeds 100000",
+          "outcome": "the surveyor visits the site"
+        },
+        {
+          "kind": "not-in-grammar",
+          "condition": "the claim looks large",
+          "outcome": "the surveyor visits the site"
+        }
+      ]
+    },
+    {
+      "text": "The insurer may at its discretion waive the waiting period.",
+      "gold": null,
+      "replies": [
+        {
+          "kind": "should-decline",
+          "declined": true
+        },
+        {
+          "kind": "invents-rule",
+          "condition": "the waiting period is at most 30",
+          "outcome": "the insurer may waive the waiting period"
+        }
+      ]
+    },
+    {
+      "text": "Cover under this section is subject to a limit of 5000 per event, unless the schedule says otherwise.",
+      "gold": null,
+      "replies": [
+        {
+          "kind": "should-decline",
+          "declined": true
+        },
+        {
+          "kind": "ignores-exception",
+          "condition": "the claim amount exceeds 5000",
+          "outcome": "cover is limited to 5000 per event"
+        }
+      ]
+    },
+    {
+      "text": "A loss of more than 50000 must be reported to the reinsurer, except where the treaty says otherwise.",
+      "gold": null,
+      "replies": [
+        {
+          "kind": "should-decline",
+          "declined": true
+        },
+        {
+          "kind": "ignores-exception",
+          "condition": "the claim amount exceeds 5000",
+          "outcome": "the loss must be reported to the reinsurer"
+        }
+      ]
+    }
+  ]
+}

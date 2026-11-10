@@ -1,0 +1,115 @@
+/**
+ * WS1-04 (CRD-04): a deliberately BROAD, deterministic detector for sentences that look like they
+ * bear a decision — an obligation, a limit, an eligibility test, an exclusion, a deadline.
+ *
+ * It is the recall safety net for the rule-pattern parser, not an extractor. The parser
+ * (`rule-pattern-parser.ts`) is a closed set of precise patterns; a sentence it cannot parse used
+ * to vanish without a trace, so the miss rate was invisible. This detector is applied ONLY to the
+ * sentences the parser rejected, and what it flags is reported for human review as
+ * `UnclassifiedSentence` — it never becomes a node, a capability, or an approval candidate. Being
+ * wide (many false positives) is the right trade here: a false positive costs a reviewer a glance,
+ * a false negative is a missed rule nobody knows about.
+ *
+ * Insurance-flavoured because the pilot vertical is insurance operations (CRD-01); the cue
+ * families are generic enough to fire on other policy documents too.
+ */
+
+interface CueFamily {
+  readonly family: string;
+  readonly pattern: RegExp;
+}
+
+// All patterns are case-insensitive, anchored on word boundaries, and stateless (no /g flag), so a
+// shared instance is safe to reuse across calls.
+const CUE_FAMILIES: readonly CueFamily[] = [
+  {
+    family: 'obligation',
+    pattern:
+      /\b(must|shall|is required to|are required to|required to|obliged to|has to|have to|needs? to|needs?|requires?|(?:is|are) referred|will (?:not )?(?:pay|cover|reimburse|refund|provide|indemni[a-z]+))\b/i,
+  },
+  {
+    // "A claim of more than 5000 needs ...", "Hospital stays longer than 3 nights need ...": a comparator against a
+    // number is a threshold whatever verb follows, so it is a strong cue on its own.
+    family: 'threshold',
+    pattern:
+      /\b(?:more than|greater than|over|above|exceed(?:s|ing)?|longer than|below|under|less than|fewer than|at least|at most)\s+(?:[$€£₹]\s?)?\d/i,
+  },
+  {
+    family: 'permission',
+    pattern:
+      /\b(may only|is entitled to|are entitled to|entitled to|is eligible|are eligible|eligible for|is permitted|are permitted|permitted to|authori[sz]ed to)\b/i,
+  },
+  {
+    family: 'prohibition',
+    pattern:
+      /\b(may not|must not|shall not|cannot|can not|is not permitted|are not permitted|prohibited|forbidden|not allowed|not eligible|ineligible)\b/i,
+  },
+  {
+    family: 'condition',
+    pattern:
+      /\b(unless|except(?: for| where| when| that)?|provided that|subject to|in the event|only if|on condition that|if and only if|in case of|where the)\b/i,
+  },
+  {
+    family: 'deadline',
+    pattern:
+      /\b(within \d+|within (?:one|two|three|four|five|six|seven|ten|fourteen|thirty|sixty|ninety)\b|no later than|not later than|prior to|before the|after the|by the end of|waiting period|grace period|cooling[- ]off)\b/i,
+  },
+  {
+    family: 'limit',
+    pattern:
+      /\b(up to|at most|at least|no more than|no less than|not exceed|exceeds?|maximum|minimum|limit of|limited to|sub-?limit|aggregate|per (?:claim|occurrence|event|policy|year|day)|deductible|excess|co-?pay(?:ment)?|co-?insurance)\b/i,
+  },
+  {
+    family: 'coverage',
+    pattern:
+      /\b(is covered|are covered|not covered|excluded|exclusions?|insured|indemnif(?:y|ied|ication)|reimburs\w*|payable|liable|liability|benefit(?:s)? (?:is|are|shall)|claims?)\b/i,
+  },
+  { family: 'quantity', pattern: /(?:[$€£₹]\s?\d|\d\s?%|\d+\s?(?:days?|business days?|working days?|weeks?|months?|years?|hours?)\b)/i },
+];
+
+/** Sentences this short are headings or fragments, not rules. */
+const MIN_WORDS = 4;
+
+/**
+ * Returns the sorted, de-duplicated cue family names found in `sentence`; empty when the sentence
+ * does not look decision-bearing. A single weak family (`coverage` or `quantity` alone) is not
+ * enough: those words appear in plain description ("This claim form has 3 pages"), so they only
+ * count alongside a second family.
+ */
+export function findDecisionCues(sentence: string): readonly string[] {
+  const text = sentence.trim();
+  if (text.split(/\s+/).filter((w) => w.length > 0).length < MIN_WORDS) return [];
+  const found = CUE_FAMILIES.filter((f) => f.pattern.test(text)).map((f) => f.family);
+  const unique = [...new Set(found)].sort();
+  const strong = unique.filter((f) => f !== 'coverage' && f !== 'quantity');
+  return strong.length > 0 || unique.length >= 2 ? unique : [];
+}
+
+const TABLE_HEADER_FAMILIES: readonly CueFamily[] = [
+  { family: 'limit', pattern: /\b(limit|sub-?limit|excess|deductible|co-?pay(?:ment)?|co-?insurance|maximum|minimum|sum insured|cap)\b/i },
+  { family: 'deadline', pattern: /\b(waiting|period|within|days|notice|deadline|grace|time ?frame)\b/i },
+];
+
+/**
+ * WS1-03: a table row read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000").
+ * Returns that statement and its cue families, or `undefined` when the row is not decision-bearing
+ * (no recognised header, empty row, or no value under a decision-bearing column). The statement is
+ * for human review only, exactly like a flagged sentence: it never becomes a rule by itself.
+ */
+export function tableRowStatement(
+  header: readonly string[] | undefined,
+  cells: readonly string[],
+): { readonly text: string; readonly cues: readonly string[] } | undefined {
+  if (header === undefined) return undefined;
+  const pairs = header.map((h, i) => ({ h: h.trim(), v: (cells[i] ?? '').trim() })).filter((p) => p.h.length > 0 && p.v.length > 0);
+  if (pairs.length < 2) return undefined;
+  const cues = new Set<string>();
+  for (const { h, v } of pairs.slice(1)) {
+    // The first column labels the row (the thing a limit applies to); the rest carry the terms.
+    for (const f of TABLE_HEADER_FAMILIES) if (f.pattern.test(h)) cues.add(f.family);
+    if (/\d/.test(v)) for (const f of CUE_FAMILIES) if (f.family === 'quantity' && f.pattern.test(v)) cues.add('quantity');
+  }
+  const strong = [...cues].filter((c) => c !== 'quantity');
+  if (strong.length === 0) return undefined;
+  return { text: pairs.map((p) => `${p.h}: ${p.v}`).join('; '), cues: [...cues].sort() };
+}

@@ -175,8 +175,17 @@ export function mintRuleLevelCapabilities(reasoning: ReasoningGraph): readonly C
 
     const outcome = outcomeTextFor(kind, node)!.trim();
     const condition = node.condition?.trim();
-    const name = nameFromOutcome(outcome);
-    const description = condition !== undefined && condition.length > 0 ? `If ${condition}, then ${outcome}.` : outcome;
+    // A normalised insurance rule (`rule-pattern-parser.ts`: threshold / deadline) carries the source sentence as its
+    // rationale. Its outcome alone ("must be referred to a senior adjuster") is a meaningless capability name, so such a
+    // rule is named and described by the sentence it came from.
+    const sourceSentence = node.rationale?.trim();
+    const fromSentence = sourceSentence !== undefined && sourceSentence.length > 0;
+    const name = nameFromOutcome(fromSentence ? sourceSentence : outcome);
+    const description = fromSentence
+      ? `${sourceSentence}${condition !== undefined && condition.length > 0 ? ` (checked as: ${condition})` : ''}`
+      : condition !== undefined && condition.length > 0
+        ? `If ${condition}, then ${outcome}.`
+        : outcome;
 
     const id: CapabilityId = mintedCapabilityId(node.id);
     minted.push({

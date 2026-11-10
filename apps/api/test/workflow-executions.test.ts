@@ -1148,7 +1148,7 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         // inflection recognition discovering two new genuine capabilities on this same real PDF
         // ("Record in the claim file", "Record before payment authorization", both verified
         // directly against the source PDF's "must be recorded..." obligation sentences).
-        assert.deepEqual(statuses, ['executable_candidate:1', 'not_executable_yet:2', 'semantically_invalid:30']);
+        assert.deepEqual(statuses, ['executable_candidate:1', 'not_executable_yet:2', 'semantically_invalid:31']);
 
         // Honest rejection of everything that is not executable.
         for (const w of workflows.filter((x) => x.status !== 'executable_candidate')) {
