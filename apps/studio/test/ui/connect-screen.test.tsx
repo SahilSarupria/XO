@@ -201,4 +201,14 @@ describe('Connect screen', () => {
     expect(screen.queryByRole('button', { name: 'Choose folder' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Coming soon')).toHaveLength(3);
   });
+
+  it('a plain read does not show a "nothing changed" notice', async () => {
+    const { api, connect } = setup();
+    const user = await open(connect, api);
+    await addFolder(user);
+    await user.click(await screen.findByRole('button', { name: 'Confirm selection' }));
+    await user.click(await screen.findByRole('button', { name: 'Read now' }));
+    await screen.findAllByText(/XO kept what it read/);
+    expect(screen.queryByText(/Nothing about future reading changed/)).not.toBeInTheDocument();
+  });
 });

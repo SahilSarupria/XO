@@ -13,7 +13,7 @@ export interface StatusView {
   readonly explanation: string;
 }
 
-export function statusView(s: Pick<Statement, 'status' | 'origin' | 'kind' | 'reviewRequired'>): StatusView {
+export function statusView(s: Pick<Statement, 'status' | 'origin' | 'kind' | 'reviewRequired'> & { corroboration?: number }): StatusView {
   if (s.kind === 'conflict' || s.status === 'conflicted')
     return { label: 'Conflict', tone: 'danger', explanation: 'Sources disagree. XO has not chosen; a reviewer needs to decide.' };
   if (s.status === 'hypothesis' || s.reviewRequired)
@@ -26,7 +26,16 @@ export function statusView(s: Pick<Statement, 'status' | 'origin' | 'kind' | 're
   if (s.origin === 'observed') return { label: 'Observed', tone: 'success', explanation: 'Directly recorded by the source.' };
   if (s.origin === 'stated')
     return { label: 'Stated', tone: 'success', explanation: 'Stated by the source (for example in a policy or message).' };
-  return { label: 'Inferred, corroborated', tone: 'neutral', explanation: 'Inferred, and supported by more than one independent source.' };
+  if (s.origin === 'inferred')
+    return (s.corroboration ?? 0) >= 2
+      ? { label: 'Inferred, corroborated', tone: 'neutral', explanation: 'Inferred, and supported by more than one independent source.' }
+      : {
+          label: 'Inferred, one source',
+          tone: 'warning',
+          explanation: 'Inferred from what was read, from a single source. Not confirmed.',
+        };
+  // An entity has no origin: XO recognized it. It says nothing about how many sources agree; that is the source count shown beside it.
+  return { label: 'Recognized', tone: 'neutral', explanation: 'XO recognized this from what it read.' };
 }
 
 export const independentSources = (evidence: readonly EvidenceReference[]): number => new Set(evidence.map((e) => e.sourceId)).size;

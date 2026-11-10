@@ -23,7 +23,10 @@ describe('statement status wording', () => {
   it('maps C6 status and origin to plain labels, never inventing certainty', () => {
     expect(statusView(st()).label).toBe('Observed');
     expect(statusView(st({ origin: 'stated' })).label).toBe('Stated');
-    expect(statusView(st({ origin: 'inferred' })).label).toBe('Inferred, corroborated');
+    expect(statusView(st({ origin: 'inferred', corroboration: 2 })).label).toBe('Inferred, corroborated');
+    expect(statusView(st({ origin: 'inferred', corroboration: 1 })).label).toBe('Inferred, one source');
+    expect(statusView(st({ origin: undefined })).label).toBe('Recognized');
+    expect(statusView(st({ kind: 'entity', origin: undefined })).explanation).not.toMatch(/more than one/);
     expect(statusView(st({ status: 'hypothesis', origin: 'inferred', reviewRequired: true })).label).toBe('Unverified guess');
     expect(statusView(st({ kind: 'conflict', status: 'conflicted' })).label).toBe('Conflict');
     expect(statusView(st({ status: 'unknown' })).label).toBe('Unknown');

@@ -360,7 +360,8 @@ function SourceDetail(props: { id: string; capabilities: ConnectCapabilities | u
     const r = await fn();
     setBusy(undefined);
     if (!r.ok) return setProblem(r.problem);
-    setNote(effectsSentence(r.value.effects));
+    // "Nothing changed" after a plain read or check is noise; say something only when future reading actually changed.
+    setNote(r.value.effects.futureReads === 'unchanged' ? undefined : effectsSentence(r.value.effects));
     load.reload();
   };
   const lastRead = [...(source.history ?? [])].reverse().find((h) => h.kind === 'read')?.read;

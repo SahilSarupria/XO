@@ -82,3 +82,20 @@
 .connect-stats .card p {
   margin: 0;
 }
+
+/* Add-a-source cards stack vertically (the base .card is a horizontal row) and never stretch their button or badge. */
+.connect-add-card {
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.connect-add-card > * {
+  align-self: flex-start;
+}
+.connect-add-card p {
+  margin: 0;
+}
+.connect-add-card .badge {
+  margin-top: auto;
+}
