@@ -2,11 +2,14 @@ import { mkdtemp, rm, mkdir, writeFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { MockClock } from '@xo/testing';
+import { establishAuthenticatedPrincipal, type AuthenticatedPrincipal } from '@xo/permissions';
 import {
   ConnectorRegistry,
   DevelopmentOperatorAuthorization,
   EnvironmentInventory,
+  EvidenceLedger,
   FailClosedAuthorization,
+  InMemoryAuditRecorder,
   LocalFilesystemConnector,
   type AuthorizationPort,
   type ConnectorContext,
@@ -45,8 +48,26 @@ export function makeDeps(): DiscoveryDeps {
   return { registry, inventory: new EnvironmentInventory() };
 }
 
+/** A principal minted through the platform's own factory, as the trusted authentication boundary would. Test-only identity. */
+export function authenticated(id = 'test-operator-1', kind: 'human' | 'service' = 'human'): AuthenticatedPrincipal {
+  const minted = establishAuthenticatedPrincipal({ kind, id });
+  if (!minted.ok) throw new Error('test principal could not be minted');
+  return minted.value;
+}
+
+export const TEST_PRINCIPAL = authenticated();
+
+/** M2.1: every protected operation needs an authenticated principal, so the shared helper supplies one by default. */
 export function ctxFor(authorization: AuthorizationPort, clock: MockClock = new MockClock(), signal?: AbortSignal): ConnectorContext {
-  return { clock, authorization, ...(signal !== undefined ? { signal } : {}) };
+  return {
+    clock,
+    authorization,
+    principal: TEST_PRINCIPAL,
+    // M2.2: protected evidence operations need an audit recorder. Non-durable and TEST-ONLY; never a package default.
+    audit: new InMemoryAuditRecorder(() => clock.now()),
+    ledger: new EvidenceLedger(),
+    ...(signal !== undefined ? { signal } : {}),
+  };
 }
 
 export function allowRoot(root: string, permissions: readonly string[] = ['filesystem.list']): AuthorizationPort {

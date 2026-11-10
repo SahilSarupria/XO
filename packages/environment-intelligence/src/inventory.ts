@@ -134,8 +134,23 @@ export class EnvironmentInventory {
     return ok(updated);
   }
 
+  /** M2.2: records that the holders of a revoked source's evidence confirmed its purge, clearing `purgeRequired`. Never removes history. */
+  markPurged(sourceId: SourceId, at: string): SourceRecord | undefined {
+    const record = this.records.get(sourceId);
+    if (record === undefined) return undefined;
+    const updated: SourceRecord = Object.freeze({ ...record, purgeRequired: false, lastSeenAt: at });
+    this.records.set(sourceId, updated);
+    return updated;
+  }
+
   get(sourceId: SourceId): SourceRecord | undefined {
     return this.records.get(sourceId);
+  }
+
+  /** Replaces ALL records (state restored from the durable C0.4 journal at startup). Records are frozen. */
+  restoreRecords(records: readonly SourceRecord[]): void {
+    this.records.clear();
+    for (const r of records) this.records.set(r.source.sourceId, Object.freeze({ ...r }));
   }
 
   /** Deterministic order (by id) so snapshots are stable across runs. */

@@ -17,6 +17,37 @@ export function isInside(root: string, candidate: string): boolean {
 }
 
 /**
+ * PURE string validation of a caller-supplied root. It performs NO filesystem
+ * access, so it can run before the authorization decision without revealing
+ * anything about the environment (existence, type, symlink targets, the home
+ * directory). What it checks is only the shape of the caller's own string:
+ * non-empty, no NUL, absolute, no empty/`.`/`..` segments, and not `/`.
+ * A single trailing slash is stripped. The result is the lexical scope that
+ * is presented to the authorization gate.
+ */
+export function validateRootLexically(root: unknown): Result<string, DiscoveryError> {
+  if (typeof root !== 'string' || root.length === 0 || root.includes('\0')) {
+    return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'root must be a non-empty path without NUL bytes'));
+  }
+  if (!isAbsolute(root)) {
+    return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'root must be an absolute path'));
+  }
+  const trimmed = root.length > 1 ? root.replace(/\/+$/u, '') : root;
+  if (trimmed === '' || trimmed === '/') {
+    return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'a filesystem root cannot be an approved scope'));
+  }
+  if (
+    trimmed
+      .split('/')
+      .slice(1)
+      .some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'root must be a normalized absolute path'));
+  }
+  return ok(trimmed);
+}
+
+/**
  * Validates and canonicalizes the approved root. What is authorized and
  * scanned is the REAL path, so a symlinked root cannot make the displayed
  * scope differ from the actual one.
@@ -69,13 +100,28 @@ export async function resolveRoot(root: string): Promise<Result<string, Discover
  * resolving every intermediate symlink) escapes the root, and any symlink
  * in any path component (links are never followed).
  */
-export async function resolveInside(realRoot: string, resourceKey: string): Promise<Result<string, DiscoveryError>> {
+/**
+ * PURE string validation of a source-relative resource key (no filesystem
+ * access). Rejects NUL/empty keys, absolute keys, backslashes, and empty, `.`
+ * or `..` segments. Safe to run before the authorization decision. Returns the
+ * path segments.
+ */
+export function validateKeyLexically(resourceKey: string): Result<readonly string[], DiscoveryError> {
   const violation = (reason: string): Result<never, DiscoveryError> =>
     err(discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'resource is outside the authorized scope', { reason }));
   if (typeof resourceKey !== 'string' || resourceKey.length === 0 || resourceKey.includes('\0')) return violation('invalid_key');
   if (isAbsolute(resourceKey) || resourceKey.includes('\\')) return violation('absolute_or_backslash');
   const segments = resourceKey.split('/');
   if (segments.some((s) => s === '' || s === '.' || s === '..')) return violation('dot_or_empty_segment');
+  return ok(segments);
+}
+
+export async function resolveInside(realRoot: string, resourceKey: string): Promise<Result<string, DiscoveryError>> {
+  const violation = (reason: string): Result<never, DiscoveryError> =>
+    err(discoveryError(DiscoveryErrorCode.SCOPE_VIOLATION, 'resource is outside the authorized scope', { reason }));
+  const lexical = validateKeyLexically(resourceKey);
+  if (!lexical.ok) return lexical;
+  const segments = lexical.value;
   const abs = join(realRoot, ...segments);
   if (!isInside(realRoot, abs)) return violation('lexical_escape');
 

@@ -3,6 +3,7 @@ import type { AuthorityKind } from './authorization.js';
 import type { SourceType } from './connector.js';
 import { strengthOf, type EpistemicStatus, type ValidationState } from './epistemic.js';
 import type { Evidence } from './evidence.js';
+import type { EvidenceEligibility } from './evidence-ledger.js';
 import { RelationshipId, stableId, type ConnectorId, type EvidenceId, type SourceId } from './ids.js';
 import type { EnvironmentInventory } from './inventory.js';
 import { proposeCandidateProcesses, type CandidateProcess } from './process-discovery.js';
@@ -108,6 +109,12 @@ export interface BuildModelInput {
   readonly generatedAt: string;
   readonly inventory: EnvironmentInventory;
   readonly evidence: readonly Evidence[];
+  /**
+   * M2.2: when supplied (normally the `EvidenceLedger`), evidence that is not currently eligible - revoked, purged,
+   * quarantined, or never released through an audited operation - is dropped BEFORE the model is built, so it cannot
+   * influence any resource, relationship or process. The model's notices say how many items were excluded.
+   */
+  readonly eligibility?: EvidenceEligibility;
 }
 
 const refKey = (r: ResourceRef): string => `${r.sourceId}/${r.resourceKey}`;
@@ -121,7 +128,13 @@ function num(v: unknown, fallback = 0): number {
 }
 
 /** Builds the model from inventory + evidence. Pure and deterministic: same inputs, byte-identical output. */
-export function buildEnvironmentModel(input: BuildModelInput): EnvironmentModel {
+export function buildEnvironmentModel(rawInput: BuildModelInput): EnvironmentModel {
+  const eligible =
+    rawInput.eligibility === undefined
+      ? rawInput.evidence
+      : rawInput.evidence.filter((e) => rawInput.eligibility?.isEligible(e.id) === true);
+  const excludedIneligible = rawInput.evidence.length - eligible.length;
+  const input: BuildModelInput = { ...rawInput, evidence: eligible };
   // Repeat discovery yields identical evidence ids; keep one of each.
   const unique = new Map<EvidenceId, Evidence>();
   for (const e of input.evidence) if (!unique.has(e.id)) unique.set(e.id, e);
@@ -310,6 +323,11 @@ export function buildEnvironmentModel(input: BuildModelInput): EnvironmentModel 
       ? 'TEST FIXTURE: this model was built from fixture data and is not a customer environment.'
       : 'Built from live discovery of the authorized scope only; not validated organizational knowledge.',
     'All relationships and processes are unvalidated and require human review. Nothing here grants permission or is executable.',
+    ...(excludedIneligible > 0
+      ? [
+          `${excludedIneligible} evidence item(s) were excluded because they are not eligible (revoked, purged, quarantined, or not released through an audited operation).`,
+        ]
+      : []),
     ...(systems.some((s) => s.evidenceAuthorities.includes('development_unverified'))
       ? ['Some evidence was read under a DEVELOPMENT-ONLY operator allow-list, not the platform authorization gate.']
       : []),

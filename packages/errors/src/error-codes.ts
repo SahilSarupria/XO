@@ -175,6 +175,13 @@ export const ErrorCode = {
   AUDIT_EVENT_INVALID: 'XO_AUDIT_EVENT_INVALID',
   AUDIT_ACCESS_DENIED: 'XO_AUDIT_ACCESS_DENIED',
   AUDIT_CONFIG_INVALID: 'XO_AUDIT_CONFIG_INVALID',
+  // C0.3 — chained-store / lifecycle semantics. CONFLICT: same idempotency key, different content. ORDER_VIOLATION:
+  // a lifecycle rule (attempt before terminal, one terminal) was broken. CORRUPT: stored history failed integrity
+  // verification (fail closed). LOCKED: another writer owns a single-writer store.
+  AUDIT_CONFLICT: 'XO_AUDIT_CONFLICT',
+  AUDIT_ORDER_VIOLATION: 'XO_AUDIT_ORDER_VIOLATION',
+  AUDIT_CORRUPT: 'XO_AUDIT_CORRUPT',
+  AUDIT_LOCKED: 'XO_AUDIT_LOCKED',
 
   // Idempotency (P1.0 M6) — retries/duplicates of a side-effecting request. Messages never contain the key or any request content.
   // Key reused for a materially different request.

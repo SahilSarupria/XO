@@ -1,6 +1,10 @@
 import type { PermissionScope, Principal } from '@xo/permissions';
 import type { Result } from '@xo/types';
+import type { AuditOptions } from './audited-operation.js';
+import type { AuditRecorder } from './audit.js';
 import type { AuthorizationPort } from './authorization.js';
+import type { EvidenceLedger } from './evidence-ledger.js';
+import type { EiStateStore } from './state-journal.js';
 import type { DiscoveryError } from './errors.js';
 import type { Evidence, EvidenceKind } from './evidence.js';
 import type { ConnectorId, SourceId } from './ids.js';
@@ -19,6 +23,13 @@ export type ConnectorOperation = 'detect' | 'validate_connection' | 'discover' |
 export type OperationSupport = 'supported' | 'unsupported';
 
 export type AuthMethod = 'none' | 'operator_scope_grant' | 'oauth2' | 'api_key' | 'service_account' | 'database_credentials';
+
+/**
+ * C1: the authentication mechanisms that actually work in this platform. The platform has no secret mechanism yet, so every other
+ * `AuthMethod` is a declared-but-unimplemented label: registering a connector that claims one fails closed
+ * (`ConnectorRegistry.register`), as does a config field marked `secret`.
+ */
+export const SUPPORTED_AUTH_METHODS: readonly AuthMethod[] = Object.freeze(['none', 'operator_scope_grant'] as const);
 
 export interface ConfigFieldSpec {
   readonly name: string;
@@ -59,7 +70,31 @@ export interface ConnectorContext {
   readonly authorization: AuthorizationPort;
   /** Cooperative cancellation. Connectors check it between units of work and return partial results. */
   readonly signal?: AbortSignal;
+  /**
+   * The caller. Protected operations (M2.1) require this to be the exact
+   * `AuthenticatedPrincipal` minted by `establishAuthenticatedPrincipal` at a
+   * trusted authentication boundary; the type is `Principal` only so a plain
+   * shape can be passed and REJECTED at runtime. Missing, plain, copied or
+   * deserialized principals fail closed with `EI_UNAUTHENTICATED`. It is never
+   * read from request fields, environment variables or discovery results.
+   */
   readonly principal?: Principal;
+  /**
+   * M2.2: where protected evidence operations record their write-ahead attempt and completion. REQUIRED for any
+   * operation that reads or releases evidence: with none configured those operations are refused
+   * (`EI_AUDIT_UNAVAILABLE`); there is no no-op default and no fallback to unaudited release.
+   */
+  readonly audit?: AuditRecorder;
+  /** M2.2: tracks released / quarantined / revoked / purged evidence so ineligible evidence is not selected again. Optional. */
+  readonly ledger?: EvidenceLedger;
+  /**
+   * C0.4: durable lifecycle-state store. OPTIONAL: with none configured, ledger and inventory are in-memory exactly as before.
+   * When configured it must be started (`start()`), its `ledger` must be the one in this context, and protected operations are
+   * refused with `EI_STATE_UNAVAILABLE` whenever it is not operational (no memory-only fallback).
+   */
+  readonly state?: EiStateStore;
+  /** M2.2: timeout / retry / operation-id tuning for audit writes. Optional. */
+  readonly auditOptions?: AuditOptions;
 }
 
 /** A system/location that was found to exist. Existence only — says nothing about permission to read it. */
@@ -93,6 +128,11 @@ export interface LimitReport {
   readonly hit: readonly string[];
   readonly entriesVisited: number;
   readonly elapsedMs: number;
+  /**
+   * Present (true) only when enumeration was truncated: the entries seen are the first ones in filesystem order, not
+   * the lexically first, so which entries were included is NOT deterministic across runs for this result.
+   */
+  readonly filesystemOrderUsed?: true;
 }
 
 export type OutcomeStatus = 'complete' | 'partial';
@@ -137,6 +177,59 @@ export interface ConnectionValidation {
 }
 
 /**
+ * C1: an opaque, connector-defined position in a source's change stream. The caller holds it; Environment Intelligence does not
+ * persist cursors in C1 (the state journal's schema is closed). Bounded and NUL-free so it can never carry a payload.
+ */
+export type SyncCursor = string;
+export const MAX_SYNC_CURSOR_LENGTH = 512;
+
+export interface SyncRequest<TScope extends DiscoveryScopeBase = DiscoveryScopeBase> {
+  readonly sourceId: SourceId;
+  readonly kind: EvidenceKind;
+  /** Where the previous sync stopped. Absent = from the beginning. The same cursor replayed must yield the same result. */
+  readonly cursor?: SyncCursor;
+  readonly scope: TScope;
+}
+
+/**
+ * C4: an object the provider reports as no longer present or no longer accessible. This is the one deficiency in the C1 sync contract
+ * that C4 could not work around: without it a delta provider has no way to say "this was deleted", so stale content would stay
+ * eligible. It is OPTIONAL and additive (connectors that never set it behave exactly as before). `resourceKey` is a source-relative key
+ * and is treated as untrusted provider data: it is only ever digested, never persisted or logged.
+ */
+export interface RemovedResource {
+  readonly resourceKey: string;
+  readonly reason: 'deleted' | 'access_lost';
+}
+
+export interface SyncOutcome {
+  readonly status: OutcomeStatus;
+  readonly evidence: readonly Evidence[];
+  readonly skipped: SkippedSummary;
+  readonly limits: LimitReport;
+  readonly errors: readonly DiscoveryError[];
+  /** Where the next sync should resume. Absent = nothing further to resume from. */
+  readonly nextCursor?: SyncCursor;
+  /** C4, OPTIONAL: resources deleted or no longer accessible since the cursor. Consumed only by `ingestSource`; plain `syncSource` callers may ignore it. */
+  readonly removed?: readonly RemovedResource[];
+}
+
+export interface HealthRequest<TScope extends DiscoveryScopeBase = DiscoveryScopeBase> {
+  readonly sourceId: SourceId;
+  readonly scope: TScope;
+}
+
+export type HealthStatus = 'healthy' | 'degraded' | 'unavailable';
+
+/** The result of an authorized probe. Carries no evidence and changes no source state in C1. */
+export interface HealthReport {
+  readonly sourceId: SourceId;
+  readonly status: HealthStatus;
+  readonly checkedAt: string;
+  readonly details: Readonly<Record<string, string | number | boolean>>;
+}
+
+/**
  * The smallest useful connector contract. Operations a connector does not
  * support still exist on the object but must return `UNSUPPORTED_OPERATION`
  * and be declared `'unsupported'` in the descriptor, so callers can plan
@@ -161,6 +254,16 @@ export interface Connector<TScope extends DiscoveryScopeBase = DiscoveryScopeBas
     request: AcquisitionRequest & { readonly scope: TScope },
     ctx: ConnectorContext,
   ): Promise<Result<AcquisitionOutcome, DiscoveryError>>;
+  /**
+   * C1, OPTIONAL. Present if and only if `descriptor.operations.incremental_sync === 'supported'` (the registry rejects any
+   * mismatch). Read-only, separately authorized and audited (attempt + terminal) like `acquireContent`.
+   */
+  incrementalSync?(request: SyncRequest<TScope>, ctx: ConnectorContext): Promise<Result<SyncOutcome, DiscoveryError>>;
+  /**
+   * C1, OPTIONAL. Present if and only if `descriptor.operations.health === 'supported'`. A probe is itself an authorized
+   * operation; it returns no evidence and records denial-only audit, like `detect`/`validate_connection`.
+   */
+  health?(request: HealthRequest<TScope>, ctx: ConnectorContext): Promise<Result<HealthReport, DiscoveryError>>;
 }
 
 /** Scope used when a connector asks the gate about a path; re-exported so adapters share one shape. */

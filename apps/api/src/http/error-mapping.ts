@@ -54,6 +54,11 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUDIT_EVENT_INVALID]: 500,
   [ErrorCode.AUDIT_ACCESS_DENIED]: 403,
   [ErrorCode.AUDIT_CONFIG_INVALID]: 500,
+  // C0.3: server-side audit integrity/lifecycle failures. Never a client error; the operation fails closed.
+  [ErrorCode.AUDIT_CONFLICT]: 500,
+  [ErrorCode.AUDIT_ORDER_VIOLATION]: 500,
+  [ErrorCode.AUDIT_CORRUPT]: 503,
+  [ErrorCode.AUDIT_LOCKED]: 503,
 
   // Idempotency (P1.0 M6) — 422: the request was well-formed but the key was already used for a different request. 409: the
   // key's operation is still running or ended in an unknowable state (a retry with the SAME key can never resolve it by
