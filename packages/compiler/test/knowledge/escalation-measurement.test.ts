@@ -95,8 +95,9 @@ async function loadRows(): Promise<Row[]> {
 
 type Strategy = { readonly name: string; readonly escalate: (row: Row) => boolean; readonly exploratory?: boolean };
 
+// The experimental confidence gate is opt-in since P2 closed; this harness measures it, so it must request it explicitly.
 const gated = (over: Partial<EscalationPolicyConfig>) => (row: Row) =>
-  decideEscalation(row.unit, row.nodes, { ...DEFAULT_ESCALATION_POLICY, ...over }).escalate;
+  decideEscalation(row.unit, row.nodes, { ...DEFAULT_ESCALATION_POLICY, mode: 'gated', ...over }).escalate;
 
 /** EXPLORATORY ONLY (not shipped): also escalate when fewer than half of the non-primary candidates are usable and >= 0.65. */
 const noisyRule = (row: Row): boolean => {
@@ -143,7 +144,7 @@ test('measurement: how well does each escalation policy aim its calls on real, h
 
   const strategies: Strategy[] = [
     { name: 'rules-only (never escalate)', escalate: () => false },
-    { name: 'always (legacy: every unit)', escalate: gated({ mode: 'always' }) },
+    { name: 'always (current default: every non-empty unit)', escalate: gated({ mode: 'always' }) },
     ...[0.6, 0.65, 0.7, 0.75].map((t) => ({ name: `gated threshold=${t}`, escalate: gated({ confidenceThreshold: t }) })),
     {
       name: 'gated threshold=0.7 + noisy-candidate rule (EXPLORATORY)',
@@ -156,7 +157,7 @@ test('measurement: how well does each escalation policy aim its calls on real, h
   // Rule-only baseline, by gate decision class at the default policy.
   const byClass: Record<string, { units: number; needsHelp: number; fp: number; fn: number; primaryWrong: number }> = {};
   for (const r of rows) {
-    const reason = decideEscalation(r.unit, r.nodes, DEFAULT_ESCALATION_POLICY).reason;
+    const reason = decideEscalation(r.unit, r.nodes, { ...DEFAULT_ESCALATION_POLICY, mode: 'gated' }).reason;
     const c = (byClass[reason] ??= { units: 0, needsHelp: 0, fp: 0, fn: 0, primaryWrong: 0 });
     c.units += 1;
     c.needsHelp += r.needsHelp ? 1 : 0;

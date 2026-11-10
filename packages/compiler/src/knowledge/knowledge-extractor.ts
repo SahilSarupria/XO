@@ -13,7 +13,7 @@ export interface KnowledgeExtractionOptions {
   /** When supplied, `HybridKnowledgeExtractor` additionally calls `@xo/ai-core#extractKnowledge` per unit; when omitted, extraction is rule-based only (still a correct, if lower-confidence, graph). */
   readonly aiCore?: AiCapabilityLayer;
   readonly domainHint?: string;
-  /** Overrides for confidence-gated escalation (see `escalation-policy.ts`). Absent = `DEFAULT_ESCALATION_POLICY`; `{ mode: 'always' }` restores the older every-unit behaviour. */
+  /** Overrides for the escalation policy (see `escalation-policy.ts`). Absent = `DEFAULT_ESCALATION_POLICY`: every non-empty unit escalates. `{ mode: 'gated' }` is an experimental opt-in NOT SUPPORTED by evidence. */
   readonly escalation?: Partial<EscalationPolicyConfig>;
   readonly logger?: Logger;
   /** Escape hatch for a caller that wants to supply its own `KnowledgeExtractor` entirely (e.g. a test double), bypassing the default hybrid wiring. */

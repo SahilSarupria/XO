@@ -37,9 +37,22 @@ export interface CandidateKnowledgeEdgeRef {
   readonly provenance: KnowledgeProvenance;
 }
 
+/**
+ * Call provenance for ONE model answer, carried on the result so it exists even when the answer contained zero items (a zero-item
+ * answer has no node whose derivation could record where it came from). `generated` = a response actually obtained from the provider;
+ * `cache` = a replayed cache entry (no provider call). Content-free by construction.
+ */
+export interface ModelCallInfo {
+  readonly source: 'generated' | 'cache';
+  readonly provider: string;
+  readonly model: string;
+}
+
 export interface ExtractionResult {
   readonly nodes: readonly CandidateKnowledgeNode[];
   readonly edges: readonly CandidateKnowledgeEdgeRef[];
+  /** Set by `AiKnowledgeExtractor` only; absent for rule-based results. */
+  readonly modelCall?: ModelCallInfo;
 }
 
 export interface KnowledgeExtractor {

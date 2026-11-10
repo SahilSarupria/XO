@@ -128,19 +128,53 @@ The compile does **not** fail on denial; a caller that must treat exhaustion as 
   text; the provider honours `maxOutputTokens` including hidden reasoning tokens (not verified for every provider); and the pricing
   table is accurate and current.
 
-## Slice 6: confidence-gated escalation (knowledge hybrid extractor)
+## Slice 6: escalation policy for the knowledge hybrid extractor (P2 closed: confidence gating NOT SUPPORTED)
 
-**Policy** (`knowledge/escalation-policy.ts`, a pure function over the rule extractor's candidates; the spend guard still decides whether an
+**Outcome.** The live evaluation (below) did not support confidence-based gating. The default policy is now `mode: 'always'`: escalate every unit with
+non-empty content (`minContentWords` defaults to 1, which skips only empty or whitespace-only units). No rule confidence and no candidate competition
+suppresses a call by default. `mode: 'gated'` remains available only as an explicit opt-in and is **experimental, NOT SUPPORTED by evidence**. No gating
+heuristic was extended, and `minContentWords` values above 1 are **UNVALIDATED**. Confidence-tier and competing-pair diagnostics are still reported as counts
+and never affect a call by default.
+
+### Live evaluation result (real Gemini run, one run)
+
+43 provider calls, 12,731 tokens, 0 budget denials, 0 provider failures, 1 validation rejection. 43 units (21 dev, 22 held-out), pre-registered criteria
+applied mechanically (selection on dev only, held-out once).
+
+| Arm (F1 dev / held-out)         | Dev F1   | Held F1  | Recall dev / held | False positives dev / held |
+| ------------------------------- | -------- | -------- | ----------------- | -------------------------- |
+| Rules only                      | 0.600    | 0.446    | 0.80 / 0.61       | 37 / 33                    |
+| Always escalate                 | 0.698    | 0.626    | 1.00 / 0.97       | 58 / 50                    |
+| Gated at 0.75 (the old default) | = always | = always | = always          | = always                   |
+| Gated at 0.60 / 0.65 (dev)      | 0.648    | n/a      | 0.848 (dev)       | n/a                        |
+
+- **Gated at 0.75 escalated 21/21 dev and 22/22 held-out units**, i.e. it was identical to always-escalate and saved no calls. The rule extractor's confidence
+  tiers rarely reach the top tier, so a high threshold degenerates to "always".
+- **Gated at 0.60/0.65 escalated 8/21 dev units** (F1 .648, recall .848): it saves calls but misses the 0.02 F1 tolerance, so no threshold qualified.
+- **Conclusion: confidence-based gating is NOT SUPPORTED.** Always-escalate is the only arm that kept the model's measured recall.
+
+**Limitations that remain (do not read these numbers as more than a directional check):**
+
+- **The recall gain is unverified.** Matching is sentence-containment style (a candidate matches a gold term if it equals it or contains it as a whole phrase), which
+  favours verbose model output. The model candidates have not been adjudicated, so it is unknown how many of the extra matches are genuinely valid. False positives
+  rose with the model (37 to 58 dev, 33 to 50 held-out).
+- 43 units, one annotator (who also built the gate), no inter-annotator agreement, a single model, a single run (LLM output varies between runs; the shared cache hides that variance).
+- **Nothing here shows the model output is production-accurate.** The model is used as an extra candidate source; its candidates are not validated beyond the compile-side checks below.
+- The earlier run summary reported 42 calls against 43 real ones because it summed accepted and rejected answers and missed a valid zero-item answer. The report now has
+  `providerCalls`, counted from the response itself (below).
+- A local adjudication kit (Commit 2 of this branch) is how the extra model candidates are meant to be checked by a human other than the gate's author.
+
+**Experimental gated policy** (`knowledge/escalation-policy.ts`, a pure function over the rule extractor's candidates; the spend guard still decides whether an
 escalated unit may actually call a model, and nothing here retries or routes around a denial):
 
-| Rule-extraction result                                           | Decision                                                  |
-| ---------------------------------------------------------------- | --------------------------------------------------------- |
-| Fragment: fewer than `minContentWords` (4) words                 | Skip (`insufficient_content`): a model has nothing to add |
-| No usable candidate                                              | Escalate (`no_candidate`)                                 |
-| Best usable candidate below `confidenceThreshold` (default 0.75) | Escalate (`low_confidence`)                               |
-| Competing candidates the rules cannot settle                     | Escalate (`ambiguous`)                                    |
-| Usable candidate at/above threshold, no unresolved competition   | Skip (`strong`)                                           |
-| `mode: 'always'`                                                 | Escalate every unit (the previous behaviour)              |
+| Rule-extraction result                                                                      | Decision                                           |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Fragment: fewer than `minContentWords` words (default 1; larger values opt-in, UNVALIDATED) | Skip (`insufficient_content`)                      |
+| No usable candidate                                                                         | Escalate (`no_candidate`)                          |
+| Best usable candidate below `confidenceThreshold` (default 0.75)                            | Escalate (`low_confidence`)                        |
+| Competing candidates the rules cannot settle                                                | Escalate (`ambiguous`)                             |
+| Usable candidate at/above threshold, no unresolved competition                              | Skip (`strong`)                                    |
+| `mode: 'always'` (**the default**)                                                          | Escalate every unit with enough content (`always`) |
 
 - **Usable** means a clean single phrase (no line break, comma, semicolon or colon inside; at most `maxLabelWords` = 8 words). The rules assign 0.65 to
   any multi-word capitalized run, even one spanning a line break, so malformed candidates never make a unit look strong.
@@ -149,16 +183,27 @@ escalated unit may actually call a model, and nothing here retries or routes aro
   `definition` over `concept`); otherwise the unit escalates. On the real fixtures this fires rarely (2 of 128 units at threshold 0.7).
 - Configure with the `escalation` option of `extractKnowledgeGraph`/compile options, or `resolveEscalationPolicy(env)`
   (`XO_COMPILER_ESCALATION_{MODE,CONFIDENCE_THRESHOLD,AMBIGUITY_MARGIN,MIN_CONTENT_WORDS}`).
-- **Behaviour change:** the hybrid extractor previously called the model for every unit. The default is now gated; use `{ mode: 'always' }` for the old behaviour.
+- **Default:** `mode: 'always'` (every non-empty unit). The rows above other than the fragment skip and `always` apply only when `{ mode: 'gated' }` is passed
+  explicitly, which is experimental and NOT SUPPORTED by the evaluation. (Slice 6 originally shipped gating as the default at 0.75; P2 reverted that.)
 - **Validation:** model output is checked before it is accepted (`knowledge/model-validation.ts`): non-empty bounded labels, confidence in [0, 1],
   unique ids, no dangling edges, and a deliberately weak grounding check (each label shares a 5-letter word stem with the unit). Any violation rejects the
-  whole result (all-or-nothing); the rule result stands and the rejection is counted. A literal-word grounding check wrongly rejected a legitimate
+  whole result (all-or-nothing); the rule result stands and the rejection is counted. `validateModelExtraction` returns **fixed codes only**:
+  `empty_label`, `label_too_long`, `control_chars`, `confidence_out_of_range`, `duplicate_local_id`, `dangling_edge`, `ungrounded_label`,
+  `edge_confidence_out_of_range`. No free text, label, id, prompt, source text or model output is recorded or logged. A literal-word grounding check wrongly rejected a legitimate
   abstraction during development, hence the stem match; it can still reject a purely abstract label (a known false-reject risk) and cannot prove faithfulness.
 - **Provenance:** model-derived candidates carry `provenance.derivation { kind: 'llm', source: 'generated' | 'cache', provider, model, escalationReason }`;
   rule-derived candidates carry none (their absence plus `extractorName: 'rule-based'` marks them), so rule-only graphs are byte-identical to before.
 - **Repeat calls:** a unit (same id and content) is escalated at most once per extractor instance; repeats are memoized. Retries inside a call are the layer's own bounded policy.
 - **Report:** `HybridKnowledgeExtractor.report()` gives units seen, escalated, skipped, counts by decision reason, outcomes (`accepted`, `cache_hit`, `denied`,
-  `failed`, `rejected_invalid`, `memoized`) and fresh calls attempted; `extractKnowledgeGraph` logs it when an `aiCore` is supplied.
+  `failed`, `rejected_invalid`, `memoized`) and `modelCallsAttempted`; `extractKnowledgeGraph` logs it when an `aiCore` is supplied. Added fields (all content-free, existing fields unchanged):
+  - `providerCalls`: responses actually **obtained from the provider** (source `generated`), counted when they occur, including answers later rejected by validation and answers
+    with zero items. Cache replays, memoized repeats, denied calls and failed calls are not provider calls. Call provenance travels on the extraction result
+    (`ExtractionResult.modelCall { source, provider, model }`, set by `AiKnowledgeExtractor`), so it exists even when the answer has no items.
+  - `rejections`: `{ <code>: units }`, the number of rejected units with at least one violation of that fixed code. `rejectedUnits`: per unit `{ unitId, codes[] }` (distinct codes).
+  - `diagnostics`: `ruleTiers` (`no_candidate`/`low_confidence`/`strong`: what the experimental gate would have classed each unit as) and `unitsWithCompetingCandidates`. Diagnostics only; they never affect a call unless gated mode is opted into.
+
+> **Historical (pre-evaluation).** The remainder of this section records the offline measurement that led to the original gated default of 0.75. It predates the
+> live evaluation above, uses an oracle (not a real model), and its conclusions about the default are superseded: the default is now `always`.
 
 **What the real score distribution looks like** (128 prose units from the three `examples/vertical-test` PDFs). The rule extractor's confidences are
 tiers, not a continuum: the unit-primary node is 0.5 (58 units), 0.6 (35) or 0.7 (35), and never 0.85 (no explicit defined term occurred); entity
@@ -265,6 +310,70 @@ Closes the transport and routing gaps that remained after Slices 1-6. Gemini is 
   caller signal exists.
 - **Tests.** `test/router-deadline.test.ts` (scripted providers, fake timers, no network) and `test/policy-validation.test.ts`.
 
+### Local adjudication of the model's candidates (no provider calls)
+
+The live evaluation's recall gain is unverified because nobody has judged the model's candidates. The adjudication kit lets a person do that on their own
+machine, against the cache the live run already filled. **It makes no provider call:** the extractor runs with a fetch that throws, so every model answer must
+replay from the cache, and the run fails (with a content-free message) if any unit is not covered or any provider attempt would have been made.
+
+1. Generate the CSVs (Windows PowerShell, repository root; set `XO_GEMINI_MODEL` too if the live run used a non-default model):
+
+   ```powershell
+   $env:XO_EVAL_CACHE_DIR = "C:\path\to\the\live-run\cache"
+   $env:XO_ADJUDICATION_OUT = "$PWD\.eval-output\adjudication"
+   cd packages\compiler
+   node --import tsx --test test\knowledge\escalation-adjudication.test.ts
+   ```
+
+   Without both variables the real-cache test is skipped; the scripted-provider tests in the same file still run (they prove the mechanics only). A placeholder API
+   key is used if `GEMINI_API_KEY` is unset, because a cache hit never reaches the provider.
+
+   The same run also writes **`review.html`**, a single offline page for the reviewer (no network, nothing sent anywhere): the reviewer opens it in a browser,
+   picks a verdict per suggestion (Part 1) and yes/no per expected term (Part 2), and presses "Download my answers", which saves the filled `adjudication.csv` and
+   `gold.csv`. The reviewer never needs to open a CSV. Like the CSVs, the page contains source document text, so keep it on the machine and do not share it
+   outside the review. Record who reviewed (it should not be the gate's author) next to the score.
+
+2. `adjudication.csv`: the model's accepted candidates only (answers rejected by validation are not included), shuffled with a fixed seed and given opaque ids.
+   Columns `id, split, unit_text, candidate_text, verdict`. There is no source, type, confidence or unit-id column. Fill `verdict` with exactly one of:
+   `valid` (a correct, supported knowledge term), `duplicate` (restates another candidate for the same unit), `unsupported` (not backed by the unit text), `trivial`
+   (correct but not worth keeping). Leave a row blank only if it is not yet judged.
+3. `gold.csv`: `split, unit_id, gold_term, rule_covers, model_covers`. `rule_covers` is filled automatically with a **strict** match (normalized equality, not the
+   containment match the evaluation used). Fill `model_covers` with `yes` or `no`: does any candidate you judged `valid` cover that gold term? (`unit_id` is the source file and
+   the first characters of the unit, so you can find it in `adjudication.csv`, whose `unit_text` is the full unit.) Do not edit the gold terms.
+4. Score: `node scripts/escalation-eval/score-adjudication.mjs adjudication.csv gold.csv [outPrefix]`. It writes `<outPrefix>.json` and `.md` (default
+   `adjudication-score.*` next to the input) with aggregates only, per split: model-candidate count and % valid/duplicate/unsupported/trivial; gold terms covered by
+   rules, by a valid model candidate, and the union; strict recall for rules vs rules + valid model; valid candidates per 100 model candidates, and newly covered gold
+   terms per 100 model candidates. Blank cells make the result PROVISIONAL (stated in the outputs); an invalid verdict is an error.
+
+Rules for using it honestly: the adjudicator should be **someone other than the gate's author** (ideally not the gold annotator either); keep the dev and held-out
+splits separate; **do not tune anything on the held-out split**. It remains a single model, a single run and 43 units, so it can show whether the recall gain
+survives a human check, not that the model is production-accurate.
+
+#### Adjudication result (AI-adjudicated, NOT independent human review)
+
+Run on the live run's own cache (43 entries, replayed with a throwing fetch: 0 provider attempts, 0 provider calls, cache unchanged; dev 21 cache hits, held 21 cache hits
+plus 1 answer rejected by validation as `ungrounded_label`, matching the original `report.json`). Claude judged all 97 accepted model candidates and 79 gold terms with
+rules fixed beforehand and applied identically to both splits. **Provenance: one AI adjudicator, not independent of the evaluation, no human check.** Treat as a second
+look, not ground truth. The filled CSVs contain document text and are not stored in the repository.
+
+- Verdict rules: `valid` = supported by the unit text, correct, and a distinct piece of knowledge worth keeping; `trivial` = bare generic noun phrase, table header or form label, boilerplate, or truncated fragment; `unsupported` = adds meaning the text does not state, or is wrong; `duplicate` = restates another candidate for the same unit.
+- Gold coverage: `yes` only when a valid candidate names the term as its own item (its subject, the value it assigns, or a delimited list element); a term inside a compound noun or an undifferentiated string is `no`. This is looser than the rules' strict equality, so it mildly favours the model.
+
+| Split | Model candidates | valid      | duplicate | unsupported | trivial    |
+| ----- | ---------------- | ---------- | --------- | ----------- | ---------- |
+| dev   | 54               | 46 (85.2%) | 0         | 1 (1.9%)    | 7 (13.0%)  |
+| held  | 43               | 26 (60.5%) | 1 (2.3%)  | 3 (7.0%)    | 13 (30.2%) |
+
+| Split | Gold terms | Covered by rules (strict) | By valid model | Union | Strict recall rules / rules + valid model |
+| ----- | ---------- | ------------------------- | -------------- | ----- | ----------------------------------------- |
+| dev   | 46         | 19                        | 33             | 38    | 0.413 / 0.826                             |
+| held  | 33         | 10                        | 27             | 30    | 0.303 / 0.909                             |
+
+Reading it: most of the model's candidates are sentence-style statements, and about three quarters are valid knowledge items, so the earlier "false positive" count mostly
+reflects that the gold lists named terms only, not that the output is wrong. The recall gain holds up under a stricter match than the original containment match (a lenient
+containment count over valid candidates is 44/46 dev and 28/33 held). The weak spot is held-out: 30% of candidates are trivial (form headers and labels) and 3 are unsupported,
+so the model adds noise on form-like units. This does not evaluate the gating criteria; confidence gating remains NOT SUPPORTED. 43 units, one run, one adjudicator.
+
 ## Known limitations
 
 - **No adapter other than Gemini has been verified against a real vendor.** The new conformance suite proves each adapter behaves per this
@@ -287,19 +396,21 @@ Closes the transport and routing gaps that remained after Slices 1-6. Gemini is 
 - The TOKEN budget can still be overshot by one call's input size (input tokens are unknown in advance); the COST budget cannot, because it reserves a conservative input bound (Slice 5).
 - Failed/timed-out calls are released, not charged (possible under-count, above); see Slice 7 for which finish-reason failures are charged and Slice 8 for cancelled calls (a late response is charged).
 - Per-scope only: nothing aggregates spend across separate compilations or processes.
-- Confidence-gated escalation exists for the knowledge hybrid extractor only (Slice 6). The reasoning and capability extractors still call the model for every unit.
-  here means retries and candidate fallback. Selecting which units deserve model calls is a separate, unimplemented slice.
+- The knowledge hybrid extractor escalates every non-empty unit by default; confidence gating is experimental and NOT SUPPORTED by evidence (Slice 6). The reasoning and capability extractors still call the model for every unit.
+  Selecting which units deserve model calls is a separate, unimplemented slice; the evidence so far does not support doing it from rule confidence.
+- **Model output quality is unverified.** The live evaluation's recall gain is unadjudicated, single-annotator, single-run, 43 units; never describe model-derived candidates as production-accurate.
 - The compiler entrypoints now refuse an unbounded layer (Slice 5), but nothing in the apps constructs an AI layer yet: AI-assisted compile is not enabled in the CLI or API today. Enabling it must go through `createCompilerAiLayer`.
 
 ## Not done yet
 
-- Escalation gating for the reasoning and capability extractors, and an independent, blind gold set to validate any gate (Slice 6 used a small self-annotated one).
+- An independent, blind gold set with a second annotator, and adjudication of the model's candidates (see the local adjudication kit). Gating for the reasoning and capability extractors is not planned until such evidence exists.
 - The LLM workflow-authoring and human-approval flow; nothing here lets an LLM-authored workflow deploy.
 - A shared/production cache backend, and any Studio/UI surface. The API execute route remains disabled.
 
 ## Running the live (real-model) evaluation
 
-Status: **pending**. The offline parts were run; the real-model arms need an API key and network access to `generativelanguage.googleapis.com`.
+Status: **run once** (results in "Live evaluation result" above; the numbers there come from that single run). Re-running needs an API key and network access to `generativelanguage.googleapis.com`.
+The summary's call count is now `providerCalls` and rejection codes are printed (counts and fixed codes only).
 
 Windows (PowerShell, from the repository root, on the branch that contains this commit):
 

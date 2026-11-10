@@ -95,6 +95,11 @@ export class AiKnowledgeExtractor implements KnowledgeExtractor {
       provenance: baseProvenance(AI_RELATIONSHIP_CONFIDENCE),
     }));
 
-    return ok({ nodes, edges });
+    const source = response.value.meta.provenance?.source ?? (response.value.meta.cacheHit ? 'cache' : 'generated');
+    return ok({
+      nodes,
+      edges,
+      modelCall: { source, provider: response.value.meta.providerUsed, model: response.value.meta.modelUsed },
+    });
   }
 }
