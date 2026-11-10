@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import type { Confinement } from './confine.js';
 import { isPrivateAddress } from './net.js';
 import { ConnectorError, type Connector, type Json } from './types.js';
 
@@ -11,8 +12,8 @@ import { ConnectorError, type Connector, type Json } from './types.js';
  *    does not understand is refused (fail closed), never skipped.
  *  - Results are untrusted content: capped in size, returned as data with provenance, never interpreted as instructions.
  *  - Secrets are injected by the host from a vault reference; they never appear in tool arguments the model or workflow can see.
- *  - stdio servers run with a CLEARED environment, a scratch working directory, and an optional operator-supplied sandbox wrapper.
- *    Without a wrapper, a stdio server is an ordinary child process: this code does NOT confine its filesystem or network access.
+ *  - stdio servers run with a CLEARED environment and inside a confinement plan (see confine.ts). There is no default of "unconfined": the caller
+ *    must pass a plan, and a plan of kind `none` exists only when the operator opted in (and that is recorded). Without it the connector refuses to start.
  */
 
 export type McpServer =
@@ -23,8 +24,8 @@ export type McpServer =
       /** Only these variables reach the child (the host environment is NOT inherited). Values may be `secret:NAME` references. */
       readonly env?: Readonly<Record<string, string>>;
       readonly cwd?: string;
-      /** Prefix argv for an operator sandbox, e.g. ['bwrap', '--unshare-net', ...]. The server command is appended. */
-      readonly sandboxWrapper?: readonly string[];
+      /** How the child is launched. Required: build it with `planConfinement`, which refuses rather than return a weaker plan than policy allows. */
+      readonly confinement: Confinement;
     }
   | {
       readonly transport: 'http';
@@ -50,6 +51,8 @@ export interface McpConfig {
 }
 
 export interface McpConnector extends Connector {
+  /** How a stdio server is confined (undefined for http servers). Record it with `confinementRecord`. */
+  readonly isolation?: Confinement;
   close(): Promise<void>;
 }
 
@@ -144,7 +147,7 @@ class StdioRpc implements Rpc {
     env: Record<string, string>,
     private readonly maxBytes: number,
   ) {
-    const argv = [...(cfg.sandboxWrapper ?? []), cfg.command, ...(cfg.args ?? [])];
+    const argv = [...cfg.confinement.prefix, cfg.command, ...(cfg.args ?? [])];
     this.child = spawn(argv[0] as string, argv.slice(1), { env, cwd: cfg.cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: false });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (d: string) => {
@@ -305,6 +308,8 @@ export interface McpDeps {
 }
 
 export function mcpConnector(cfg: McpConfig, deps: McpDeps): McpConnector {
+  if (cfg.server.transport === 'stdio' && (cfg.server.confinement as Confinement | undefined) === undefined)
+    throw new ConnectorError('DENIED', 'a stdio MCP server needs a confinement plan (planConfinement); there is no unconfined default');
   let rpc: Rpc | undefined;
   let schemas: Map<string, unknown> | undefined;
   let starting: Promise<void> | undefined;
@@ -391,6 +396,7 @@ export function mcpConnector(cfg: McpConfig, deps: McpDeps): McpConnector {
 
   return {
     kind: 'mcp',
+    ...(cfg.server.transport === 'stdio' ? { isolation: cfg.server.confinement } : {}),
     operations,
     close: async () => {
       await rpc?.close();

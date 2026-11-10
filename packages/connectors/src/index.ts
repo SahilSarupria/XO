@@ -10,3 +10,4 @@ export * from './egress.js';
 export * from './webhook.js';
 export * from './database.js';
 export * from './sqlite-driver.js';
+export * from './confine.js';

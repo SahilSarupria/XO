@@ -63,7 +63,7 @@ test('typos and widening are errors, not silent: undeclared ids, unknown keys, w
   assert.match(await problem(c, { bindings: { chat: { webhookSecret: 'HOOK', allowedHosts: ['10.0.0.1'] } } }), /IP address/);
   assert.match(await problem(c, { bindings: { chat: { webhookSecret: 'HOOK', allowedHosts: [] } } }), /at least one host/);
   assert.match(await problem(c, { bindings: { lookup: { driver: { type: 'postgres', path: 'x' }, statements: {} } } }), /sqlite/);
-  assert.match(await problem(c, { bindings: { tool: { command: 'x' } } }), /cannot bind yet/);
+  assert.match(await problem(c, { bindings: { tool: { command: 'x' } } }), /"tools" must map operation names/);
   assert.match(await problem(c, { bindings: { out: { roots: { r: 5 } } } }), /roots/);
   // a destructive statement in the operator's own file still refuses to start
   const dir = await mkdtemp(join(tmpdir(), 'xo-bind2-'));
@@ -98,4 +98,46 @@ test('every problem is reported at once, naming the binding', async () => {
   const msg = await problem(c, { bindings: { a: { nope: 1 }, b: { url: 'http://x.example.com/', allowedHosts: ['x.example.com'] } } });
   assert.match(msg, /binding "a"/);
   assert.match(msg, /binding "b"/);
+});
+
+test('mcp: a stdio server is bound only inside a confinement plan; opting out is explicit and reported', async () => {
+  const c = comp({ srv: 'mcp' });
+  const tools = { look: { tool: 'look', sideEffect: 'read' } };
+  const seen: Record<string, Record<string, unknown>> = {};
+  const build = (bind: Record<string, unknown>) =>
+    buildImplementations(c, { connectors: {}, bindings: { srv: bind } }, { onConfinement: (id, r) => (seen[id] = r) });
+
+  // explicit operator opt-out: always builds, and the record says so
+  const off = await build({ command: 'node', tools, confine: { disable: true } });
+  assert.equal(off.ok, true);
+  assert.equal(seen['srv']?.['kind'], 'none');
+  assert.equal(seen['srv']?.['operatorOptOut'], true);
+  assert.match(String(seen['srv']?.['reason']), /disabled by the operator/);
+  assert.ok((seen['srv']?.['notProtected'] as string[]).some((l) => /filesystem/.test(l)));
+
+  // the default is confined: either it is (bubblewrap present) or the binding is REFUSED. Never silently unconfined.
+  delete seen['srv'];
+  const dflt = await build({ command: 'node', tools });
+  if (dflt.ok) assert.equal(seen['srv']?.['kind'], 'bwrap');
+  else assert.match(dflt.error, /cannot confine the MCP server|bubblewrap/);
+  assert.notEqual(seen['srv']?.['operatorOptOut'], true);
+
+  // typos and contradictions are errors, not widened access
+  assert.match(await problem(c, { bindings: { srv: { command: 'n', tools, confine: { disabel: true } } } }), /unknown "confine" key/);
+  assert.match(await problem(c, { bindings: { srv: { command: 'n', tools, confine: { disable: 'yes' } } } }), /true or false/);
+  assert.match(await problem(c, { bindings: { srv: { command: 'n', tools, confine: { readOnlyPaths: ['/'] } } } }), /whole filesystem/);
+  assert.match(await problem(c, { bindings: { srv: { command: 'n', url: 'https://x', tools } } }), /not both/);
+  assert.match(await problem(c, { bindings: { srv: { tools } } }), /"command" \(stdio\) or "url"/);
+  assert.match(await problem(c, { bindings: { srv: { url: 'https://x', tools, confine: {} } } }), /stdio servers only/);
+  assert.match(
+    await problem(c, { bindings: { srv: { command: 'n', tools: { a: { tool: 'a', sideEffect: 'maybe' } }, confine: { disable: true } } } }),
+    /sideEffect/,
+  );
+  assert.match(await problem(c, { bindings: { srv: { command: 'n', tools, port: 1, confine: { disable: true } } } }), /unknown key/);
+  // an omitted side effect is the safe assumption
+  const r = await buildImplementations(c, {
+    connectors: {},
+    bindings: { srv: { command: 'n', tools: { a: { tool: 'a' } }, confine: { disable: true } } },
+  });
+  assert.equal(r.ok && r.value['srv']?.operations['a']?.sideEffect, 'write');
 });

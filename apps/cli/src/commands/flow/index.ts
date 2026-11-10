@@ -42,6 +42,17 @@ import { rateLimitsFromFlags, stateStores } from './runtime-options.js';
 const SUBSYSTEM = 'flow';
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
 const fail = (s: string): number => (process.stderr.write(`error: ${s}\n`), 1);
+/** What the journal records about how connector child processes were confined; warns (stderr) for every opt-out so it is never silent. */
+function environmentFrom(confinement: Record<string, Record<string, unknown>>): Record<string, unknown> | undefined {
+  const ids = Object.keys(confinement);
+  if (ids.length === 0) return undefined;
+  for (const id of ids)
+    if (confinement[id]?.['operatorOptOut'] === true)
+      process.stderr.write(
+        `warning: MCP server "${id}" runs UNCONFINED by operator choice (${String(confinement[id]?.['reason'] ?? 'no reason given')}); this is recorded in every run.\n`,
+      );
+  return { mcpConfinement: confinement };
+}
 const flag = (f: Readonly<Record<string, string | boolean>>, n: string): string | undefined =>
   typeof f[n] === 'string' ? (f[n] as string) : undefined;
 
@@ -204,9 +215,11 @@ export function registerCommands(registry: CommandRegistry): void {
           const policyPath = flag(args.flags, 'policy');
           const policy: OperatorPolicyFile =
             policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
-          const bound = await buildImplementations(comp, policy);
+          const confinement: Record<string, Record<string, unknown>> = {};
+          const bound = await buildImplementations(comp, policy, { onConfinement: (cid, rec) => (confinement[cid] = rec) });
           if (!bound.ok) return fail(bound.error);
           const implementations = bound.value;
+          const environment = environmentFrom(confinement);
           const ex = extractorFor(comp, id);
           if (!ex.ok) return fail(ex.error);
           const memoDir = flag(args.flags, 'memo-dir');
@@ -219,6 +232,7 @@ export function registerCommands(registry: CommandRegistry): void {
           if (!limits.ok) return fail(limits.error);
           const state = stateStores(resolve(runs));
           const runner = new WorkflowRunner({
+            ...(environment !== undefined ? { environment } : {}),
             component: comp,
             workflowId: id,
             store: new RunStore(resolve(runs)),
@@ -419,9 +433,11 @@ export function registerCommands(registry: CommandRegistry): void {
         const policyPath = flag(args.flags, 'policy');
         const policy: OperatorPolicyFile =
           policyPath !== undefined ? JSON.parse(readFileSync(resolve(policyPath), 'utf8')) : { connectors: {} };
-        const bound = await buildImplementations(comp, policy);
+        const confinement: Record<string, Record<string, unknown>> = {};
+        const bound = await buildImplementations(comp, policy, { onConfinement: (cid, rec) => (confinement[cid] = rec) });
         if (!bound.ok) return fail(bound.error);
         const implementations = bound.value;
+        const environment = environmentFrom(confinement);
         const memoDir = flag(args.flags, 'memo-dir');
         const caps = capsFromFlags(args.flags, resolve(runs));
         if (!caps.ok) return fail(caps.error);
@@ -446,6 +462,7 @@ export function registerCommands(registry: CommandRegistry): void {
             const ex = extractorFor(comp, wf.id);
             if (!ex.ok) throw new Error(ex.error);
             runners[wf.id] = new WorkflowRunner({
+              ...(environment !== undefined ? { environment } : {}),
               component: comp,
               workflowId: wf.id,
               store: leased,

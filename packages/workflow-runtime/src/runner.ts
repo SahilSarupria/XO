@@ -80,6 +80,8 @@ export interface Escalation {
 }
 
 export interface RunnerOptions {
+  /** Operator decisions that shape this run's safety (for example how connector child processes are confined). Written into every run_started entry; no secrets. */
+  readonly environment?: Readonly<Record<string, unknown>>;
   readonly component: WorkflowComponent;
   readonly workflowId: string;
   readonly store: RunStoreLike;
@@ -393,6 +395,7 @@ export class WorkflowRunner {
         dryRun: this.o.dryRun === true,
         shadow: this.o.shadow === true,
         startedAtMs: this.now(),
+        ...(this.o.environment !== undefined ? { environment: this.o.environment } : {}),
         ...(fe !== undefined ? { fanout: { over: fe.over, count: (req.inputs[fe.over] as unknown[]).length } } : {}),
       });
       return { ...(await this.drive(runId)), accepted: true };

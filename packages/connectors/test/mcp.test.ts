@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import type { ConnectorError } from '../src/index.js';
-import { ConnectorHost, MapVault, mcpConnector, validateArgs, type McpConnector } from '../src/index.js';
+import { ConnectorHost, MapVault, mcpConnector, planConfinement, type Confinement, validateArgs, type McpConnector } from '../src/index.js';
 
 const SERVER_JS = `
 const readline = require('readline');
@@ -63,6 +63,7 @@ async function stdioHost(
     tools?: Record<string, { tool: string; sideEffect: 'read' | 'write' | 'irreversible' }>;
     env?: Record<string, string>;
     max?: number;
+    confine?: (dir: string) => Confinement;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), 'xo-mcp-'));
@@ -71,7 +72,14 @@ async function stdioHost(
   const vault = new MapVault({ API_TOKEN: 'tok_secret_value_123456' });
   const conn = mcpConnector(
     {
-      server: { transport: 'stdio', command: process.execPath, args: [script], cwd: dir, env: over.env ?? {} },
+      server: {
+        transport: 'stdio',
+        command: process.execPath,
+        args: [script],
+        cwd: dir,
+        env: over.env ?? {},
+        confinement: over.confine?.(dir) ?? planConfinement({ disable: true }),
+      },
       tools: over.tools ?? {
         lookup: { tool: 'lookup', sideEffect: 'read' },
         weird: { tool: 'weird', sideEffect: 'read' },
@@ -100,6 +108,23 @@ async function stdioHost(
     );
   return { call, code, host };
 }
+
+describe('MCP over stdio, really confined', () => {
+  it("a server launched inside the host's real confinement still serves calls,", async (t) => {
+    const confine = (dir: string): Confinement =>
+      planConfinement({ require: 'namespaces', readOnlyPaths: [dir, dirname(process.execPath).replace(/\/bin$/, '')] });
+    let probe: Confinement;
+    try {
+      probe = confine('/usr');
+    } catch {
+      return t.skip('this host can run neither bubblewrap nor unshare');
+    }
+    const { call } = await stdioHost({ confine });
+    const r = await call('lookup', { id: 'a-1' });
+    assert.equal((r.data as { text: string }).text, 'record for a-1');
+    assert.ok(['bwrap', 'namespaces'].includes(probe.kind));
+  });
+});
 
 describe('MCP over stdio', () => {
   it('calls an allowlisted tool and returns untrusted data with provenance', async () => {

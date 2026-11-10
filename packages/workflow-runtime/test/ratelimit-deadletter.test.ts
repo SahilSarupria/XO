@@ -135,3 +135,17 @@ describe('dead letters', () => {
     void ConnectorError;
   });
 });
+
+describe('environment record', () => {
+  it('operator decisions (such as an unconfined MCP server) are written into the journal of every run', async () => {
+    const h = await harness(comp([decide(), pay()]));
+    const env = { mcpConfinement: { srv: { kind: 'none', operatorOptOut: true } } };
+    const { runner, store } = h.mk({ environment: env });
+    const r = await runner.start({ inputs: { amount: 10, claim: 'c1' } });
+    const entries = await store.read(r.runId);
+    assert.deepEqual((entries[0]?.data as { environment?: unknown }).environment, env);
+    const plain = h.mk({});
+    const p = await plain.runner.start({ inputs: { amount: 10, claim: 'c2' } });
+    assert.equal('environment' in ((await plain.store.read(p.runId))[0]?.data as object), false);
+  });
+});
