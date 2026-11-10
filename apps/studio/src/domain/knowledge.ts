@@ -15,7 +15,7 @@ export interface StatusView {
 
 export function statusView(s: Pick<Statement, 'status' | 'origin' | 'kind' | 'reviewRequired'> & { corroboration?: number }): StatusView {
   if (s.kind === 'conflict' || s.status === 'conflicted')
-    return { label: 'Conflict', tone: 'danger', explanation: 'Sources disagree. XO has not chosen; a reviewer needs to decide.' };
+    return { label: 'Conflict', tone: 'danger', explanation: 'The evidence disagrees. XO has not chosen; a reviewer needs to decide.' };
   if (s.status === 'hypothesis' || s.reviewRequired)
     return {
       label: 'Unverified guess',
