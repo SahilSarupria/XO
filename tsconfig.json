@@ -8,11 +8,13 @@
     { "path": "packages/observability" },
     { "path": "packages/di" },
     { "path": "packages/serialization" },
+    { "path": "packages/adapters" },
     { "path": "packages/testing" },
     { "path": "packages/crypto" },
     { "path": "packages/xoir" },
     { "path": "packages/capability-contract" },
     { "path": "packages/workflow-composer" },
+    { "path": "packages/procedure" },
     { "path": "packages/benchmark" },
     { "path": "packages/storage" },
     { "path": "packages/graph-engine" },
@@ -31,6 +33,7 @@
     { "path": "packages/atlas" },
     { "path": "packages/marketplace-world" },
     { "path": "apps/cli" },
-    { "path": "apps/api" }
+    { "path": "apps/api" },
+    { "path": "apps/mcp" }
   ]
 }

@@ -2,7 +2,7 @@
   "name": "@xo/runtime",
   "version": "0.1.0",
   "private": true,
-  "description": "Runtime Stage 1: package mounting & execution pipeline. Discovers, verifies, and mounts installed XO packages, exposes their declared capabilities through a registry, and deterministically plans (never executes) requests against them. Not prompt assembly, retrieval, memory, or AI provider calls \u2014 see later runtime stages.",
+  "description": "Runtime Stage 1: package mounting & execution pipeline. Discovers, verifies, and mounts installed XO packages, exposes their declared capabilities through a registry, and deterministically plans (never executes) requests against them. Not prompt assembly, retrieval, memory, or AI provider calls — see later runtime stages.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,8 @@
     "@xo/permissions": "0.1.0",
     "@xo/capability-contract": "0.1.0",
     "@xo/xoir": "0.1.0",
-    "@xo/workflow-composer": "0.1.0"
+    "@xo/workflow-composer": "0.1.0",
+    "@xo/adapters": "0.1.0"
   },
   "devDependencies": {
     "@xo/testing": "0.1.0",

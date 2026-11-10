@@ -10,6 +10,7 @@ import { registerCompilationRoutes } from './source-compilation-routes.js';
 import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
+import { registerProcedureRoutes } from './procedure-routes.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { openApiDocument } from '../openapi.js';
@@ -17,6 +18,7 @@ import type { PermissionManager } from '@xo/permissions';
 import type { AuditAccessController, AuditSink } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
+import type { ExternalToolWiring } from '@xo/runtime';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -29,6 +31,10 @@ export interface RegisterRoutesDeps {
   /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
   readonly auditSink: AuditSink;
   readonly auditAccess: AuditAccessController;
+  /** P1.1 M3 closeout (D2): optional per-step procedure timeout (ms). Absent means no timeout. */
+  readonly procedureStepTimeoutMs?: number;
+  readonly testBeforeStepExecute?: () => Promise<void>;
+  readonly externalTools?: ExternalToolWiring;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -45,5 +51,10 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerProcedureRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit, {
+    ...(deps.procedureStepTimeoutMs !== undefined ? { stepTimeoutMs: deps.procedureStepTimeoutMs } : {}),
+    ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+    ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
+  });
   registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
 }

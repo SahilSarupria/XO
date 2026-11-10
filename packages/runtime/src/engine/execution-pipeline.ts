@@ -677,6 +677,27 @@ export class ExecutionPipeline {
         result: await this.runDeterministicRuleExecution(request, plan, selected, session, hookCtx, executionId, startedAt),
       };
     }
+    if (strategyResolution.value === 'external_tool') {
+      // M4 (O-7): `external_tool` is a registered strategy name but this
+      // pipeline has NO external-tool executor. It must never fall through
+      // to the AI-model path below (which would silently execute a
+      // provider call for a capability that declared an external effect).
+      // Fail closed, before retrieval/safety/budget/provider work and
+      // before any adapter could be reached.
+      return {
+        ok: false,
+        result: this.terminate(
+          hookCtx,
+          session,
+          executionId,
+          startedAt,
+          new RuntimeError(
+            ErrorCode.RUNTIME_UNSUPPORTED_EXECUTION_MODE,
+            `Capability "${selected.declaration.id}" declares execution mode "external_tool", which ExecutionPipeline does not execute (no external-tool executor is configured here) — refusing to fall through to the model path`,
+          ),
+        ),
+      };
+    }
     // 'hybrid' (R5) falls through to steps 3-6 below UNCHANGED — a
     // hybrid capability may contain a 'model' step, so it needs the
     // exact same retrieval/safety/budget/context/prompt-assembly a

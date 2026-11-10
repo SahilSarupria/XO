@@ -74,3 +74,21 @@ test('permission id: canonical catalog matches the spec examples', () => {
   assert.equal(Permissions.runtime.execute, 'runtime.execute');
   assert.equal(Permissions.runtime.workflow, 'runtime.workflow');
 });
+
+test('permissions: effect.reconcile is its own id, valid under the closed domain set, and distinct from procedure.approve', () => {
+  assert.equal(Permissions.effect.reconcile, 'effect.reconcile');
+  assert.notEqual(Permissions.effect.reconcile, Permissions.procedure.approve);
+  assert.equal(parsePermissionId('effect.reconcile').ok, true);
+  assert.equal(parsePermissionId('external_effect.reconcile').ok, false, 'underscores and unregistered domains are rejected');
+  // The domain segment is `[a-z][a-z0-9]*` (hyphens are only legal in the ACTION segment) and the domain set is closed, so the hyphenated form is invalid too.
+  assert.equal(parsePermissionId('external-effect.reconcile').ok, false, 'a hyphenated domain does not match the id grammar');
+  assert.equal(parsePermissionId('externaleffect.reconcile').ok, false, 'and an unregistered domain is refused even when well-formed');
+});
+
+test('permissions: effect.payload-approve is valid, its own capability, and distinct from procedure.approve and effect.reconcile', () => {
+  assert.equal(Permissions.effect.payloadApprove, 'effect.payload-approve');
+  assert.notEqual(Permissions.effect.payloadApprove, Permissions.procedure.approve);
+  assert.notEqual(Permissions.effect.payloadApprove, Permissions.effect.reconcile);
+  assert.equal(parsePermissionId('effect.payload-approve').ok, true);
+  assert.equal(parsePermissionId('effect.payload_approve').ok, false, 'underscores are not legal in the action segment');
+});

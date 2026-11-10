@@ -20,6 +20,7 @@
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
   "dependencies": {
+    "@xo/adapters": "0.1.0",
     "@xo/logger": "0.1.0"
   },
   "devDependencies": {

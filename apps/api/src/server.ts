@@ -6,7 +6,7 @@ import type { Logger } from '@xo/logger';
 import { LocalFsBlobStore } from '@xo/storage';
 import type { ApiRequest, ApiResponse } from './http/types.js';
 import { Router } from './http/router.js';
-import { readRawBody, parseJsonBody } from './http/body.js';
+import { BodyTooLargeError, readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
 import { createApiKeyAuth } from './http/auth.js';
@@ -20,6 +20,7 @@ import { registerRoutes } from './routes/index.js';
 import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { AuditService } from './audit/audit-service.js';
+import type { ExternalToolWiring } from '@xo/runtime';
 
 export interface ServerDeps {
   readonly logger?: Logger;
@@ -43,6 +44,12 @@ export interface ServerDeps {
   readonly workspaceStore?: WorkspaceStore;
   /** Directory to build a default `FsWorkspaceStore` from when `workspaceStore` isn't supplied. Defaults to `loadConfig().workspacesDir` (`WORKSPACES_DIR`). */
   readonly workspacesDir?: string;
+  /** P1.1 M3 closeout (D2): per-step procedure timeout in ms. Omitted -> `XO_PROCEDURE_STEP_TIMEOUT_MS`; unset there too -> NO timeout (no default). */
+  readonly procedureStepTimeoutMs?: number;
+  /** TEST-ONLY (D2): delay-only hook awaited inside the timed step work; see ProcedureRunnerContext. */
+  readonly testBeforeStepExecute?: () => Promise<void>;
+  /** P1.1 M4: explicit host-owned external_tool adapter wiring (programmatic only: no env var, HTTP or manifest path sets it). Absent => external_tool steps cannot execute. */
+  readonly externalTools?: ExternalToolWiring;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
   /**
@@ -77,6 +84,12 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
     query: url.searchParams,
     headers: incoming.headers,
     rawBody,
+    rawBodyLimited: async (maxBytes: number): Promise<Buffer> => {
+      cachedBody ??= readRawBody(incoming, maxBytes);
+      const buffer = await cachedBody;
+      if (buffer.length > maxBytes) throw new BodyTooLargeError(maxBytes);
+      return buffer;
+    },
     json: async <T>(): Promise<Result<T, XoError>> => {
       const buffer = await rawBody();
       return parseJsonBody<T>(buffer);
@@ -93,6 +106,14 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
  * README.md's "Testing" section for why that's the approach taken).
  */
 export function buildRouter(deps: ServerDeps = {}): Router {
+  // P1.1 M4: consequential external effects may never run over volatile dispatch evidence in production. Checked FIRST so no other
+  // configuration can mask it; `ledgerDurability` is derived from the ledger itself, never from a flag the host could set independently.
+  if (deps.externalTools !== undefined && process.env['NODE_ENV'] === 'production' && deps.externalTools.ledgerDurability !== 'durable') {
+    throw new XoError(
+      ErrorCode.CONFIG_INVALID_VALUE,
+      'external tools require a durable dispatch-evidence ledger in production (see createDurableExternalToolWiring); startup aborted',
+    );
+  }
   const apiKeyStore = deps.apiKeyStore ?? new FsApiKeyStore(new LocalFsBlobStore(deps.apiKeysDir ?? loadConfig().apiKeysDir));
   const workspaceStore =
     deps.workspaceStore ?? new FsWorkspaceStore(new LocalFsBlobStore(deps.workspacesDir ?? loadConfig().workspacesDir));
@@ -128,7 +149,18 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     permissionManager,
     ...(deps.auditAccessKinds !== undefined ? { allowedPrincipalKinds: deps.auditAccessKinds } : {}),
   });
-  registerRoutes(router, { workspaceStore, workspaceDataConfig, permissionManager, audit, auditSink, auditAccess });
+  const procedureStepTimeoutMs = deps.procedureStepTimeoutMs ?? loadConfig().procedureStepTimeoutMs;
+  registerRoutes(router, {
+    workspaceStore,
+    workspaceDataConfig,
+    permissionManager,
+    audit,
+    auditSink,
+    auditAccess,
+    ...(procedureStepTimeoutMs !== undefined ? { procedureStepTimeoutMs } : {}),
+    ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
+    ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
+  });
   return router;
 }
 

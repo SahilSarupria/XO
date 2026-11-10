@@ -1,0 +1,30 @@
+{
+  "name": "@xo/procedure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P1.1 M1: ProcedureDefinition v1 \u2014 strict, reject-by-default parser, canonical hash, local static validation (reference integrity, graph analysis) and in-memory lowering to a WorkflowGraph. Pure: no I/O, no execution, no registry access. Registry-dependent checks (contract-hash drift, capability/binding resolution against the server registry) are M2, not provided here.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/types": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/runtime": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}
