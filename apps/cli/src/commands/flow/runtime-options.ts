@@ -1,6 +1,15 @@
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import { FileAnchorSink, WebhookAnchorSink } from '@xo/automation';
 import { err, ok, type Result } from '@xo/types';
-import { FileDeadLetterStore, FileEventInbox, RateLimiters, type RateLimit } from '@xo/workflow-runtime';
+import {
+  AnchoredRunStore,
+  FileDeadLetterStore,
+  FileEventInbox,
+  RateLimiters,
+  type RateLimit,
+  type RunAnchorSink,
+  type RunStoreLike,
+} from '@xo/workflow-runtime';
 
 type Flags = Readonly<Record<string, string | boolean | undefined>>;
 
@@ -31,4 +40,40 @@ export function rateLimitsFromFlags(flags: Flags, knownConnectors: readonly stri
 /** Dead letters and the event inbox live next to the run journal, so one `--runs` directory is the whole durable state. */
 export function stateStores(runsDir: string): { deadLetters: FileDeadLetterStore; events: FileEventInbox } {
   return { deadLetters: new FileDeadLetterStore(join(runsDir, 'dead-letters')), events: new FileEventInbox(join(runsDir, 'events')) };
+}
+
+/**
+ * `--anchor-file <path>` and/or `XO_ANCHOR_URL` + `XO_ANCHOR_SECRET`: publish run-journal anchors somewhere the writer of the runs directory
+ * cannot also edit. The file must live OUTSIDE the runs directory (checked on resolved paths). Misconfiguration is an error, never a quiet no-anchor run.
+ */
+export function anchoringFromFlags(
+  flags: Flags,
+  runsDir: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Result<{ wrap: <S extends RunStoreLike>(store: S) => RunStoreLike } | undefined, string> {
+  const sinks: RunAnchorSink[] = [];
+  const file = flags['anchor-file'];
+  if (file !== undefined) {
+    if (typeof file !== 'string' || file === '') return err('--anchor-file needs a path');
+    const rel = relative(resolve(runsDir), resolve(file));
+    if (!rel.startsWith('..') && !isAbsolute(rel) && rel !== '')
+      return err('--anchor-file must live OUTSIDE the runs directory, otherwise whoever can rewrite the runs can rewrite their anchors');
+    if (rel === '') return err('--anchor-file must not be the runs directory');
+    sinks.push(new FileAnchorSink(resolve(file)));
+  }
+  if (env['XO_ANCHOR_URL'] !== undefined) {
+    try {
+      sinks.push(new WebhookAnchorSink(env['XO_ANCHOR_URL'], env['XO_ANCHOR_SECRET'] ?? ''));
+    } catch (e) {
+      return err((e as Error).message);
+    }
+  }
+  if (sinks.length === 0) return ok(undefined);
+  return ok({
+    wrap: (store) =>
+      new AnchoredRunStore(store, sinks, {
+        onFailure: (sink, a, e) =>
+          process.stderr.write(`warning: anchor to ${sink} failed for run ${a.runId} seq ${a.seq}: ${e.message}\n`),
+      }),
+  });
 }

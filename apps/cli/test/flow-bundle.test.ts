@@ -248,3 +248,31 @@ test('xo serve --bundle starts from the verified package and answers /v1/loader/
     }
   });
 });
+
+test('validate and report work from a verified package; mixing a package with a loose file, a missing package and no trust policy are refused', async () => {
+  await withTempDir('xo-fb-vr-', async (tmp) => {
+    const out = await makePackage(tmp);
+    const v = await flow(['validate'], { bundle: out });
+    assert.equal(v.code, 0, v.text);
+    assert.match(v.text, /package: desk@1\.0\.0 — trust: unverified \[mode=development\]/);
+    assert.match(v.text, /OK · 2 workflow\(s\)/);
+    const r = await flow(['report'], { bundle: out });
+    assert.equal(r.code, 0, r.text);
+    assert.match(r.text, /deterministic by declaration/);
+    assert.match(r.text, /Declared, not measured/);
+
+    assert.notEqual((await flow(['validate', 'x.json'], { bundle: out })).code, 0);
+    const mixed = await flow(['report', 'x.json'], { bundle: out });
+    assert.match(mixed.text, /do not pass both/);
+    assert.notEqual((await flow(['validate'], { bundle: join(tmp, 'nope.xo') })).code, 0);
+
+    // tampered package: refused before anything is reported
+    const bytes = await readFile(out);
+    bytes[Math.floor(bytes.length / 2)] ^= 0xff;
+    const bad = join(tmp, 'bad.xo');
+    await writeFile(bad, bytes);
+    const t = await flow(['validate'], { bundle: bad });
+    assert.notEqual(t.code, 0);
+    assert.doesNotMatch(t.text, /^OK ·/m);
+  });
+});

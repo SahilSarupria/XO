@@ -16,3 +16,4 @@ export * from './reconcile.js';
 export * from './ratelimit.js';
 export * from './deadletter.js';
 export * from './events.js';
+export * from './anchor.js';

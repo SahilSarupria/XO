@@ -107,6 +107,20 @@ is not a measure of accuracy on new ones: not yet measured.
   inside the window, not the link back to genesis; use `read` for full verification). The store caches at most 1024 run tails (LRU) and holds no queue entry for an idle run.
   `read` and replay still load the whole run: the bound is on appends and on `window`, not on a full replay.
 
+## Anchoring and embedding
+
+`xo flow run|event` and `xo flow serve` take `--anchor-file <path>` (must be OUTSIDE the runs directory; checked) and/or `XO_ANCHOR_URL` + `XO_ANCHOR_SECRET` (HMAC-signed POST, https or loopback,
+secret of at least 16 characters). They use the sinks of the desk ledger (`docs/AUTOMATION_OPERATIONS.md` section 4). An anchor `{runId, seq, hash, at}` is published every 25 journal entries and
+on run end, escalation, approval decision, received event, connector outcome and ambiguous effect. A sink that fails or does not answer in 5 s is counted and printed as a warning; it never
+stops a run. `xo flow verify-anchors --runs <dir> --anchors <file>` fails (exit 1) if a journal is shorter than an anchored position, has a different hash there, is corrupt, or its run was
+removed; no anchors at all is also exit 1 (nothing was verified). **Limits:** entries after the last anchor can be cut back undetected; an anchor is only as trustworthy as its sink (an attacker who
+can edit the sink can edit the anchors); anchors are published synchronously, so a slow sink slows the run by up to the timeout per anchored entry.
+
+`xo flow validate|report` accept `--bundle <package.xo|dir>` and then check the package (integrity, trust policy, workflow validity) before reporting; `--bundle` and a loose file together are refused.
+
+Embedding as a library: `examples/host-app-demo/embed-workflow.mjs` defines a workflow as data, wraps your system as a connector, runs it durably with anchors and verifies them, offline
+(smoke-tested by `packages/workflow-runtime/test/embed-example.test.ts`).
+
 ## Explain and audit export (section G, partial)
 
 `xo flow explain <workflows.json> --workflow <id> --runs <dir> --run <runId> [--json]` rebuilds a run from its hash-verified journal: inputs, the steps that ran or were

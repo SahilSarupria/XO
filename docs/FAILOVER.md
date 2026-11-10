@@ -47,7 +47,7 @@ server resumes from the replicated journal, and the returning runner is fenced o
 
 The server verifies every link (sequence, previous hash, own hash). Identical re-pushes are no-ops; a gap asks for the missing range; an entry that conflicts with one already
 held (same sequence, different hash) is a **fork**: never merged, recorded durably, the run is quarantined until an operator clears it, and `onFork` fires so it can be escalated.
-Anchoring of the ledger (the existing automation anchor) is not wired to this journal yet.
+Anchoring: run journals can publish `(runId, seq, hash)` to the same kind of sinks the desk ledger uses (`--anchor-file`, `XO_ANCHOR_URL`/`XO_ANCHOR_SECRET`); see `docs/WORKFLOW_RUNTIME.md` (anchoring).
 
 ## Exact guarantees
 

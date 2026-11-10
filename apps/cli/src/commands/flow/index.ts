@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { DecisionTree } from '@xo/capability-layer';
 import { parseTrees } from '@xo/capability-layer';
@@ -17,6 +17,9 @@ import {
   LeasedRunStore,
   LedgerReplica,
   RunStore,
+  verifyRunAnchors,
+  type RunAnchor,
+  type RunStoreLike,
   reconcile,
   StaticReviewerRegistry,
   WorkflowRunner,
@@ -37,7 +40,7 @@ import { buildImplementations, type OperatorPolicyFile } from './bindings.js';
 import { loadWorkflowBundle, type LoadedWorkflowBundle } from './bundle.js';
 import { capsFromFlags, extractorFor } from './extractor.js';
 import { PROMOTE_USAGE, runPromote } from './promote.js';
-import { rateLimitsFromFlags, stateStores } from './runtime-options.js';
+import { anchoringFromFlags, rateLimitsFromFlags, stateStores } from './runtime-options.js';
 
 const SUBSYSTEM = 'flow';
 const out = (s: string): void => void process.stdout.write(`${s}\n`);
@@ -89,6 +92,26 @@ function requireFile(file: string | undefined): string {
   return file;
 }
 
+function validateComponent(comp: WorkflowComponent): number {
+  const n = negotiateWorkflows(comp, DETERMINISTIC_HOST);
+  out(`OK · ${comp.workflows.length} workflow(s), ${comp.connectors.length} connector(s)`);
+  for (const w of n.runnable) out(`  runnable on a deterministic-only host: ${w}${n.modelFree.includes(w) ? ' (no model needed)' : ''}`);
+  for (const r of n.refused) out(`  needs more than a deterministic-only host: ${r.workflow}: ${r.reasons.join('; ')}`);
+  return 0;
+}
+
+function reportComponent(comp: WorkflowComponent): number {
+  for (const wf of comp.workflows) {
+    const r = determinismReport(wf);
+    out(
+      `${wf.id}@${wf.version}: ${r.counts.deterministic}/${wf.steps.length} deterministic by declaration (${r.counts.model_assisted} model-assisted, ${r.counts.human} human). Declared, not measured.`,
+    );
+    for (const s of r.steps.filter((x) => x.class !== 'deterministic'))
+      out(`  ${s.step} [${s.class}] ${s.reason ?? ''}${s.bypassable === true ? ' (bypassed when structured input is complete)' : ''}`);
+  }
+  return 0;
+}
+
 function load(path: string, treesPath?: string): WorkflowComponent {
   const trees = treesPath !== undefined ? JSON.parse(readFileSync(resolve(treesPath), 'utf8')) : undefined;
   return loadWorkflowComponent(readFileSync(resolve(path)), trees !== undefined ? { decisionTrees: trees } : undefined).component;
@@ -102,7 +125,7 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo flow resolve --bundle <package.xo|dir> --family <name> [--capabilities chat,tool_use] [--json]   What a host would get from a verified package (same logic as /v1/loader/resolve)\n' +
       '      xo flow reconcile --runs <dir> [--json]   External writes whose outcome is unknown or settled by lookup (exit 1 if any need attention; reads journals only)\n' +
-      'xo flow validate <workflows.json> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
+      'xo flow validate <workflows.json>|--bundle <package.xo|dir> [--trees <decision_trees.json>]            Strict fail-closed validation (exit 3 on any error)\n' +
       'xo flow event <workflows.json>|--bundle <pkg> --workflow <id> --runs <dir> --name <event> --correlation <value> --event-id <id> [--input <json payload>]   Deliver one inbound event and resume runs waiting for it (deduplicated by --event-id)\n' +
       'xo flow dead-letters --runs <dir> [--json]   Steps that ended failed or escalated, stored for a person (read-only)\n' +
       'xo flow compare <workflows.json> --workflow <id> --runs <dir> --human <csv> --key <input> --field <result>   Shadow runs vs human decisions (run with --shadow first)\n' +
@@ -113,8 +136,9 @@ export function registerCommands(registry: CommandRegistry): void {
         .map((l) => l)
         .join('\n') +
       '\n' +
+      'xo flow verify-anchors --runs <dir> --anchors <anchors.jsonl> [--json]   Check journals against published anchors (truncation, rebuilt history, removed runs); publish them with --anchor-file <path outside --runs> and/or XO_ANCHOR_URL + XO_ANCHOR_SECRET on run/serve\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
-      'xo flow report <workflows.json>                                              Declared determinism class per step and workflow\n' +
+      'xo flow report <workflows.json>|--bundle <pkg>                                            Declared determinism class per step and workflow\n' +
       'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run [--rate-limit bank=2:5,slack=1]\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
@@ -141,6 +165,31 @@ export function registerCommands(registry: CommandRegistry): void {
         return rep.needsAttention ? 1 : 0;
       }
       if (sub === 'promote') return runPromote(args.positionals, args.flags);
+      if (sub === 'verify-anchors') {
+        const runs = flag(args.flags, 'runs');
+        const anchorsPath = flag(args.flags, 'anchors');
+        if (runs === undefined || anchorsPath === undefined)
+          return fail('usage: xo flow verify-anchors --runs <dir> --anchors <anchors.jsonl> [--json]');
+        const text = existsSync(resolve(anchorsPath)) ? readFileSync(resolve(anchorsPath), 'utf8') : '';
+        const anchors: RunAnchor[] = [];
+        for (const [i, l] of text.split('\n').entries())
+          if (l.trim() !== '')
+            try {
+              anchors.push(JSON.parse(l) as RunAnchor);
+            } catch {
+              return fail(`${anchorsPath} line ${i + 1} is not JSON`);
+            }
+        const v = await verifyRunAnchors(new RunStore(resolve(runs)), anchors);
+        if (args.flags['json'] === true) out(JSON.stringify(v, null, 2));
+        else {
+          out(
+            `${v.anchors} anchor(s) over ${v.runs} run(s): ${v.ok ? 'every anchored position matches' : `${v.problems.length} problem(s)`}.`,
+          );
+          for (const p of v.problems) out(`  ${p}`);
+          if (v.anchors === 0) out('  (no anchors found: nothing was verified)');
+        }
+        return v.ok && v.anchors > 0 ? 0 : 1;
+      }
       if (sub === 'dead-letters') {
         // reads the dead-letter store only; changes nothing
         const runs = flag(args.flags, 'runs');
@@ -177,31 +226,20 @@ export function registerCommands(registry: CommandRegistry): void {
         }
         return 0;
       }
-      if (sub === undefined || (file === undefined && !(args.flags['bundle'] !== undefined && (sub === 'run' || sub === 'event'))))
+      if (
+        sub === undefined ||
+        (file === undefined &&
+          !(args.flags['bundle'] !== undefined && (sub === 'run' || sub === 'event' || sub === 'validate' || sub === 'report')))
+      )
         return fail('usage: xo flow <validate|report|run|resolve|reconcile> <workflows.json>');
       try {
         const trees = flag(args.flags, 'trees');
-        if (sub === 'validate') {
-          const comp = load(requireFile(file), trees);
-          const n = negotiateWorkflows(comp, DETERMINISTIC_HOST);
-          out(`OK · ${comp.workflows.length} workflow(s), ${comp.connectors.length} connector(s)`);
-          for (const w of n.runnable)
-            out(`  runnable on a deterministic-only host: ${w}${n.modelFree.includes(w) ? ' (no model needed)' : ''}`);
-          for (const r of n.refused) out(`  needs more than a deterministic-only host: ${r.workflow}: ${r.reasons.join('; ')}`);
-          return 0;
-        }
-        if (sub === 'report') {
-          for (const wf of load(requireFile(file), trees).workflows) {
-            const r = determinismReport(wf);
-            out(
-              `${wf.id}@${wf.version}: ${r.counts.deterministic}/${wf.steps.length} deterministic by declaration (${r.counts.model_assisted} model-assisted, ${r.counts.human} human). Declared, not measured.`,
-            );
-            for (const s of r.steps.filter((x) => x.class !== 'deterministic'))
-              out(
-                `  ${s.step} [${s.class}] ${s.reason ?? ''}${s.bypassable === true ? ' (bypassed when structured input is complete)' : ''}`,
-              );
-          }
-          return 0;
+        if (sub === 'validate' || sub === 'report') {
+          // from a verified package (--bundle) or a loose file; the package is checked (signature, trust, workflow validity) before anything is reported on
+          const src = await inputsFrom(args.flags, file);
+          if (!src.ok) return fail(src.error);
+          if (sub === 'validate') return validateComponent(src.comp);
+          return reportComponent(src.comp);
         }
         if (sub === 'run' || sub === 'event') {
           const id = flag(args.flags, 'workflow');
@@ -231,11 +269,14 @@ export function registerCommands(registry: CommandRegistry): void {
           );
           if (!limits.ok) return fail(limits.error);
           const state = stateStores(resolve(runs));
+          const anchoring = anchoringFromFlags(args.flags, resolve(runs));
+          if (!anchoring.ok) return fail(anchoring.error);
+          const base = new RunStore(resolve(runs));
           const runner = new WorkflowRunner({
             ...(environment !== undefined ? { environment } : {}),
             component: comp,
             workflowId: id,
-            store: new RunStore(resolve(runs)),
+            store: anchoring.value?.wrap(base) ?? base,
             ...state,
             ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
             connectors: new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() }),
@@ -452,7 +493,10 @@ export function registerCommands(registry: CommandRegistry): void {
         const store = new RunStore(join(base, 'journal'));
         const authority = new LeaseAuthority(join(base, 'leases'), store);
         const replica = new LedgerReplica(join(base, 'forks'), store);
+        const anchoring = anchoringFromFlags(args.flags, base);
+        if (!anchoring.ok) return fail(anchoring.error);
         const leased = new LeasedRunStore(authority, store);
+        const runnerStore: RunStoreLike = anchoring.value?.wrap(leased) ?? leased;
         const connectors = new ConnectorHost({ component: comp, policy, implementations, vault: new EnvVault() });
         const state = stateStores(base);
         const runners: Record<string, WorkflowRunner> = {};
@@ -465,7 +509,7 @@ export function registerCommands(registry: CommandRegistry): void {
               ...(environment !== undefined ? { environment } : {}),
               component: comp,
               workflowId: wf.id,
-              store: leased,
+              store: runnerStore,
               connectors,
               ...state,
               ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
