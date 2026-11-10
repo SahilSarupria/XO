@@ -33,6 +33,20 @@ export const openApiDocument = {
         },
       },
     },
+    '/ready': {
+      get: {
+        summary: 'Readiness: process status plus inference-provider CONFIGURATION status (never calls the provider)',
+        responses: {
+          '200': {
+            description:
+              'status is always "ok" when the process serves requests. inference.state is unconfigured|configured|invalid; "configured" does NOT mean the provider is reachable (providerReachable is always "not_checked") or that inference works (inferenceVerified is always false). Never includes credentials.',
+            content: {
+              'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, inference: { type: 'object' } } } },
+            },
+          },
+        },
+      },
+    },
     '/openapi.json': {
       get: { summary: 'This document', security: [], responses: { '200': { description: 'OK' } } },
     },
@@ -918,7 +932,7 @@ export const openApiDocument = {
       post: {
         summary: 'DISABLED (P1.0 M1): AI-assisted execution — always responds 501 after the workspace-ownership check',
         description:
-          "AI-assisted execution is disabled. This route would construct the execution engine with no permission gate and read provider credentials/endpoint from request headers, so it stays unavailable until capability authorization is enforced on this path (planned P1.0 M2). The workspace-ownership check still runs first (foreign or unknown workspace => the same 404), then the route responds 501 before any provider is resolved or any x-xo-* header is read. The body and headers documented below describe the route's retained, currently UNREACHABLE behaviour; they have no effect today. Deterministic execution (POST /workspaces/{workspaceId}/executions) is unaffected. Re-enabling is a code change, not configuration.",
+          "AI-assisted execution is disabled. This route would construct the execution engine with no permission gate and accept provider credentials/endpoint from request headers (the provider factory now rejects any x-xo-* provider header and uses server-configured inference only, but the missing authorization gate remains), so it stays unavailable until capability authorization is enforced on this path (planned P1.0 M2). The workspace-ownership check still runs first (foreign or unknown workspace => the same 404), then the route responds 501 before any provider is resolved or any x-xo-* header is read. The request body and the non-501 responses documented below describe the route's retained, currently UNREACHABLE behaviour; they have no effect today. If the route is re-enabled, the provider is chosen by server configuration only and any x-xo-provider/x-xo-api-key/x-xo-base-url/x-xo-endpoint/x-xo-api-version header is rejected with 400. Deterministic execution (POST /workspaces/{workspaceId}/executions) is unaffected. Re-enabling is a code change, not configuration.",
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         requestBody: {
           required: true,

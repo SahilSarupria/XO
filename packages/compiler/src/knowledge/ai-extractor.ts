@@ -65,6 +65,13 @@ export class AiKnowledgeExtractor implements KnowledgeExtractor {
       sectionPath: unit.provenance.sectionPath,
       charOffsetRange: undefined, // @xo/ai-core's extractKnowledge does not report offsets — see this package's README, "Known limitations"
       confidence,
+      // Honest origin: a replayed cache entry is `cache`, a fresh provider call is `generated` (never presented as new when it is not).
+      derivation: {
+        kind: 'llm',
+        source: response.value.meta.provenance?.source ?? (response.value.meta.cacheHit ? 'cache' : 'generated'),
+        provider: response.value.meta.providerUsed,
+        model: response.value.meta.modelUsed,
+      },
     });
 
     const nodes: CandidateKnowledgeNode[] = response.value.output.items.map((item) => ({

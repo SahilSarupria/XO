@@ -156,6 +156,8 @@ export const ErrorCode = {
   AI_SCHEMA_VALIDATION_FAILED: 'XO_AI_SCHEMA_VALIDATION_FAILED',
   AI_PROMPT_NOT_FOUND: 'XO_AI_PROMPT_NOT_FOUND',
   AI_REPLAY_FIXTURE_MISSING: 'XO_AI_REPLAY_FIXTURE_MISSING',
+  /** An inference call was refused by policy/budget (see `context.inferenceDenial.reason`). Not a provider failure; never retried or failed over. */
+  AI_INFERENCE_DENIED: 'XO_AI_INFERENCE_DENIED',
 
   // Permissions (@xo/permissions) — the security/policy layer between a
   // package's declared capabilities and actual runtime execution. See

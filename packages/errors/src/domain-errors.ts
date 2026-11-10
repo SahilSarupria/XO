@@ -239,6 +239,7 @@ export class AiError extends XoError {
       | typeof ErrorCode.AI_CIRCUIT_OPEN
       | typeof ErrorCode.AI_NO_ELIGIBLE_PROVIDER
       | typeof ErrorCode.AI_ALL_PROVIDERS_FAILED
+      | typeof ErrorCode.AI_INFERENCE_DENIED
       | typeof ErrorCode.AI_PROMPT_NOT_FOUND
       | typeof ErrorCode.AI_PROVIDER_REQUEST_FAILED
       | typeof ErrorCode.AI_REPLAY_FIXTURE_MISSING,

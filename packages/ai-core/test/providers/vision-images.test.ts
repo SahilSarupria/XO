@@ -76,8 +76,9 @@ test('vision: Gemini sends images as inlineData parts, text-only calls are uncha
     usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
   });
   const p = new GeminiProvider({ apiKey: 'k', fetchImpl });
-  await p.complete(withImage);
-  await p.complete(textOnly);
+  // GeminiProvider now rejects non-`gemini-*` model ids (inference-safety closure), so this case uses a valid id.
+  await p.complete({ ...withImage, model: 'gemini-test' });
+  await p.complete({ ...textOnly, model: 'gemini-test' });
   const [a, b] = bodies as { contents: { parts: unknown[] }[] }[];
   assert.deepEqual(a!.contents[0]!.parts, [{ text: 'transcribe' }, { inlineData: { mimeType: 'image/png', data: 'QUJD' } }]);
   assert.deepEqual(b!.contents[0]!.parts, [{ text: 'hello' }]);

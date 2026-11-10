@@ -2,6 +2,7 @@ import type { AiCapabilityLayer } from '@xo/ai-core';
 import type { Logger } from '@xo/logger';
 import { AiKnowledgeExtractor } from './ai-extractor.js';
 import { HybridKnowledgeExtractor } from './hybrid-extractor.js';
+import type { EscalationPolicyConfig } from './escalation-policy.js';
 import type { KnowledgeExtractor } from './extractor-types.js';
 import { mergeKnowledgeNodes, type PerUnitExtraction } from './merge.js';
 import { buildKnowledgeEdges } from './relationship-builder.js';
@@ -12,6 +13,8 @@ export interface KnowledgeExtractionOptions {
   /** When supplied, `HybridKnowledgeExtractor` additionally calls `@xo/ai-core#extractKnowledge` per unit; when omitted, extraction is rule-based only (still a correct, if lower-confidence, graph). */
   readonly aiCore?: AiCapabilityLayer;
   readonly domainHint?: string;
+  /** Overrides for confidence-gated escalation (see `escalation-policy.ts`). Absent = `DEFAULT_ESCALATION_POLICY`; `{ mode: 'always' }` restores the older every-unit behaviour. */
+  readonly escalation?: Partial<EscalationPolicyConfig>;
   readonly logger?: Logger;
   /** Escape hatch for a caller that wants to supply its own `KnowledgeExtractor` entirely (e.g. a test double), bypassing the default hybrid wiring. */
   readonly extractor?: KnowledgeExtractor;
@@ -43,7 +46,11 @@ export async function extractKnowledgeGraph(
 ): Promise<KnowledgeGraph> {
   const extractor =
     options.extractor ??
-    new HybridKnowledgeExtractor(options.aiCore ? new AiKnowledgeExtractor(options.aiCore, options.domainHint) : undefined, options.logger);
+    new HybridKnowledgeExtractor(
+      options.aiCore ? new AiKnowledgeExtractor(options.aiCore, options.domainHint) : undefined,
+      options.logger,
+      options.escalation,
+    );
 
   const perUnit: PerUnitExtraction[] = [];
   for (const unit of experienceDocument.units) {
@@ -57,6 +64,9 @@ export async function extractKnowledgeGraph(
     }
     perUnit.push({ unit, extraction });
   }
+
+  if (extractor instanceof HybridKnowledgeExtractor && options.aiCore)
+    options.logger?.info('knowledge escalation summary', { ...extractor.report() });
 
   const mergeResult = mergeKnowledgeNodes(perUnit);
   const edges = buildKnowledgeEdges(experienceDocument, perUnit, mergeResult);

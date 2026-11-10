@@ -59,3 +59,21 @@ test('an unknown --provider value fails with the list of supported ids', () => {
     assert.match(result.error, /ollama/);
   }
 });
+
+test('XO_INFERENCE_PROVIDER selects the provider when --provider is absent; an explicit --provider wins', () => {
+  const viaEnv = resolveProvider({}, { XO_INFERENCE_PROVIDER: 'gemini', GEMINI_API_KEY: 'g-key-123456', ANTHROPIC_API_KEY: 'a' });
+  assert.equal(viaEnv.ok && viaEnv.value.id, 'gemini');
+  const flagWins = resolveProvider(
+    { provider: 'anthropic' },
+    { XO_INFERENCE_PROVIDER: 'gemini', GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' },
+  );
+  assert.equal(flagWins.ok && flagWins.value.id, 'anthropic');
+});
+
+test('XO_INFERENCE_PROVIDER=none disables inference unless --provider is explicit', () => {
+  const disabled = resolveProvider({}, { XO_INFERENCE_PROVIDER: 'none', ANTHROPIC_API_KEY: 'a' });
+  assert.equal(disabled.ok, false);
+  if (!disabled.ok) assert.match(disabled.error, /disabled/);
+  const explicit = resolveProvider({ provider: 'anthropic' }, { XO_INFERENCE_PROVIDER: 'none', ANTHROPIC_API_KEY: 'a' });
+  assert.equal(explicit.ok, true);
+});

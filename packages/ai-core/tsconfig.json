@@ -8,6 +8,7 @@
   "references": [
     { "path": "../types" },
     { "path": "../errors" },
+    { "path": "../config" },
     { "path": "../logger" },
     { "path": "../observability" },
     { "path": "../crypto" },

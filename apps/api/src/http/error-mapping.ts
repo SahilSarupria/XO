@@ -186,6 +186,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AI_ALL_PROVIDERS_FAILED]: 502,
   [ErrorCode.AI_NO_ELIGIBLE_PROVIDER]: 503,
   [ErrorCode.AI_RATE_LIMITED]: 429,
+  // Refused by server inference policy/budget (see context.inferenceDenial.reason) — not an upstream provider failure.
+  [ErrorCode.AI_INFERENCE_DENIED]: 403,
   [ErrorCode.AI_CIRCUIT_OPEN]: 503,
   [ErrorCode.AI_SCHEMA_VALIDATION_FAILED]: 502,
   [ErrorCode.AI_PROMPT_NOT_FOUND]: 404,

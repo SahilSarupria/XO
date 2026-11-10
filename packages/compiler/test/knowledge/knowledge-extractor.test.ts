@@ -91,7 +91,7 @@ test('integration: with an AI extractor available, AI-derived nodes appear along
     policy: { rules: [{ capability: '*', providerOrder: ['anthropic'], modelByProvider: { anthropic: 'test-model' } }] },
     retryOptions: { maxAttempts: 1, initialDelayMs: 1, maxDelayMs: 1, backoffMultiplier: 1, sleep: async () => {} },
   });
-  const graph = await extractKnowledgeGraph(experienceDoc, { aiCore });
+  const graph = await extractKnowledgeGraph(experienceDoc, { aiCore, escalation: { mode: 'always' } });
   assert.ok(graph.nodes.some((n) => n.canonicalLabel === 'Compliance obligation exists'));
   assert.ok(graph.nodes.some((n) => n.semanticType === 'organization')); // rule-based candidate still present too
 });

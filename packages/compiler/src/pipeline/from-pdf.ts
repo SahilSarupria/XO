@@ -1,3 +1,4 @@
+import { checkCompileInferenceAuthority } from './inference-authority.js';
 import { err, ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -19,6 +20,8 @@ import type { CompiledXoirResult } from './types.js';
 export interface CompilePdfOptions {
   /** Shared across every Stage 4-7 extractor (`aiCore`/`domainHint`/`logger`) — see each extractor's own options doc comment (`knowledge-extractor.ts`, `capability-extractor.ts`, `reasoning-extractor.ts`). Omitted `aiCore` means every stage runs rule-based only, which is a correct, if lower-confidence and narrower, graph end to end — never a failure. */
   readonly aiCore?: AiCapabilityLayer;
+  /** Explicit operator opt-in to run `aiCore` with NO spend limit; otherwise an unbounded layer is refused. See `checkCompileInferenceAuthority`. */
+  readonly allowUnboundedInference?: boolean;
   readonly domainHint?: string;
   /** Passed through to Stage 7 (`extractReasoningGraph`) only — see `reasoning-extractor.ts`. */
   readonly focusQuestion?: string;
@@ -90,6 +93,8 @@ export async function compilePdfToXoir(
   sourcePath: string,
   options: CompilePdfOptions = {},
 ): Promise<Result<CompiledPdfResult, XoError>> {
+  const authority = checkCompileInferenceAuthority(options.aiCore, options.allowUnboundedInference, options.logger);
+  if (!authority.ok) return err(authority.error);
   const loadResult = new NodePdfLoader().load(bytes, sourcePath);
   if (!loadResult.ok) return err(loadResult.error);
   const loadedDocument = loadResult.value;
