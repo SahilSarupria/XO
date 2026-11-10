@@ -8,3 +8,4 @@ export * from './executor.js';
 export * from './integrity.js';
 export * from './grounding.js';
 export * from './classification.js';
+export * from './efficiency.js';

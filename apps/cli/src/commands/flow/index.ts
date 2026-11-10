@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { DecisionTree } from '@xo/capability-layer';
-import { parseTrees } from '@xo/capability-layer';
+import { LOW_RESOURCE, parseTrees } from '@xo/capability-layer';
 import { ConnectorHost, EnvVault, type ConnectorPolicy } from '@xo/connectors';
 import {
   DETERMINISTIC_HOST,
@@ -199,7 +199,7 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo flow link-artifacts --kind tree|knowledge|safety <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Link trees, knowledge or safety rules by id across XOs (identical = overlap, differing = precedence or blocked, exit 2)\n' +
       'xo flow link <a.json> <b.json> [...] [--names a,b] [--order a,b] [--out merged.json]   Load several XOs together; overlaps and conflicts reported, unresolved ones blocked (exit 2)\n' +
       'xo flow report <workflows.json>|--bundle <pkg>                                            Declared determinism class per step and workflow\n' +
-      'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run [--rate-limit bank=2:5,slack=1]\n' +
+      'xo flow run <workflows.json>|--bundle <package.xo|dir> [--memo-dir <dir>] --workflow <id> --input <json> --runs <dir>     Run durably; optional --policy <policy.json> --trees <file> --dry-run [--low-resource] [--rate-limit bank=2:5,slack=1]\n' +
       '                                       [--dedupe <key>]  (file connectors only; credentials come from XO_SECRET_* env; no model, no network)',
     run: async (args) => {
       // `xo flow approvals <list|get|decide> [workflows.json]` has one more positional than the other subcommands
@@ -387,8 +387,14 @@ export function registerCommands(registry: CommandRegistry): void {
           const state = stateStores(resolve(runs));
           const anchoring = anchoringFromFlags(args.flags, resolve(runs));
           if (!anchoring.ok) return fail(anchoring.error);
-          const base = new RunStore(resolve(runs));
+          const lowResource = args.flags['low-resource'] === true;
+          const base = new RunStore(
+            resolve(runs),
+            undefined,
+            lowResource ? { segmentBytes: LOW_RESOURCE.segmentBytes, maxTrackedRuns: LOW_RESOURCE.trackedRuns } : {},
+          );
           const runner = new WorkflowRunner({
+            ...(lowResource ? { maxItemConcurrency: LOW_RESOURCE.forEachConcurrency } : {}),
             ...(environment !== undefined ? { environment } : {}),
             component: comp,
             workflowId: id,
@@ -608,7 +614,12 @@ export function registerCommands(registry: CommandRegistry): void {
         const approvals = approvalsFromFlags(args.flags);
         if (!approvals.ok) return fail(approvals.error);
         const base = resolve(runs);
-        const store = new RunStore(join(base, 'journal'));
+        const lowResource = args.flags['low-resource'] === true;
+        const store = new RunStore(
+          join(base, 'journal'),
+          undefined,
+          lowResource ? { segmentBytes: LOW_RESOURCE.segmentBytes, maxTrackedRuns: LOW_RESOURCE.trackedRuns } : {},
+        );
         const authority = new LeaseAuthority(join(base, 'leases'), store);
         const replica = new LedgerReplica(join(base, 'forks'), store);
         const locked = await holdWriterLock(base);
@@ -631,6 +642,7 @@ export function registerCommands(registry: CommandRegistry): void {
               workflowId: wf.id,
               store: runnerStore,
               connectors,
+              ...(lowResource ? { maxItemConcurrency: LOW_RESOURCE.forEachConcurrency } : {}),
               ...state,
               ...(limits.value !== undefined ? { rateLimits: limits.value } : {}),
               trees: treeMap,

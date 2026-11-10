@@ -1,7 +1,7 @@
 import { createServer as httpServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createServer as httpsServer } from 'node:https';
 import { timingSafeEqual } from 'node:crypto';
-import { createCapabilityLayer, evaluateTree, type DecisionTree } from '@xo/capability-layer';
+import { evaluateTree, LayerCache, type createCapabilityLayer, type DecisionTree } from '@xo/capability-layer';
 import type { PackageBundle } from '@xo/package-sdk';
 import type { ModelFamily } from '@xo/types';
 import { hasScope, requiredScope, TOKEN_FORMAT, type Scope, type TokenAuthority } from './auth.js';
@@ -88,11 +88,14 @@ export interface HostResolution {
  * reference model-free runner. The ONE implementation behind `POST /v1/loader/resolve` and `xo flow resolve`. Loading verifies component hashes; it throws
  * on a tampered package.
  */
+/** The server holds one bundle object for its lifetime, so its integrity check, parsing and retrieval index are done once per host shape, not once per request. */
+const layers = new LayerCache(16);
+
 export function resolveForHost(
   bundle: PackageBundle,
   host: { readonly family: string; readonly capabilities: readonly string[] },
 ): HostResolution {
-  const layer = createCapabilityLayer(bundle, { host: { family: host.family as ModelFamily, capabilities: host.capabilities as never } });
+  const layer = layers.get(bundle, { host: { family: host.family as ModelFamily, capabilities: [...host.capabilities] as never } });
   const receipt = layer.emitLoadReceipt();
   let workflows: unknown = null;
   try {

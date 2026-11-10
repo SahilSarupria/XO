@@ -13,6 +13,14 @@ export interface AgentOptions {
   readonly temperature?: number;
   /** Hard ceiling on input+output tokens across the whole loop. Checked before every provider call; never exceeded by starting a new call. */
   readonly maxTotalTokens?: number;
+  /**
+   * Whole-loop wall-clock cap in milliseconds, covering every model call and tool execution. Checked before each call and enforced DURING a call: when it
+   * expires the loop returns `stoppedBy: 'wall_clock'` without waiting for the provider, and a result that arrives later is ignored. The abandoned provider call
+   * is not cancelled (the provider interface has no cancel), so it may still finish and be billed; a tool already running is not interrupted either.
+   */
+  readonly maxWallClockMs?: number;
+  /** Time source in ms, for tests. Default `Date.now`. */
+  readonly clock?: () => number;
 }
 
 export interface ToolCallRecord {
@@ -29,7 +37,7 @@ export interface AgentRun {
   readonly usage: { readonly inputTokens: number; readonly outputTokens: number };
   /** True if the loop stopped (turn limit or budget) while the model was still asking for tools. */
   readonly truncated: boolean;
-  readonly stoppedBy?: 'max_turns' | 'token_budget';
+  readonly stoppedBy?: 'max_turns' | 'token_budget' | 'wall_clock';
 }
 
 /**
@@ -48,17 +56,47 @@ export async function runAgent(provider: ModelProvider, userMessage: string, opt
   const maxTurns = opts.maxTurns ?? 8;
   const tools = opts.tools !== undefined && opts.tools.length > 0 ? opts.tools : undefined;
 
+  const now = opts.clock ?? Date.now;
+  const deadline = opts.maxWallClockMs !== undefined ? now() + opts.maxWallClockMs : undefined;
+  const expired = (): boolean => deadline !== undefined && now() >= deadline;
+  const stopped = (turn: number): AgentRun => ({
+    text: '',
+    turns: turn - 1,
+    toolCalls: records,
+    usage,
+    truncated: true,
+    stoppedBy: 'wall_clock',
+  });
+  /** Resolves to `undefined` when the deadline passes first. */
+  const within = async <T>(p: Promise<T>): Promise<T | undefined> => {
+    if (deadline === undefined) return p;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => resolve(undefined), Math.max(0, deadline - now()));
+    });
+    try {
+      return await Promise.race([p, limit]);
+    } finally {
+      clearTimeout(timer);
+      p.catch(() => undefined); // an abandoned call that later fails must not become an unhandled rejection
+    }
+  };
+
   for (let turn = 1; turn <= maxTurns; turn++) {
+    if (expired()) return stopped(turn);
     if (opts.maxTotalTokens !== undefined && usage.inputTokens + usage.outputTokens >= opts.maxTotalTokens) {
       return { text: '', turns: turn - 1, toolCalls: records, usage, truncated: true, stoppedBy: 'token_budget' };
     }
-    const res = await provider.complete({
-      model: opts.model,
-      messages,
-      maxOutputTokens: opts.maxOutputTokens ?? 1024,
-      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-      ...(tools !== undefined ? { tools } : {}),
-    });
+    const res = await within(
+      provider.complete({
+        model: opts.model,
+        messages,
+        maxOutputTokens: opts.maxOutputTokens ?? 1024,
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        ...(tools !== undefined ? { tools } : {}),
+      }),
+    );
+    if (res === undefined) return stopped(turn);
     usage.inputTokens += res.usage.inputTokens;
     usage.outputTokens += res.usage.outputTokens;
 
@@ -68,10 +106,12 @@ export async function runAgent(provider: ModelProvider, userMessage: string, opt
     }
     messages.push({ role: 'assistant', content: res.text, toolCalls: calls });
     for (const call of calls) {
+      if (expired()) return stopped(turn + 1);
       const out =
         opts.executeTool !== undefined
-          ? await opts.executeTool(call.name, call.input)
+          ? await within(Promise.resolve(opts.executeTool(call.name, call.input)))
           : { isError: true, content: 'no tool executor configured' };
+      if (out === undefined) return stopped(turn + 1);
       records.push({ name: call.name, input: call.input, isError: out.isError, result: out.content });
       messages.push({ role: 'tool', toolCallId: call.id, content: out.content, ...(out.isError ? { isError: true } : {}) });
     }

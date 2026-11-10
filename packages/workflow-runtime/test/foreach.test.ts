@@ -174,6 +174,16 @@ describe('forEach', () => {
     assert.ok(s.peak() >= 2, 'items did run in parallel');
   });
 
+  it("maxItemConcurrency lowers the workflow's own concurrency, and can never raise it", async () => {
+    const low = await setup({ concurrency: 4, maxItems: 20 });
+    const r = await low.mk(undefined, { maxItemConcurrency: 1 }).start({ inputs: { items: rows(6), batch: 'b' } });
+    assert.equal(r.state, 'completed');
+    assert.equal(low.peak(), 1);
+    const capped = await setup({ concurrency: 2, maxItems: 20 });
+    await capped.mk(undefined, { maxItemConcurrency: 50 }).start({ inputs: { items: rows(10), batch: 'b' } });
+    assert.ok(capped.peak() <= 2, `a larger cap must not raise the workflow's own limit (peak ${capped.peak()})`);
+  });
+
   it('one item escalating or failing leaves the others completed; the parent reports every item', async () => {
     const s = await setup({}, ['r2']);
     const r = await s.mk().start({ inputs: { items: rows(5, { 1: 5000 }), batch: 'b' } }); // r1: no rule matches => escalate; r2: destination refuses

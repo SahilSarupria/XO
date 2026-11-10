@@ -99,6 +99,8 @@ export interface RunnerOptions {
     readonly detach: (runId: string) => void;
   };
   readonly connectors: ConnectorHost;
+  /** Upper bound on `forEach.concurrency` for this process (a low-resource host sets 1). The workflow's own value is honoured only up to this. */
+  readonly maxItemConcurrency?: number;
   readonly trees?: ReadonlyMap<string, DecisionTree>;
   readonly extractor?: Extractor;
   readonly dryRun?: boolean;
@@ -567,7 +569,9 @@ export class WorkflowRunner {
         });
       }
     };
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(fe.concurrency, fanout.count)) }, () => worker()));
+    await Promise.all(
+      Array.from({ length: Math.max(1, Math.min(fe.concurrency, this.o.maxItemConcurrency ?? Infinity, fanout.count)) }, () => worker()),
+    );
     if (killed) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged; remaining items were not started');
 
     const outcomes: {
