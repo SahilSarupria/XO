@@ -11,7 +11,7 @@ import { chmodSync, closeSync, existsSync, fsyncSync, openSync, readFileSync, re
  * - The store is a JSON file that must not be readable by group or others (POSIX), is replaced atomically, and is re-read when it changes, so a
  *   revocation takes effect without restarting the server. A file that cannot be read or parsed DENIES EVERYTHING rather than falling back to anything.
  */
-export const SCOPES = ['read', 'run', 'approve', 'lease', 'ledger-sync', 'admin'] as const;
+export const SCOPES = ['read', 'run', 'approve', 'event', 'lease', 'ledger-sync', 'admin'] as const;
 export type Scope = (typeof SCOPES)[number];
 
 export const TOKEN_FORMAT = /^xo_[A-Za-z0-9_-]{43}$/;
@@ -313,6 +313,7 @@ export function requiredScope(method: string, pathname: string): Scope | 'public
   if (p[1] === 'runs' && p[3] === 'lease' && p.length === 4) return m === 'POST' ? 'lease' : 'admin';
   if (p[1] === 'ledger' && p.length === 3) return m === 'GET' || m === 'POST' ? 'ledger-sync' : 'admin';
   if (p[1] === 'approvals') return m === 'GET' ? 'read' : m === 'POST' ? 'approve' : 'admin';
+  if (p[1] === 'events' && p.length === 2) return m === 'POST' ? 'event' : 'admin';
   if (p[1] === 'loader' && p[2] === 'resolve' && p.length === 3) return m === 'POST' ? 'read' : 'admin';
   if (p[1] === 'receipts' && p.length === 2) return m === 'GET' ? 'read' : 'admin';
   return 'admin';

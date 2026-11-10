@@ -12,6 +12,8 @@ import {
   LeaseError,
   RUN_ID,
   RunInputError,
+  eventProblem,
+  type EventInbox,
   type LeaseAuthority,
   type LedgerReplica,
   type RunStore,
@@ -54,6 +56,8 @@ export interface ServerOptions {
   readonly authority: LeaseAuthority;
   readonly replica: LedgerReplica;
   readonly bundle?: PackageBundle;
+  /** Where `POST /v1/events` stores inbound events. Without it the route answers 501 EVENTS_NOT_ENABLED. */
+  readonly events?: EventInbox;
   readonly trees?: ReadonlyMap<string, DecisionTree>;
   readonly maxBodyBytes?: number;
   /** Requests per minute per client address, counted before authentication. Default 240. */
@@ -180,7 +184,7 @@ export function createXoServer(o: ServerOptions): {
   const audit: AuditSink = o.audit ?? (() => undefined);
   const failedLimit = o.failedAuthLimitPerMinute ?? 10;
   const failures = new Map<string, { windowStart: number; n: number }>();
-  const legacyScopes = new Set<Scope>(['read', 'run', 'approve', 'lease', 'ledger-sync']);
+  const legacyScopes = new Set<Scope>(['read', 'run', 'approve', 'event', 'lease', 'ledger-sync']);
   const maxBody = o.maxBodyBytes ?? 1_048_576;
   const now = o.now ?? Date.now;
   const buckets = new Map<string, { windowStart: number; n: number }>();
@@ -318,6 +322,20 @@ export function createXoServer(o: ServerOptions): {
                 : 422,
         body: r,
       };
+    }
+
+    if (p[1] === 'events' && p.length === 2) {
+      only('POST');
+      if (o.events === undefined) throw new HttpError(501, 'EVENTS_NOT_ENABLED', 'this server was started without an event inbox');
+      const b = await readJson(req, Math.min(maxBody, 65_536));
+      const ev = { name: b['name'], correlation: b['correlation'], eventId: b['eventId'], payload: b['payload'] ?? {} };
+      const problem = eventProblem(ev);
+      if (problem !== undefined) throw new HttpError(422, 'INVALID_EVENT', problem);
+      const { status } = await o.events.deliver(ev as never);
+      // every workflow's runner looks for runs waiting on this event; a run another process owns picks it up on its next tick
+      const resumed: string[] = [];
+      for (const r of Object.values(o.runners)) resumed.push(...(await r.notifyEvent(ev.name as string, ev.correlation as string)));
+      return { status: status === 'queued' ? 202 : 200, body: { status, resumed } };
     }
 
     if (p[1] === 'approvals') {

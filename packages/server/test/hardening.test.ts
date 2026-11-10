@@ -67,6 +67,9 @@ describe('scopes: deny by default, decided from method and path before any body 
     ['POST', '/v1/ledger/run_abc', 'ledger-sync'],
     ['GET', '/v1/approvals', 'read'],
     ['POST', '/v1/approvals/appr_x', 'approve'],
+    ['POST', '/v1/events', 'event'],
+    ['GET', '/v1/events', 'admin'],
+    ['POST', '/v1/events/extra', 'admin'],
     ['DELETE', '/v1/receipts', 'admin'],
     ['GET', '/v1/anything/new', 'admin'],
     ['GET', '/v2/health', 'admin'],
@@ -90,6 +93,13 @@ describe('scope escalation over HTTP', () => {
     try {
       const routes: { scope: Scope; method: string; path: string; body?: string; reaches: string }[] = [
         { scope: 'run', method: 'POST', path: '/v1/workflows/wf/runs', body: '{"inputs":{}}', reaches: 'runner.start' },
+        {
+          scope: 'event',
+          method: 'POST',
+          path: '/v1/events',
+          body: '{"name":"doc.received","correlation":"c1","eventId":"e1","payload":{}}',
+          reaches: 'runner.notifyEvent',
+        },
         {
           scope: 'lease',
           method: 'POST',

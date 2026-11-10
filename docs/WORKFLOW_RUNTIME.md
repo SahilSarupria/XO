@@ -12,8 +12,8 @@ A durable, resumable runner for Workflow IR 1.0. Unmeasured: no load, latency, o
 
 Decide (tree, rules, formula, lookup), branch, act, compensate, escalate, extract (structured passthrough; free text only via an injected
 `Extractor`), timer waits, retries with backoff and jitter, per-connector circuit breakers and concurrency limits, authority ceilings, a kill switch,
-a whole-run wall-clock cap, dry-run. **Not implemented:** `approve` steps, `wait` on events, `forEach` (a workflow that needs them is refused whole at
-construction), rate limiting, a dead-letter queue (exhausted steps escalate or fail), the free-text `Extractor` itself (an interface only).
+a whole-run wall-clock cap, dry-run, approvals, event waits, `forEach`, per-connector rate limiting and a dead-letter store (sections below). A workflow that
+needs a feature the runner was not given (for example `wait_event` without an event inbox) is refused whole at construction.
 
 ## Journal
 
@@ -76,8 +76,36 @@ distribution are the operator's job; one process per run still applies.
   It proposes single-condition rules (equality, `<=`, `>=`) with support at least 5 and zero counterexamples, validates them against **every** logged case,
   and only a trusted publisher's verifying signature over the exact patch lets `applyPatch` return a new workflow version (patch+1, learned rules first,
   full IR validation re-run). The live component is never mutated, and the result still has to be packaged, signed and installed. Limits: one output
-  field, no multi-feature interactions, learned rules may only read workflow inputs of the same name, the CLI `xo promote` is **not built** (library only),
+  field, no multi-feature interactions, learned rules may only read workflow inputs of the same name, the CLI is `xo flow promote propose|accept|apply` (below),
   and nothing is measured on real data.
+
+`xo flow promote propose <workflows.json> --workflow --runs --approve-step --step --output-field --out <prefix> [--min-support 5]` logs the human decisions from the runs
+directory, proposes rules, shadow-validates them against every case and writes `<prefix>.patch.json` and `<prefix>.cases.json` (exit 2 if validation fails; it never applies
+anything). `accept --patch --key <publisher.pem> --reviewer <id> --out` signs exactly that patch. `apply <workflows.json> --patch --cases --acceptance --reviewers <reviewers.json>
+--out <new.json>` writes the next version **only** when the signature verifies against a trusted, non-revoked `publisher` in the reviewers file; there is no flag that skips this.
+Tested against: missing acceptance, a signature by another key, a signer who is not a publisher or is revoked, and an acceptance for a different patch. Agreement with past cases
+is not a measure of accuracy on new ones: not yet measured.
+
+## Rate limits, dead letters, event waits, `forEach`, journal segments
+
+- **Rate limits** (`--rate-limit bank=2:5,slack=1`, per connector id: calls/second, optional burst): a token bucket with an injected clock. A call that would wait longer than its own
+  step timeout fails `RATE_LIMITED` (transient, retried by the step's policy); otherwise it waits its turn. Limits are **per process**: two processes sharing a destination each
+  have their own bucket. Unknown connector names, duplicates and non-positive rates are startup errors.
+- **Dead letters** (`<runs>/dead-letters/`, `xo flow dead-letters --runs <dir>`): every step that ends failed or escalated is recorded (code, attempts, disposition, request hash;
+  never the arguments) in addition to the escalation/failure, never instead of it. If the store cannot write, the error propagates and the run resumes from its journal; the failure
+  is not dropped. The CLI only lists; nothing is replayed from it automatically.
+- **Event waits** (`wait` with `for: {kind:'event', name, correlationKey}`; `POST /v1/events` with the `event` scope; `sdk.sendEvent`; `xo flow event`): an event is addressed by name and
+  the value of the run's correlation input. Buffered until a run waits (TTL 7 days), deduplicated by the sender's `eventId` (also after consumption), consumed by exactly one run,
+  claimed under the run's identity before it is journalled so a crash is recovered by the same run asking again. The payload is untrusted: flat scalars, 16 KiB, and it must
+  match the step's declared outputs or the run escalates `EVENT_INVALID`. A timeout escalates (`EVENT_TIMEOUT`) or fails per `onTimeout`. The file inbox relies on atomic rename
+  on one host. Not guaranteed: ordering across events, or delivery to a run that never waits.
+- **`forEach`**: the parent run is a coordinator; each item is its own run (id derived from parent and index), with its own idempotency keys and approval identities
+  (`item.index` is part of both). Concurrency is bounded. The parent completes only when every item completed; if any item escalated it escalates (`ITEMS_NEED_ATTENTION`); an item
+  that failed outright fails the parent. A failed item never stops or rolls back the others. Items must be flat objects of scalars.
+- **Journal segments**: the active journal seals into `journal.NNNNNN.jsonl` at 4 MiB (`segmentBytes`); the hash chain runs across segments, so a removed, reordered or edited
+  segment is a hard error on read. Appending reads only the newest entry; `RunStore.window(runId, n)` reads only the newest `n` entries (it checks each entry's hash and the links
+  inside the window, not the link back to genesis; use `read` for full verification). The store caches at most 1024 run tails (LRU) and holds no queue entry for an idle run.
+  `read` and replay still load the whole run: the bound is on appends and on `window`, not on a full replay.
 
 ## Explain and audit export (section G, partial)
 

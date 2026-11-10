@@ -39,9 +39,22 @@ import { LeaseError, type LeaseClient } from './lease.js';
 import { ExtractionMemo, type UsageCaps } from './limits.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
 import { isExtractionRefusal } from './extraction-refusal.js';
+import type { RateLimiters } from './ratelimit.js';
+import type { DeadLetterStore } from './deadletter.js';
+import type { EventInbox, EventScalar } from './events.js';
 
-/** What this runner implements. `for_each` and `wait_event` are not built yet; `approve` needs `approvals` options; workflows needing them are refused whole. */
-export const RUNNER_FEATURES = ['approve', 'wait_timer', 'compensation', 'model_extract', 'lookup', 'rules', 'authority_ceilings'] as const;
+/** What this runner implements. `approve` needs `approvals` options and `wait_event` needs an `events` inbox; workflows needing them are refused whole. */
+export const RUNNER_FEATURES = [
+  'approve',
+  'wait_timer',
+  'wait_event',
+  'for_each',
+  'compensation',
+  'model_extract',
+  'lookup',
+  'rules',
+  'authority_ceilings',
+] as const;
 
 export interface Extractor {
   extract(req: {
@@ -103,6 +116,12 @@ export interface RunnerOptions {
   /** Directory for extraction memoization. Identical normalized cases reuse validated facts instead of calling the model. */
   readonly memoDir?: string;
   readonly approvals?: { readonly reviewers: ReviewerRegistry; readonly sink?: ApprovalSink };
+  /** Per-connector call-rate limits (token bucket). A call that would have to wait longer than its step timeout fails RATE_LIMITED (retryable). */
+  readonly rateLimits?: RateLimiters;
+  /** Every step that ends failed or escalated is also written here (never instead of failing/escalating). */
+  readonly deadLetters?: DeadLetterStore;
+  /** Where inbound events for `wait` steps of kind `event` are buffered and claimed. Without it, workflows that wait on events are refused at construction. */
+  readonly events?: EventInbox;
 }
 
 export interface RunResult {
@@ -128,6 +147,8 @@ interface StepRec {
   /** An external call was journalled as about to happen. Cleared only by an outcome or by proof that nothing was sent. */
   callIntent?: { requestHash?: string; key?: string; ts: string };
   waitUntil?: number;
+  /** A `wait` step parked on an inbound event. `deadline` is epoch ms; reaching it applies the step's onTimeout. */
+  eventWait?: { name: string; correlation: string; deadline: number };
   approval?: { request: ApprovalRequest; deadline: number };
   modelCalls: number;
   rulesFired?: string[];
@@ -143,9 +164,23 @@ interface RunRec {
   order: string[];
   result?: Record<string, unknown>;
   escalation?: Escalation;
+  /** forEach item runs only: which item this run is, and the parent run that fanned it out. */
+  index?: number;
+  item?: Record<string, unknown>;
+  parent?: string;
+  /** forEach parent runs only. */
+  fanout?: { over: string; count: number };
 }
 
-const TRANSIENT = new Set(['FAILED', 'TIMEOUT', 'CIRCUIT_OPEN']);
+/** Identity of a forEach item run. Deterministic, so a parent that crashed mid-fan-out finds the same children again; long enough that two parents never collide. */
+export function itemRunId(parentRunId: string, index: number): string {
+  return `fe_${sha256Hex(`${parentRunId}:${index}`).slice(0, 40)}`;
+}
+
+const TERMINAL_STATES: readonly RunState[] = ['completed', 'failed', 'escalated', 'cancelled', 'compensated'];
+const isTerminal = (s: RunState): boolean => TERMINAL_STATES.includes(s);
+
+const TRANSIENT = new Set(['FAILED', 'TIMEOUT', 'CIRCUIT_OPEN', 'RATE_LIMITED']);
 /** Bounded wait: a hung model call must not hang a run. (The underlying request cannot be cancelled through `Extractor`; it is abandoned, and its late result is ignored.) */
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -183,6 +218,10 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         shadow: d['shadow'] === true,
         steps: new Map(),
         order: [],
+        ...(typeof d['index'] === 'number' ? { index: d['index'] } : {}),
+        ...(typeof d['item'] === 'object' && d['item'] !== null ? { item: d['item'] } : {}),
+        ...(typeof d['parent'] === 'string' ? { parent: d['parent'] } : {}),
+        ...(typeof d['fanout'] === 'object' && d['fanout'] !== null ? { fanout: d['fanout'] } : {}),
       };
       for (const s of wf.steps) rec.steps.set(s.id, { state: 'pending', attempt: 0, modelCalls: 0 });
       continue;
@@ -230,6 +269,12 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         const s = step(d['step']);
         s.state = 'waiting';
         s.waitUntil = d['until'];
+        break;
+      }
+      case 'event_wait_started': {
+        const s = step(d['step']);
+        s.state = 'waiting';
+        s.eventWait = { name: d['name'], correlation: d['correlation'], deadline: d['deadline'] };
         break;
       }
       case 'approval_requested': {
@@ -300,7 +345,10 @@ export class WorkflowRunner {
     const support: WorkflowHostSupport = {
       ...DETERMINISTIC_HOST,
       features: [...RUNNER_FEATURES].filter(
-        (f) => (f !== 'model_extract' || o.extractor !== undefined) && (f !== 'approve' || o.approvals !== undefined),
+        (f) =>
+          (f !== 'model_extract' || o.extractor !== undefined) &&
+          (f !== 'approve' || o.approvals !== undefined) &&
+          (f !== 'wait_event' || o.events !== undefined),
       ),
       modelCapabilities: o.extractor !== undefined ? ['structured_output'] : [],
     };
@@ -326,6 +374,8 @@ export class WorkflowRunner {
       if (p !== undefined) problems.push(p);
     }
     for (const k of Object.keys(req.inputs)) if (!(k in this.wf.inputs)) problems.push(`unknown input "${k}"`);
+    const fe = this.wf.forEach;
+    if (fe !== undefined) problems.push(...this.forEachProblems(fe, req.inputs[fe.over]));
     if (problems.length > 0) throw new RunInputError(problems);
     const runId =
       req.runId ??
@@ -343,6 +393,7 @@ export class WorkflowRunner {
         dryRun: this.o.dryRun === true,
         shadow: this.o.shadow === true,
         startedAtMs: this.now(),
+        ...(fe !== undefined ? { fanout: { over: fe.over, count: (req.inputs[fe.over] as unknown[]).length } } : {}),
       });
       return { ...(await this.drive(runId)), accepted: true };
     });
@@ -411,7 +462,169 @@ export class WorkflowRunner {
     return out;
   }
 
+  /**
+   * Stores an inbound event (deduplicated by `eventId`) and resumes this workflow's runs that are waiting for it. Returns what happened.
+   * Runs of other workflows are not touched. A run that is not waiting yet will find the event, buffered, when it reaches its wait.
+   */
+  async deliverEvent(e: {
+    readonly name: string;
+    readonly correlation: string;
+    readonly eventId: string;
+    readonly payload: Record<string, EventScalar>;
+  }): Promise<{ status: 'queued' | 'duplicate'; resumed: string[] }> {
+    if (this.o.events === undefined) throw new Error('this runner has no event inbox');
+    const { status } = await this.o.events.deliver(e);
+    return { status, resumed: await this.notifyEvent(e.name, e.correlation) };
+  }
+
+  /** Resumes this workflow's runs waiting on `(name, correlation)`. Runs another runner owns (lease held) or this runner is already driving are left to them. */
+  async notifyEvent(name: string, correlation: string): Promise<string[]> {
+    const resumed: string[] = [];
+    for (const id of await this.o.store.list()) {
+      const entries = await this.o.store.read(id);
+      if (entries[0]?.data['workflow'] !== this.wf.id) continue;
+      const rec = replayRun(entries, this.wf, id);
+      if (rec === undefined || isTerminal(rec.state)) continue;
+      const waits = [...rec.steps.values()].some(
+        (s) => s.state === 'waiting' && s.eventWait?.name === name && s.eventWait.correlation === correlation,
+      );
+      if (!waits) continue;
+      try {
+        await this.resume(id);
+        resumed.push(id);
+      } catch (err) {
+        if (err instanceof LeaseError && err.code === 'HELD') continue;
+        if (err instanceof Error && /already being driven/.test(err.message)) continue;
+        throw err;
+      }
+      if (rec.parent !== undefined) await this.refreshParent(rec.parent);
+    }
+    return resumed;
+  }
+
   // ---------------------------------------------------------------------------------------------------------------
+
+  private forEachProblems(fe: NonNullable<WorkflowDef['forEach']>, v: unknown): string[] {
+    if (!Array.isArray(v)) return [`${fe.over} must be an array (forEach)`];
+    if (v.length > fe.maxItems) return [`${fe.over} has ${v.length} items; this workflow allows at most ${fe.maxItems}`];
+    const out: string[] = [];
+    v.forEach((it, i) => {
+      if (typeof it !== 'object' || it === null || Array.isArray(it)) return void out.push(`${fe.over}[${i}] must be a flat object`);
+      for (const [k, x] of Object.entries(it as Record<string, unknown>))
+        if (x !== null && !['string', 'number', 'boolean'].includes(typeof x))
+          out.push(`${fe.over}[${i}].${k} must be a string, number, boolean or null`);
+    });
+    return out.slice(0, 20);
+  }
+
+  /**
+   * forEach: the parent run is a coordinator. Each item is its own run (`itemRunId`) with its own journal, idempotency keys, approvals and
+   * escalations; one item failing, escalating or waiting never cancels, rolls back or delays another. At most `forEach.concurrency` items are
+   * driven at once. The parent is `completed` only if every item completed; `escalated` if any item needs a person; otherwise `failed`;
+   * `waiting` while any item is parked on a timer or an approval. Its result lists every item's outcome: nothing is dropped.
+   */
+  private async driveParent(runId: string, rec: RunRec): Promise<Omit<RunResult, 'accepted'>> {
+    const { store } = this.o;
+    const fanout = rec.fanout as { over: string; count: number };
+    const fe = this.wf.forEach as NonNullable<WorkflowDef['forEach']>;
+    const items = rec.inputs[fanout.over] as Record<string, unknown>[];
+    const childInputs = Object.fromEntries(Object.entries(rec.inputs).filter(([k]) => k !== fanout.over));
+    const pending: number[] = [];
+    for (let i = 0; i < fanout.count; i++) pending.push(i);
+    let killed = false;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const i = pending.shift();
+        if (i === undefined) return;
+        if (this.o.killSwitch?.() === true) {
+          killed = true;
+          return;
+        }
+        const id = itemRunId(runId, i);
+        const existing = await store.read(id).catch(() => [] as JournalEntry[]);
+        const prior = existing.length > 0 ? replayRun(existing, this.wf, id) : undefined;
+        if (prior !== undefined && isTerminal(prior.state)) continue;
+        await this.withLease(id, async () => {
+          if (prior === undefined) {
+            if ((await store.create(id)) || existing.length === 0)
+              await store.append(id, 'run_started', {
+                workflow: this.wf.id,
+                version: this.wf.version,
+                inputs: childInputs,
+                parent: runId,
+                index: i,
+                item: items[i] as Record<string, unknown>,
+                triggerId: null,
+                dryRun: rec.dryRun,
+                shadow: rec.shadow,
+                startedAtMs: this.now(),
+              });
+          }
+          await this.drive(id);
+        });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(fe.concurrency, fanout.count)) }, () => worker()));
+    if (killed) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged; remaining items were not started');
+
+    const outcomes: {
+      index: number;
+      runId: string;
+      state: RunState;
+      outputs?: unknown;
+      escalation?: { code: string; step: string | null };
+    }[] = [];
+    for (let i = 0; i < fanout.count; i++) {
+      const id = itemRunId(runId, i);
+      const r = replayRun(await store.read(id), this.wf, id) as RunRec;
+      outcomes.push({
+        index: i,
+        runId: id,
+        state: r.state,
+        ...(r.result !== undefined ? { outputs: r.result } : {}),
+        ...(r.escalation !== undefined ? { escalation: { code: r.escalation.code, step: r.escalation.step } } : {}),
+      });
+    }
+    if (outcomes.some((o) => !isTerminal(o.state))) {
+      if (rec.state !== 'waiting') await store.append(runId, 'run_state', { state: 'waiting' });
+      return { runId, state: 'waiting' };
+    }
+    const count = (s: RunState): number => outcomes.filter((o) => o.state === s).length;
+    const summary = {
+      items: outcomes,
+      completed: count('completed'),
+      escalated: count('escalated'),
+      failed: outcomes.length - count('completed') - count('escalated'),
+    };
+    if (summary.escalated > 0) {
+      const e: Escalation = {
+        runId,
+        workflow: this.wf.id,
+        step: null,
+        code: 'ITEMS_NEED_ATTENTION',
+        reason: `${summary.escalated} of ${outcomes.length} items escalated and ${summary.failed} failed; ${summary.completed} completed. Each item stands alone: completed items stay completed`,
+      };
+      await store.append(runId, 'escalation', e as unknown as Record<string, unknown>);
+      await store.append(runId, 'run_finished', { state: 'escalated', result: summary });
+      await this.o.onEscalate?.(e);
+      return { runId, state: 'escalated', outputs: summary, escalation: e };
+    }
+    const state: RunState = summary.failed > 0 ? 'failed' : 'completed';
+    await store.append(runId, 'run_finished', { state, result: summary });
+    return { runId, state, outputs: summary };
+  }
+
+  /** After an item changes outside a parent's own drive (an approval decision), bring the parent's state up to date. */
+  private async refreshParent(parentId: string | undefined): Promise<void> {
+    if (parentId === undefined) return;
+    try {
+      await this.resume(parentId);
+    } catch (e) {
+      if (e instanceof LeaseError && e.code === 'HELD') return; // another runner owns the parent; it will pick the change up
+      if (e instanceof Error && /already being driven/.test(e.message)) return;
+      throw e;
+    }
+  }
 
   private async drive(runId: string): Promise<Omit<RunResult, 'accepted'>> {
     if (this.active.has(runId)) throw new Error(`run ${runId} is already being driven by this runner`);
@@ -420,7 +633,8 @@ export class WorkflowRunner {
       const { store } = this.o;
       let rec = replayRun(await store.read(runId), this.wf, runId);
       if (rec === undefined) throw new Error(`unknown run ${runId}`);
-      const terminal = (s: RunState): boolean => ['completed', 'failed', 'escalated', 'cancelled', 'compensated'].includes(s);
+      const terminal = isTerminal;
+      if (rec.fanout !== undefined && !terminal(rec.state)) return await this.driveParent(runId, rec);
       const reload = async (): Promise<RunRec> => (rec = replayRun(await store.read(runId), this.wf, runId) as RunRec);
       if (terminal(rec.state)) return this.summary(runId, rec);
       if (rec.state === 'waiting') await store.append(runId, 'run_state', { state: 'running' });
@@ -439,6 +653,43 @@ export class WorkflowRunner {
             await store.append(runId, 'step_failed', { step: id, code: 'APPROVAL_TIMEOUT', message: 'no decision before the deadline' });
             return this.escalate(runId, id, 'APPROVAL_TIMEOUT', `approval ${s.approval.request.approvalId} expired without a decision`);
           }
+        // event waits: take a buffered/arrived event, or apply the timeout. An event is never consumed by two runs (see EventInbox.claim).
+        let eventProgress = false;
+        for (const [id, s] of rec.steps) {
+          if (s.state !== 'waiting' || s.eventWait === undefined) continue;
+          const step = this.wf.steps.find((x) => x.id === id) as Extract<Step, { type: 'wait' }>;
+          const taken = await this.o.events?.claim(s.eventWait.name, s.eventWait.correlation, `${runId}::${id}`);
+          if (taken !== undefined) {
+            const declared = step.outputs ?? {};
+            const problems = Object.entries(declared)
+              .map(([k, spec]) =>
+                k in taken.payload ? typeProblem(k, spec, taken.payload[k]) : spec.nullable === true ? undefined : `${k} missing`,
+              )
+              .filter((x) => x !== undefined);
+            const payloadHash = sha256Hex(canonicalJson(taken.payload));
+            await store.append(runId, 'event_received', { step: id, eventId: taken.eventId, name: taken.name, payloadHash });
+            if (problems.length > 0) {
+              await store.append(runId, 'step_failed', { step: id, code: 'EVENT_INVALID', message: problems.join('; ') });
+              return this.escalate(
+                runId,
+                id,
+                'EVENT_INVALID',
+                `event ${taken.eventId} does not match the step's declared outputs: ${problems.join('; ')}`,
+              );
+            }
+            const outputs = Object.fromEntries(Object.keys(declared).map((k) => [k, (taken.payload[k] ?? null) as EventScalar]));
+            await store.append(runId, 'step_succeeded', { step: id, outputs, modelCalls: 0 });
+            eventProgress = true;
+            continue;
+          }
+          if (this.now() >= s.eventWait.deadline) {
+            const msg = `no "${s.eventWait.name}" event arrived for this run before the deadline`;
+            if (step.onTimeout === 'fail') return this.failStep(runId, step, 'EVENT_TIMEOUT', msg);
+            await store.append(runId, 'step_failed', { step: id, code: 'EVENT_TIMEOUT', message: msg });
+            return this.escalate(runId, id, 'EVENT_TIMEOUT', msg);
+          }
+        }
+        if (eventProgress) continue;
         // due timers
         for (const [id, s] of rec.steps)
           if (s.state === 'waiting' && s.waitUntil !== undefined && this.now() >= s.waitUntil)
@@ -482,8 +733,13 @@ export class WorkflowRunner {
           const parked = open.filter(([, s]) => s.state === 'waiting');
           if (parked.length > 0 && open.every(([, s]) => s.state === 'waiting' || s.state === 'pending')) {
             if (rec.state !== 'waiting') await store.append(runId, 'run_state', { state: 'waiting' });
-            const until = Math.min(...parked.map(([, s]) => s.waitUntil ?? s.approval?.deadline ?? Infinity));
-            if (this.o.sleep === undefined || until === Infinity || parked.some(([, s]) => s.approval !== undefined)) break; // leave it to tick() / decide()
+            const until = Math.min(...parked.map(([, s]) => s.waitUntil ?? s.approval?.deadline ?? s.eventWait?.deadline ?? Infinity));
+            if (
+              this.o.sleep === undefined ||
+              until === Infinity ||
+              parked.some(([, s]) => s.approval !== undefined || s.eventWait !== undefined)
+            )
+              break; // leave it to tick() / decide() / deliverEvent()
             await this.sleep(Math.max(0, until - this.now()));
             continue;
           }
@@ -515,7 +771,11 @@ export class WorkflowRunner {
     if (ref === undefined) return { found: false };
     if (ref.kind === 'input')
       return ref.name in rec.inputs && rec.inputs[ref.name] !== undefined ? { found: true, value: rec.inputs[ref.name] } : { found: false };
-    if (ref.kind === 'run') return { found: true, value: ref.name === 'id' ? rec.runId : 0 };
+    if (ref.kind === 'run') return { found: true, value: ref.name === 'id' ? rec.runId : (rec.index ?? 0) };
+    if (ref.kind === 'item') {
+      const v = rec.item?.[ref.name];
+      return v === undefined ? { found: false } : { found: true, value: v };
+    }
     if (ref.kind === 'step') {
       const s = rec.steps.get(ref.step);
       return s?.state === 'succeeded' && s.outputs !== undefined && ref.output in s.outputs
@@ -572,7 +832,7 @@ export class WorkflowRunner {
         return r.found && r.value !== null ? String(r.value) : '(unknown)';
       });
     return {
-      approvalId: approvalIdentity(this.wf, step.id, { runId, index: 0 }),
+      approvalId: approvalIdentity(this.wf, step.id, { runId, index: rec.index ?? 0 }),
       runId,
       workflow: this.wf.id,
       version: this.wf.version,
@@ -637,7 +897,9 @@ export class WorkflowRunner {
       payload: d.payload as unknown as Record<string, unknown>,
       signature: d.signature,
     });
-    return { ...(await this.drive(runId)), accepted: false };
+    const result = { ...(await this.drive(runId)), accepted: false };
+    await this.refreshParent(rec.parent);
+    return result;
   }
 
   private async escalate(
@@ -648,6 +910,7 @@ export class WorkflowRunner {
     extra: Partial<Escalation> = {},
   ): Promise<Omit<RunResult, 'accepted'>> {
     const e: Escalation = { runId, workflow: this.wf.id, step: stepId, code, reason, ...extra };
+    if (stepId !== null) await this.deadLetter(runId, stepId, code, reason, 'escalated');
     await this.o.store.append(runId, 'escalation', e as unknown as Record<string, unknown>);
     const rec0 = replayRun(await this.o.store.read(runId), this.wf, runId) as RunRec;
     for (const [id, s] of rec0.steps)
@@ -658,8 +921,41 @@ export class WorkflowRunner {
     return { runId, state: 'escalated', escalation: e };
   }
 
+  /** Records an unsuccessful step in the dead-letter store, if one is configured. A store that cannot persist throws: the failure is never silently unrecorded. */
+  private async deadLetter(
+    runId: string,
+    stepId: string,
+    code: string,
+    message: string,
+    disposition: 'failed' | 'escalated',
+  ): Promise<void> {
+    const store = this.o.deadLetters;
+    if (store === undefined) return;
+    const rec = replayRun(await this.o.store.read(runId), this.wf, runId);
+    const sr = rec?.steps.get(stepId);
+    await store.put({
+      runId,
+      workflow: this.wf.id,
+      version: this.wf.version,
+      step: stepId,
+      code,
+      message,
+      attempts: sr?.attempt ?? 0,
+      disposition,
+      at: new Date(this.now()).toISOString(),
+      ...(sr?.callIntent?.requestHash !== undefined ? { requestHash: sr.callIntent.requestHash } : {}),
+    });
+  }
+
   private async failStep(runId: string, step: Step, code: string, message: string): Promise<Omit<RunResult, 'accepted'>> {
     await this.o.store.append(runId, 'step_failed', { step: step.id, code, message });
+    await this.deadLetter(
+      runId,
+      step.id,
+      code,
+      message,
+      (step.type === 'decide' ? 'escalate' : (step.onError ?? 'fail')) === 'escalate' ? 'escalated' : 'failed',
+    );
     const policy = step.type === 'decide' ? 'escalate' : (step.onError ?? 'fail');
     if (policy === 'escalate') return this.escalate(runId, step.id, code, message);
     if (policy === 'compensate') return this.compensate(runId, step, code, message);
@@ -747,6 +1043,10 @@ export class WorkflowRunner {
         await store.append(runId, 'wait_started', { step: step.id, until: r.until });
         return undefined;
       }
+      if (r.kind === 'event_wait') {
+        await store.append(runId, 'event_wait_started', { step: step.id, name: r.name, correlation: r.correlation, deadline: r.deadline });
+        return undefined;
+      }
       if (r.kind === 'escalate') {
         await store.append(runId, 'step_failed', { step: step.id, code: r.code, message: r.message });
         return this.escalate(runId, step.id, r.code, r.message, r.extra);
@@ -780,10 +1080,34 @@ export class WorkflowRunner {
       }
       case 'extract':
         return this.extract(step, values);
-      case 'wait':
-        if (step.for.kind !== 'timer')
-          return { kind: 'escalate', code: 'UNSUPPORTED_WAIT', message: `wait kind ${step.for.kind} is not supported by this runner` };
+      case 'wait': {
+        if (step.for.kind === 'approval') {
+          // the validator requires this step to (transitively) need the approve step, so reaching here means that step finished; verify rather than assume
+          return rec.steps.get(step.for.step)?.state === 'succeeded'
+            ? { kind: 'ok', outputs: {} }
+            : { kind: 'escalate', code: 'WAIT_APPROVAL_NOT_GRANTED', message: `approval step "${step.for.step}" did not complete` };
+        }
+        if (step.for.kind === 'event') {
+          if (this.o.events === undefined)
+            return { kind: 'escalate', code: 'UNSUPPORTED_WAIT', message: 'this runner has no event inbox, so it cannot wait for events' };
+          const raw = rec.inputs[step.for.correlationKey];
+          if (typeof raw !== 'string' && typeof raw !== 'number')
+            return {
+              kind: 'escalate',
+              code: 'EVENT_CORRELATION_MISSING',
+              message: `input "${step.for.correlationKey}" is not a usable correlation value`,
+            };
+          const correlation = String(raw);
+          if (correlation.length < 1 || correlation.length > 256)
+            return {
+              kind: 'escalate',
+              code: 'EVENT_CORRELATION_MISSING',
+              message: `input "${step.for.correlationKey}" is not a usable correlation value`,
+            };
+          return { kind: 'event_wait', name: step.for.name, correlation, deadline: this.now() + step.timeoutMs };
+        }
         return sr.waitUntil !== undefined ? { kind: 'ok', outputs: {} } : { kind: 'wait', until: this.now() + step.for.delayMs };
+      }
       case 'escalate': {
         const render = (t: string): string =>
           t.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, p: string) => {
@@ -1022,6 +1346,19 @@ export class WorkflowRunner {
       if (settled.kind === 'adopted') return { ok: true, data: settled.data };
       if (settled.kind === 'ambiguous') return { ok: false, code: 'AMBIGUOUS_EFFECT', message: settled.message };
     }
+    const limiter = this.o.rateLimits;
+    if (limiter !== undefined && limiter.has(step.connector)) {
+      const slot = limiter.reserve(step.connector);
+      if (slot.waitMs > step.timeoutMs) {
+        slot.cancel();
+        return {
+          ok: false,
+          code: 'RATE_LIMITED',
+          message: `connector "${step.connector}" is rate limited; the next slot is ${slot.waitMs} ms away, beyond the step timeout`,
+        };
+      }
+      if (slot.waitMs > 0) await this.sleep(slot.waitMs); // nothing has been sent yet: waiting here cannot create a duplicate
+    }
     const startedAt = this.now();
     await store.append(runId, 'call_intent', {
       step: step.id,
@@ -1075,6 +1412,7 @@ export class WorkflowRunner {
 type StepOutcome =
   | { kind: 'ok'; outputs: Record<string, unknown>; modelCalls?: number; rulesFired?: string[] }
   | { kind: 'wait'; until: number }
+  | { kind: 'event_wait'; name: string; correlation: string; deadline: number }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'fail'; code: string; message: string }
   | { kind: 'escalate'; code: string; message: string; extra?: Partial<Escalation> };

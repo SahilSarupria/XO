@@ -4,6 +4,7 @@ import { request as httpRequest, type IncomingHttpHeaders, type IncomingMessage 
 import { request as httpsRequest } from 'node:https';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MemoryEventInbox } from '@xo/workflow-runtime';
 import { createXoServer, StaticTokenAuthority, newToken, type AuditEvent, type Scope, type ServerOptions } from '../src/index.js';
 
 export interface Reply {
@@ -18,6 +19,7 @@ export function stubs() {
   const runner = {
     start: async () => (reached.push('runner.start'), { runId: 'r', state: 'completed', accepted: true }),
     status: async () => (reached.push('runner.status'), { state: 'completed' }),
+    notifyEvent: async () => (reached.push('runner.notifyEvent'), [] as string[]),
   };
   const authority = {
     acquire: async () => (reached.push('lease.acquire'), { token: 1 }),
@@ -42,6 +44,7 @@ export const CLIENTS: { id: string; scopes: Scope[] }[] = [
   { id: 'reader', scopes: ['read'] },
   { id: 'runner', scopes: ['run'] },
   { id: 'approver', scopes: ['approve'] },
+  { id: 'eventer', scopes: ['event'] },
   { id: 'leaser', scopes: ['lease'] },
   { id: 'syncer', scopes: ['ledger-sync'] },
   { id: 'root', scopes: ['admin'] },
@@ -59,6 +62,7 @@ export async function start(over: Partial<ServerOptions> = {}, clients = CLIENTS
     replica: s.replica,
     audit: (e) => void audit.push(e),
     trees: new Map(),
+    events: new MemoryEventInbox(),
     ...over,
   });
   const a = await api.listen();

@@ -10,6 +10,7 @@ import {
   LeaseAuthority,
   LeasedRunStore,
   LedgerReplica,
+  MemoryEventInbox,
   RunStore,
   StaticReviewerRegistry,
   WorkflowRunner,
@@ -392,5 +393,23 @@ describe('loader resolution and receipts', () => {
     assert.ok(g.skipped.length > 0);
     assert.equal((await b.client.receipts()).length, 2);
     await assert.rejects(b.client.resolveLoader({ family: 'claude' } as never), (e: XoApiError) => e.status === 400);
+  });
+});
+
+describe('SDK: sendEvent', () => {
+  it('delivers once, reports a retry as a duplicate, and surfaces refusals as typed errors', async () => {
+    const b = await boot(external(), { events: new MemoryEventInbox() });
+    toClose.push(b.api.close);
+    const ev = { name: 'doc.received', correlation: 'c-1', eventId: 'e-1', payload: { amt: 5 } };
+    const first = await b.client.sendEvent(ev);
+    assert.equal(first.status, 'queued');
+    assert.deepEqual(first.resumed, []);
+    assert.equal((await b.client.sendEvent(ev)).status, 'duplicate');
+    await assert.rejects(b.client.sendEvent({ ...ev, eventId: 'bad id!' }), (e: XoApiError) => e.status === 422);
+  });
+  it('is a typed 501 when the server has no inbox', async () => {
+    const b = await boot();
+    toClose.push(b.api.close);
+    await assert.rejects(b.client.sendEvent({ name: 'a', correlation: 'c', eventId: 'e' }), (e: XoApiError) => e.status === 501);
   });
 });

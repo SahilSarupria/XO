@@ -21,8 +21,8 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'token',
     subsystem: SUBSYSTEM,
     usage:
-      'xo token create <client-id> --scopes read,run[,approve,lease,ledger-sync,admin] (--ttl 30d | --no-expiry) [--note <text>] [--tokens <file>]\n' +
-      '                        Prints the token ONCE; only its hash is stored. Scopes: read, run, approve, lease, ledger-sync, admin (admin satisfies any).\n' +
+      'xo token create <client-id> --scopes read,run[,approve,event,lease,ledger-sync,admin] (--ttl 30d | --no-expiry) [--note <text>] [--tokens <file>]\n' +
+      '                        Prints the token ONCE; only its hash is stored. Scopes: read, run, approve, event, lease, ledger-sync, admin (admin satisfies any).\n' +
       'xo token list [--tokens <file>] [--json]          Clients, scopes, expiry, revocation (never a token)\n' +
       'xo token revoke <client-id> [--tokens <file>]     Takes effect on a running server within about a second\n' +
       'xo token rotate <client-id> [--ttl 30d] [--overlap 1h] [--tokens <file>]   New token, same scopes; the old one stops after the overlap (default: at once)\n' +

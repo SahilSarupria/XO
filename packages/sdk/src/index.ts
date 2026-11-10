@@ -73,6 +73,16 @@ export class XoClient implements LeaseClient {
   getApproval = (id: string): Promise<ApprovalRequest> => this.call('GET', `/v1/approvals/${encodeURIComponent(id)}`);
   decideApproval = (runId: string, decision: SignedDecision): Promise<RunResult> =>
     this.call('POST', `/v1/approvals/${encodeURIComponent(decision.payload.approvalId)}/decision`, { runId, decision });
+  /**
+   * Delivers an inbound event (needs the `event` scope). `eventId` is yours: sending the same one again is answered `duplicate` and changes nothing,
+   * so a retry after a timeout is always safe. `resumed` lists the runs this delivery released.
+   */
+  sendEvent = (event: {
+    name: string;
+    correlation: string;
+    eventId: string;
+    payload?: Record<string, string | number | boolean | null>;
+  }): Promise<{ status: 'queued' | 'duplicate'; resumed: string[] }> => this.call('POST', '/v1/events', event);
   resolveLoader = (host: {
     family: string;
     capabilities: string[];

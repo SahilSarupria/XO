@@ -31,6 +31,7 @@ once a second, so **revocation reaches a running server** without a restart. A t
 | `lease`       | `POST /v1/runs/:id/lease`                                                                                                                |
 | `ledger-sync` | `GET`/`POST /v1/ledger/:id`                                                                                                              |
 | `approve`     | `POST /v1/approvals…`                                                                                                                    |
+| `event`       | `POST /v1/events` (inbound event for a `wait` step; other methods on that path are `admin`)                                              |
 | `admin`       | satisfies any scope, and is the only scope for a route not listed above (**deny by default**)                                            |
 
 The scope is decided from method and path **before** any body is read. The only accepted credential is `Authorization: Bearer <token>` with a single space; the query string, cookies and other headers are ignored. A refusal never says whether a token
