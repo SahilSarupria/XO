@@ -1,4 +1,4 @@
-import { mkdir, open, readdir, readFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { canonicalJson, sha256Hex } from '@xo/workflow-ir';
 
@@ -38,15 +38,89 @@ const GENESIS = '0'.repeat(64);
  * edits, deletions and reordering are detected on read. A torn final line (crash mid-append) is dropped; a bad
  * hash anywhere else is a hard error and the run is not resumed.
  *
+ * Segments: when the active file reaches `segmentBytes` it is sealed by an atomic rename to `journal.<000001>.jsonl` and a fresh
+ * `journal.jsonl` starts. The chain runs across segments unchanged, so `read` verifies the whole run and a deleted, reordered or edited
+ * segment is a hard error. Appending never loads the run: it needs only the cached or last-on-disk tail entry. Memory held by the store
+ * itself is bounded: at most `maxTrackedRuns` cached tails (least recently used evicted) and no queue entry for an idle run.
+ * `window` reads only the newest entries. What bounds memory for a caller is the window; `read` still returns the whole run.
+ *
  * One process may write a run at a time. Cross-process exclusion is the lease protocol (section F), not this class.
  */
+export interface RunStoreOptions {
+  /** Seal the active segment once it holds at least this many bytes. Default 4 MiB. 0 disables sealing. */
+  readonly segmentBytes?: number;
+  /** Cached tails kept in memory. Default 1024. */
+  readonly maxTrackedRuns?: number;
+}
+
+const SEGMENT = /^journal\.(\d{6})\.jsonl$/;
+
 export class RunStore implements RunStoreLike {
   private readonly tails = new Map<string, { seq: number; hash: string }>();
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly segmentBytes: number;
+  private readonly maxTrackedRuns: number;
   constructor(
     private readonly dir: string,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+    o: RunStoreOptions = {},
+  ) {
+    this.segmentBytes = o.segmentBytes ?? 4 * 1024 * 1024;
+    this.maxTrackedRuns = Math.max(1, o.maxTrackedRuns ?? 1024);
+    if (!Number.isInteger(this.segmentBytes) || this.segmentBytes < 0) throw new Error('segmentBytes must be a non-negative integer');
+  }
+
+  private setTail(runId: string, t: { seq: number; hash: string }): void {
+    this.tails.delete(runId);
+    this.tails.set(runId, t); // Map keeps insertion order: the first key is the least recently used
+    while (this.tails.size > this.maxTrackedRuns) this.tails.delete(this.tails.keys().next().value as string);
+  }
+
+  private chain(runId: string, next: () => Promise<unknown>): Promise<unknown> {
+    const prior = this.queues.get(runId) ?? Promise.resolve();
+    const run = prior.then(next);
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.queues.set(runId, settled);
+    void settled.then(() => {
+      if (this.queues.get(runId) === settled) this.queues.delete(runId); // idle: nothing queued behind it
+    });
+    return run;
+  }
+
+  /** Sealed segment file names for a run, in order. A gap in the numbering is corruption (a segment was removed). */
+  private async segments(runId: string): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.path(runId));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw e;
+    }
+    const sealed = names.filter((n) => SEGMENT.test(n)).sort();
+    sealed.forEach((n, i) => {
+      if (Number(SEGMENT.exec(n)![1]) !== i + 1)
+        throw new JournalCorruptError(runId, `segment ${String(i + 1).padStart(6, '0')} is missing`);
+    });
+    return sealed;
+  }
+
+  private async sealIfFull(runId: string): Promise<void> {
+    if (this.segmentBytes === 0) return;
+    const active = join(this.path(runId), 'journal.jsonl');
+    let size: number;
+    try {
+      size = (await stat(active)).size;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw e;
+    }
+    if (size < this.segmentBytes) return;
+    const n = (await this.segments(runId)).length + 1;
+    await rename(active, join(this.path(runId), `journal.${String(n).padStart(6, '0')}.jsonl`));
+  }
 
   private path(runId: string): string {
     if (!RUN_ID.test(runId)) throw new Error(`invalid run id "${runId}"`);
@@ -66,23 +140,18 @@ export class RunStore implements RunStoreLike {
   }
 
   async append(runId: string, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry> {
-    const prior = this.queues.get(runId) ?? Promise.resolve();
-    const next = prior.then(() => this.appendNow(runId, type, data));
-    this.queues.set(
-      runId,
-      next.catch(() => undefined),
-    );
-    return next;
+    return this.chain(runId, () => this.appendNow(runId, type, data)) as Promise<JournalEntry>;
   }
 
   private async appendNow(runId: string, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry> {
     let tail = this.tails.get(runId);
     if (tail === undefined) {
       await this.repairTornTail(runId);
-      const entries = await this.read(runId);
-      const last = entries.at(-1);
+      // Cold start reads only the newest entry (not the whole run); `read` and the runner's replay verify the full chain.
+      const last = (await this.window(runId, 1)).at(-1);
       tail = { seq: last?.seq ?? 0, hash: last?.hash ?? GENESIS };
     }
+    await this.sealIfFull(runId);
     const body = {
       seq: tail.seq + 1,
       ts: this.now().toISOString(),
@@ -98,7 +167,7 @@ export class RunStore implements RunStoreLike {
     } finally {
       await fh.close();
     }
-    this.tails.set(runId, { seq: entry.seq, hash: entry.hash });
+    this.setTail(runId, { seq: entry.seq, hash: entry.hash });
     return entry;
   }
 
@@ -121,14 +190,23 @@ export class RunStore implements RunStoreLike {
     }
   }
 
-  async read(runId: string): Promise<JournalEntry[]> {
-    let text: string;
-    try {
-      text = await readFile(join(this.path(runId), 'journal.jsonl'), 'utf8');
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw e;
+  private async segmentTexts(runId: string): Promise<string[]> {
+    const texts: string[] = [];
+    for (const n of await this.segments(runId)) {
+      const t = await readFile(join(this.path(runId), n), 'utf8');
+      if (t === '' || !t.endsWith('\n')) throw new JournalCorruptError(runId, `sealed segment ${n} is empty or torn`);
+      texts.push(t);
     }
+    try {
+      texts.push(await readFile(join(this.path(runId), 'journal.jsonl'), 'utf8'));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    return texts;
+  }
+
+  async read(runId: string): Promise<JournalEntry[]> {
+    const text = (await this.segmentTexts(runId)).join('');
     const lines = text.split('\n');
     const torn = !text.endsWith('\n') && text.length > 0;
     const out: JournalEntry[] = [];
@@ -153,12 +231,55 @@ export class RunStore implements RunStoreLike {
   }
 
   /**
+   * The newest `n` entries, reading only the last segment(s) needed. Each entry's own hash and the links between consecutive entries in the
+   * window are checked; the link from the window's first entry back to the genesis is NOT (use `read` for a full verification). A torn final
+   * line is ignored. Memory is bounded by `n` and the segment size, not by the run's length.
+   */
+  async window(runId: string, n: number): Promise<JournalEntry[]> {
+    if (!Number.isInteger(n) || n < 1) throw new Error('window size must be a positive integer');
+    const names = [...(await this.segments(runId)), 'journal.jsonl'];
+    const got: JournalEntry[] = [];
+    for (let i = names.length - 1; i >= 0 && got.length < n; i--) {
+      let text: string;
+      try {
+        text = await readFile(join(this.path(runId), names[i] as string), 'utf8');
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue;
+        throw e;
+      }
+      const lines = text.split('\n');
+      const torn = !text.endsWith('\n') && text.length > 0;
+      const here: JournalEntry[] = [];
+      for (let j = 0; j < lines.length; j++) {
+        if (lines[j] === '') continue;
+        try {
+          here.push(JSON.parse(lines[j] as string) as JournalEntry);
+        } catch {
+          if (torn && j === lines.length - 1) break;
+          throw new JournalCorruptError(runId, `${names[i]} line ${j + 1} is not JSON`);
+        }
+      }
+      got.unshift(...here);
+    }
+    const out = got.slice(-n);
+    for (let k = 0; k < out.length; k++) {
+      const { hash, ...body } = out[k] as JournalEntry;
+      const e = out[k] as JournalEntry;
+      if (
+        sha256Hex(canonicalJson(body)) !== hash ||
+        (k > 0 && (e.prev !== (out[k - 1] as JournalEntry).hash || e.seq !== (out[k - 1] as JournalEntry).seq + 1))
+      )
+        throw new JournalCorruptError(runId, `chain breaks at seq ${e.seq}`);
+    }
+    return out;
+  }
+
+  /**
    * Appends entries produced elsewhere (ledger replication). Every entry must extend the current tail exactly: right seq, right
    * prev hash, valid own hash. Anything else is refused whole; nothing is merged or rewritten.
    */
   async ingest(runId: string, entries: readonly JournalEntry[]): Promise<void> {
-    const prior = this.queues.get(runId) ?? Promise.resolve();
-    const next = prior.then(async () => {
+    await this.chain(runId, async () => {
       await this.repairTornTail(runId);
       const have = await this.read(runId);
       let seq = have.at(-1)?.seq ?? 0;
@@ -180,13 +301,8 @@ export class RunStore implements RunStoreLike {
       } finally {
         await fh.close();
       }
-      this.tails.set(runId, { seq, hash: prev });
+      this.setTail(runId, { seq, hash: prev });
     });
-    this.queues.set(
-      runId,
-      next.catch(() => undefined),
-    );
-    return next;
   }
 
   async list(): Promise<string[]> {
