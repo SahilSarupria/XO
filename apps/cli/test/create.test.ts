@@ -113,15 +113,16 @@ test('create against a source with real decision-rule content (the vertical-test
     // alongside it; that is not a CLI regression by itself. What this
     // test actually guards is that `create.ts` reports whatever the
     // Packager's real LowerCapabilitiesResult says, never a hardcoded 0.
-    assert.equal(parsed.discoveredCapabilities, 33);
-    assert.equal(parsed.resolvedCapabilities, 20);
-    assert.equal(parsed.loweredCapabilities, 20);
+    // M2/M1: was 33/20 -> 30/17. Three capabilities no longer resolve: two minted from rules whose conditions had lost operands, one from a permission ("may") rule; see packages/compiler rule-capability-linking-real-fixture.test.ts.
+    assert.equal(parsed.discoveredCapabilities, 30);
+    assert.equal(parsed.resolvedCapabilities, 17);
+    assert.equal(parsed.loweredCapabilities, 17);
     assert.ok(parsed.resolvedCapabilities > 0, 'must prove the positive case, not just 0-resolved');
     assert.ok(
       parsed.resolvedCapabilities < parsed.discoveredCapabilities,
       'must also prove some discovered capabilities remain unresolved',
     );
-    assert.equal(parsed.capabilityOutcomes.length, 33);
+    assert.equal(parsed.capabilityOutcomes.length, 30);
 
     // And the manifest actually on disk must agree with what was
     // printed — the CLI must never report a number it didn't actually
@@ -129,7 +130,7 @@ test('create against a source with real decision-rule content (the vertical-test
     const bytes = await readFile(outPath);
     const unpacked = await unpackArchive(new Uint8Array(bytes));
     assert.ok(unpacked.ok);
-    if (unpacked.ok) assert.equal(unpacked.value.manifest.capabilities?.length ?? 0, 20);
+    if (unpacked.ok) assert.equal(unpacked.value.manifest.capabilities?.length ?? 0, 17);
   });
 });
 

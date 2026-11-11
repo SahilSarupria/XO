@@ -2,7 +2,7 @@ import type { ExperienceUnit } from '../semantic/types.js';
 import type { CandidateReasoningNode, ReasoningExtractionResult } from './extractor-types.js';
 import { computeReasoningMatchKey, computeReasoningNodeId } from './node-id.js';
 import type { ReasoningNode, ReasoningNodeId } from './types.js';
-import { parseStructuredCondition, type StructuredExceptionCondition } from '@xo/capability-contract';
+import { parseStructuredCondition, type GrammarLexicon, type StructuredExceptionCondition } from '@xo/capability-contract';
 
 export interface PerUnitReasoningExtraction {
   readonly unit: ExperienceUnit;
@@ -35,10 +35,11 @@ function round3(value: number): number {
  */
 function buildStructuredExceptionsForMergedList(
   exceptionConditions: readonly string[],
+  lexicon?: GrammarLexicon,
 ): readonly StructuredExceptionCondition[] | undefined {
   if (exceptionConditions.length === 0) return undefined;
   return exceptionConditions.map((raw) => {
-    const condition = parseStructuredCondition(raw);
+    const condition = parseStructuredCondition(raw, lexicon);
     return condition !== undefined ? { raw, condition } : { raw };
   });
 }
@@ -66,7 +67,7 @@ function pickField<K extends keyof CandidateReasoningNode>(
  * extractor found and another missed should never be dropped, per Stage
  * 7 §8's provenance-is-additive rule extended to this field.
  */
-export function mergeReasoningNodes(perUnit: readonly PerUnitReasoningExtraction[]): ReasoningMergeResult {
+export function mergeReasoningNodes(perUnit: readonly PerUnitReasoningExtraction[], lexicon?: GrammarLexicon): ReasoningMergeResult {
   const allCandidates: CandidateReasoningNode[] = [];
   for (const { extraction } of perUnit) allCandidates.push(...extraction.nodes);
 
@@ -96,7 +97,7 @@ export function mergeReasoningNodes(perUnit: readonly PerUnitReasoningExtraction
     const rationale = pickField(candidates, 'rationale');
     const structuredCondition = pickField(candidates, 'structuredCondition');
     const structuredAction = pickField(candidates, 'structuredAction');
-    const structuredExceptions = buildStructuredExceptionsForMergedList(exceptionConditions);
+    const structuredExceptions = buildStructuredExceptionsForMergedList(exceptionConditions, lexicon);
 
     const id = computeReasoningNodeId(nodeType, canonicalLabel);
     nodes.push({

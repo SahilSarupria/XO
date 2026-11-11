@@ -49,6 +49,8 @@ import type { StructuredCondition } from '@xo/capability-contract';
 import { brand } from '@xo/types';
 import { Sha256Hasher } from '@xo/crypto';
 import { UNKNOWN_SIGNATURE, type Capability, type CapabilityId } from './types.js';
+import type { Diagnostic } from '@xo/xoir';
+import { classifyModality } from '../reasoning/modality.js';
 import { canonicalKindForReasoningNodeType } from '../xoir/reasoning-node-kind-mapping.js';
 import { RULE_DERIVED_METADATA_KEY, RULE_DERIVED_SOURCE_NODE_ID_METADATA_KEY } from '../xoir/rule-capability-linking.js';
 import type { ReasoningGraph, ReasoningNode } from '../reasoning/types.js';
@@ -114,6 +116,12 @@ function isResolverCompilable(condition: StructuredCondition): boolean {
   return true;
 }
 
+/** True for outcome text whose modality is permissive or advisory rather than a requirement. */
+export function isNonMandatoryOutcome(outcomeText: string): boolean {
+  const { modality } = classifyModality(outcomeText);
+  return modality === 'permission' || modality === 'advisory';
+}
+
 /** True when `node` is, on its own, already a fully executable decision-table branch — the exact gate this module mints a dedicated capability for. */
 function isCleanlyExecutableRule(node: ReasoningNode): boolean {
   const kind = canonicalKindForReasoningNodeType(node.nodeType);
@@ -122,6 +130,10 @@ function isCleanlyExecutableRule(node: ReasoningNode): boolean {
   if (outcome === undefined || outcome.trim().length === 0) return false;
   if (node.exceptionConditions.length > 0) return false;
   if (node.structuredCondition === undefined) return false;
+  // A permission ("may ...") or an advisory ("should ...") is not a mandatory outcome: minting it as a deterministic
+  // decision-table branch would present "the supplier may suspend" as if it were a decision the system must take.
+  // It stays in the graph (typed `modality`) and is surfaced by `nonMandatoryRuleDiagnostics`; it is simply not executable.
+  if (isNonMandatoryOutcome(outcome)) return false;
   return isResolverCompilable(node.structuredCondition);
 }
 
@@ -167,6 +179,30 @@ function nameFromOutcome(outcome: string): string {
  * same convention every other capability in this compiler already
  * uses) and content.
  */
+/**
+ * One `info` diagnostic per rule that has a fully structured condition but a permissive/advisory outcome, so the rule is
+ * visibly NOT executable (rather than silently absent from the capability list). The rule node itself, its condition and
+ * its typed `modality` stay in the graph untouched.
+ */
+export function nonMandatoryRuleDiagnostics(reasoning: ReasoningGraph): readonly Diagnostic[] {
+  const out: Diagnostic[] = [];
+  for (const node of reasoning.nodes) {
+    const kind = canonicalKindForReasoningNodeType(node.nodeType);
+    if (kind !== 'heuristic' && kind !== 'decision_node') continue;
+    const outcome = outcomeTextFor(kind, node)?.trim();
+    if (outcome === undefined || outcome.length === 0 || node.structuredCondition === undefined) continue;
+    if (!isNonMandatoryOutcome(outcome)) continue;
+    const { modality } = classifyModality(outcome);
+    out.push({
+      severity: 'info',
+      passName: 'rule-modality',
+      code: 'rule-modality/non-mandatory-not-executable',
+      message: `Rule "${node.condition ?? node.canonicalLabel} => ${outcome}" has ${modality} modality, not a requirement, so it was not minted as a mandatory executable rule. It is preserved in the graph with its typed modality.`,
+    });
+  }
+  return out;
+}
+
 export function mintRuleLevelCapabilities(reasoning: ReasoningGraph): readonly Capability[] {
   const minted: Capability[] = [];
   for (const node of reasoning.nodes) {

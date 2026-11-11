@@ -1,3 +1,5 @@
+import { classifyModality } from '../reasoning/modality.js';
+import { classifyOutcomeType } from '../reasoning/outcome-type.js';
 import { err, ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import { XoirGraph, XoirGraphId, XoirNodeId, XoirEdgeId, type CanonicalXoirNodeKind, type XoirPropertyBag, type XoirValue } from '@xo/xoir';
@@ -54,6 +56,14 @@ function toXoirStructuredValue<T>(value: T | undefined): T | undefined {
  * fallback`, `node.action ?? node.condition ?? fallback`, etc.) is what
  * that module deliberately mirrors, rather than re-deriving independently.
  */
+/** Typed deontic view of a rule's outcome text (see `../reasoning/modality.ts`), attached beside — never replacing — the raw text. */
+function modalityProperties(outcomeText: string): { readonly modality: string; readonly polarity: string; readonly outcomeType: string } {
+  const { modality, polarity } = classifyModality(outcomeText);
+  // `outcomeType` (approve | deny | requires_approval | escalate | none) is a distinct axis from modality and from any
+  // compiler/execution state; see ../reasoning/outcome-type.ts.
+  return { modality, polarity, outcomeType: classifyOutcomeType(outcomeText) };
+}
+
 function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): XoirPropertyBag {
   const fallback = node.canonicalLabel;
   const structuredCondition = toXoirStructuredValue(node.structuredCondition) as Readonly<Record<string, XoirValue>> | undefined;
@@ -65,6 +75,9 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
       return {
         condition: node.condition ?? fallback,
         action: node.action ?? fallback,
+        // Only a node that actually states an outcome is typed. An `exception` companion has none (its "action" would be
+        // its own "unless ..." label), and must not be classified as if it were a rule outcome.
+        ...(node.action !== undefined ? modalityProperties(node.action) : {}),
         exceptionConditions: node.exceptionConditions,
         ...(structuredCondition !== undefined ? { structuredCondition } : {}),
         ...(structuredAction !== undefined ? { structuredAction } : {}),
@@ -73,6 +86,7 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
     case 'constraint':
       return {
         rule: node.action ?? node.condition ?? fallback,
+        ...modalityProperties(node.action ?? node.condition ?? fallback),
         severity:
           (node.metadata.severity as 'info' | 'warning' | 'blocking' | undefined) ??
           (node.nodeType === 'prohibition' ? 'blocking' : 'warning'),
@@ -82,6 +96,7 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
       return {
         question: node.condition ?? fallback,
         outcome: node.outcome ?? fallback,
+        ...(node.outcome !== undefined ? modalityProperties(node.outcome) : {}),
         rationale: node.rationale ?? '',
         ...(structuredCondition !== undefined ? { structuredCondition } : {}),
         ...(structuredAction !== undefined ? { structuredAction } : {}),

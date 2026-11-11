@@ -13,7 +13,7 @@ import type { ParsedDocument } from '../document/types.js';
  * with zero change to `document/`, `semantic/`, `knowledge/`,
  * `capabilities/`, `reasoning/`, or `xoir/`.
  */
-export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi';
+export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi' | 'prompt' | 'docx' | 'xlsx';
 
 /**
  * A source whose content has been (or can be) normalized into the same

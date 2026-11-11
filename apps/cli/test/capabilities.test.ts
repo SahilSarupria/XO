@@ -68,8 +68,9 @@ test('capabilities on a source with real decision-rule content (the vertical-tes
   // compiler's own extraction quality legitimately changes these
   // numbers, this assertion is expected to need updating alongside it,
   // not a sign the CLI is wrong.
-  assert.equal(parsed.discovered.length, 33);
-  assert.equal(parsed.resolvedCount, 20);
+  // M2/M1: was 33/20 -> 30/17. Three capabilities no longer resolve: two minted from rules whose conditions had lost operands, one from a permission ("may") rule; see packages/compiler rule-capability-linking-real-fixture.test.ts.
+  assert.equal(parsed.discovered.length, 30);
+  assert.equal(parsed.resolvedCount, 17);
   assert.ok(parsed.resolvedCount > 0, 'this fixture must prove the positive case, not just 0-resolved');
   assert.ok(
     parsed.resolvedCount < parsed.discovered.length,

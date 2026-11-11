@@ -1,3 +1,4 @@
+import type { GrammarLexicon } from '@xo/capability-contract';
 import type { AiCapabilityLayer } from '@xo/ai-core';
 import type { Logger } from '@xo/logger';
 import { AiReasoningExtractor } from './ai-extractor.js';
@@ -12,6 +13,8 @@ export interface ReasoningExtractionOptions {
   /** When supplied, `HybridReasoningExtractor` additionally calls `@xo/ai-core`'s `extractReasoning`/`extractDecisionGraph`/`extractConstraints` per unit; when omitted, extraction is rule-based only (still a correct, if narrower, graph — see `rule-pattern-parser.ts`'s supported pattern list). */
   readonly aiCore?: AiCapabilityLayer;
   readonly domainHint?: string;
+  /** Domain-profile vocabulary for this extraction only; the neutral core grammar is unchanged when absent. */
+  readonly lexicon?: GrammarLexicon;
   readonly focusQuestion?: string;
   readonly logger?: Logger;
   /** Escape hatch for a caller that wants to supply its own `ReasoningExtractor` entirely (e.g. a test double), bypassing the default hybrid wiring — same convention as `../knowledge/knowledge-extractor.ts`. */
@@ -47,6 +50,7 @@ export async function extractReasoningGraph(
     new HybridReasoningExtractor(
       options.aiCore ? new AiReasoningExtractor(options.aiCore, options.domainHint, options.focusQuestion) : undefined,
       options.logger,
+      options.lexicon,
     );
 
   const perUnit: PerUnitReasoningExtraction[] = [];
@@ -62,7 +66,7 @@ export async function extractReasoningGraph(
     perUnit.push({ unit, extraction });
   }
 
-  const mergeResult = mergeReasoningNodes(perUnit);
+  const mergeResult = mergeReasoningNodes(perUnit, options.lexicon);
   const edges = buildReasoningEdges(perUnit, mergeResult);
 
   return { nodes: mergeResult.nodes, edges };

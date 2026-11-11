@@ -1,3 +1,4 @@
+import type { GrammarLexicon } from '@xo/capability-contract';
 import { ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -18,13 +19,15 @@ import { RuleBasedReasoningExtractor } from './rule-based-extractor.js';
  */
 export class HybridReasoningExtractor implements ReasoningExtractor {
   readonly name = 'hybrid';
-  private readonly ruleBased = new RuleBasedReasoningExtractor();
+  private readonly ruleBased: RuleBasedReasoningExtractor;
   private readonly logger: Logger;
 
   constructor(
     private readonly aiExtractor?: ReasoningExtractor,
     logger?: Logger,
+    lexicon?: GrammarLexicon,
   ) {
+    this.ruleBased = new RuleBasedReasoningExtractor(lexicon);
     this.logger = logger ?? noopLogger;
   }
 

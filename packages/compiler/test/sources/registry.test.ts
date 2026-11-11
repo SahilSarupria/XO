@@ -82,7 +82,7 @@ test('ingest delegates to the matching frontend and returns its CanonicalSource'
 
 test('the default registry has every built-in frontend registered', () => {
   const registry = createDefaultSourceFrontendRegistry();
-  assert.deepEqual([...registry.sourceTypes()].sort(), ['document', 'html', 'image', 'openapi', 'pdf', 'structured']);
+  assert.deepEqual([...registry.sourceTypes()].sort(), ['document', 'docx', 'html', 'image', 'openapi', 'pdf', 'prompt', 'structured', 'xlsx']);
 });
 
 test('default registry: distinct real frontends do not collide on ordinary tagged input', () => {
@@ -101,4 +101,14 @@ test('default registry: distinct real frontends do not collide on ordinary tagge
 test('DocumentSourceFrontend and HtmlSourceFrontend both report their own sourceType', () => {
   assert.equal(new DocumentSourceFrontend().sourceType, 'document');
   assert.equal(new HtmlSourceFrontend().sourceType, 'html');
+});
+
+test('default registry: a prompt input routes to the prompt frontend and a document input still routes to the document frontend', () => {
+  const registry = createDefaultSourceFrontendRegistry();
+  const prompt = registry.ingest({ kind: 'prompt', text: 'If the widget count exceeds 5, approve the request.' });
+  const doc = registry.ingest({ kind: 'document', text: 'If the widget count exceeds 5, approve the request.', sourcePath: 'a.md' });
+  assert.equal(prompt.ok && prompt.value.sourceType, 'prompt');
+  assert.equal(doc.ok && doc.value.sourceType, 'document');
+  if (prompt.ok) assert.equal(prompt.value.metadata['sourceClass'], 'user_instruction');
+  if (prompt.ok && doc.ok) assert.notEqual(prompt.value.sourceId, doc.value.sourceId);
 });

@@ -8,3 +8,6 @@ export * from './hybrid-extractor.js';
 export * from './merge.js';
 export * from './edge-builder.js';
 export * from './reasoning-extractor.js';
+export * from './modality.js';
+export * from './outcome-type.js';
+export * from './coverage.js';

@@ -10,6 +10,7 @@ import type {
   ReasoningExtractionResult,
   ReasoningExtractor,
 } from './extractor-types.js';
+import type { GrammarLexicon } from '@xo/capability-contract';
 import { buildStructuredSemantics } from './structured-semantics.js';
 
 interface Paragraph {
@@ -103,6 +104,8 @@ function baseProvenance(unit: ExperienceUnit, confidence: number, charOffsetRang
 export class RuleBasedReasoningExtractor implements ReasoningExtractor {
   readonly name = 'rule-based';
 
+  constructor(private readonly lexicon?: GrammarLexicon) {}
+
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
@@ -119,6 +122,7 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
         labelToLocalId.set(candidate.canonicalLabel, localId);
         const confidence = Math.min(unit.confidence, candidate.confidence);
         const structuredSemantics = buildStructuredSemantics({
+          ...(this.lexicon !== undefined ? { lexicon: this.lexicon } : {}),
           nodeType: candidate.nodeType,
           ...(candidate.condition !== undefined ? { condition: candidate.condition } : {}),
           ...(candidate.action !== undefined ? { action: candidate.action } : {}),

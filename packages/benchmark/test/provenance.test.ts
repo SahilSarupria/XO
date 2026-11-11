@@ -298,7 +298,8 @@ test('real pipeline (all 8 cases): every compiled capability has a connected cha
       }
     }
   }
-  assert.equal(compiledCaps, 71, 'capabilities across the 7 compiled cases');
+  // M2/M1: was 71 -> 68 (-3 in total). Three capabilities (two with silently lost condition operands, one permission rule) no longer resolve; see packages/compiler rule-capability-linking-real-fixture.test.ts.
+  assert.equal(compiledCaps, 68, 'capabilities across the 7 compiled cases');
   assert.ok(executed >= 20, `executions judged: ${executed}`);
 });
 

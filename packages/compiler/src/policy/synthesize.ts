@@ -141,6 +141,9 @@ export function synthesizeTree(p: PolicyProgram): SynthesisResult {
     if (p.amountField !== undefined) output[p.amountField] = amount ?? 0;
     output['escalation_target'] = target ?? null;
     output['reason_code'] = reason;
+    // An UNFORMALIZED_RULE leaf means the COMPILER did not understand a clause (a compiler state), not that policy requires
+    // escalation. `decision` stays 'escalate' (fail-closed, existing contract); this additive marker lets consumers tell them apart.
+    if (reason === 'UNFORMALIZED_RULE') output['compiler_state'] = 'unresolved';
     nodes[id] = { type: 'leaf', output, ...(rule !== '' ? { rule } : {}), note };
     leafKey.set(key, id);
     return id;

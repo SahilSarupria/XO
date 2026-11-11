@@ -14,3 +14,6 @@ export * from './capability-lowering.js';
 export * from './compile-pdf-to-package.js';
 export * from './compile-sources.js';
 export * from './capability-discovery.js';
+export * from './execution-readiness.js';
+export * from './review-queue.js';
+export * from './cross-document.js';
