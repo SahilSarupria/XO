@@ -17,10 +17,17 @@ export const DiscoveryErrorCode = {
   SCOPE_VIOLATION: 'EI_SCOPE_VIOLATION',
   /** Scope itself is unusable (not absolute, is a filesystem root, missing, not a directory). */
   INVALID_SCOPE: 'EI_INVALID_SCOPE',
+  /** The caller is not an authenticated principal (missing, invalid, forged or structurally copied identity). Nothing was consulted, probed or read. */
+  UNAUTHENTICATED: 'EI_UNAUTHENTICATED',
   /** No authorization decision permits this yet (nothing was read). */
   AUTHORIZATION_REQUIRED: 'EI_AUTHORIZATION_REQUIRED',
   /** Authorization was explicitly refused (nothing was read). */
   AUTHORIZATION_DENIED: 'EI_AUTHORIZATION_DENIED',
+  /**
+   * C1: a connector reported success for a protected operation but the framework did not observe the expected authorization
+   * decision being honoured for it (the expected permission was never spent, or something else was). Nothing was advanced.
+   */
+  AUTHORIZATION_UNVERIFIED: 'EI_AUTHORIZATION_UNVERIFIED',
   /** No connector exists for this source type. */
   UNSUPPORTED_SOURCE: 'EI_UNSUPPORTED_SOURCE',
   /** The connector exists but does not implement this operation. */
@@ -37,6 +44,15 @@ export const DiscoveryErrorCode = {
   CANCELLED: 'EI_CANCELLED',
   /** An illegal source-state transition was attempted. */
   INVALID_TRANSITION: 'EI_INVALID_TRANSITION',
+  /** Protected evidence access needs an accepted audit record and one could not be accepted (none configured, rejected, unconfirmed). Nothing was read or released. */
+  AUDIT_UNAVAILABLE: 'EI_AUDIT_UNAVAILABLE',
+  /** Evidence was acquired but its completion audit was not accepted: it was quarantined and NOT released. */
+  EVIDENCE_QUARANTINED: 'EI_EVIDENCE_QUARANTINED',
+  /**
+   * C0.4: the durable lifecycle-state store is not operational (not started, persistence failed or was indeterminate, or integrity
+   * could not be verified). Nothing was read or released and no evidence is eligible; there is no memory-only fallback.
+   */
+  STATE_UNAVAILABLE: 'EI_STATE_UNAVAILABLE',
   /** Unexpected internal failure (wrapped, never leaked raw). */
   INTERNAL: 'EI_INTERNAL',
 } as const;
@@ -56,6 +72,7 @@ const RETRYABLE: ReadonlySet<DiscoveryErrorCode> = new Set([
   DiscoveryErrorCode.SOURCE_UNAVAILABLE,
   DiscoveryErrorCode.CANCELLED,
   DiscoveryErrorCode.INTERNAL,
+  DiscoveryErrorCode.STATE_UNAVAILABLE,
 ]);
 
 export function discoveryError(

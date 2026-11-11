@@ -272,7 +272,7 @@ describe('five real provider adapters, one extractor (offline parity; says nothi
   for (const p of Object.keys(BUILD)) {
     it(`${p}: same facts, key only in headers, text only in the data field, `, async () => {
       const { f, seen } = fakeFetch(p);
-      const r = await new ModelExtractor({ provider: BUILD[p]!(f), model: 'm' }).extract(req());
+      const r = await new ModelExtractor({ provider: BUILD[p]!(f), model: 'gemini-m' }).extract(req());
       assert.deepEqual(r.facts, { amount: 1250.5, party: 'Jane Roe', urgent: true, kind: 'beta' });
       assert.equal(r.modelCalls, 1);
       assert.equal(seen.length, 1);
@@ -289,9 +289,9 @@ describe('five real provider adapters, one extractor (offline parity; says nothi
       const bad = structuredClone(GOOD);
       bad.facts.amount.quote = 'not in the text';
       const g = fakeFetch(p, bad);
-      await refused(new ModelExtractor({ provider: BUILD[p]!(g.f), model: 'm' }).extract(req()), 'UNGROUNDED_FACT');
+      await refused(new ModelExtractor({ provider: BUILD[p]!(g.f), model: 'gemini-m' }).extract(req()), 'UNGROUNDED_FACT');
       const h = fakeFetch(p, GOOD, 500);
-      await assert.rejects(new ModelExtractor({ provider: BUILD[p]!(h.f), model: 'm' }).extract(req()), (e: unknown) => {
+      await assert.rejects(new ModelExtractor({ provider: BUILD[p]!(h.f), model: 'gemini-m' }).extract(req()), (e: unknown) => {
         assert.ok(e instanceof Error && !(e instanceof ExtractionRefused), 'a transport error must stay a retryable failure');
         if (p !== 'ollama') assert.equal(e.message.includes(SECRET), false, 'the key leaked into an error'); // ollama holds no key to redact
         return true;

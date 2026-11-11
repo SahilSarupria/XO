@@ -23,12 +23,23 @@ export const DEFAULT_PRICING_TABLE: PricingTable = {
   'azure-openai': {
     'gpt-4o': { inputPerThousand: 0.0025, outputPerThousand: 0.01 },
   },
-  ollama: {},
-  'deterministic-replay': {},
+  // Explicitly free: local inference and recorded fixtures cost nothing, so they are priceable (and usable under a cost cap).
+  ollama: { '*': { inputPerThousand: 0, outputPerThousand: 0 } },
+  'deterministic-replay': { '*': { inputPerThousand: 0, outputPerThousand: 0 } },
 };
 
+/**
+ * The price for a model, or `undefined` when UNKNOWN. A provider entry may carry a `'*'` model as an EXPLICIT statement that every
+ * model of that provider has that price (used for genuinely free providers such as local models). "Not in the table" is never the
+ * same as "free": spend guards must treat `undefined` as unpriceable.
+ */
+export function findPricing(table: PricingTable, providerId: ProviderId, model: string): ModelPricing | undefined {
+  return table[providerId]?.[model] ?? table[providerId]?.['*'];
+}
+
 function lookupPricing(table: PricingTable, providerId: ProviderId, model: string): ModelPricing {
-  return table[providerId]?.[model] ?? { inputPerThousand: 0, outputPerThousand: 0 };
+  // Legacy reporting behaviour: unknown prices report as 0. Do NOT use this to decide whether something is free.
+  return findPricing(table, providerId, model) ?? { inputPerThousand: 0, outputPerThousand: 0 };
 }
 
 export function computeCostUsd(

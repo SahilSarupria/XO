@@ -97,6 +97,10 @@ export async function runAgent(provider: ModelProvider, userMessage: string, opt
       }),
     );
     if (res === undefined) return stopped(turn);
+    // A provider that did not report usage returns a {0,0} placeholder (`usageKnown: false`). A token budget cannot be enforced on a number that is not
+    // a measurement, so with a budget set the loop stops rather than run on without a limit.
+    if (opts.maxTotalTokens !== undefined && res.usageKnown === false)
+      return { text: '', turns: turn, toolCalls: records, usage, truncated: true, stoppedBy: 'token_budget' };
     usage.inputTokens += res.usage.inputTokens;
     usage.outputTokens += res.usage.outputTokens;
 

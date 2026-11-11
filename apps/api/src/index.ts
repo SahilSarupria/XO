@@ -5,6 +5,7 @@ import { FileAuditStore, resolveAuditConfig, type AuditSink } from '@xo/audit';
 
 export { createHttpServer, buildRouter } from './server.js';
 export type { ServerDeps } from './server.js';
+export { createConfiguredExternalToolWiring } from './external-tools-host.js';
 export * from './http/types.js';
 
 /** Only runs when this module is the actual process entrypoint (`npm start` / `node dist/index.js`) — importing this module from a test never binds a socket. */

@@ -57,9 +57,22 @@ export interface XoirManifest {
  * than assumed away).
  */
 export interface SourceQualityInfo {
-  readonly state: 'trusted' | 'degraded' | 'blocked';
+  /**
+   * `'partial'` (WS1-01, CRD-03): at least one page was neither extracted, OCR'd, nor excluded
+   * for a recorded reason. The pages that were read still compile, but the source must not
+   * yield approvable capabilities without a recorded human waiver.
+   */
+  readonly state: 'trusted' | 'degraded' | 'partial' | 'blocked';
   /** Same metric `document-quality.ts#DocumentQualityReport.suspiciousTokenRatio` reports — the fraction of tokens that looked like layout-reconstruction artifacts rather than real words. */
   readonly suspiciousTokenRatio: number;
+  /** Per-page accounting counts for paginated sources. Absent for sources with no page structure and for graphs compiled before WS1-01. Per-page detail lives in the compile result, not the manifest. */
+  readonly coverage?: {
+    readonly totalPages: number;
+    readonly extractedPages: number;
+    readonly ocrPages: number;
+    readonly excludedPages: number;
+    readonly unaccountedPages: number;
+  };
 }
 
 /**

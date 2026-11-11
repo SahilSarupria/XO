@@ -30,6 +30,13 @@ export interface ProviderToolCall {
   readonly providerState?: string;
 }
 
+/** An image attached to a message. Only vision-capable providers (`supportsVision`) accept these; the others never receive them. */
+export interface ProviderImage {
+  readonly mediaType: 'image/png' | 'image/jpeg';
+  /** Base64 of the encoded image bytes (no data-URL prefix). */
+  readonly dataBase64: string;
+}
+
 export interface ProviderMessage {
   /** `'tool'` carries the result of one `ProviderToolCall` back to the model (`toolCallId` required). */
   readonly role: 'system' | 'user' | 'assistant' | 'tool';
@@ -40,6 +47,8 @@ export interface ProviderMessage {
   readonly toolCallId?: string;
   /** Only on `role: 'tool'` — the tool failed; `content` is the error text. */
   readonly isError?: boolean;
+  /** Optional images sent alongside `content` (user messages). Absent for every text-only call, so existing behaviour is unchanged. */
+  readonly images?: readonly ProviderImage[];
 }
 
 export interface ProviderRequest {
@@ -51,6 +60,10 @@ export interface ProviderRequest {
   readonly responseSchema?: Readonly<Record<string, unknown>>;
   /** Tools the model may call this turn. A provider that does not support tool calling MUST reject a request that sets this (never silently drop it — the caller's behavior depends on tools being available). */
   readonly tools?: readonly ProviderToolDefinition[];
+  /** Optional correlation id for telemetry. A provider that supports it generates one when absent and echoes it back in `ProviderResponse.meta.requestId`. Never sent to the vendor as prompt content. */
+  readonly requestId?: string;
+  /** Optional caller cancellation. Aborting stops local waiting; it does NOT guarantee the vendor stopped (or will not bill for) the remote inference. */
+  readonly signal?: AbortSignal;
 }
 
 export interface TokenUsage {
@@ -58,13 +71,28 @@ export interface TokenUsage {
   readonly outputTokens: number;
 }
 
+/** Low-sensitivity per-call metadata — never contains prompt/response content or credentials. */
+export interface ProviderCallMeta {
+  readonly providerId: ProviderId;
+  readonly requestId: string;
+  readonly durationMs: number;
+  /** Total HTTP/transport attempts made (1 = no retry). */
+  readonly attempts: number;
+  /** The vendor's own finish/termination string, before normalization (for diagnosis and reproducible benchmarking). */
+  readonly rawFinishReason?: string;
+}
+
 export interface ProviderResponse {
   readonly text: string;
+  /** Token usage as reported by the vendor. When `usageKnown === false` this is a `{0,0}` placeholder, NOT a measurement. */
   readonly usage: TokenUsage;
+  /** `false` when the vendor did not report usage. Absent is treated as `true` (every pre-existing provider reports usage). */
+  readonly usageKnown?: boolean;
   readonly modelUsed: string;
   readonly finishReason: 'stop' | 'length' | 'content_filter' | 'error' | 'tool_use';
   /** Present (non-empty) iff `finishReason === 'tool_use'`. */
   readonly toolCalls?: readonly ProviderToolCall[];
+  readonly meta?: ProviderCallMeta;
 }
 
 export type ProviderStreamEvent =
@@ -90,6 +118,24 @@ export interface ProviderCapabilityDescriptor {
   /** Optional for backward compatibility — absent means `false`. */
   readonly supportsToolCalling?: boolean;
   readonly maxContextTokens: number;
+  /**
+   * Optional, finer-grained feature flags so the abstraction never implies every provider supports identical features.
+   * Absent means "not declared" (treat as unknown), not "supported".
+   */
+  readonly features?: ProviderFeatureSupport;
+}
+
+export interface ProviderFeatureSupport {
+  /** A dedicated system-instruction channel (vs. folding system text into a user message). */
+  readonly systemInstructions?: boolean;
+  /** Vendor constrains decoding to a schema (vs. "JSON mode" or prompt-only). Local validation is still required either way. */
+  readonly schemaConstrainedOutput?: boolean;
+  /** Vendor reports token usage on responses. */
+  readonly usageReporting?: boolean;
+  /** Vendor honors `temperature`. */
+  readonly temperature?: boolean;
+  /** Vendor may spend part of `maxOutputTokens` on hidden reasoning ("thinking") tokens. */
+  readonly hiddenReasoningTokens?: boolean;
 }
 
 export interface ModelProvider {

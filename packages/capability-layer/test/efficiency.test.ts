@@ -308,6 +308,23 @@ describe('runAgent wall-clock cap', () => {
     assert.equal(run.toolCalls.length, 0);
   });
 
+  it('a token budget fails closed when the provider reports no usage (a {0,0} placeholder is not a measurement)', async () => {
+    let calls = 0;
+    const provider = {
+      id: 'p',
+      describeCapabilities: () => ({}) as never,
+      complete: async () => {
+        calls++;
+        return { text: 'x', finishReason: 'stop', usage: { inputTokens: 0, outputTokens: 0 }, usageKnown: false } as ProviderResponse;
+      },
+    } as ModelProvider;
+    const limited = await runAgent(provider, 'q', { ...base, maxTotalTokens: 100 });
+    assert.equal(limited.stoppedBy, 'token_budget');
+    const unlimited = await runAgent(provider, 'q', base);
+    assert.equal(unlimited.text, 'x');
+    assert.equal(calls, 2);
+  });
+
   it('unset: behaviour is unchanged', async () => {
     const provider = { id: 'p', describeCapabilities: () => ({}) as never, complete: async () => resp('done') } as ModelProvider;
     const run = await runAgent(provider, 'q', base);

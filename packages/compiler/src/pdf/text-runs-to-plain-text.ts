@@ -12,6 +12,7 @@ const RAW_LATIN1_ENCODING: FontEncoding = {
 
 /** Decodes one text run's raw string bytes through its font's actual encoding — `font-encoding.ts`'s `/ToUnicode` CMap / base-encoding-plus-`/Differences` resolution — rather than assuming every run is single-byte Latin-1. This is what fixes the "garbled control characters" / coincidental fixed-offset-cipher output real-world PDFs with embedded `/Type0` `/Identity-H` fonts used to produce (see this package's README, "Known limitations," and the regression fixtures this fix was built against). */
 export function decodeRunText(run: TextRun, resolveFontEncoding?: FontEncodingResolver): string {
+  if (run.text !== undefined) return run.text;
   const encoding = resolveFontEncoding?.(run.fontName) ?? RAW_LATIN1_ENCODING;
   return encoding.decode(run.bytes);
 }

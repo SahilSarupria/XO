@@ -1,3 +1,4 @@
+import { checkCompileInferenceAuthority } from './inference-authority.js';
 import { err, ok, ContentHash, type Result } from '@xo/types';
 import { ErrorCode, SourceError, type XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -6,10 +7,17 @@ import { createManifest, type SourceQualityInfo } from '@xo/xoir';
 import { chunkDocument } from '../semantic/semantic-chunker.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import { assessDocumentQuality, type SourceQualityState } from '../document/document-quality.js';
+import type { CoverageReport } from '../document/page-coverage.js';
+import { needsRecovery, recoverUnreadPages } from '../extraction/router.js';
+import type { ExtractionBudget, ExtractionLedger, PageTier, RecoveryCache } from '../extraction/types.js';
+import { NodePdfLoader } from '../pdf/pdf-loader.js';
+import type { PdfSourceInput } from '../sources/pdf-frontend.js';
+import type { UnclassifiedSentence } from '../reasoning/types.js';
 import { extractKnowledgeGraph, type KnowledgeExtractionOptions } from '../knowledge/knowledge-extractor.js';
 import { extractCapabilityGraph, type CapabilityExtractionOptions } from '../capabilities/capability-extractor.js';
 import { mintRuleLevelCapabilities } from '../capabilities/rule-capability-minter.js';
 import { extractReasoningGraph, type ReasoningExtractionOptions } from '../reasoning/reasoning-extractor.js';
+import type { ConfirmedRule } from '../reasoning/rule-proposals.js';
 import { compileXoir } from './compile.js';
 import { synthesizePolicyArtifacts, type PolicyArtifacts, type PolicyOptions, type PolicySource } from '../policy/artifacts.js';
 import { policyTextFromParsed } from '../policy/from-document.js';
@@ -40,6 +48,8 @@ export interface SourceCompilationReport {
    * non-`document`-kind source, which the quality pass never runs
    * against (there is no extracted text to assess).
    *
+   * - `'partial'`: the readable pages were extracted, but at least one page was not read
+   *   (`coverage` lists which and why); not approvable without a recorded human waiver.
    * - `'trusted'` / `'degraded'`: semantic extraction ran normally; a
    *   `'degraded'` source additionally carries per-token findings in
    *   `CompileSourcesResult.diagnostics`.
@@ -49,6 +59,14 @@ export interface SourceCompilationReport {
    *   promoting corrupted tokens into capability/knowledge candidates.
    */
   readonly qualityState?: SourceQualityState;
+  /**
+   * Page-by-page accounting (WS1-01, CRD-03) for paginated sources: which pages were extracted,
+   * OCR'd, excluded (with reason) or left unaccounted. Absent for sources with no page structure.
+   * A `'partial'` `qualityState` means `coverage.unaccountedPages > 0`.
+   */
+  readonly coverage?: CoverageReport;
+  /** What page recovery tried and spent for this source (`CompileSourcesOptions.pageTiers`). Absent when no tier was configured or no page needed one. */
+  readonly recovery?: ExtractionLedger;
 }
 
 export interface CompileSourcesResult extends CompiledXoirResult {
@@ -59,6 +77,14 @@ export interface CompileSourcesResult extends CompiledXoirResult {
   readonly policy?: PolicyArtifacts;
   /** One entry per input, in input order — always present even for inputs that contributed zero units, so a caller can see exactly what happened to every source it submitted (Stage 8 §14's "must not silently pass through"). */
   readonly sources: readonly SourceCompilationReport[];
+  /**
+   * WS1-04 / CRD-04: sentences that look decision-bearing (obligation, limit, deadline, exclusion,
+   * condition) but that no deterministic rule pattern parsed, in document order, each with its
+   * source span. A review list, not a rule list: nothing here is promoted automatically. Empty
+   * means "the detector found none", which is a statement about the detector's lexicon, not a
+   * guarantee that no rule was missed.
+   */
+  readonly unclassified: readonly UnclassifiedSentence[];
 }
 
 export interface CompileSourcesOptions {
@@ -71,6 +97,19 @@ export interface CompileSourcesOptions {
   readonly focusQuestion?: string;
   /** Policy synthesis runs by default; `false` skips it. `glossary` is the operator's closed-set classification glossary. */
   readonly policy?: false | PolicyOptions;
+  /** Human-confirmed rule proposals for sentences on the review list (see `reasoning/rule-proposals.ts`). */
+  readonly confirmedRules?: readonly ConfirmedRule[];
+  /** Recovery tiers for pages the text reader cannot read (scans, outlined text). With none configured such pages stay unaccounted, exactly as before. */
+  readonly pageTiers?: readonly PageTier[];
+  /** Spend limits for recovery. Default: free and local tiers only, no model spend. */
+  readonly extractionBudget?: ExtractionBudget;
+  /** Reused across calls so a page is never recovered twice. */
+  readonly recoveryCache?: RecoveryCache;
+  /**
+   * Explicit operator opt-in to run `aiCore` with NO spend limit. Absent/false means an unbounded layer is refused (see
+   * `checkCompileInferenceAuthority`). Obtain it from `createCompilerAiLayer`, never default it.
+   */
+  readonly allowUnboundedInference?: boolean;
 }
 
 /**
@@ -127,10 +166,41 @@ function mergeExperienceDocuments(docs: readonly ExperienceDocument[], mergedPat
  * explicitly instead of returning a technically-"valid," in-practice-
  * empty `XoirGraph`.
  */
+/** For a PDF input with unreadable pages, runs the configured recovery tiers and hands the frontend the recovered document. Anything else passes through untouched. */
+async function withRecoveredPages(
+  input: unknown,
+  options: CompileSourcesOptions,
+  ledgers: Map<string, ExtractionLedger>,
+): Promise<unknown> {
+  const candidate = input as Partial<PdfSourceInput> | null;
+  if (
+    candidate === null ||
+    typeof candidate !== 'object' ||
+    candidate.kind !== 'pdf' ||
+    !(candidate.bytes instanceof Uint8Array) ||
+    typeof candidate.sourcePath !== 'string'
+  ) {
+    return input;
+  }
+  const loaded = new NodePdfLoader().load(candidate.bytes, candidate.sourcePath);
+  if (!loaded.ok || !loaded.value.pages.some(needsRecovery)) return input;
+  const { document, ledger } = await recoverUnreadPages(
+    loaded.value,
+    candidate.bytes,
+    options.pageTiers!,
+    options.extractionBudget,
+    options.recoveryCache,
+  );
+  ledgers.set(candidate.sourcePath, ledger);
+  return { ...candidate, preloaded: document };
+}
+
 export async function compileSources(
   inputs: readonly unknown[],
   options: CompileSourcesOptions = {},
 ): Promise<Result<CompileSourcesResult, XoError>> {
+  const authority = checkCompileInferenceAuthority(options.aiCore, options.allowUnboundedInference, options.logger);
+  if (!authority.ok) return err(authority.error);
   if (inputs.length === 0) {
     return err(new SourceError(ErrorCode.INVALID_ARGUMENT, 'compileSources requires at least one input'));
   }
@@ -141,8 +211,11 @@ export async function compileSources(
       ? { ...(options.now !== undefined ? { now: options.now } : {}), ...(options.logger !== undefined ? { logger: options.logger } : {}) }
       : undefined;
 
+  const ledgers = new Map<string, ExtractionLedger>();
   const canonicalSources: CanonicalSource[] = [];
-  for (const input of inputs) {
+  for (const rawInput of inputs) {
+    const input =
+      options.pageTiers !== undefined && options.pageTiers.length > 0 ? await withRecoveredPages(rawInput, options, ledgers) : rawInput;
     const ingested = registry.ingest(input, ingestContext);
     if (!ingested.ok) return err(ingested.error);
     canonicalSources.push(ingested.value);
@@ -179,9 +252,14 @@ export async function compileSources(
       continue;
     }
 
-    const quality = assessDocumentQuality(source.content.parsed, source.sourceId);
+    const quality = assessDocumentQuality(source.content.parsed, source.sourceId, source.content.coverage);
+    const coverage = source.content.coverage;
     qualityDiagnostics.push(...quality.diagnostics);
-    sourceQualityByDocumentPath.set(source.sourceId, { state: quality.state, suspiciousTokenRatio: quality.suspiciousTokenRatio });
+    sourceQualityByDocumentPath.set(source.sourceId, {
+      state: quality.state,
+      suspiciousTokenRatio: quality.suspiciousTokenRatio,
+      ...(quality.coverage !== undefined ? { coverage: quality.coverage } : {}),
+    });
 
     if (quality.state === 'blocked') {
       sourceReports.push({
@@ -191,6 +269,7 @@ export async function compileSources(
         semanticExtractionAvailable: true,
         unitCount: 0,
         qualityState: quality.state,
+        ...(coverage !== undefined ? { coverage } : {}),
       });
       options.logger?.warn(
         'Source quality check blocked semantic extraction — extracted text was not trustworthy enough to feed into semantic extraction',
@@ -221,6 +300,7 @@ export async function compileSources(
       semanticExtractionAvailable: true,
       unitCount: experienceDocument.units.length,
       qualityState: quality.state,
+      ...(coverage !== undefined ? { coverage } : {}),
     });
   }
 
@@ -251,6 +331,7 @@ export async function compileSources(
   const reasoning = await extractReasoningGraph(merged, {
     ...extractionOptions,
     ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
+    ...(options.confirmedRules !== undefined ? { confirmedRules: options.confirmedRules } : {}),
   });
 
   // M1.1 — additive rule-level capability minting (see
@@ -342,10 +423,24 @@ export async function compileSources(
     );
   }
 
+  const unclassified = reasoning.unclassified ?? [];
+  const reviewDiagnostics: Diagnostic[] =
+    unclassified.length > 0
+      ? [
+          {
+            severity: 'info',
+            passName: 'reasoning-coverage',
+            code: 'reasoning/unclassified-decision-sentences',
+            message: `${unclassified.length} sentence(s) look decision-bearing but matched no rule pattern. They are listed for review and were not turned into rules.`,
+          },
+        ]
+      : [];
+
   return ok({
     ...compiled.value,
-    diagnostics: [...qualityDiagnostics, ...compiled.value.diagnostics],
-    sources: sourceReports,
+    diagnostics: [...qualityDiagnostics, ...reviewDiagnostics, ...compiled.value.diagnostics],
+    sources: sourceReports.map((r) => (ledgers.has(r.sourcePath) ? { ...r, recovery: ledgers.get(r.sourcePath)! } : r)),
+    unclassified,
     ...(policy !== undefined ? { policy } : {}),
   });
 }

@@ -29,6 +29,7 @@ import {
   type RuntimeCapabilityExecutionResult,
 } from './runtime-capability-executor.js';
 import { registerResolvedCapabilityBinding } from './capability-binding-registration.js';
+import type { RuntimeCapabilityHandler } from './runtime-capability-declaration.js';
 
 /**
  * P0.9B Step 4 — the one shared assembly path from a contract to an
@@ -87,7 +88,36 @@ export function resolveContractBinding(
   return resolveCapabilityBinding(contract, resolvers);
 }
 
+/**
+ * CRD-02 / audit B1-01: the platform confidence floor. A capability whose confidence is below this
+ * is never executed, on ANY path (API execute and resume, workflows, `xo run`), because every path
+ * goes through `executeResolvedContract`. Before this constant the floor lived only in `xo run`'s
+ * router, and the executor's own gate is opt-in, so the API ran sub-floor capabilities.
+ *
+ * `0.7` is the starting policy value. It can be RAISED per call (`minConfidence`) but never
+ * lowered: `effectiveMinConfidence` takes the maximum.
+ */
+export const MIN_EXECUTION_CONFIDENCE = 0.7;
+
+/** The floor actually enforced: the platform floor, or a higher caller-supplied one. A lower, NaN or non-numeric request is ignored. */
+export function effectiveMinConfidence(requested?: number): number {
+  return typeof requested === 'number' && Number.isFinite(requested)
+    ? Math.max(MIN_EXECUTION_CONFIDENCE, requested)
+    : MIN_EXECUTION_CONFIDENCE;
+}
+
+/**
+ * Whether the floor gates this binding. It governs AUTOMATED execution. A `human_in_the_loop` binding
+ * only routes the work to a person who decides (CRD-15): refusing it for low confidence would make
+ * exactly the least-certain items impossible to put in front of a reviewer, which is the opposite of safe.
+ */
+export function confidenceFloorApplies(binding: Pick<CapabilityBinding, 'implementationClass'>): boolean {
+  return binding.implementationClass !== 'human_in_the_loop';
+}
+
 export interface ExecuteResolvedContractRequest {
+  /** May RAISE the confidence floor for this call (a stricter workspace policy). Values below {@link MIN_EXECUTION_CONFIDENCE} have no effect. */
+  readonly minConfidence?: number;
   /** The host's own permission policy — never defaulted here. */
   readonly permissionManager: PermissionManager;
   /**
@@ -118,6 +148,8 @@ export interface ExecuteResolvedContractRequest {
   readonly context?: PermissionContext;
   /** P1.0 M4 — forwarded to the executor; see `RuntimeExecutionAudit`. */
   readonly audit?: RuntimeExecutionAudit;
+  /** M4 — handler for an `external_tool` binding (see `external-tool-binding.ts`). Without it such a binding is not registerable (fail closed). */
+  readonly externalToolHandler?: RuntimeCapabilityHandler;
 }
 
 /**
@@ -208,6 +240,7 @@ export async function executeResolvedContract(
   const registry = new RuntimeCapabilityRegistry();
   const registered = registerResolvedCapabilityBinding(registry, contract, binding, {
     ...(request.graphHash !== undefined ? { graphHash: request.graphHash } : {}),
+    ...(request.externalToolHandler !== undefined ? { externalToolHandler: request.externalToolHandler } : {}),
     // The authoritative declaration may be STRICTER than the contract copy (e.g. manifest-declared extras); enforce all of it.
     ...(declaration.kind === 'required' ? { additionalRequiredPermissions: declaration.requirements } : {}),
   });
@@ -238,6 +271,10 @@ export async function executeResolvedContract(
   const result = await executor.execute({
     capabilityId: contract.id,
     input: request.input,
+    // CRD-02: enforced here for every automated binding, audited by the executor, ordered before the permission loop.
+    ...(confidenceFloorApplies(binding)
+      ? { minConfidence: effectiveMinConfidence(request.minConfidence), confidenceScore: contract.confidence }
+      : {}),
     ...(request.requesterPackageId !== undefined ? { requesterPackageId: request.requesterPackageId } : {}),
     ...(request.context !== undefined ? { context: request.context } : {}),
   });

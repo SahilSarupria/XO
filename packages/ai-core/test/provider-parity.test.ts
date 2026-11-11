@@ -18,7 +18,7 @@ import {
 const SECRET = 'sk-test-SECRET-key-0123456789abcdef';
 const tools = [{ name: 'evaluate', description: 'run it', inputSchema: { type: 'object', properties: { a: { type: 'number' } } } }];
 const req = (withTools: boolean): ProviderRequest => ({
-  model: 'm',
+  model: 'gemini-m', // a valid Gemini id; the other adapters pass the model through unchanged
   maxOutputTokens: 50,
   messages: [{ role: 'user', content: 'go' }],
   ...(withTools ? { tools } : {}),
@@ -86,15 +86,16 @@ wire['azure'] = wire['openai'] as (typeof wire)[string];
 const fakeFor = (kind: string, s: Scenario): typeof fetch =>
   (async () => {
     const { status, body } = (wire[kind] as (s: Scenario) => { status: number; body: unknown })(s);
-    return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) } as Response;
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
 
 const make = (kind: 'openai' | 'azure' | 'ollama' | 'gemini', s: Scenario): ModelProvider => {
   const fetchImpl = fakeFor(kind === 'azure' ? 'azure' : kind, s);
-  if (kind === 'openai') return new OpenAiProvider({ apiKey: SECRET, fetchImpl });
-  if (kind === 'azure') return new AzureOpenAiProvider({ apiKey: SECRET, endpoint: 'https://r.openai.azure.com', fetchImpl });
-  if (kind === 'ollama') return new OllamaProvider({ fetchImpl });
-  return new GeminiProvider({ apiKey: SECRET, fetchImpl });
+  const retry = { maxRetries: 0 }; // an HTTP failure must surface immediately in a test, not after backoff
+  if (kind === 'openai') return new OpenAiProvider({ apiKey: SECRET, fetchImpl, retry });
+  if (kind === 'azure') return new AzureOpenAiProvider({ apiKey: SECRET, endpoint: 'https://r.openai.azure.com', fetchImpl, retry });
+  if (kind === 'ollama') return new OllamaProvider({ fetchImpl, retry });
+  return new GeminiProvider({ apiKey: SECRET, fetchImpl, retry });
 };
 const KINDS = ['openai', 'azure', 'ollama', 'gemini'] as const;
 
@@ -129,7 +130,8 @@ describe('provider parity (offline, fake transports)', () => {
             (x: Error & { code?: string }) => x,
           );
         assert.ok(e !== undefined, 'must reject');
-        assert.equal(e.code, 'XO_AI_PROVIDER_REQUEST_FAILED');
+        // Every adapter now classifies through the shared failure type: 429 is the rate-limit code, 5xx the generic provider failure.
+        assert.equal(e.code, s === 'http429' ? 'XO_AI_RATE_LIMITED' : 'XO_AI_PROVIDER_REQUEST_FAILED');
         if (k !== 'ollama') assert.ok(!e.message.includes(SECRET), `${k} leaked the key in: ${e.message}`); // Ollama has no API key to leak
       });
     it(`${k}: declares tool-calling support, so hosts can negotiate the same level for all of them`, () => {

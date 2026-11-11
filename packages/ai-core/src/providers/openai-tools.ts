@@ -49,7 +49,16 @@ export function toWireMessages(messages: readonly ProviderMessage[], opts: { arg
           : { role: 'tool', tool_call_id: m.toolCallId, content: m.isError === true ? `ERROR: ${m.content}` : m.content },
       );
     } else {
-      out.push({ role: m.role, content: m.content });
+      out.push({
+        role: m.role,
+        content:
+          m.images !== undefined && m.images.length > 0 && opts.argsAsObject !== true
+            ? [
+                { type: 'text', text: m.content },
+                ...m.images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mediaType};base64,${i.dataBase64}` } })),
+              ]
+            : m.content,
+      });
     }
   }
   return out;

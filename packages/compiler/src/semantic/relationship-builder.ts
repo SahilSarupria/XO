@@ -103,6 +103,7 @@ export function buildRelationships(draftUnits: readonly DraftExperienceUnit[]): 
     metadata: {},
     ...(draft.structuredFields !== undefined ? { structuredFields: draft.structuredFields } : {}),
     ...(draft.isTableQuarantined !== undefined ? { isTableQuarantined: draft.isTableQuarantined } : {}),
+    ...(draft.tableRow !== undefined ? { tableRow: draft.tableRow } : {}),
     ...(draft.listKind !== undefined ? { listKind: draft.listKind } : {}),
   }));
 

@@ -365,7 +365,7 @@ test('real pipeline (all 8 cases): the three paths are built from the same graph
   );
   assert.equal(totals['live_vs_package.graph_hash.not_comparable'], 7, 'never compared across lowering');
   assert.equal(totals['live_vs_package.binding.not_comparable'], 19, 'the by-design HITL scope difference is visible, not hidden');
-  assert.equal(totals['live_vs_package.contract_hash.match'], 42, 'every lowered contract equals the live contract');
+  assert.equal(totals['live_vs_package.contract_hash.match'], 44, 'every lowered contract equals the live contract');
   assert.equal(Object.entries(totals).filter(([k]) => k.endsWith('.mismatch')).length, 0);
 });
 

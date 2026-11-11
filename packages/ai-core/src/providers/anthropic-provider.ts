@@ -1,4 +1,6 @@
-import { AiError, ErrorCode } from '@xo/errors';
+import { randomUUID } from 'node:crypto';
+import { providerFailure } from '../provider-errors.js';
+import { truncate } from '../redaction.js';
 import type {
   ModelProvider,
   ProviderCapabilityDescriptor,
@@ -6,27 +8,19 @@ import type {
   ProviderRequest,
   ProviderResponse,
   ProviderToolCall,
+  TokenUsage,
 } from '../provider-types.js';
+import { asRecord, isCount, postJsonWithRetry, resolveTransportOptions, type TransportRetryOptions } from './http-transport.js';
 
 export interface AnthropicProviderOptions {
   readonly apiKey: string;
   readonly baseUrl?: string;
   readonly apiVersion?: string;
   readonly fetchImpl?: typeof fetch;
-}
-
-interface AnthropicContentBlock {
-  readonly type: string;
-  readonly text?: string;
-  readonly id?: string;
-  readonly name?: string;
-  readonly input?: Record<string, unknown>;
-}
-
-interface AnthropicMessagesResponse {
-  readonly content: readonly AnthropicContentBlock[];
-  readonly usage: { readonly input_tokens: number; readonly output_tokens: number };
-  readonly stop_reason: string;
+  /** Per-HTTP-attempt timeout (default 30s, same as Gemini). */
+  readonly timeoutMs?: number;
+  /** Bounded transport retry (default 2 retries, same as Gemini). `maxRetries: 0` disables retries. */
+  readonly retry?: Partial<TransportRetryOptions>;
 }
 
 /**
@@ -38,6 +32,13 @@ interface AnthropicMessagesResponse {
  * `router.ts`'s post-hoc schema validation is what actually enforces
  * conformance regardless.
  *
+ * Transport (timeout, caller abort, status classification incl. 529
+ * "overloaded" → transient, bounded retry, secret redaction) is the shared
+ * `http-transport.ts`; every failure is a classified `providerFailure(...)`.
+ * Response parsing is defensive: a missing `content` / `usage` never throws
+ * a `TypeError`. `stop_reason: "refusal"` → `content_blocked`;
+ * `max_tokens` → `finishReason: 'length'`.
+ *
  * NOT live-verified: the sandbox this was written in has no network
  * access and no API key. This is real, reviewable code written to the
  * documented contract, not a placeholder — see this package's README.
@@ -47,11 +48,16 @@ export class AnthropicProvider implements ModelProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly baseUrl: string;
   private readonly apiVersion: string;
+  private readonly timeoutMs: number;
+  private readonly retry: TransportRetryOptions;
 
   constructor(private readonly options: AnthropicProviderOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.baseUrl = options.baseUrl ?? 'https://api.anthropic.com';
     this.apiVersion = options.apiVersion ?? '2023-06-01';
+    const resolved = resolveTransportOptions('anthropic', options);
+    this.timeoutMs = resolved.timeoutMs;
+    this.retry = resolved.retry;
   }
 
   describeCapabilities(): ProviderCapabilityDescriptor {
@@ -74,6 +80,8 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async complete(request: ProviderRequest): Promise<ProviderResponse> {
+    const requestId = request.requestId ?? randomUUID();
+    const startedAt = performance.now();
     const systemMessages = request.messages.filter((m) => m.role === 'system').map((m) => m.content);
     const nonSystemMessages = request.messages.filter((m) => m.role !== 'system');
     const system = [
@@ -83,52 +91,101 @@ export class AnthropicProvider implements ModelProvider {
       .filter((s): s is string => s !== undefined)
       .join('\n\n');
 
-    const response = await this.fetchImpl(`${this.baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.options.apiKey,
-        'anthropic-version': this.apiVersion,
+    const result = await postJsonWithRetry<unknown>(
+      {
+        providerId: this.id,
+        displayName: 'Anthropic',
+        fetchImpl: this.fetchImpl,
+        timeoutMs: this.timeoutMs,
+        retry: this.retry,
+        secrets: [this.options.apiKey],
       },
-      body: JSON.stringify({
+      {
+        url: `${this.baseUrl}/v1/messages`,
+        headers: { 'content-type': 'application/json', 'x-api-key': this.options.apiKey, 'anthropic-version': this.apiVersion },
+        body: JSON.stringify({
+          model: request.model,
+          max_tokens: request.maxOutputTokens,
+          system: system.length > 0 ? system : undefined,
+          messages: toAnthropicMessages(nonSystemMessages),
+          temperature: request.temperature,
+          tools:
+            request.tools !== undefined && request.tools.length > 0
+              ? request.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
+              : undefined,
+        }),
         model: request.model,
-        max_tokens: request.maxOutputTokens,
-        system: system.length > 0 ? system : undefined,
-        messages: toAnthropicMessages(nonSystemMessages),
-        temperature: request.temperature,
-        tools:
-          request.tools !== undefined && request.tools.length > 0
-            ? request.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
-            : undefined,
-      }),
-    });
+        requestId,
+        ...(request.signal ? { signal: request.signal } : {}),
+      },
+    );
+    return this.normalize(result.data, request, requestId, result.attempts, Math.round(performance.now() - startedAt));
+  }
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new AiError(
-        ErrorCode.AI_PROVIDER_REQUEST_FAILED,
-        `Anthropic API returned ${response.status}: ${this.options.apiKey.length > 0 ? body.split(this.options.apiKey).join('[redacted]') : body}`,
+  private normalize(raw: unknown, request: ProviderRequest, requestId: string, attempts: number, durationMs: number): ProviderResponse {
+    const failCtx = { model: request.model, requestId, attempts };
+    const data = asRecord(raw);
+    if (!data) throw providerFailure('malformed_response', this.id, 'Anthropic returned an unexpected response shape', failCtx);
+
+    const rawStop = typeof data['stop_reason'] === 'string' ? data['stop_reason'] : undefined;
+    if (rawStop === 'refusal') {
+      throw providerFailure('content_blocked', this.id, 'Anthropic declined the request (stop_reason: refusal)', failCtx);
+    }
+
+    const blocks = Array.isArray(data['content']) ? (data['content'] as unknown[]) : [];
+    const text = blocks
+      .map((b) => asRecord(b))
+      .filter((b): b is Record<string, unknown> => b !== undefined && b['type'] === 'text')
+      .map((b) => (typeof b['text'] === 'string' ? b['text'] : ''))
+      .join('');
+    const toolCalls: ProviderToolCall[] = blocks
+      .map((b) => asRecord(b))
+      .filter(
+        (b): b is Record<string, unknown> =>
+          b !== undefined && b['type'] === 'tool_use' && typeof b['id'] === 'string' && typeof b['name'] === 'string',
+      )
+      .map((b) => ({ id: b['id'] as string, name: b['name'] as string, input: asRecord(b['input']) ?? {} }));
+    if (text.trim().length === 0 && toolCalls.length === 0) {
+      throw providerFailure(
+        'empty_response',
+        this.id,
+        `Anthropic returned empty output (stop_reason: ${truncate(rawStop ?? 'none', 40)})`,
+        failCtx,
       );
     }
 
-    const data = (await response.json()) as AnthropicMessagesResponse;
-    const text = data.content
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text ?? '')
-      .join('');
-
-    const toolCalls: ProviderToolCall[] = data.content
-      .filter((block) => block.type === 'tool_use' && block.id !== undefined && block.name !== undefined)
-      .map((block) => ({ id: block.id as string, name: block.name as string, input: block.input ?? {} }));
-
+    const { usage, known } = extractUsage(data['usage']);
     return {
       text,
-      usage: { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens },
+      usage,
+      usageKnown: known,
       modelUsed: request.model,
-      finishReason: toolCalls.length > 0 ? 'tool_use' : mapStopReason(data.stop_reason),
+      finishReason: toolCalls.length > 0 ? 'tool_use' : mapStopReason(rawStop),
       ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      meta: {
+        providerId: this.id,
+        requestId,
+        durationMs,
+        attempts,
+        ...(rawStop !== undefined ? { rawFinishReason: truncate(rawStop, 60) } : {}),
+      },
     };
   }
+}
+
+function mapStopReason(reason: string | undefined): ProviderResponse['finishReason'] {
+  if (reason === 'end_turn' || reason === 'stop_sequence') return 'stop';
+  if (reason === 'max_tokens') return 'length';
+  if (reason === 'tool_use') return 'tool_use';
+  return 'error';
+}
+
+/** Never fabricates: if either count is missing/invalid the usage is a `{0,0}` placeholder flagged `known: false`. */
+function extractUsage(usage: unknown): { usage: TokenUsage; known: boolean } {
+  const u = asRecord(usage);
+  if (!u || !isCount(u['input_tokens']) || !isCount(u['output_tokens']))
+    return { usage: { inputTokens: 0, outputTokens: 0 }, known: false };
+  return { usage: { inputTokens: u['input_tokens'], outputTokens: u['output_tokens'] }, known: true };
 }
 
 type AnthropicWireMessage = { role: 'user' | 'assistant'; content: string | readonly Record<string, unknown>[] };
@@ -138,7 +195,8 @@ type AnthropicWireMessage = { role: 'user' | 'assistant'; content: string | read
  * block-structured there: an assistant turn that calls tools carries
  * `tool_use` blocks, and the results go back as `tool_result` blocks inside a
  * single `user` message — consecutive `tool` messages (parallel tool calls)
- * are merged into that one message, which the API requires.
+ * are merged into that one message, which the API requires. Images on a user
+ * message are sent as `image` blocks ahead of the text.
  */
 export function toAnthropicMessages(messages: readonly ProviderMessage[]): AnthropicWireMessage[] {
   const out: AnthropicWireMessage[] = [];
@@ -173,14 +231,16 @@ export function toAnthropicMessages(messages: readonly ProviderMessage[]): Anthr
       });
       continue;
     }
-    out.push({ role: m.role as 'user' | 'assistant', content: m.content });
+    out.push({
+      role: m.role as 'user' | 'assistant',
+      content:
+        m.images !== undefined && m.images.length > 0
+          ? [
+              ...m.images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.dataBase64 } })),
+              { type: 'text', text: m.content },
+            ]
+          : m.content,
+    });
   }
   return out;
-}
-
-function mapStopReason(reason: string): ProviderResponse['finishReason'] {
-  if (reason === 'end_turn' || reason === 'stop_sequence') return 'stop';
-  if (reason === 'max_tokens') return 'length';
-  if (reason === 'tool_use') return 'tool_use';
-  return 'error';
 }

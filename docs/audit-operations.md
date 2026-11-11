@@ -162,7 +162,7 @@ as emitted but without a direct test; reaching them was not forced.
 
 ## Known limits / unresolved decisions
 
-- No tamper evidence (hash chain/signing): **accepted as a P1.0 limitation by the owner**; stronger protection needs a separate design decision (see "P1.0 owner dispositions").
+- The platform's `FileAuditStore` (API/CLI/runtime) has no tamper evidence (hash chain/signing): **accepted as a P1.0 limitation by the owner**; stronger protection needs a separate design decision (see "P1.0 owner dispositions"). Tamper evidence exists in `ChainedAuditStore`, used for EI audit events since C0.3; see `docs/audit-canonical-contract.md` for the contract, failure semantics and the limits of a local hash chain.
 - Local CLI runs are unaudited unless `XO_AUDIT_*` is set (the operator is a trusted local context, not a principal): accepted by the owner for P1.0.
 - Legal retention periods are an operator/legal decision; none is supplied (ratified by the owner: explicit operator-configured retention, no invented default).
 - `execution.started` precedes record creation, so it carries no `executionId`; join via `correlationId`.

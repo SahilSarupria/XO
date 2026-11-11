@@ -131,7 +131,7 @@
           "note": "The disclaimer says the document is synthetic and 'must never be treated' as real rules; it states no task. Not ground truth."
         }
       ],
-      "expectationsFingerprint": "e3f18bb648927dce"
+      "expectationsFingerprint": "0a3003db9bfe87de"
     },
     {
       "caseId": "commercial-property-policy",
@@ -172,6 +172,12 @@
           "id": "r2.5-cap-at-sum-insured",
           "identity": "explicit",
           "source": "clause 2.5 (page 1)"
+        },
+        {
+          "category": "fact",
+          "id": "r4.1-notify-within-7-days",
+          "identity": "explicit",
+          "source": "clause 4.1 (page 1)"
         },
         {
           "category": "fact",
@@ -427,7 +433,15 @@
           "identity": "strongly_evidenced",
           "assertions": "derived",
           "source": "clause 4.1",
-          "note": "an obligation with no decision structure; 'unresolved / not_executable' follows XO's execution-class semantics, not a source statement."
+          "note": "the verb-derived capability for the obligation, exactly named. Its sentence states a day-based deadline that XO now normalises to a temporal rule linked to it, so 'resolved / deterministic_rule' follows XO's execution-class semantics, not a source statement (it was unresolved before the deadline normalisation). A dedicated rule capability is c4.1-notify-deadline-rule."
+        },
+        {
+          "category": "capability",
+          "id": "c4.1-notify-deadline-rule",
+          "identity": "strongly_evidenced",
+          "assertions": "derived",
+          "source": "clause 4.1",
+          "note": "the clause states a day-based deadline (7 days after becoming aware of the loss); XO normalises it to a temporal rule and mints a dedicated capability named after the sentence. 'resolved / deterministic_rule' follows XO's execution-class semantics for a rule with a compilable temporal condition."
         },
         {
           "category": "capability",
@@ -590,10 +604,15 @@
         },
         {
           "category": "execution",
-          "id": "unres-notify-obligation",
-          "identity": "strongly_evidenced",
-          "assertions": "derived",
-          "source": "clause 4.1 (obligation, unresolved by XO's execution-class semantics)"
+          "id": "det-notify-deadline-met",
+          "identity": "derived",
+          "source": "clause 4.1 (deadline rule evaluated at 3 days: within the 7-day deadline)"
+        },
+        {
+          "category": "execution",
+          "id": "det-notify-deadline-missed",
+          "identity": "derived",
+          "source": "clause 4.1 (deadline rule evaluated at 30 days: outside the 7-day deadline)"
         },
         {
           "category": "execution",
@@ -632,7 +651,7 @@
           "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
         }
       ],
-      "expectationsFingerprint": "fc7333250a689842"
+      "expectationsFingerprint": "3c735dae96b59f24"
     },
     {
       "caseId": "aastha-operations",

@@ -6,6 +6,22 @@ import { decodePdfTextString } from './text-decoder.js';
 import { isArray, isDictionary, isName, isPdfString, isReference, isStream, type PdfDictionary, type PdfValue } from './types.js';
 import { parseXref, type XrefTable } from './xref.js';
 import { rebuildXrefByScanning } from './rebuild-xref.js';
+import { createDecryptor, decryptValue, type Decryptor } from './decrypt.js';
+import {
+  ABORTED_CODE,
+  PdfAbortedError,
+  PdfResourceLimitError,
+  RESOURCE_LIMIT_CODE,
+  ResourceMeter,
+  resolveLimits,
+  throwIfCancelled,
+  type Cancellation,
+  type PdfLimits,
+} from './limits.js';
+
+export interface PdfLoadOptions extends Cancellation {
+  readonly limits?: Partial<PdfLimits>;
+}
 
 export interface PdfMetadata {
   readonly title: string | undefined;
@@ -27,6 +43,17 @@ export interface RawPdfPage {
   readonly hasFullPageImageXObject: boolean;
   /** This page's (possibly inherited) resolved `/Resources` dictionary — carried through so a font-aware text decoder (`font-encoding.ts`) can look up the `/Font` entry a given text run's `fontName` refers to. Sub-entries (e.g. individual font dictionaries) may still be unresolved references; the consumer resolves them via the same `PdfDocument`. */
   readonly resources: PdfDictionary | undefined;
+  /** True if this page's resources hold ANY image XObject (not only a full-page one). Used by the coverage ledger to tell a genuinely blank page from a page whose content is pictorial. */
+  readonly hasImageXObject: boolean;
+  /** True when the page's content streams decode to nothing but whitespace (or the page has no `/Contents`). Together with `hasImageXObject: false` this is the only condition under which a page may be recorded as `excluded: blank_page`. */
+  readonly isContentEmpty: boolean;
+  /**
+   * Set when this one page could not be built (an unsupported stream filter, a malformed
+   * content stream, an unresolvable page-tree node). The failure is isolated to the page:
+   * the rest of the document still loads, and the coverage ledger records this page as
+   * unaccounted instead of the whole document being rejected (WS1-02, CRD-03).
+   */
+  readonly loadFailure?: { readonly code: string; readonly message: string };
 }
 
 const DEFAULT_MEDIA_BOX: readonly [number, number, number, number] = [0, 0, 612, 792]; // US Letter, the PDF spec's fallback default
@@ -44,26 +71,74 @@ export class PdfDocument {
   /** Decoded `/Type /ObjStm` bodies, keyed by that stream's own object number, so N compressed objects sharing one container stream only pay the inflate+predictor+parse cost once. */
   private readonly objStmCache = new Map<number, ReadonlyMap<number, PdfValue>>();
 
+  private readonly meter: ResourceMeter;
+  private readonly cancellation: Cancellation;
+  private readonly limits: PdfLimits;
+
   private constructor(
     private readonly buf: Uint8Array,
     private readonly xref: XrefTable,
-  ) {}
+    options: PdfLoadOptions,
+  ) {
+    this.limits = resolveLimits(options.limits);
+    this.meter = new ResourceMeter(this.limits);
+    this.cancellation = { signal: options.signal, deadlineMs: options.deadlineMs };
+    this.initEncryption();
+  }
 
-  static load(buf: Uint8Array): PdfDocument {
+  private decryptor: Decryptor | undefined;
+
+  private initEncryption(): void {
+    const encryptValue = this.xref.trailer.entries.get('Encrypt');
+    if (encryptValue === undefined) return;
+    const idValue = this.xref.trailer.entries.get('ID');
+    const idArr = idValue !== undefined ? this.resolve(idValue) : undefined;
+    const first = idArr !== undefined && isArray(idArr) && idArr.items[0] !== undefined ? this.resolve(idArr.items[0]) : undefined;
+    const id0 = first !== undefined && isPdfString(first) ? first.bytes : new Uint8Array(0);
+    const encObjNum = isReference(encryptValue) ? encryptValue.objectNumber : undefined;
+    // The /Encrypt dictionary is read before the decryptor exists, so it is (correctly) never decrypted.
+    this.decryptor = createDecryptor(encryptValue, encObjNum, id0, (v) => this.resolve(v));
+    // Objects cached while reading /Encrypt were parsed in the clear; drop them so everything else is decrypted on first read.
+    this.cache.clear();
+  }
+
+  /** Total bytes decoded so far, for observability. */
+  get decodedBytes(): number {
+    return this.meter.decodedBytes;
+  }
+
+  static load(buf: Uint8Array, options: PdfLoadOptions = {}): PdfDocument {
+    const limits = resolveLimits(options.limits);
+    if (buf.length > limits.maxFileBytes) {
+      throw new PdfResourceLimitError('maxFileBytes', `file is ${buf.length} bytes (limit ${limits.maxFileBytes})`);
+    }
+    throwIfCancelled(options);
     let xref: XrefTable;
     try {
       xref = parseXref(buf);
-    } catch {
+      // A table that parses but points at the wrong bytes is as useless as none: prove the catalog and page tree
+      // are reachable through it, otherwise fall back to the rebuild scan.
+      new PdfDocument(buf, xref, options).assertPageTreeReachable();
+    } catch (cause) {
+      if (cause instanceof PdfResourceLimitError || cause instanceof PdfAbortedError) throw cause;
+      if (cause instanceof PdfError && cause.code === ErrorCode.PDF_ENCRYPTED) throw cause;
       xref = rebuildXrefByScanning(buf);
     }
-    const doc = new PdfDocument(buf, xref);
-    if (xref.trailer.entries.has('Encrypt')) {
-      throw new PdfError(ErrorCode.PDF_ENCRYPTED, 'This PDF is encrypted; decryption is not supported');
-    }
+    const doc = new PdfDocument(buf, xref, options);
     if (!xref.trailer.entries.has('Root')) {
       throw new PdfError(ErrorCode.PDF_MALFORMED, 'No /Root found in trailer (even after xref recovery)');
     }
     return doc;
+  }
+
+  /** Throws unless /Root and /Root/Pages resolve to dictionaries through this xref. */
+  assertPageTreeReachable(): void {
+    const root = this.dictGet(this.xref.trailer, 'Root');
+    if (root === undefined || !isDictionary(root))
+      throw new PdfError(ErrorCode.PDF_MALFORMED, '/Root unreachable through the cross-reference table');
+    const pages = this.dictGet(root, 'Pages');
+    if (pages === undefined || !isDictionary(pages))
+      throw new PdfError(ErrorCode.PDF_MALFORMED, '/Root/Pages unreachable through the cross-reference table');
   }
 
   getObject(objectNumber: number): PdfValue {
@@ -86,8 +161,12 @@ export class PdfDocument {
       const lengthValue = this.getObject(refObjNum);
       return typeof lengthValue === 'number' ? lengthValue : undefined;
     });
-    this.cache.set(objectNumber, indirect.value);
-    return indirect.value;
+    const value =
+      this.decryptor !== undefined && objectNumber !== this.decryptor.encryptObjectNumber
+        ? decryptValue(indirect.value, indirect.objectNumber, indirect.generation, this.decryptor)
+        : indirect.value;
+    this.cache.set(objectNumber, value);
+    return value;
   }
 
   /**
@@ -112,12 +191,14 @@ export class PdfDocument {
       const firstValue = streamValue.dictionary.entries.get('First');
       const n = typeof nValue === 'number' ? nValue : 0;
       const first = typeof firstValue === 'number' ? firstValue : 0;
-      const data = decodeStream(streamValue);
+      const data = decodeStream(streamValue, this.meter);
 
       const header: Array<[number, number]> = [];
       const headerLexer = new Lexer(data, 0);
-      for (let i = 0; i < n; i += 1) {
+      // /N is attacker-controlled: a header cannot hold more pairs than the decoded body has bytes.
+      for (let i = 0; i < Math.min(n, data.length); i += 1) {
         const objNumTok = headerLexer.next();
+        if (objNumTok.kind === 'eof') break;
         const offsetTok = headerLexer.next();
         header.push([Number.parseInt(objNumTok.text, 10), Number.parseInt(offsetTok.text, 10)]);
       }
@@ -194,12 +275,27 @@ export class PdfDocument {
 
     const walk = (
       node: PdfDictionary,
+      nodeObjectNumber: number,
+      depth: number,
       inheritedMediaBox: readonly [number, number, number, number],
       inheritedRotate: number,
       inheritedResources: PdfDictionary | undefined,
     ): void => {
       if (visitedObjectIds.has(node)) return; // guards against a malformed cyclic page tree
       visitedObjectIds.add(node);
+      if (depth > this.limits.maxTreeDepth) {
+        // A subtree this deep is hostile or corrupt; it is reported as one unaccounted page, never silently dropped.
+        pageNumber += 1;
+        pages.push(
+          failedPage(
+            pageNumber,
+            inheritedMediaBox,
+            inheritedRotate,
+            new PdfResourceLimitError('maxTreeDepth', `page tree deeper than ${this.limits.maxTreeDepth}`),
+          ),
+        );
+        return;
+      }
 
       const mediaBoxValue = this.dictGet(node, 'MediaBox');
       const mediaBox =
@@ -218,25 +314,62 @@ export class PdfDocument {
 
       if (isLeafPage) {
         pageNumber += 1;
-        pages.push(this.buildPage(pageNumber, node, mediaBox, rotate, resources));
+        if (pageNumber > this.limits.maxPages) {
+          pages.push(
+            failedPage(pageNumber, mediaBox, rotate, new PdfResourceLimitError('maxPages', `more than ${this.limits.maxPages} pages`)),
+          );
+          return;
+        }
+        try {
+          throwIfCancelled(this.cancellation);
+          pages.push(this.buildPage(pageNumber, nodeObjectNumber, node, mediaBox, rotate, resources));
+        } catch (cause) {
+          pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
+        }
         return;
       }
 
       const kidsValue = this.dictGet(node, 'Kids');
       if (kidsValue !== undefined && isArray(kidsValue)) {
         for (const kidRef of kidsValue.items) {
-          const kid = this.resolve(kidRef);
-          if (isDictionary(kid)) walk(kid, mediaBox, rotate, resources);
+          let kid: PdfValue;
+          try {
+            kid = this.resolve(kidRef);
+          } catch (cause) {
+            if (pageNumber > this.limits.maxPages) break; // already over the page cap: do not keep appending failures
+            // An unresolvable page-tree entry is accounted for as one failed page rather than
+            // vanishing: the document becomes `partial`, it is not silently shortened.
+            pageNumber += 1;
+            pages.push(failedPage(pageNumber, mediaBox, rotate, cause));
+            continue;
+          }
+          if (isDictionary(kid)) walk(kid, this.finalObjectNumber(kidRef), depth + 1, mediaBox, rotate, resources);
         }
       }
     };
 
-    walk(pagesRoot, DEFAULT_MEDIA_BOX, 0, undefined);
+    walk(pagesRoot, this.finalObjectNumber(root.entries.get('Pages')), 0, DEFAULT_MEDIA_BOX, 0, undefined);
     return pages;
+  }
+
+  /** Object number of the object a (possibly chained) reference finally points at, or -1 for a direct object. O(chain), not O(objects in file). */
+  private finalObjectNumber(value: PdfValue | undefined): number {
+    let objectNumber = -1;
+    let current: PdfValue | undefined = value;
+    for (let hops = 0; current !== undefined && isReference(current) && hops < 64; hops += 1) {
+      objectNumber = current.objectNumber;
+      try {
+        current = this.getObject(current.objectNumber);
+      } catch {
+        return objectNumber;
+      }
+    }
+    return objectNumber;
   }
 
   private buildPage(
     pageNumber: number,
+    objectNumber: number,
     node: PdfDictionary,
     mediaBox: readonly [number, number, number, number],
     rotate: number,
@@ -246,23 +379,15 @@ export class PdfDocument {
     const streams: Uint8Array[] = [];
     if (contentsValue !== undefined) {
       if (isStream(contentsValue)) {
-        streams.push(decodeStream(contentsValue));
+        streams.push(decodeStream(contentsValue, this.meter));
       } else if (isArray(contentsValue)) {
         for (const item of contentsValue.items) {
           const resolved = this.resolve(item);
-          if (isStream(resolved)) streams.push(decodeStream(resolved));
+          if (isStream(resolved)) streams.push(decodeStream(resolved, this.meter));
         }
       }
     }
     const contentBytes = concatWithNewlines(streams);
-
-    let objectNumber = -1;
-    for (const [objNum] of this.xref.entriesByObjectNumber) {
-      if (this.cache.get(objNum) === node) {
-        objectNumber = objNum;
-        break;
-      }
-    }
 
     return {
       pageNumber,
@@ -272,8 +397,67 @@ export class PdfDocument {
       contentBytes,
       hasFullPageImageXObject: hasSuspiciouslyFullPageImage(this, resources, mediaBox),
       resources,
+      hasImageXObject: hasAnyImage(this, resources),
+      isContentEmpty: isWhitespaceOnly(contentBytes),
     };
   }
+}
+
+function failedPage(pageNumber: number, mediaBox: readonly [number, number, number, number], rotate: number, cause: unknown): RawPdfPage {
+  const code =
+    cause instanceof PdfResourceLimitError
+      ? RESOURCE_LIMIT_CODE
+      : cause instanceof PdfAbortedError
+        ? ABORTED_CODE
+        : cause instanceof PdfError
+          ? String(cause.code)
+          : 'PDF_PAGE_LOAD_FAILED';
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return {
+    pageNumber,
+    objectNumber: -1,
+    mediaBox,
+    rotate,
+    contentBytes: new Uint8Array(0),
+    hasFullPageImageXObject: false,
+    resources: undefined,
+    hasImageXObject: false,
+    isContentEmpty: false,
+    loadFailure: { code, message },
+  };
+}
+
+function isWhitespaceOnly(bytes: Uint8Array): boolean {
+  for (const b of bytes) {
+    // space, \t, \n, \r, \f, NUL are the PDF whitespace characters (ISO 32000-1 §7.2.2)
+    if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d && b !== 0x0c && b !== 0x00) return false;
+  }
+  return true;
+}
+
+function hasAnyImage(doc: PdfDocument, resources: PdfDictionary | undefined): boolean {
+  if (!resources) return false;
+  const xObjectsValue = resources.entries.get('XObject');
+  if (xObjectsValue === undefined) return false;
+  let xObjects: PdfValue;
+  try {
+    xObjects = doc.resolve(xObjectsValue);
+  } catch {
+    return true; // unreadable XObject table: assume pictorial content may exist (fail closed)
+  }
+  if (!isDictionary(xObjects)) return false;
+  for (const value of xObjects.entries.values()) {
+    let resolved: PdfValue;
+    try {
+      resolved = doc.resolve(value);
+    } catch {
+      return true;
+    }
+    if (!isStream(resolved)) continue;
+    const subtype = resolved.dictionary.entries.get('Subtype');
+    if (subtype !== undefined && isName(subtype) && subtype.name === 'Image') return true;
+  }
+  return false;
 }
 
 function concatWithNewlines(parts: readonly Uint8Array[]): Uint8Array {

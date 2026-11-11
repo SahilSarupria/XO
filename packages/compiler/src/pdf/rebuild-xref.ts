@@ -103,8 +103,9 @@ function expandCompressedObjectStreams(buf: Uint8Array, entries: Map<number, Xre
       const n = typeof nValue === 'number' ? nValue : 0;
       const data = decodeStream(indirect.value);
       const headerLexer = new Lexer(data, 0);
-      for (let i = 0; i < n; i += 1) {
+      for (let i = 0; i < Math.min(n, data.length); i += 1) {
         const objNumTok = headerLexer.next();
+        if (objNumTok.kind === 'eof') break;
         headerLexer.next(); // offset — not needed here, only presence/index matters
         const objectNumber = Number.parseInt(objNumTok.text, 10);
         if (Number.isNaN(objectNumber)) continue;

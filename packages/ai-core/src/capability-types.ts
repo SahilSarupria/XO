@@ -23,6 +23,8 @@ export interface CapabilityRequest<TInput> {
   readonly input: TInput;
   readonly excerpt: SourceExcerpt;
   readonly traceId: string;
+  /** Cancels the compile step: checked before every attempt and forwarded to the provider. Aborting stops local waiting only; remote work may still be billed. */
+  readonly signal?: AbortSignal;
 }
 
 export interface CapabilityResponseMeta {
@@ -31,10 +33,36 @@ export interface CapabilityResponseMeta {
   readonly modelUsed: string;
   readonly promptVersion: string;
   readonly usage: TokenUsage;
+  /** `false` when the provider did not report token usage (then `usage` is a `{0,0}` placeholder and `costUsd` is NOT a measurement). Absent = known. */
+  readonly usageKnown?: boolean;
   readonly costUsd: number;
   readonly cacheHit: boolean;
   readonly latencyMs: number;
   readonly attempts: number;
+  /** Where this output came from. Always present on responses from `AiCapabilityLayer`. */
+  readonly provenance?: CapabilityProvenance;
+}
+
+/**
+ * Honest origin record. `source: 'cache'` means NO provider call happened for this request: the output was generated earlier
+ * (see `generation`) and replayed. On such a hit the top-level `usage`/`costUsd`/`attempts` are zero (nothing was spent now);
+ * the original generation's figures are preserved under `generation` for audit, never presented as current spend.
+ */
+export interface CapabilityProvenance {
+  readonly origin: 'llm';
+  readonly source: 'generated' | 'cache';
+  readonly cacheKey: string;
+  readonly generation: {
+    readonly generatedAtMs: number;
+    readonly traceId: string;
+    readonly providerUsed: ProviderId;
+    readonly modelUsed: string;
+    readonly promptVersion: string;
+    readonly schemaHash: string;
+    readonly usage: TokenUsage;
+    readonly usageKnown?: boolean;
+    readonly costUsd: number;
+  };
 }
 
 export interface CapabilityResponse<TOutput> {

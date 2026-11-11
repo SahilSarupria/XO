@@ -1148,9 +1148,8 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         // inflection recognition discovering two new genuine capabilities on this same real PDF
         // ("Record in the claim file", "Record before payment authorization", both verified
         // directly against the source PDF's "must be recorded..." obligation sentences).
-        // The 30-step catch-all was an artifact of source-order sequence edges chaining every section into one
-        // workflow. Sequence edges now join steps only within a multi-step section, so the same capabilities come
-        // out as per-section candidates: still exactly one executable workflow, the rest honestly rejected below.
+        // Merged baseline: this branch's per-section sequence edges (no single source-order chain) combined with main's extraction, which finds one
+        // more step in the catch-all section (5 -> 6). Recorded from the merged build, still exactly one executable workflow.
         assert.deepEqual(statuses, [
           'executable_candidate:1',
           'not_executable_yet:2',
@@ -1158,7 +1157,7 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
           'not_executable_yet:5',
           'not_executable_yet:7',
           'not_executable_yet:9',
-          'semantically_invalid:5',
+          'semantically_invalid:6',
         ]);
 
         // Honest rejection of everything that is not executable.

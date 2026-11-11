@@ -202,10 +202,21 @@ test('M1.2: "denied" categorical state — "When a claim is denied, ..." now min
 });
 
 test('M1.2: subject-prefixed "must" obligations (real policy §4.1/§6.1 shape) are discovered as constraint-kind rules but never minted as executable capabilities', async () => {
-  const { graph, minted } = await mintFrom('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  const { graph, minted } = await mintFrom(
+    'The Insured must notify the Insurer of a loss as soon as reasonably practicable after the loss.',
+  );
   assert.equal(graph.nodes.length, 1, 'sanity: the M1.2 rule-pattern-parser fix means this sentence is now discovered at all');
   assert.equal(graph.nodes[0]!.nodeType, 'policy');
   assert.equal(minted.length, 0, 'a bare obligation/constraint has no decision-table outcome and must never be minted');
+});
+
+test('WS1: an obligation with a day-based deadline is a checkable rule: minted, named by its source sentence', async () => {
+  const { graph, minted } = await mintFrom('The Insured must notify the Insurer of a loss within 7 days after becoming aware of the loss.');
+  assert.equal(graph.nodes[0]!.nodeType, 'rule');
+  assert.equal(graph.nodes[0]!.structuredCondition?.type, 'comparison');
+  assert.equal(minted.length, 1);
+  assert.match(minted[0]!.canonicalName, /^The Insured Must Notify The Insurer Of A Loss Within 7 Days/);
+  assert.match(minted[0]!.description, /checked as: the days since becoming aware of the loss is at most 7/);
 });
 
 // ---------------------------------------------------------------------------

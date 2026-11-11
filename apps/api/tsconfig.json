@@ -21,6 +21,7 @@
     { "path": "../../packages/capability-contract" },
     { "path": "../../packages/permissions" },
     { "path": "../../packages/audit" },
-    { "path": "../../packages/workflow-composer" }
+    { "path": "../../packages/workflow-composer" },
+    { "path": "../../packages/procedure" }
   ]
 }

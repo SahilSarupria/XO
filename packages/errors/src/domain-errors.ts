@@ -239,6 +239,7 @@ export class AiError extends XoError {
       | typeof ErrorCode.AI_CIRCUIT_OPEN
       | typeof ErrorCode.AI_NO_ELIGIBLE_PROVIDER
       | typeof ErrorCode.AI_ALL_PROVIDERS_FAILED
+      | typeof ErrorCode.AI_INFERENCE_DENIED
       | typeof ErrorCode.AI_PROMPT_NOT_FOUND
       | typeof ErrorCode.AI_PROVIDER_REQUEST_FAILED
       | typeof ErrorCode.AI_REPLAY_FIXTURE_MISSING,
@@ -347,7 +348,11 @@ export class AuditError extends XoError {
       | typeof ErrorCode.AUDIT_UNAVAILABLE
       | typeof ErrorCode.AUDIT_EVENT_INVALID
       | typeof ErrorCode.AUDIT_ACCESS_DENIED
-      | typeof ErrorCode.AUDIT_CONFIG_INVALID,
+      | typeof ErrorCode.AUDIT_CONFIG_INVALID
+      | typeof ErrorCode.AUDIT_CONFLICT
+      | typeof ErrorCode.AUDIT_ORDER_VIOLATION
+      | typeof ErrorCode.AUDIT_CORRUPT
+      | typeof ErrorCode.AUDIT_LOCKED,
     message: string,
     options?: XoErrorOptions,
   ) {

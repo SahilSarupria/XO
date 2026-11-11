@@ -168,12 +168,10 @@ export function registerExecutionRoutes(
         ...baseDraft,
         type: preflight.kind === 'denied' ? 'execution.denied' : 'authorization.denied',
         outcome: preflight.kind === 'denied' ? 'denied' : 'failed',
-        reasonCode: preflight.kind === 'denied' ? ErrorCode.RUNTIME_PERMISSION_DENIED : String(preflight.errorCode),
+        reasonCode: String(preflight.errorCode),
       });
-      throw new XoError(
-        preflight.kind === 'denied' ? ErrorCode.RUNTIME_PERMISSION_DENIED : (preflight.errorCode as ErrorCode),
-        preflight.errorMessage,
-      );
+      // The preflight's own code is preserved (permission denial or the CRD-02 confidence floor) so the caller and the audit trail see the real reason.
+      throw new XoError(preflight.errorCode as ErrorCode, preflight.errorMessage);
     }
 
     // M6 — idempotency gate. It runs HERE, after ownership (M1), approval (M3) and authorization (M2) were all re-decided for this

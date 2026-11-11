@@ -8,3 +8,4 @@ export * from './pipeline/index.js';
 export * from './reasoning/index.js';
 export * from './sources/index.js';
 export * from './policy/index.js';
+export * from './extraction/index.js';

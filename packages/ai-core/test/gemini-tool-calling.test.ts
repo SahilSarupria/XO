@@ -14,7 +14,7 @@ function fakeFetch(responses: { status?: number; body: unknown }[], seen: Seen[]
     seen.push({ url: String(url), headers: init?.headers ?? {}, body: JSON.parse(init?.body ?? '{}') as Record<string, unknown> });
     const r = responses[i++] ?? { body: {} };
     const status = r.status ?? 200;
-    return { ok: status < 400, status, json: async () => r.body, text: async () => JSON.stringify(r.body) } as Response;
+    return new Response(JSON.stringify(r.body), { status, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
 }
 
@@ -187,22 +187,23 @@ describe('GeminiProvider response mapping', () => {
     assert.deepEqual(r.usage, { inputTokens: 15, outputTokens: 34 });
   });
 
-  it('refuses a response with no usageMetadata rather than reporting zero tokens', async () => {
+  it('flags a response with no usageMetadata as usageKnown:false rather than reporting zero tokens as a measurement', async () => {
     const p = new GeminiProvider({
       apiKey: 'k',
       fetchImpl: fakeFetch([{ body: { candidates: [{ content: { parts: [{ text: 'a' }] }, finishReason: 'STOP' }] } }], []),
     });
-    await assert.rejects(p.complete(baseReq()), /no usageMetadata/);
+    const r = await p.complete(baseReq());
+    // Main's contract: never fabricate usage. A missing count is a flagged placeholder, not a measurement.
+    assert.equal(r.usageKnown, false);
   });
 
-  it('maps finish reasons; a blocked prompt is content_filter; no candidates and no block is an error', async () => {
+  it('maps finish reasons; filtered output and a blocked prompt are classified failures; no candidates is an error', async () => {
     const run = async (r: { body: unknown }) => new GeminiProvider({ apiKey: 'k', fetchImpl: fakeFetch([r], []) }).complete(baseReq());
     assert.equal((await run(ok([{ text: 'a' }], 'MAX_TOKENS'))).finishReason, 'length');
-    assert.equal((await run(ok([{ text: 'a' }], 'SAFETY'))).finishReason, 'content_filter');
-    assert.equal((await run(ok([{ text: 'a' }], 'MALFORMED_FUNCTION_CALL'))).finishReason, 'error');
-    assert.equal((await run({ body: { candidates: [{ finishReason: 'MAX_TOKENS' }], usageMetadata: usage } })).text, '');
-    const blocked = await run({ body: { promptFeedback: { blockReason: 'SAFETY' }, usageMetadata: usage } });
-    assert.equal(blocked.finishReason, 'content_filter');
+    await assert.rejects(run(ok([{ text: 'a' }], 'SAFETY')), /filtered the output/);
+    await assert.rejects(run(ok([{ text: 'a' }], 'MALFORMED_FUNCTION_CALL')), /ended generation abnormally/);
+    await assert.rejects(run({ body: { candidates: [{ finishReason: 'MAX_TOKENS' }], usageMetadata: usage } }), /empty output/);
+    await assert.rejects(run({ body: { promptFeedback: { blockReason: 'SAFETY' }, usageMetadata: usage } }), /blocked the prompt/);
     await assert.rejects(run({ body: { usageMetadata: usage } }), /no candidates/);
   });
 
@@ -211,7 +212,10 @@ describe('GeminiProvider response mapping', () => {
       apiKey: 'SECRET-KEY',
       fetchImpl: fakeFetch([{ status: 400, body: { error: { message: 'API key SECRET-KEY not valid' } } }], []),
     });
-    await assert.rejects(p.complete(baseReq()), (e: Error) => /400/.test(e.message) && !e.message.includes('SECRET-KEY'));
+    await assert.rejects(
+      p.complete(baseReq()),
+      (e: Error) => /400/.test(e.message) && !JSON.stringify(e).includes('SECRET-KEY') && !e.message.includes('SECRET-KEY'),
+    );
   });
 });
 
