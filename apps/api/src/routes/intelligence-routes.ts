@@ -80,7 +80,14 @@ export function registerIntelligenceRoutes(
   async function context(req: ApiRequest) {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const role = await requirePermission(req, workspace, 'read', dataConfig);
-    const principal: Principal = { identityId: callerIdentityId(req), workspaceId: workspace.workspaceId, role };
+    const principal: Principal = {
+      identityId: callerIdentityId(req),
+      workspaceId: workspace.workspaceId,
+      role,
+      // The credential minted by the auth middleware from the server-side key record (never from request input), carried
+      // untouched to knowledge systems (C6) that authorize per principal. The orchestrator never inspects or stores it.
+      ...(req.principal !== undefined ? { authenticated: req.principal } : {}),
+    };
     return { workspace, principal };
   }
 

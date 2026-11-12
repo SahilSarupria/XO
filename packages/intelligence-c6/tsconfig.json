@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../types"
+    },
+    {
+      "path": "../errors"
+    },
+    {
+      "path": "../permissions"
+    },
+    {
+      "path": "../environment-intelligence"
+    },
+    {
+      "path": "../intelligence"
+    }
+  ]
+}

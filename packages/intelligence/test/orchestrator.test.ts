@@ -498,6 +498,37 @@ test('sources that could not be searched are named, and cap confidence at "mediu
   assert.match(empty.text, /couldn't search: SharePoint/);
 });
 
+test('a knowledge system that refuses the caller is reported as access denied — distinct from not found or down — and the model is not asked', async () => {
+  const denied: KnowledgePort = { retrieve: async () => ({ status: 'unavailable', reason: 'denied' }) };
+  const { model, provider } = scripted(route());
+  const r = await turn(new IntelligenceOrchestrator({ model, knowledge: denied }), 'status of Project Alpha');
+  assert.deepEqual(
+    r.notices.map((n) => n.code),
+    ['knowledge_denied'],
+  );
+  assert.match(r.text, /don't have access/);
+  assert.equal(r.confidence, 'none');
+  assert.equal(provider.callLog.length, 1);
+});
+
+test('the platform credential reaches the knowledge port untouched and appears nowhere in the result or the prompts', async () => {
+  const credential = { token: 'SECRET-CREDENTIAL-123' };
+  let seen: unknown;
+  const spy: KnowledgePort = {
+    retrieve: async (q) => {
+      seen = q.principal.authenticated;
+      return { status: 'ok', method: 'semantic', evidence };
+    },
+  };
+  const { model, provider } = scripted(route(), askOut());
+  const r = await turn(new IntelligenceOrchestrator({ model, knowledge: spy }), 'status of Project Alpha', {
+    principal: { ...principal, authenticated: credential },
+  });
+  assert.equal(seen, credential);
+  assert.doesNotMatch(JSON.stringify(r), /SECRET-CREDENTIAL/);
+  assert.doesNotMatch(JSON.stringify(provider.callLog), /SECRET-CREDENTIAL/);
+});
+
 // ------------------------------------------------------------------------------------ what XO can see (catalog)
 
 test('"what do you have access to?" is answered from the knowledge catalog, not by searching', async () => {

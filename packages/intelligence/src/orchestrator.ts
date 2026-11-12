@@ -98,7 +98,7 @@ interface Routing {
 
 type Retrieved =
   | { status: 'ok'; prepared: PreparedEvidence[]; method?: 'lexical' | 'semantic' | 'hybrid'; unsearched: readonly string[] }
-  | { status: 'unavailable'; reason: 'not_configured' | 'error' };
+  | { status: 'unavailable'; reason: 'not_configured' | 'error' | 'denied' };
 
 type Body = Omit<TurnResult, 'routing' | 'usage' | 'notices'>;
 
@@ -314,11 +314,17 @@ export class IntelligenceOrchestrator {
   private ungroundable(ctx: Ctx, routing: Routing, route: 'ask' | 'decide', retrieved: Retrieved): TurnResult {
     let text: string;
     if (retrieved.status === 'unavailable') {
-      const unreachable = retrieved.reason === 'error';
-      text = unreachable
-        ? "I couldn't reach your organization's knowledge just now, so I can't answer from it. Please try again in a moment."
-        : "No organizational knowledge source is connected to this workspace yet, so I can't answer questions about your organization. A workspace admin can connect sources.";
-      ctx.notices.push({ code: 'knowledge_unavailable', message: text });
+      if (retrieved.reason === 'denied') {
+        text =
+          "You don't have access to search your organization's knowledge, so I can't answer from it. If you think you should, ask a workspace admin.";
+        ctx.notices.push({ code: 'knowledge_denied', message: text });
+      } else {
+        text =
+          retrieved.reason === 'error'
+            ? "I couldn't reach your organization's knowledge just now, so I can't answer from it. Please try again in a moment."
+            : "No organizational knowledge source is connected to this workspace yet, so I can't answer questions about your organization. A workspace admin can connect sources.";
+        ctx.notices.push({ code: 'knowledge_unavailable', message: text });
+      }
     } else {
       text =
         route === 'ask'

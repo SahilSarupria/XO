@@ -1,6 +1,6 @@
 # XO Customer Chat — Intelligence Specification
 
-**Status:** Implemented: AI layer, API, Studio chat wired to it, interim knowledge source (installed XOs). **Not yet implemented:** the C6 Knowledge SDK adapter, chat-initiated execution, the LEARN review workflow. See §10 and §11.
+**Status:** Implemented: AI layer, API, Studio chat wired to it, interim knowledge sources (installed XOs and uploaded files), and a tested C6 adapter. **Not yet implemented:** a C6 environment per workspace (so Studio does not use C6 yet), chat-initiated execution, the LEARN review workflow. See §10 and §11 and [C6_INTEGRATION.md](./C6_INTEGRATION.md).
 
 ## 1. The model: ASK → DECIDE → DO → LEARN
 
@@ -137,7 +137,7 @@ Select a model in Settings → Models (server-side credentials required, e.g. `G
 
 ## 11. Not done, and what stands between this and production
 
-1. **Real knowledge (C6).** Not integrated: C6 is not available to build against (see [C6_INTEGRATION.md](./C6_INTEGRATION.md) for the requirements, the acceptance procedure and what is needed). The interim source is installed XOs only, found by keyword matching (the chat now says so on every answer). No Microsoft 365 / SharePoint / CRM, no per-user authorization of organizational data, no reconciliation across sources, no embeddings. This is the largest gap.
+1. **Real knowledge (C6).** The adapter exists and is tested against the real C6 stack ([C6_INTEGRATION.md](./C6_INTEGRATION.md)), but no C6 environment is created for a workspace, so Studio still answers from the interim sources (keyword matching; the chat says so on every answer). Still needed: per-workspace C6 bootstrap (state, durable audit, grants, connectors, ingestion), and reconciling `c0.3`'s API-level audit/authorization with Studio's.
 2. **DO is not usable.** No capability port is wired, and chat-initiated execution is disabled upstream until capability-level authorization is enforced on the execution path. Needs: a runtime-backed `CapabilityPort` with per-principal authorization, plus an approve-and-run flow from the chat card.
 3. **LEARN is a queue, not a loop.** Claims land as `pending_review`; there is no reviewer UI, no write-back into knowledge, no outcome tracking, nothing that improves answers.
 4. **Never run against a real model.** An evaluation suite now exists (91 items, [EVALUATION.md](./EVALUATION.md)) and passes in oracle mode, which validates the plumbing only. No live run has been made, so routing accuracy, answer quality, citation faithfulness and calibration of any real model are still unmeasured. Needs a live run, real expert-labelled questions, and a multi-provider comparison.

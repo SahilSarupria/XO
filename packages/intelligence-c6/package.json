@@ -1,0 +1,30 @@
+{
+  "name": "@xo/intelligence-c6",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Adapter from the C6 Knowledge Agent SDK (@xo/environment-intelligence) to the intelligence layer's KnowledgePort. Carries the authenticated principal to C6, maps C6 statements, uncertainty and fail-closed errors onto honest chat behaviour, and contains no retrieval logic of its own.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test"
+  },
+  "dependencies": {
+    "@xo/environment-intelligence": "0.1.0",
+    "@xo/intelligence": "0.1.0",
+    "@xo/permissions": "0.1.0"
+  },
+  "devDependencies": {
+    "@xo/ai-core": "0.1.0",
+    "tsx": "^4.16.0"
+  }
+}

@@ -21,7 +21,10 @@ export class CompositeKnowledgePort implements KnowledgePort {
     const ok = settled.filter((s) => s.result.status === 'ok');
     if (ok.length === 0) {
       const reasons = settled.map((s) => (s.result.status === 'unavailable' ? s.result.reason : 'error'));
-      return { status: 'unavailable', reason: reasons.includes('error') ? 'error' : 'not_configured' };
+      return {
+        status: 'unavailable',
+        reason: reasons.includes('denied') ? 'denied' : reasons.includes('error') ? 'error' : 'not_configured',
+      };
     }
     const evidence: Evidence[] = ok
       .flatMap((s) => (s.result.status === 'ok' ? s.result.evidence : []))

@@ -13,7 +13,7 @@ GEMINI_API_KEY=... node packages/intelligence-eval/dist/cli.js \
     --mode live --provider gemini --model <model>                             # scores a real model
 node packages/intelligence-eval/dist/cli.js --category security               # one category
 node packages/intelligence-eval/dist/cli.js --export-corpus ./corpus          # corpus + personas as JSON
-node packages/intelligence-eval/dist/cli.js --knowledge-module ./adapter.mjs  # score YOUR knowledge source (e.g. C6)
+node packages/intelligence-eval/dist/cli.js --knowledge-module ./adapter.mjs  # score a knowledge source that can serve the prose corpus (NOT C6 as-is: see C6_INTEGRATION.md)
 ```
 
 Outputs `eval-out/report.json` (per-item checks) and `report.md`. Exit code 1 if any gate fails.
