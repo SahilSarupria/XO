@@ -79,15 +79,13 @@ export function buildReviewQueue(
       ...(hints !== undefined && hints.length > 0 ? { hints } : {}),
     });
   const hintsFor = (text: string): DomainHint[] | undefined =>
-    options.retriever
-      ?.retrieve(text, 3)
-      .map((h) => ({
-        packId: h.packId,
-        conceptId: h.conceptId,
-        label: h.label,
-        definition: h.definition,
-        engines: [...new Set(h.provenance.map((p) => p.engine))],
-      }));
+    options.retriever?.retrieve(text, 3).map((h) => ({
+      packId: h.packId,
+      conceptId: h.conceptId,
+      label: h.label,
+      definition: h.definition,
+      engines: [...new Set(h.provenance.map((p) => p.engine))],
+    }));
 
   for (const d of diagnostics) {
     if (d.code === 'source-quality/ocr-required') add('ocr-required', 1, 'Pages without a text layer were not compiled', d.message);

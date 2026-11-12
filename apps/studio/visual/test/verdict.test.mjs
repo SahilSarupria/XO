@@ -28,7 +28,13 @@ test('with no references at all the headline says so instead of claiming screens
 
 test('a mixed result names each kind of problem with its count', () => {
   const v = classify({
-    results: [match, { id: 'a', status: 'diff' }, { id: 'b', status: 'size-mismatch' }, { id: 'c', status: 'missing-baseline' }, { id: 'd', status: 'functional' }],
+    results: [
+      match,
+      { id: 'a', status: 'diff' },
+      { id: 'b', status: 'size-mismatch' },
+      { id: 'c', status: 'missing-baseline' },
+      { id: 'd', status: 'functional' },
+    ],
   });
   assert.match(v.headline, /4 of 5 screens need attention/);
   assert.match(v.headline, /2 differ from the approved references/);
