@@ -22,6 +22,8 @@ export interface ChatController {
   /** Resolves true when the message was saved and answered; false leaves the person's text for them to resend. */
   readonly send: (text: string, attach: readonly string[]) => Promise<boolean>;
   readonly remove: (id: string) => Promise<void>;
+  /** Rate an answer; filed for review, changes no answer. Resolves true when it was recorded. */
+  readonly rate: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
 }
 
 /**
@@ -148,5 +150,15 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
     [client, workspaceId, activeId, startNew, reload],
   );
 
-  return { list, attachable, activeId, thread, loadingThread, sending, problem, select, startNew, send, remove };
+  const rate = useCallback(
+    async (messageId: string, rating: 'helpful' | 'unhelpful'): Promise<boolean> => {
+      if (activeId === undefined) return false;
+      const r = await client.rateChatMessage(workspaceId, activeId, messageId, rating);
+      if (!r.ok) setProblem(r.problem);
+      return r.ok;
+    },
+    [client, workspaceId, activeId],
+  );
+
+  return { list, attachable, activeId, thread, loadingThread, sending, problem, select, startNew, send, remove, rate };
 }

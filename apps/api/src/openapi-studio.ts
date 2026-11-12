@@ -591,6 +591,78 @@ export const studioPaths = {
     },
   },
 
+  // ---- XO Customer Chat (intelligence): one conversation, no modes — ASK, DECIDE, DO and LEARN are inferred per message.
+  '/workspaces/{workspaceId}/intelligence/conversations': {
+    get: {
+      summary: "List the caller's intelligence conversations (private to their creator)",
+      'x-xo-permission': 'read',
+      parameters: [WS],
+      responses: { '200': ok('{ conversations }'), ...standard() },
+    },
+    post: {
+      summary: 'Start an intelligence conversation',
+      'x-xo-permission': 'read',
+      parameters: [WS],
+      requestBody: { required: false, content: { 'application/json': { schema: obj({ title: { type: 'string', maxLength: 120 } }) } } },
+      responses: { '201': ok('Conversation summary'), '400': R_400, '412': ok('Conversation limit reached'), ...standard() },
+    },
+  },
+  '/workspaces/{workspaceId}/intelligence/conversations/{conversationId}': {
+    get: {
+      summary: 'Get a conversation with its messages (assistant messages carry the structured turn result)',
+      'x-xo-permission': 'read',
+      parameters: [WS, pathParam('conversationId')],
+      responses: { '200': ok('Conversation'), ...standard(['404', ok('No such conversation for this caller')]) },
+    },
+    delete: {
+      summary: 'Delete a conversation',
+      'x-xo-permission': 'read',
+      parameters: [WS, pathParam('conversationId')],
+      responses: { '200': ok('{ deleted }'), ...standard(['404', ok('No such conversation for this caller')]) },
+    },
+  },
+  '/workspaces/{workspaceId}/intelligence/conversations/{conversationId}/turns': {
+    post: {
+      summary: 'Send a message; XO works out whether it is an ASK, DECIDE, DO or LEARN and responds',
+      description:
+        'ASK answers only from evidence the knowledge source returns for the caller (until C6 is connected: the knowledge graphs and capabilities of XOs installed in the workspace), with verified citations, stated contradictions and gaps, and a confidence level; with no evidence (or no knowledge source connected) the model is not asked to answer. DECIDE returns options, consequences, risks and an advisory recommendation, dropped if it cites nothing. DO proposes one capability the caller is authorized to use, with validated inputs, and NEVER runs it (status \"proposed\", requiresApproval true). LEARN files a correction, outcome or feedback for authorized review (status pending_review) and never edits knowledge. The model comes from workspace Settings (primary, then fallback); credentials are server-side only. Nothing is saved if every model fails. The audit entry records route, confidence, counts and cost — never text.',
+      'x-xo-permission': 'read',
+      parameters: [WS, pathParam('conversationId')],
+      requestBody: body(
+        obj(
+          {
+            message: { type: 'string', maxLength: 8000 },
+            attach: { ...arr(str), maxItems: 5, description: 'Names of installed XOs to restrict knowledge to' },
+          },
+          ['message'],
+        ),
+      ),
+      responses: {
+        '201': ok('{ conversationId, title, userMessage, assistantMessage } — assistantMessage.result is the TurnResult'),
+        '400': R_400,
+        '412': ok('No model selected, no server-side credentials for it, or air-gapped mode forbids it'),
+        '502': ok('Every configured model failed; nothing was saved'),
+        ...standard(['404', ok('No such conversation for this caller')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/intelligence/conversations/{conversationId}/messages/{messageId}/feedback': {
+    post: {
+      summary: 'Rate an assistant message (LEARN)',
+      description: 'Recorded as a feedback claim awaiting review (status pending_review). It does not change any answer.',
+      'x-xo-permission': 'read',
+      parameters: [WS, pathParam('conversationId'), pathParam('messageId')],
+      requestBody: body(
+        obj({ rating: { type: 'string', enum: ['helpful', 'unhelpful'] }, comment: { type: 'string', maxLength: 2000 } }, ['rating']),
+      ),
+      responses: {
+        '201': ok('{ eventId, status }'),
+        '400': R_400,
+        ...standard(['404', ok('No such conversation or message for this caller')]),
+      },
+    },
+  },
+
   '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities/{capabilityId}/preview': {
     post: {
       summary: 'Validate / Preview a capability (no execution)',

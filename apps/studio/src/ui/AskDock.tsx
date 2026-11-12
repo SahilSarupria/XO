@@ -154,8 +154,12 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
             }}
           />
           {props.variant === 'home' && !props.open ? (
-            <span className="cmdbar-pill" aria-disabled="true" title="Ask is the only mode">
-              Ask ▾
+            <span
+              className="cmdbar-pill"
+              aria-disabled="true"
+              title="XO works out whether you are asking, deciding, doing or correcting — there is no mode to pick"
+            >
+              Auto ▾
             </span>
           ) : null}
           <kbd className="cmdbar-kbd">{props.variant === 'home' ? '⌘K' : '⌘J'}</kbd>
@@ -179,18 +183,33 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
           </nav>
           <div className="askdock-main">
             <header className="askdock-head">
+              <button type="button" className="askdock-close" onClick={close} aria-label="Close chat">
+                <span aria-hidden="true">←</span>
+              </button>
               <h2>{props.chat.thread?.title ?? 'New chat'}</h2>
-              <span className="chat-chip">private to you</span>
+              <span className="chat-private">Private to you</span>
+              <button type="button" className="askdock-newhead" onClick={props.chat.startNew}>
+                New chat
+              </button>
             </header>
             <div className="askdock-body">
               {props.chat.problem !== undefined ? <ChatProblem problem={props.chat.problem} onOpenSettings={props.onOpenSettings} /> : null}
               {props.chat.thread === undefined && !props.chat.loadingThread ? (
                 <div className="askdock-welcome">
                   <h3>What can XO help with?</h3>
-                  <p className="muted">Your message goes to the model your workspace has selected. Type @ to attach an installed XO.</p>
+                  <p className="muted">
+                    Ask a question, weigh a decision, request an action or correct an answer — XO works out which. Answers come from your
+                    uploaded documents and installed XOs, with sources. Type @ to focus on an installed XO.
+                  </p>
                 </div>
               ) : (
-                <ChatLog thread={props.chat.thread} loading={props.chat.loadingThread} sending={props.chat.sending} />
+                <ChatLog
+                  thread={props.chat.thread}
+                  loading={props.chat.loadingThread}
+                  sending={props.chat.sending}
+                  onRate={props.chat.rate}
+                  onFollowUp={(t) => void props.chat.send(t, [])}
+                />
               )}
             </div>
             <div className="askdock-foot">

@@ -29,10 +29,10 @@ function validateAt(schema: JsonSchema, value: unknown, path: string, issues: Sc
         return;
       }
       const obj = value as Record<string, unknown>;
-      for (const key of schema.required) {
+      for (const key of schema.required ?? []) {
         if (!(key in obj)) issues.push({ path: `${path}.${key}`, message: 'missing required property' });
       }
-      for (const [key, propSchema] of Object.entries(schema.properties)) {
+      for (const [key, propSchema] of Object.entries(schema.properties ?? {})) {
         if (key in obj) validateAt(propSchema, obj[key], `${path}.${key}`, issues);
       }
       return;

@@ -4,7 +4,9 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
     { "path": "../../packages/types" },
     { "path": "../../packages/errors" },
@@ -23,6 +25,7 @@
     { "path": "../../packages/audit" },
     { "path": "../../packages/connect" },
     { "path": "../../packages/workflow-composer" },
-    { "path": "../../packages/procedure" }
+    { "path": "../../packages/procedure" },
+    { "path": "../../packages/intelligence" }
   ]
 }

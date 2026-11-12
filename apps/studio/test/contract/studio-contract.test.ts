@@ -54,7 +54,24 @@ beforeAll(async () => {
   };
   ownerKey = await issue('owner');
   const viewerKey = await issue('viewer-1');
+  // The chat is the intelligence conversation: one routing call (structured), then the reply for the route it picked.
   const provider = new ScriptableTestProvider('anthropic', [
+    {
+      kind: 'success',
+      response: {
+        text: JSON.stringify({
+          route: 'converse',
+          confidence: 0.9,
+          reasoning: 'greeting',
+          standaloneQuery: 'hello',
+          needsClarification: false,
+          clarifyingQuestion: '',
+        }),
+        usage: { inputTokens: 1, outputTokens: 1 },
+        modelUsed: 'm',
+        finishReason: 'stop',
+      },
+    },
     {
       kind: 'success',
       response: { text: 'Here is an answer.', usage: { inputTokens: 1, outputTokens: 1 }, modelUsed: 'm', finishReason: 'stop' },

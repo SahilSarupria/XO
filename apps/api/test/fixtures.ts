@@ -22,11 +22,11 @@ const sampleMetadata: XoMetadata = {
 };
 
 export function buildFixtureBundle(
-  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string } = {},
+  overrides: { readonly name?: string; readonly version?: string; readonly creatorDid?: string; readonly knowledgeGraph?: object } = {},
 ): PackageBundle {
   const name = overrides.name ?? 'xo_api_test_fixture';
   const version = overrides.version ?? '1.0.0';
-  const result = ManifestBuilder.create()
+  let builder = ManifestBuilder.create()
     .setIdentity({ formatVersion: '1.0', name, version, creatorDid: overrides.creatorDid ?? 'did:xo:test-creator' })
     .setCompatibility(sampleCompatibility)
     .setMetadata(sampleMetadata)
@@ -41,8 +41,16 @@ export function buildFixtureBundle(
       path: 'evaluation/benchmark_suite.json',
       data: new TextEncoder().encode('{"categories":[]}'),
       required: true,
-    })
-    .build();
+    });
+  if (overrides.knowledgeGraph !== undefined) {
+    builder = builder.addComponent({
+      kind: 'knowledge_graph',
+      path: 'knowledge/graph.json',
+      data: new TextEncoder().encode(JSON.stringify(overrides.knowledgeGraph)),
+      required: false,
+    });
+  }
+  const result = builder.build();
   if (!result.ok) throw new Error(`Fixture bundle failed to build: ${result.error.message}`);
   return result.value;
 }

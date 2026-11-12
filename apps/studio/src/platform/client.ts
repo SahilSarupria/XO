@@ -35,6 +35,7 @@ import {
   type WorkflowRun,
   type Workspace,
   type WorkspaceRole,
+  str,
 } from './wire';
 import {
   parseDecisionAck,
@@ -510,27 +511,48 @@ export class XoClient {
     );
   }
 
-  // ---- chat (persisted, private to the caller)
+  // ---- chat: the intelligence conversation (persisted, private to the caller). XO works out whether a message is an
+  // ASK, DECIDE, DO or LEARN; the person never picks a mode.
   listChats(ws: string): Promise<Result<ChatSummary[]>> {
-    return this.call('GET', `/workspaces/${enc(ws)}/chats`, parseChatList);
+    return this.call('GET', `/workspaces/${enc(ws)}/intelligence/conversations`, parseChatList);
   }
   createChat(ws: string, title?: string): Promise<Result<ChatSummary>> {
-    return this.call('POST', `/workspaces/${enc(ws)}/chats`, parseChatSummaryBody, this.json(title !== undefined ? { title } : {}));
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/intelligence/conversations`,
+      parseChatSummaryBody,
+      this.json(title !== undefined ? { title } : {}),
+    );
   }
   getChat(ws: string, threadId: string): Promise<Result<ChatThreadFull>> {
-    return this.call('GET', `/workspaces/${enc(ws)}/chats/${enc(threadId)}`, parseChatThread);
+    return this.call('GET', `/workspaces/${enc(ws)}/intelligence/conversations/${enc(threadId)}`, parseChatThread);
   }
   deleteChat(ws: string, threadId: string): Promise<Result<{ deleted: string }>> {
-    return this.call('DELETE', `/workspaces/${enc(ws)}/chats/${enc(threadId)}`, (b) => ({
+    return this.call('DELETE', `/workspaces/${enc(ws)}/intelligence/conversations/${enc(threadId)}`, (b) => ({
       deleted: String((b as { deleted?: unknown })?.deleted ?? threadId),
     }));
   }
   sendChatMessage(ws: string, threadId: string, content: string, attach: readonly string[] = []): Promise<Result<ChatReply>> {
     return this.call(
       'POST',
-      `/workspaces/${enc(ws)}/chats/${enc(threadId)}/messages`,
+      `/workspaces/${enc(ws)}/intelligence/conversations/${enc(threadId)}/turns`,
       parseChatReply,
-      this.json({ content, ...(attach.length > 0 ? { attach } : {}) }),
+      this.json({ message: content, ...(attach.length > 0 ? { attach } : {}) }),
+    );
+  }
+  /** Rate an answer. Filed for review; it does not change any answer. */
+  rateChatMessage(
+    ws: string,
+    threadId: string,
+    messageId: string,
+    rating: 'helpful' | 'unhelpful',
+    comment?: string,
+  ): Promise<Result<{ eventId: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/intelligence/conversations/${enc(threadId)}/messages/${enc(messageId)}/feedback`,
+      (b) => ({ eventId: str((b as { eventId?: unknown })?.eventId, 'eventId') }),
+      this.json({ rating, ...(comment !== undefined && comment.trim() !== '' ? { comment } : {}) }),
     );
   }
 

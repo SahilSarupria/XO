@@ -1,8 +1,8 @@
-import type { CapabilityId } from './capability-types.js';
+import type { SelectableTaskId } from './capability-types.js';
 import type { ProviderCapabilityDescriptor, ProviderId } from './provider-types.js';
 
 export interface ModelSelectionRule {
-  readonly capability: CapabilityId | '*'; // '*' applies to any capability with no more specific rule
+  readonly capability: SelectableTaskId | '*'; // '*' applies to any capability with no more specific rule
   /** Preference order — the first eligible (registered + capable) provider is primary; the rest form the fallback chain, in order. */
   readonly providerOrder: readonly ProviderId[];
   readonly modelByProvider: Readonly<Record<string, string>>;
@@ -23,7 +23,7 @@ export interface SelectedCandidate {
   readonly model: string;
 }
 
-function findRule(policy: ModelSelectionPolicy, capability: CapabilityId): ModelSelectionRule | undefined {
+function findRule(policy: ModelSelectionPolicy, capability: SelectableTaskId): ModelSelectionRule | undefined {
   return policy.rules.find((r) => r.capability === capability) ?? policy.rules.find((r) => r.capability === '*');
 }
 
@@ -38,7 +38,7 @@ function findRule(policy: ModelSelectionPolicy, capability: CapabilityId): Model
  */
 export function selectCandidates(
   policy: ModelSelectionPolicy,
-  capability: CapabilityId,
+  capability: SelectableTaskId,
   availableProviders: ReadonlySet<ProviderId>,
   descriptors: ReadonlyMap<ProviderId, ProviderCapabilityDescriptor>,
   requireStructuredOutput: boolean,

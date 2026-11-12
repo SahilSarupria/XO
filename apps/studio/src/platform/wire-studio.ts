@@ -489,11 +489,36 @@ export function parseInstalled(v: unknown): Install {
 }
 
 // ------------------------------------------------------------------ chat
+// Chat is the platform's intelligence conversation (/intelligence/conversations): each message is an ASK, DECIDE, DO or
+// LEARN that XO works out itself. The wire calls a conversation `conversationId`; Studio keeps calling it `threadId`.
 export interface ChatSummary {
   readonly threadId: string;
   readonly title: string;
   readonly updatedAt: string;
   readonly messageCount: number;
+}
+export type TurnRoute = 'ask' | 'decide' | 'do' | 'learn' | 'converse' | 'clarify';
+export type TurnConfidence = 'high' | 'medium' | 'low' | 'none';
+export interface TurnCitation {
+  readonly index: number;
+  readonly sourceName: string;
+  readonly asOf?: string;
+  readonly excerpt: string;
+}
+export interface TurnNotice {
+  readonly code: string;
+  readonly message: string;
+}
+/** What the screen shows about an answer beyond its text: how it was understood, how sure it is, and what it rests on. */
+export interface TurnView {
+  readonly route: TurnRoute;
+  readonly confidence: TurnConfidence;
+  readonly grounded: boolean;
+  readonly citations: readonly TurnCitation[];
+  readonly notices: readonly TurnNotice[];
+  readonly followUps: readonly string[];
+  readonly proposal?: { readonly capabilityName: string; readonly inputs: readonly { readonly name: string; readonly value: string }[] };
+  readonly learning?: { readonly recorded: boolean; readonly reviewRequired: boolean };
 }
 export interface ChatMessage {
   readonly messageId: string;
@@ -502,6 +527,7 @@ export interface ChatMessage {
   readonly at: string;
   readonly model?: { readonly provider: string; readonly model: string };
   readonly attachedXos?: readonly string[];
+  readonly result?: TurnView;
 }
 export interface ChatThreadFull extends ChatSummary {
   readonly messages: readonly ChatMessage[];
@@ -509,33 +535,85 @@ export interface ChatThreadFull extends ChatSummary {
 function parseChatSummary(v: unknown, path: string): ChatSummary {
   const o = obj(v, path);
   return {
-    threadId: str(o['threadId'], `${path}.threadId`),
+    threadId: str(o['conversationId'], `${path}.conversationId`),
     title: str(o['title'], `${path}.title`),
     updatedAt: str(o['updatedAt'], `${path}.updatedAt`),
     messageCount: num(o['messageCount'], `${path}.messageCount`),
+  };
+}
+const ROUTES: readonly string[] = ['ask', 'decide', 'do', 'learn', 'converse', 'clarify'];
+const CONFIDENCES: readonly string[] = ['high', 'medium', 'low', 'none'];
+function parseTurnView(v: unknown, path: string): TurnView {
+  const o = obj(v, path);
+  const route = str(o['route'], `${path}.route`);
+  if (!ROUTES.includes(route)) throw new WireParseError(`${path}.route`, ROUTES.join(' | '));
+  const confidence = str(o['confidence'], `${path}.confidence`);
+  if (!CONFIDENCES.includes(confidence)) throw new WireParseError(`${path}.confidence`, CONFIDENCES.join(' | '));
+  const ask = o['ask'] === undefined ? undefined : obj(o['ask'], `${path}.ask`);
+  const proposal = o['proposal'] === undefined ? undefined : obj(o['proposal'], `${path}.proposal`);
+  const learning = o['learning'] === undefined ? undefined : obj(o['learning'], `${path}.learning`);
+  return {
+    route: route as TurnRoute,
+    confidence: confidence as TurnConfidence,
+    grounded: o['grounded'] === true,
+    citations: list(o['citations'], `${path}.citations`, (c, p) => {
+      const co = obj(c, p);
+      return {
+        index: num(co['index'], `${p}.index`),
+        sourceName: str(co['sourceName'], `${p}.sourceName`),
+        ...(typeof co['asOf'] === 'string' ? { asOf: co['asOf'] } : {}),
+        excerpt: str(co['excerpt'], `${p}.excerpt`),
+      };
+    }),
+    notices: list(o['notices'], `${path}.notices`, (n, p) => {
+      const no = obj(n, p);
+      return { code: str(no['code'], `${p}.code`), message: str(no['message'], `${p}.message`) };
+    }),
+    followUps: ask !== undefined && Array.isArray(ask['followUps']) ? strArr(ask['followUps'], `${path}.ask.followUps`) : [],
+    ...(proposal !== undefined
+      ? {
+          proposal: {
+            capabilityName: str(proposal['capabilityName'], `${path}.proposal.capabilityName`),
+            inputs: Object.entries(obj(proposal['inputs'], `${path}.proposal.inputs`)).map(([name, value]) => ({
+              name,
+              value: String(value),
+            })),
+          },
+        }
+      : {}),
+    ...(learning !== undefined
+      ? { learning: { recorded: learning['recorded'] === true, reviewRequired: learning['reviewRequired'] === true } }
+      : {}),
   };
 }
 export function parseChatMessage(v: unknown, path = 'message'): ChatMessage {
   const o = obj(v, path);
   const r = str(o['role'], `${path}.role`);
   if (r !== 'user' && r !== 'assistant') throw new WireParseError(`${path}.role`, 'user | assistant');
-  const m = o['model'] === undefined ? undefined : obj(o['model'], `${path}.model`);
+  const result = o['result'] === undefined ? undefined : parseTurnView(o['result'], `${path}.result`);
+  // The model that wrote the answer is the provider/model of the turn's last call.
+  const calls =
+    o['result'] !== undefined ? (obj(obj(o['result'], `${path}.result`)['usage'], `${path}.result.usage`)['calls'] as unknown) : undefined;
+  const lastCall = Array.isArray(calls) && calls.length > 0 ? obj(calls[calls.length - 1], `${path}.result.usage.calls`) : undefined;
   return {
     messageId: str(o['messageId'], `${path}.messageId`),
     role: r,
     content: str(o['content'], `${path}.content`),
     at: str(o['at'], `${path}.at`),
-    ...(m !== undefined
-      ? { model: { provider: str(m['provider'], `${path}.model.provider`), model: str(m['model'], `${path}.model.model`) } }
+    ...(lastCall !== undefined && typeof lastCall['provider'] === 'string' && typeof lastCall['model'] === 'string'
+      ? { model: { provider: lastCall['provider'], model: lastCall['model'] } }
       : {}),
-    ...(o['attachedXos'] !== undefined ? { attachedXos: strArr(o['attachedXos'], `${path}.attachedXos`) } : {}),
+    ...(result !== undefined ? { result } : {}),
   };
 }
-export const parseChatList = (v: unknown): ChatSummary[] => list(obj(v, 'body')['threads'], 'threads', parseChatSummary);
-export const parseChatSummaryBody = (v: unknown): ChatSummary => parseChatSummary(v, 'thread');
+export const parseChatList = (v: unknown): ChatSummary[] => list(obj(v, 'body')['conversations'], 'conversations', parseChatSummary);
+export const parseChatSummaryBody = (v: unknown): ChatSummary => parseChatSummary(v, 'conversation');
 export function parseChatThread(v: unknown): ChatThreadFull {
   const o = obj(v, 'body');
-  const s = parseChatSummary({ ...o, messageCount: Array.isArray(o['messages']) ? (o['messages'] as unknown[]).length : 0 }, 'thread');
+  const s = parseChatSummary(
+    { ...o, messageCount: Array.isArray(o['messages']) ? (o['messages'] as unknown[]).length : 0 },
+    'conversation',
+  );
   return { ...s, messages: list(o['messages'], 'messages', parseChatMessage) };
 }
 export interface ChatReply {
@@ -547,7 +625,7 @@ export interface ChatReply {
 export function parseChatReply(v: unknown): ChatReply {
   const o = obj(v, 'body');
   return {
-    threadId: str(o['threadId'], 'threadId'),
+    threadId: str(o['conversationId'], 'conversationId'),
     title: str(o['title'], 'title'),
     userMessage: parseChatMessage(o['userMessage'], 'userMessage'),
     assistantMessage: parseChatMessage(o['assistantMessage'], 'assistantMessage'),
