@@ -1,5 +1,5 @@
 import { DEVELOPMENT_TRUST_WARNING, assertTrustPolicyAllowedHere, loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { Result } from '@xo/types';
 import { AuditError, ErrorCode, XoError } from '@xo/errors';
@@ -19,11 +19,11 @@ import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import type { ConnectService } from '@xo/connect';
-import { PermissionManager, type PermissionPolicy } from '@xo/permissions';
+import { DenyOverridesPolicy, PermissionManager, type PermissionPolicy } from '@xo/permissions';
+import { InstancePolicy } from './auth/instance-policy.js';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
-import { join } from 'node:path';
 import { AuditService } from './audit/audit-service.js';
 import type { ExternalToolWiring } from '@xo/runtime';
 
@@ -93,6 +93,12 @@ export interface ServerDeps {
    * Capabilities that explicitly declare no permissions still require an
    * authenticated principal. There is no client-side input to this policy.
    */
+  /** UW-1 — path of the persisted operator policy. Default `<workspaceDataDir>/_instance/policy.json`. */
+  readonly instancePolicyPath?: string;
+  /** UW-1 — how often the operator policy file is re-read, in ms (0 disables; default 10000). */
+  readonly instancePolicyReloadMs?: number;
+  /** UW-1 — maximum age of an API key issued without an expiry. Default: `loadConfig().apiKeyMaxAgeDays` (365). */
+  readonly apiKeyMaxAgeDays?: number;
   readonly permissionPolicy?: PermissionPolicy;
   /**
    * P1.0 M4 — the durable audit sink. REQUIRED when `NODE_ENV=production` (startup fails without it: no silent
@@ -272,6 +278,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   router.use(
     createAuthMiddleware({
       apiKeyStore,
+      apiKeyMaxAgeDays: deps.apiKeyMaxAgeDays ?? loadConfig().apiKeyMaxAgeDays,
       ...(oidc !== undefined ? { oidc } : {}),
       ...(sessionsForAuth !== undefined
         ? { sessions: { store: sessionsForAuth.sessions, bindings: sessionsForAuth.bindings, ...(gate !== undefined ? { gate } : {}) } }
@@ -281,7 +288,24 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   );
   // UW-1 (ADR 0010): the instance's single authorization point. Workspace roles are a ceiling the operator policy can only narrow;
   // every other domain is decided by the operator policy as before. Attached to every request so all routes ask the same object.
-  const permissionManager = new PermissionManager({ policy: createAuthorizationPolicy(deps.permissionPolicy) });
+  // UW-1: the persisted operator policy (`<WORKSPACE_DATA_DIR>/_instance/policy.json`, managed by scripts/manage-policy.ts) combines
+  // with any code-supplied policy so that either side's DENY wins. A broken file suspends operator ALLOWs (fail closed).
+  const instancePolicy = new InstancePolicy(deps.instancePolicyPath ?? join(workspaceDataConfig.dataRootDir, '_instance', 'policy.json'));
+  if (instancePolicy.lastError !== undefined) deps.logger?.error(`instance policy suspended: ${instancePolicy.lastError}`);
+  const reloadMs = deps.instancePolicyReloadMs ?? 10_000;
+  if (reloadMs > 0) {
+    setInterval(() => {
+      void instancePolicy.reload().then(
+        () => {
+          if (instancePolicy.lastError !== undefined) deps.logger?.error(`instance policy suspended: ${instancePolicy.lastError}`);
+        },
+        () => undefined,
+      );
+    }, reloadMs).unref();
+  }
+  const operatorPolicy =
+    deps.permissionPolicy !== undefined ? new DenyOverridesPolicy([deps.permissionPolicy, instancePolicy]) : instancePolicy;
+  const permissionManager = new PermissionManager({ policy: createAuthorizationPolicy(operatorPolicy) });
   router.use(async (req, next) => {
     req.permissionManager = permissionManager;
     req.workspaceDataConfig = workspaceDataConfig;

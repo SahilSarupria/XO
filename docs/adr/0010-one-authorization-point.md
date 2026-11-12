@@ -71,6 +71,20 @@ audit|manage`); a `role` match dimension (matched against the server-supplied `c
 - Proof: `apps/api/test/single-authorization-point.test.ts` (4 × 6 equivalence matrix, allow-all cannot widen, suspension narrows,
   fail closed, end-to-end routes) and `packages/permissions/test/ceiling.test.ts`.
 
+## Implementation (UW-1b, 2026-11-13)
+
+- **Persisted operator policy** (the "persistent store" of point 4): `<WORKSPACE_DATA_DIR>/_instance/policy.json`, strict schema
+  (`ALLOW`/`DENY` only, six match keys, every value validated, no unscoped rule), written atomically with a revision check by
+  `apps/api/scripts/manage-policy.ts`, loaded at start-up and re-read every 10 s. A broken file suspends every operator `ALLOW` (fail
+  closed) without touching workspace roles; an `ALLOW` that would reach workspace operations is rejected (roles decide those; the file
+  may only `DENY` them, to suspend someone). It combines with a code-supplied policy by deny-overrides (`DenyOverridesPolicy`). This is
+  the first way to grant procedure, effect or audit permissions in a shipped instance without changing code.
+- **Package-scoped grant persistence** (`PermissionStore`) is not wired: no API path creates such grants today (they belong to the
+  runtime/CLI consent flow). It stays in-memory in the API until a workstream adds a grant-creating path.
+- **API keys** (point 5): every newly issued key carries `expiresAt` (default 90 days, 1–3650); keys issued earlier are bounded by
+  `XO_API_KEY_MAX_AGE_DAYS` (default 365) from `createdAt`; an expired key is refused with `401 XO_AUTH_KEY_EXPIRED`. `manage-keys.ts
+rotate` issues the new key first and then revokes the identity's other keys, so a failure never locks the identity out.
+
 ## Reopen if
 
 A control in the list above cannot be expressed as policy without loss.

@@ -57,3 +57,29 @@ export class DomainCeilingPolicy implements PermissionPolicy {
     return typeof inner === 'function' ? inner.call(this.inner) : 'DENY';
   }
 }
+
+/**
+ * UW-1: several operator policies combined so that any explicit `DENY` wins, then any `ALLOW`, then any `PROMPT`; otherwise `NO_MATCH`.
+ * Used to combine a code-supplied policy with the instance's persisted policy file without either being able to override the other's
+ * denials.
+ */
+export class DenyOverridesPolicy implements PermissionPolicy {
+  private readonly policies: readonly PermissionPolicy[];
+
+  constructor(policies: readonly PermissionPolicy[]) {
+    this.policies = policies;
+  }
+
+  evaluate(request: PermissionRequest): Verdict {
+    const verdicts = this.policies.map((p) => p.evaluate(request));
+    for (const effect of ['DENY', 'ALLOW', 'PROMPT'] as const) {
+      const hit = verdicts.find((v) => v.effect === effect);
+      if (hit !== undefined) return hit;
+    }
+    return { effect: 'NO_MATCH', reason: 'No policy rule matched this request' };
+  }
+
+  getDefaultEffect(): 'ALLOW' | 'DENY' | 'PROMPT' {
+    return 'DENY';
+  }
+}

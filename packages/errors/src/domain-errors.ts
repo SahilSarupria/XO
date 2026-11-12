@@ -285,6 +285,7 @@ export class AuthError extends XoError {
       | typeof ErrorCode.AUTH_KEY_MISSING
       | typeof ErrorCode.AUTH_KEY_INVALID
       | typeof ErrorCode.AUTH_KEY_REVOKED
+      | typeof ErrorCode.AUTH_KEY_EXPIRED
       | typeof ErrorCode.AUTH_TOKEN_INVALID
       | typeof ErrorCode.AUTH_TOKEN_EXPIRED
       | typeof ErrorCode.AUTH_IDENTITY_UNBOUND

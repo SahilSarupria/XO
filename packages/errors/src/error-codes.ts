@@ -213,6 +213,9 @@ export const ErrorCode = {
   AUTH_KEY_MISSING: 'XO_AUTH_KEY_MISSING',
   AUTH_KEY_INVALID: 'XO_AUTH_KEY_INVALID',
   AUTH_KEY_REVOKED: 'XO_AUTH_KEY_REVOKED',
+  // UW-1: a key past its expiry (or, for a key issued without one, past the server's maximum key age). Distinct from REVOKED so a
+  // client knows the remedy is rotation, not an incident.
+  AUTH_KEY_EXPIRED: 'XO_AUTH_KEY_EXPIRED',
 
   // OIDC bearer-token authentication (apps/api src/auth/oidc). Deliberately
   // coarse: TOKEN_INVALID covers every verification failure (signature,

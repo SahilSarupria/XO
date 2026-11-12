@@ -47,7 +47,10 @@ export class FsApiKeyStore implements ApiKeyStore {
     return ok(record);
   }
 
-  async revokeByIdentity(identityId: string): Promise<Result<{ readonly revokedCount: number }, XoError>> {
+  async revokeByIdentity(
+    identityId: string,
+    options: { readonly exceptKeyHash?: string } = {},
+  ): Promise<Result<{ readonly revokedCount: number; readonly revokedKeyHashes: readonly string[] }, XoError>> {
     const listResult = await this.store.list(RECORD_PREFIX);
     if (!listResult.ok) {
       // No `api-keys/by-hash/` directory yet at all means no key has
@@ -63,6 +66,7 @@ export class FsApiKeyStore implements ApiKeyStore {
 
     let matchedAny = false;
     let revokedCount = 0;
+    const revokedKeyHashes: string[] = [];
     const now = new Date().toISOString();
 
     for (const key of listResult.value) {
@@ -73,16 +77,18 @@ export class FsApiKeyStore implements ApiKeyStore {
 
       matchedAny = true;
       if (record.revokedAt !== undefined) continue; // already revoked — idempotent no-op
+      if (options.exceptKeyHash !== undefined && record.keyHash === options.exceptKeyHash) continue; // UW-1 rotation keeps the new key
 
       const updated: ApiKeyRecord = { ...record, revokedAt: now };
       const putResult = await this.store.put(key, JSON.stringify(updated));
       if (!putResult.ok) return err(putResult.error);
       revokedCount += 1;
+      revokedKeyHashes.push(record.keyHash);
     }
 
     if (!matchedAny) {
       return err(new NotFoundError(`API key(s) for identity "${identityId}"`));
     }
-    return ok({ revokedCount });
+    return ok({ revokedCount, revokedKeyHashes });
   }
 }

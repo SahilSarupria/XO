@@ -38,7 +38,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Batch status**: a `forEach` run with one failed item reports the parent as `failed` even when the other items completed. UW-7 (partial completion).
 - **No cancel operation**: Workflow IR declares `cancellation.onCancel`, but the runner cannot cancel a run. UW-7 (ADR 0024).
 - **`workflow-runtime` approvals are not bound to the action's content**: a signed decision covers run, step and approval id only. Inside an instance only the digest-bound primitive grants authority (ADR 0014). UW-8.
-- **Two authorization systems in `apps/api`** (workspace roles and `PermissionManager`); the permission store is in-memory; API keys are revocable but never expire. UW-1 (ADR 0010).
+- **Authorization (UW-1, ADR 0010):** one authorization point now decides every workspace route; operator grants persist in `_instance/policy.json`; API keys expire and rotate. Remaining: package-scoped `PermissionStore` grants stay in-memory in the API (no API path creates them); the policy file is re-read every 10 s, so a revocation written there takes up to 10 s to apply (API-key revocation is immediate).
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
