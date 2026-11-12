@@ -122,6 +122,8 @@ export function WorkspaceView(props: {
   const executions = useLoad(() => client.listExecutions(ws), [client, ws]);
   const workflows = useLoad(() => client.listWorkflows(ws), [client, ws]);
   const runs = useLoad(() => client.listWorkflowRuns(ws), [client, ws]);
+  // Mode, triggers, limit, sign-off and the workspace pause. Optional: a platform that does not report them, or a failed read, leaves the page as it was.
+  const controls = useLoad(() => client.getWorkflowControls(ws), [client, ws]);
 
   const succeeded: Compilation[] = useMemo(
     () =>
@@ -191,6 +193,7 @@ export function WorkspaceView(props: {
     workflows.reload();
     runs.reload();
     caps.reload();
+    controls.reload();
   }
 
   // Render the fresh value, or the last good one after a failed refresh. A failure is never turned into "empty".
@@ -493,6 +496,8 @@ export function WorkspaceView(props: {
           caps={capList}
           capsFailed={capsFailed}
           runs={runList}
+          controls={loadedValue(controls.state)}
+          role={props.workspace.role}
           onChanged={refreshAll}
           goToSetup={() => {
             setSetupView('rules');

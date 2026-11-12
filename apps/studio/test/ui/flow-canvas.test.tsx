@@ -5,7 +5,7 @@ import { App } from '../../src/ui/App';
 import { fitView, zoomAt } from '../../src/ui/FlowCanvas';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findViewGraph } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 type Edge = { from: string; to: string; when?: string };
@@ -27,7 +27,7 @@ async function openEditor(api: FakeXo): Promise<U> {
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await openScreen(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /view graph of/i }));
+  await user.click(await findViewGraph(user));
   await screen.findByRole('region', { name: 'Workflow graph' });
   await within(screen.getByRole('complementary', { name: 'Node palette' })).findByRole('button', { name: 'Branch on confidence' });
   return user;

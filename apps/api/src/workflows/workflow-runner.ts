@@ -37,6 +37,7 @@ import {
   TERMINAL_WORKFLOW_STATUSES,
   WorkflowConflictError,
   type DraftRunInfo,
+  type RunTrigger,
   type WorkflowExecutionRecord,
   type WorkflowExecutionStore,
 } from './workflow-execution.js';
@@ -54,6 +55,7 @@ import {
   withHumanResolution,
   withInterrupted,
   withRunning,
+  withShadowStop,
   withStepOutcome,
   withStepStarted,
   withWorkflowFailure,
@@ -596,6 +598,11 @@ async function driveWorkflow(ctx: WorkflowRunnerContext, holder: RecordHolder, r
     if (record.status !== 'running') return;
     const startIndex = firstRunnableStepIndex(record);
     if (startIndex < 0) return;
+    // Shadow (practice) run: stop BEFORE the first step that needs a person, without creating a task or asking anyone.
+    if (record.shadow !== undefined && prepared.steps[startIndex]?.implementationClass === 'human_in_the_loop') {
+      await holder.update((r, at) => withShadowStop(r, startIndex, at));
+      return;
+    }
     if (record.steps.slice(0, startIndex).some((s) => s.status !== 'succeeded')) {
       await holder.update((r, now) =>
         withWorkflowFailure(
@@ -611,7 +618,8 @@ async function driveWorkflow(ctx: WorkflowRunnerContext, holder: RecordHolder, r
     let endIndex = record.steps.length - 1;
     for (let i = startIndex; i < record.steps.length; i++) {
       if (prepared.steps[i]?.implementationClass === 'human_in_the_loop') {
-        endIndex = i;
+        // A shadow run runs only the steps before it; a real run includes it (it will wait for a person).
+        endIndex = record.shadow !== undefined ? i - 1 : i;
         break;
       }
     }
@@ -717,6 +725,10 @@ export interface StartWorkflowRequest {
   readonly input: Readonly<Record<string, unknown>>;
   /** Set only by the draft launcher: the steps (in the author's order) and what to record about the draft. `workflowId` is then `draft:<definitionId>`. */
   readonly draft?: { readonly info: DraftRunInfo; readonly name: string; readonly capabilityIds: readonly string[] };
+  /** Set by the controls gate when the workflow is in shadow mode: run as practice (see `ShadowInfo`). */
+  readonly shadow?: boolean;
+  /** Set by the webhook/schedule entry points. A manual start leaves it unset. */
+  readonly trigger?: RunTrigger;
 }
 
 /**
@@ -778,6 +790,8 @@ export async function startWorkflowExecution(
       compilationId: request.compilationId,
       workflowId: request.workflowId,
       workflowName: runtime.resolved.workflow.name,
+      ...(request.shadow === true ? { shadow: {} } : {}),
+      ...(request.trigger !== undefined ? { trigger: request.trigger } : {}),
       input: request.input,
       steps: runtime.resolved.workflow.steps.map((s) => ({
         stepId: s.id,
@@ -818,7 +832,12 @@ export interface WorkflowExecutionView extends Omit<WorkflowExecutionRecord, 'pe
 }
 
 export async function toWorkflowExecutionView(ctx: WorkflowRunnerContext, record: WorkflowExecutionRecord): Promise<WorkflowExecutionView> {
-  const { pendingHumanTask, ...rest } = record;
+  const { pendingHumanTask, ...base } = record;
+  // A shadow run that never needed a person ends as `succeeded` with no outcome recorded yet: that IS "would complete".
+  const rest =
+    base.shadow !== undefined && base.shadow.outcome === undefined && base.status === 'succeeded'
+      ? { ...base, shadow: { ...base.shadow, outcome: 'would_complete' as const } }
+      : base;
   if (pendingHumanTask === undefined) return rest;
   const exec = await ctx.executionStore.get(pendingHumanTask.executionId);
   const humanTaskStatus = exec.ok && exec.value.humanTask?.status === 'resolved' ? 'resolved' : 'pending';

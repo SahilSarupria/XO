@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findViewGraph } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -28,7 +28,7 @@ async function analysed(api: FakeXo): Promise<U> {
 
 async function openGraph(user: U) {
   await openScreen(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /view graph of/i }));
+  await user.click(await findViewGraph(user));
   return screen.findByRole('region', { name: 'Workflow graph' });
 }
 

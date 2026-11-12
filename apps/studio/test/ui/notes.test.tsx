@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findStart } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const posts = (api: FakeXo, suffix: string) => api.calls.filter((c) => c.method === 'POST' && c.path.endsWith(suffix));
@@ -24,7 +24,7 @@ async function withWaitingRun(api: FakeXo): Promise<U> {
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await go(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('button', { name: /approve this step/i });
   return user;
 }

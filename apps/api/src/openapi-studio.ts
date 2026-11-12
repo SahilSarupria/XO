@@ -719,6 +719,158 @@ export const studioPaths = {
       },
     },
   },
+  '/workspaces/{workspaceId}/workflow-controls': {
+    get: {
+      summary: "Read every workflow's controls and the workspace pause switch",
+      description:
+        "One call for the Workflows page. `paused` is the workspace-wide switch. Each deployment reports the workflow's mode (draft | shadow | live | paused), how it may start (manual always; webhook on/off; an optional every-N-minutes schedule), its daily limit and how many runs have started today (UTC), who signed off which version and whether that sign-off is still current, the readiness list (rules approved, runnable, signed off, a limit set, practised) with a plain sentence each, whether it may go live, and a summary of practice (shadow) runs with the reviewer's agreement. Nothing secret is returned. A workflow never touched has the defaults (draft, no triggers, no limit).",
+      'x-xo-permission': 'read',
+      parameters: [WS],
+      responses: { '200': ok('Workspace pause state and one deployment per workflow'), ...standard(['403', R_403]) },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/pause': {
+    post: {
+      summary: 'Pause everything in the workspace (the kill switch)',
+      description:
+        'While paused, no workflow can start by any route (manual, webhook, schedule, or a saved draft); runs already waiting for a person can still be decided. Body (optional): { reason } up to 200 characters. Reversible with POST .../resume. Audited as workflows.paused.',
+      'x-xo-permission': 'manage',
+      parameters: [WS],
+      requestBody: body(obj({ reason: str })),
+      responses: { '200': ok('The new pause state'), '400': R_400, ...standard(['403', R_403]) },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/resume': {
+    post: {
+      summary: 'Resume after a workspace-wide pause',
+      description: 'Lifts the workspace-wide pause. Workflows that were individually paused stay paused. Audited as workflows.resumed.',
+      'x-xo-permission': 'manage',
+      parameters: [WS],
+      responses: { '200': ok('The new pause state'), ...standard(['403', R_403]) },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/mode': {
+    post: {
+      summary: 'Move a workflow between draft, practising (shadow), live and paused',
+      description:
+        "Body: { compilationId, mode }. Moving to shadow needs every rule approved and a runnable workflow. Moving to live also needs the current version signed off, a daily limit set and at least one finished practice run, and the caller must hold publish (author is enough for every other mode). Refused with 412 and the missing items in plain words otherwise. Pausing remembers the earlier mode. In shadow mode a run is practice: it carries out the steps XO can and stops before the first step that needs a person, without creating a task or asking anyone; the platform has no external connectors, so a practice run changes nothing outside the workspace's own records. Audited as workflow.mode_changed.",
+      'x-xo-permission': 'author',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(
+        obj({ compilationId: str, mode: { type: 'string', enum: ['draft', 'shadow', 'live', 'paused'] } }, ['compilationId', 'mode']),
+      ),
+      responses: {
+        '200': ok("The workflow's controls"),
+        '400': R_400,
+        '403': R_403,
+        '412': R_412,
+        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/limits': {
+    put: {
+      summary: "Set or remove a workflow's daily run limit",
+      description:
+        'Body: { compilationId, dailyRunCap } where dailyRunCap is a whole number from 1 to 100000, or null to remove the limit. Counts every run started today (UTC), practice runs included, by any route. A start over the limit is refused with 412 (reason daily_cap_reached). Audited as workflow.limits_changed.',
+      'x-xo-permission': 'author',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(
+        obj({ compilationId: str, dailyRunCap: { type: ['integer', 'null'], minimum: 1, maximum: 100000 } }, [
+          'compilationId',
+          'dailyRunCap',
+        ]),
+      ),
+      responses: {
+        '200': ok("The workflow's controls"),
+        '400': R_400,
+        '403': R_403,
+        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/triggers': {
+    put: {
+      summary: "Switch a workflow's webhook and schedule triggers on or off",
+      description:
+        'Body: { compilationId, webhook?, schedule? } where schedule is null (off) or { everyMinutes, input? } with everyMinutes from 5 to 10080 and input a JSON object up to 8 KB that every scheduled run starts with (a workflow with required fields can only be scheduled if they are given here). Triggers only fire while the workflow is practising or live. The schedule runs inside one API process, does not catch up after downtime; see docs/WORKFLOW_CONTROLS.md. Audited as workflow.triggers_changed.',
+      'x-xo-permission': 'author',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(
+        obj(
+          {
+            compilationId: str,
+            webhook: bool,
+            schedule: { oneOf: [{ type: 'null' }, obj({ everyMinutes: int, input: { type: 'object' } }, ['everyMinutes'])] },
+          },
+          ['compilationId'],
+        ),
+      ),
+      responses: {
+        '200': ok("The workflow's controls"),
+        '400': R_400,
+        '403': R_403,
+        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/sign-off': {
+    post: {
+      summary: 'Sign off this version of a workflow',
+      description:
+        'Body: { compilationId }. Records that the caller reviewed this exact version (its compilation and ordered steps). It is a recorded sign-off by a named reviewer, not a cryptographic signature, and a workspace admin may hold both the author and reviewer roles. Needs every rule approved and a runnable workflow (412 otherwise). A later change to the workflow makes the sign-off stale (`current: false`). Audited as workflow.signed_off.',
+      'x-xo-permission': 'review',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(obj({ compilationId: str }, ['compilationId'])),
+      responses: {
+        '200': ok("The workflow's controls"),
+        '400': R_400,
+        '403': R_403,
+        '412': R_412,
+        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/workflow-controls/workflows/{workflowId}/shadow-reviews': {
+    post: {
+      summary: 'Judge a practice run: could it be done without a person?',
+      description:
+        'Body: { compilationId, workflowExecutionId, judgement } where judgement is "automatic" (it could be done without a person) or "person" (a person would have handled it). The summary counts a judgement as agreement when it matches what the practice run did (would complete / would need a person). It measures agreement on this one question for the cases a reviewer chose to judge, not accuracy. Audited as workflow.shadow_reviewed.',
+      'x-xo-permission': 'review',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(
+        obj({ compilationId: str, workflowExecutionId: str, judgement: { type: 'string', enum: ['automatic', 'person'] } }, [
+          'compilationId',
+          'workflowExecutionId',
+          'judgement',
+        ]),
+      ),
+      responses: {
+        '200': ok("The workflow's controls"),
+        '400': R_400,
+        '403': R_403,
+        ...standard(['404', ok('Unknown workflow or practice run, or workspace not accessible')]),
+      },
+    },
+  },
+  '/workspaces/{workspaceId}/workflows/{workflowId}/webhook': {
+    post: {
+      summary: 'Start a workflow from outside (webhook)',
+      description:
+        "Body: { compilationId, input? } (input is a JSON object up to 64 KB). Authenticated like every other call, with an API key of a workspace member who holds author; there is no second secret. Goes through the same gate as a manual start: refused with 412 when the webhook trigger is off, the workflow is not practising or live, it is paused, everything is paused, or today's limit is reached. In shadow mode the run is practice. Idempotency-Key is honored (replay is 200). Audited as workflow.triggered.",
+      'x-xo-permission': 'author',
+      parameters: [WS, pathParam('workflowId')],
+      requestBody: body(obj({ compilationId: str, input: { type: 'object' } }, ['compilationId'])),
+      responses: {
+        '201': ok('Workflow execution record'),
+        '200': ok('Idempotent replay, or a run that failed its input check'),
+        '400': R_400,
+        '403': R_403,
+        '412': R_412,
+        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+      },
+    },
+  },
 } as const;
 
 /**

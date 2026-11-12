@@ -64,6 +64,11 @@
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-strong);
   --motion: 140ms cubic-bezier(0.2, 0, 0, 1);
   --page-width: 62rem;
+  /* Live workflow cards: brushed black metal. Dark in both themes, so the card reads the same on a light page. */
+  --metal-1: #23262a;
+  --metal-2: #0b0c0d;
+  --metal-3: #181a1d;
+  --metal-sheen: rgb(255 255 255 / 0.07);
 }
 
 @media (prefers-reduced-motion: reduce) {

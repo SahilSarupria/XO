@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findStart, findViewGraph } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -28,7 +28,7 @@ async function analysed(api: FakeXo): Promise<U> {
 
 async function openGraph(user: U) {
   await openScreen(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /view graph of/i }));
+  await user.click(await findViewGraph(user));
   return screen.findByRole('region', { name: 'Workflow graph' });
 }
 
@@ -112,10 +112,10 @@ describe('Workflow graph', () => {
     const user = await analysed(api);
     await user.click(screen.getByRole('button', { name: /^home$/i }));
     await openScreen(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await waitFor(() => expect(window.location.hash).toBe('#/tasks'));
     await openScreen(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /view graph of/i }));
+    await user.click(await findViewGraph(user));
     await screen.findByRole('region', { name: 'Workflow graph' });
     expect(screen.getByRole('button', { name: /^▶ Run$/ })).toBeDisabled();
     expect(screen.getByText(/waiting for a decision/i)).toBeInTheDocument();

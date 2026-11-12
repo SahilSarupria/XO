@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen } from './nav';
+import { openScreen, findStart } from './nav';
 
 async function waitingDecision(api: FakeXo) {
   const user = userEvent.setup();
@@ -22,7 +22,7 @@ async function waitingDecision(api: FakeXo) {
   await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
   await screen.findByText(/settlement amount must be recorded/i);
   await openScreen(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('region', { name: 'Inbox' });
   return user;
 }

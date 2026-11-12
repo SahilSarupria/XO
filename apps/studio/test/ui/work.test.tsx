@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, setDetailLevel } from './nav';
+import { openScreen, setDetailLevel, findStart, openWorkflow } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 
@@ -64,7 +64,7 @@ describe('Home', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByRole('region', { name: 'Inbox' });
     await goTo(user, 'Home');
     expect(await screen.findByText('Waiting for you')).toBeInTheDocument();
@@ -113,6 +113,7 @@ describe('Work: starting', () => {
     const api = new FakeXo();
     const user = await analysed(api);
     await goTo(user, 'Work');
+    await openWorkflow(user);
     expect((await screen.findAllByText('Record before payment')).length).toBeGreaterThan(0);
     expect(screen.getByText(/2 of 2 steps still need your approval/i)).toBeInTheDocument();
     expect(screen.getByText('Needs approval')).toBeInTheDocument(); // the badge never says "Ready to start" while approvals are missing
@@ -127,6 +128,7 @@ describe('Work: starting', () => {
     const user = await analysed(api);
     await goTo(user, 'Work');
     expect(await screen.findByText('Cannot run yet')).toBeInTheDocument();
+    await openWorkflow(user);
     expect(screen.getByRole('button', { name: /start this process/i })).toBeDisabled();
   });
 
@@ -135,7 +137,7 @@ describe('Work: starting', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     expect(await screen.findByRole('button', { name: /approve this step/i })).toBeInTheDocument();
     expect(posts(api, '/workflows/wf_1/executions')).toHaveLength(1);
     expect(api.workflowRuns).toHaveLength(1);
@@ -146,7 +148,7 @@ describe('Work: starting', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.dblClick(await screen.findByRole('button', { name: /start this process/i }));
+    await user.dblClick(await findStart(user));
     await screen.findByRole('button', { name: /approve this step/i });
     expect(posts(api, '/workflows/wf_1/executions')).toHaveLength(1);
   });
@@ -156,9 +158,10 @@ describe('Work: starting', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByRole('button', { name: /approve this step/i });
     await goTo(user, 'Work');
+    await openWorkflow(user);
     expect(await screen.findByRole('button', { name: /continue in tasks/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /start this process/i })).not.toBeInTheDocument();
   });
@@ -168,7 +171,7 @@ describe('Work: starting', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    const start = await screen.findByRole('button', { name: /start this process/i });
+    const start = await findStart(user);
     // another client starts it after this screen loaded
     const cid = api.compilations[0]!.compilationId;
     await api.fetch('/api/workspaces/w/workflows/wf_1/executions', {
@@ -187,7 +190,7 @@ describe('Work: starting', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    const start = await screen.findByRole('button', { name: /start this process/i });
+    const start = await findStart(user);
     api.approvals.all = false; // the server no longer agrees with what the screen showed
     await user.click(start);
     expect(await screen.findByText('Some steps need approval first')).toBeInTheDocument();
@@ -201,7 +204,7 @@ describe('Work: starting', () => {
     api.startBehavior = 'network_after_create';
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     expect(await screen.findByText(/the process did start/i)).toBeInTheDocument();
     expect(posts(api, '/workflows/wf_1/executions')).toHaveLength(1);
     expect(api.workflowRuns).toHaveLength(1);
@@ -213,7 +216,7 @@ describe('Work: starting', () => {
     api.startBehavior = 'network_before';
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     expect(await screen.findByText(/did not confirm whether this started/i)).toBeInTheDocument();
     expect(screen.getByText(/carries the same request key/i)).toBeInTheDocument();
     expect(posts(api, '/workflows/wf_1/executions')).toHaveLength(1);
@@ -225,7 +228,7 @@ async function withWaitingRun(api: FakeXo): Promise<U> {
   api.approvals.all = true;
   const user = await analysed(api);
   await goTo(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('button', { name: /approve this step/i });
   return user;
 }
@@ -351,7 +354,7 @@ describe('Work: request key for starts', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByRole('button', { name: /approve this step/i });
     const key = keyOf(startCalls(api)[0]!);
     expect(key).toMatch(/^[A-Za-z0-9_.:-]{8,128}$/);
@@ -363,7 +366,7 @@ describe('Work: request key for starts', () => {
     api.startBehavior = 'network_before';
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByText(/did not confirm whether this started/i);
     api.startBehavior = 'ok';
     await user.click(screen.getByRole('button', { name: /start this process/i }));
@@ -381,7 +384,7 @@ describe('Work: request key for starts', () => {
     api.hideRunsFromList = true; // and the follow-up read does not show it yet
     const user = await analysed(api);
     await goTo(user, 'Work');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByText(/found no run yet/i);
     expect(api.workflowRuns).toHaveLength(1);
     api.startBehavior = 'ok';
@@ -396,11 +399,11 @@ describe('Work: request key for starts', () => {
     api.approvals.all = true;
     const user = await analysed(api);
     await goTo(user, 'Work');
-    const start = await screen.findByRole('button', { name: /start this process/i });
+    const start = await findStart(user);
     api.denyNextStart = true;
     await user.click(start);
     await screen.findByText('Some steps need approval first');
-    await user.click(await screen.findByRole('button', { name: /start this process/i }));
+    await user.click(await findStart(user));
     await screen.findByRole('button', { name: /approve this step/i });
     const [a, b] = startCalls(api);
     expect(keyOf(a!)).toBeDefined();

@@ -45,6 +45,21 @@ export const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<WorkflowExecutionStatus> = 
   'rejected',
 ]);
 
+/**
+ * Present on a run made in shadow mode ("practice"): the steps XO could carry out were carried out, but a step that
+ * needs a person did NOT create a task or ask anyone. The run stops there and records what would have happened. The
+ * platform has no external connectors today, so a shadow run changes nothing outside the workspace's own records.
+ */
+export interface ShadowInfo {
+  /** `would_complete`: every step could be carried out without a person. `would_escalate`: it stopped at a step that needs a person. Absent while the run is still going. */
+  readonly outcome?: 'would_complete' | 'would_escalate';
+  /** For `would_escalate`: the step that needs a person. */
+  readonly stepIndex?: number;
+  readonly stepName?: string;
+}
+/** What started a run, when not a person pressing Start: a webhook call or a schedule. Absent for a manual start. */
+export type RunTrigger = 'webhook' | 'schedule';
+
 export interface WorkflowStepError {
   readonly code: string;
   readonly message: string;
@@ -113,6 +128,10 @@ export interface WorkflowExecutionRecord {
   readonly workflowName: string;
   /** Present only for a run started from a saved draft: which draft revision, the path taken, and each branch decision with the value it used. */
   readonly draft?: DraftRunInfo;
+  /** Present only for a shadow (practice) run. See {@link ShadowInfo}. */
+  readonly shadow?: ShadowInfo;
+  /** Present only when a webhook call or a schedule started this run. */
+  readonly trigger?: RunTrigger;
   /**
    * Optimistic-concurrency counter. A freshly created record has
    * `revision: 0`; every persisted update requires the caller's
@@ -168,6 +187,8 @@ export interface CreateWorkflowExecutionInput {
   readonly workflowId: string;
   readonly workflowName: string;
   readonly draft?: DraftRunInfo;
+  readonly shadow?: ShadowInfo;
+  readonly trigger?: RunTrigger;
   readonly input: Readonly<Record<string, unknown>>;
   readonly steps: readonly Pick<WorkflowStepState, 'stepId' | 'order' | 'capabilityId' | 'capabilityName'>[];
   readonly sourceId?: string;

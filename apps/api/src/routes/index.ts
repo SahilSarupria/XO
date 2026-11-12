@@ -11,6 +11,7 @@ import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
 import { registerProcedureRoutes } from './procedure-routes.js';
+import { registerWorkflowControlsRoutes } from './workflow-controls-routes.js';
 import { registerWorkspaceAdminRoutes } from './workspace-admin-routes.js';
 import { registerSettingsRoutes } from './settings-routes.js';
 import { registerNotificationRoutes } from './notification-routes.js';
@@ -92,6 +93,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
+  registerWorkflowControlsRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerProcedureRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit, {
     ...(deps.procedureStepTimeoutMs !== undefined ? { stepTimeoutMs: deps.procedureStepTimeoutMs } : {}),
     ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),

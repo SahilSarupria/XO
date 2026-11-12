@@ -34,7 +34,7 @@ export const isBuilderSection = (s: Section): boolean => s in BUILDER_SECTIONS;
 
 /** `#/work` -> 'work'. Anything unrecognised is 'home'; the hash never grants anything, it only selects a screen. */
 export function parseSection(hash: string): Section {
-  const name = hash.replace(/^#\/?/, '');
+  const name = hash.replace(/^#\/?/, '').split(/[/?]/)[0] ?? '';
   return (SECTIONS as readonly string[]).includes(name) ? (name as Section) : 'home';
 }
 

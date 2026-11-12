@@ -450,6 +450,10 @@ export interface WorkflowRun {
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly initiator?: { readonly kind: string; readonly id: string };
+  /** Present only for a practice (shadow) run: it stopped before the first step that needs a person, without asking anyone. */
+  readonly shadow?: { readonly outcome?: 'would_complete' | 'would_escalate'; readonly stepName?: string };
+  /** Present only when a webhook call or a schedule started the run. */
+  readonly trigger?: 'webhook' | 'schedule';
   /** Present only for a run started from a saved draft: which draft revision, the path taken and each branch decision. */
   readonly draft?: {
     readonly definitionId: string;
@@ -530,6 +534,17 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
       }),
     };
   }
+  let shadow: WorkflowRun['shadow'];
+  if (o['shadow'] !== undefined) {
+    const sh = obj(o['shadow'], `${path}.shadow`);
+    const outcome = optStr(sh['outcome'], `${path}.shadow.outcome`);
+    if (outcome !== undefined && outcome !== 'would_complete' && outcome !== 'would_escalate')
+      throw new WireParseError(`${path}.shadow.outcome`, 'would_complete or would_escalate');
+    const stepName = optStr(sh['stepName'], `${path}.shadow.stepName`);
+    shadow = { ...(outcome !== undefined ? { outcome } : {}), ...(stepName !== undefined ? { stepName } : {}) };
+  }
+  const trig = optStr(o['trigger'], `${path}.trigger`);
+  if (trig !== undefined && trig !== 'webhook' && trig !== 'schedule') throw new WireParseError(`${path}.trigger`, 'webhook or schedule');
   const currentStepExecutionId = optStr(o['currentStepExecutionId'], `${path}.currentStepExecutionId`);
   const completedAt = optStr(o['completedAt'], `${path}.completedAt`);
   const errorCode = optStr(o['errorCode'], `${path}.errorCode`);
@@ -551,6 +566,8 @@ export function parseWorkflowRun(v: unknown, path = 'workflowExecution'): Workfl
     ...(errorCode !== undefined ? { errorCode } : {}),
     ...(errorMessage !== undefined ? { errorMessage } : {}),
     ...(initiator !== undefined ? { initiator } : {}),
+    ...(shadow !== undefined ? { shadow } : {}),
+    ...(trig !== undefined ? { trigger: trig } : {}),
     ...(draft !== undefined ? { draft } : {}),
     raw: v,
   };
@@ -681,4 +698,153 @@ export function parseRegistryInspect(v: unknown): { record: RegistryPackage; run
     record: parseRegistryRecord(o['record']),
     runs: arr(o['benchmarkRuns'], 'benchmarkRuns').map((r, i) => parseBenchmarkRun(r, `benchmarkRuns[${i}]`)),
   };
+}
+
+// ---------------------------------------------------------------- workflow controls
+/** draft: only a person starts it. shadow ("practising"): runs are practice. live: runs are real. paused: nothing starts. */
+export type WorkflowMode = 'draft' | 'shadow' | 'live' | 'paused';
+export const WORKFLOW_MODES: readonly WorkflowMode[] = ['draft', 'shadow', 'live', 'paused'];
+export type ReadinessId = 'rules' | 'runnable' | 'signed' | 'limits' | 'practice';
+export interface ReadinessItem {
+  readonly id: ReadinessId;
+  readonly ok: boolean;
+  /** One plain sentence from the platform: what is true, or what is missing. */
+  readonly message: string;
+}
+export interface ShadowSummary {
+  readonly runs: number;
+  readonly wouldComplete: number;
+  readonly wouldEscalate: number;
+  readonly reviewed: number;
+  readonly agreed: number;
+}
+export interface ShadowCase {
+  readonly workflowExecutionId: string;
+  readonly createdAt: string;
+  readonly outcome: 'would_complete' | 'would_escalate';
+  readonly stepName?: string;
+  readonly judgement?: 'automatic' | 'person';
+}
+/** What the platform reports about one workflow's controls. */
+export interface WorkflowControl {
+  readonly workflowId: string;
+  readonly compilationId: string;
+  readonly mode: WorkflowMode;
+  readonly triggers: {
+    readonly webhook: boolean;
+    readonly schedule?: {
+      readonly everyMinutes: number;
+      readonly lastFiredAt: string;
+      readonly lastOutcome?: string;
+      readonly input?: Readonly<Record<string, unknown>>;
+    };
+  };
+  readonly limits: { readonly dailyRunCap?: number; readonly runsToday: number };
+  readonly signOff?: { readonly identityId: string; readonly displayName?: string; readonly at: string; readonly current: boolean };
+  readonly readiness: readonly ReadinessItem[];
+  readonly canGoLive: boolean;
+  readonly shadow: ShadowSummary;
+  readonly shadowCases: readonly ShadowCase[];
+  readonly revision: number;
+}
+export interface WorkflowControls {
+  readonly paused: boolean;
+  readonly pausedAt?: string;
+  readonly pausedBy?: string;
+  readonly reason?: string;
+  readonly deployments: readonly WorkflowControl[];
+}
+
+export function parseWorkflowControl(v: unknown, path = 'workflowControl'): WorkflowControl {
+  const o = obj(v, path);
+  const mode = str(o['mode'], `${path}.mode`);
+  if (!(WORKFLOW_MODES as readonly string[]).includes(mode)) throw new WireParseError(`${path}.mode`, 'draft, shadow, live or paused');
+  const tr = obj(o['triggers'], `${path}.triggers`);
+  let schedule: WorkflowControl['triggers']['schedule'];
+  if (tr['schedule'] !== undefined) {
+    const sc = obj(tr['schedule'], `${path}.triggers.schedule`);
+    const lastOutcome = optStr(sc['lastOutcome'], `${path}.triggers.schedule.lastOutcome`);
+    const input = sc['input'] === undefined ? undefined : obj(sc['input'], `${path}.triggers.schedule.input`);
+    schedule = {
+      everyMinutes: num(sc['everyMinutes'], `${path}.triggers.schedule.everyMinutes`),
+      lastFiredAt: str(sc['lastFiredAt'], `${path}.triggers.schedule.lastFiredAt`),
+      ...(lastOutcome !== undefined ? { lastOutcome } : {}),
+      ...(input !== undefined ? { input } : {}),
+    };
+  }
+  const lim = obj(o['limits'], `${path}.limits`);
+  const cap = lim['dailyRunCap'] === undefined ? undefined : num(lim['dailyRunCap'], `${path}.limits.dailyRunCap`);
+  let signOff: WorkflowControl['signOff'];
+  if (o['signOff'] !== undefined) {
+    const so = obj(o['signOff'], `${path}.signOff`);
+    const displayName = optStr(so['displayName'], `${path}.signOff.displayName`);
+    signOff = {
+      identityId: str(so['identityId'], `${path}.signOff.identityId`),
+      ...(displayName !== undefined ? { displayName } : {}),
+      at: str(so['at'], `${path}.signOff.at`),
+      current: bool(so['current'], `${path}.signOff.current`),
+    };
+  }
+  const sh = obj(o['shadow'], `${path}.shadow`);
+  return {
+    workflowId: str(o['workflowId'], `${path}.workflowId`),
+    compilationId: str(o['compilationId'], `${path}.compilationId`),
+    mode: mode as WorkflowMode,
+    triggers: { webhook: bool(tr['webhook'], `${path}.triggers.webhook`), ...(schedule !== undefined ? { schedule } : {}) },
+    limits: { ...(cap !== undefined ? { dailyRunCap: cap } : {}), runsToday: num(lim['runsToday'], `${path}.limits.runsToday`) },
+    ...(signOff !== undefined ? { signOff } : {}),
+    readiness: arr(o['readiness'], `${path}.readiness`).map((r, i) => {
+      const ro = obj(r, `${path}.readiness[${i}]`);
+      return {
+        id: str(ro['id'], `${path}.readiness[${i}].id`) as ReadinessId,
+        ok: bool(ro['ok'], `${path}.readiness[${i}].ok`),
+        message: str(ro['message'], `${path}.readiness[${i}].message`),
+      };
+    }),
+    canGoLive: bool(o['canGoLive'], `${path}.canGoLive`),
+    shadow: {
+      runs: num(sh['runs'], `${path}.shadow.runs`),
+      wouldComplete: num(sh['wouldComplete'], `${path}.shadow.wouldComplete`),
+      wouldEscalate: num(sh['wouldEscalate'], `${path}.shadow.wouldEscalate`),
+      reviewed: num(sh['reviewed'], `${path}.shadow.reviewed`),
+      agreed: num(sh['agreed'], `${path}.shadow.agreed`),
+    },
+    shadowCases: arr(o['shadowCases'], `${path}.shadowCases`).map((c, i) => {
+      const co = obj(c, `${path}.shadowCases[${i}]`);
+      const outcome = str(co['outcome'], `${path}.shadowCases[${i}].outcome`);
+      if (outcome !== 'would_complete' && outcome !== 'would_escalate')
+        throw new WireParseError(`${path}.shadowCases[${i}].outcome`, 'would_complete or would_escalate');
+      const stepName = optStr(co['stepName'], `${path}.shadowCases[${i}].stepName`);
+      const j = optStr(co['judgement'], `${path}.shadowCases[${i}].judgement`);
+      if (j !== undefined && j !== 'automatic' && j !== 'person')
+        throw new WireParseError(`${path}.shadowCases[${i}].judgement`, 'automatic or person');
+      return {
+        workflowExecutionId: str(co['workflowExecutionId'], `${path}.shadowCases[${i}].workflowExecutionId`),
+        createdAt: str(co['createdAt'], `${path}.shadowCases[${i}].createdAt`),
+        outcome,
+        ...(stepName !== undefined ? { stepName } : {}),
+        ...(j !== undefined ? { judgement: j } : {}),
+      };
+    }),
+    revision: num(o['revision'], `${path}.revision`),
+  };
+}
+export function parseWorkflowControls(v: unknown): WorkflowControls {
+  const o = obj(v, 'body');
+  const pausedAt = optStr(o['pausedAt'], 'pausedAt');
+  const pausedBy = optStr(o['pausedBy'], 'pausedBy');
+  const reason = optStr(o['reason'], 'reason');
+  return {
+    paused: bool(o['paused'], 'paused'),
+    ...(pausedAt !== undefined ? { pausedAt } : {}),
+    ...(pausedBy !== undefined ? { pausedBy } : {}),
+    ...(reason !== undefined ? { reason } : {}),
+    deployments: arr(o['deployments'], 'deployments').map((d, i) => parseWorkflowControl(d, `deployments[${i}]`)),
+  };
+}
+/** The reply to pause/resume: just the switch. */
+export function parsePauseState(v: unknown): { paused: boolean; reason?: string } {
+  const o = obj(v, 'body');
+  const reason = optStr(o['reason'], 'reason');
+  return { paused: bool(o['paused'], 'paused'), ...(reason !== undefined ? { reason } : {}) };
 }

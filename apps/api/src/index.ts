@@ -1,7 +1,13 @@
 import { ConsoleLogger } from '@xo/logger';
 import { loadConfig } from './config.js';
 import { createHttpServer } from './server.js';
+import { assertTrustPolicyAllowedHere, loadOperatorTrustPolicy } from '@xo/package-sdk';
+import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { AuditService } from './audit/audit-service.js';
+import { NonProductionAuditSink } from '@xo/audit';
+import { EI_AUDIT_EXTENSION_SCHEMAS } from '@xo/connect';
 import { FileAuditStore, resolveAuditConfig, type AuditSink } from '@xo/audit';
+import { schedulerDepsFrom, startScheduler } from './workflow-controls/scheduler.js';
 
 export { createHttpServer, buildRouter } from './server.js';
 export type { ServerDeps } from './server.js';
@@ -38,10 +44,35 @@ if (isMainModule()) {
       });
     }
     // Invalid or incomplete authentication configuration (OIDC, trust policy) must stop startup visibly, never degrade silently.
-    const server = createHttpServer({ logger, apiKeysDir: config.apiKeysDir, ...(auditSink !== undefined ? { auditSink } : {}) });
+    // Resolve the trust policy and the audit sink HERE so the server and the schedule trigger share exactly the same enforcement
+    // inputs (same policy decision point, same audit sink, same package trust).
+    const trust = loadOperatorTrustPolicy();
+    if (!trust.ok) throw trust.error;
+    const allowed = assertTrustPolicyAllowedHere(trust.value);
+    if (!allowed.ok) throw allowed.error;
+    const sink = auditSink ?? new NonProductionAuditSink(undefined, { extensionSchemas: EI_AUDIT_EXTENSION_SCHEMAS });
+    const server = createHttpServer({ logger, apiKeysDir: config.apiKeysDir, auditSink: sink, packageTrustPolicy: trust.value });
     server.listen(config.port, config.host, () => {
       logger.info(`listening on http://${config.host}:${config.port}`);
     });
+    // Schedule triggers fire from this process. Set XO_SCHEDULER=off to turn them off (for example on a second instance).
+    if (process.env['XO_SCHEDULER'] !== 'off') {
+      const stop = startScheduler(
+        schedulerDepsFrom(
+          config.workspacesDir,
+          config.workspaceDataDir,
+          {
+            // The default policy (deny everything that declares a permission), exactly as the server uses when no policy is injected.
+            permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+            audit: new AuditService(sink, (info) => logger.error(`audit write failed (${info.phase}): ${info.code}`)),
+            packageTrustPolicy: trust.value,
+          },
+          (line) => logger.warn(line),
+        ),
+      );
+      server.on('close', stop);
+      logger.info('schedule triggers are on (XO_SCHEDULER=off to disable)');
+    }
   })().catch((cause: unknown) => {
     logger.error(`startup aborted: ${cause instanceof Error ? cause.message : 'unknown error'}`);
     process.exit(1);

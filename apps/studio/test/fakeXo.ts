@@ -106,6 +106,18 @@ export class FakeXo {
   /** Workflow runs, in the platform's real record shape (see scripts/live-smoke.mjs). */
   workflowRuns: Array<Record<string, any>> = [];
   workflowExecutable = true;
+  /** Workflow controls (mode, triggers, limit, sign-off, practice reviews, pause). `false` simulates a platform that predates them (404). */
+  supportsControls = true;
+  controls: {
+    paused: boolean;
+    reason?: string;
+    mode: 'draft' | 'shadow' | 'live' | 'paused';
+    webhook: boolean;
+    schedule?: { everyMinutes: number; lastFiredAt: string; input?: Record<string, unknown> };
+    cap?: number;
+    signOff?: { identityId: string; displayName?: string; at: string };
+    reviews: Record<string, 'automatic' | 'person'>;
+  } = { paused: false, mode: 'draft', webhook: false, reviews: {} };
   /** 'ok' | throw before the server sees it | throw AFTER the server created the run (an ambiguous failure). */
   startBehavior: 'ok' | 'network_before' | 'network_after_create' = 'ok';
   resumeBehavior: 'ok' | 'network_before' | 'network_after_apply' = 'ok';
@@ -295,6 +307,127 @@ export class FakeXo {
       return reply(200, { record, benchmarkRuns: this.benchmarkRuns.filter((b) => b.packageId === record.id) });
     }
 
+    // ---- workflow controls (real route/response shapes; the refusals mirror the platform's 412 reasons)
+    const bd = body as unknown as Record<string, any>;
+    const ctlMatch =
+      /\/workspaces\/[^/]+\/workflow-controls(?:\/(pause|resume)|\/workflows\/([^/]+)\/(mode|limits|triggers|sign-off|shadow-reviews))?$/.exec(
+        path,
+      );
+    if (ctlMatch !== null) {
+      if (!this.supportsControls) return reply(404, { error: { code: 'XO_NOT_FOUND', message: 'no such route' } });
+      const c = this.controls;
+      const latest = this.compilations[this.compilations.length - 1];
+      const rulesOk = ['cap_det', 'cap_hitl'].every((id) => this.approvals.has(`${latest?.compilationId}:${id}`));
+      const practiced = () => this.workflowRuns.filter((r) => r.shadow !== undefined && r.status === 'succeeded');
+      const view = () => {
+        const today = this.workflowRuns.length;
+        const cases = practiced()
+          .slice(-10)
+          .reverse()
+          .map((r) => ({
+            workflowExecutionId: r.workflowExecutionId,
+            createdAt: r.createdAt,
+            outcome: r.shadow.outcome ?? 'would_complete',
+            ...(r.shadow.stepName !== undefined ? { stepName: r.shadow.stepName } : {}),
+            ...(c.reviews[r.workflowExecutionId] !== undefined ? { judgement: c.reviews[r.workflowExecutionId] } : {}),
+          }));
+        const judged = cases.filter((k) => k.judgement !== undefined);
+        const readiness = [
+          { id: 'rules', ok: rulesOk, message: rulesOk ? 'Every rule is approved' : 'Some rules still need approval' },
+          {
+            id: 'runnable',
+            ok: this.workflowExecutable,
+            message: this.workflowExecutable ? 'The platform can run this' : 'The platform cannot run this yet',
+          },
+          {
+            id: 'signed',
+            ok: c.signOff !== undefined,
+            message: c.signOff !== undefined ? 'This version is signed off' : 'Nobody has signed this version off yet',
+          },
+          { id: 'limits', ok: c.cap !== undefined, message: c.cap !== undefined ? `At most ${c.cap} runs a day` : 'No daily limit is set' },
+          {
+            id: 'practice',
+            ok: practiced().length > 0,
+            message: practiced().length > 0 ? `Practised on ${practiced().length} cases` : 'It has not practised on any case yet',
+          },
+        ];
+        return {
+          workflowId: 'wf_1',
+          compilationId: latest?.compilationId,
+          mode: c.mode,
+          triggers: { manual: true, webhook: c.webhook, ...(c.schedule !== undefined ? { schedule: c.schedule } : {}) },
+          limits: { ...(c.cap !== undefined ? { dailyRunCap: c.cap } : {}), runsToday: today },
+          ...(c.signOff !== undefined ? { signOff: { ...c.signOff, current: true } } : {}),
+          readiness,
+          canGoLive: readiness.every((r) => r.ok),
+          shadow: {
+            runs: cases.length,
+            wouldComplete: cases.filter((k) => k.outcome === 'would_complete').length,
+            wouldEscalate: cases.filter((k) => k.outcome === 'would_escalate').length,
+            reviewed: judged.length,
+            agreed: judged.filter((k) => (k.judgement === 'automatic') === (k.outcome === 'would_complete')).length,
+          },
+          shadowCases: cases,
+          revision: 1,
+        };
+      };
+      const refuse = (message: string, reason = 'not_ready') =>
+        reply(412, { error: { code: 'XO_PRECONDITION_FAILED', message, context: { reason } } });
+      if (method === 'GET') {
+        if (latest === undefined) return reply(200, { paused: c.paused, deployments: [] });
+        return reply(200, { paused: c.paused, ...(c.reason !== undefined ? { reason: c.reason } : {}), deployments: [view()] });
+      }
+      if (ctlMatch[1] === 'pause') {
+        c.paused = true;
+        if (typeof bd.reason === 'string') c.reason = bd.reason;
+        return reply(200, { paused: true, ...(c.reason !== undefined ? { reason: c.reason } : {}) });
+      }
+      if (ctlMatch[1] === 'resume') {
+        c.paused = false;
+        delete c.reason;
+        return reply(200, { paused: false });
+      }
+      switch (ctlMatch[3]) {
+        case 'mode': {
+          const to = bd.mode as typeof c.mode;
+          const v = view();
+          const missing = (ids: string[]) => v.readiness.filter((r) => ids.includes(r.id) && !r.ok).map((r) => r.message);
+          const need =
+            to === 'shadow'
+              ? missing(['rules', 'runnable'])
+              : to === 'live'
+                ? missing(['rules', 'runnable', 'signed', 'limits', 'practice'])
+                : [];
+          if (need.length > 0) return refuse(`It cannot move to ${to} yet: ${need.join('; ')}.`);
+          c.mode = to;
+          return reply(200, view());
+        }
+        case 'limits':
+          if (bd.dailyRunCap === null) delete c.cap;
+          else c.cap = bd.dailyRunCap;
+          return reply(200, view());
+        case 'triggers':
+          if (typeof bd.webhook === 'boolean') c.webhook = bd.webhook;
+          if (bd.schedule === null) delete c.schedule;
+          else if (bd.schedule !== undefined)
+            c.schedule = {
+              everyMinutes: bd.schedule.everyMinutes,
+              lastFiredAt: new Date().toISOString(),
+              ...(bd.schedule.input !== undefined ? { input: bd.schedule.input } : {}),
+            };
+          return reply(200, view());
+        case 'sign-off':
+          if (!rulesOk || !this.workflowExecutable) return refuse('It cannot be signed off yet: Some rules still need approval.');
+          c.signOff = { identityId: 'sally', displayName: 'Sally', at: new Date().toISOString() };
+          return reply(200, view());
+        case 'shadow-reviews':
+          if (!practiced().some((r) => r.workflowExecutionId === bd.workflowExecutionId))
+            return reply(404, { error: { code: 'XO_NOT_FOUND', message: 'practice run not found' } });
+          c.reviews[bd.workflowExecutionId] = bd.judgement;
+          return reply(200, view());
+      }
+    }
+
     // ---- workflows (real route/response shapes; checked live by scripts/live-smoke.mjs)
     if (method === 'GET' && path.endsWith('/workflows')) {
       const latest = this.compilations[this.compilations.length - 1];
@@ -350,6 +483,18 @@ export class FakeXo {
           );
         }
       }
+      if (this.supportsControls) {
+        const c = this.controls;
+        const reason = c.paused
+          ? 'workspace_paused'
+          : c.mode === 'paused'
+            ? 'workflow_paused'
+            : c.cap !== undefined && this.workflowRuns.length >= c.cap
+              ? 'daily_cap_reached'
+              : undefined;
+        if (reason !== undefined)
+          return reply(412, { error: { code: 'XO_PRECONDITION_FAILED', message: `Start refused: ${reason}`, context: { reason } } });
+      }
       const denials = ['cap_det', 'cap_hitl']
         .filter((id) => this.denyNextStart || !this.approvals.has(`${body.compilationId}:${id}`))
         .map((id) => `capability "${id}" is not approved for execution in workspace "${m![1]}"`);
@@ -386,6 +531,21 @@ export class FakeXo {
         createdAt: now,
         updatedAt: now,
       };
+      if (this.supportsControls && this.controls.mode === 'shadow') {
+        // A practice run: carries out what XO can, stops before the first step that needs a person, asks nobody.
+        Object.assign(run, {
+          status: 'succeeded',
+          currentStepIndex: null,
+          completedAt: now,
+          steps: [
+            { stepId: 'cap_det#0', order: 0, capabilityId: 'cap_det', capabilityName: 'Record before payment', status: 'succeeded' },
+            { stepId: 'cap_hitl#1', order: 1, capabilityId: 'cap_hitl', capabilityName: 'Review not covered', status: 'skipped' },
+          ],
+          shadow: { outcome: 'would_escalate', stepName: 'Review not covered' },
+        });
+        delete (run as Record<string, unknown>)['pendingHumanTask'];
+        delete (run as Record<string, unknown>)['currentStepExecutionId'];
+      }
       this.workflowRuns.push(run);
       if (idemKey !== undefined)
         this.startKeys.set(idemKey, { runId: run.workflowExecutionId, compilationId: body.compilationId, workflowId: m[2]! });

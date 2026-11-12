@@ -28,6 +28,8 @@ import { REPLAY_HEADER } from '../idempotency/idempotency-http.js';
 import { newCorrelationId } from '../audit/audit-service.js';
 import type { AuditService } from '../audit/audit-service.js';
 import type { PermissionManager } from '@xo/permissions';
+import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
+import { enforceNotPaused } from '../workflow-controls/service.js';
 import { WorkflowConflictError } from '../workflows/workflow-execution.js';
 import { nodeKindSupport, type DefinitionInput } from '../workflow-definitions/definition.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
@@ -233,6 +235,8 @@ export function registerWorkflowDefinitionRoutes(
       workflowStore: new FsWorkflowExecutionStore(workspaceWorkflowExecutionsStore(w, dataConfig)),
     };
     const plan = analysis.plan;
+    // The workspace-wide pause stops a saved draft from starting too.
+    await enforceNotPaused(new FsControlsStore(workspaceStateStore(w, dataConfig), w.workspaceId));
     // M6: optional; a malformed key is a 400 before anything is started and its value is never echoed.
     const idemKey = readIdempotencyKey(req.headers);
     if (!idemKey.ok) throw idemKey.error;

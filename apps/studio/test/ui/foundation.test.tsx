@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, setDetailLevel } from './nav';
+import { openScreen, setDetailLevel, findStart, openWorkflow } from './nav';
 
 type U = ReturnType<typeof userEvent.setup>;
 const go = (user: U, name: RegExp | string) => openScreen(user, name);
@@ -38,7 +38,7 @@ async function returnLater(api: FakeXo): Promise<U> {
 }
 async function startRun(user: U) {
   await go(user, 'Work');
-  await user.click(await screen.findByRole('button', { name: /start this process/i }));
+  await user.click(await findStart(user));
   await screen.findByRole('button', { name: /approve this step/i });
 }
 
@@ -65,6 +65,7 @@ describe('a failed load is never presented as an empty result', () => {
     await screen.findByText(/could not check approvals/i);
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
     expect(screen.getByText(/could not check approvals/i)).toBeInTheDocument();
+    await openWorkflow(user);
     expect(screen.getByRole('button', { name: /start this process/i })).toBeDisabled();
     api.failing.clear();
     await user.click(screen.getByRole('button', { name: /try again/i }));
