@@ -11,6 +11,7 @@ import { BodyTooLargeError, readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
 import { createAuthMiddleware, type OidcAuthDeps } from './http/auth.js';
+import { createAuthorizationPolicy } from './workspace/authorizer.js';
 import type { ApiKeyStore } from './auth/api-key-store.interface.js';
 import { FsApiKeyStore } from './auth/fs-api-key-store.js';
 import type { WorkspaceStore } from './workspace/workspace.js';
@@ -18,7 +19,7 @@ import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import type { ConnectService } from '@xo/connect';
-import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
+import { PermissionManager, type PermissionPolicy } from '@xo/permissions';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
@@ -278,7 +279,14 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(passwordBundle !== undefined ? { extraPublicPaths: PASSWORD_PUBLIC_PATHS } : {}),
     }),
   );
-  const permissionManager = new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) });
+  // UW-1 (ADR 0010): the instance's single authorization point. Workspace roles are a ceiling the operator policy can only narrow;
+  // every other domain is decided by the operator policy as before. Attached to every request so all routes ask the same object.
+  const permissionManager = new PermissionManager({ policy: createAuthorizationPolicy(deps.permissionPolicy) });
+  router.use(async (req, next) => {
+    req.permissionManager = permissionManager;
+    req.workspaceDataConfig = workspaceDataConfig;
+    return next();
+  });
   if (deps.auditSink === undefined && process.env['NODE_ENV'] === 'production') {
     throw new AuditError(ErrorCode.AUDIT_CONFIG_INVALID, 'a durable audit sink is required in production (see XO_AUDIT_* configuration)');
   }

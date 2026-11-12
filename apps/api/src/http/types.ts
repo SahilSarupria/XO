@@ -1,7 +1,8 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
 import type { Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
-import type { AuthenticatedPrincipal } from '@xo/permissions';
+import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
+import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { ApiKeyIdentity } from '../auth/identity.js';
 
 /**
@@ -57,6 +58,15 @@ export interface ApiRequest {
    * derived from request data.
    */
   principal?: AuthenticatedPrincipal;
+
+  /**
+   * UW-1 (ADR 0010) — the instance's single authorization point, attached by `buildRouter` to every request. Route code asks it through
+   * `requirePermission`; it is never derived from request data.
+   */
+  permissionManager?: PermissionManager;
+
+  /** UW-1 — the server's workspace data configuration, attached by `buildRouter` so a denial anywhere can be written to the workspace audit log. */
+  workspaceDataConfig?: WorkspaceDataConfig;
 
   /**
    * Which kind of credential authenticated this request. Informational (log /

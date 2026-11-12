@@ -184,8 +184,12 @@ test('humantask (F-1 Option A): a resolver whose grant was withdrawn gets 200; t
   });
   const inner = new RuleBasedPolicy([{ id: 'starter', effect: 'ALLOW', match: { permission: FILE, principalId: 'test-identity' } }]);
   let revoked = false;
+  // UW-1 (ADR 0010): operator policy now also governs workspace operations (it can narrow the role ceiling). The withdrawal this test
+  // simulates is of the FILE grant only, so the DENY is scoped to FILE. Before UW-1 an unscoped DENY had the same effect here, because
+  // operator policy never saw workspace checks; an unscoped DENY would now (correctly) suspend the resolver's workspace access too,
+  // and the request would stop at the workspace gate instead of reaching the capability check this test pins. Assertions unchanged.
   const policy: PermissionPolicy = {
-    evaluate: (r) => (revoked ? { effect: 'DENY', reason: 'grant withdrawn (test)' } : inner.evaluate(r)),
+    evaluate: (r) => (revoked && r.permission === FILE ? { effect: 'DENY', reason: 'grant withdrawn (test)' } : inner.evaluate(r)),
   };
   await withEnv({ graph, policy }, async (env) => {
     for (const id of [IDS.hitlA, IDS.hitlB, IDS.hitlC]) await approve(env, id);

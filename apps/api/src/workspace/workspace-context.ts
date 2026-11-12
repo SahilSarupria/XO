@@ -5,7 +5,8 @@ import { LocalFsBlobStore } from '@xo/storage';
 import { isAuthenticatedPrincipal, type AuthenticatedPrincipal } from '@xo/permissions';
 import type { ApiRequest } from '../http/types.js';
 import { roleOf, type WorkspaceRecord, type WorkspaceRole, type WorkspaceStore } from './workspace.js';
-import { assertPermission, WorkspacePermissionDeniedError, type WorkspacePermission } from './permissions.js';
+import { roleAllows, WorkspacePermissionDeniedError, type WorkspacePermission } from './permissions.js';
+import { fallbackWorkspaceManager, isWorkspaceAllowed } from './authorizer.js';
 
 /**
  * The one thing every workspace-*bound* route (package/registry/runtime)
@@ -81,6 +82,22 @@ export async function requireOwnedWorkspace(req: ApiRequest, workspaceStore: Wor
     // doc comment above): never leak that a given workspace id belongs
     // to someone.
     throw new NotFoundError(`workspace "${workspaceId}"`);
+  }
+
+  // UW-1 (ADR 0010): membership (above) answers "may this caller know the workspace exists"; the single authorization point answers
+  // "may this caller read it". Every role grants read, so the default answer is unchanged; an operator DENY (for example suspending one
+  // principal) now takes effect on every workspace route, reads included. The denial is a 403, audited like any other.
+  if (!(await hasPermission(req, found.value, 'read'))) {
+    const role = roleOf(found.value, req.identity.identityId) as WorkspaceRole;
+    if (req.workspaceDataConfig !== undefined) {
+      const { recordAudit } = await import('../audit/record.js');
+      await recordAudit(req, found.value, req.workspaceDataConfig, {
+        event: 'access.denied',
+        result: 'denied',
+        detail: { permission: 'read', role, deniedBy: 'policy', attempted: `${req.method} workspace resource` },
+      });
+    }
+    throw new WorkspacePermissionDeniedError('read', role, found.value.workspaceId, roleAllows(role, 'read') ? 'policy' : 'role');
   }
 
   return found.value;
@@ -197,8 +214,27 @@ export function callerRole(req: ApiRequest, workspace: WorkspaceRecord): Workspa
 }
 
 /**
- * Require `permission` for the caller in `workspace` (call after `requireOwnedWorkspace`). A refusal is a 403 and is
- * written to the workspace audit log as `access.denied` before it is thrown — the one place denials are recorded.
+ * Whether the caller holds `permission` in `workspace`, asked of the instance's single authorization point (ADR 0010). No audit, no
+ * throw: for routes that accept either of two permissions. A caller with no role in the workspace is `false`.
+ */
+export async function hasPermission(req: ApiRequest, workspace: WorkspaceRecord, permission: WorkspacePermission): Promise<boolean> {
+  const identityId = req.identity?.identityId;
+  if (identityId === undefined) return false;
+  const role = roleOf(workspace, identityId);
+  if (role === undefined) return false;
+  return isWorkspaceAllowed(req.permissionManager ?? fallbackWorkspaceManager(), {
+    principal: req.principal ?? { kind: 'human', id: identityId },
+    role,
+    workspaceId: workspace.workspaceId,
+    permission,
+  });
+}
+
+/**
+ * Require `permission` for the caller in `workspace` (call after `requireOwnedWorkspace`). The decision is made by the instance's single
+ * authorization point (UW-1, ADR 0010): `PermissionManager` with the workspace role table as a ceiling that operator policy can only
+ * narrow. The role comes from the workspace's own membership records, never from the request. A refusal is a 403 and is written to the
+ * workspace audit log as `access.denied` before it is thrown — the one place denials are recorded.
  */
 export async function requirePermission(
   req: ApiRequest,
@@ -209,20 +245,26 @@ export async function requirePermission(
 ): Promise<WorkspaceRole> {
   const identityId = req.identity?.identityId;
   if (identityId === undefined) throw new XoError(ErrorCode.UNKNOWN, 'internal error: permission check with no resolved identity');
-  try {
-    return assertPermission(workspace, identityId, permission);
-  } catch (cause) {
-    if (cause instanceof WorkspacePermissionDeniedError) {
-      const { recordAudit } = await import('../audit/record.js');
-      await recordAudit(req, workspace, dataConfig, {
-        event: 'access.denied',
-        result: 'denied',
-        ...(attempted?.target !== undefined ? { target: attempted.target } : {}),
-        detail: { permission, role: cause.role, ...(attempted !== undefined ? { attempted: attempted.action } : {}) },
-      });
-    }
-    throw cause;
+  const role = roleOf(workspace, identityId);
+  if (role === undefined) {
+    // Unreachable through the routes (membership is checked first and yields 404), kept fail-closed.
+    throw new XoError(ErrorCode.UNKNOWN, 'internal error: permission check for an identity with no workspace role');
   }
+  if (await hasPermission(req, workspace, permission)) return role;
+  const denied = new WorkspacePermissionDeniedError(
+    permission,
+    role,
+    workspace.workspaceId,
+    roleAllows(role, permission) ? 'policy' : 'role',
+  );
+  const { recordAudit } = await import('../audit/record.js');
+  await recordAudit(req, workspace, dataConfig, {
+    event: 'access.denied',
+    result: 'denied',
+    ...(attempted?.target !== undefined ? { target: attempted.target } : {}),
+    detail: { permission, role, deniedBy: denied.deniedBy, ...(attempted !== undefined ? { attempted: attempted.action } : {}) },
+  });
+  throw denied;
 }
 
 /** Tenth sibling — the raw `.xo` archives a workspace published, kept so a published package can later be installed: `<dataRootDir>/<workspaceId>/archives`. The registry itself only keeps manifests. */

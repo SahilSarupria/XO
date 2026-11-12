@@ -37,10 +37,16 @@ export class WorkspacePermissionDeniedError extends XoError {
     readonly permission: WorkspacePermission,
     readonly role: WorkspaceRole,
     readonly workspaceId: string,
+    /** UW-1: `policy` when the role grants the permission but instance policy denied it (for example a suspended principal). */
+    readonly deniedBy: 'role' | 'policy' = 'role',
   ) {
-    super(ErrorCode.RUNTIME_PERMISSION_DENIED, `role "${role}" does not have the "${permission}" permission in this workspace`, {
-      context: { permission, role, workspaceId },
-    });
+    super(
+      ErrorCode.RUNTIME_PERMISSION_DENIED,
+      deniedBy === 'policy'
+        ? `the "${permission}" permission is denied by this instance's access policy`
+        : `role "${role}" does not have the "${permission}" permission in this workspace`,
+      { context: { permission, role, workspaceId, deniedBy } },
+    );
   }
 }
 
