@@ -4,6 +4,7 @@ import { requireFlag } from '../../flags.js';
 import { compileCommand } from './compile.js';
 import { capabilitiesCommand } from './capabilities.js';
 import { createCommand } from './create.js';
+import { promptPreviewCommand } from './prompt.js';
 
 const SUBSYSTEM = 'compiler';
 
@@ -24,20 +25,28 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'compile',
     subsystem: SUBSYSTEM,
     usage:
-      'xo compile <source>... [--domain-hint <text>] [--focus-question <text>] [--json]\n' +
+      'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--json]\n' +
       '                                         Compile one or more sources into XOIR and print a summary',
     run: async (args) => {
       const sources = args.positionals;
-      if (sources.length === 0) {
-        process.stdout.write('xo compile <source>... [--domain-hint <text>] [--focus-question <text>] [--json]\n');
+      const prompt = requireFlag(args.flags, 'prompt');
+      if (sources.length === 0 && prompt === undefined) {
+        process.stdout.write(
+          'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--json]\n',
+        );
         return 1;
       }
+      const confirmedBy = requireFlag(args.flags, 'confirmed-by');
+      const profile = requireFlag(args.flags, 'profile');
       const domainHint = requireFlag(args.flags, 'domain-hint');
       const focusQuestion = requireFlag(args.flags, 'focus-question');
       return printResult(
         await compileCommand({
           sources,
           json: args.flags['json'] === true,
+          ...(prompt !== undefined ? { prompts: [prompt] } : {}),
+          ...(confirmedBy !== undefined ? { confirmedBy } : {}),
+          ...(profile !== undefined ? { profile } : {}),
           ...(domainHint !== undefined ? { domainHint } : {}),
           ...(focusQuestion !== undefined ? { focusQuestion } : {}),
         }),
@@ -110,6 +119,27 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(signerDid !== undefined ? { signerDid } : {}),
           ...(keyOut !== undefined ? { keyOut } : {}),
           ...(domainHint !== undefined ? { domainHint } : {}),
+        }),
+      );
+    },
+  });
+
+  registry.register({
+    name: 'prompt-preview',
+    subsystem: SUBSYSTEM,
+    usage:
+      'xo prompt-preview [<text> | --file <path>] [--profile <id>] [--json]\n' +
+      '                                         Show how a prompt is understood (statements, intents, questions) without compiling',
+    run: async (args) => {
+      const text = args.positionals.length > 0 ? args.positionals.join(' ') : undefined;
+      const file = requireFlag(args.flags, 'file');
+      const profile = requireFlag(args.flags, 'profile');
+      return printResult(
+        await promptPreviewCommand({
+          json: args.flags['json'] === true,
+          ...(text !== undefined ? { text } : {}),
+          ...(file !== undefined ? { file } : {}),
+          ...(profile !== undefined ? { profile } : {}),
         }),
       );
     },

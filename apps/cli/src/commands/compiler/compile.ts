@@ -1,4 +1,4 @@
-import { compileSources, type CompileSourcesOptions } from '@xo/compiler';
+import { compileSources, resolveDomainProfile, listDomainProfiles, type CompileSourcesOptions } from '@xo/compiler';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { collectSources } from './source-collection.js';
@@ -7,6 +7,12 @@ export interface CompileOptions {
   readonly sources: readonly string[];
   readonly domainHint?: string;
   readonly focusQuestion?: string;
+  /** Natural-language instruction(s) to compile as `user_instruction` sources. They only contribute once `confirmedBy` is set. */
+  readonly prompts?: readonly string[];
+  /** Identity of the person who reviewed and confirmed the prompt interpretation(s). */
+  readonly confirmedBy?: string;
+  /** Domain profile id whose vocabulary extends the neutral grammar for this compilation. */
+  readonly profile?: string;
   readonly json?: boolean;
 }
 
@@ -24,11 +30,29 @@ export interface CompileOptions {
  * status the compiler already reports.
  */
 export async function compileCommand(options: CompileOptions): Promise<CommandResult> {
-  if (options.sources.length === 0) return failWith('at least one source path is required');
+  const prompts = options.prompts ?? [];
+  if (options.sources.length === 0 && prompts.length === 0) return failWith('at least one source path or --prompt is required');
+
+  let lexicon: CompileSourcesOptions['lexicon'];
+  const autoProfile = options.profile === 'auto';
+  if (options.profile !== undefined && !autoProfile) {
+    const profile = resolveDomainProfile(options.profile);
+    if (profile === undefined) {
+      return failWith(
+        `unknown domain profile "${options.profile}" (known: ${listDomainProfiles()
+          .map((p) => p.id)
+          .join(', ')})`,
+      );
+    }
+    lexicon = profile.lexicon;
+  }
 
   let collected: Awaited<ReturnType<typeof collectSources>>;
   try {
-    collected = await collectSources(options.sources);
+    collected =
+      options.sources.length > 0
+        ? await collectSources(options.sources)
+        : { inputs: [], discovered: [], unsupported: [], cleanup: async () => undefined };
   } catch (cause) {
     return failWith(`could not read source(s): ${(cause as Error).message}`);
   }
@@ -37,10 +61,35 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     const compileOptions: CompileSourcesOptions = {
       ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
       ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
+      ...(lexicon !== undefined ? { lexicon } : {}),
+      ...(autoProfile ? { autoProfile: true } : {}),
     };
 
-    const result = await compileSources(collected.inputs, compileOptions);
-    if (!result.ok) return failWith(`[${result.error.code}] ${result.error.message}`);
+    const promptInputs = prompts.map((text, i) => ({
+      kind: 'prompt' as const,
+      text,
+      sourcePath: `prompt-${i + 1}`,
+      ...(options.confirmedBy !== undefined ? { confirmedBy: options.confirmedBy } : {}),
+    }));
+    const result = await compileSources([...collected.inputs, ...promptInputs], compileOptions);
+    if (!result.ok) {
+      const lines = [`[${result.error.code}] ${result.error.message}`];
+      const interpretations = (
+        result.error.context as
+          | {
+              promptInterpretations?: readonly {
+                sourcePath: string;
+                interpretation: { status: string; questions: readonly { reason: string; question: string }[] };
+              }[];
+            }
+          | undefined
+      )?.promptInterpretations;
+      for (const p of interpretations ?? []) {
+        lines.push(`  ${p.sourcePath}: ${p.interpretation.status}`);
+        for (const q of p.interpretation.questions) lines.push(`    [${q.reason}] ${q.question}`);
+      }
+      return { exitCode: 1, lines };
+    }
 
     const { value } = result;
 
@@ -54,6 +103,7 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
           valid: value.valid,
           validationIssues: value.validation.issues,
           diagnostics: value.diagnostics,
+          ...(value.promptInterpretations !== undefined ? { promptInterpretations: value.promptInterpretations } : {}),
           graphContentHash: value.graph.contentHash(),
         }),
       ]);

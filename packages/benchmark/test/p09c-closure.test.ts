@@ -56,8 +56,12 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
   const vh = hist.find((e) => e.suiteId === 'vertical-fixtures')!;
   // The six P0.9C-closure records are never rewritten; later controlled refreshes only APPEND declared drift
   // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md).
-  assert.equal(vh.knownDrift.length, 14, 'the six closure drift records are kept; eight WS1 recall records were appended');
-  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall/.test(d.reason)));
+  assert.equal(
+    vh.knownDrift.length,
+    17,
+    'the six closure drift records are kept; eight WS1 recall and three semantic-hardening records were appended',
+  );
+  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall|Semantic hardening consolidation/.test(d.reason)));
   assert.equal(vh.declaredGoldenChanges.length, 5);
   assert.equal(hist.find((e) => e.suiteId === 'runtime-mechanics')!.knownDrift.length, 0);
   for (const e of entries.filter((x) => x.status === 'accepted')) {
@@ -66,8 +70,8 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
     const laterRefresh = e.refreshRecord !== 'baselines/refresh/p09c-final.refresh.json' && e.predecessor?.startsWith('baselines/archive/');
     assert.ok(retained || laterRefresh, `${e.suiteId}: predecessor is retained`);
   }
-  // the two P0.9C predecessors plus the accepted vertical-fixtures report superseded by the CR WS1 recall refresh
-  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 3);
+  // the two P0.9C predecessors plus the accepted vertical-fixtures report superseded by the CR WS1 recall and the semantic hardening refreshes
+  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 4);
 });
 
 test('the refresh record is auditable: both suites refreshed together, every difference accounted for, no regression, evaluation version unchanged', async () => {

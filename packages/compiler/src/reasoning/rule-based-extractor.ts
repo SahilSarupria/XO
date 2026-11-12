@@ -11,6 +11,7 @@ import type {
   ReasoningExtractionResult,
   ReasoningExtractor,
 } from './extractor-types.js';
+import type { GrammarLexicon } from '@xo/capability-contract';
 import { buildStructuredSemantics } from './structured-semantics.js';
 import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
@@ -129,7 +130,10 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
   private readonly confirmed: ReadonlyMap<string, ConfirmedRule>;
 
   /** `confirmedRules`: human-confirmed proposals (WS1-09), matched to a sentence by its normalised text. */
-  constructor(confirmedRules: readonly ConfirmedRule[] = []) {
+  constructor(
+    confirmedRules: readonly ConfirmedRule[] = [],
+    private readonly lexicon?: GrammarLexicon,
+  ) {
     this.confirmed = new Map(confirmedRules.map((r) => [sourceKey(r.sourceText), r]));
   }
 
@@ -204,6 +208,7 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
             parseStructuredCondition(candidate.condition) !== undefined);
         const confidence = groundedRule ? candidate.confidence : Math.min(unit.confidence, candidate.confidence);
         const structuredSemantics = buildStructuredSemantics({
+          ...(this.lexicon !== undefined ? { lexicon: this.lexicon } : {}),
           nodeType: candidate.nodeType,
           ...(candidate.condition !== undefined ? { condition: candidate.condition } : {}),
           ...(candidate.action !== undefined ? { action: candidate.action } : {}),

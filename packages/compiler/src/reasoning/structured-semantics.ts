@@ -32,6 +32,7 @@
 import {
   parseStructuredAction,
   parseStructuredCondition,
+  type GrammarLexicon,
   type StructuredAction,
   type StructuredCondition,
   type StructuredExceptionCondition,
@@ -40,6 +41,8 @@ import { canonicalKindForReasoningNodeType } from '../xoir/reasoning-node-kind-m
 import type { ReasoningNodeType } from './types.js';
 
 export interface StructuredSemanticsInput {
+  /** Optional domain-profile vocabulary for this compilation only (see `GrammarLexicon`). */
+  readonly lexicon?: GrammarLexicon;
   readonly nodeType: ReasoningNodeType;
   readonly condition?: string;
   readonly action?: string;
@@ -96,10 +99,13 @@ function resolveSourceTexts(input: StructuredSemanticsInput): {
  * source of truth, and still the field `StructuredComparisonBindingResolver`
  * gates on) — see `StructuredExceptionCondition`'s doc comment.
  */
-function buildStructuredExceptions(exceptionConditions: readonly string[]): readonly StructuredExceptionCondition[] | undefined {
+function buildStructuredExceptions(
+  exceptionConditions: readonly string[],
+  lexicon?: GrammarLexicon,
+): readonly StructuredExceptionCondition[] | undefined {
   if (exceptionConditions.length === 0) return undefined;
   return exceptionConditions.map((raw) => {
-    const condition = parseStructuredCondition(raw);
+    const condition = parseStructuredCondition(raw, lexicon);
     return condition !== undefined ? { raw, condition } : { raw };
   });
 }
@@ -117,9 +123,9 @@ export function buildStructuredSemantics(input: StructuredSemanticsInput): Struc
   const { conditionSourceText, actionSourceText } = resolveSourceTexts(input);
   if (conditionSourceText === undefined && actionSourceText === undefined) return EMPTY_OUTPUT;
 
-  const structuredCondition = conditionSourceText !== undefined ? parseStructuredCondition(conditionSourceText) : undefined;
+  const structuredCondition = conditionSourceText !== undefined ? parseStructuredCondition(conditionSourceText, input.lexicon) : undefined;
   const structuredAction = actionSourceText !== undefined ? parseStructuredAction(actionSourceText) : undefined;
-  const structuredExceptions = buildStructuredExceptions(input.exceptionConditions);
+  const structuredExceptions = buildStructuredExceptions(input.exceptionConditions, input.lexicon);
 
   return {
     ...(structuredCondition !== undefined ? { structuredCondition } : {}),

@@ -29,6 +29,8 @@ import { extname } from 'node:path';
  */
 export const KNOWN_EXTENSIONS: ReadonlySet<string> = new Set([
   '.pdf',
+  '.docx',
+  '.xlsx',
   '.html',
   '.htm',
   '.json',
@@ -87,6 +89,18 @@ function looksLikeOpenApiDocument(text: string): boolean {
   );
 }
 
+/** Office/OpenDocument/e-book containers: zip archives of XML, never valid UTF-8 text. */
+const UNSUPPORTED_BINARY_EXTENSIONS: ReadonlySet<string> = new Set(['.doc', '.xls', '.pptx', '.ppt', '.odt', '.ods', '.odp', '.epub']);
+
+/** True for zip/OLE container magic or a NUL byte in the first 8 KiB (never present in real UTF-8 text). */
+export function looksBinary(bytes: Uint8Array): boolean {
+  if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return true;
+  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) return true;
+  const n = Math.min(bytes.length, 8192);
+  for (let i = 0; i < n; i++) if (bytes[i] === 0) return true;
+  return false;
+}
+
 export async function loadSourceInput(readPath: string, declaredPath: string = readPath): Promise<unknown> {
   const ext = extname(readPath).toLowerCase();
 
@@ -111,6 +125,15 @@ export async function loadSourceInput(readPath: string, declaredPath: string = r
     );
   }
 
+  if (ext === '.xlsx') {
+    const bytes = new Uint8Array(await readFile(readPath));
+    return { kind: 'xlsx', bytes, sourcePath: declaredPath };
+  }
+  if (ext === '.docx') {
+    // Extracted deterministically by the compiler's DOCX frontend; an unreadable file is refused there with a specific error.
+    const bytes = new Uint8Array(await readFile(readPath));
+    return { kind: 'docx', bytes, sourcePath: declaredPath };
+  }
   if (ext === '.pdf') {
     const bytes = new Uint8Array(await readFile(readPath));
     return { kind: 'pdf', bytes, sourcePath: declaredPath };
@@ -147,6 +170,14 @@ export async function loadSourceInput(readPath: string, declaredPath: string = r
   // filters to `KNOWN_EXTENSIONS` before ever calling this function, so
   // a directory full of unrelated files doesn't get silently
   // "document"-ingested one by one.
-  const text = await readFile(readPath, 'utf8');
-  return { kind: 'document', text, sourcePath: declaredPath };
+  // Refuse binary content instead of decoding it as garbled "text" that would
+  // then be ingested as a trusted document (reported against real .docx input:
+  // zip bytes produced 150+ units and dozens of junk concepts with no diagnostic).
+  const bytes = await readFile(readPath);
+  if (UNSUPPORTED_BINARY_EXTENSIONS.has(ext) || looksBinary(bytes)) {
+    throw new Error(
+      `"${declaredPath}" is a binary file in a format this compiler cannot read yet${ext ? ` (${ext})` : ''}. It was NOT ingested, because decoding binary bytes as text would produce meaningless content that looks like real output. Convert it to PDF, plain text or Markdown and pass that instead.`,
+    );
+  }
+  return { kind: 'document', text: bytes.toString('utf8'), sourcePath: declaredPath };
 }

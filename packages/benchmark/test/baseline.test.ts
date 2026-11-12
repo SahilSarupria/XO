@@ -558,7 +558,8 @@ test('AUDIT (historical): every difference between each historical baseline and 
       version: out['vertical-fixtures']!.counts['evaluation_version_change'],
       repr: out['vertical-fixtures']!.counts['representation_only'],
     },
-    { added: 26, golden: 12, drift: 13, version: 1, repr: 7 },
+    // drift 13 -> 16: three outputs (semantic hardening consolidation) are declared as known drift on the historical entry.
+    { added: 26, golden: 12, drift: 16, version: 1, repr: 7 },
   );
 });
 

@@ -22,7 +22,7 @@ export function parseDocument(document: LoadedPdfDocument): ParsedDocument {
     .map((page) => ({
       pageNumber: page.pageNumber,
       mediaBox: page.mediaBox,
-      lines: groupRunsIntoLines(page.pageNumber, page.textRuns, page.resolveFontEncoding),
+      lines: groupRunsIntoLines(page.pageNumber, page.textRuns, page.resolveFontEncoding, page.mediaBox[2] - page.mediaBox[0]),
     }));
 
   const allLines = pages.flatMap((p) => p.lines);

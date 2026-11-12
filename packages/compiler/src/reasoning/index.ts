@@ -10,3 +10,6 @@ export * from './edge-builder.js';
 export * from './reasoning-extractor.js';
 export * from './decision-cues.js';
 export * from './rule-proposals.js';
+export * from './modality.js';
+export * from './outcome-type.js';
+export * from './coverage.js';

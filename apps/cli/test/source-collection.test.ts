@@ -166,12 +166,23 @@ test('directory: unsupported files are ignored (not compiled) but reported', asy
   await withTempDir('xo-collect-dir-', async (dir) => {
     await writeFiles(dir, { 'policy.txt': 'The insurer shall pay.' });
     await writeFile(join(dir, 'binary.exe'), Buffer.from([0x4d, 0x5a, 0x00, 0x01]));
-    await writeFile(join(dir, 'notes.docx'), Buffer.from('not really a docx'));
+    // .docx is now a supported format (see the next test); .pptx remains unsupported and exercises the same path.
+    await writeFile(join(dir, 'slides.pptx'), Buffer.from('not really a spreadsheet'));
     const resolved = await resolveSourceArg(dir);
     assert.equal(resolved.sources.length, 1);
     assert.equal(resolved.unsupported.length, 2);
     assert.ok(resolved.unsupported.some((u) => u.relativePath === 'binary.exe'));
-    assert.ok(resolved.unsupported.some((u) => u.relativePath === 'notes.docx'));
+    assert.ok(resolved.unsupported.some((u) => u.relativePath === 'slides.pptx'));
+    await resolved.cleanup();
+  });
+});
+
+test('directory: a .docx is collected as a source (DOCX is a supported format)', async () => {
+  await withTempDir('xo-collect-dir-', async (dir) => {
+    await writeFile(join(dir, 'notes.docx'), Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    const resolved = await resolveSourceArg(dir);
+    assert.equal(resolved.sources.length, 1);
+    assert.equal(resolved.unsupported.length, 0);
     await resolved.cleanup();
   });
 });

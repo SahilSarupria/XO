@@ -4,6 +4,26 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## Semantic hardening consolidation — vertical-fixtures baseline refresh
+
+**Context.** The semantic-compiler-hardening work (comma-listed conditions, unconditional statements read as
+constraint/decision nodes, no silently dropped condition operands, permission ("may") rules no longer minting
+executable capabilities, fail-closed handling of sources whose pages need OCR) was merged onto the enforcement
+baseline that already carried the WS1 recall patterns. The combined compiler was re-measured.
+
+**What moved.** `semanticCorrectness`, `semanticPrecision` and `semanticRecall` of `commercial-property-policy`
+improved (semanticRecall now 30/31, 96.8%). `crossPathConsistency` and `provenanceChainCoverage` of that case keep
+their value over fewer comparable units (cross-path comparable units 368 -> 350) because three capabilities that had
+lost condition operands or were minted from a permission rule no longer resolve; this is recorded as an
+`acknowledged_regression` (coverage reduction), not tuned away. `observedSourceRefCoverage` populations grew. Eight
+stage outputs changed with no metric lowered by a defect. Evaluation version (`p0.9c-1`) and golden expectations are
+unchanged.
+
+**Controlled refresh.** Predecessor archived at
+`baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json`; every difference is dispositioned in
+`baselines/refresh/semantic-hardening.refresh.json` (validated by `validateRefreshRecord`). Three additional output
+differences are declared as known drift on the historical vertical-fixtures entry.
+
 ## CR WS1 recall — vertical-fixtures baseline refresh
 
 **Context.** The CR milestone's WS1 added two lowest-priority rule patterns to

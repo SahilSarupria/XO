@@ -73,6 +73,11 @@ export class PdfSourceFrontend implements SourceFrontend<PdfSourceInput> {
     if (loaded.value.metadata.author !== undefined) metadata.author = loaded.value.metadata.author;
     if (loaded.value.metadata.creationDate !== undefined) metadata.creationDate = loaded.value.metadata.creationDate;
 
+    // Pages with no extractable text layer (scans) contribute no lines downstream; record them so the pipeline can
+    // surface a diagnostic instead of silently ingesting an empty or partial document.
+    const ocrRequiredPages = loaded.value.pages.flatMap((page, index) => (page.requiresOcr ? [index + 1] : []));
+    if (ocrRequiredPages.length > 0) metadata.ocrRequiredPages = ocrRequiredPages.join(',');
+
     return ok({
       sourceId,
       sourceType: 'pdf',

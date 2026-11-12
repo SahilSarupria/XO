@@ -425,6 +425,33 @@ function parseRangeAtom(text: string): StructuredRangeCondition | undefined {
  * fails and the caller's `condition`/`action` text is left unstructured.
  */
 const KNOWN_CATEGORICAL_STATES = new Set([
+  // M2b addition — generic status words (no subject-matter meaning), so ordinary operational language structures.
+  'registered',
+  'unregistered',
+  'open',
+  'closed',
+  'scheduled',
+  'unscheduled',
+  'available',
+  'unavailable',
+  'enabled',
+  'disabled',
+  'suspended',
+  'verified',
+  'unverified',
+  'authorized',
+  'authorised',
+  'unauthorized',
+  'unauthorised',
+  'overdue',
+  'paid',
+  'unpaid',
+  'submitted',
+  'confirmed',
+  'signed',
+  'unsigned',
+  'resolved',
+  'unresolved',
   'approved',
   'active',
   'inactive',
@@ -473,6 +500,8 @@ const KNOWN_CATEGORICAL_STATES = new Set([
   // missing from this closed vocabulary. Not a general "any noun after
   // is" allowance — exactly two fixed words, added because the real
   // corpus requires them, per this file's own stated discipline.
+  // LEGACY claims-domain words (see LEGACY_DOMAIN_STATE_WORDS): kept for backward compatibility with the governed benchmark
+  // fixtures; migration to the insurance-claims profile is tracked in the baseline-refresh proposal.
   'flood',
   'theft',
 ]);
@@ -503,21 +532,87 @@ const COPULAS: readonly CopulaEntry[] = [
  * neither the first word nor the bounded second word is a recognized
  * {@link KNOWN_CATEGORICAL_STATES} entry.
  */
-function matchCategoricalStateWord(afterCopula: string): string | undefined {
+/**
+ * Optional, explicit vocabulary extension supplied by a DOMAIN PROFILE. The core grammar stays domain-neutral; a profile
+ * adds subject-matter state words ("flooded", "quarantined", ...) without them ever leaking into other domains. Passed
+ * as an argument (never a module-level setting) so concurrent compilations with different profiles cannot interfere.
+ */
+/**
+ * The neutral core's categorical state vocabulary, exposed read-only so a guard test can pin it. Two LEGACY entries
+ * (`flood`, `theft`) are claims-domain words that predate the profile mechanism; they stay for backward compatibility
+ * and are slated to move into the `insurance-claims` profile (see `LEGACY_DOMAIN_STATE_WORDS`).
+ */
+export function coreCategoricalStates(): readonly string[] {
+  return [...KNOWN_CATEGORICAL_STATES].sort();
+}
+
+/** Domain-specific words still present in the core for backward compatibility. Shrinks over time; must never grow. */
+export const LEGACY_DOMAIN_STATE_WORDS: readonly string[] = ['flood', 'theft'];
+
+export interface GrammarLexicon {
+  readonly categoricalStates?: readonly string[];
+}
+
+function isCategoricalState(word: string, lexicon: GrammarLexicon | undefined): boolean {
+  return KNOWN_CATEGORICAL_STATES.has(word) || (lexicon?.categoricalStates?.some((w) => w.toLowerCase() === word) ?? false);
+}
+
+function matchCategoricalStateWord(
+  afterCopula: string,
+  lexicon?: GrammarLexicon,
+): { readonly value: string; readonly end: number } | undefined {
   const firstMatch = /^([A-Za-z]+)/.exec(afterCopula);
   if (!firstMatch) return undefined;
   const first = firstMatch[1]!.toLowerCase();
-  if (KNOWN_CATEGORICAL_STATES.has(first)) return first;
+  if (isCategoricalState(first, lexicon)) return { value: first, end: firstMatch[0].length };
 
   // Exactly one bounded adverbial hop: only a plain "-ly" word, and only
   // when the very next word is itself already a recognized state — never
   // guessed, never chained past a second word.
   if (!/^[a-z]+ly$/.test(first)) return undefined;
-  const rest = afterCopula.slice(firstMatch[0].length).trimStart();
+  const afterFirst = afterCopula.slice(firstMatch[0].length);
+  const rest = afterFirst.trimStart();
   const secondMatch = /^([A-Za-z]+)/.exec(rest);
   if (!secondMatch) return undefined;
   const second = secondMatch[1]!.toLowerCase();
-  return KNOWN_CATEGORICAL_STATES.has(second) ? second : undefined;
+  if (!isCategoricalState(second, lexicon)) return undefined;
+  return { value: second, end: firstMatch[0].length + (afterFirst.length - rest.length) + secondMatch[0].length };
+}
+
+/**
+ * Words that introduce a FURTHER condition or an exception. If any follows a recognized state word, the text is not a
+ * single state assertion with a harmless qualifier — it is a compound whose remainder this atom would silently drop.
+ */
+const CONDITION_CONTINUATION = /\b(?:and|or|but|unless|except|otherwise|however|provided that|whereas)\b/i;
+
+/**
+ * A comma-containing field is only refused when it ALSO contains a copula/auxiliary: then it is a previous clause run
+ * into this one ("<A> is x, <B>"), not a name. A comma list of nouns alone ("goods in open, money, valuables") is a
+ * legitimate compound subject and stays a field.
+ */
+const FIELD_CONTAINS_CLAUSE_VERB = /\b(?:is|are|was|were|has|have|does|do)\b/i;
+
+const EXCEPTION_OR_CONTRAST = /\b(?:but|unless|except|otherwise|however|provided that|whereas)\b/i;
+
+/**
+ * A temporal qualifier after a state word ("... is submitted before the end of the period") is a further constraint
+ * that a bare categorical atom would silently drop. Only unambiguous time relations are listed: "by" and "from" are
+ * deliberately absent because they usually introduce harmless agents/qualifiers ("approved by the manager").
+ */
+const TEMPORAL_QUALIFIER = /\b(?:before|after|within|until|till|since|during|prior\s+to|no\s+later\s+than)\b/i;
+
+/**
+ * A comma that is neither a thousands separator inside a number nor inside parentheses separates list items
+ * ("A is x, B is y, and C is z"). It is therefore a continuation, never part of a single state assertion.
+ */
+function hasListComma(text: string): boolean {
+  return /(?<!\d),|,(?!\d)/.test(text.replace(/\([^)]*\)/g, ' '));
+}
+
+/** Parenthetical asides never carry a top-level continuation, so they are ignored when checking the remainder. */
+function remainderContinuesCondition(remainder: string): boolean {
+  const outsideParens = remainder.replace(/\([^)]*\)/g, ' ');
+  return CONDITION_CONTINUATION.test(outsideParens) || TEMPORAL_QUALIFIER.test(outsideParens) || hasListComma(remainder);
 }
 
 /**
@@ -537,7 +632,7 @@ function matchCategoricalStateWord(afterCopula: string): string | undefined {
  * condition/action string is preserved unchanged elsewhere), just not
  * further structured.
  */
-function parseCategoricalAtom(text: string): StructuredCategoricalCondition | undefined {
+function parseCategoricalAtom(text: string, lexicon?: GrammarLexicon): StructuredCategoricalCondition | undefined {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
 
@@ -550,7 +645,7 @@ function parseCategoricalAtom(text: string): StructuredCategoricalCondition | un
   // the AND-split path in `parseStructuredCondition` in that case is what
   // keeps this grammar's "and" handling both real-corpus-accurate (named
   // categories) and precision-safe (no swallowed conjunctions).
-  if (hasIndependentConjunctionSplit(trimmed)) return undefined;
+  if (hasIndependentConjunctionSplit(trimmed, lexicon)) return undefined;
 
   // Collect every copula occurrence (not just the leftmost) so that, e.g.,
   // "the deductible is at least 250 and the claim is approved" — where the
@@ -581,12 +676,21 @@ function parseCategoricalAtom(text: string): StructuredCategoricalCondition | un
     // allowed through: real source fields legitimately contain "and" as
     // part of a named category (e.g. "Theft and RSMD is excluded").
     if (containsTopLevelConnective(field, 'or')) continue;
+    // Likewise a field that itself contains an exception/contrast word ("<A> is excluded unless <B>") is two clauses
+    // run together, not a field name; "and" stays allowed here (named categories), "or" is handled just above.
+    if (EXCEPTION_OR_CONTRAST.test(field.replace(/\([^)]*\)/g, ' ')) || (hasListComma(field) && FIELD_CONTAINS_CLAUSE_VERB.test(field)))
+      continue;
 
     const afterCopula = trimmed.slice(candidate.index + candidate.copula.phrase.length).trimStart();
-    const stateWord = matchCategoricalStateWord(afterCopula);
-    if (stateWord === undefined) continue;
+    const state = matchCategoricalStateWord(afterCopula, lexicon);
+    if (state === undefined) continue;
+    // Never return a partial parse: when the text after the state word goes on to add another condition or an
+    // exception ("... is missing or the other is inactive"), this is not one categorical atom. Refusing here lets
+    // `parseStructuredCondition` try the AND/OR split, which itself returns undefined unless EVERY operand parses —
+    // so the rule stays unstructured (fail-closed, raw text preserved) instead of silently losing a condition.
+    if (remainderContinuesCondition(afterCopula.slice(state.end))) continue;
 
-    return { type: 'categorical', field, operator: candidate.copula.negated ? '!=' : '==', value: stateWord };
+    return { type: 'categorical', field, operator: candidate.copula.negated ? '!=' : '==', value: state.value };
   }
 
   return undefined;
@@ -695,15 +799,15 @@ function parseTemporalAtom(text: string): StructuredTemporalCondition | undefine
 // ---------------------------------------------------------------------------
 
 /** Tried in this fixed order: range and temporal are attempted before the numeric comparison (so `"between 100 and 500"` is never partially matched as `"... at 100"`-style noise), categorical last (only fires when nothing numeric/temporal matched). */
-function parseAtom(text: string): StructuredCondition | undefined {
-  return parseRangeAtom(text) ?? parseTemporalAtom(text) ?? parseComparisonAtom(text) ?? parseCategoricalAtom(text);
+function parseAtom(text: string, lexicon?: GrammarLexicon): StructuredCondition | undefined {
+  return parseRangeAtom(text) ?? parseTemporalAtom(text) ?? parseComparisonAtom(text) ?? parseCategoricalAtom(text, lexicon);
 }
 
 /** True when splitting `text` on every top-level "and" yields two or more parts that EACH independently parse as a non-categorical-recursion-triggering atom — i.e. `text` is really a conjunction, not a single field containing a literal "and". Deliberately excludes categorical from the per-part check would be circular to define away entirely; calling `parseAtom` (which does include categorical) here is safe because each part is always strictly shorter than `text`, so recursion terminates. */
-function hasIndependentConjunctionSplit(text: string): boolean {
+function hasIndependentConjunctionSplit(text: string, lexicon?: GrammarLexicon): boolean {
   const parts = splitOnConnective(text, 'and');
   if (!parts) return false;
-  return parts.every((part) => parseAtom(part) !== undefined);
+  return parts.every((part) => parseAtom(part, lexicon) !== undefined);
 }
 
 /**
@@ -743,12 +847,50 @@ function splitOnConnective(text: string, connective: 'and' | 'or'): readonly str
  * wrong one — same principle `structured-comparison-resolver.ts` already
  * documents for a contract's rule list).
  */
-export function parseStructuredCondition(text: string): StructuredCondition | undefined {
-  const trimmed = text.trim();
-  if (trimmed.length === 0) return undefined;
+/**
+ * Rewrites a comma-separated list that ENDS in an explicit connective ("A, B, and C" / "A, B, or C") into the plain
+ * connective chain ("A and B and C") the splitter already understands. Returns:
+ *  - the input unchanged when it has no list comma;
+ *  - `undefined` when it has list commas but no terminating "and"/"or" (AND vs OR would be a guess), or an empty item.
+ * Commas inside numbers ("10,000") and parentheses are never list separators.
+ */
+function normalizeListCommas(text: string): string | undefined {
+  const masked = text.replace(/\([^)]*\)/g, (m) => ' '.repeat(m.length));
+  const commaIdx: number[] = [];
+  for (let i = 0; i < masked.length; i += 1) {
+    if (masked[i] !== ',') continue;
+    const prev = masked[i - 1];
+    const next = masked[i + 1];
+    if (prev !== undefined && next !== undefined && prev >= '0' && prev <= '9' && next >= '0' && next <= '9') continue;
+    commaIdx.push(i);
+  }
+  if (commaIdx.length === 0) return text;
 
-  const whole = parseAtom(trimmed);
+  const tail = /^\s*(and|or)\s+(\S[\s\S]*)$/i.exec(text.slice(commaIdx[commaIdx.length - 1]! + 1));
+  if (!tail) return undefined;
+  const connective = tail[1]!.toLowerCase();
+
+  const items: string[] = [];
+  let start = 0;
+  for (const idx of commaIdx.slice(0, -1)) {
+    items.push(text.slice(start, idx).trim());
+    start = idx + 1;
+  }
+  items.push(text.slice(start, commaIdx[commaIdx.length - 1]!).trim());
+  items.push(tail[2]!.trim());
+  if (items.some((item) => item.length === 0)) return undefined;
+  return items.join(` ${connective} `);
+}
+
+export function parseStructuredCondition(text: string, lexicon?: GrammarLexicon): StructuredCondition | undefined {
+  const original = text.trim();
+  if (original.length === 0) return undefined;
+
+  const whole = parseAtom(original, lexicon);
   if (whole) return whole;
+
+  const trimmed = normalizeListCommas(original);
+  if (trimmed === undefined) return undefined;
 
   const lower = trimmed.toLowerCase();
   const hasAnd = allPhraseBoundaryIndices(lower, 'and').length > 0;
@@ -758,7 +900,7 @@ export function parseStructuredCondition(text: string): StructuredCondition | un
   if (hasAnd) {
     const parts = splitOnConnective(trimmed, 'and');
     if (!parts) return undefined;
-    const operands = parts.map(parseAtom);
+    const operands = parts.map((part) => parseAtom(part, lexicon));
     if (operands.some((o) => o === undefined)) return undefined;
     return { type: 'and', operands: operands as StructuredCondition[] };
   }
@@ -766,7 +908,7 @@ export function parseStructuredCondition(text: string): StructuredCondition | un
   if (hasOr) {
     const parts = splitOnConnective(trimmed, 'or');
     if (!parts) return undefined;
-    const operands = parts.map(parseAtom);
+    const operands = parts.map((part) => parseAtom(part, lexicon));
     if (operands.some((o) => o === undefined)) return undefined;
     return { type: 'or', operands: operands as StructuredCondition[] };
   }

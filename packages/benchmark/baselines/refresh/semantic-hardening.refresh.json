@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "refreshedAt": "2026-11-13T00:00:00Z",
+  "scope": "Semantic hardening consolidation",
+  "suites": [
+    {
+      "suiteId": "vertical-fixtures",
+      "fromReportSha256": "8d15c83533aef6b20f05fc6a240a64a34c925edd04349ed46442326dbc35909f",
+      "toReportSha256": "b44e692ba7d63abf51239ab73cf6fbafd997deccaef6456ab55e21fb72fed866",
+      "evaluationVersion": {
+        "from": "p0.9c-1",
+        "to": "p0.9c-1"
+      },
+      "reason": "Semantic hardening consolidation (branch claude/semantic-compiler-hardening merged onto the enforcement baseline): comma-listed conditions, unconditional statements, dropped-operand and permission-rule capability minting, OCR-unavailable fail-closed behaviour. No evaluation version change, no golden expectation change.",
+      "dispositions": [
+        {
+          "differenceId": "metric|commercial-property-policy|crossPathConsistency",
+          "disposition": "acknowledged_regression",
+          "reason": "Semantic hardening consolidation: cross-path/provenance coverage denominators shrank (cross-path comparable units 368 -> 350; three capabilities that had silently lost condition operands or were minted from a permission \"may\" rule no longer resolve), so the unchanged metric value is measured over fewer units. This is a deliberate precision gain (fewer spurious resolved capabilities), recorded as an acknowledged coverage reduction, not tuned away. See CHANGELOG.md."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: the observed node population grew because unconditional-statement nodes were added; coverage stays 100%, so this is a population change, not a failure."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|provenanceChainCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "Semantic hardening consolidation: cross-path/provenance coverage denominators shrank (cross-path comparable units 368 -> 350; three capabilities that had silently lost condition operands or were minted from a permission \"may\" rule no longer resolve), so the unchanged metric value is measured over fewer units. This is a deliberate precision gain (fewer spurious resolved capabilities), recorded as an acknowledged coverage reduction, not tuned away. See CHANGELOG.md."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|semanticCorrectness",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: the metric improved (more genuine rules recalled/precisely extracted); no expectation changed."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|semanticPrecision",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: the metric improved (more genuine rules recalled/precisely extracted); no expectation changed."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|semanticRecall",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: the metric improved (more genuine rules recalled/precisely extracted); no expectation changed."
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: the observed node population grew because unconditional-statement nodes were added; coverage stays 100%, so this is a population change, not a failure."
+        },
+        {
+          "differenceId": "output|aastha-operations|workflows",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|compile",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|capabilities",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|compile",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|workflows",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|multidoc-burglary-claims|capabilities",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|multidoc-burglary-claims|compile",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        },
+        {
+          "differenceId": "output|synthetic-claim-rules|compile",
+          "disposition": "accepted",
+          "reason": "Semantic hardening consolidation: this stage output changed because the merged compiler now (a) reads unconditional statements, comma-listed conditions and liability/quantified statements as constraint nodes, (b) fails closed on sources whose pages cannot be read (OCR unavailable), and (c) fixes silently dropped condition operands. No metric value was lowered by a defect: the capability/workflow/compile outputs are re-derived and every metric movement is individually dispositioned in this record (see CHANGELOG.md, \"Semantic hardening consolidation\")."
+        }
+      ],
+      "declaredGoldenChanges": [],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — Semantic hardening consolidation",
+      "predecessorRetainedAs": "baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json",
+      "counts": {
+        "semantic_regression": 10,
+        "population_change": 2,
+        "semantic_improvement": 3
+      },
+      "decision": "regression"
+    }
+  ]
+}

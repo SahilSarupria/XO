@@ -86,27 +86,27 @@
         "id": "crossPathConsistency",
         "stage": "capabilities",
         "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-        "numerator": 368,
-        "denominator": 368,
+        "numerator": 350,
+        "denominator": 350,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "live_vs_package.binding.match": 25,
+          "live_vs_package.binding.match": 22,
           "live_vs_package.binding.not_comparable": 19,
-          "live_vs_package.contract_embedded.match": 44,
+          "live_vs_package.contract_embedded.match": 41,
           "live_vs_package.contract_embedded.not_comparable": 28,
-          "live_vs_package.contract_hash.match": 44,
+          "live_vs_package.contract_hash.match": 41,
           "live_vs_package.execution_outcome.match": 16,
           "live_vs_package.execution_outcome.not_comparable": 2,
           "live_vs_package.execution_outcome.not_exercised": 7,
           "live_vs_package.execution_provenance.match": 16,
           "live_vs_package.graph_hash.not_comparable": 7,
-          "live_vs_serialized.binding.match": 72,
-          "live_vs_serialized.capability_present.match": 72,
-          "live_vs_serialized.contract_hash.match": 72,
+          "live_vs_serialized.binding.match": 69,
+          "live_vs_serialized.capability_present.match": 69,
+          "live_vs_serialized.contract_hash.match": 69,
           "live_vs_serialized.graph_hash.match": 7
         }
       },
@@ -204,8 +204,8 @@
         "id": "observedSourceRefCoverage",
         "stage": "compile",
         "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-        "numerator": 490,
-        "denominator": 490,
+        "numerator": 501,
+        "denominator": 501,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -241,28 +241,28 @@
         "breakdown": {
           "in_population.capability_extractor.attributed": 52,
           "in_population.knowledge_extractor.attributed": 361,
-          "not_judged.reasoning_extractor.unattributed": 57,
-          "not_judged.rule_minted_capability.unattributed": 20
+          "not_judged.reasoning_extractor.unattributed": 71,
+          "not_judged.rule_minted_capability.unattributed": 17
         }
       },
       {
         "id": "provenanceChainCoverage",
         "stage": "capabilities",
         "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-        "numerator": 72,
-        "denominator": 72,
+        "numerator": 69,
+        "denominator": 69,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "binding.resolved": 44,
+          "binding.resolved": 41,
           "binding.unresolved": 28,
-          "link.hash_deterministic.ok": 72,
-          "link.nodes_resolve.ok": 72,
-          "link.refs_carried.ok": 72,
-          "link.source_resolves.ok": 72
+          "link.hash_deterministic.ok": 69,
+          "link.nodes_resolve.ok": 69,
+          "link.refs_carried.ok": 69,
+          "link.source_resolves.ok": 69
         }
       },
       {
@@ -300,9 +300,9 @@
         "id": "semanticCorrectness",
         "stage": "compile",
         "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
-        "numerator": 29,
+        "numerator": 30,
         "denominator": 30,
-        "ratio": 0.966667,
+        "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
@@ -312,9 +312,9 @@
         "id": "semanticPrecision",
         "stage": "compile",
         "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
-        "numerator": 23,
+        "numerator": 24,
         "denominator": 25,
-        "ratio": 0.92,
+        "ratio": 0.96,
         "measured": true,
         "missing": [],
         "unexpected": [
@@ -325,22 +325,15 @@
             "caseId": "commercial-property-policy"
           }
         ],
-        "mismatched": [
-          {
-            "id": "heuristic|the policy is active",
-            "reason": "heuristic \"the Policy is active\" matched an expected fact but is semantically incorrect",
-            "attributedStage": "compile",
-            "caseId": "commercial-property-policy"
-          }
-        ]
+        "mismatched": []
       },
       {
         "id": "semanticRecall",
         "stage": "compile",
         "definition": "expected semantic facts located AND correct / expected semantic facts",
-        "numerator": 29,
+        "numerator": 30,
         "denominator": 31,
-        "ratio": 0.935484,
+        "ratio": 0.967742,
         "measured": true,
         "missing": [
           {
@@ -351,14 +344,7 @@
           }
         ],
         "unexpected": [],
-        "mismatched": [
-          {
-            "id": "r11.1-active-policy-proceed-to-assessment",
-            "reason": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
-            "attributedStage": "compile",
-            "caseId": "commercial-property-policy"
-          }
-        ]
+        "mismatched": []
       },
       {
         "id": "spuriousCapabilityAvoidance",
@@ -522,30 +508,30 @@
     ],
     "observed": {
       "nodeCountsByKind": {
-        "capability": 72,
+        "capability": 69,
         "concept": 339,
-        "constraint": 53,
+        "constraint": 67,
         "decision_node": 1,
         "heuristic": 25
       },
       "capabilities": {
-        "total": 72,
+        "total": 69,
         "byResolution": {
-          "resolved": 44,
+          "resolved": 41,
           "unresolved": 28
         },
         "byExecutionClass": {
-          "deterministic_rule": 25,
+          "deterministic_rule": 22,
           "human_in_the_loop": 19,
           "not_executable": 28
         }
       },
       "workflows": {
-        "total": 23,
-        "totalSteps": 72,
+        "total": 28,
+        "totalSteps": 69,
         "byExecutability": {
           "executable_candidate": 9,
-          "not_executable_yet": 13,
+          "not_executable_yet": 18,
           "semantically_invalid": 1
         }
       },
@@ -645,7 +631,7 @@
       "fingerprints": {
         "compile": "38a3c448e30be5b2",
         "capabilities": "974ae71e9bcf8635",
-        "workflows": "e9f3dc7e52518a7a",
+        "workflows": "16454cd0647ee6fa",
         "execution": "516b1c01b2496d5f"
       },
       "observed": {
@@ -665,11 +651,11 @@
           }
         },
         "workflows": {
-          "total": 5,
+          "total": 6,
           "totalSteps": 16,
           "byExecutability": {
             "executable_candidate": 3,
-            "not_executable_yet": 2
+            "not_executable_yet": 3
           }
         },
         "executions": {
@@ -1157,7 +1143,7 @@
         }
       },
       "fingerprints": {
-        "compile": "86f0a7be27a7e683",
+        "compile": "eb76a90a3dc4ec00",
         "capabilities": "68b51db9da6c7125",
         "workflows": "633ade63efbe8e94",
         "execution": "4f53cda18c2baa0c"
@@ -1460,19 +1446,19 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 149,
+            "nodeCount": 152,
             "total": {
               "producers": {
                 "rule-based": 84
               },
-              "unattributed": 65
+              "unattributed": 68
             },
             "byKind": {
               "capability": {
                 "producers": {
                   "rule-based": 16
                 },
-                "unattributed": 18
+                "unattributed": 15
               },
               "concept": {
                 "producers": {
@@ -1484,7 +1470,7 @@
                 "producers": {
                   "rule-based": 13
                 },
-                "unattributed": 23
+                "unattributed": 29
               },
               "heuristic": {
                 "producers": {},
@@ -1513,36 +1499,36 @@
         }
       },
       "fingerprints": {
-        "compile": "127a7de7d7dce61b",
-        "capabilities": "938d83d494786b65",
-        "workflows": "b75969d188329659",
+        "compile": "5886e4284cc54406",
+        "capabilities": "a5d4cb1d40269f37",
+        "workflows": "2ca638ef00764f2f",
         "execution": "0ea71eb3a58cdadb"
       },
       "observed": {
         "nodeCountsByKind": {
-          "capability": 34,
+          "capability": 31,
           "concept": 55,
-          "constraint": 36,
+          "constraint": 42,
           "heuristic": 24
         },
         "capabilities": {
-          "total": 34,
+          "total": 31,
           "byResolution": {
-            "resolved": 22,
+            "resolved": 19,
             "unresolved": 12
           },
           "byExecutionClass": {
-            "deterministic_rule": 21,
+            "deterministic_rule": 18,
             "human_in_the_loop": 1,
             "not_executable": 12
           }
         },
         "workflows": {
-          "total": 3,
-          "totalSteps": 34,
+          "total": 7,
+          "totalSteps": 31,
           "byExecutability": {
             "executable_candidate": 1,
-            "not_executable_yet": 1,
+            "not_executable_yet": 5,
             "semantically_invalid": 1
           }
         },
@@ -1597,27 +1583,27 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 194,
-          "denominator": 194,
+          "numerator": 176,
+          "denominator": 176,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "live_vs_package.binding.match": 21,
+            "live_vs_package.binding.match": 18,
             "live_vs_package.binding.not_comparable": 1,
-            "live_vs_package.contract_embedded.match": 22,
+            "live_vs_package.contract_embedded.match": 19,
             "live_vs_package.contract_embedded.not_comparable": 12,
-            "live_vs_package.contract_hash.match": 22,
+            "live_vs_package.contract_hash.match": 19,
             "live_vs_package.execution_outcome.match": 13,
             "live_vs_package.execution_outcome.not_comparable": 1,
             "live_vs_package.execution_outcome.not_exercised": 2,
             "live_vs_package.execution_provenance.match": 13,
             "live_vs_package.graph_hash.not_comparable": 1,
-            "live_vs_serialized.binding.match": 34,
-            "live_vs_serialized.capability_present.match": 34,
-            "live_vs_serialized.contract_hash.match": 34,
+            "live_vs_serialized.binding.match": 31,
+            "live_vs_serialized.capability_present.match": 31,
+            "live_vs_serialized.contract_hash.match": 31,
             "live_vs_serialized.graph_hash.match": 1
           }
         },
@@ -1682,8 +1668,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 149,
-          "denominator": 149,
+          "numerator": 152,
+          "denominator": 152,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1704,28 +1690,28 @@
           "breakdown": {
             "in_population.capability_extractor.attributed": 16,
             "in_population.knowledge_extractor.attributed": 68,
-            "not_judged.reasoning_extractor.unattributed": 47,
-            "not_judged.rule_minted_capability.unattributed": 18
+            "not_judged.reasoning_extractor.unattributed": 53,
+            "not_judged.rule_minted_capability.unattributed": 15
           }
         },
         {
           "id": "provenanceChainCoverage",
           "stage": "capabilities",
           "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-          "numerator": 34,
-          "denominator": 34,
+          "numerator": 31,
+          "denominator": 31,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "binding.resolved": 22,
+            "binding.resolved": 19,
             "binding.unresolved": 12,
-            "link.hash_deterministic.ok": 34,
-            "link.nodes_resolve.ok": 34,
-            "link.refs_carried.ok": 34,
-            "link.source_resolves.ok": 34
+            "link.hash_deterministic.ok": 31,
+            "link.nodes_resolve.ok": 31,
+            "link.refs_carried.ok": 31,
+            "link.source_resolves.ok": 31
           }
         },
         {
@@ -1756,9 +1742,9 @@
           "id": "semanticCorrectness",
           "stage": "compile",
           "definition": "expected facts located and correct / expected facts located (identity matched) — isolates \"wrong\" from \"absent\"",
-          "numerator": 22,
+          "numerator": 23,
           "denominator": 23,
-          "ratio": 0.956522,
+          "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
@@ -1768,9 +1754,9 @@
           "id": "semanticPrecision",
           "stage": "compile",
           "definition": "observed nodes (of closed-world kinds) matched by a correct expected fact / all observed nodes of those kinds",
-          "numerator": 22,
+          "numerator": 23,
           "denominator": 24,
-          "ratio": 0.916667,
+          "ratio": 0.958333,
           "measured": true,
           "missing": [],
           "unexpected": [
@@ -1780,31 +1766,19 @@
               "attributedStage": "compile"
             }
           ],
-          "mismatched": [
-            {
-              "id": "heuristic|the policy is active",
-              "reason": "heuristic \"the Policy is active\" matched an expected fact but is semantically incorrect",
-              "attributedStage": "compile"
-            }
-          ]
+          "mismatched": []
         },
         {
           "id": "semanticRecall",
           "stage": "compile",
           "definition": "expected semantic facts located AND correct / expected semantic facts",
-          "numerator": 22,
+          "numerator": 23,
           "denominator": 23,
-          "ratio": 0.956522,
+          "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
-          "mismatched": [
-            {
-              "id": "r11.1-active-policy-proceed-to-assessment",
-              "reason": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
-              "attributedStage": "compile"
-            }
-          ]
+          "mismatched": []
         },
         {
           "id": "spuriousCapabilityAvoidance",
@@ -2187,10 +2161,8 @@
         {
           "id": "r11.1-active-policy-proceed-to-assessment",
           "dimension": "fact",
-          "outcome": "incorrect",
-          "ref": "rn_09075dac2713b22866665184b253622e",
-          "detail": "located heuristic \"the Policy is active\" but condition contains \"the loss is not excluded\" does not hold",
-          "attributedStage": "compile"
+          "outcome": "found",
+          "ref": "rn_68fcc642801ce2ed81ee568c45a51692"
         },
         {
           "id": "r11.2-both-approvals-over-100k",
@@ -2400,12 +2372,12 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 26,
+            "nodeCount": 34,
             "total": {
               "producers": {
                 "rule-based": 26
               },
-              "unattributed": 0
+              "unattributed": 8
             },
             "byKind": {
               "capability": {
@@ -2424,7 +2396,7 @@
                 "producers": {
                   "rule-based": 6
                 },
-                "unattributed": 0
+                "unattributed": 8
               }
             }
           }
@@ -2449,8 +2421,8 @@
         }
       },
       "fingerprints": {
-        "compile": "74da042c57124b88",
-        "capabilities": "3d91766715356b5b",
+        "compile": "a2d27028a4718957",
+        "capabilities": "f4cdf85c12b99244",
         "workflows": "4191b6d386070e29",
         "execution": "4f53cda18c2baa0c"
       },
@@ -2458,7 +2430,7 @@
         "nodeCountsByKind": {
           "capability": 9,
           "concept": 11,
-          "constraint": 6
+          "constraint": 14
         },
         "capabilities": {
           "total": 9,
@@ -2577,8 +2549,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 26,
-          "denominator": 26,
+          "numerator": 34,
+          "denominator": 34,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -2598,7 +2570,8 @@
           "mismatched": [],
           "breakdown": {
             "in_population.capability_extractor.attributed": 9,
-            "in_population.knowledge_extractor.attributed": 17
+            "in_population.knowledge_extractor.attributed": 17,
+            "not_judged.reasoning_extractor.unattributed": 8
           }
         },
         {
@@ -3660,7 +3633,7 @@
         }
       },
       "fingerprints": {
-        "compile": "623167f3fa5546c0",
+        "compile": "8c5544b4003a1017",
         "capabilities": "2e005b128a33dea2",
         "workflows": "cf4e40f69eb1ba66",
         "execution": "0c902a386273f202"

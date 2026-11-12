@@ -252,7 +252,7 @@ const BACKWARD_X_TOLERANCE_PT = 2;
  * same-line kerning and side-by-side content (distinct table columns,
  * runs with increasing `x`) are unaffected, since they never go backward.
  */
-export function groupRunsIntoLines(
+function groupRunsIntoLinesSingleFlow(
   pageNumber: number,
   runs: readonly TextRun[],
   resolveFontEncoding?: FontEncodingResolver,
@@ -288,4 +288,112 @@ export function groupRunsIntoLines(
       runs: sortedRuns,
     };
   });
+}
+
+// ── Multi-column reading order ───────────────────────────────────────────────────────────────────────────────────────
+//
+// A page whose prose runs in two columns has, on almost every baseline, text from BOTH columns. Grouping purely by `y`
+// merges them into one line and interleaves the columns ("left line 1 right line 1 / left line 2 ..."), which scrambles
+// every sentence that crosses a line break. The detector below looks for a vertical gutter that (nearly) no run crosses,
+// and only treats the page as columns when BOTH sides are wide, multi-line prose. A table with a narrow id column, a single
+// column, or a page with only a few lines is left exactly as before (row-wise order preserved).
+
+/** Fraction of LINES allowed to cross the gutter (a full-width title, a centred page number); at least 2 lines are always tolerated. */
+const COLUMN_MAX_CROSSING_LINE_FRACTION = 0.15;
+/** Gaps between neighbouring runs of one line up to this size are word spacing, not a gutter. */
+const COLUMN_WORD_GAP_BRIDGE_PT = 8;
+/** Narrowest empty band, in points, that counts as a gutter. */
+const COLUMN_GUTTER_MIN_WIDTH_PT = 14;
+/** Each column must be at least this fraction of the page width — excludes tables with a narrow id/label column. */
+const COLUMN_MIN_WIDTH_FRACTION = 0.3;
+/** Each column must have at least this many distinct text lines. */
+const COLUMN_MIN_LINES_PER_SIDE = 4;
+
+export interface RunExtent {
+  readonly run: TextRun;
+  readonly x0: number;
+  readonly x1: number;
+}
+
+/** Groups extents into physical lines (same baseline) and merges each line's runs into continuous spans, bridging word gaps. */
+function lineSpans(extents: readonly RunExtent[]): { y: number; spans: [number, number][] }[] {
+  const lines: { y: number; items: RunExtent[] }[] = [];
+  for (const e of extents) {
+    const line = lines.find((l) => Math.abs(l.y - e.run.y) <= Y_TOLERANCE);
+    if (line) line.items.push(e);
+    else lines.push({ y: e.run.y, items: [e] });
+  }
+  return lines.map((l) => {
+    const sorted = [...l.items].sort((a, b) => a.x0 - b.x0);
+    const spans: [number, number][] = [];
+    for (const e of sorted) {
+      const last = spans[spans.length - 1];
+      if (last !== undefined && e.x0 - last[1] <= COLUMN_WORD_GAP_BRIDGE_PT) last[1] = Math.max(last[1], e.x1);
+      else spans.push([e.x0, e.x1]);
+    }
+    return { y: l.y, spans };
+  });
+}
+
+/**
+ * Finds the x position of a column gutter, or `undefined` when the page is not a two-column prose layout. A gutter is an
+ * empty vertical band that (almost) no LINE crosses once word spacing is bridged, with wide, multi-line text on both sides.
+ */
+export function detectColumnGutter(extents: readonly RunExtent[], pageWidth: number): number | undefined {
+  const lines = lineSpans(extents);
+  if (lines.length < 2 * COLUMN_MIN_LINES_PER_SIDE) return undefined;
+  const maxCrossing = Math.max(2, Math.floor(lines.length * COLUMN_MAX_CROSSING_LINE_FRACTION));
+  let best: { start: number; end: number } | undefined;
+  let open: number | undefined;
+  const lo = Math.floor(pageWidth * 0.2);
+  const hi = Math.ceil(pageWidth * 0.8);
+  for (let x = lo; x <= hi + 1; x += 1) {
+    const crossing = x <= hi ? lines.filter((l) => l.spans.some(([a, b]) => a <= x && x <= b)).length : maxCrossing + 1;
+    if (crossing <= maxCrossing) {
+      if (open === undefined) open = x;
+    } else if (open !== undefined) {
+      if (x - open >= COLUMN_GUTTER_MIN_WIDTH_PT && (best === undefined || x - open > best.end - best.start))
+        best = { start: open, end: x };
+      open = undefined;
+    }
+  }
+  if (best === undefined) return undefined;
+  const mid = (best.start + best.end) / 2;
+  const left = extents.filter((e) => e.x1 <= mid);
+  const right = extents.filter((e) => e.x0 >= mid);
+  if (left.length === 0 || right.length === 0) return undefined;
+  const width = (side: readonly RunExtent[]): number => Math.max(...side.map((e) => e.x1)) - Math.min(...side.map((e) => e.x0));
+  if (width(left) < COLUMN_MIN_WIDTH_FRACTION * pageWidth || width(right) < COLUMN_MIN_WIDTH_FRACTION * pageWidth) return undefined;
+  if (lineSpans(left).length < COLUMN_MIN_LINES_PER_SIDE || lineSpans(right).length < COLUMN_MIN_LINES_PER_SIDE) return undefined;
+  return mid;
+}
+
+/**
+ * Groups a page's runs into reading-ordered lines. With `pageWidth`, a detected two-column prose layout is read column by
+ * column (a full-width run above the columns first, then the whole left column, then the whole right column, then
+ * full-width runs below). Without it, or when no column layout is detected, behaviour is the single-flow grouping above.
+ */
+export function groupRunsIntoLines(
+  pageNumber: number,
+  runs: readonly TextRun[],
+  resolveFontEncoding?: FontEncodingResolver,
+  pageWidth?: number,
+): readonly Line[] {
+  if (pageWidth === undefined || pageWidth <= 0) return groupRunsIntoLinesSingleFlow(pageNumber, runs, resolveFontEncoding);
+  const extents: RunExtent[] = runs
+    .map((run) => ({ run, text: decodeRunText(run, resolveFontEncoding) }))
+    .filter((r) => r.text.trim().length > 0)
+    .map((r) => ({ run: r.run, x0: r.run.x, x1: r.run.x + estimateRunAdvanceWidth(r.text, r.run.fontSizePt) }));
+  const gutter = detectColumnGutter(extents, pageWidth);
+  if (gutter === undefined) return groupRunsIntoLinesSingleFlow(pageNumber, runs, resolveFontEncoding);
+
+  const leftRuns: TextRun[] = [];
+  const rightRuns: TextRun[] = [];
+  const spanningRuns: TextRun[] = [];
+  for (const e of extents) (e.x1 <= gutter ? leftRuns : e.x0 >= gutter ? rightRuns : spanningRuns).push(e.run);
+  const left = groupRunsIntoLinesSingleFlow(pageNumber, leftRuns, resolveFontEncoding);
+  const right = groupRunsIntoLinesSingleFlow(pageNumber, rightRuns, resolveFontEncoding);
+  const spanning = groupRunsIntoLinesSingleFlow(pageNumber, spanningRuns, resolveFontEncoding);
+  const columnTop = Math.max(...[...left, ...right].map((l) => l.y));
+  return [...spanning.filter((l) => l.y > columnTop), ...left, ...right, ...spanning.filter((l) => l.y <= columnTop)];
 }

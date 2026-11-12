@@ -527,3 +527,90 @@ test('an explicit IF/THEN rule keeps the pattern confidence in the extractor eve
   assert.ok(rule);
   assert.equal(rule.metadata.confidence, 0.8);
 });
+
+// ── M2: comma-listed conditions (domain-neutral wording) ─────────────────────────────────────────────────────────
+// The condition/action boundary used to be the FIRST comma, so a comma-separated list of conditions was cut after its
+// first item and the rest of the list was swallowed into the action text.
+
+test('comma-listed conditions: the boundary is the comma before the main clause, so no condition is lost', () => {
+  const r = parseSentence(
+    'If the widget is active, the gadget is installed, the part is scheduled, and the item is not excluded, the order may proceed.',
+  );
+  assert.equal(r.candidates.length >= 1, true);
+  const c = r.candidates[0]!;
+  assert.equal(c.condition, 'the widget is active, the gadget is installed, the part is scheduled, and the item is not excluded');
+  assert.equal(c.action, 'the order may proceed');
+});
+
+test('comma-listed conditions followed by a decision verb', () => {
+  const c = parseSentence('If the widget is active, the gadget is installed, approve the request.').candidates[0]!;
+  assert.equal(c.condition, 'the widget is active, the gadget is installed');
+  assert.equal(c.outcome, 'approve the request');
+});
+
+test('an explicit "then" after a comma marks the boundary even when the action itself contains commas', () => {
+  const c = parseSentence('If the widget is active, then notify the owner, the team, and the manager.').candidates[0]!;
+  assert.equal(c.condition, 'the widget is active');
+  assert.equal(c.action, 'notify the owner, the team, and the manager');
+});
+
+test('multi-comma sentence with no recognisable main-clause marker keeps the previous first-comma behaviour', () => {
+  const c = parseSentence('If the widget is active, ship the order, and log the event.').candidates[0]!;
+  assert.equal(c.condition, 'the widget is active');
+  assert.equal(c.action, 'ship the order, and log the event');
+});
+
+test('thousands separators and parenthetical commas are never treated as the boundary', () => {
+  const a = parseSentence('If the amount exceeds 10,000, apply a fee.').candidates[0]!;
+  assert.equal(a.condition, 'the amount exceeds 10,000');
+  const b = parseSentence('If the widget is active (see parts a, b), the order may proceed.').candidates[0]!;
+  assert.equal(b.condition, 'the widget is active (see parts a, b)');
+  assert.equal(b.action, 'the order may proceed');
+});
+
+test('single-comma sentences are unchanged', () => {
+  const c = parseSentence('If the payment is late, apply a penalty fee.').candidates[0]!;
+  assert.equal(c.condition, 'the payment is late');
+  assert.equal(c.action, 'apply a penalty fee');
+});
+
+// ── Unconditional statements: understood sentences must yield a (fail-closed) node, never vanish ─────────────────────
+test('an unconditional decision instruction becomes a condition-less decision node', () => {
+  const c = parseSentence('Approve every request.').candidates[0]!;
+  assert.equal(c.nodeType, 'decision');
+  assert.equal(c.outcome, 'Approve every request');
+  assert.equal(c.condition, undefined);
+  assert.equal(c.matchedPattern, 'statement:unconditional-decision');
+});
+
+test('unconditional permissions and obligations with a short subject become policy (constraint) nodes tagged with their modality', () => {
+  const pe = parseSentence('The supplier may appoint an assessor.').candidates[0]!;
+  assert.equal(pe.nodeType, 'policy');
+  assert.equal(pe.matchedPattern, 'statement:unconditional-permission');
+  assert.equal(pe.action, 'The supplier may appoint an assessor');
+  assert.equal(parseSentence('Staff shall return the badge.').candidates[0]!.matchedPattern, 'statement:unconditional-obligation');
+});
+
+test('a modal buried past a long subject is NOT read as top-level (same precision guard as the subject-must pattern)', () => {
+  assert.equal(parseSentence('The party responsible for reviewing the annual compliance summary may sign off.').candidates.length, 0);
+});
+
+test('reference sentences and definitions are NOT turned into statements', () => {
+  assert.equal(parseSentence('The study enrolled 240 participants across three sites.').candidates.length, 0);
+  assert.equal(parseSentence('A widget means a self-contained unit of work.').candidates.length, 0);
+});
+
+test('existing, more specific patterns still win over the unconditional fallback', () => {
+  assert.equal(parseSentence('If the widget count exceeds 5, approve the request.').candidates[0]!.matchedPattern, 'rule:if-then:decision');
+});
+
+// Deliberately NOT a condition cue: "Where <vague condition>, ..." would extract ambiguous provisions (e.g. "where a loss
+// appears suspicious") as rules; the labelled benchmark counts that as a precision regression, consistent with this
+// parser's "false positives are worse than missing ambiguous reasoning" stance. Such sentences stay visible via the
+// coverage/normative-sentence-not-extracted diagnostic instead.
+test('"Where ..." is not treated as a leading condition cue (precision over recall for vague provisions)', () => {
+  assert.equal(
+    parseSentence('Where the widget count exceeds 5, approve the request.').candidates.some((c) => c.condition !== undefined),
+    false,
+  );
+});

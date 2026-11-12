@@ -1,3 +1,4 @@
+import type { GrammarLexicon } from '@xo/capability-contract';
 import { ok, type Result } from '@xo/types';
 import type { XoError } from '@xo/errors';
 import type { Logger } from '@xo/logger';
@@ -26,9 +27,10 @@ export class HybridReasoningExtractor implements ReasoningExtractor {
     private readonly aiExtractor?: ReasoningExtractor,
     logger?: Logger,
     confirmedRules: readonly ConfirmedRule[] = [],
+    lexicon?: GrammarLexicon,
   ) {
+    this.ruleBased = new RuleBasedReasoningExtractor(confirmedRules, lexicon);
     this.logger = logger ?? noopLogger;
-    this.ruleBased = new RuleBasedReasoningExtractor(confirmedRules);
   }
 
   async extract(unit: ExperienceUnit): Promise<Result<ReasoningExtractionResult, XoError>> {

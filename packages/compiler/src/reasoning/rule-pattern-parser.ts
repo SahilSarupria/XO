@@ -1,4 +1,6 @@
 import { parseStructuredCondition } from '@xo/capability-contract';
+import { classifySentenceKind } from '../document/content-classification.js';
+import { classifyModality } from './modality.js';
 import type { ReasoningNodeType } from './types.js';
 
 /**
@@ -90,6 +92,52 @@ function indexOfFirstComma(text: string): number {
   return -1;
 }
 
+/** Indexes of every comma that is neither a thousands separator inside a number nor inside parentheses. */
+function topLevelCommaIndexes(text: string): number[] {
+  const isDigit = (ch: string | undefined): boolean => ch !== undefined && ch >= '0' && ch <= '9';
+  const out: number[] = [];
+  let depth = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0 && !(isDigit(text[i - 1]) && isDigit(text[i + 1]))) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * Words/phrases that mark a clause as the MAIN clause (what follows the condition) rather than one more condition:
+ * an explicit "then", or a modal / requirement phrase, or a leading decision verb. Language-level cues only — no
+ * subject-matter vocabulary.
+ */
+const MAIN_CLAUSE_MARKER =
+  /^(?:then\b)|\b(?:may|must|shall|will|should|can|cannot|is required|are required|is not required|are not required|does not apply|do not apply)\b/i;
+
+function looksLikeMainClause(segment: string): boolean {
+  const text = segment.trim().replace(/^(?:and|or)\s+/i, '');
+  return MAIN_CLAUSE_MARKER.test(text) || startsWithDecisionVerb(text);
+}
+
+/**
+ * Condition/action boundary for a leading-condition sentence ("If A, B, and C, <main clause>").
+ *
+ * Zero or one top-level comma: that comma (parenthesised commas are no longer mistaken for the boundary). With several commas the boundary is the first comma whose
+ * following comma-delimited segment looks like a main clause, so a comma-separated LIST of conditions stays whole in
+ * the condition instead of being cut after its first item (which silently dropped the remaining conditions into the
+ * action text). When no segment is recognisable as a main clause the previous first-comma behaviour is kept, so
+ * nothing that parsed before parses differently without positive evidence.
+ */
+function indexOfConditionActionComma(sentence: string): number {
+  const commas = topLevelCommaIndexes(sentence);
+  if (commas.length <= 1) return commas[0] ?? -1;
+  for (let k = 0; k < commas.length; k += 1) {
+    const segment = sentence.slice(commas[k]! + 1, commas[k + 1] ?? sentence.length);
+    if (looksLikeMainClause(segment)) return commas[k]!;
+  }
+  return commas[0]!;
+}
+
 const DECISION_VERBS = [
   'approve',
   'approves',
@@ -174,7 +222,7 @@ function parseRule(sentence: string): ParseResult {
   const cue = CONDITION_CUES.find((c) => lower.startsWith(c));
   if (!cue) return EMPTY_RESULT;
 
-  const commaIdx = indexOfFirstComma(sentence);
+  const commaIdx = indexOfConditionActionComma(sentence);
   if (commaIdx === -1) return EMPTY_RESULT; // no comma separating condition from action — too ambiguous to split conservatively
 
   const condition = clean(sentence.slice(cue.length, commaIdx));
@@ -965,6 +1013,65 @@ function parseQuantifiedTerm(sentence: string): ParseResult {
   };
 }
 
+// --- Fallback: unconditional statement ("Approve every request." / "The operator must log each event.") --------------
+/**
+ * Last-resort pattern. A sentence that the content classifier judges normative but that no more specific pattern
+ * recognised used to vanish silently. It now yields a node that is understood but NOT executable (no condition, so
+ * nothing downstream can bind it): a condition-less `decision` for a leading decision verb, otherwise a `policy`
+ * (constraint) node tagged with its modality. Reference sentences, definitions and headings stay un-noded.
+ */
+function parseUnconditionalStatement(sentence: string): ParseResult {
+  const text = clean(sentence);
+  if (text.length === 0) return EMPTY_RESULT;
+  const lower = text.toLowerCase();
+  // A leading condition cue with no usable comma is deliberately skipped elsewhere (ambiguous condition/action split).
+  if (CONDITION_CUES.some((c) => lower.startsWith(c))) return EMPTY_RESULT;
+  const kind = classifySentenceKind(text);
+  if (kind === 'reference' || kind === 'definition' || kind === 'heading') return EMPTY_RESULT;
+  if (startsWithDecisionVerb(text)) {
+    return {
+      candidates: [
+        {
+          nodeType: 'decision',
+          canonicalLabel: text,
+          outcome: text,
+          exceptionConditions: [],
+          confidence: 0.6,
+          matchedPattern: 'statement:unconditional-decision',
+        },
+      ],
+      edges: [],
+    };
+  }
+  // Same structural guard as the established subject-"must" pattern: the modal must sit within the first 4 words
+  // (the subject), so a modal buried in a long subordinate clause is never read as this sentence's top-level modality.
+  for (const modal of ['may', 'shall', 'should', 'can', 'will']) {
+    const idx = indexOfPhraseBoundary(lower, modal);
+    if (idx <= 0) continue;
+    const subjectWords = text
+      .slice(0, idx)
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    if (subjectWords.length === 0 || subjectWords.length > 4) continue;
+    const { modality } = classifyModality(text);
+    return {
+      candidates: [
+        {
+          nodeType: 'policy',
+          canonicalLabel: text,
+          action: text,
+          exceptionConditions: [],
+          confidence: 0.6,
+          matchedPattern: `statement:unconditional-${modality}`,
+        },
+      ],
+      edges: [],
+    };
+  }
+  return EMPTY_RESULT;
+}
+
 export function parseSentence(sentence: string): ParseResult {
   const trimmed = sentence.trim();
   if (trimmed.length === 0) return EMPTY_RESULT;
@@ -987,6 +1094,7 @@ export function parseSentence(sentence: string): ParseResult {
     parseStandaloneOverride,
     parseLiabilityExclusion,
     parseQuantifiedTerm,
+    parseUnconditionalStatement,
   ];
   for (const parser of parsers) {
     const result = parser(withoutClauseNumber);

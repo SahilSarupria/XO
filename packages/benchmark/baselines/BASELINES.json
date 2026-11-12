@@ -54,7 +54,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "8d15c83533aef6b20f05fc6a240a64a34c925edd04349ed46442326dbc35909f",
+      "reportSha256": "b44e692ba7d63abf51239ab73cf6fbafd997deccaef6456ab55e21fb72fed866",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -181,8 +181,8 @@
       "knownDrift": [],
       "declaredGoldenChanges": [],
       "declaredPopulationChanges": [],
-      "refreshRecord": "baselines/refresh/ws1-recall.refresh.json",
-      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json",
+      "refreshRecord": "baselines/refresh/semantic-hardening.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json",
       "history": [
         {
           "step": "P0.9C final closure",
@@ -191,6 +191,10 @@
         {
           "step": "CR WS1 recall refresh",
           "note": "accepted baseline refreshed from 5e741c155cc8 to 8d15c83533ae; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.5e741c155cc8.report.json; no metric moved, compile/capabilities output of commercial-property-policy gained nodes from the new recall patterns."
+        },
+        {
+          "step": "Semantic hardening consolidation",
+          "note": "accepted baseline refreshed from 8d15c83533ae to b44e692ba7d6; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json; every difference dispositioned in baselines/refresh/semantic-hardening.refresh.json (CHANGELOG.md)."
         }
       ]
     },
@@ -454,6 +458,24 @@
           "stage": "execution",
           "reason": "CR WS1 recall: executable normalised rules, grounded-rule confidence and header-bound table-row constraints change this stage output; the metric movements are covered by the declared golden changes and none regressed (CHANGELOG.md, packages/benchmark)",
           "evidence": "CHANGELOG.md CR WS1 recall refresh; accepted-baseline refresh record baselines/refresh/ws1-recall.refresh.json"
+        },
+        {
+          "caseId": "aastha-operations",
+          "stage": "workflows",
+          "reason": "Semantic hardening consolidation: comma-listed conditions, unconditional statements and dropped-operand/permission-rule capability minting change this stage output; no metric moved and no expectation changed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md Semantic hardening consolidation; accepted-baseline refresh record baselines/refresh/semantic-hardening.refresh.json"
+        },
+        {
+          "caseId": "multidoc-burglary-claims",
+          "stage": "capabilities",
+          "reason": "Semantic hardening consolidation: comma-listed conditions, unconditional statements and dropped-operand/permission-rule capability minting change this stage output; no metric moved and no expectation changed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md Semantic hardening consolidation; accepted-baseline refresh record baselines/refresh/semantic-hardening.refresh.json"
+        },
+        {
+          "caseId": "multidoc-burglary-claims",
+          "stage": "compile",
+          "reason": "Semantic hardening consolidation: comma-listed conditions, unconditional statements and dropped-operand/permission-rule capability minting change this stage output; no metric moved and no expectation changed (CHANGELOG.md, packages/benchmark)",
+          "evidence": "CHANGELOG.md Semantic hardening consolidation; accepted-baseline refresh record baselines/refresh/semantic-hardening.refresh.json"
         }
       ],
       "declaredGoldenChanges": [

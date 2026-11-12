@@ -9,3 +9,10 @@ export * from './html-frontend.js';
 export * from './structured-frontend.js';
 export * from './openapi-frontend.js';
 export * from './image-frontend.js';
+
+export * from './prompt-frontend.js';
+export * from './docx-frontend.js';
+export * from './docx-text.js';
+export * from './xlsx-frontend.js';
+export * from './xlsx-text.js';
+export * from './zip-reader.js';

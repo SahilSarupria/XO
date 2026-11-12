@@ -398,12 +398,15 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // matched-label histogram before and after; no closed-class function word appears among them (the Layer 3 guard).
   assert.equal(
     sameUnitEdges.length,
-    29,
-    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1's quantified-term patterns on this fixture (see comment above)",
+    40,
+    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1 quantified-term patterns and semantic-hardening unconditional-statement nodes (re-measured after merge: 40)",
   );
+  // M2: 108 -> 132 (+24). Every added edge originates from a newly recovered sentence node (e.g. the unconditional "The Insurer
+  // may consider/assess ..." provisions), linking it to the concepts and the capability discovered from that same sentence — the
+  // same provenance linkage every constraint node already gets. Diffed edge-by-edge: 24 added, 0 removed.
   assert.equal(
     exactLabelEdges.length,
-    128,
+    152,
     'exact_label edge count: Layer 3 removed 5 spurious "Before"-substring links; WS1 recall then added 20 references to domain concepts from the new nodes (see comment above)',
   );
 
@@ -416,11 +419,18 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // `deterministicRuleCount` moves from 17 to 19 while `humanInTheLoopCount`
   // stays exactly 1 — Layer 2B added zero new human_in_the_loop
   // resolutions on this fixture.
+  // M2/M1 (silent-loss + modality): 20 -> 17. The three capabilities that stopped resolving were minted from rules that
+  // were not safely executable as mandatory rules. Two lost condition operands: (a) "a flood endorsement is present AND the loss is caused by flood" had its second operand dropped by
+  // the categorical-atom parser; (b) a comma-listed 4-condition rule was cut at its first comma and then structured from
+  // 2 of its 4 conditions (each executable on a fraction of its condition). The third ("the claim may be rejected")
+  // has PERMISSION modality, not a requirement; it stays in the graph with typed modality and a visible diagnostic. The rule node and its full condition text are
+  // unchanged in the graph; it simply no longer carries a (wrong) structured condition. Reviewed as a justified change,
+  // not a golden adjusted to pass.
   const lowered = lowerCapabilitiesToManifest(graph);
   const resolvedCount = lowered.outcomes.filter((o) => o.status === 'resolved').length;
   assert.equal(
     resolvedCount,
-    22,
+    19,
     'total resolved capability count: Problem B.1 baseline (17), +1 Human-in-the-Loop, +2 deterministic_rule (Layer 2B), +2 deterministic_rule from WS1 normalised deadline/threshold rules (day-based notification and submission deadlines)',
   );
 
@@ -428,7 +438,7 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   const humanInTheLoopCount = lowered.declarations.filter((d) => d.execution?.mode === 'human_in_the_loop').length;
   assert.equal(
     deterministicRuleCount,
-    21,
+    18,
     'the deterministic_rule resolution count is the Problem B.1 baseline (17), plus Layer 2B\'s two "Record..." capabilities, plus two WS1 normalised-rule capabilities',
   );
   assert.equal(
