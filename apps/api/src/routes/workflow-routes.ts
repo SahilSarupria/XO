@@ -9,20 +9,13 @@ import type { PermissionManager } from '@xo/permissions';
 import {
   requirePermission,
   requirePrincipal,
-  workspaceCompilationsStore,
-  workspaceApprovalsStore,
   workspaceIdempotencyStore,
-  workspaceExecutionsStore,
-  workspaceWorkflowExecutionsStore,
-  requireOwnedWorkspace,
   workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
-import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
-import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import {
   IdempotencyGate,
   fingerprintRequest,
@@ -31,11 +24,6 @@ import {
   type ResourceProbe,
 } from '../idempotency/idempotency.js';
 import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/idempotency-http.js';
-import { deriveCapabilityApprovalState } from '../approvals/approval-binding.js';
-import { verifyApproval } from '../approvals/approval-enforcement.js';
-import { FsExecutionStore } from '../executions/fs-execution-store.js';
-import { FsWorkflowExecutionStore } from '../workflows/fs-workflow-execution-store.js';
-import { composeCompilationWorkflows, resolveWorkflow, buildWorkflowView, type WorkflowView } from '../workflows/workflow-catalog.js';
 import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { startGated } from '../workflow-controls/service.js';

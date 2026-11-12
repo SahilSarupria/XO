@@ -145,7 +145,11 @@ export function branchTargets(g: DraftGraph, branchId: string, side: 'gte' | 'lt
   const upstream = new Set<string>([branchId]);
   const stack = [branchId];
   while (stack.length > 0)
-    for (const e of inTo(g, stack.pop() as string)) if (!upstream.has(e.from)) (upstream.add(e.from), stack.push(e.from));
+    for (const e of inTo(g, stack.pop() as string))
+      if (!upstream.has(e.from)) {
+        upstream.add(e.from);
+        stack.push(e.from);
+      }
   const current = outOf(g, branchId).find((e) => e.when === side)?.to;
   return g.nodes.filter((n) => n.kind !== 'trigger' && !upstream.has(n.id) && (n.id === current || inTo(g, n.id).length === 0));
 }
@@ -200,7 +204,11 @@ export function layoutDraft(g: DraftGraph): DraftLayout {
     place(h.id, 0, nextRow, new Set());
     nextRow++;
   }
-  for (const n of g.nodes) if (!depth.has(n.id)) (depth.set(n.id, 0), row.set(n.id, nextRow++));
+  for (const n of g.nodes)
+    if (!depth.has(n.id)) {
+      depth.set(n.id, 0);
+      row.set(n.id, nextRow++);
+    }
   // Branch rows may have been taken by an earlier chain; keep rows unique per column.
   const taken = new Set<string>();
   const placed: PlacedNode[] = g.nodes.map((n) => {

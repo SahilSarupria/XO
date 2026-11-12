@@ -23,11 +23,6 @@ function isMainModule(): boolean {
 if (isMainModule()) {
   const config = loadConfig();
   const logger = new ConsoleLogger({ name: 'xo-api' });
-}
-
-if (isMainModule()) {
-  const config = loadConfig();
-  const logger = new ConsoleLogger({ name: 'xo-api' });
   void (async () => {
     // P1.0 M4 — audit storage is resolved BEFORE the socket opens. Production without an explicit retention policy,
     // or a half-configured store, aborts startup instead of running unaudited / retaining indefinitely by accident.

@@ -1,12 +1,9 @@
 import { seedBoundApproval } from './approval-seed.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LocalFsBlobStore } from '@xo/storage';
 import { ErrorCode } from '@xo/errors';
 import { TestServer, withTempDir } from './test-helpers.js';
-import { FsApprovalStore } from '../src/approvals/fs-approval-store.js';
 import { approvalBlockedCode } from '../src/approvals/approval-eligibility.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 

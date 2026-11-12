@@ -146,7 +146,6 @@ export function useWorkflowDraft(workspaceId: string, workflow: Workflow, caps: 
       void reloadList();
     } else setProblem(r.problem);
     setSaving(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, workspaceId, name, nodes, edges, loaded, reloadList]);
 
   const open = useCallback(

@@ -26,7 +26,10 @@ const chain = (...ids: string[]): DraftGraph => ({
 const order = (g: DraftGraph): string[] => {
   const out: string[] = [];
   let cur = g.nodes.find((x) => x.kind === 'trigger')?.id;
-  while (cur !== undefined && !out.includes(cur)) (out.push(cur), (cur = g.edges.find((e) => e.from === cur)?.to));
+  while (cur !== undefined && !out.includes(cur)) {
+    out.push(cur);
+    cur = g.edges.find((e) => e.from === cur)?.to;
+  }
   return out;
 };
 
