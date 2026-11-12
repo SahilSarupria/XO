@@ -13,6 +13,7 @@ import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
+  requirePermission,
   requireOwnedWorkspace,
   workspacePackageValidator,
   workspacePackagesStore,
@@ -145,7 +146,7 @@ export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceS
   /** Dry-run of what `lock` (below) would write — resolves and returns the result, writes nothing. */
   async function resolve(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
-    const inst = new PackageInstaller(workspacePackagesStore(workspace, dataConfig));
+    const inst = new PackageInstaller(workspacePackagesStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) });
 
     const body = unwrapOrThrow(await req.json<ResolveBody>());
     if (typeof body.nameAtVersion !== 'string') {
@@ -162,8 +163,9 @@ export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceS
 
   async function lock(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'lock dependencies' });
     const store = workspacePackagesStore(workspace, dataConfig);
-    const inst = new PackageInstaller(store);
+    const inst = new PackageInstaller(store, { validator: workspacePackageValidator(dataConfig) });
 
     const body = unwrapOrThrow(await req.json<ResolveBody>());
     if (typeof body.nameAtVersion !== 'string') {
@@ -190,7 +192,7 @@ export function registerPackageRoutes(router: Router, workspaceStore: WorkspaceS
     const name = req.params['name'];
     const version = req.params['version'];
     if (name === undefined || version === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing name/version');
-    const inst = new PackageInstaller(workspacePackagesStore(workspace, dataConfig));
+    const inst = new PackageInstaller(workspacePackagesStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) });
     const manifest = unwrapOrThrow(await inst.getManifest(name, version));
     return json(200, manifest);
   }

@@ -34,6 +34,12 @@ export interface SourceRecord {
    */
   readonly contentStorageKey: string;
   readonly status: 'stored';
+  /** Where the bytes came from. Absent on records written before imports existed (those were all uploads). */
+  readonly origin?: { readonly kind: 'upload' } | { readonly kind: 'url'; readonly url: string };
+  /** Things the server could not carry over when it read this file (e.g. .docx list numbering). Shown to the user; never silently dropped. */
+  readonly ingestNotes?: readonly string[];
+  /** Cheap, deterministic counts computed at ingest. Only fields that were actually measured are present. */
+  readonly stats?: { readonly rows?: number; readonly words?: number; readonly paragraphs?: number; readonly tableRows?: number };
 }
 
 export interface CreateSourceInput {
@@ -41,6 +47,9 @@ export interface CreateSourceInput {
   readonly mediaType: string;
   readonly extension: string;
   readonly bytes: Uint8Array;
+  readonly origin?: SourceRecord['origin'];
+  readonly ingestNotes?: readonly string[];
+  readonly stats?: SourceRecord['stats'];
 }
 
 /**
@@ -54,12 +63,17 @@ export interface CreateSourceInput {
  * `package.json`, not an importable `exports` map, so nothing under
  * `apps/cli/src` can be imported from `apps/api`. Per the milestone
  * brief: "Do not invent new parsers or pretend unsupported formats
- * work" — DOCX and every other format not in this list is rejected at
- * upload time, not silently accepted and left to fail later at
- * compile time (which doesn't exist yet in this API).
+ * work" — every format not in this list is rejected at upload time,
+ * not silently accepted and left to fail later at compile time.
+ *
+ * `.docx` is the one entry that is NOT a compiler format: it is converted to plain
+ * text by this API (`sources/docx-text.ts`) and handed to the compiler as an
+ * ordinary `document` source, with whatever the conversion cannot carry over
+ * recorded in `SourceRecord.ingestNotes`. `@xo/compiler` itself is unchanged.
  */
 export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   '.pdf',
+  '.docx',
   '.html',
   '.htm',
   '.json',
@@ -75,6 +89,7 @@ export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
 
 const DEFAULT_MEDIA_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.html': 'text/html',
   '.htm': 'text/html',
   '.json': 'application/json',

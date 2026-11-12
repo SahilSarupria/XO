@@ -74,6 +74,7 @@ export async function compileSourceRecord(
         description: declaration?.description ?? nodeProps?.description ?? '',
         status: outcome.status,
         ...(declaration?.execution?.mode !== undefined ? { executionClass: declaration.execution.mode } : {}),
+        ...(declaration?.execution?.inputSchema !== undefined ? { inputContract: declaration.execution.inputSchema } : {}),
         ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
         confidence: node?.metadata.confidence ?? 0,
         ...(declaration?.confidence !== undefined

@@ -1,3 +1,4 @@
+import type { RecordedAuthentication } from '../auth/recorded-authentication.js';
 import type { Result } from '@xo/types';
 import type { AuthenticatedPrincipal, Principal } from '@xo/permissions';
 import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
@@ -18,6 +19,20 @@ import { ErrorCode, XoError, type NotFoundError } from '@xo/errors';
  * list, binding, runtime declaration, or storage key. The ordered `steps`
  * are always derived server-side from the stored compilation's graph.
  */
+
+export interface DraftRunInfo {
+  readonly definitionId: string;
+  readonly revision: number;
+  readonly path: readonly string[];
+  readonly branches: readonly {
+    readonly nodeId: string;
+    readonly basis: 'declared_contract_confidence';
+    readonly capabilityId: string;
+    readonly value: number;
+    readonly threshold: number;
+    readonly taken: 'gte' | 'lt';
+  }[];
+}
 
 export type WorkflowExecutionStatus = 'created' | 'running' | 'waiting_for_human' | 'succeeded' | 'failed' | 'rejected' | 'interrupted';
 
@@ -91,9 +106,13 @@ export interface WorkflowExecutionRecord {
   readonly identityId: string;
   /** P1.0 M1 — immutable attribution snapshot of the authenticated principal that started this workflow (`identityId` equals `initiator.id`). Absent on pre-M1 records. Resumes by other principals never replace it. */
   readonly initiator?: Principal;
+  /** How the starting principal authenticated (credential type and, for provider-backed credentials, the canonical issuer). Set once at creation; absent on earlier records. Attribution only. */
+  readonly authentication?: RecordedAuthentication;
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
+  /** Present only for a run started from a saved draft: which draft revision, the path taken, and each branch decision with the value it used. */
+  readonly draft?: DraftRunInfo;
   /**
    * Optimistic-concurrency counter. A freshly created record has
    * `revision: 0`; every persisted update requires the caller's
@@ -143,10 +162,12 @@ export interface WorkflowExecutionRecord {
 }
 
 export interface CreateWorkflowExecutionInput {
+  readonly authentication?: RecordedAuthentication;
   readonly workflowExecutionId: string;
   readonly compilationId: string;
   readonly workflowId: string;
   readonly workflowName: string;
+  readonly draft?: DraftRunInfo;
   readonly input: Readonly<Record<string, unknown>>;
   readonly steps: readonly Pick<WorkflowStepState, 'stepId' | 'order' | 'capabilityId' | 'capabilityName'>[];
   readonly sourceId?: string;
@@ -188,7 +209,14 @@ export class WorkflowConflictError extends XoError {
 }
 
 export type WorkflowConflictReason =
-  'stale_revision' | 'stale_step_execution' | 'step_execution_id_required' | 'not_resumable' | 'terminal' | 'in_flight';
+  | 'stale_revision'
+  | 'stale_step_execution'
+  | 'step_execution_id_required'
+  | 'not_resumable'
+  | 'terminal'
+  | 'in_flight'
+  | 'idempotency_key_reused'
+  | 'idempotency_key_expired';
 
 export class StaleWorkflowRevisionError extends WorkflowConflictError {
   constructor(

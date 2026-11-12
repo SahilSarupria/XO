@@ -1,3 +1,4 @@
+import type { RecordedAuthentication } from '../auth/recorded-authentication.js';
 import { err, ok, type Result } from '@xo/types';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import { declaredPermissionsForNode } from '../executions/authorization.js';
@@ -35,9 +36,12 @@ import { mintWorkflowExecutionId } from './fs-workflow-execution-store.js';
 import {
   TERMINAL_WORKFLOW_STATUSES,
   WorkflowConflictError,
+  type DraftRunInfo,
   type WorkflowExecutionRecord,
   type WorkflowExecutionStore,
 } from './workflow-execution.js';
+import { buildDraftCandidate } from './draft-workflow.js';
+import type { CandidateWorkflow } from '@xo/workflow-composer';
 import {
   composeCompilationWorkflows,
   findWorkflow,
@@ -111,10 +115,17 @@ export interface WorkflowRunnerContext {
   readonly principal: AuthenticatedPrincipal;
   /** P1.0 M2 — the server-side policy decision point (deny-by-default). Never derived from a request. */
   readonly permissionManager: PermissionManager;
+  /** How `principal` authenticated, stamped onto the records this call creates. Attribution only. */
+  readonly authentication?: RecordedAuthentication;
   readonly compilationStore: CompilationStore;
   readonly approvalStore: ApprovalStore;
   readonly executionStore: ExecutionStore;
   readonly workflowStore: WorkflowExecutionStore;
+}
+
+/** For a run started from a draft, the steps to rebuild (the persisted ones, in order); undefined for a derived workflow. */
+function draftOf(record: WorkflowExecutionRecord): { readonly name: string; readonly capabilityIds: readonly string[] } | undefined {
+  return record.draft === undefined ? undefined : { name: record.workflowName, capabilityIds: record.steps.map((s) => s.capabilityId) };
 }
 
 /** Test/inspection hook: is this process currently driving this workflow execution? */
@@ -174,6 +185,7 @@ async function loadWorkflowRuntime(
   ctx: WorkflowRunnerContext,
   compilationId: string,
   workflowId: string,
+  draft?: { readonly name: string; readonly capabilityIds: readonly string[] },
 ): Promise<Result<WorkflowRuntime, XoError>> {
   const compilation = await ctx.compilationStore.get(compilationId);
   if (!compilation.ok) return err(compilation.error);
@@ -190,7 +202,13 @@ async function loadWorkflowRuntime(
 
   const composed = composeCompilationWorkflows(graphJson.value, compilation.value.completedAt ?? compilation.value.createdAt);
   if (!composed.ok) return err(composed.error);
-  const workflow = findWorkflow(composed.value, workflowId);
+  const completedAt = compilation.value.completedAt ?? compilation.value.createdAt;
+  let workflow: CandidateWorkflow | undefined;
+  if (draft !== undefined) {
+    const built = buildDraftCandidate(composed.value.graph, workflowId, draft.name, draft.capabilityIds, completedAt);
+    if (!built.ok) return err(built.error);
+    workflow = built.value;
+  } else workflow = findWorkflow(composed.value, workflowId);
   if (workflow === undefined) return err(new NotFoundError(`workflow "${workflowId}" in compilation "${compilationId}"`));
 
   const graphHash = composed.value.graph.contentHash();
@@ -384,6 +402,7 @@ class RecordingStepExecutor {
       compilationId: this.runtime.compilation.compilationId,
       capabilityId: step.capabilityId,
       input: request.input,
+      ...(this.ctx.authentication !== undefined ? { authentication: this.ctx.authentication } : {}),
     });
     if (!created.ok) throw created.error;
     const executionId = created.value.executionId;
@@ -696,6 +715,8 @@ export interface StartWorkflowRequest {
   readonly compilationId: string;
   readonly workflowId: string;
   readonly input: Readonly<Record<string, unknown>>;
+  /** Set only by the draft launcher: the steps (in the author's order) and what to record about the draft. `workflowId` is then `draft:<definitionId>`. */
+  readonly draft?: { readonly info: DraftRunInfo; readonly name: string; readonly capabilityIds: readonly string[] };
 }
 
 /**
@@ -714,7 +735,12 @@ export async function startWorkflowExecution(
   request: StartWorkflowRequest,
   hooks: StartWorkflowHooks = {},
 ): Promise<WorkflowExecutionRecord> {
-  const loaded = await loadWorkflowRuntime(ctx, request.compilationId, request.workflowId);
+  const loaded = await loadWorkflowRuntime(
+    ctx,
+    request.compilationId,
+    request.workflowId,
+    request.draft !== undefined ? { name: request.draft.name, capabilityIds: request.draft.capabilityIds } : undefined,
+  );
   if (!loaded.ok) throw loaded.error;
   const runtime = loaded.value;
 
@@ -746,6 +772,8 @@ export async function startWorkflowExecution(
   activeDrives.add(workflowExecutionId);
   try {
     const created = await ctx.workflowStore.create(ctx.workspace.workspaceId, ctx.principal, {
+      ...(ctx.authentication !== undefined ? { authentication: ctx.authentication } : {}),
+      ...(request.draft !== undefined ? { draft: request.draft.info } : {}),
       workflowExecutionId,
       compilationId: request.compilationId,
       workflowId: request.workflowId,
@@ -962,7 +990,7 @@ export async function resumeWorkflowExecution(
     // Continue from the first runnable step. Re-resolves the authoritative workflow from the stored compilation.
     activeDrives.add(workflowExecutionId);
     try {
-      const loaded = await loadWorkflowRuntime(ctx, holder.current.compilationId, holder.current.workflowId);
+      const loaded = await loadWorkflowRuntime(ctx, holder.current.compilationId, holder.current.workflowId, draftOf(holder.current));
       if (!loaded.ok) {
         const failure = loaded.error;
         await holder.update((r, now) => withWorkflowFailure(r, failure.code, failure.message, now));

@@ -9,6 +9,8 @@
  * itself resolves to a subdirectory under `workspaceDataDir` below, never
  * anything the caller names directly.
  */
+import { loadOidcConfig, type OidcConfig } from './auth/oidc/config.js';
+
 export interface ApiConfig {
   readonly port: number;
   readonly host: string;
@@ -61,6 +63,8 @@ export interface ApiConfig {
    * changes nothing there.
    */
   readonly externalEffectsDir?: string;
+  /** OIDC bearer-token acceptance. Undefined = off (API keys only). Invalid or half-set configuration throws from `loadConfig`. */
+  readonly oidc?: OidcConfig;
 }
 
 /** Unset/blank -> undefined. A set value must be a plain non-empty path string (no control characters); anything else aborts startup. */
@@ -83,6 +87,7 @@ export function parseStepTimeoutMs(raw: string | undefined): number | undefined 
 export function loadConfig(env: Readonly<Record<string, string | undefined>> = process.env): ApiConfig {
   const portRaw = env['PORT'];
   const port = portRaw !== undefined ? Number(portRaw) : 4000;
+  const oidc = loadOidcConfig(env);
   return {
     port: Number.isFinite(port) && port > 0 ? port : 4000,
     host: env['HOST'] ?? '127.0.0.1',
@@ -95,5 +100,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>> = p
     ...(parseExternalEffectsDir(env['XO_EXTERNAL_EFFECTS_DIR']) !== undefined
       ? { externalEffectsDir: parseExternalEffectsDir(env['XO_EXTERNAL_EFFECTS_DIR']) as string }
       : {}),
+    ...(oidc !== undefined ? { oidc } : {}),
   };
 }

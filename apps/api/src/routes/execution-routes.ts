@@ -1,9 +1,12 @@
+import { toRecordedAuthentication, type RecordedAuthentication } from '../auth/recorded-authentication.js';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
+  requirePermission,
+  requireOwnedWorkspace,
   requirePrincipal,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
@@ -11,6 +14,8 @@ import {
   workspaceExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
+import { previewCapability } from '../executions/preview-capability.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
@@ -69,6 +74,11 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
+function optionalAuthentication(req: ApiRequest): { authentication?: RecordedAuthentication } {
+  const authentication = toRecordedAuthentication(req.authentication);
+  return authentication !== undefined ? { authentication } : {};
+}
+
 export function registerExecutionRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -78,9 +88,68 @@ export function registerExecutionRoutes(
 ): void {
   const auditCtx = { audit, workspaceStore };
 
+  /**
+   * Validate / Preview — the no-effect half of the Create XO test policy. Allowed on an UNAPPROVED capability
+   * (nothing is executed), and reports whether a real Test Run would currently be allowed and why not. Test Run
+   * itself is the ordinary POST /executions: same approval gate, same authorization, same audit entry.
+   */
+  async function previewExecution(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'preview capability' });
+    const compilationId = req.params['compilationId'];
+    const capabilityId = req.params['capabilityId'];
+    if (compilationId === undefined || capabilityId === undefined)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation or capability id');
+    const bodyResult = await req.json<{ input?: unknown }>();
+    if (!bodyResult.ok) throw bodyResult.error;
+    const input: unknown = bodyResult.value?.input ?? {};
+
+    const compilationStore = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    const compilation = await compilationStore.get(compilationId);
+    if (!compilation.ok) throw compilation.error;
+    const caps = await compilationStore.getCapabilities(compilationId);
+    if (!caps.ok) throw caps.error;
+    if (!caps.value.some((c) => c.capabilityId === capabilityId))
+      throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
+
+    let approved = false;
+    const blockers: string[] = [];
+    if (compilation.value.status !== 'succeeded')
+      blockers.push(`the compilation status is "${compilation.value.status}"; only a succeeded compilation can run`);
+
+    let preview: ReturnType<typeof previewCapability> | undefined;
+    if (compilation.value.status === 'succeeded') {
+      const graph = await compilationStore.getCompiledGraph(compilationId);
+      if (!graph.ok) throw graph.error;
+      // Same gate as a real run: the approval must be bound to this capability's CURRENT material state.
+      const verdict = await verifyApproval(
+        new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
+        { workspaceId: workspace.workspaceId, compilationId, capabilityId },
+        deriveCapabilityApprovalStateFromJson(graph.value, capabilityId, compilation.value.sourceDigestSha256),
+      );
+      approved = verdict.ok && verdict.value.approved;
+      preview = previewCapability(graph.value, capabilityId, input);
+      if (preview.kind === 'ready' && preview.inputIssues.length > 0) blockers.push('the input does not satisfy the declared input schema');
+      if (preview.kind !== 'ready') blockers.push('the capability could not be resolved to a runnable binding');
+    }
+    if (!approved)
+      blockers.push('the capability is not approved for its current state; a Test Run uses the same approval gate as a production run');
+    return json(200, {
+      previewOnly: true,
+      note: 'Nothing was executed, no execution record was written and no human task was opened. A passing preview does not prove the real run will succeed.',
+      compilationId,
+      capabilityId,
+      approved,
+      testRunAllowed: blockers.length === 0,
+      blockers,
+      preview: preview ?? null,
+    });
+  }
+
   async function createExecution(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'execute.capability', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'create execution' });
 
     const bodyResult = await req.json<CreateExecutionBody>();
     if (!bodyResult.ok) throw bodyResult.error;
@@ -240,6 +309,7 @@ export function registerExecutionRoutes(
         capabilityId,
         input,
         ...(executionId !== undefined ? { executionId } : {}),
+        ...optionalAuthentication(req),
       });
       if (!created.ok) throw created.error;
 
@@ -359,6 +429,13 @@ export function registerExecutionRoutes(
       // itself. Only genuinely exceptional conditions (unowned workspace,
       // unknown compilation/capability, not approved, NOT AUTHORIZED —
       // P1.0 M2) short-circuit before an `ExecutionRecord` is ever created.
+      // Activity feed (Studio): a workspace-level record of the run alongside the platform audit evidence above.
+      await recordAudit(req, workspace, dataConfig, {
+        event: 'execution.created',
+        result: completed.value.status === 'failed' ? 'failed' : completed.value.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
+        target: { kind: 'execution', id: completed.value.executionId },
+        detail: { compilationId, capabilityId, status: completed.value.status },
+      });
       return json(completed.value.status === 'failed' ? 200 : 201, {
         ...toWireRecord(completed.value),
         ...finalizationNotice(finalization),
@@ -394,6 +471,7 @@ export function registerExecutionRoutes(
   }
 
   router.post('/workspaces/:workspaceId/executions', guarded(createExecution));
+  router.post('/workspaces/:workspaceId/compilations/:compilationId/capabilities/:capabilityId/preview', guarded(previewExecution));
   router.get('/workspaces/:workspaceId/executions', guarded(listExecutions));
   router.get('/workspaces/:workspaceId/executions/:executionId', guarded(getExecution));
 }

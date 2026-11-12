@@ -32,6 +32,10 @@ import type { ApiRequest } from '../../http/types.js';
  * disabled (501 before this runs). This function is the safe shape for when
  * it is re-enabled; re-enabling still requires the P1.0 M2 authorization gate.
  */
+/** Provider ids the workspace settings may name (a settings CHOICE of server-configured provider; it never carries a credential or endpoint). */
+export const SUPPORTED_PROVIDER_IDS = ['anthropic', 'openai', 'azure-openai', 'gemini', 'ollama'] as const;
+export type SupportedProviderId = (typeof SUPPORTED_PROVIDER_IDS)[number];
+
 export const CLIENT_PROVIDER_HEADERS = ['x-xo-provider', 'x-xo-api-key', 'x-xo-base-url', 'x-xo-endpoint', 'x-xo-api-version'] as const;
 
 export function resolveProvider(

@@ -1,3 +1,4 @@
+import { extractDocxText } from '../sources/docx-text.js';
 /**
  * Mirrors `apps/cli/src/commands/compiler/source-input.ts#loadSourceInput`'s
  * extension -> `SourceInput` tagging exactly, adapted to work from bytes
@@ -20,6 +21,9 @@ export function buildCompilerSourceInput(extension: string, bytes: Uint8Array, s
   switch (extension) {
     case '.pdf':
       return { kind: 'pdf', bytes, sourcePath };
+    case '.docx':
+      // Converted to text here (never inside the compiler); a document that passed the upload-time check converts again deterministically.
+      return { kind: 'document', text: extractDocxText(bytes).text, sourcePath };
     case '.html':
     case '.htm':
       return { kind: 'html', html: new TextDecoder().decode(bytes), sourcePath };

@@ -1,4 +1,4 @@
-import type { Result } from '@xo/types';
+import type { CapabilityInputSchema, Result } from '@xo/types';
 import type { NotFoundError, XoError } from '@xo/errors';
 
 /**
@@ -54,6 +54,13 @@ export interface CapabilityProjection {
   readonly executionClass?: string;
   /** Present only when `status !== 'resolved'` (or resolved-but-not-lowered) — `LoweredCapabilityOutcome.reason`, unchanged. */
   readonly reason?: string;
+  /**
+   * `declaration.execution.inputSchema` — the authoritative input contract this capability's execution is validated against
+   * (the same `CapabilityInputSchema` execution enforces via `validateCapabilityInput`; no separate schema format). Present only
+   * when the lowered declaration carries one. ABSENT MEANS "NO PUBLISHED CONTRACT", NOT "NO INPUTS NEEDED": without a schema no
+   * structural validation happens at the API/runtime boundary. Compilations stored before this field existed also omit it.
+   */
+  readonly inputContract?: CapabilityInputSchema;
   /** The discovered node's own `metadata.confidence` — always present for every discovered capability, independent of resolution status. */
   readonly confidence: number;
   /** `declaration.confidence` — present only when a manifest-level declaration exists (a strictly narrower condition than `status === 'resolved'`). */

@@ -1,0 +1,297 @@
+/* Documents (sources) page: a drop zone and an add-by-link/text card above a filterable list. Tokens only. */
+.src-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: stretch;
+}
+.src-drop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    'icon text'
+    'btn btn'
+    'types types';
+  gap: var(--s-3) var(--s-4);
+  align-content: center;
+  padding: var(--s-5);
+  background: var(--surface-1);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--motion),
+    background var(--motion);
+}
+.src-drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+.src-drop-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--accent);
+  background: var(--accent-wash);
+  border-radius: 12px;
+}
+.src-drop-text {
+  grid-area: text;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: center;
+}
+.src-drop > .btn {
+  grid-area: btn;
+  justify-self: start;
+}
+.src-types {
+  grid-area: types;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.src-types li {
+  padding: 1px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.src-trust {
+  margin: var(--s-2) 0 var(--s-4);
+}
+
+/* add by link / paste text (also used by the Create XO wizard) */
+.add-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.add-link-text label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.add-link-text .btn {
+  align-self: flex-start;
+}
+.alt-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.alt-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.alt-tabs button:hover {
+  color: var(--text);
+}
+.alt-tabs button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--surface-3);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.alt-tabs button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* toolbar */
+.src-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+  margin: var(--s-4) 0 var(--s-3);
+}
+.src-summary {
+  margin: 0;
+  margin-right: auto;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.src-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-3);
+  min-width: 14rem;
+  color: var(--text-faint);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+.src-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: none;
+  border: 0;
+}
+.src-search input:focus-visible {
+  outline: none;
+}
+.src-search:focus-within {
+  border-color: var(--accent);
+}
+.src-filters {
+  display: inline-flex;
+  gap: var(--s-1);
+}
+.src-filters button {
+  padding: 0.3rem 0.75rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.src-filters button:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.src-filters button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+.src-filters button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* list */
+.src-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.src-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  box-shadow: inset 3px 0 0 transparent;
+}
+.src-row:first-child {
+  border-top: 0;
+}
+.src-row:hover {
+  background: var(--surface-2);
+}
+.src-row[data-stage='done'] {
+  box-shadow: inset 3px 0 0 var(--success);
+}
+.src-row[data-stage='failed'] {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.src-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 3rem;
+  height: 3rem;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.src-file span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.src-main {
+  min-width: 0;
+}
+.src-main h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src-main p {
+  margin: 2px 0 0;
+}
+.src-main .notice {
+  margin-top: var(--s-2);
+}
+.src-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+@media (max-width: 52rem) {
+  .src-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .src-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'file main'
+      'status status'
+      'actions actions';
+  }
+  .src-file {
+    grid-area: file;
+  }
+  .src-main {
+    grid-area: main;
+  }
+  .src-status {
+    grid-area: status;
+  }
+  .src-actions {
+    grid-area: actions;
+    flex-wrap: wrap;
+  }
+  .src-search {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}

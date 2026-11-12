@@ -32,6 +32,14 @@ export class Router {
   private readonly routes: CompiledRoute[] = [];
   private readonly middlewares: Middleware[] = [];
 
+  /** Every registered route as `{ method, path }` with `{param}` placeholders (OpenAPI style). Read-only; used to check the API document against what is actually served. */
+  registeredRoutes(): readonly { readonly method: string; readonly path: string }[] {
+    return this.routes.map((r) => ({
+      method: r.method,
+      path: `/${r.segments.map((seg) => (seg.kind === 'param' ? `{${seg.name}}` : seg.value)).join('/')}`,
+    }));
+  }
+
   /** Registered in order; every request passes through every middleware before its matched handler — see `auth.ts` for the one currently registered. */
   use(middleware: Middleware): void {
     this.middlewares.push(middleware);
@@ -47,6 +55,18 @@ export class Router {
 
   post(path: string, handler: RouteHandler): void {
     this.add('POST', path, handler);
+  }
+
+  put(path: string, handler: RouteHandler): void {
+    this.add('PUT', path, handler);
+  }
+
+  patch(path: string, handler: RouteHandler): void {
+    this.add('PATCH', path, handler);
+  }
+
+  delete(path: string, handler: RouteHandler): void {
+    this.add('DELETE', path, handler);
   }
 
   /**

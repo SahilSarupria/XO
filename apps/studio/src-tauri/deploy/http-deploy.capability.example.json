@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "http-deploy",
+  "description": "TEMPLATE. Copy to ../capabilities/http-deploy.json and replace BOTH origins with your real, explicitly configured origins. Exactly your XO API origin and your OIDC provider's token/discovery/revocation origin, nothing broader. No wildcard hosts.",
+  "windows": ["main"],
+  "permissions": [
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://REPLACE-WITH-XO-API-HOST/*" }, { "url": "https://REPLACE-WITH-IDP-HOST/*" }]
+    }
+  ]
+}

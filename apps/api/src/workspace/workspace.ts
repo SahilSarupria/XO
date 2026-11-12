@@ -11,10 +11,41 @@ import type { NotFoundError, XoError } from '@xo/errors';
  * influence the *actual* directory this maps to; it only ever sees this
  * record.
  */
+export type WorkspaceKind = 'team' | 'personal';
+
+/** Declared data-residency region labels the server accepts (machine-declarable per XO-PROTOCOL §15.6; see `workspace/regions.ts`). */
+export type WorkspaceRole = 'admin' | 'publisher' | 'reviewer' | 'viewer';
+
+export const WORKSPACE_ROLES: readonly WorkspaceRole[] = ['admin', 'publisher', 'reviewer', 'viewer'];
+
+export function isWorkspaceRole(value: unknown): value is WorkspaceRole {
+  return typeof value === 'string' && (WORKSPACE_ROLES as readonly string[]).includes(value);
+}
+
+/**
+ * A non-owner identity with access to a workspace. The owner (`WorkspaceRecord.identityId`) is never stored
+ * here — the owner is always an implicit `admin` and cannot be demoted or removed through the members API.
+ */
+export interface WorkspaceMember {
+  readonly identityId: string;
+  readonly role: WorkspaceRole;
+  readonly displayName?: string;
+  readonly email?: string;
+  /** Identity that granted this membership (always an admin at the time). */
+  readonly addedBy: string;
+  readonly addedAt: string;
+}
+
 export interface WorkspaceRecord {
   readonly workspaceId: string;
   readonly identityId: string;
   readonly name?: string;
+  /** `team` workspaces can have members; `personal` ones are single-identity. Absent on records created before this field existed — treated as `team`. */
+  readonly kind?: WorkspaceKind;
+  /** Declared data-residency region (a label from `workspace/regions.ts`). Declarative: it is what the workspace is *configured* to require, not proof of where bytes physically are. */
+  readonly region?: string;
+  /** Members other than the owner. Absent = none. */
+  readonly members?: readonly WorkspaceMember[];
   readonly createdAt: string;
   /**
    * The server-owned key prefix future slices (source upload, compiled
@@ -30,6 +61,15 @@ export interface WorkspaceRecord {
 
 export interface CreateWorkspaceInput {
   readonly name?: string;
+  readonly kind?: WorkspaceKind;
+  readonly region?: string;
+}
+
+/** The only fields a workspace record may be changed through after creation. Ownership (`identityId`) is never patchable. */
+export interface WorkspacePatch {
+  readonly name?: string;
+  readonly region?: string;
+  readonly members?: readonly WorkspaceMember[];
 }
 
 /**
@@ -56,8 +96,20 @@ export interface WorkspaceStore {
    */
   get(workspaceId: string): Promise<Result<WorkspaceRecord, NotFoundError>>;
 
-  /** Returns only workspaces owned by `identityId` — an identity with no workspaces yet gets `ok([])`, never an error. */
+  /** Returns the workspaces `identityId` owns or is a member of — an identity with none yet gets `ok([])`, never an error. */
   listByIdentity(identityId: string): Promise<Result<readonly WorkspaceRecord[], XoError>>;
+
+  /**
+   * Applies a patch to a stored record (read-modify-write, serialized per workspace within this process).
+   * `identityId`, `workspaceId`, `createdAt` and `storageKeyPrefix` can never change.
+   */
+  update(workspaceId: string, patch: WorkspacePatch): Promise<Result<WorkspaceRecord, NotFoundError | XoError>>;
+}
+
+/** The role `identityId` holds in `record`: `admin` for the owner, the member's role for a member, `undefined` for anyone else. */
+export function roleOf(record: WorkspaceRecord, identityId: string): WorkspaceRole | undefined {
+  if (record.identityId === identityId) return 'admin';
+  return record.members?.find((m) => m.identityId === identityId)?.role;
 }
 
 /**

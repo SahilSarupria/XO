@@ -281,7 +281,16 @@ export class PermissionError extends XoError {
  */
 export class AuthError extends XoError {
   constructor(
-    code: typeof ErrorCode.AUTH_KEY_MISSING | typeof ErrorCode.AUTH_KEY_INVALID | typeof ErrorCode.AUTH_KEY_REVOKED,
+    code:
+      | typeof ErrorCode.AUTH_KEY_MISSING
+      | typeof ErrorCode.AUTH_KEY_INVALID
+      | typeof ErrorCode.AUTH_KEY_REVOKED
+      | typeof ErrorCode.AUTH_TOKEN_INVALID
+      | typeof ErrorCode.AUTH_TOKEN_EXPIRED
+      | typeof ErrorCode.AUTH_IDENTITY_UNBOUND
+      | typeof ErrorCode.AUTH_PROVIDER_UNAVAILABLE
+      | typeof ErrorCode.AUTH_CHALLENGE_INVALID
+      | typeof ErrorCode.AUTH_RATE_LIMITED,
     message: string,
     options?: XoErrorOptions,
   ) {

@@ -6,11 +6,17 @@ import { FileAuditStore, resolveAuditConfig, type AuditSink } from '@xo/audit';
 export { createHttpServer, buildRouter } from './server.js';
 export type { ServerDeps } from './server.js';
 export { createConfiguredExternalToolWiring } from './external-tools-host.js';
+export type { OidcAuthDeps } from './http/auth.js';
 export * from './http/types.js';
 
 /** Only runs when this module is the actual process entrypoint (`npm start` / `node dist/index.js`) — importing this module from a test never binds a socket. */
 function isMainModule(): boolean {
   return process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1], 'file:').href;
+}
+
+if (isMainModule()) {
+  const config = loadConfig();
+  const logger = new ConsoleLogger({ name: 'xo-api' });
 }
 
 if (isMainModule()) {
@@ -31,6 +37,7 @@ if (isMainModule()) {
         retention: { defaultRetentionMs: audit.value.defaultRetentionMs, minimumRetentionMs: audit.value.minimumRetentionMs },
       });
     }
+    // Invalid or incomplete authentication configuration (OIDC, trust policy) must stop startup visibly, never degrade silently.
     const server = createHttpServer({ logger, apiKeysDir: config.apiKeysDir, ...(auditSink !== undefined ? { auditSink } : {}) });
     server.listen(config.port, config.host, () => {
       logger.info(`listening on http://${config.host}:${config.port}`);

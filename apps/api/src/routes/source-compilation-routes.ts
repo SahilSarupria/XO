@@ -5,6 +5,8 @@ import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
+  callerIdentityId,
+  requirePermission,
   requireOwnedWorkspace,
   workspaceSourcesStore,
   workspaceCompilationsStore,
@@ -12,6 +14,7 @@ import {
   requirePrincipal,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -24,6 +27,7 @@ import { verifyApproval } from '../approvals/approval-enforcement.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, finalizationNotice, newCorrelationId, safeId } from '../audit/audit-service.js';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
+import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
 
 /**
  * Source -> compilation -> capability, over the exact same
@@ -58,6 +62,7 @@ export function registerCompilationRoutes(
   const auditCtx = { audit, workspaceStore };
   async function compile(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'compile source' });
     const sourceId = req.params['sourceId'];
     if (sourceId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing source id');
 
@@ -89,7 +94,7 @@ export function registerCompilationRoutes(
     // completion report's "idempotency and repeat compilation" section
     // for why this (rather than reusing an existing result for the same
     // source digest) is this milestone's deliberate, documented choice.
-    const created = await compilationStore.create(workspace.workspaceId, workspace.identityId, {
+    const created = await compilationStore.create(workspace.workspaceId, callerIdentityId(req), {
       sourceId,
       sourceDigestSha256: source.digestSha256,
     });
@@ -104,6 +109,12 @@ export function registerCompilationRoutes(
     const finished = await compilationStore.get(created.value.compilationId);
     if (!finished.ok) throw finished.error;
 
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'compilation.started',
+      result: finished.value.status === 'succeeded' ? 'succeeded' : 'failed',
+      target: { kind: 'compilation', id: finished.value.compilationId, label: source.originalFilename },
+      detail: { sourceId, status: finished.value.status },
+    });
     return json(finished.value.status === 'succeeded' ? 201 : 200, toWireRecord(finished.value));
   }
 
@@ -162,6 +173,7 @@ export function registerCompilationRoutes(
   async function approveCapability(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'approve.capability', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'approve capability' });
     const compilationId = req.params['compilationId'];
     const capabilityId = req.params['capabilityId'];
     if (compilationId === undefined || capabilityId === undefined)
@@ -200,6 +212,18 @@ export function registerCompilationRoutes(
     if (!capsFound.ok) throw capsFound.error;
     const capability = capsFound.value.find((c) => c.capabilityId === capabilityId);
     if (capability === undefined) throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
+
+    // WP2-A: an approval is only recordable for a capability the platform can carry out. A
+    // non-resolved binding is refused with the same code execution would report for it. This
+    // is an eligibility filter, not authorization; execution re-derives the binding and
+    // re-checks approval independently (see approvals/approval-eligibility.ts).
+    const blockedCode = approvalBlockedCode(capability.status);
+    if (blockedCode !== undefined) {
+      throw new XoError(
+        blockedCode,
+        `capability "${capabilityId}" cannot be approved: its binding status is "${capability.status}", so it cannot be carried out.`,
+      );
+    }
 
     // BINDING: derive the capability's CURRENT material state from the PERSISTED graph on the server. What is approved is
     // exactly this derived state — the client cannot name a different one. A capability whose contract cannot be built has no
@@ -241,6 +265,12 @@ export function registerCompilationRoutes(
       },
     });
     if (!approved.ok) throw approved.error;
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'capability.approved',
+      result: 'approved',
+      target: { kind: 'capability', id: capabilityId },
+      detail: { compilationId },
+    });
 
     const finalization = await audit.finalize(
       {

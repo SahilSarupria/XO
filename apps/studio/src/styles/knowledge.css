@@ -1,0 +1,94 @@
+/* Knowledge (C7.3). Tokens only. */
+.knowledge-tabs {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  flex-wrap: wrap;
+}
+.knowledge-tab {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  cursor: pointer;
+}
+.knowledge-tab.is-current {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.knowledge-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.knowledge-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+@media (min-width: 64rem) {
+  .knowledge-layout:has(.knowledge-evidence) {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+  }
+}
+.knowledge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.knowledge-card {
+  align-items: center;
+}
+.knowledge-danger {
+  border-color: var(--danger);
+}
+.knowledge-warning {
+  border-color: var(--warning);
+}
+.knowledge-card-end {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.knowledge-evidence {
+  flex-direction: column;
+  justify-content: flex-start;
+}
+.knowledge-evidence h3,
+.knowledge-evidence h4 {
+  margin: var(--s-3) 0 var(--s-1);
+}
+.knowledge-evidence-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.knowledge-evidence-items code {
+  font-size: var(--text-sm);
+}
+.knowledge-main .input {
+  width: 100%;
+  max-width: 32rem;
+  background: var(--surface-1);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+}
+
+.knowledge-card {
+  flex-wrap: wrap;
+}
+.knowledge-row-note {
+  flex-basis: 100%;
+  margin: 0;
+}

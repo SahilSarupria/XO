@@ -1,4 +1,5 @@
 import { DEVELOPMENT_TRUST_WARNING, assertTrustPolicyAllowedHere, loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
+import { resolve } from 'node:path';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { Result } from '@xo/types';
 import { AuditError, ErrorCode, XoError } from '@xo/errors';
@@ -9,7 +10,7 @@ import { Router } from './http/router.js';
 import { BodyTooLargeError, readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
-import { createApiKeyAuth } from './http/auth.js';
+import { createAuthMiddleware, type OidcAuthDeps } from './http/auth.js';
 import type { ApiKeyStore } from './auth/api-key-store.interface.js';
 import { FsApiKeyStore } from './auth/fs-api-key-store.js';
 import type { WorkspaceStore } from './workspace/workspace.js';
@@ -17,7 +18,6 @@ import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import type { ConnectService } from '@xo/connect';
-import { registerRoutes } from './routes/index.js';
 import { PermissionManager, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
@@ -26,10 +26,36 @@ import { join } from 'node:path';
 import { AuditService } from './audit/audit-service.js';
 import type { ExternalToolWiring } from '@xo/runtime';
 
+import { loadOidcConfig } from './auth/oidc/config.js';
+import { createOidcVerifier } from './auth/oidc/verifier.js';
+import { parseTrustedProxyHops, resolveClientAddress } from './http/client-address.js';
+import { createSessionAuth, loadSessionAuthConfig, type SessionAuthBundle, type SessionAuthOptions } from './auth/session/index.js';
+import { loadPasswordAuthConfig } from './auth/password/config.js';
+import {
+  createPasswordOnlySessionStores,
+  createPasswordService,
+  createPasswordStores,
+  type PasswordAuthBundle,
+  type PasswordAuthOptions,
+} from './auth/password/bundle.js';
+import { SessionLifecycle } from './auth/session/lifecycle.js';
+import { createRateLimiter } from './auth/session/rate-limiter.js';
+import type { SessionGate } from './auth/session/gate.js';
+import { PASSWORD_PUBLIC_PATHS, registerPasswordAuthRoutes, registerSessionLifecycleRoutes } from './routes/auth-password-routes.js';
+import { registerAuthSessionRoutes } from './routes/auth-session-routes.js';
+import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
+import type { IdentityBindingStore } from './auth/oidc/binding-store.interface.js';
+import type { FsSessionStore } from './auth/session/session-store.js';
+import { registerRoutes, type RegisterRoutesDeps } from './routes/index.js';
+
 export interface ServerDeps {
   readonly logger?: Logger;
-  /** P1.0 M5 — injected trust policy (tests/embedders). When omitted the policy is resolved from the environment by `loadOperatorTrustPolicy()`, which fails closed (startup aborts) unless a policy file or the explicit `XO_TRUST_MODE=development` is configured. */
+  /** P1.0 M5 — injected trust policy (tests/embedders). When omitted the policy is resolved from the environment by `loadOperatorTrustPolicy()`, which fails closed (startup aborts) unless a policy file or the explicit development mode is configured. */
   readonly packageTrustPolicy?: PackageTrustPolicy;
+  /** Test seam: replaces the DNS lookup / HTTPS transport the URL importer uses. Production leaves this unset. */
+  readonly importFetch?: RegisterRoutesDeps['importFetch'];
+  /** Test seam: replaces how chat turns a provider id into a model provider. */
+  readonly chatProviderFactory?: RegisterRoutesDeps['chatProviderFactory'];
   /**
    * Injected directly when a caller already has one (e.g.
    * `test-helpers.ts`'s `TestServer`, which provisions a temp-dir-backed
@@ -93,10 +119,35 @@ export interface ServerDeps {
   readonly connectServiceId?: string;
   /** Receives the Connect runtime built from `connectStateDir`, so the host can `await runtime.close()` at shutdown. */
   readonly onConnectRuntime?: (runtime: ConnectRuntime) => void;
+  /**
+   * OIDC bearer-token authentication, injected directly (tests, embedding). When
+   * absent, it is built from `env` (`XO_API_OIDC_*`, see `auth/oidc/config.ts`):
+   * unset => OIDC off (API keys only); partially or invalidly set => this
+   * function THROWS, so the process fails to start rather than running with
+   * weaker authentication than configured.
+   */
+  readonly oidc?: OidcAuthDeps;
+  /**
+   * Google sign-in → XO sessions. Injected by tests; in production it is built from the environment
+   * (`XO_API_GOOGLE_CLIENT_ID`, see `auth/session/config.ts`) and is off when that is unset.
+   */
+  readonly sessionAuth?: SessionAuthBundle;
+  /** Test-only tuning for the environment-built session auth (clocks, limits, key-fetch timing). */
+  readonly sessionAuthOptions?: SessionAuthOptions;
+  /** Test-only tuning for password sign-in (injected clock / limiter). Password sign-in itself is enabled by `XO_API_PASSWORD_AUTH=1` in `env`. */
+  readonly passwordAuthOptions?: PasswordAuthOptions;
+  /** Environment OIDC configuration is read from. Defaults to `process.env`. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<string, string>>, url: URL): ApiRequest {
+function buildApiRequest(
+  incoming: IncomingMessage,
+  params: Readonly<Record<string, string>>,
+  url: URL,
+  trustedProxyHops: number,
+): ApiRequest {
   let cachedBody: Promise<Buffer> | undefined;
+  const clientAddress = resolveClientAddress(incoming.socket.remoteAddress, incoming.headers['x-forwarded-for'], trustedProxyHops);
   const rawBody = (): Promise<Buffer> => {
     cachedBody ??= readRawBody(incoming);
     return cachedBody;
@@ -108,6 +159,7 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
     params,
     query: url.searchParams,
     headers: incoming.headers,
+    ...(clientAddress !== undefined ? { remoteAddress: clientAddress } : {}),
     rawBody,
     rawBodyLimited: async (maxBytes: number): Promise<Buffer> => {
       cachedBody ??= readRawBody(incoming, maxBytes);
@@ -119,6 +171,23 @@ function buildApiRequest(incoming: IncomingMessage, params: Readonly<Record<stri
       const buffer = await rawBody();
       return parseJsonBody<T>(buffer);
     },
+  };
+}
+
+function buildSessionAuthFromEnv(deps: ServerDeps, gate?: SessionGate): SessionAuthBundle | undefined {
+  const config = loadSessionAuthConfig(deps.env ?? process.env); // throws on invalid/incomplete configuration
+  if (config === undefined) return undefined;
+  deps.logger?.info(`Google sign-in enabled (issuer ${config.issuer}); XO sessions stored under the configured sessions directory`);
+  return createSessionAuth(config, { ...deps.sessionAuthOptions, ...(gate !== undefined ? { gate } : {}) });
+}
+
+function buildOidcFromEnv(deps: ServerDeps): OidcAuthDeps | undefined {
+  const config = loadOidcConfig(deps.env ?? process.env); // throws on invalid/incomplete configuration
+  if (config === undefined) return undefined;
+  deps.logger?.info(`OIDC bearer authentication enabled for issuer ${config.issuer} (audience ${config.audience})`);
+  return {
+    verifier: createOidcVerifier(config),
+    bindings: new FsIdentityBindingStore(config.bindingsDir),
   };
 }
 
@@ -159,8 +228,53 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
     packageTrustPolicy,
   };
+  const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
-  router.use(createApiKeyAuth(apiKeyStore));
+  // Password sign-in (off unless XO_API_PASSWORD_AUTH=1). Its stores and session gate come first: the gate must be
+  // handed to the session layer before that layer's stores are built.
+  const passwordConfig = loadPasswordAuthConfig(deps.env ?? process.env); // throws on invalid/partial configuration
+  const passwordStores = passwordConfig !== undefined ? createPasswordStores(passwordConfig, deps.passwordAuthOptions) : undefined;
+  const gate = passwordStores?.gate;
+  if (passwordConfig !== undefined && deps.sessionAuth === undefined) {
+    // Both sign-in methods share ONE session store and ONE binding store; a mismatch would silently strand password accounts.
+    const google = loadSessionAuthConfig(deps.env ?? process.env);
+    if (
+      google !== undefined &&
+      (resolve(google.sessionsDir) !== resolve(passwordConfig.sessionsDir) ||
+        resolve(google.bindingsDir) !== resolve(passwordConfig.bindingsDir))
+    ) {
+      throw new XoError(
+        ErrorCode.CONFIG_INVALID_VALUE,
+        'XO_API_PASSWORD_SESSIONS_DIR and XO_API_PASSWORD_BINDINGS_DIR must name the same directories as XO_API_SESSIONS_DIR and XO_API_OIDC_BINDINGS_DIR when Google and password sign-in are both enabled',
+      );
+    }
+  }
+
+  const sessionAuth = deps.sessionAuth ?? buildSessionAuthFromEnv(deps, gate);
+  // One session store and one binding store however a person signs in: Google's when it is configured, else password-only ones.
+  let passwordSessions: { sessions: FsSessionStore; bindings: IdentityBindingStore } | undefined;
+  let passwordBundle: PasswordAuthBundle | undefined;
+  if (passwordConfig !== undefined && passwordStores !== undefined) {
+    passwordSessions =
+      sessionAuth !== undefined
+        ? { sessions: sessionAuth.sessions, bindings: sessionAuth.bindings }
+        : createPasswordOnlySessionStores(passwordConfig);
+    passwordBundle = createPasswordService(passwordStores, passwordSessions, deps.passwordAuthOptions);
+    deps.logger?.info(
+      'Password sign-in enabled: accounts are operator-created, there is no self-registration, and recovery is operator-assisted',
+    );
+  }
+  const sessionsForAuth = sessionAuth ?? passwordSessions;
+  router.use(
+    createAuthMiddleware({
+      apiKeyStore,
+      ...(oidc !== undefined ? { oidc } : {}),
+      ...(sessionsForAuth !== undefined
+        ? { sessions: { store: sessionsForAuth.sessions, bindings: sessionsForAuth.bindings, ...(gate !== undefined ? { gate } : {}) } }
+        : {}),
+      ...(passwordBundle !== undefined ? { extraPublicPaths: PASSWORD_PUBLIC_PATHS } : {}),
+    }),
+  );
   const permissionManager = new PermissionManager({ policy: deps.permissionPolicy ?? new RuleBasedPolicy([]) });
   if (deps.auditSink === undefined && process.env['NODE_ENV'] === 'production') {
     throw new AuditError(ErrorCode.AUDIT_CONFIG_INVALID, 'a durable audit sink is required in production (see XO_AUDIT_* configuration)');
@@ -208,7 +322,25 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
     ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
     ...(connect !== undefined ? { connect } : {}),
+    ...(deps.importFetch !== undefined ? { importFetch: deps.importFetch } : {}),
+    ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}),
   });
+  if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
+  if (passwordBundle !== undefined) {
+    registerPasswordAuthRoutes(router, passwordBundle.service);
+    if (sessionAuth === undefined && passwordSessions !== undefined) {
+      // No Google sign-in, so no SessionAuthService: refresh and logout still need to exist for password sessions.
+      registerSessionLifecycleRoutes(
+        router,
+        new SessionLifecycle({
+          sessions: passwordSessions.sessions,
+          bindings: passwordSessions.bindings,
+          limiter: createRateLimiter({ windowMs: 60_000, max: 30 }),
+          ...(gate !== undefined ? { gate } : {}),
+        }),
+      );
+    }
+  }
   return router;
 }
 
@@ -223,6 +355,7 @@ async function runHandler(handler: (req: ApiRequest) => Promise<ApiResponse>, re
 
 export function createHttpServer(deps: ServerDeps = {}): Server {
   const router = buildRouter(deps);
+  const trustedProxyHops = parseTrustedProxyHops((deps.env ?? process.env)['XO_API_TRUSTED_PROXY_HOPS']); // throws on an invalid value
 
   return createServer((incoming, res) => {
     void (async () => {
@@ -241,7 +374,7 @@ export function createHttpServer(deps: ServerDeps = {}): Server {
           return;
         }
 
-        const apiRequest = buildApiRequest(incoming, resolved.params, url);
+        const apiRequest = buildApiRequest(incoming, resolved.params, url, trustedProxyHops);
         const response = await runHandler(resolved.handler, apiRequest);
         writeResponse(res, response);
       } catch (cause) {

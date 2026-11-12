@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Least privilege for the Studio webview: its own commands only. No http, fs, shell, process, opener or dialog access.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-credential-load",
+    "allow-credential-save",
+    "allow-credential-clear",
+    "allow-shell-config",
+    "allow-login-begin",
+    "allow-login-await",
+    "allow-open-system-browser"
+  ]
+}

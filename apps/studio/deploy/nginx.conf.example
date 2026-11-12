@@ -1,0 +1,20 @@
+# Example only (NOT exercised in the build sandbox). Serves the Studio build and routes
+# /api to the XO API on the same origin, so the browser needs no CORS.
+server {
+  listen 443 ssl;
+  server_name studio.example.com;
+  root /srv/xo-studio/dist;
+  index index.html;
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:4000/;   # trailing slash strips the /api prefix
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 50m;            # document uploads; match the API's limit
+  }
+  location / { try_files $uri /index.html; }
+
+  # Optional per-deployment override of the API address without rebuilding:
+  # location = /config.js { return 200 "window.__XO_CONFIG__={apiBaseUrl:'/api'};"; add_header Content-Type text/javascript; }
+  # (then add <script src="/config.js"></script> before the app script)
+}

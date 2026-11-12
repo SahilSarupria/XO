@@ -10,17 +10,21 @@
  * means updating a route and forgetting the doc is a one-file diff to
  * review, not two.
  */
+import { passwordAuthPaths, studioPaths } from './openapi-studio.js';
+
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'XO Platform API',
     version: '0.1.0',
     description:
-      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations. AUTH (P1.0 M1): every route except /health and /openapi.json requires Authorization: Bearer <API key>. A key authenticates only if its server-side record is bound to a valid principal (kind human|service, stable id, optional orgId); keys issued before M1 have no binding and receive 401 until the operator re-issues them with an explicit --kind (scripts/manage-keys.ts). A principal identifies the initiator for attribution only — it grants NO permission, and capability-level authorization is NOT yet enforced on every execution path (planned P1.0 M2). This document does not describe a production-ready security posture.',
+      'HTTP service over @xo/registry, @xo/package-sdk, and @xo/runtime, plus an isolated adapter over the compiler pipeline. See apps/api/README.md for the framework choice, the compiler-isolation boundary, and known limitations. AUTH (P1.0 M1): every route except /health and /openapi.json requires Authorization: Bearer <API key> or, only when the server is configured for OIDC, Bearer <OIDC access token> from the one configured issuer (the verified issuer+subject must have an operator-written binding; unbound subjects get 401). A key authenticates only if its server-side record is bound to a valid principal (kind human|service, stable id, optional orgId); keys issued before M1 have no binding and receive 401 until the operator re-issues them with an explicit --kind (scripts/manage-keys.ts). A principal identifies the initiator for attribution only — it grants NO permission, and capability-level authorization is NOT yet enforced on every execution path (planned P1.0 M2). WORKSPACE ROLES: a workspace has an owner (always admin) and members with a role — admin, publisher, reviewer or viewer. Each workspace route documents the permission it needs in x-xo-permission (read, author, publish, review, audit, manage). A caller who is not a member gets 404; a member lacking the permission gets 403 and the attempt is written to the audit log. Workspace roles are separate from, and checked before, capability-level runtime authorization. This document does not describe a production-ready security posture.',
   },
   security: [{ bearerAuth: [] }],
   servers: [{ url: 'http://localhost:4000' }],
   paths: {
+    ...studioPaths,
+    ...passwordAuthPaths,
     '/health': {
       get: {
         summary: 'Liveness check',
@@ -49,6 +53,85 @@ export const openApiDocument = {
     },
     '/openapi.json': {
       get: { summary: 'This document', security: [], responses: { '200': { description: 'OK' } } },
+    },
+
+    // Present only when the server is configured for Google sign-in (XO_API_GOOGLE_CLIENT_ID); see docs/studio/AUTH_API_CONTRACT.md.
+    '/auth/login-challenge': {
+      post: {
+        summary: 'Start a Google sign-in: issue a single-use, 5-minute challenge (server nonce)',
+        security: [],
+        responses: {
+          '201': { description: 'challengeId, nonce, expiresAt' },
+          '429': { description: 'Rate limited, or too many outstanding challenges' },
+        },
+      },
+    },
+    '/auth/session': {
+      post: {
+        summary: 'Exchange a Google ID token, or an authorization code, (for that challenge) for an XO session',
+        description:
+          'Send exactly one of idToken, or code + codeVerifier + redirectUri. With a code, the API redeems it at Google with the OAuth client secret (server configuration only; 501 when not configured) and then continues with the ID token it obtains. The ID token is verified independently (signature, issuer, audience, expiry, the nonce of THIS challenge) and used once; it is never an API credential. The verified identity must have an operator-written binding (401 XO_AUTH_IDENTITY_UNBOUND otherwise). The challenge is consumed whether or not the exchange succeeds.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['challengeId'],
+                properties: {
+                  challengeId: { type: 'string' },
+                  idToken: { type: 'string' },
+                  code: { type: 'string' },
+                  codeVerifier: { type: 'string', description: 'RFC 7636 PKCE verifier (43-128 unreserved characters)' },
+                  redirectUri: {
+                    type: 'string',
+                    description: 'Exactly http://127.0.0.1:<port>/callback, the loopback address Studio listened on',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'accessCredential (xoas_, 15 min), refreshCredential (xoar_), expiry times' },
+          '401': { description: 'Challenge invalid, ID token invalid or expired, or identity unbound' },
+          '400': { description: 'Malformed request (both or neither of idToken/code, or an invalid code, verifier or redirect address)' },
+          '429': { description: 'Rate limited' },
+          '501': { description: 'A code was sent but server-side code exchange is not configured' },
+          '503': { description: 'Signing keys or the identity provider unavailable (fail closed)' },
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        summary: 'Rotate a session refresh credential',
+        description: 'Single use. Presenting a used credential revokes the whole session.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['refreshCredential'], properties: { refreshCredential: { type: 'string' } } },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'New credential pair' },
+          '401': { description: 'Invalid, expired, reused or identity unbound' },
+          '429': { description: 'Rate limited' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        summary: 'Revoke the calling XO session (authenticated with its access credential)',
+        responses: {
+          '204': { description: 'Session revoked' },
+          '400': { description: 'Not an XO session credential' },
+          '401': { description: 'Not authenticated' },
+        },
+      },
     },
 
     '/workspaces': {
@@ -504,6 +587,98 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}/steps/{stepId}/external-effect': {
+      get: {
+        summary: 'Read the durable external-effect dispatch evidence of a procedure step',
+        description:
+          'Requires `procedure.read`. Reports whether the step dispatched a consequential external effect, its recorded state and any reconciliation need. Never returns a credential.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stepId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'OK' },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing procedure.read' },
+          '404': { description: 'Unknown execution or step, or workspace not owned by the caller' },
+          '409': { description: 'Conflict with the recorded state' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}/steps/{stepId}/external-effect/reconcile': {
+      post: {
+        summary: 'Record the operator-confirmed outcome of an external effect whose dispatch result is unknown',
+        description:
+          'Requires `effect.reconcile`. The only way an unknown-outcome effect is closed: the dispatcher never guesses and never retries a consequential effect on its own.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stepId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'OK' },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing effect.reconcile' },
+          '404': { description: 'Unknown execution or step, or workspace not owned by the caller' },
+          '409': { description: 'Conflict with the recorded state' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}/steps/{stepId}/payload-approval': {
+      get: {
+        summary: 'Read the payload-level approval requirement and state for a procedure step',
+        description:
+          'Requires `procedure.read`. Describes the exact payload a payload-approval would bind to, and whether it has been granted.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stepId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'OK' },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing procedure.read' },
+          '404': { description: 'Unknown execution or step, or workspace not owned by the caller' },
+          '409': { description: 'Conflict with the recorded state' },
+        },
+      },
+      post: {
+        summary: 'Grant payload-level approval for the exact payload of an external-effect step',
+        description:
+          'Requires `effect.payloadApprove`. The approval is bound to the exact payload digest; a changed payload needs a new approval.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stepId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'OK' },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing effect.payloadApprove' },
+          '404': { description: 'Unknown execution or step, or workspace not owned by the caller' },
+          '409': { description: 'Conflict with the recorded state' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/procedure-executions/{executionId}/steps/{stepId}/payload-approval/continue': {
+      post: {
+        summary: 'Continue a procedure execution after payload-level approval was granted',
+        description: 'Requires `procedure.execute`. Authorization and the payload approval are re-checked before the effect is dispatched.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stepId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'OK' },
+          '400': { description: 'Body rejected' },
+          '403': { description: 'Missing procedure.execute' },
+          '404': { description: 'Unknown execution or step, or workspace not owned by the caller' },
+          '409': { description: 'Conflict with the recorded state' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflows': {
       get: {
         summary: "Discover the workflows composed from this workspace's stored compilations",
@@ -696,6 +871,11 @@ export const openApiDocument = {
         responses: {
           '200': { description: 'ApprovalRecord' },
           '400': { description: 'The compilation did not succeed, or the capability has no derivable approvable state' },
+          '422': {
+            description:
+              'XO_BINDING_UNRESOLVED or XO_BINDING_AMBIGUOUS — the capability is not resolved, so it cannot be carried out and no approval is recorded',
+          },
+          '403': { description: 'XO_BINDING_DENIED — the capability binding was denied; no approval is recorded' },
           '404': { description: 'Unknown compilation/capability, or workspace not owned by the caller' },
           '503': { description: 'Durable audit evidence for the approval could not be recorded; no approval was created' },
         },
@@ -801,6 +981,8 @@ export const openApiDocument = {
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',
+        description:
+          'Each capability carries its binding `status`, evidence, confidence, and `approved`. `inputContract` (optional, additive) is the capability\'s authoritative input schema — the same flat `CapabilityInputSchema` execution validates against: { type: \"object\", properties: { name: { type: \"string\" | \"number\" | \"boolean\" } }, required: string[] }. Properties not declared are rejected at execution. ABSENCE MEANS NO PUBLISHED CONTRACT, NOT \"NO INPUTS NEEDED\" (no structural validation happens without a schema); compilations stored before this field existed also omit it — recompile to obtain it. It is advisory for building forms: the server remains the sole validation authority.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },

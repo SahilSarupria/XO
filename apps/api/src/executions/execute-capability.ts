@@ -102,7 +102,11 @@ type RebuildResult =
  * field it actually needs — the input/decision-data schema — via
  * `lowerCapabilitiesToManifest`, in `findInputSchema` below).
  */
-function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: string, externalTools?: ExternalToolWiring): RebuildResult {
+export function rebuildContractAndBinding(
+  compiledGraphJson: unknown,
+  capabilityId: string,
+  externalTools?: ExternalToolWiring,
+): RebuildResult {
   const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
   if (!graphResult.ok)
     return { ok: false, outcome: { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message } };
@@ -146,7 +150,7 @@ function rebuildContractAndBinding(compiledGraphJson: unknown, capabilityId: str
   return { ok: true, value: { contract, binding: bindingOutcome.binding } };
 }
 
-function findInputSchema(graph: XoirGraph, contractId: string) {
+export function findInputSchema(graph: XoirGraph, contractId: string) {
   const lowered = lowerCapabilitiesToManifest(graph);
   const loweredOutcome = lowered.outcomes.find((o) => o.contractId === contractId);
   return loweredOutcome?.declaration?.execution?.inputSchema;

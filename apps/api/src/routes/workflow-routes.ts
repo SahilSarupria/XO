@@ -1,3 +1,4 @@
+import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { AuthenticatedPrincipal } from '@xo/permissions';
 import type { Router } from '../http/router.js';
@@ -6,6 +7,7 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import type { PermissionManager } from '@xo/permissions';
 import {
+  requirePermission,
   requirePrincipal,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
@@ -14,6 +16,7 @@ import {
   workspaceWorkflowExecutionsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -36,6 +39,7 @@ import {
   listWorkflowExecutions,
   resumeWorkflowExecution,
   startWorkflowExecution,
+  type StartWorkflowRequest,
   type StartWorkflowHooks,
   toWorkflowExecutionView,
   type ResumeWorkflowRequest,
@@ -168,6 +172,121 @@ async function recordWorkflowOutcome(
   );
 }
 
+/**
+ * The ONE audited way to start a workflow (derived or draft): durable attempt evidence, idempotency gate, runner (which re-derives the
+ * workflow and re-checks approval + authorization for every step), per-step/workflow audit and the Studio activity-feed entry.
+ * Used by `POST .../workflows/:workflowId/executions` and by the draft launcher, so there is no second, weaker start path.
+ */
+export async function startWorkflowAudited(
+  env: { readonly dataConfig: WorkspaceDataConfig; readonly audit: AuditService },
+  args: {
+    readonly req: ApiRequest;
+    readonly workspace: WorkspaceRecord;
+    readonly ctx: WorkflowRunnerContext;
+    readonly correlationId: string;
+    readonly idempotencyKey: string | undefined;
+    readonly request: StartWorkflowRequest;
+    /** Extra, non-sensitive detail for the activity-feed entry (e.g. the draft id and revision). */
+    readonly auditDetail?: Readonly<Record<string, unknown>>;
+  },
+): Promise<
+  | { readonly record: WorkflowExecutionRecord; readonly replayed: true }
+  | { readonly record: WorkflowExecutionRecord; readonly replayed: false; readonly finalization: AuditFinalization }
+> {
+  const { req, workspace, ctx, correlationId, request } = args;
+  const principal = ctx.principal;
+  const workflowId = request.workflowId;
+  const wfTarget = safeId(workflowId);
+  const base = {
+    action: 'start.workflow',
+    actor: actorFromPrincipal(principal),
+    correlationId,
+    target:
+      wfTarget !== undefined
+        ? { kind: 'workflow' as const, id: wfTarget, workspaceId: workspace.workspaceId }
+        : { kind: 'workspace' as const, id: workspace.workspaceId },
+    ...(safeId(request.compilationId) !== undefined ? { metadata: { compilationId: request.compilationId } } : {}),
+  } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+  // PRECONDITION: durable evidence of the attempt BEFORE the runner authorizes, persists or executes anything.
+  await env.audit.requireDurable({ ...base, type: 'workflow.attempted', outcome: 'attempted' });
+  // M6 — the gate is consulted INSIDE the runner, after it re-derived the workflow and approved (M3) + authorized (M2) every step
+  // for this very request, and before anything is persisted. A key therefore can never stand in for any of those checks.
+  const probe: ResourceProbe = async (resource) => {
+    const found = await ctx.workflowStore.get(resource.id);
+    if (!found.ok) return (await ctx.workflowStore.exists(resource.id)) ? 'unfinished' : 'absent';
+    if (found.value.identityId !== principal.id || found.value.workspaceId !== workspace.workspaceId) return 'foreign';
+    // For a start, "done" means the workflow EXISTS: its own (reconciled) status is the durable truth a replay returns.
+    return 'done';
+  };
+  let claim: IdempotencyClaim | undefined;
+  let keyRef: string | undefined;
+  let replayed = false;
+  const hooks: StartWorkflowHooks =
+    args.idempotencyKey === undefined
+      ? {}
+      : {
+          gate: async () => {
+            const gated = await gateIdempotent(new IdempotencyGate(workspaceIdempotencyStore(workspace, env.dataConfig)), env.audit, base, {
+              operation: 'start.workflow',
+              workspaceId: workspace.workspaceId,
+              principal: { kind: principal.kind, id: principal.id },
+              key: args.idempotencyKey as string,
+              fingerprint: fingerprintRequest('start.workflow', { compilationId: request.compilationId, workflowId, input: request.input }),
+              probe,
+            });
+            keyRef = gated.keyRef;
+            if (gated.kind === 'replay') {
+              if (gated.resource.kind !== 'workflow-execution') throw recordInvalid();
+              replayed = true;
+              return { kind: 'replay', workflowExecutionId: gated.resource.id };
+            }
+            claim = gated.claim;
+            return { kind: 'proceed' };
+          },
+          beforeCreate: async (workflowExecutionId) => {
+            // Durably NAME the workflow before it exists, so no crash window can leave a started workflow the key cannot find.
+            if (claim === undefined || !(await claim.attach({ kind: 'workflow-execution', id: workflowExecutionId })))
+              throw new XoError(ErrorCode.IO_ERROR, 'the idempotency record could not be written; nothing was started');
+          },
+        };
+  let record;
+  try {
+    record = await startWorkflowExecution(ctx, request, hooks);
+  } catch (cause) {
+    // Nothing is released unless provably nothing was created; otherwise the claim stays for the documented recovery rules.
+    await (claim as IdempotencyClaim | undefined)?.abort(probe);
+    // An idempotency refusal/replay-integrity failure already wrote its own audit event; do not mislabel it a workflow failure.
+    const idempotencyRefusal = cause instanceof XoError && cause.code.startsWith('XO_IDEMPOTENCY_');
+    const denied = cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED;
+    if (!idempotencyRefusal) {
+      await env.audit.tryRecord({
+        ...base,
+        type: denied ? 'workflow.denied' : 'workflow.failed',
+        outcome: denied ? 'denied' : 'failed',
+        reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
+      });
+    }
+    throw cause;
+  } finally {
+    (claim as IdempotencyClaim | undefined)?.dispose();
+  }
+  if (replayed) return { record, replayed: true as const };
+  await (claim as IdempotencyClaim | undefined)?.complete();
+  await recordAudit(req, workspace, env.dataConfig, {
+    event: 'workflow.started',
+    result: record.status === 'failed' ? 'failed' : record.status === 'waiting_for_human' ? 'escalated' : 'succeeded',
+    target: { kind: 'workflow_run', id: record.workflowExecutionId, label: record.workflowName },
+    detail: { compilationId: record.compilationId, workflowId: record.workflowId, status: record.status, ...(args.auditDetail ?? {}) },
+  });
+  const finalization = await recordWorkflowOutcome(
+    env.audit,
+    keyRef === undefined ? base : { ...base, metadata: { ...base.metadata, keyRef, idempotent: true } },
+    record,
+    correlationId,
+  );
+  return { record, replayed: false as const, finalization };
+}
+
 export function registerWorkflowRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -177,10 +296,12 @@ export function registerWorkflowRoutes(
 ): void {
   const auditCtx = { audit, workspaceStore };
 
-  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal): WorkflowRunnerContext {
+  function runnerContext(workspace: WorkspaceRecord, principal: AuthenticatedPrincipal, req: ApiRequest): WorkflowRunnerContext {
+    const authentication = toRecordedAuthentication(req.authentication);
     return {
       workspace,
       principal,
+      ...(authentication !== undefined ? { authentication } : {}),
       permissionManager,
       compilationStore: new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)),
       approvalStore: new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig)),
@@ -195,7 +316,7 @@ export function registerWorkflowRoutes(
   }
 
   async function listWorkflowsFor(req: ApiRequest, workspace: WorkspaceRecord): Promise<ApiResponse> {
-    const ctx = runnerContext(workspace, requirePrincipal(req));
+    const ctx = runnerContext(workspace, requirePrincipal(req), req);
     const only = req.query.get('compilationId');
 
     const listed = await ctx.compilationStore.list();
@@ -237,6 +358,7 @@ export function registerWorkflowRoutes(
   async function startExecution(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'start.workflow', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'start workflow' });
     const workflowId = req.params['workflowId'];
     if (workflowId === undefined || workflowId.length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow id');
 
@@ -252,92 +374,24 @@ export function registerWorkflowRoutes(
     if (!idemKey.ok) throw idemKey.error;
 
     const principal = requirePrincipal(req);
-    const ctx = runnerContext(workspace, principal);
-    const wfTarget = safeId(workflowId);
-    const base = {
-      action: 'start.workflow',
-      actor: actorFromPrincipal(principal),
-      correlationId,
-      target:
-        wfTarget !== undefined
-          ? { kind: 'workflow' as const, id: wfTarget, workspaceId: workspace.workspaceId }
-          : { kind: 'workspace' as const, id: workspace.workspaceId },
-      ...(safeId(body['compilationId']) !== undefined ? { metadata: { compilationId: body['compilationId'] } } : {}),
-    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
-    // PRECONDITION: durable evidence of the attempt BEFORE the runner authorizes, persists or executes anything.
-    await audit.requireDurable({ ...base, type: 'workflow.attempted', outcome: 'attempted' });
-    // M6 — the gate is consulted INSIDE the runner, after it re-derived the workflow and approved (M3) + authorized (M2) every step
-    // for this very request, and before anything is persisted. A key therefore can never stand in for any of those checks.
-    const probe: ResourceProbe = async (resource) => {
-      const found = await ctx.workflowStore.get(resource.id);
-      if (!found.ok) return (await ctx.workflowStore.exists(resource.id)) ? 'unfinished' : 'absent';
-      if (found.value.identityId !== principal.id || found.value.workspaceId !== workspace.workspaceId) return 'foreign';
-      // For a start, "done" means the workflow EXISTS: its own (reconciled) status is the durable truth a replay returns.
-      return 'done';
-    };
-    let claim: IdempotencyClaim | undefined;
-    let keyRef: string | undefined;
-    let replayed = false;
-    const hooks: StartWorkflowHooks =
-      idemKey.value === undefined
-        ? {}
-        : {
-            gate: async () => {
-              const gated = await gateIdempotent(new IdempotencyGate(workspaceIdempotencyStore(workspace, dataConfig)), audit, base, {
-                operation: 'start.workflow',
-                workspaceId: workspace.workspaceId,
-                principal: { kind: principal.kind, id: principal.id },
-                key: idemKey.value as string,
-                fingerprint: fingerprintRequest('start.workflow', { compilationId: body['compilationId'], workflowId, input }),
-                probe,
-              });
-              keyRef = gated.keyRef;
-              if (gated.kind === 'replay') {
-                if (gated.resource.kind !== 'workflow-execution') throw recordInvalid();
-                replayed = true;
-                return { kind: 'replay', workflowExecutionId: gated.resource.id };
-              }
-              claim = gated.claim;
-              return { kind: 'proceed' };
-            },
-            beforeCreate: async (workflowExecutionId) => {
-              // Durably NAME the workflow before it exists, so no crash window can leave a started workflow the key cannot find.
-              if (claim === undefined || !(await claim.attach({ kind: 'workflow-execution', id: workflowExecutionId })))
-                throw new XoError(ErrorCode.IO_ERROR, 'the idempotency record could not be written; nothing was started');
-            },
-          };
-    let record;
-    try {
-      record = await startWorkflowExecution(ctx, { compilationId: body['compilationId'], workflowId, input }, hooks);
-    } catch (cause) {
-      // Nothing is released unless provably nothing was created; otherwise the claim stays for the documented recovery rules.
-      await (claim as IdempotencyClaim | undefined)?.abort(probe);
-      // An idempotency refusal/replay-integrity failure already wrote its own audit event; do not mislabel it a workflow failure.
-      const idempotencyRefusal = cause instanceof XoError && cause.code.startsWith('XO_IDEMPOTENCY_');
-      const denied = cause instanceof XoError && cause.code === ErrorCode.RUNTIME_PERMISSION_DENIED;
-      if (!idempotencyRefusal) {
-        await audit.tryRecord({
-          ...base,
-          type: denied ? 'workflow.denied' : 'workflow.failed',
-          outcome: denied ? 'denied' : 'failed',
-          reasonCode: cause instanceof XoError ? cause.code : ErrorCode.UNKNOWN,
-        });
-      }
-      throw cause;
-    } finally {
-      (claim as IdempotencyClaim | undefined)?.dispose();
-    }
-    if (replayed) {
+    const ctx = runnerContext(workspace, principal, req);
+    const started = await startWorkflowAudited(
+      { dataConfig, audit },
+      {
+        req,
+        workspace,
+        ctx,
+        correlationId,
+        idempotencyKey: idemKey.value,
+        request: { compilationId: body['compilationId'], workflowId, input },
+      },
+    );
+    const { record } = started;
+    if (started.replayed) {
       // A duplicate: the recorded workflow's CURRENT state, never a second start. Same status convention as the original.
       return json(record.status === 'failed' ? 200 : 201, await toWorkflowExecutionView(ctx, record), REPLAY_HEADER);
     }
-    await (claim as IdempotencyClaim | undefined)?.complete();
-    const finalization = await recordWorkflowOutcome(
-      audit,
-      keyRef === undefined ? base : { ...base, metadata: { ...base.metadata, keyRef, idempotent: true } },
-      record,
-      correlationId,
-    );
+    const finalization = started.finalization;
     // Same convention as P0.5: a run that FAILED is still a real, persisted, structured response (200), never a bare 4xx/5xx that discards the record.
     return json(record.status === 'failed' ? 200 : 201, {
       ...(await toWorkflowExecutionView(ctx, record)),
@@ -347,7 +401,7 @@ export function registerWorkflowRoutes(
 
   async function listExecutions(req: ApiRequest): Promise<ApiResponse> {
     return auditedRead(req, auditCtx, { action: 'list.workflow-executions', kind: 'workflow-execution' }, async (workspace) => {
-      const ctx = runnerContext(workspace, requirePrincipal(req));
+      const ctx = runnerContext(workspace, requirePrincipal(req), req);
       const records = await listWorkflowExecutions(ctx);
       return json(200, { workflowExecutions: await Promise.all(records.map((r) => toWorkflowExecutionView(ctx, r))) });
     });
@@ -361,7 +415,7 @@ export function registerWorkflowRoutes(
       auditCtx,
       { action: 'get.workflow-execution', kind: 'workflow-execution', idParam: 'workflowExecutionId' },
       async (workspace) => {
-        const ctx = runnerContext(workspace, requirePrincipal(req));
+        const ctx = runnerContext(workspace, requirePrincipal(req), req);
         const record = await getWorkflowExecution(ctx, id);
         return json(200, await toWorkflowExecutionView(ctx, record));
       },
@@ -404,6 +458,10 @@ export function registerWorkflowRoutes(
     )
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"expectedRevision" must be a non-negative integer');
 
+    await requirePermission(req, workspace, decision !== undefined ? 'review' : 'author', dataConfig, {
+      action: decision !== undefined ? 'resolve workflow human step' : 'recover interrupted workflow run',
+      target: { kind: 'workflow_run', id },
+    });
     const request: ResumeWorkflowRequest = {
       ...(decision !== undefined ? { decision } : {}),
       ...(data !== undefined ? { data } : {}),
@@ -412,7 +470,7 @@ export function registerWorkflowRoutes(
     };
 
     const principal = requirePrincipal(req);
-    const ctx = runnerContext(workspace, principal);
+    const ctx = runnerContext(workspace, principal, req);
     const resumeTarget = safeId(id);
     const base = {
       action: 'resume.workflow',
@@ -442,6 +500,12 @@ export function registerWorkflowRoutes(
       throw cause;
     }
     const finalization = await recordWorkflowOutcome(audit, base, record, correlationId);
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'workflow.resumed',
+      result: decision === 'reject' ? 'rejected' : decision === 'approve' ? 'approved' : 'succeeded',
+      target: { kind: 'workflow_run', id, label: record.workflowName },
+      detail: { ...(decision !== undefined ? { decision } : { recovery: true }), status: record.status },
+    });
     return json(200, { ...(await toWorkflowExecutionView(ctx, record)), ...finalizationNotice(finalization) });
   }
 

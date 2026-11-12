@@ -8,10 +8,15 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
   requireOwnedWorkspace,
+  requirePermission,
   workspacePackageValidator,
   workspaceRegistryStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { callerIdentityId, workspaceArchivesStore, workspaceStateStore } from '../workspace/workspace-context.js';
+import { recordPublisher, retainArchive } from '../library/package-meta.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { registerMovedStub } from './moved-stub.js';
 
@@ -41,6 +46,16 @@ function unwrapOrThrow<T>(result: { ok: true; value: T } | { ok: false; error: X
 async function client(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): Promise<RegistryClient> {
   const workspace = await requireOwnedWorkspace(req, workspaceStore);
   return new RegistryClient(workspaceRegistryStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) });
+}
+
+/** Like `client`, but also returns the resolved workspace and enforces the `publish` permission (for the registry's write routes). */
+async function publishingClient(req: ApiRequest, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig, action: string) {
+  const workspace = await requireOwnedWorkspace(req, workspaceStore);
+  await requirePermission(req, workspace, 'publish', dataConfig, { action });
+  return {
+    workspace,
+    client: new RegistryClient(workspaceRegistryStore(workspace, dataConfig), { validator: workspacePackageValidator(dataConfig) }),
+  };
 }
 
 interface RecordBenchmarkBody {
@@ -110,13 +125,29 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
     // unknown workspace *and* carrying a malformed body reports the
     // wrong problem (a 422 from unpackArchive failing on garbage bytes,
     // masking the 404 an unauthorized caller most needs to see).
-    const c = await client(req, workspaceStore, dataConfig);
+    const { workspace, client: c } = await publishingClient(req, workspaceStore, dataConfig, 'publish package');
     const bytes = await req.rawBody();
     if (bytes.length === 0) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'request body must be the raw bytes of a .xo archive');
     }
     const unpacked = unwrapOrThrow(await unpackArchive(new Uint8Array(bytes)));
+    const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+    if (settings.trust.requireSignedPackages && (unpacked.manifest.signatures ?? []).length === 0) {
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'this workspace requires signed packages (Settings → Trust and signing); the package manifest carries no signature entries',
+      );
+    }
     const published = unwrapOrThrow(await c.publish(unpacked));
+    // Keep the raw archive (the registry keeps only the manifest) so the package can be installed later, and note who published it.
+    await retainArchive(workspaceArchivesStore(workspace, dataConfig), published.id, new Uint8Array(bytes));
+    await recordPublisher(workspaceStateStore(workspace, dataConfig), workspace.workspaceId, published.id, callerIdentityId(req));
+    await recordAudit(req, workspace, dataConfig, {
+      event: 'xo.published',
+      result: 'succeeded',
+      target: { kind: 'xo', id: published.id, label: `${published.manifest.name}@${published.manifest.version}` },
+      detail: { creatorDid: published.manifest.creatorDid, ledgerEntryHash: published.ledgerEntryHash },
+    });
     // Surface how the package was admitted: `trusted` under an enforcing policy, or `unverified` (mode `development`) — never silent.
     const trust = workspacePackageValidator(dataConfig).evaluateTrust(unpacked.manifest);
     return json(201, { ...published, trust });
@@ -161,11 +192,12 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   }
 
   async function recordBenchmark(req: ApiRequest): Promise<ApiResponse> {
+    // The role check comes first: a caller without it learns nothing from how their request body is validated.
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'record benchmark');
     const id = req.params['id'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing package id');
     const body = unwrapOrThrow(await req.json<RecordBenchmarkBody>());
     const input = parseRecordBenchmarkBody(id, body);
-    const c = await client(req, workspaceStore, dataConfig);
     const run = unwrapOrThrow(await c.recordBenchmark(input));
     return json(201, run);
   }
@@ -187,9 +219,9 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   }
 
   async function createLicense(req: ApiRequest): Promise<ApiResponse> {
+    const { client: c } = await publishingClient(req, workspaceStore, dataConfig, 'create license');
     const body = unwrapOrThrow(await req.json<CreateLicenseBody>());
     const input = parseCreateLicenseBody(body);
-    const c = await client(req, workspaceStore, dataConfig);
     const license = unwrapOrThrow(await c.createLicense(input));
     return json(201, license);
   }

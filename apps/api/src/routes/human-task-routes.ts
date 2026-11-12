@@ -4,12 +4,14 @@ import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import {
+  requirePermission,
   requirePrincipal,
   workspaceExecutionsStore,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsExecutionStore } from '../executions/fs-execution-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
@@ -141,6 +143,7 @@ export function registerHumanTaskRoutes(
   async function resolveHumanTask(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'resolve.human-task', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'resolve human task' });
     const executionId = req.params['executionId'];
     if (executionId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing execution id');
 
@@ -231,6 +234,12 @@ export function registerHumanTaskRoutes(
           },
           { correlationId, ...(targetId !== undefined ? { executionId: targetId } : {}) },
         );
+        await recordAudit(req, workspace, dataConfig, {
+          event: 'human_task.resolved',
+          result: decision === 'approve' ? 'approved' : 'rejected',
+          target: { kind: 'human_task', id: targetId ?? executionId },
+          detail: { decision },
+        });
         return json(200, { ...toWireRecord(outcome.record), ...finalizationNotice(finalization) });
       }
     }
