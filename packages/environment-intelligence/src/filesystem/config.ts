@@ -12,6 +12,26 @@ export interface FilesystemScope extends DiscoveryScopeBase {
   readonly limits?: Partial<FilesystemLimits>;
   /** Extra directory/file NAMES to exclude, in addition to the built-in sensitive-name rules. */
   readonly extraExcludedNames?: readonly string[];
+  /**
+   * C7, additive. The source-relative keys the caller has chosen to include. REQUIRED by `incrementalSync` (a sync with no chosen
+   * items is refused, never read as "everything"); ignored by discovery and by `acquireContent`, which take their keys per request.
+   * Because the connector is told what is in scope, a chosen item that no longer exists can be reported as deleted without the
+   * connector keeping any state of its own.
+   */
+  readonly includeKeys?: readonly string[];
+  /**
+   * C7, additive, OFF by default. When true, a chosen `.json` file that is a structured record file
+   * (`{"schema":"ei.org-record.v1","records":[...]}`, at most 200 plain-object records, shallow, whole file read) also carries those records
+   * in its content evidence, so the shipped structured-record deriver can turn them into knowledge. Nothing else about a file's content is
+   * ever retained: free text, and JSON that is not a record file, still yield only a digest, a length and strict business tokens.
+   */
+  readonly structuredRecords?: boolean;
+  /**
+   * C7, additive. Ignored by the connector. It is part of the scope, so changing it starts a NEW ingestion binding: the next sync is a
+   * full read instead of "unchanged since the last checkpoint". A caller that retires retained evidence while the same items stay in scope
+   * (or are chosen again) uses it so the removed evidence is not mistaken for already-ingested.
+   */
+  readonly epoch?: number;
 }
 
 export interface FilesystemLimits {

@@ -20,6 +20,8 @@ import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
 import type { ExternalToolWiring } from '@xo/runtime';
 import { describeInferenceReadiness } from '@xo/ai-core';
+import { registerConnectRoutes } from './connect-routes.js';
+import type { ConnectService } from '@xo/connect';
 
 export interface RegisterRoutesDeps {
   readonly workspaceStore: WorkspaceStore;
@@ -38,6 +40,8 @@ export interface RegisterRoutesDeps {
   readonly externalTools?: ExternalToolWiring;
   /** Test seam / explicit injection for `GET /ready`. Defaults to `process.env`. */
   readonly inferenceEnv?: Readonly<Record<string, string | undefined>>;
+  /** C7 — optional. When absent the `/connect/*` routes are not registered (404), never half-working. */
+  readonly connect?: ConnectService;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
@@ -63,4 +67,5 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
   });
   registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
+  if (deps.connect !== undefined) registerConnectRoutes(router, deps.connect);
 }

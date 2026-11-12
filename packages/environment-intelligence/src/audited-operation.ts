@@ -123,6 +123,7 @@ export interface AuditedOperationInfo {
     | 'derive_knowledge'
     | 'query_knowledge'
     | 'review_knowledge'
+    | 'query_capabilities'
   >;
   readonly connectorId: string;
   readonly connectorVersion: string;

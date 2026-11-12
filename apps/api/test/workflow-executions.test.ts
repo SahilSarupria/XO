@@ -1150,11 +1150,13 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         // directly against the source PDF's "must be recorded..." obligation sentences).
         // Merged baseline: this branch's per-section sequence edges (no single source-order chain) combined with main's extraction, which finds one
         // more step in the catch-all section (5 -> 6). Recorded from the merged build, still exactly one executable workflow.
+        // Semantic hardening consolidation: two multi-step siblings (4 and 5 steps) now split into 3 + 3 steps because
+        // permission ("may") rules and rules with dropped operands no longer mint executable capabilities. Still exactly one executable workflow.
         assert.deepEqual(statuses, [
           'executable_candidate:1',
           'not_executable_yet:2',
-          'not_executable_yet:4',
-          'not_executable_yet:5',
+          'not_executable_yet:3',
+          'not_executable_yet:3',
           'not_executable_yet:7',
           'not_executable_yet:9',
           'semantically_invalid:6',

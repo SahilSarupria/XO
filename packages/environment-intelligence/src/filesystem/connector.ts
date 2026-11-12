@@ -15,6 +15,8 @@ import type {
   DiscoveryOutcome,
   DiscoveryRequest,
   LimitReport,
+  SyncOutcome,
+  SyncRequest,
 } from '../connector.js';
 import { DiscoveryErrorCode, discoveryError, internalError, type DiscoveryError } from '../errors.js';
 import type { Evidence, EvidenceKind, JsonValue, TransformationStep } from '../evidence.js';
@@ -61,13 +63,14 @@ const DESCRIPTOR: ConnectorDescriptor = {
     validate_connection: PERMISSION_LIST,
     discover: PERMISSION_LIST,
     acquire_content: PERMISSION_READ,
+    incremental_sync: PERMISSION_READ,
   },
   operations: {
     detect: 'supported',
     validate_connection: 'supported',
     discover: 'supported',
     acquire_content: 'supported',
-    incremental_sync: 'unsupported',
+    incremental_sync: 'supported',
     health: 'unsupported',
   },
   evidenceKinds: ['resource_inventory', 'metadata', 'document_content'],
@@ -570,6 +573,68 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     request: AcquisitionRequest & { readonly scope: FilesystemScope },
     ctx: ConnectorContext,
   ): Promise<Result<AcquisitionOutcome, DiscoveryError>> {
+    const r = await this.acquireImpl(request, ctx, 'acquire_content');
+    if (!r.ok) return r;
+    const { missing: _missing, ...outcome } = r.value;
+    void _missing;
+    return ok(outcome);
+  }
+
+  /**
+   * C7: a full, stateless sync of the CHOSEN items (`scope.includeKeys`). It reuses the acquisition path unchanged (same lexical key
+   * checks, exclusion, authorization for `filesystem.read`, write-ahead audit, descriptor-anchored traversal, bounded reads) and differs
+   * in exactly two ways: the audit/provenance operation is `incremental_sync`, and a chosen item that no longer exists is reported as
+   * `removed` (deleted) instead of failing the batch. Anything else that stops a key from being verified (a symlink, a mount boundary,
+   * an unreadable directory) still fails the whole sync, so an access problem is never mistaken for a deletion.
+   *
+   * The cursor is a digest of the (key, content digest) manifest, so an unchanged tree yields no progress. At most
+   * `limits.maxContentFiles` chosen items can be synced; more is refused (never truncated).
+   */
+  async incrementalSync(request: SyncRequest<FilesystemScope>, ctx: ConnectorContext): Promise<Result<SyncOutcome, DiscoveryError>> {
+    if (request.scope.kind !== 'filesystem_root')
+      return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'scope.kind must be "filesystem_root"', { kind: request.scope.kind }));
+    if (request.kind !== 'document_content')
+      return err(
+        discoveryError(DiscoveryErrorCode.UNSUPPORTED_OPERATION, `evidence kind "${request.kind}" cannot be synced by this connector`, {
+          kind: request.kind,
+        }),
+      );
+    const keys = request.scope.includeKeys;
+    if (!Array.isArray(keys) || keys.length === 0)
+      return err(
+        discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'a sync needs the chosen items in scope.includeKeys', { field: 'includeKeys' }),
+      );
+    const unique = [...new Set(keys as readonly string[])].sort();
+    const acq = await this.acquireImpl(
+      { sourceId: request.sourceId, kind: 'document_content', resourceKeys: unique, scope: request.scope },
+      ctx,
+      'incremental_sync',
+    );
+    if (!acq.ok) return acq;
+    const out = acq.value;
+    const missing = [...(out.missing ?? [])].sort();
+    const manifest = [
+      ...out.evidence.map((e) => `${e.resourceKey}|${String((e.payload as { digest?: unknown })['digest'])}`),
+      ...missing.map((k) => `${k}|gone`),
+    ].sort();
+    const nextCursor = `m1-${createHash('sha256').update(manifest.join('\n')).digest('hex').slice(0, 16)}`;
+    const unchanged = request.cursor !== undefined && request.cursor === nextCursor && out.status === 'complete';
+    return ok({
+      status: out.status,
+      evidence: unchanged ? [] : out.evidence,
+      skipped: out.skipped,
+      limits: out.limits,
+      errors: out.errors,
+      nextCursor,
+      removed: unchanged ? [] : missing.map((resourceKey) => ({ resourceKey, reason: 'deleted' as const })),
+    });
+  }
+
+  private async acquireImpl(
+    request: AcquisitionRequest & { readonly scope: FilesystemScope },
+    ctx: ConnectorContext,
+    op: 'acquire_content' | 'incremental_sync',
+  ): Promise<Result<AcquisitionOutcome & { readonly missing?: readonly string[] }, DiscoveryError>> {
     if (request.scope.kind !== 'filesystem_root')
       return err(discoveryError(DiscoveryErrorCode.INVALID_SCOPE, 'scope.kind must be "filesystem_root"', { kind: request.scope.kind }));
     if (request.kind !== 'document_content') {
@@ -606,7 +671,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     }
     // Step 2 - authorization (read permission) for the lexical root, then for the real root if it differs.
     // The root is not resolved, and no key is touched on disk, before this succeeds.
-    const root = await this.authorizeRoot(ctx, 'acquire_content', PERMISSION_READ, request.scope.root);
+    const root = await this.authorizeRoot(ctx, op, PERMISSION_READ, request.scope.root);
     if (!root.ok) return root;
     const realRoot = root.value.realRoot;
     const auth = { value: root.value.allow };
@@ -620,7 +685,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     }
     // M2.2 write-ahead: the attempt is ACCEPTED by the audit recorder before the filesystem is touched.
     const session = await beginAudit(ctx, {
-      operation: 'acquire_content',
+      operation: op,
       connectorId: FILESYSTEM_CONNECTOR_ID,
       connectorVersion: FILESYSTEM_CONNECTOR_VERSION,
       permission: PERMISSION_READ,
@@ -643,11 +708,23 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
       }
       try {
         const resolved: { key: string; segments: readonly string[] }[] = [];
+        const missing: string[] = [];
         for (const key of permittedKeys) {
           const lexical = validateKeyLexically(key);
           if (!lexical.ok) return lexical;
           const inside = await tree.verifyKey(lexical.value, ctx.signal);
-          if (!inside.ok) return inside;
+          if (!inside.ok) {
+            // Sync only: a chosen item that is simply gone is a deletion. Every other failure still stops the whole operation.
+            if (
+              op === 'incremental_sync' &&
+              inside.error.code === DiscoveryErrorCode.SOURCE_UNAVAILABLE &&
+              inside.error.context['errno'] === 'ENOENT'
+            ) {
+              missing.push(key);
+              continue;
+            }
+            return inside;
+          }
           resolved.push({ key, segments: lexical.value });
         }
 
@@ -722,6 +799,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
             let encoding: 'utf8' | 'binary_or_invalid' = 'utf8';
             let identifiers: readonly string[] = [];
             let identifiersTruncated = false;
+            let records: JsonValue | undefined;
             if (bytes.includes(0)) {
               encoding = 'binary_or_invalid';
             } else {
@@ -730,6 +808,8 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
                 const found = extractIdentifiers(text);
                 identifiers = found.identifiers;
                 identifiersTruncated = found.truncated;
+                if (request.scope.structuredRecords === true && !truncated && key.toLowerCase().endsWith('.json'))
+                  records = structuredRecordsOf(text);
               } catch {
                 encoding = 'binary_or_invalid';
               }
@@ -769,9 +849,10 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
                   encoding,
                   identifiers: [...identifiers],
                   identifiersTruncated,
+                  ...(records !== undefined ? { schema: STRUCTURED_RECORD_FILE_SCHEMA, records } : {}),
                 },
                 'derived_from_content',
-                this.provenance(source, key, 'acquire_content', PERMISSION_READ, auth.value, ctx, steps),
+                this.provenance(source, key, op, PERMISSION_READ, auth.value, ctx, steps),
               ),
             );
           } catch (e) {
@@ -787,6 +868,7 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
           skipped: toSkipped(skipped),
           limits: { hit: [...hit].sort(), entriesVisited: visited, elapsedMs: elapsed(ctx, startMs) },
           errors,
+          ...(missing.length > 0 ? { missing } : {}),
         });
       } catch (e) {
         if (e instanceof FdWalkFatal) return err(e.error);
@@ -798,4 +880,38 @@ export class LocalFilesystemConnector implements Connector<FilesystemScope> {
     // M2.2 completion: released only after the completion record is accepted; otherwise quarantined.
     return runAudited(session.value, run);
   }
+}
+
+/** The schema marker of a structured record file. Mirrors C5's `STRUCTURED_RECORD_SCHEMA`; kept local so the connector does not import the knowledge layer. */
+const STRUCTURED_RECORD_FILE_SCHEMA = 'ei.org-record.v1';
+const MAX_FILE_RECORDS = 200;
+const MAX_RECORD_DEPTH = 8;
+
+const depthOk = (v: unknown, depth: number): boolean => {
+  if (depth > MAX_RECORD_DEPTH) return false;
+  if (Array.isArray(v)) return v.every((x) => depthOk(x, depth + 1));
+  if (v !== null && typeof v === 'object') return Object.values(v as Record<string, unknown>).every((x) => depthOk(x, depth + 1));
+  return true;
+};
+
+/**
+ * Opt-in: the records of a structured record file, or undefined. Strict and conservative: anything that is not exactly
+ * `{schema: 'ei.org-record.v1', records: [plain objects]}` within bounds yields undefined, so the file keeps only its digest and tokens.
+ * Records are NOT interpreted here; the deriver validates every field and refuses what it does not understand.
+ */
+function structuredRecordsOf(text: string): JsonValue | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const o = parsed as Record<string, unknown>;
+  if (o['schema'] !== STRUCTURED_RECORD_FILE_SCHEMA || !Array.isArray(o['records'])) return undefined;
+  const records = o['records'] as unknown[];
+  if (records.length === 0 || records.length > MAX_FILE_RECORDS) return undefined;
+  if (!records.every((r) => r !== null && typeof r === 'object' && !Array.isArray(r))) return undefined;
+  if (!depthOk(records, 0)) return undefined;
+  return records as JsonValue;
 }
