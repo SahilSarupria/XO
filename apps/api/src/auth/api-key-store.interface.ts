@@ -24,6 +24,12 @@ export interface ApiKeyRecord {
   /** P1.0 M1 — optional organizational scope label for the principal. NOT proof of membership or authorization. */
   readonly orgId?: string;
   readonly createdAt: string;
+  /**
+   * UW-1 — when this key stops authenticating (ISO timestamp). Set for every key issued from UW-1 on (default 90 days). A key issued
+   * before UW-1 has none and is bounded instead by the server's maximum key age (`XO_API_KEY_MAX_AGE_DAYS`, default 365) from
+   * `createdAt`. Either way an expired key is refused with `XO_AUTH_KEY_EXPIRED`.
+   */
+  readonly expiresAt?: string;
   /** Unset for an active key; set (ISO timestamp) once revoked. Revocation marks in place — a record is never deleted, so "was this key ever valid, and when did it stop being" stays answerable. */
   readonly revokedAt?: string;
 }
@@ -42,5 +48,8 @@ export interface ApiKeyStore {
   findByHash(keyHash: string): Promise<Result<ApiKeyRecord, NotFoundError>>;
 
   /** Marks every currently-active key belonging to `identityId` as revoked (idempotent — re-revoking an already-revoked key is a no-op, not an error). `NotFoundError` only when `identityId` has no key record at all, active or revoked. */
-  revokeByIdentity(identityId: string): Promise<Result<{ readonly revokedCount: number }, XoError>>;
+  revokeByIdentity(
+    identityId: string,
+    options?: { readonly exceptKeyHash?: string },
+  ): Promise<Result<{ readonly revokedCount: number; readonly revokedKeyHashes: readonly string[] }, XoError>>;
 }

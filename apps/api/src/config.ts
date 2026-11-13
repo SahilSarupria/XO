@@ -65,6 +65,17 @@ export interface ApiConfig {
   readonly externalEffectsDir?: string;
   /** OIDC bearer-token acceptance. Undefined = off (API keys only). Invalid or half-set configuration throws from `loadConfig`. */
   readonly oidc?: OidcConfig;
+  /** UW-1 — maximum age, in days, of an API key issued without an expiry (`XO_API_KEY_MAX_AGE_DAYS`; default 365). */
+  readonly apiKeyMaxAgeDays: number;
+}
+
+/** UW-1 — unset/blank -> 365. A set value must be a positive integer number of days up to 3650; anything else aborts startup. */
+export function parseApiKeyMaxAgeDays(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return 365;
+  if (!/^[1-9][0-9]{0,3}$/.test(raw.trim()) || Number(raw.trim()) > 3650) {
+    throw new Error('XO_API_KEY_MAX_AGE_DAYS must be a positive integer number of days, at most 3650');
+  }
+  return Number(raw.trim());
 }
 
 /** Unset/blank -> undefined. A set value must be a plain non-empty path string (no control characters); anything else aborts startup. */
@@ -101,5 +112,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>> = p
       ? { externalEffectsDir: parseExternalEffectsDir(env['XO_EXTERNAL_EFFECTS_DIR']) as string }
       : {}),
     ...(oidc !== undefined ? { oidc } : {}),
+    apiKeyMaxAgeDays: parseApiKeyMaxAgeDays(env['XO_API_KEY_MAX_AGE_DAYS']),
   };
 }

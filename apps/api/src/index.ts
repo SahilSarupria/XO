@@ -2,7 +2,8 @@ import { ConsoleLogger } from '@xo/logger';
 import { loadConfig } from './config.js';
 import { createHttpServer } from './server.js';
 import { assertTrustPolicyAllowedHere, loadOperatorTrustPolicy } from '@xo/package-sdk';
-import { PermissionManager, RuleBasedPolicy } from '@xo/permissions';
+import { createAuthorizationPoint } from './auth/authorization-point.js';
+import { auditAnchorSinkFromEnv } from './audit/anchor.js';
 import { AuditService } from './audit/audit-service.js';
 import { NonProductionAuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS } from '@xo/connect';
@@ -46,7 +47,18 @@ if (isMainModule()) {
     const allowed = assertTrustPolicyAllowedHere(trust.value);
     if (!allowed.ok) throw allowed.error;
     const sink = auditSink ?? new NonProductionAuditSink(undefined, { extensionSchemas: EI_AUDIT_EXTENSION_SCHEMAS });
-    const server = createHttpServer({ logger, apiKeysDir: config.apiKeysDir, auditSink: sink, packageTrustPolicy: trust.value });
+    // UW-1: one authorization point and one anchoring configuration for the server AND the scheduler (no second policy for scheduled runs).
+    const authorization = createAuthorizationPoint({ dataRootDir: config.workspaceDataDir, onError: (message) => logger.error(message) });
+    const auditAnchor = auditAnchorSinkFromEnv(process.env);
+    const server = createHttpServer({
+      logger,
+      apiKeysDir: config.apiKeysDir,
+      auditSink: sink,
+      packageTrustPolicy: trust.value,
+      authorization,
+      ...(auditAnchor !== undefined ? { auditAnchor } : {}),
+    });
+    server.on('close', () => authorization.stop());
     server.listen(config.port, config.host, () => {
       logger.info(`listening on http://${config.host}:${config.port}`);
     });
@@ -57,10 +69,10 @@ if (isMainModule()) {
           config.workspacesDir,
           config.workspaceDataDir,
           {
-            // The default policy (deny everything that declares a permission), exactly as the server uses when no policy is injected.
-            permissionManager: new PermissionManager({ policy: new RuleBasedPolicy([]) }),
+            permissionManager: authorization.permissionManager,
             audit: new AuditService(sink, (info) => logger.error(`audit write failed (${info.phase}): ${info.code}`)),
             packageTrustPolicy: trust.value,
+            ...(auditAnchor !== undefined ? { auditAnchor } : {}),
           },
           (line) => logger.warn(line),
         ),

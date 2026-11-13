@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Permissions, RuleBasedPolicy, type PolicyRule } from '@xo/permissions';
 import { NonProductionAuditSink, type AuditEvent } from '@xo/audit';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, buildFixtureGraph, storeFixtureCompilation } from './workflow-fixtures.js';
 import { FsExecutionStore } from '../src/executions/fs-execution-store.js';
 import { workspaceExecutionsStore } from '../src/workspace/workspace-context.js';
@@ -80,6 +80,8 @@ async function tamperNode(env: Env, nodeId: string, edit: (props: Record<string,
   const node = stored.graph.nodes.find((n) => n.id === nodeId);
   assert.ok(node, `node ${nodeId} not found in stored graph`);
   edit(node.properties);
+  // A material change arrives through a recompile, which re-hashes; an un-hashed edit is tampering (tested separately below).
+  rehashXoirJson(stored.graph);
   await writeFile(resultPath(env), JSON.stringify(stored));
 }
 
@@ -238,7 +240,8 @@ test('a changed permission DECLARATION (loosened or tightened) makes the approva
       p['requiredPermissions'] = [];
     },
     (p: Record<string, unknown>) => {
-      p['requiredPermissions'] = [FILE, Permissions.network.http];
+      // UW-1: was `Permissions.network.http`, which does not exist (undefined), so this "tightened" variant was really malformed.
+      p['requiredPermissions'] = [FILE, Permissions.network.connect];
     },
     (p: Record<string, unknown>) => {
       delete p['requiredPermissions'];
@@ -251,9 +254,25 @@ test('a changed permission DECLARATION (loosened or tightened) makes the approva
       await tamperNode(env, IDS.perm, edit);
       const after = await execute(env, IDS.perm, { file_size: 50 });
       assert.equal(after.status, 403, after.bodyText);
-      assert.equal(events(env, 'execution.denied').at(-1)?.reasonCode, 'APPROVAL_STALE');
+      assert.equal(events(env, 'execution.denied').at(-1)?.reasonCode, 'APPROVAL_STALE', after.bodyText);
     });
   }
+});
+
+test('UW-1: a stored graph edited WITHOUT re-hashing (a storage-level tamper) is refused on load: 403, no execution record', async () => {
+  await withEnv(async (env) => {
+    await approveOk(env, IDS.flowA);
+    const stored = JSON.parse(await readFile(resultPath(env), 'utf8')) as {
+      graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
+    };
+    stored.graph.nodes.find((n) => n.id === RULE_A)!.properties['question'] = 'the claim amount exceeds 1';
+    await writeFile(resultPath(env), JSON.stringify(stored)); // hashes deliberately left as they were
+    const res = await execute(env, IDS.flowA, { claim_amount: 20000 });
+    assert.equal(res.status, 403, res.bodyText);
+    assert.equal(res.json<ErrorWire>().error.code, 'XO_RUNTIME_PERMISSION_DENIED');
+    assert.equal(events(env, 'execution.denied').at(-1)?.reasonCode, 'APPROVAL_STATE_UNAVAILABLE');
+    assert.equal((await storedExecutions(env)).length, 0);
+  });
 });
 
 test('a change to a DIFFERENT capability does not invalidate this approval', async () => {

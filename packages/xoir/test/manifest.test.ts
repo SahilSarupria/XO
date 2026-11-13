@@ -137,11 +137,8 @@ test("manifest.sourceQuality carries the 'partial' state and per-page coverage c
     1,
     createManifest({ schemaVersion: 1, sourceQuality: quality, now: () => '2026-01-01T00:00:00.000Z' }),
   );
-  // Both nodes get the same fixed clock. `createdAt` is part of the node hash by design (see hashing.ts),
-  // so without this the test failed whenever the millisecond ticked between the two creations (it did in
-  // CI on 26f0052). The variable under test is the manifest's sourceQuality, not the clock. Whether
-  // `createdAt` should stay in the content hash is a UW-1 decision (deterministic hashing), recorded in
-  // docs/KNOWN_LIMITATIONS.md.
+  // Both nodes get the same fixed clock (added in UW-0 when `createdAt` was still hashed and this test was flaky). Since UW-1
+  // `createdAt` is not part of the hash, so the clock no longer matters; kept so the test stays independent of hashing details.
   const now = () => '2026-01-01T00:00:00.000Z';
   const a = plain.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' }, now });
   const b = withQuality.createAndAddNode({ id: XoirNodeId('n1'), kind: 'concept', properties: { definition: 'x' }, now });

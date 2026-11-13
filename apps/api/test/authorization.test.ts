@@ -10,7 +10,7 @@ import {
   type PolicyRule,
 } from '@xo/permissions';
 import { toJson } from '@xo/xoir';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, buildFixtureGraph, storeFixtureCompilation } from './workflow-fixtures.js';
 import { executeApprovedCapability, resumeCapabilityExecution } from '../src/executions/execute-capability.js';
 import { FsExecutionStore } from '../src/executions/fs-execution-store.js';
@@ -223,7 +223,7 @@ function graphJsonWith(capabilityId: string, mutate: (props: Record<string, unkn
   const node = json.nodes.find((n) => n.id === capabilityId);
   assert.ok(node);
   mutate(node.properties);
-  return json;
+  return rehashXoirJson(json); // a well-formed, correctly hashed graph: the declaration check itself must refuse it
 }
 
 test('execute: explicit [] declaration + authenticated principal executes', async () => {

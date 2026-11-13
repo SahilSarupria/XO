@@ -6,6 +6,10 @@ import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import { requirePrincipal } from '../workspace/workspace-context.js';
 import { newCorrelationId, type AuditService } from '../audit/audit-service.js';
+import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
+import { declaredRetentionDays } from '../audit/retention.js';
+import type { WorkspaceStore } from '../workspace/workspace.js';
+import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 
 function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiRequest) => Promise<ApiResponse> {
   return async (req) => {
@@ -22,7 +26,18 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
  * `AuditAccessController` (verified principal + currently-allowing policy for `audit.read` / `audit.purge`),
  * never by workspace ownership. Reading the audit log is itself audited (`audit.read`) BEFORE any record is returned.
  */
-export function registerAuditRoutes(router: Router, audit: AuditService, sink: AuditSink, access: AuditAccessController): void {
+export interface WorkspaceAuditPurgeDeps {
+  readonly workspaceStore: WorkspaceStore;
+  readonly dataConfig: WorkspaceDataConfig;
+}
+
+export function registerAuditRoutes(
+  router: Router,
+  audit: AuditService,
+  sink: AuditSink,
+  access: AuditAccessController,
+  workspaces?: WorkspaceAuditPurgeDeps,
+): void {
   const store = sink instanceof FileAuditStore ? sink : undefined;
 
   function requireDurableStore(): FileAuditStore {
@@ -100,6 +115,78 @@ export function registerAuditRoutes(router: Router, audit: AuditService, sink: A
     return json(200, { purged: result.value.purged, retained: result.value.retained });
   }
 
+  /**
+   * UW-1 — retention purge of ONE workspace's audit log. Operator-level: decided by the same `audit.purge` grant as the instance log
+   * (never by workspace role), needs a declared retention (`XO_API_AUDIT_RETENTION_DAYS`), and is recorded twice: as the `audit.purged`
+   * entry inside the workspace chain (the authoritative record of what was removed) and in the instance audit trail.
+   */
+  async function purgeWorkspace(req: ApiRequest): Promise<ApiResponse> {
+    const principal = requirePrincipal(req);
+    const correlationId = newCorrelationId();
+    const workspaceId = req.params['workspaceId'] ?? '';
+    const grant = await access.authorize(principal, 'purge');
+    if (!grant.ok) {
+      await audit.tryRecord({
+        type: 'access.denied',
+        action: 'purge.workspace-audit-log',
+        outcome: 'denied',
+        actor: actorFromPrincipal(principal),
+        target: { kind: 'audit-log', id: `workspace:${workspaceId}` },
+        correlationId,
+        reasonCode: ErrorCode.AUDIT_ACCESS_DENIED,
+      });
+      throw grant.error;
+    }
+    if (workspaces === undefined) throw new XoError(ErrorCode.UNIMPLEMENTED, 'workspace audit purge is not configured on this server');
+    const retentionDays = declaredRetentionDays();
+    if (retentionDays === null) {
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        'no audit retention is declared (XO_API_AUDIT_RETENTION_DAYS); nothing may be purged without one',
+      );
+    }
+    const raw = await req.rawBody();
+    let body: { readonly dryRun?: unknown } = {};
+    if (raw.byteLength > 0) {
+      const parsed = await req.json<{ readonly dryRun?: unknown }>();
+      if (!parsed.ok) throw parsed.error;
+      if (parsed.value === null || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, 'the body must be a JSON object');
+      }
+      body = parsed.value;
+    }
+    if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"dryRun" must be a boolean');
+    }
+    const workspace = await workspaces.workspaceStore.get(workspaceId);
+    if (!workspace.ok) throw workspace.error;
+    const log = openWorkspaceAuditLog(workspace.value, workspaces.dataConfig);
+    const result = await log.purge({
+      retentionDays,
+      actor: { identityId: principal.id, kind: principal.kind === 'service' ? 'service' : 'user' },
+      ...(body.dryRun === true ? { dryRun: true } : {}),
+    });
+    if (result.event !== undefined) {
+      await audit.requireDurable({
+        type: 'audit.purged',
+        action: 'purge.workspace-audit-log',
+        outcome: 'purged',
+        actor: actorFromPrincipal(principal),
+        target: { kind: 'audit-log', id: `workspace:${workspaceId}` },
+        correlationId,
+      });
+    }
+    return json(200, {
+      dryRun: body.dryRun === true,
+      removed: result.removed,
+      purgedThroughSeq: result.purgedThroughSeq,
+      cutoff: result.cutoff,
+      retentionDays,
+      ...(result.event !== undefined ? { recordSeq: result.event.seq } : {}),
+    });
+  }
+
   router.get('/audit/events', guarded(listEvents));
   router.post('/audit/purge', guarded(purge));
+  router.post('/audit/workspaces/:workspaceId/purge', guarded(purgeWorkspace));
 }

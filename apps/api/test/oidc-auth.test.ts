@@ -355,7 +355,13 @@ test('principal comes from the binding only: spoofed claims, headers and query c
       { kind: 'human', id: 'alice', orgId: 'org-real' },
     );
     assert.equal(req.identity?.identityId, 'alice');
-    assert.deepEqual(req.authentication, { credential: 'oidc', issuer: r.idp.issuer });
+    // UW-1: the only other field is the provider-signed auth_time (step-up), never anything from the spoofed claims or headers.
+    const signedAuthTime = (JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8')) as { auth_time: number }).auth_time;
+    assert.deepEqual(req.authentication, {
+      credential: 'oidc',
+      issuer: r.idp.issuer,
+      authenticatedAt: new Date(signedAuthTime * 1000).toISOString(),
+    });
   } finally {
     await r.stop();
   }
@@ -702,6 +708,34 @@ test('an oversized discovery document is refused (503) without being read to the
     assert.equal(code(res), ErrorCode.AUTH_PROVIDER_UNAVAILABLE);
     r.idp.discoveryBody = undefined;
     assert.equal((await r.get('/registry/search', await r.idp.sign())).status, 400, 'a normal document works');
+  } finally {
+    await r.stop();
+  }
+});
+
+test("UW-1 step-up: the token's auth_time is when the person signed in; without it a protected action asks for a fresh sign-in", async () => {
+  const r = await rig();
+  try {
+    await r.bind('user-1', 'alice');
+    const nowS = Math.floor(Date.now() / 1000);
+    const as = (token: string) => ({ authorization: `Bearer ${token}` });
+    const call = (method: string, path: string, token: string, body?: unknown) =>
+      r.server.request(method, path, body, as(token), { skipAuth: true });
+    const recent = await r.idp.sign({ claims: { auth_time: nowS - 60 } });
+    const ws = (await call('POST', '/workspaces', recent, { name: 'w' })).json<{ workspaceId: string }>().workspaceId;
+    const add = (token: string, id: string) => call('POST', `/workspaces/${ws}/members`, token, { identityId: id, role: 'viewer' });
+
+    const ok = await add(recent, 'bob');
+    assert.ok(ok.status === 200 || ok.status === 201, ok.bodyText);
+    for (const [label, token] of [
+      ['auth_time an hour ago', await r.idp.sign({ claims: { auth_time: nowS - 3600 } })],
+      ['no auth_time', await r.idp.sign({ claims: { auth_time: undefined } })],
+      ['auth_time in the future', await r.idp.sign({ claims: { auth_time: nowS + 3600 } })],
+    ] as const) {
+      const res = await add(token, `carol-${label.length}`);
+      assert.equal(res.status, 401, `${label}: ${res.bodyText}`);
+      assert.equal(res.json<{ error: { code: string } }>().error.code, ErrorCode.AUTH_STEP_UP_REQUIRED, label);
+    }
   } finally {
     await r.stop();
   }

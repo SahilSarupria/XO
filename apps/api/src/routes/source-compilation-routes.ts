@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { requireRecentAuthentication } from '../auth/step-up.js';
 import { err } from '@xo/types';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -174,6 +175,7 @@ export function registerCompilationRoutes(
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'approve.capability', correlationId });
     await requirePermission(req, workspace, 'review', dataConfig, { action: 'approve capability' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'approve a capability');
     const compilationId = req.params['compilationId'];
     const capabilityId = req.params['capabilityId'];
     if (compilationId === undefined || capabilityId === undefined)

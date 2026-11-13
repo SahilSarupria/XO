@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toJson, XoirGraph, XoirGraphId } from '@xo/xoir';
+import { hashEdge, toJson, XoirGraph, XoirGraphId, type XoirEdge } from '@xo/xoir';
 import { ErrorCode } from '@xo/errors';
 import { compileViaHttp } from '../src/routes/compiler/compile-adapter.js';
 
@@ -82,19 +82,16 @@ test('propagates a clean SERIALIZATION_SCHEMA_MISMATCH (not a crash) for an unsu
 
 test('propagates a clean error (not a crash) for a dangling edge referencing a nonexistent node', async () => {
   const graph = XoirGraph.create(XoirGraphId('dangling-edge'));
-  const asJson = {
-    ...toJson(graph),
-    edges: [
-      {
-        id: 'e1',
-        kind: 'requires',
-        fromId: 'does-not-exist-1',
-        toId: 'does-not-exist-2',
-        hash: 'irrelevant',
-        metadata: { confidence: 1, sourceRefs: [], transformationChain: [] },
-      },
-    ],
+  const edge = {
+    id: 'e1',
+    kind: 'requires',
+    fromId: 'does-not-exist-1',
+    toId: 'does-not-exist-2',
+    hash: '',
+    metadata: { confidence: 1, sourceRefs: [], transformationChain: [] },
   };
+  // UW-1: client-supplied graphs are hash-verified, so the edge carries its real hash and the load reaches the structural check.
+  const asJson = { ...toJson(graph), edges: [{ ...edge, hash: hashEdge(edge as unknown as XoirEdge) }] };
   const result = await compileViaHttp({ kind: 'xoir', graph: asJson });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, ErrorCode.SERIALIZATION_SCHEMA_MISMATCH);

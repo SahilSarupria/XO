@@ -11,7 +11,7 @@ import {
 } from '@xo/permissions';
 import { STANDARD_BINDING_RESOLVERS, type BindingResolver } from '@xo/capability-contract';
 import { toJson } from '@xo/xoir';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, buildFixtureGraph, storeFixtureCompilation } from './workflow-fixtures.js';
 import { executeApprovedCapability, preflightCapabilityAuthorization } from '../src/executions/execute-capability.js';
 import { FsExecutionStore } from '../src/executions/fs-execution-store.js';
@@ -60,7 +60,7 @@ async function withEnv(
           const node = json.nodes.find((n) => n.id === IDS.perm);
           assert.ok(node);
           graphMutator(node.properties);
-          override = json as unknown as ReturnType<typeof toJson>;
+          override = rehashXoirJson(json) as unknown as ReturnType<typeof toJson>; // well-formed and correctly hashed (UW-1)
         }
         const { compilationId } = await storeFixtureCompilation(workspace, dataDir, override);
         await fn({ server, dataDir, workspace, compilationId });
@@ -249,15 +249,27 @@ test('A8: TOCTOU — execution refuses a different graph than the one authorized
     if (refused.kind === 'error') assert.match(refused.errorMessage, /changed between/);
     assert.equal(evaluations(), 0);
 
-    // (2) a stricter declaration on the graph that is actually executed is enforced EVEN WHEN the hash tie cannot see it
-    //     (`fromJson` trusts stored node hashes, so editing properties alone leaves `contentHash()` unchanged) — the boundary re-derives.
+    // (2) a stricter declaration on the graph that is actually executed is enforced EVEN WHEN the hash tie cannot see it — the
+    //     boundary re-derives. Since UW-1 a property edit always changes the verified content hash, so the tie is made blind here by
+    //     handing it the edited graph's own hash (as if the preflight had seen that graph).
     const stricter = JSON.parse(JSON.stringify(original)) as { nodes: { id: string; properties: Record<string, unknown> }[] };
     stricter.nodes.find((n) => n.id === IDS.perm)!.properties['requiredPermissions'] = ['filesystem.read', 'network.connect'];
+    rehashXoirJson(stricter);
     const rederived = await executeApprovedCapability(stricter, IDS.perm, { file_size: 50 }, authz, {
-      preflightGraphHash: preflight.graphHash,
+      preflightGraphHash: await verifiedHashOf(stricter),
     });
     assert.equal(rederived.kind, 'error');
     if (rederived.kind === 'error') assert.equal(rederived.errorCode, 'XO_RUNTIME_PERMISSION_DENIED');
+    assert.equal(evaluations(), 0);
+
+    // (2b) UW-1: the same edit WITHOUT re-hashing (a storage-level tamper) is refused when the graph is loaded, before any decision
+    const tampered = JSON.parse(JSON.stringify(original)) as { nodes: { id: string; properties: Record<string, unknown> }[] };
+    tampered.nodes.find((n) => n.id === IDS.perm)!.properties['requiredPermissions'] = [];
+    const integrity = await executeApprovedCapability(tampered, IDS.perm, { file_size: 50 }, authz, {
+      preflightGraphHash: preflight.graphHash,
+    });
+    assert.equal(integrity.kind, 'error');
+    if (integrity.kind === 'error') assert.match(integrity.errorMessage, /does not match its hash/);
     assert.equal(evaluations(), 0);
 
     // (3) the unchanged graph with the matching hash still executes
@@ -287,15 +299,13 @@ test('A11: TOCTOU — a declaration edited AFTER the preflight (looser OR strict
       ['removed (unresolved)', undefined],
     ];
     for (const [label, value] of edits) {
-      const tampered = edit(value);
-      // Precondition proving this test is about the fingerprint, not the hash: the stored node hashes are untouched.
-      const { fromJson } = await import('@xo/xoir');
-      const reloaded = fromJson(tampered as never);
-      assert.ok(reloaded.ok);
-      assert.equal(String(reloaded.value.contentHash()), String(preflight.graphHash), `${label}: hash tie must be blind to this edit`);
+      // UW-1: the edited graph is correctly hashed (a real recompile), and the graph-hash tie is handed that graph's own hash, so it
+      // cannot see the edit. Only the declaration-fingerprint tie can, which is what this test pins.
+      const tampered = rehashXoirJson(edit(value));
+      const blindHash = await verifiedHashOf(tampered);
 
       const refused = await executeApprovedCapability(tampered, IDS.perm, { file_size: 50 }, authz, {
-        preflightGraphHash: preflight.graphHash,
+        preflightGraphHash: blindHash,
         preflightDeclarationFingerprint: preflight.declarationFingerprint,
       });
       assert.equal(refused.kind, 'error', label);
@@ -316,12 +326,20 @@ test('A11: TOCTOU — a declaration edited AFTER the preflight (looser OR strict
   });
 });
 
+/** The content hash of a serialized graph as the execution boundary computes it (verified load). */
+async function verifiedHashOf(graphJson: unknown) {
+  const { fromJson } = await import('@xo/xoir');
+  const loaded = fromJson(graphJson as never, { verify: true });
+  if (!loaded.ok) throw loaded.error;
+  return loaded.value.contentHash();
+}
+
 test('A9: preflight and the execution boundary reach the SAME decision across policies and graph metadata (one shared implementation, no drift)', async () => {
   const base = toJson(buildFixtureGraph());
   const variantGraph = (mutate: (p: Record<string, unknown>) => void) => {
     const json = JSON.parse(JSON.stringify(base)) as { nodes: { id: string; properties: Record<string, unknown> }[] };
     mutate(json.nodes.find((n) => n.id === IDS.perm)!.properties);
-    return json;
+    return rehashXoirJson(json); // compare decisions on well-formed, correctly hashed graphs (UW-1)
   };
   const graphs: [string, unknown][] = [
     ['declared filesystem.read', base],

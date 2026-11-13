@@ -34,6 +34,11 @@ export interface PolicyRuleMatch {
   readonly principalId?: string;
   /** P1.0 M2 — as `principalId`, for the principal's kind (`human` / `service`). */
   readonly principalKind?: 'human' | 'service';
+  /**
+   * UW-1 (ADR 0010) — matches only a request whose `context.role` is exactly this value. The role is SERVER-DERIVED (the host resolves
+   * it from its own membership records before asking); a request with no `context.role` never matches a rule that sets this.
+   */
+  readonly role?: string;
 }
 
 export interface PolicyRule {
@@ -68,6 +73,7 @@ function ruleMatches(rule: PolicyRule, request: PermissionRequest): boolean {
   if (m.environment !== undefined && m.environment !== request.context?.environment) return false;
   if (m.principalId !== undefined && m.principalId !== request.principal?.id) return false;
   if (m.principalKind !== undefined && m.principalKind !== request.principal?.kind) return false;
+  if (m.role !== undefined && m.role !== request.context?.['role']) return false;
   if (m.scope !== undefined && !scopeContains(m.scope, request.scope)) return false;
   return true;
 }
@@ -84,6 +90,7 @@ function ruleSpecificity(rule: PolicyRule): number {
   if (m.environment !== undefined) score += 4;
   if (m.principalId !== undefined) score += 8;
   else if (m.principalKind !== undefined) score += 4;
+  if (m.role !== undefined) score += 4;
   if (m.scope !== undefined) score += scopeSpecificity(m.scope);
   return score;
 }

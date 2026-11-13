@@ -1,12 +1,13 @@
 import { readdir } from 'node:fs/promises';
+import type { AuditAnchorSink } from '../audit/anchor.js';
+import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import { LocalFsBlobStore } from '@xo/storage';
 import { establishAuthenticatedPrincipal, type PermissionManager } from '@xo/permissions';
 import type { PackageTrustPolicy } from '@xo/package-sdk';
 import { newCorrelationId, type AuditService } from '../audit/audit-service.js';
 import { startWorkflowAudited } from '../routes/workflow-routes.js';
-import { FsAuditLog } from '../audit/fs-audit-log.js';
 import { FsWorkspaceStore } from '../workspace/fs-workspace-store.js';
-import { workspaceAuditStore, workspaceStateStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { workspaceStateStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import { isValidWorkspaceId, type WorkspaceStore } from '../workspace/workspace.js';
 import { makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from './fs-controls-store.js';
@@ -97,7 +98,7 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
                 triggers: { ...cur.triggers, schedule: { ...cur.triggers.schedule, lastFiredAt: now.toISOString(), lastOutcome: outcome } },
               },
         );
-        await new FsAuditLog(workspaceAuditStore(ws.value, deps.dataConfig), id).append({
+        await openWorkspaceAuditLog(ws.value, deps.dataConfig).append({
           event: 'workflow.triggered',
           actor: { identityId: 'trigger-schedule', kind: 'system' },
           result,
@@ -135,12 +136,17 @@ export function schedulerDepsFrom(
     readonly permissionManager: PermissionManager;
     readonly audit: AuditService;
     readonly packageTrustPolicy: PackageTrustPolicy;
+    readonly auditAnchor?: AuditAnchorSink;
   },
   log?: (line: string) => void,
 ): SchedulerDeps {
   return {
     workspaceStore: new FsWorkspaceStore(new LocalFsBlobStore(workspacesDir)),
-    dataConfig: { dataRootDir, packageTrustPolicy: enforcement.packageTrustPolicy },
+    dataConfig: {
+      dataRootDir,
+      packageTrustPolicy: enforcement.packageTrustPolicy,
+      ...(enforcement.auditAnchor !== undefined ? { auditAnchor: enforcement.auditAnchor } : {}),
+    },
     permissionManager: enforcement.permissionManager,
     audit: enforcement.audit,
     ...(log !== undefined ? { log } : {}),

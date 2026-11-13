@@ -56,7 +56,7 @@ export type CapabilityPreview =
   | { readonly kind: 'error'; readonly errorCode: string; readonly errorMessage: string };
 
 export function previewCapability(compiledGraphJson: unknown, capabilityId: string, input: unknown): CapabilityPreview {
-  const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+  const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const rebuilt = rebuildContractAndBinding(compiledGraphJson, capabilityId);
   if (!rebuilt.ok) {

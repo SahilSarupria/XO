@@ -154,38 +154,38 @@ export function registerRegistryRoutes(router: Router, workspaceStore: Workspace
   }
 
   async function getPackage(req: ApiRequest): Promise<ApiResponse> {
+    const c = await client(req, workspaceStore, dataConfig); // authorization first (UW-1): input is validated only for a permitted caller
     const id = req.params['id'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing package id');
-    const c = await client(req, workspaceStore, dataConfig);
     const record = unwrapOrThrow(await c.get(id));
     return json(200, record);
   }
 
   async function listByCreator(req: ApiRequest): Promise<ApiResponse> {
+    const c = await client(req, workspaceStore, dataConfig);
     const creatorDid = req.query.get('creator');
     if (creatorDid === null || creatorDid.trim().length === 0) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "creator" is required');
     }
-    const c = await client(req, workspaceStore, dataConfig);
     const records = await c.listByCreator(creatorDid);
     return json(200, { records });
   }
 
   async function search(req: ApiRequest): Promise<ApiResponse> {
+    const c = await client(req, workspaceStore, dataConfig);
     const query = req.query.get('q');
     if (query === null || query.trim().length === 0) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "q" is required');
     }
-    const c = await client(req, workspaceStore, dataConfig);
     const records = await c.search(query);
     return json(200, { records });
   }
 
   /** Mirrors `xo registry inspect <id>` — package record plus its recorded benchmark runs, nothing this route computes itself. */
   async function inspect(req: ApiRequest): Promise<ApiResponse> {
+    const c = await client(req, workspaceStore, dataConfig);
     const id = req.params['id'];
     if (id === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing package id');
-    const c = await client(req, workspaceStore, dataConfig);
     const record = unwrapOrThrow(await c.get(id));
     const benchmarkRuns = await c.listBenchmarksForPackage(id);
     return json(200, { record, benchmarkRuns });

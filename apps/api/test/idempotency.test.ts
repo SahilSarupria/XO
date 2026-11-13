@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { AuditError, ErrorCode } from '@xo/errors';
 import { Permissions, RuleBasedPolicy, establishAuthenticatedPrincipal, type PolicyRule } from '@xo/permissions';
 import { NonProductionAuditSink, type AppendResult, type AuditEvent, type AuditEventDraft, type AuditSink } from '@xo/audit';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, storeFixtureCompilation } from './workflow-fixtures.js';
 import { FsExecutionStore, mintExecutionId } from '../src/executions/fs-execution-store.js';
 import { FsWorkflowExecutionStore } from '../src/workflows/fs-workflow-execution-store.js';
@@ -468,6 +468,7 @@ test('a key never bypasses authentication, approval (M3), or authorization (M2):
       graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
     };
     stored.graph.nodes.find((n) => n.id === 'decision_p08_flow_a')!.properties['outcome'] = 'changed after approval';
+    rehashXoirJson(stored.graph); // a legitimate recompile (UW-1: an un-hashed edit would be refused as tampering instead)
     await writeFile(resultFile, JSON.stringify(stored));
     const stale = await exec(env, IDS.flowA, A_INPUT, KEY);
     assert.equal(stale.status, 403, stale.bodyText);
@@ -794,6 +795,7 @@ test('workflow start: approval (M3) is re-checked on a keyed retry — a stale s
       graph: { nodes: { id: string; properties: Record<string, unknown> }[] };
     };
     stored.graph.nodes.find((n) => n.id === 'decision_p08_flow_b')!.properties['outcome'] = 'changed after approval';
+    rehashXoirJson(stored.graph); // a legitimate recompile (UW-1: an un-hashed edit would be refused as tampering instead)
     await writeFile(resultFile, JSON.stringify(stored));
     const res = await startWf(env, wf, WF_INPUT, KEY);
     assert.equal(res.status, 403, res.bodyText);
