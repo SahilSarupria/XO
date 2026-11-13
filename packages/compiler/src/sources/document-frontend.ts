@@ -7,12 +7,24 @@ import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource } from './types.js';
 import { computeSourceId } from './source-id.js';
 import { parsedDocumentFromBlocks, syntheticProvenance } from './block-source-helpers.js';
+import { markdownBlocks } from './structured-blocks/markdown-blocks.js';
 
 export interface DocumentSourceInput {
   readonly kind: 'document';
   readonly text: string;
   readonly sourcePath: string;
   readonly title?: string;
+  /**
+   * UW-3c: how the text is written. `markdown` is parsed as CommonMark (with GitHub tables and task lists); `text` uses the
+   * line classifier. When absent, a `.md` / `.markdown` / `.mdx` path means Markdown and anything else means text.
+   */
+  readonly format?: 'markdown' | 'text';
+}
+
+const MARKDOWN_PATH = /\.(?:md|markdown|mdx|mdown|mkd)$/i;
+
+function isMarkdown(input: DocumentSourceInput): boolean {
+  return input.format !== undefined ? input.format === 'markdown' : MARKDOWN_PATH.test(input.sourcePath);
 }
 
 function isDocumentSourceInput(input: unknown): input is DocumentSourceInput {
@@ -104,7 +116,15 @@ export class DocumentSourceFrontend implements SourceFrontend<DocumentSourceInpu
       );
     }
 
-    const rawBlocks = classifyLines(input.text);
+    const md = isMarkdown(input) ? markdownBlocks(input.text) : undefined;
+    const rawBlocks = md !== undefined ? md.blocks : classifyLines(input.text);
+    if (rawBlocks.length === 0) {
+      return err(
+        new SourceError(ErrorCode.PRECONDITION_FAILED, `Document source "${input.sourcePath}" has no readable content`, {
+          context: { sourcePath: input.sourcePath },
+        }),
+      );
+    }
     const total = rawBlocks.length;
     const blocks: DocumentBlock[] = rawBlocks.map((b, i) => ({ ...b, provenance: syntheticProvenance(1, i, total) }) as DocumentBlock);
     const parsed = parsedDocumentFromBlocks(blocks);
@@ -114,8 +134,8 @@ export class DocumentSourceFrontend implements SourceFrontend<DocumentSourceInpu
       sourceId,
       sourceType: 'document',
       sourcePath: input.sourcePath,
-      content: { kind: 'document', parsed, documentTitle: input.title, plainText: input.text },
-      metadata: { blockCount: String(total) },
+      content: { kind: 'document', parsed, documentTitle: input.title ?? md?.title, plainText: input.text },
+      metadata: { blockCount: String(total), ...(md !== undefined ? { format: 'markdown' } : {}) },
       semanticExtractionAvailable: true,
     });
   }

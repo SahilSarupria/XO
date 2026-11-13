@@ -47,6 +47,11 @@ export interface ParagraphBlock {
   readonly formField?: { readonly label: string; readonly hint?: string };
   /** UW-3b: the line(s) this paragraph came from held text in separate columns that were joined; meaning may be garbled. */
   readonly layoutSuspect?: true;
+  /**
+   * UW-3c: preformatted text — a code block, a command listing, a configuration file. It is kept as content (a person
+   * reading the document sees it), but it is not prose: no sentence in it is read as a rule or an action.
+   */
+  readonly preformatted?: true;
 }
 
 export interface ListItemBlock {
@@ -63,6 +68,8 @@ export interface ListItemBlock {
   /** UW-3b: a short title set apart from the item's body ("Never commit secrets." / "API keys stay in ..."). `text` stays the whole item. */
   readonly title?: string;
   readonly body?: string;
+  /** UW-3c: nesting depth in the source's list structure (0 = a top-level item, 1 = an item inside a top-level item, ...). */
+  readonly depth?: number;
 }
 
 export interface TableRowBlock {
@@ -74,6 +81,8 @@ export interface TableRowBlock {
    * (each cell is that column's lines joined). Absent for a row read from one physical line.
    */
   readonly reconstruction?: 'wrapped';
+  /** UW-3c: the first row of a table whose source marks where it starts (HTML, Word, Markdown), so two adjacent tables never merge. */
+  readonly tableStart?: true;
 }
 
 export interface FootnoteBlock {

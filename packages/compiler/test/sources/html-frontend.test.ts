@@ -68,7 +68,13 @@ test('script/style content is never mistaken for page content', () => {
 });
 
 test('HTML with no recognizable block content fails with SOURCE_PARSE_FAILED', () => {
-  const result = frontend.ingest({ kind: 'html', html: '<div><span>just inline stuff</span></div>', sourcePath: 'empty.html' });
+  // UW-3c: text in a <div> is content now (the WHATWG parse reads containers); a page whose only "content" is script,
+  // style and comments still has nothing to read.
+  const result = frontend.ingest({
+    kind: 'html',
+    html: '<div><!-- nothing here --><script>var x = 1;</script><style>p { color: red }</style></div>',
+    sourcePath: 'empty.html',
+  });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.code, 'XO_SERIALIZATION_PARSE_FAILED');
 });

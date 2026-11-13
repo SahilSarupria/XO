@@ -92,6 +92,8 @@ export interface ExperienceUnit {
   readonly formFields?: readonly FormFieldContext[];
   /** UW-3b: some of this unit's text was joined across layout columns, so its wording may be garbled. */
   readonly layoutSuspect?: true;
+  /** UW-3c: the unit is preformatted text (code, a command listing, a configuration file): kept, never read as rules or actions. */
+  readonly preformatted?: true;
   /** UW-3b: the unit's role in a section routed to a structural extractor (`structure.ts`). */
   readonly structure?: UnitStructure;
 }
@@ -113,6 +115,8 @@ export interface ListItemContext {
   /** A short title set apart from the item's body ("Never commit secrets." / "API keys stay in ..."). */
   readonly title?: string;
   readonly body?: string;
+  /** UW-3c: nesting depth in the source's list (0 = top level). Absent when the source gives no nesting. */
+  readonly depth?: number;
 }
 
 /** UW-3b: one field of a fill-in form: its label and the hint or options printed beside it. */
@@ -125,7 +129,11 @@ export interface FormFieldContext {
 export type SectionKind = 'procedure' | 'guideline' | 'checklist' | 'form' | 'data_table' | 'policy' | 'reference';
 
 /** UW-3b: the role a unit plays in its section, when the section was routed to a structural extractor. */
-export type UnitRole = 'procedure_step' | 'procedure_header' | 'guideline' | 'acceptance_criterion' | 'form_field';
+/**
+ * `context` (UW-3c): read and understood as not a rule and not an action — a question, the label of a group of items, a note
+ * inside a checklist. Nothing is extracted from it.
+ */
+export type UnitRole = 'procedure_step' | 'procedure_header' | 'guideline' | 'acceptance_criterion' | 'form_field' | 'context';
 
 export interface ProcedureStepFacts {
   /** Stable key of the procedure the step belongs to (its section path); steps of one procedure share it. */
