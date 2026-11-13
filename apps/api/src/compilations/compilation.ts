@@ -101,6 +101,13 @@ export interface CapabilityProjection {
   /** `declaration.confidence` — present only when a manifest-level declaration exists (a strictly narrower condition than `status === 'resolved'`). */
   readonly declaredConfidence?: { readonly score: number; readonly basis: string };
   readonly provenance: readonly { readonly documentPath: string; readonly locator?: string; readonly pages?: readonly number[] }[];
+  /**
+   * UW-3b: what the compiler understood beyond "an action found in prose". `manual_step` — a step of a procedure the
+   * document lays out, done by a person; it stays exactly as unresolved/unapprovable/unrunnable as `status` says, this
+   * only lets a reviewer see that XO understood it. `possible_extraction_error` — the name may mix text from different
+   * places on the page (columns, cells); check it against the source. Absent for everything else.
+   */
+  readonly understanding?: 'manual_step' | 'possible_extraction_error';
 }
 
 export interface CreateCompilationInput {

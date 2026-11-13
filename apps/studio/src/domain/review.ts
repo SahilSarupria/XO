@@ -8,6 +8,11 @@ import type { Capability, Execution, InputContract } from '../platform/wire';
  *
  *  needs_attention   status is unresolved / ambiguous / denied. XO found the rule but
  *                    cannot carry it out yet. It cannot be approved from Studio.
+ *  manual_step       (UW-3b) status is unresolved AND the compiler understood the capability as
+ *                    a step of a procedure done by a person (`understanding: manual_step`). XO
+ *                    understood it; there is simply no system operation behind it. Exactly as
+ *                    unapprovable and unrunnable as needs_attention: understanding is not a
+ *                    licence to run. Reserved: "Needs more information" now means it.
  *  ready_for_review  status is resolved and no approval record exists.
  *  approved          an approval record exists AND the capability is resolved.
  *
@@ -20,11 +25,16 @@ import type { Capability, Execution, InputContract } from '../platform/wire';
  *  - An approval record on an unresolved capability can exist server-side (the approve
  *    route only checks membership). That is surfaced as needs_attention, not approved.
  */
-export type ReviewState = 'needs_attention' | 'ready_for_review' | 'approved';
+export type ReviewState = 'needs_attention' | 'manual_step' | 'ready_for_review' | 'approved';
 
 export function reviewStateOf(c: Capability): ReviewState {
-  if (c.status !== 'resolved') return 'needs_attention';
+  if (c.status !== 'resolved') return c.understanding === 'manual_step' ? 'manual_step' : 'needs_attention';
   return c.approved ? 'approved' : 'ready_for_review';
+}
+
+/** UW-3b: the name may mix text from different places on the page; shown as a caution beside any state. */
+export function possibleExtractionError(c: Capability): boolean {
+  return c.understanding === 'possible_extraction_error';
 }
 
 /** Studio only offers Approve where it is meaningful; the server enforces its own rules regardless. */
@@ -38,12 +48,15 @@ export function canRun(c: Capability): boolean {
 
 export const REVIEW_STATE_LABEL: Record<ReviewState, string> = {
   needs_attention: 'Needs more information',
+  manual_step: 'Understood, manual step',
   ready_for_review: 'Ready for your review',
   approved: 'Approval recorded',
 };
 
 export const REVIEW_STATE_EXPLANATION: Record<ReviewState, string> = {
   needs_attention: 'XO found this rule in your document, but does not yet have enough detail to carry it out on its own.',
+  manual_step:
+    'XO understood this step of a procedure in your document. A person does it: no system operation is declared for it, so XO does not run it and it is not offered for approval.',
   ready_for_review: 'XO can carry this out. Check that it matches what your document says, then approve it.',
   approved:
     'An approval is recorded for this rule. It is not a guarantee that a run will succeed: XO still checks the details you provide when you run it.',
@@ -59,21 +72,24 @@ export function executionClassLabel(executionClass: string | undefined): string 
 export interface ReviewSummary {
   readonly total: number;
   readonly needsAttention: number;
+  readonly manualSteps: number;
   readonly readyForReview: number;
   readonly approved: number;
 }
 
 export function summarize(caps: readonly Capability[]): ReviewSummary {
   let needsAttention = 0;
+  let manualSteps = 0;
   let readyForReview = 0;
   let approved = 0;
   for (const c of caps) {
     const s = reviewStateOf(c);
     if (s === 'needs_attention') needsAttention++;
+    else if (s === 'manual_step') manualSteps++;
     else if (s === 'ready_for_review') readyForReview++;
     else approved++;
   }
-  return { total: caps.length, needsAttention, readyForReview, approved };
+  return { total: caps.length, needsAttention, manualSteps, readyForReview, approved };
 }
 
 /** Most recent execution per capability within one compilation. */

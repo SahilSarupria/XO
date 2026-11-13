@@ -1018,7 +1018,10 @@ export const openApiDocument = {
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '200': { description: '{ compilationId, capabilities: CapabilityProjection[] }' },
+          '200': {
+            description:
+              '{ compilationId, capabilities: CapabilityProjection[] }. A capability may carry `understanding`: `manual_step` (a step of a procedure the document lays out, done by a person) or `possible_extraction_error` (the name may mix text from different places on the page). It is informational: it never changes `status`, approval or execution.',
+          },
           '404': { description: 'Unknown compilation, compilation did not succeed, or workspace not owned by the caller' },
         },
       },
