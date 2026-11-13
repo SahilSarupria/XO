@@ -35,7 +35,17 @@ export interface SourceRecord {
   readonly contentStorageKey: string;
   readonly status: 'stored';
   /** Where the bytes came from. Absent on records written before imports existed (those were all uploads). */
-  readonly origin?: { readonly kind: 'upload' } | { readonly kind: 'url'; readonly url: string };
+  readonly origin?:
+    | { readonly kind: 'upload' }
+    | { readonly kind: 'url'; readonly url: string }
+    /** UW-3: opened from an email uploaded to this workspace — which email (its source and digest) and which MIME part. */
+    | {
+        readonly kind: 'email-attachment';
+        readonly emailSourceId: string;
+        readonly emailDigestSha256: string;
+        readonly emailFilename: string;
+        readonly part: string;
+      };
   /** Things the server could not carry over when it read this file (e.g. .docx list numbering). Shown to the user; never silently dropped. */
   readonly ingestNotes?: readonly string[];
   /** Cheap, deterministic counts computed at ingest. Only fields that were actually measured are present. */
@@ -47,9 +57,26 @@ export interface SourceRecord {
     /** UW-3: workbooks — sheets read and tables (record sets) found. */
     readonly sheets?: number;
     readonly tables?: number;
-    /** UW-3: emails — attachments listed (each must be uploaded on its own to be read). */
+    /** UW-3: emails — attachments found (see `attachments` for which were opened as their own sources). */
     readonly attachments?: number;
   };
+  /**
+   * UW-3: emails — every attachment, in MIME order. One the server could open is stored as its own source (`sourceId`, origin
+   * `email-attachment`) at upload, so it is read and compiled like any other file; one it could not is kept here with the reason.
+   */
+  readonly attachments?: readonly EmailAttachmentRecord[];
+}
+
+export interface EmailAttachmentRecord {
+  readonly part: string;
+  readonly filename?: string;
+  readonly contentType: string;
+  readonly size: number;
+  readonly sha256: string;
+  /** The source this attachment was stored as. */
+  readonly sourceId?: string;
+  /** Why it was not opened (unsupported format, unreadable, decoration, limit reached, ...). */
+  readonly notOpened?: string;
 }
 
 export interface CreateSourceInput {
@@ -60,6 +87,9 @@ export interface CreateSourceInput {
   readonly origin?: SourceRecord['origin'];
   readonly ingestNotes?: readonly string[];
   readonly stats?: SourceRecord['stats'];
+  readonly attachments?: SourceRecord['attachments'];
+  /** A source id minted in advance (`newSourceId()`), so related records can point at this one before it is written. */
+  readonly sourceId?: string;
 }
 
 /**
@@ -150,3 +180,20 @@ export interface SourceStore {
   list(): Promise<Result<readonly SourceRecord[], XoError>>;
   delete(sourceId: string): Promise<Result<void, NotFoundError>>;
 }
+
+/** The extension a declared media type stands for, among the formats this server reads (link imports, unnamed email attachments). */
+export const EXTENSION_FOR_MEDIA_TYPE: Readonly<Record<string, string>> = {
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'message/rfc822': '.eml',
+  'text/html': '.html',
+  'text/plain': '.txt',
+  'text/markdown': '.md',
+  'text/csv': '.csv',
+  'application/json': '.json',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+};

@@ -539,7 +539,7 @@ test('UW-3 upload: a broken workbook, a hostile workbook and a broken CSV are re
   });
 });
 
-test('UW-3 upload .eml: the message is read at the door, attachments are listed (not read), and compile reads the body', async () => {
+test('UW-3 upload .eml: the message is read at the door, its attachment is opened as its own source, and compile reads the body', async () => {
   const eml = Buffer.from(
     [
       'From: Priya <priya@example.com>',
@@ -566,7 +566,7 @@ test('UW-3 upload .eml: the message is read at the door, attachments are listed 
     const rec = res.json<{ sourceId: string; mediaType: string; stats: { words: number; attachments: number }; ingestNotes?: string[] }>();
     assert.equal(rec.mediaType, 'message/rfc822');
     assert.equal(rec.stats.attachments, 1);
-    assert.ok(rec.ingestNotes?.some((n) => /cert\.pdf\)\. They are listed, not read/.test(n)));
+    assert.ok(rec.ingestNotes?.some((n) => /^Opened 1 attachment\(s\) as their own sources: cert\.pdf\.$/.test(n)));
     const compiled = await server.request('POST', `${base}/sources/${rec.sourceId}/compile`);
     assert.ok(compiled.status === 201 || compiled.status === 200, compiled.bodyText);
     const notEmail = await server.request('POST', `${base}/sources?filename=fake.eml`, Buffer.from('just some words'));

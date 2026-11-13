@@ -1,5 +1,6 @@
 import { PackageValidator, type PackageTrustPolicy } from '@xo/package-sdk';
 import type { AuditAnchorSink } from '../audit/anchor.js';
+import type { CompileExtraction } from '../compilations/extraction-tiers.js';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -27,6 +28,8 @@ export interface WorkspaceDataConfig {
   readonly packageTrustPolicy: PackageTrustPolicy;
   /** UW-1 — where workspace audit chain heads are anchored (`XO_AUDIT_ANCHOR_DIR`). Absent = unanchored, reported by audit verify. */
   readonly auditAnchor?: AuditAnchorSink;
+  /** UW-3 — how compiles read pages and photos with no text layer (`compilations/extraction-tiers.ts`). Absent = no recovery. */
+  readonly extraction?: CompileExtraction;
 }
 
 /** Validator carrying the effective trust policy — the only way API routes verify packages. A config without a policy (possible only from untyped callers) yields an unconfigured validator, which fails closed. */

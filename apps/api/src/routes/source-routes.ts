@@ -21,8 +21,16 @@ import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { workspaceStateStore } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { auditedRead, type AuditService } from '../audit/audit-service.js';
-import { FsSourceStore } from '../sources/fs-source-store.js';
-import { SUPPORTED_EXTENSIONS, inferMediaType, type SourceRecord } from '../sources/source.js';
+import { createHash } from 'node:crypto';
+import { FsSourceStore, newSourceId } from '../sources/fs-source-store.js';
+import {
+  EXTENSION_FOR_MEDIA_TYPE,
+  SUPPORTED_EXTENSIONS,
+  inferMediaType,
+  type EmailAttachmentRecord,
+  type SourceRecord,
+} from '../sources/source.js';
+import { planEmailAttachments } from '../sources/email-attachments.js';
 
 /**
  * Source registration and storage only — no compilation happens here
@@ -137,9 +145,14 @@ export function registerSourceRoutes(
     mediaType: string,
     bytes: Uint8Array,
     origin: NonNullable<SourceRecord['origin']>,
+    /** UW-3: how many emails deep this file sits (0 = uploaded or imported directly). */
+    emailDepth = 0,
   ): Promise<SourceRecord> {
     let ingestNotes: readonly string[] | undefined;
     let stats: SourceRecord['stats'] | undefined;
+    let sourceId: string | undefined;
+    let attachments: EmailAttachmentRecord[] | undefined;
+    const children: string[] = [];
     if (extension === '.docx') {
       try {
         const extracted = extractDocxText(bytes);
@@ -170,18 +183,66 @@ export function registerSourceRoutes(
     } else if (extension === '.eml') {
       let email;
       try {
-        email = parseEmail(bytes);
+        email = parseEmail(bytes, { withContent: true });
       } catch (cause) {
         if (cause instanceof MimeError) throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot read this .eml: ${cause.message}`);
         throw cause;
       }
       stats = { words: email.body.split(/\s+/).filter(Boolean).length, attachments: email.attachments.length };
       const notes = [...email.findings];
-      if (email.attachments.length > 0) {
-        notes.push(
-          `This email has ${email.attachments.length} attachment(s) (${email.attachments.map((a) => a.filename ?? a.contentType).join(', ')}). They are listed, not read: upload each one to use its contents.`,
-        );
+      // UW-3: every attachment the server can read is opened now, as a source of its own linked back to this email, so a certificate
+      // forwarded as an attachment is read and compiled like any upload. The email's id is minted first so each attachment can name it.
+      sourceId = newSourceId();
+      const emailDigestSha256 = createHash('sha256').update(bytes).digest('hex');
+      attachments = [];
+      const opened: string[] = [];
+      const notOpened: string[] = [];
+      const bySha = new Map<string, string>();
+      try {
+        for (const plan of planEmailAttachments(email.attachments, emailDepth)) {
+          const a = plan.attachment;
+          const base = {
+            part: a.part,
+            ...(a.filename !== undefined ? { filename: a.filename } : {}),
+            contentType: a.contentType,
+            size: a.size,
+            sha256: a.sha256,
+          };
+          if (!plan.open) {
+            const same = plan.sameAsPart !== undefined ? bySha.get(a.sha256) : undefined;
+            attachments.push({ ...base, ...(same !== undefined ? { sourceId: same } : {}), notOpened: plan.reason });
+            if (same === undefined) notOpened.push(`${a.filename ?? `part ${a.part}`} (${plan.reason})`);
+            continue;
+          }
+          try {
+            const child = await storeSource(
+              req,
+              workspace,
+              plan.filename,
+              plan.extension,
+              inferMediaType(plan.extension, undefined),
+              a.content!,
+              { kind: 'email-attachment', emailSourceId: sourceId, emailDigestSha256, emailFilename: filename, part: a.part },
+              emailDepth + 1,
+            );
+            children.push(child.sourceId);
+            bySha.set(a.sha256, child.sourceId);
+            attachments.push({ ...base, sourceId: child.sourceId });
+            opened.push(plan.filename);
+          } catch (cause) {
+            // An attachment the door refuses (a corrupt .docx, a broken workbook) is reported on the email; it does not fail the email.
+            if (!(cause instanceof XoError) || cause.code !== ErrorCode.INVALID_ARGUMENT) throw cause;
+            const reason = cause.message.replace(/^cannot read this [^:]+: /, 'it could not be read: ');
+            attachments.push({ ...base, notOpened: reason });
+            notOpened.push(`${plan.filename} (${reason})`);
+          }
+        }
+      } catch (cause) {
+        await removeSources(workspace, children);
+        throw cause;
       }
+      if (opened.length > 0) notes.push(`Opened ${opened.length} attachment(s) as their own sources: ${opened.join(', ')}.`);
+      if (notOpened.length > 0) notes.push(`Not opened: ${notOpened.join('; ')}.`);
       if (notes.length > 0) ingestNotes = notes;
     } else if (extension === '.txt' || extension === '.md') {
       stats = { words: new TextDecoder().decode(bytes).split(/\s+/).filter(Boolean).length };
@@ -195,32 +256,33 @@ export function registerSourceRoutes(
       origin,
       ...(ingestNotes !== undefined ? { ingestNotes } : {}),
       ...(stats !== undefined ? { stats } : {}),
+      ...(attachments !== undefined ? { attachments } : {}),
+      ...(sourceId !== undefined ? { sourceId } : {}),
     });
-    if (!created.ok) throw created.error;
+    if (!created.ok) {
+      await removeSources(workspace, children);
+      throw created.error;
+    }
     await recordAudit(req, workspace, dataConfig, {
-      event: origin.kind === 'url' ? 'source.imported' : 'source.uploaded',
+      event: origin.kind === 'url' ? 'source.imported' : origin.kind === 'email-attachment' ? 'source.extracted' : 'source.uploaded',
       result: 'succeeded',
       target: { kind: 'source', id: created.value.sourceId, label: filename },
-      detail: { bytes: bytes.length, mediaType, ...(origin.kind === 'url' ? { from: safeOriginLabel(origin.url) } : {}) },
+      detail: {
+        bytes: bytes.length,
+        mediaType,
+        ...(origin.kind === 'url' ? { from: safeOriginLabel(origin.url) } : {}),
+        ...(origin.kind === 'email-attachment' ? { fromEmail: origin.emailSourceId, part: origin.part } : {}),
+        ...(children.length > 0 ? { attachmentsOpened: children.length } : {}),
+      },
     });
     return created.value;
   }
 
-  const MEDIA_TYPE_EXTENSIONS: Readonly<Record<string, string>> = {
-    'application/pdf': '.pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-    'message/rfc822': '.eml',
-    'text/html': '.html',
-    'text/plain': '.txt',
-    'text/markdown': '.md',
-    'text/csv': '.csv',
-    'application/json': '.json',
-    'image/png': '.png',
-    'image/jpeg': '.jpg',
-    'image/gif': '.gif',
-    'image/webp': '.webp',
-  };
+  /** Best-effort undo of attachment sources stored for an email that then could not be stored itself. */
+  async function removeSources(workspace: Parameters<typeof workspaceSourcesStore>[0], sourceIds: readonly string[]): Promise<void> {
+    const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
+    for (const id of sourceIds) await store.delete(id).catch(() => undefined);
+  }
 
   async function importFromUrl(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
@@ -255,7 +317,7 @@ export function registerSourceRoutes(
     }
     let extension = extname(name).toLowerCase();
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      const fromType = contentType !== undefined ? MEDIA_TYPE_EXTENSIONS[contentType] : undefined;
+      const fromType = contentType !== undefined ? EXTENSION_FOR_MEDIA_TYPE[contentType] : undefined;
       if (fromType === undefined) {
         throw new XoError(
           ErrorCode.INVALID_ARGUMENT,

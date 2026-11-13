@@ -60,6 +60,7 @@ test('envelope, encoded words, folded headers, the plain-text body and the attac
       size: pdfBytes.length,
       sha256: createHash('sha256').update(pdfBytes).digest('hex'),
       part: '2',
+      inline: false,
     },
   ]);
 });
@@ -113,4 +114,29 @@ test('the frontend: text through the document pipeline, envelope in metadata, re
   assert.equal(createDefaultSourceFrontendRegistry().detect({ kind: 'eml', bytes: enc(MESSAGE), sourcePath: 'x.eml' })?.sourceType, 'eml');
   const bad = new EmlSourceFrontend().ingest({ kind: 'eml', bytes: enc('no headers here'), sourcePath: 'x.eml' });
   assert.equal(bad.ok, false);
+});
+
+test('UW-3: with withContent the decoded attachment bytes are kept (for opening); a Content-ID part shown in the body is marked inline', () => {
+  const raw = [
+    'From: a@example.com',
+    'Subject: s',
+    'Content-Type: multipart/related; boundary="r"',
+    '',
+    '--r',
+    'Content-Type: text/html',
+    '',
+    '<p>hi <img src="cid:logo"></p>',
+    '--r',
+    'Content-Type: image/png; name="logo.png"',
+    'Content-ID: <logo>',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from('PNGDATA').toString('base64'),
+    '--r--',
+  ].join('\r\n');
+  const listed = parseEmail(new Uint8Array(Buffer.from(raw)));
+  assert.equal(listed.attachments[0]!.content, undefined, 'listed only by default');
+  const kept = parseEmail(new Uint8Array(Buffer.from(raw)), { withContent: true });
+  assert.equal(kept.attachments[0]!.inline, true);
+  assert.equal(Buffer.from(kept.attachments[0]!.content!).toString(), 'PNGDATA');
 });

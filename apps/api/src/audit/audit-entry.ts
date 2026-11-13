@@ -18,6 +18,8 @@ export const AUDIT_EVENTS = [
   'settings.updated',
   'source.uploaded',
   'source.imported',
+  // UW-3: an attachment opened from an uploaded email and stored as its own source.
+  'source.extracted',
   'source.deleted',
   'compilation.started',
   'capability.approved',

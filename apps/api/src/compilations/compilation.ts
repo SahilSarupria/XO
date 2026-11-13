@@ -47,6 +47,16 @@ export interface CompilationSourceReport {
     readonly unaccountedPages: number;
     readonly complete: boolean;
   };
+  /**
+   * UW-3 — pages or photos with no text layer that were read by OCR/vision: how many needed it, how many were read, by which tiers and
+   * at what cost. Absent when nothing needed reading.
+   */
+  readonly textRecovery?: {
+    readonly pagesNeedingRecovery: number;
+    readonly pagesRecovered: number;
+    readonly tiers: readonly { readonly tier: string; readonly attempts: number; readonly recovered: number; readonly costUsd: number }[];
+    readonly totalCostUsd: number;
+  };
   readonly kindProposals: readonly {
     readonly kind: string;
     readonly label: string;

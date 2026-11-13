@@ -43,9 +43,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Step-up (UW-1):** an OIDC access token without `auth_time` can never satisfy step-up, so API clients that approve must request tokens that carry it. API keys are exempt from step-up by design (not interactive).
 - **Trust boundary (UW-1):** the injection corpus checks are structural (where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a human); they do not measure how often a live model is misled (UW-13). A document can state a harmful rule in plain words and the rule validator will accept the proposal; a named reviewer is the control (`specs/security/TRUST_BOUNDARY.md`).
 - **Ingestion (UW-3):**
-  - Images are stored but not read: the recovery tiers run on PDF pages only. A photo of a certificate needs to be a PDF, or wait for
-    image recovery.
-  - Email attachments are listed (with SHA-256), not read; each must be uploaded on its own.
+  - Photos are read by local OCR. Quality depends on the photo: a skewed, shadowed or low-resolution shot may read with low
+    confidence or not at all, and then stays unread rather than guessed. Local OCR does not correct perspective; vision handles that
+    better, but it sends the image off the machine and is off by default. Vision sends JPEG and PNG up to 5 MB only. HEIC (the
+    iPhone camera's own format) is not accepted: phone browsers usually convert it to JPEG on upload, but a `.heic` file sent as-is
+    is refused (or, as an email attachment, listed as not opened).
+  - Email attachments are opened at upload. An email uploaded before UW-3 shipped keeps its old listing until it is uploaded again.
+    `.msg` (Outlook's own format) and TNEF (`winmail.dat`) are not read.
   - A headerless table of plain text is taken as having a header.
   - Measured accuracy is on a synthetic labelled set (`docs/INGESTION.md`); accuracy on real customer documents needs a real labelled
     set (UW-13).

@@ -25,6 +25,18 @@ export interface EmailAttachment {
   readonly sha256: string;
   /** Where in the MIME tree it sits, e.g. `1.2`. */
   readonly part: string;
+  /**
+   * Shown inside the message body rather than attached (a `Content-ID` part without `attachment` disposition): signature logos,
+   * tracking pixels, but also a photo pasted into the body.
+   */
+  readonly inline: boolean;
+  /** The decoded bytes — only when `parseEmail(bytes, { withContent: true })` asked for them. */
+  readonly content?: Uint8Array;
+}
+
+export interface ParseEmailOptions {
+  /** Keep each attachment's decoded bytes (`EmailAttachment.content`) so the caller can open it. Default false: listed only. */
+  readonly withContent?: boolean;
 }
 
 export interface ParsedEmail {
@@ -153,7 +165,7 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-export function parseEmail(bytes: Uint8Array): ParsedEmail {
+export function parseEmail(bytes: Uint8Array, options: ParseEmailOptions = {}): ParsedEmail {
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const findings: string[] = [];
   const { headerText, body } = splitHeaderBlock(buf);
@@ -210,13 +222,16 @@ export function parseEmail(bytes: Uint8Array): ParsedEmail {
       html = { text: htmlToText(decodeCharset(decoded, ct.params['charset'], findings)), part: where };
       return;
     }
-    if (ct.type === 'message/rfc822') findings.push(`part ${where} is an attached email; it is listed as an attachment, not read`);
+    if (ct.type === 'message/rfc822') findings.push(`part ${where} is an attached email; its text is not part of this message's body`);
+    const inline = disposition.type !== 'attachment' && header(part.headers, 'content-id') !== undefined;
     attachments.push({
       ...(filename !== undefined ? { filename: decodeEncodedWords(filename, findings) } : {}),
       contentType: ct.type,
       size: decoded.length,
       sha256: createHash('sha256').update(decoded).digest('hex'),
       part: where,
+      inline,
+      ...(options.withContent === true ? { content: new Uint8Array(decoded) } : {}),
     });
   };
   walk({ headers, body }, '', 0);

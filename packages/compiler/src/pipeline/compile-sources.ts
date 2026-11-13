@@ -10,6 +10,8 @@ import type { ExperienceDocument } from '../semantic/types.js';
 import type { CoverageReport } from '../document/page-coverage.js';
 import { needsRecovery, recoverUnreadPages } from '../extraction/router.js';
 import { proposeDocumentKinds, type DocumentKindProposal } from '../sources/kind-proposals.js';
+import { extractDimensions, sniffMimeType, type ImageSourceInput } from '../sources/image-frontend.js';
+import { imageAsRecoverableDocument } from '../extraction/image-document.js';
 import type { ExtractionBudget, ExtractionLedger, PageTier, RecoveryCache } from '../extraction/types.js';
 import { NodePdfLoader } from '../pdf/pdf-loader.js';
 import type { PdfSourceInput } from '../sources/pdf-frontend.js';
@@ -250,6 +252,28 @@ async function withRecoveredPages(
   ledgers: Map<string, ExtractionLedger>,
 ): Promise<unknown> {
   const candidate = input as Partial<PdfSourceInput> | null;
+  const image = input as Partial<ImageSourceInput> | null;
+  // UW-3: a photo or scanned image is read by the same tiers, as a one-page document with no text layer.
+  if (
+    image !== null &&
+    typeof image === 'object' &&
+    image.kind === 'image' &&
+    image.bytes instanceof Uint8Array &&
+    typeof image.sourcePath === 'string'
+  ) {
+    const mimeType = image.mimeType ?? sniffMimeType(image.bytes);
+    if (mimeType === undefined || image.bytes.length === 0) return input;
+    const wrapped = imageAsRecoverableDocument(image.sourcePath, mimeType, extractDimensions(image.bytes, mimeType));
+    const { document, ledger } = await recoverUnreadPages(
+      wrapped,
+      image.bytes,
+      options.pageTiers!,
+      options.extractionBudget,
+      options.recoveryCache,
+    );
+    ledgers.set(image.sourcePath, ledger);
+    return { ...image, mimeType, preloaded: document };
+  }
   if (
     candidate === null ||
     typeof candidate !== 'object' ||

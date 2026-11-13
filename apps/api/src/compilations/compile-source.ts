@@ -4,6 +4,7 @@ import { XoError, ErrorCode } from '@xo/errors';
 import type { CompilationStore, CapabilityProjection, CompilationSourceReport } from './compilation.js';
 import type { SourceRecord } from '../sources/source.js';
 import { buildCompilerSourceInput } from './source-input-adapter.js';
+import type { CompileExtraction } from './extraction-tiers.js';
 
 /**
  * Runs `@xo/compiler`'s own, unmodified pipeline against one already
@@ -43,10 +44,20 @@ export async function compileSourceRecord(
   compilationId: string,
   source: SourceRecord,
   bytes: Uint8Array,
+  extraction?: CompileExtraction,
 ): Promise<void> {
   try {
     const input = buildCompilerSourceInput(source.extension, bytes, source.originalFilename);
-    const compiled = await compileSources([input], {});
+    // UW-3: scanned pages and photos are read by the instance's recovery tiers (local OCR by default; see extraction-tiers.ts).
+    const compiled = await compileSources(
+      [input],
+      extraction !== undefined && extraction.pageTiers.length > 0
+        ? {
+            pageTiers: extraction.pageTiers,
+            ...(extraction.extractionBudget !== undefined ? { extractionBudget: extraction.extractionBudget } : {}),
+          }
+        : {},
+    );
     if (!compiled.ok) {
       await store.markFailed(compilationId, { errorCode: compiled.error.code, errorMessage: compiled.error.message });
       return;
@@ -103,6 +114,21 @@ export async function compileSourceRecord(
                     excludedPages: report.coverage.excludedPages,
                     unaccountedPages: report.coverage.unaccountedPages,
                     complete: report.coverage.complete,
+                  },
+                }
+              : {}),
+            ...(report.recovery !== undefined && report.recovery.pagesNeedingRecovery > 0
+              ? {
+                  textRecovery: {
+                    pagesNeedingRecovery: report.recovery.pagesNeedingRecovery,
+                    pagesRecovered: report.recovery.pagesRecovered,
+                    tiers: report.recovery.byTier.map((t) => ({
+                      tier: t.tier,
+                      attempts: t.attempts,
+                      recovered: t.recovered,
+                      costUsd: t.costUsd,
+                    })),
+                    totalCostUsd: report.recovery.totalCostUsd,
                   },
                 }
               : {}),
