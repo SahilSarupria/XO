@@ -90,7 +90,7 @@ export function extractDocxText(bytes: Uint8Array): Result<string, SourceError> 
     if (b.kind === 'heading') lines.push(`${'#'.repeat(b.level)} ${b.text}`);
     else if (b.kind === 'list_item') {
       const box = b.checkbox === 'checked' ? '[x] ' : b.checkbox === 'unchecked' ? '[ ] ' : '';
-      lines.push(`${'  '.repeat(b.depth ?? 0)}${b.listKind === 'ordered' ? `${b.ordinal ?? 1}.` : '-'} ${box}${b.text}`);
+      lines.push(`${'  '.repeat(b.depth ?? 0)}${b.listKind === 'ordered' ? (b.marker ?? `${b.ordinal ?? 1}.`) : '-'} ${box}${b.text}`);
     } else if (b.kind === 'table_row') lines.push(b.cells.join(' | '));
     else if (b.kind === 'paragraph') lines.push(b.text);
   }

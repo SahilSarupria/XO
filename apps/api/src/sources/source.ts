@@ -106,10 +106,9 @@ export interface CreateSourceInput {
  * work" — every format not in this list is rejected at upload time,
  * not silently accepted and left to fail later at compile time.
  *
- * `.docx` is the one entry that is NOT a compiler format: it is converted to plain
- * text by this API (`sources/docx-text.ts`) and handed to the compiler as an
- * ordinary `document` source, with whatever the conversion cannot carry over
- * recorded in `SourceRecord.ingestNotes`. `@xo/compiler` itself is unchanged.
+ * `.docx` is checked against this API's ZIP limits at upload (`sources/docx-text.ts`)
+ * and then read by the compiler's own Word reader, both at upload (for the notes
+ * recorded in `SourceRecord.ingestNotes`) and at compile time (UW-3c).
  */
 export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   '.pdf',
