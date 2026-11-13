@@ -1,0 +1,172 @@
+{
+  "format": "xo-readiness-register/1",
+  "note": "The commercial readiness register R1 to R18 (UAC-20). Pilot-blocking items must be closed, or explicitly accepted (acceptedBy, acceptedAt), before a first pilot with real customer data. Titles marked titleUnconfirmed are not recorded in the plan text available and must be confirmed from the A1 audit.",
+  "items": [
+    {
+      "id": "R1",
+      "title": "Model egress: what customer data reaches which model provider",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-14) and owner with counsel (D-J)",
+      "status": "in_progress",
+      "evidence": ["docs/adr/0019-hosted-model-terms.md", "docs/adr/0020-path-level-model-policy.md", "docs/RESIDENCY.md"],
+      "next": "UW-14c to 14e (known-value masking, tokens, leak guard, canary test) in wave W2; provider terms review and processing agreement by owner and counsel (14f)."
+    },
+    {
+      "id": "R2",
+      "title": "Isolation between customers",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-17) and owner (D-G)",
+      "status": "in_progress",
+      "evidence": ["docs/adr/0016-one-instance-per-customer.md", "docs/INSTANCE.md"],
+      "next": "One instance per customer is packaged (UW-17 W1); the per-customer deployment template is W5; isolation test matrix."
+    },
+    {
+      "id": "R3",
+      "title": "Single sign-on for the customer's people",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-1, UW-12)",
+      "status": "in_progress",
+      "evidence": ["apps/api/src/auth/oidc", "docs/studio/GOOGLE_SIGNIN_RUNBOOK.md"],
+      "next": "OIDC bearer tokens and Google sign-in exist; the customer's own identity provider (Microsoft, generic OIDC/SAML) for people is not done."
+    },
+    {
+      "id": "R4",
+      "title": "Retention and erasure",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-1, UW-14, UW-17) and owner",
+      "status": "in_progress",
+      "evidence": ["docs/audit-operations.md", "docs/INSTANCE.md"],
+      "next": "Audit purge and verified instance erasure exist; token-map erasure with the workflow is UW-14d; a written retention procedure is the owner's (14f)."
+    },
+    {
+      "id": "R5",
+      "title": "Audit integrity",
+      "pilotBlocking": false,
+      "owner": "engineering (UW-1)",
+      "status": "in_progress",
+      "evidence": ["docs/baseline/UW1_RECORD.md", "docs/audit-operations.md"],
+      "next": "Workspace logs are chained and anchored; the instance-level platform log is still unchained (accepted P1.0 limitation)."
+    },
+    {
+      "id": "R6",
+      "title": "Deployment",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-17)",
+      "status": "in_progress",
+      "evidence": ["docs/INSTANCE.md", "Dockerfile", "compose.yaml"],
+      "next": "Production image, compose file and smoke test exist (W1); provider-neutral deployment template is W5."
+    },
+    {
+      "id": "R7",
+      "title": "Backup, restore and upgrade guide",
+      "pilotBlocking": false,
+      "owner": "engineering (UW-17)",
+      "status": "closed",
+      "evidence": ["docs/INSTANCE.md", "packages/instance"],
+      "next": "Revisit with the cloud template (W5)."
+    },
+    {
+      "id": "R8",
+      "title": "Title not recorded in the plan text",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Confirm the title and scope from the A1 audit.",
+      "titleUnconfirmed": true
+    },
+    {
+      "id": "R9",
+      "title": "Title not recorded in the plan text",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Confirm the title and scope from the A1 audit.",
+      "titleUnconfirmed": true
+    },
+    {
+      "id": "R10",
+      "title": "Security attestation for hosting customer data",
+      "pilotBlocking": true,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Security posture work before hosting a pilot's data (plan RK20); SOC 2/ISO material is before-scale."
+    },
+    {
+      "id": "R11",
+      "title": "Contract terms with the customer",
+      "pilotBlocking": true,
+      "owner": "owner with counsel",
+      "status": "open",
+      "evidence": [],
+      "next": "Customer contract and data-processing terms."
+    },
+    {
+      "id": "R12",
+      "title": "Accuracy pass criteria",
+      "pilotBlocking": true,
+      "owner": "owner",
+      "status": "open",
+      "evidence": ["evaluation/thresholds.json", "evaluation/REPORT.md"],
+      "next": "Ratify thresholds before measuring; real labelled sets for the first vertical (UW-13)."
+    },
+    {
+      "id": "R13",
+      "title": "Pilot definition",
+      "pilotBlocking": true,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Scope, success criteria and exit of the first pilot."
+    },
+    {
+      "id": "R14",
+      "title": "Pricing and metering",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Before scale, not before a pilot."
+    },
+    {
+      "id": "R15",
+      "title": "Title not recorded in the plan text",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Confirm the title and scope from the A1 audit.",
+      "titleUnconfirmed": true
+    },
+    {
+      "id": "R16",
+      "title": "Title not recorded in the plan text",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Confirm the title and scope from the A1 audit.",
+      "titleUnconfirmed": true
+    },
+    {
+      "id": "R17",
+      "title": "System fit for the first vertical",
+      "pilotBlocking": true,
+      "owner": "engineering (UW-2 to UW-10) and owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Certificate-distribution acceptance (V1 exit)."
+    },
+    {
+      "id": "R18",
+      "title": "Regulatory mapping and accessibility review",
+      "pilotBlocking": false,
+      "owner": "owner",
+      "status": "open",
+      "evidence": [],
+      "next": "Before scale."
+    }
+  ]
+}

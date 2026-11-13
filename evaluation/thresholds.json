@@ -1,0 +1,132 @@
+{
+  "format": "xo-evaluation-thresholds/1",
+  "note": "Every threshold is PROPOSED until the owner ratifies it (status 'ratified', with ratifiedBy and ratifiedAt). A proposal is shown beside its measure and never gates anything (UAC-19). Ratify before looking at new numbers, not after.",
+  "thresholds": [
+    {
+      "measure": "tabular-reading/header-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Engineering proposal from the UW-3 measurement (97.1%): keep at least 95% on the synthetic corpus. Real-workbook thresholds come with real sets."
+    },
+    {
+      "measure": "tabular-reading/column-type-accuracy",
+      "min": 0.97,
+      "status": "proposed",
+      "rationale": "Engineering proposal: at least 97% of columns typed right."
+    },
+    {
+      "measure": "tabular-reading/record-count-accuracy",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Engineering proposal: at least 95% of tables yield the right number of records."
+    },
+    {
+      "measure": "tabular-reading/designed-cases-exact",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "Every table in a category the reader is designed for is read exactly; a regression here is a bug, not noise."
+    },
+    {
+      "measure": "document-kinds/top1-accuracy",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "Engineering proposal: the right kind is proposed first for at least 90% of labelled documents."
+    },
+    {
+      "measure": "document-kinds/abstention",
+      "min": 0.75,
+      "status": "proposed",
+      "rationale": "Engineering proposal: no kind is proposed for at least 75% of documents of no listed kind."
+    },
+    {
+      "measure": "document-kinds/certificate-precision",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Certificate vertical: a document proposed as a certificate should be one. A person confirms every proposal either way."
+    },
+    {
+      "measure": "document-kinds/certificate-recall",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "Certificate vertical: certificates should be recognised; a missed one is sent to a person."
+    },
+    {
+      "measure": "egress-boundary/leaked-values",
+      "max": 0,
+      "status": "proposed",
+      "rationale": "ADR 0019/0020 invariant: no real value in a typed request. Also enforced by tests that fail the build."
+    },
+    {
+      "measure": "egress-boundary/strict-local-hosted-calls",
+      "max": 0,
+      "status": "proposed",
+      "rationale": "ADR 0020 invariant: strict_local makes no hosted call. Also enforced by tests that fail the build."
+    },
+    {
+      "measure": "intelligence-oracle/security",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (1)."
+    },
+    {
+      "measure": "intelligence-oracle/feedback",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (1)."
+    },
+    {
+      "measure": "intelligence-oracle/do",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (1)."
+    },
+    {
+      "measure": "intelligence-oracle/routing",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.9)."
+    },
+    {
+      "measure": "intelligence-oracle/ask",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.9)."
+    },
+    {
+      "measure": "intelligence-oracle/evidence",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.9)."
+    },
+    {
+      "measure": "intelligence-oracle/decide",
+      "min": 0.8,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.8)."
+    },
+    {
+      "measure": "intelligence-oracle/uncertainty",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.9)."
+    },
+    {
+      "measure": "intelligence-oracle/retrieval",
+      "min": 0.8,
+      "status": "proposed",
+      "rationale": "Carried over from packages/intelligence-eval DEFAULT_GATES (0.8)."
+    },
+    {
+      "measure": "intelligence-oracle/restricted-leaks",
+      "max": 0,
+      "status": "proposed",
+      "rationale": "Restricted content must never reach an answer or a prompt."
+    },
+    {
+      "measure": "injection-corpus/structural-checks",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "UAC-17: every structural injection check passes."
+    }
+  ]
+}

@@ -32,3 +32,5 @@ examples/insurance-dev-corpus/proposal-labels.json
 /specs/EXPERIENCE_COMPILER.md
 /specs/PACKAGE_README.md
 docs/CONFIGURATION.md
+evaluation/REPORT.md
+evaluation/report.json
