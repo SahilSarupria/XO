@@ -102,3 +102,54 @@ test('routes keep the role ceiling under an operator allow-all policy: a viewer 
     assert.equal(upload.status, 403, 'manage is outside the viewer ceiling even with an allow-all operator policy');
   });
 });
+
+// UW-1 acceptance ("empty-policy denial matrix across API, chat, procedures, AI paths"): every workspace path group, including chat,
+// the AI conversation surface and procedures, asks the one authorization point. Suspending the owner by operator policy turns each into
+// 403 while an unsuspended owner reaches them.
+const PATH_GROUPS: readonly (readonly ['GET' | 'POST', string, unknown?])[] = [
+  ['GET', 'sources'],
+  ['GET', 'compilations'],
+  ['GET', 'chats'],
+  ['POST', 'chats', {}],
+  ['GET', 'intelligence/conversations'],
+  ['POST', 'intelligence/conversations', {}],
+  ['GET', 'procedures'],
+  ['GET', 'executions'],
+  ['GET', 'human-tasks'],
+  ['GET', 'inbox'],
+  ['GET', 'library'],
+  ['GET', 'members'],
+  ['GET', 'notifications'],
+  ['GET', 'registry/packages?creator=did:example:x'],
+  ['GET', 'registry/search'],
+  ['GET', 'runtime/status'],
+  ['GET', 'settings'],
+  ['GET', 'workflow-controls'],
+  ['GET', 'workflow-definitions'],
+  ['GET', 'workflow-executions'],
+  ['GET', 'workflows'],
+  ['GET', 'audit/events'],
+  ['GET', 'audit/verify'],
+];
+
+test('every workspace path group (API, chat, AI conversations, procedures, workflows, audit) is decided by the one authorization point', async () => {
+  const suspendOwner = new RuleBasedPolicy([
+    { id: 'suspend-owner', effect: 'DENY', match: { domain: 'workspace', principalId: 'test-identity' } },
+  ]);
+  await withServer(suspendOwner, async (server, ws) => {
+    for (const [method, path, body] of PATH_GROUPS) {
+      const r = await server.request(method, `/workspaces/${ws.workspaceId}/${path}`, body);
+      assert.equal(r.status, 403, `${method} ${path}: ${r.bodyText}`);
+    }
+  });
+  // Control: the same owner, unsuspended, with the operator grant procedures need on top of the role (procedures are not role-granted).
+  const procedureGrant = new RuleBasedPolicy([
+    { id: 'procedures', effect: 'ALLOW', match: { domain: 'procedure', principalId: 'test-identity' } },
+  ]);
+  await withServer(procedureGrant, async (server, ws) => {
+    for (const [method, path, body] of PATH_GROUPS) {
+      const r = await server.request(method, `/workspaces/${ws.workspaceId}/${path}`, body);
+      assert.notEqual(r.status, 403, `${method} ${path} must be reachable by an unsuspended owner: ${r.bodyText}`);
+    }
+  });
+});

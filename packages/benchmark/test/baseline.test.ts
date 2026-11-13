@@ -107,7 +107,10 @@ test('determinism: repeated identical runs give byte-identical reports; no repor
   assert.ok(RUN_SPECIFIC_KEYS.includes('graphHash'));
 });
 
-test('GRAPH-HASH POLICY: independently compiled identical fixtures have different graph hashes, yet identical capability ids / contract hashes / bindings; the benchmark compares reports of two such compiles as unchanged', async () => {
+// UW-1 (deterministic hashing): this test was named "... have different graph hashes, yet identical ..." and asserted notEqual, pinning
+// the run-specific graph hash as policy. UW-1 removed `createdAt` from XOIR content hashes, so identical sources now compile to the same
+// graph identity; the old name is retired in docs/baseline/UW1_RECORD.md and this is its replacement.
+test('GRAPH-HASH POLICY (UW-1): independently compiled identical fixtures have the same graph hash and identical capability ids / contract hashes / bindings; the benchmark compares reports of two such compiles as unchanged', async () => {
   const text = await readFile(join(PKG, '..', '..', 'examples', 'vertical-test', 'synthetic-claim-rules.txt'), 'utf8');
   const compile = async () =>
     (
@@ -119,11 +122,7 @@ test('GRAPH-HASH POLICY: independently compiled identical fixtures have differen
   const g1 = await compile();
   await new Promise((r) => setTimeout(r, 15));
   const g2 = await compile();
-  assert.notEqual(
-    g1.contentHash(),
-    g2.contentHash(),
-    'the graph hash is an instance / provenance identity (createdAt is hashed by design)',
-  );
+  assert.equal(g1.contentHash(), g2.contentHash(), 'identical source compiles to identical graph identity (createdAt is not hashed)');
   const sem = (g: any) =>
     JSON.stringify(
       projectAllCapabilityProvenance(g).map((p: any) => [

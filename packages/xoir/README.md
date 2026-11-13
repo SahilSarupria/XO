@@ -318,7 +318,12 @@ Cycle-checking is never part of `validateGraph` — see §8.
 nodes and edges sorted by `id`, manifest carried additively when present.
 `fromJson` checks `schemaVersion` against
 `versioning.ts#isSchemaVersionSupported` and fails clearly rather than
-guessing at an unknown version's shape.
+guessing at an unknown version's shape. `fromJson(json, { verify: true })`
+(UW-1) also recomputes every node and edge hash and fails with
+`XO_SERIALIZATION_INTEGRITY_FAILED` on any mismatch; use it whenever the
+JSON crossed a trust boundary (disk, network). `xoirGraphCodec.decode`
+always verifies, and every `apps/api` load of a stored or client-supplied
+graph does.
 
 `canonicalStringify` (`hashing.ts`) is the one function every hash goes
 through: object keys sorted, arrays order-preserved (order is meaningful
@@ -328,6 +333,12 @@ everything about a node/edge _except_ its own `hash` field (circular) and
 reconciliation, `subtype` and `confidenceDetail`. `hashGraphContents`
 builds a Merkle root over every node/edge hash, sorted first so it's
 insertion-order-independent.
+
+UW-1 brought the code into line with this section: until then `hashNode`
+and `hashEdge` did include `createdAt`, so the same source compiled twice
+produced two different graph hashes. Hashes stored before UW-1 (scheme 1,
+over `createdAt`) still verify: `verifyNodeHash`/`verifyEdgeHash` accept a
+match under either scheme, and any change to content fails both.
 
 ## 14. Stage 4 → XOIR mapping (`@xo/compiler`'s `src/xoir/`)
 

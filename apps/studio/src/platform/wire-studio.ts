@@ -127,11 +127,16 @@ export interface AuditVerification {
   /** `null` = the operator declared no retention policy. The server never invents one. */
   readonly retentionMinimumDays: number | null;
   readonly deletionSupported: boolean;
+  /** Number of external anchors the chain was compared with; absent when the instance has no anchoring configured. */
+  readonly anchorsChecked?: number;
+  /** Entries up to this seq were removed by a recorded purge. */
+  readonly purgedThroughSeq?: number;
 }
 export function parseAuditVerification(v: unknown): AuditVerification {
   const o = obj(v, 'body');
   const b = o['brokenAt'] === undefined ? undefined : obj(o['brokenAt'], 'brokenAt');
   const r = obj(o['retention'], 'retention');
+  const a = o['anchoring'] === undefined ? undefined : obj(o['anchoring'], 'anchoring');
   return {
     ok: bool(o['ok'], 'ok'),
     entries: num(o['entries'], 'entries'),
@@ -139,6 +144,8 @@ export function parseAuditVerification(v: unknown): AuditVerification {
     ...(b !== undefined ? { brokenAt: { seq: num(b['seq'], 'brokenAt.seq'), reason: str(b['reason'], 'brokenAt.reason') } } : {}),
     retentionMinimumDays: r['minimumDays'] === null ? null : num(r['minimumDays'], 'retention.minimumDays'),
     deletionSupported: bool(r['deletionSupported'], 'retention.deletionSupported'),
+    ...(a !== undefined ? { anchorsChecked: num(a['checked'], 'anchoring.checked') } : {}),
+    ...(o['purgedThroughSeq'] !== undefined ? { purgedThroughSeq: num(o['purgedThroughSeq'], 'purgedThroughSeq') } : {}),
   };
 }
 

@@ -20,6 +20,8 @@ export const ErrorCode = {
   // Serialization
   SERIALIZATION_SCHEMA_MISMATCH: 'XO_SERIALIZATION_SCHEMA_MISMATCH',
   SERIALIZATION_PARSE_FAILED: 'XO_SERIALIZATION_PARSE_FAILED',
+  // UW-1: a serialized artefact parsed but its content does not match the hashes it carries (tampering or corruption).
+  SERIALIZATION_INTEGRITY_FAILED: 'XO_SERIALIZATION_INTEGRITY_FAILED',
 
   // Crypto
   CRYPTO_HASH_MISMATCH: 'XO_CRYPTO_HASH_MISMATCH',
@@ -216,6 +218,8 @@ export const ErrorCode = {
   // UW-1: a key past its expiry (or, for a key issued without one, past the server's maximum key age). Distinct from REVOKED so a
   // client knows the remedy is rotation, not an incident.
   AUTH_KEY_EXPIRED: 'XO_AUTH_KEY_EXPIRED',
+  /** UW-1: the action needs a recent sign-in (step-up re-authentication). */
+  AUTH_STEP_UP_REQUIRED: 'XO_AUTH_STEP_UP_REQUIRED',
 
   // OIDC bearer-token authentication (apps/api src/auth/oidc). Deliberately
   // coarse: TOKEN_INVALID covers every verification failure (signature,

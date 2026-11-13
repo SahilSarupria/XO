@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Permissions, RuleBasedPolicy, type PermissionPolicy } from '@xo/permissions';
 import { toJson } from '@xo/xoir';
 import { FileAuditStore, AUDIT_EVENT_TYPES, type AuditEvent } from '@xo/audit';
-import { TestServer, withTempDir } from './test-helpers.js';
+import { rehashXoirJson, TestServer, withTempDir } from './test-helpers.js';
 import { FIXTURE_CAPABILITY_IDS as IDS, buildFixtureGraph, storeFixtureCompilation } from './workflow-fixtures.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 
@@ -78,7 +78,7 @@ function graphWith(capabilityId: string, mutate: (props: Record<string, unknown>
   const node = json.nodes.find((n) => n.id === capabilityId);
   assert.ok(node);
   mutate(node.properties);
-  return json as unknown as ReturnType<typeof toJson>;
+  return rehashXoirJson(json) as unknown as ReturnType<typeof toJson>;
 }
 
 test('taxonomy accounting: event types with no emitter, and types with no direct acceptance test, are listed explicitly (found by source search, not assumed)', () => {

@@ -147,7 +147,7 @@ async function loadRuntime(
   const compilation = await ctx.compilationStore.get(ref.compilationId);
   const json = await ctx.compilationStore.getCompiledGraph(ref.compilationId);
   if (!compilation.ok || !json.ok) return stale('the compilation could not be read');
-  const graph = fromJson(json.value as XoirGraphJson);
+  const graph = fromJson(json.value as XoirGraphJson, { verify: true });
   if (!graph.ok) return stale('the compiled graph could not be read');
   const graphHash = graph.value.contentHash();
   if (graphHash !== registry.snapshot.graphHash) return stale('the compiled graph changed while it was being read');

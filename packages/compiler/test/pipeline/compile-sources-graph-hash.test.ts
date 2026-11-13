@@ -21,11 +21,7 @@ The reviewer must escalate any claim exceeding $10,000 to a senior adjuster.
 All escalations are logged with a timestamped case reference.`;
 
 test('graphHash: compiling the same source twice (no source-quality findings) produces the same manifest.graphHash both times', async () => {
-  // `@xo/xoir`'s node hashing deliberately includes `createdAt` as
-  // provenance (see `create.ts`'s own recompile-determinism check for
-  // the same convention), so a genuine determinism comparison pins the
-  // clock across both compiles — this is not something P0.9B's graphHash
-  // propagation changes or needs to work around.
+  // Pinned clock kept for this original test. Since UW-1 `createdAt` is no longer hashed, so the next test proves the same without one.
   const now = () => '2026-01-01T00:00:00.000Z';
   const first = await compileSources([{ kind: 'document', text: CLEAN_TEXT_A, sourcePath: 'clean.txt' }], { now });
   const second = await compileSources([{ kind: 'document', text: CLEAN_TEXT_A, sourcePath: 'clean.txt' }], { now });
@@ -34,6 +30,16 @@ test('graphHash: compiling the same source twice (no source-quality findings) pr
   if (!first.ok || !second.ok) return;
 
   assert.ok(first.value.graph.manifest?.graphHash, 'manifest.graphHash must be set');
+  assert.equal(first.value.graph.manifest?.graphHash, second.value.graph.manifest?.graphHash);
+});
+
+test('graphHash (UW-1): compiling the same source twice with the real clock produces the same graph hash', async () => {
+  const first = await compileSources([{ kind: 'document', text: CLEAN_TEXT_A, sourcePath: 'clean.txt' }]);
+  await new Promise((r) => setTimeout(r, 15));
+  const second = await compileSources([{ kind: 'document', text: CLEAN_TEXT_A, sourcePath: 'clean.txt' }]);
+  assert.ok(first.ok && second.ok);
+  if (!first.ok || !second.ok) return;
+  assert.equal(first.value.graph.contentHash(), second.value.graph.contentHash());
   assert.equal(first.value.graph.manifest?.graphHash, second.value.graph.manifest?.graphHash);
 });
 

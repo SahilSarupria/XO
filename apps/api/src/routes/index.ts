@@ -108,6 +108,9 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     ...(deps.testBeforeStepExecute !== undefined ? { testBeforeStepExecute: deps.testBeforeStepExecute } : {}),
     ...(deps.externalTools !== undefined ? { externalTools: deps.externalTools } : {}),
   });
-  registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess);
+  registerAuditRoutes(router, deps.audit, deps.auditSink, deps.auditAccess, {
+    workspaceStore: deps.workspaceStore,
+    dataConfig: deps.workspaceDataConfig,
+  });
   if (deps.connect !== undefined) registerConnectRoutes(router, deps.connect);
 }

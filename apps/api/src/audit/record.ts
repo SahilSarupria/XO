@@ -1,7 +1,7 @@
 import { roleOf, type WorkspaceRecord } from '../workspace/workspace.js';
-import { workspaceAuditStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import { openWorkspaceAuditLog } from './workspace-audit-log.js';
+import type { WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { ApiRequest } from '../http/types.js';
-import { FsAuditLog } from './fs-audit-log.js';
 import type { AuditActor, AuditEventInput } from './audit-entry.js';
 
 /** Who is acting, as the audit log records them: the authenticated identity plus the role it holds in this workspace. Never read from a request body. */
@@ -31,7 +31,7 @@ export async function recordAudit(
   input: Omit<AuditEventInput, 'actor'> & { readonly actor?: AuditActor },
 ): Promise<void> {
   try {
-    const log = new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId);
+    const log = openWorkspaceAuditLog(workspace, dataConfig);
     await log.append({ ...input, actor: input.actor ?? actorFor(req, workspace) });
   } catch (cause) {
     process.stderr.write(

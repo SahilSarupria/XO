@@ -163,7 +163,11 @@ async function authenticateOidc(req: ApiRequest, token: string, oidc: OidcAuthDe
 
   req.principal = principal.value;
   req.identity = { identityId: binding.identityId };
-  req.authentication = { credential: 'oidc', issuer: verified.issuer };
+  req.authentication = {
+    credential: 'oidc',
+    issuer: verified.issuer,
+    ...(verified.authenticatedAt !== undefined ? { authenticatedAt: verified.authenticatedAt } : {}),
+  };
 }
 
 async function authenticateSession(req: ApiRequest, token: string, sessions: SessionAuthDeps): Promise<void> {
@@ -202,7 +206,7 @@ async function authenticateSession(req: ApiRequest, token: string, sessions: Ses
 
   req.principal = principal.value;
   req.identity = { identityId: binding.identityId };
-  req.authentication = { credential: 'session', issuer: result.session.issuer };
+  req.authentication = { credential: 'session', issuer: result.session.issuer, authenticatedAt: result.session.authenticatedAt };
   req.session = { familyId: result.session.familyId };
 }
 

@@ -1,4 +1,5 @@
 import { PackageValidator, type PackageTrustPolicy } from '@xo/package-sdk';
+import type { AuditAnchorSink } from '../audit/anchor.js';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -24,6 +25,8 @@ export interface WorkspaceDataConfig {
    * P1.0 M5 — the effective package trust policy, resolved once at startup from operator configuration (`XO_PACKAGE_TRUST_POLICY`, or the explicit `XO_TRUST_MODE=development`). REQUIRED: there is no default, so a route can never run with trust silently off. Never derived from request data.
    */
   readonly packageTrustPolicy: PackageTrustPolicy;
+  /** UW-1 — where workspace audit chain heads are anchored (`XO_AUDIT_ANCHOR_DIR`). Absent = unanchored, reported by audit verify. */
+  readonly auditAnchor?: AuditAnchorSink;
 }
 
 /** Validator carrying the effective trust policy — the only way API routes verify packages. A config without a policy (possible only from untyped callers) yields an unconfigured validator, which fails closed. */

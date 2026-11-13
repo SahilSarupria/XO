@@ -67,6 +67,8 @@ export interface ApiRequest {
 
   /** UW-1 — the server's workspace data configuration, attached by `buildRouter` so a denial anywhere can be written to the workspace audit log. */
   workspaceDataConfig?: WorkspaceDataConfig;
+  /** UW-1 — step-up window for approvals and membership changes, in minutes (0 = off). Attached by the server; never request data. */
+  stepUpMaxAgeMinutes?: number;
 
   /**
    * Which kind of credential authenticated this request. Informational (log /
@@ -79,10 +81,14 @@ export interface ApiRequest {
   session?: { readonly familyId: string };
 }
 
+/**
+ * `authenticatedAt` (UW-1 step-up) is when the person last proved who they are: the session's sign-in time, or the OIDC token's
+ * `auth_time`. Absent when the credential does not say; then a step-up check treats the sign-in as not recent.
+ */
 export type AuthenticationInfo =
   | { readonly credential: 'api-key' }
-  | { readonly credential: 'oidc'; readonly issuer: string }
-  | { readonly credential: 'session'; readonly issuer: string };
+  | { readonly credential: 'oidc'; readonly issuer: string; readonly authenticatedAt?: string }
+  | { readonly credential: 'session'; readonly issuer: string; readonly authenticatedAt?: string };
 
 /**
  * What a route handler returns. `body` is JSON-serialized by the

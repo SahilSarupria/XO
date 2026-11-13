@@ -85,6 +85,31 @@ audit|manage`); a `role` match dimension (matched against the server-supplied `c
   `XO_API_KEY_MAX_AGE_DAYS` (default 365) from `createdAt`; an expired key is refused with `401 XO_AUTH_KEY_EXPIRED`. `manage-keys.ts
 rotate` issues the new key first and then revokes the identity's other keys, so a failure never locks the identity out.
 
+## Implementation (UW-1c to UW-1f, 2026-11-13)
+
+- **One object for every path.** `apps/api/src/auth/authorization-point.ts` builds the single `PermissionManager` (role ceiling +
+  persisted operator policy + any code policy, deny-overrides). HTTP routes, chat, AI conversations, procedures and the audit access
+  controller use it per request; the scheduler now receives the same object from the composition root (`index.ts`). Before this, the
+  scheduler ran with its own `RuleBasedPolicy([])`, so operator grants and suspensions did not reach scheduled runs. Proof:
+  `apps/api/test/single-authorization-point.test.ts` (22 path groups, including chat, `intelligence/conversations` and procedures, all
+  403 for a suspended owner and reachable otherwise) and `apps/api/test/authorization-point.test.ts`. The registry read routes
+  validated input before authorizing; they now authorize first, as the rest of the API does.
+- **Step-up re-authentication (point 5).** Approving a capability, resolving a human task, approving a procedure or an external
+  payload, signing off a workflow, and adding, re-roling or removing a member need a sign-in from the last
+  `XO_API_STEP_UP_MAX_AGE_MINUTES` (default 15; 0 = off). "Sign-in" is the session family's creation time (refresh rotation does not
+  reset it) or the OIDC token's `auth_time` (absent = not recent). A refusal is `401 XO_AUTH_STEP_UP_REQUIRED` and an `access.denied`
+  audit entry with `deniedBy: 'step_up'`; Studio tells the person to sign in again. API keys are not interactive, so step-up does not
+  apply to them; whether a service principal may approve effectful work at all is the separate rule in plan B.9 (UW-7).
+- **Deterministic hashing and verify-on-load.** XOIR content hashes no longer include `createdAt` and are computed over the stored JSON
+  form, so identical sources compile to identical graph hashes and a node hashes the same before and after storage. Every load of a
+  stored or client-supplied graph in the API verifies node and edge hashes (`XO_SERIALIZATION_INTEGRITY_FAILED`, 422, or a refused
+  approval/execution); graphs sealed by the two earlier schemes still verify (`packages/xoir/README.md` §13). The policy compile path
+  no longer fabricates provenance: an unfound sentence is marked `unresolved:` with confidence 0.
+- **Audit anchoring and purge.** Workspace audit logs anchor every chain head externally (`XO_AUDIT_ANCHOR_DIR`) and support an
+  operator retention purge that is itself a recorded, verified event (`docs/audit-operations.md`).
+- **Trust boundary.** `specs/security/TRUST_BOUNDARY.md` (T1–T6, every model path) with the injection corpus
+  `specs/security/injection-corpus.json` and structural checks in the packages that own each path.
+
 ## Reopen if
 
 A control in the list above cannot be expressed as policy without loss.

@@ -11,7 +11,6 @@ import { BodyTooLargeError, readRawBody, parseJsonBody } from './http/body.js';
 import { errorToResponse } from './http/error-mapping.js';
 import { writeResponse } from './http/respond.js';
 import { createAuthMiddleware, type OidcAuthDeps } from './http/auth.js';
-import { createAuthorizationPolicy } from './workspace/authorizer.js';
 import type { ApiKeyStore } from './auth/api-key-store.interface.js';
 import { FsApiKeyStore } from './auth/fs-api-key-store.js';
 import type { WorkspaceStore } from './workspace/workspace.js';
@@ -19,8 +18,10 @@ import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
 import type { ConnectService } from '@xo/connect';
-import { DenyOverridesPolicy, PermissionManager, type PermissionPolicy } from '@xo/permissions';
-import { InstancePolicy } from './auth/instance-policy.js';
+import type { PermissionPolicy } from '@xo/permissions';
+import { createAuthorizationPoint, type AuthorizationPoint } from './auth/authorization-point.js';
+import { parseStepUpMaxAgeMinutes } from './auth/step-up.js';
+import { auditAnchorSinkFromEnv, type AuditAnchorSink } from './audit/anchor.js';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
@@ -86,6 +87,18 @@ export interface ServerDeps {
   readonly externalTools?: ExternalToolWiring;
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
+  /** UW-1 — path of the persisted operator policy. Default `<workspaceDataDir>/_instance/policy.json`. */
+  readonly instancePolicyPath?: string;
+  /** UW-1 — how often the operator policy file is re-read, in ms (0 disables; default 10000). */
+  readonly instancePolicyReloadMs?: number;
+  /** UW-1 — maximum age of an API key issued without an expiry. Default: `loadConfig().apiKeyMaxAgeDays` (365). */
+  readonly apiKeyMaxAgeDays?: number;
+  /** UW-1 — a prebuilt authorization point (see `createAuthorizationPoint`); when given, the three policy options above are ignored. */
+  readonly authorization?: AuthorizationPoint;
+  /** UW-1 — where workspace audit chain heads are anchored. Default: a file sink in `XO_AUDIT_ANCHOR_DIR`, or none. */
+  readonly auditAnchor?: AuditAnchorSink;
+  /** UW-1 — minutes within which a person must have signed in to approve or change membership (0 = off). Default `XO_API_STEP_UP_MAX_AGE_MINUTES` or 15. */
+  readonly stepUpMaxAgeMinutes?: number;
   /**
    * P1.0 M2 — the server-side authorization policy (operator-supplied
    * `@xo/permissions` rules, optionally matching `principalId`/`principalKind`).
@@ -93,12 +106,6 @@ export interface ServerDeps {
    * Capabilities that explicitly declare no permissions still require an
    * authenticated principal. There is no client-side input to this policy.
    */
-  /** UW-1 — path of the persisted operator policy. Default `<workspaceDataDir>/_instance/policy.json`. */
-  readonly instancePolicyPath?: string;
-  /** UW-1 — how often the operator policy file is re-read, in ms (0 disables; default 10000). */
-  readonly instancePolicyReloadMs?: number;
-  /** UW-1 — maximum age of an API key issued without an expiry. Default: `loadConfig().apiKeyMaxAgeDays` (365). */
-  readonly apiKeyMaxAgeDays?: number;
   readonly permissionPolicy?: PermissionPolicy;
   /**
    * P1.0 M4 — the durable audit sink. REQUIRED when `NODE_ENV=production` (startup fails without it: no silent
@@ -234,9 +241,14 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   if (packageTrustPolicy.mode === 'development') {
     deps.logger?.warn(DEVELOPMENT_TRUST_WARNING);
   }
+  const auditAnchor = deps.auditAnchor ?? auditAnchorSinkFromEnv(deps.env ?? process.env); // throws on an invalid value
+  if (auditAnchor === undefined && process.env['NODE_ENV'] === 'production') {
+    deps.logger?.warn('audit anchoring is off: set XO_AUDIT_ANCHOR_DIR to storage this host cannot rewrite (see docs/operations)');
+  }
   const workspaceDataConfig: WorkspaceDataConfig = {
     dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
     packageTrustPolicy,
+    ...(auditAnchor !== undefined ? { auditAnchor } : {}),
   };
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
@@ -286,29 +298,25 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(passwordBundle !== undefined ? { extraPublicPaths: PASSWORD_PUBLIC_PATHS } : {}),
     }),
   );
-  // UW-1 (ADR 0010): the instance's single authorization point. Workspace roles are a ceiling the operator policy can only narrow;
-  // every other domain is decided by the operator policy as before. Attached to every request so all routes ask the same object.
-  // UW-1: the persisted operator policy (`<WORKSPACE_DATA_DIR>/_instance/policy.json`, managed by scripts/manage-policy.ts) combines
-  // with any code-supplied policy so that either side's DENY wins. A broken file suspends operator ALLOWs (fail closed).
-  const instancePolicy = new InstancePolicy(deps.instancePolicyPath ?? join(workspaceDataConfig.dataRootDir, '_instance', 'policy.json'));
-  if (instancePolicy.lastError !== undefined) deps.logger?.error(`instance policy suspended: ${instancePolicy.lastError}`);
-  const reloadMs = deps.instancePolicyReloadMs ?? 10_000;
-  if (reloadMs > 0) {
-    setInterval(() => {
-      void instancePolicy.reload().then(
-        () => {
-          if (instancePolicy.lastError !== undefined) deps.logger?.error(`instance policy suspended: ${instancePolicy.lastError}`);
-        },
-        () => undefined,
-      );
-    }, reloadMs).unref();
-  }
-  const operatorPolicy =
-    deps.permissionPolicy !== undefined ? new DenyOverridesPolicy([deps.permissionPolicy, instancePolicy]) : instancePolicy;
-  const permissionManager = new PermissionManager({ policy: createAuthorizationPolicy(operatorPolicy) });
+  // UW-1 (ADR 0010): the instance's single authorization point (see auth/authorization-point.ts). A host that also runs the scheduler
+  // builds it once and passes it here, so scheduled runs and HTTP routes are decided by the same object.
+  const authorization =
+    deps.authorization ??
+    createAuthorizationPoint({
+      dataRootDir: workspaceDataConfig.dataRootDir,
+      ...(deps.instancePolicyPath !== undefined ? { instancePolicyPath: deps.instancePolicyPath } : {}),
+      ...(deps.permissionPolicy !== undefined ? { permissionPolicy: deps.permissionPolicy } : {}),
+      ...(deps.instancePolicyReloadMs !== undefined ? { reloadMs: deps.instancePolicyReloadMs } : {}),
+      onError: (message) => deps.logger?.error(message),
+    });
+  const permissionManager = authorization.permissionManager;
+  // UW-1 step-up: throws on an invalid value, so a misconfiguration stops startup instead of silently turning the check off.
+  const stepUpMaxAgeMinutes =
+    deps.stepUpMaxAgeMinutes ?? parseStepUpMaxAgeMinutes((deps.env ?? process.env)['XO_API_STEP_UP_MAX_AGE_MINUTES']);
   router.use(async (req, next) => {
     req.permissionManager = permissionManager;
     req.workspaceDataConfig = workspaceDataConfig;
+    req.stepUpMaxAgeMinutes = stepUpMaxAgeMinutes;
     return next();
   });
   if (deps.auditSink === undefined && process.env['NODE_ENV'] === 'production') {

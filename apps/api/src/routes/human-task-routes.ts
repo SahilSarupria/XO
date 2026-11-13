@@ -1,4 +1,5 @@
 import { ErrorCode, XoError, NotFoundError } from '@xo/errors';
+import { requireRecentAuthentication } from '../auth/step-up.js';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -144,6 +145,7 @@ export function registerHumanTaskRoutes(
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'resolve.human-task', correlationId });
     await requirePermission(req, workspace, 'review', dataConfig, { action: 'resolve human task' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'resolve a human task');
     const executionId = req.params['executionId'];
     if (executionId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing execution id');
 

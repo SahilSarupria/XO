@@ -1,17 +1,11 @@
 import { ErrorCode, XoError } from '@xo/errors';
+import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import {
-  callerIdentityId,
-  requireOwnedWorkspace,
-  workspaceAuditStore,
-  workspaceStateStore,
-  type WorkspaceDataConfig,
-} from '../workspace/workspace-context.js';
+import { callerIdentityId, requireOwnedWorkspace, workspaceStateStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
-import { FsAuditLog } from '../audit/fs-audit-log.js';
 import type { AuditEntry } from '../audit/audit-entry.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import type { WorkspaceSettings } from '../settings/workspace-settings.js';
@@ -83,7 +77,7 @@ export function registerNotificationRoutes(router: Router, workspaceStore: Works
     if (!Number.isInteger(limit) || limit < 1 || limit > 200)
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"limit" must be an integer from 1 to 200');
 
-    const log = new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId);
+    const log = openWorkspaceAuditLog(workspace, dataConfig);
     const page = await log.list({ limit: 500 });
     const notifications: NotificationWire[] = [];
     for (const entry of page.entries) {
@@ -116,7 +110,7 @@ export function registerNotificationRoutes(router: Router, workspaceStore: Works
     if (typeof throughSeq !== 'number' || !Number.isInteger(throughSeq) || throughSeq < 0) {
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"throughSeq" must be a non-negative integer');
     }
-    const head = await new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId).head();
+    const head = await openWorkspaceAuditLog(workspace, dataConfig).head();
     const bounded = Math.min(throughSeq, head.seq);
     const current = await readMarker(workspace, identityId);
     const next = Math.max(current, bounded); // a read marker only moves forward

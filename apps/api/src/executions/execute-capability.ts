@@ -107,7 +107,7 @@ export function rebuildContractAndBinding(
   capabilityId: string,
   externalTools?: ExternalToolWiring,
 ): RebuildResult {
-  const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+  const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graphResult.ok)
     return { ok: false, outcome: { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message } };
   const graph = graphResult.value;
@@ -179,10 +179,11 @@ export function findInputSchema(graph: XoirGraph, contractId: string) {
  * runs rather than reusing this decision — so a stricter declaration on the graph
  * that is executed is always enforced. As an extra tie the result carries
  * `graph.contentHash()`; passing it as `preflightGraphHash` makes execution refuse
- * a DIFFERENT graph (different node/edge hashes). LIMIT (verified by test): `fromJson`
- * trusts each node's stored `hash`, so `contentHash()` does not detect an edit to a
- * node's properties that left its stored hash untouched — that case is covered by the
- * re-derivation above, not by the hash.
+ * a DIFFERENT graph (different node/edge hashes). Since UW-1 every load here verifies
+ * node and edge hashes (`fromJson(..., { verify: true })`), so an edit that left a stored
+ * hash untouched is refused as an integrity failure, and a re-hashed edit changes
+ * `contentHash()`. The re-derivation above and the declaration-fingerprint tie remain as
+ * defence in depth (both still tested with the hash tie deliberately blinded).
  *
  * Only authorization failures are `denied`; a graph or contract that cannot be
  * built at all is `error` — also refused before any record exists, since an
@@ -205,7 +206,7 @@ export async function preflightCapabilityAuthorization(
   authorization: ExecutionAuthorization,
 ): Promise<AuthorizationPreflightOutcome> {
   try {
-    const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+    const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
     if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
     const graph = graphResult.value;
     const graphHash = ContentHash(graph.contentHash());
@@ -347,7 +348,7 @@ export async function executeApprovedCapability(
   authorization: ExecutionAuthorization,
   options: ExecuteApprovedCapabilityOptions = {},
 ): Promise<CapabilityExecutionOutcome> {
-  const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+  const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const graph = graphResult.value;
   // Identity of the graph as loaded — captured before `findInputSchema`'s `lowerCapabilitiesToManifest` can embed contracts into it (idempotent for a graph `compile-source.ts` already lowered, but not for one persisted otherwise).
@@ -471,7 +472,7 @@ export async function resumeCapabilityExecution(
   decisionData: Readonly<Record<string, unknown>> | undefined,
   authorization: ExecutionAuthorization,
 ): Promise<CapabilityResumeOutcome> {
-  const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+  const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graphResult.ok) return { kind: 'error', errorCode: graphResult.error.code, errorMessage: graphResult.error.message };
   const graph = graphResult.value;
   // Identity of the graph as loaded — captured before `findInputSchema`'s `lowerCapabilitiesToManifest` can embed contracts into it (idempotent for a graph `compile-source.ts` already lowered, but not for one persisted otherwise).

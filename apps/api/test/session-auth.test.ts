@@ -730,3 +730,38 @@ test('defaultLimits and config: sign-in is off unless configured; half-set or in
   assert.equal(ok?.sessionsDir, '.xo-data/sessions');
   assert.ok(defaultLimits().challenge.allow('k'));
 });
+
+test('UW-1 step-up: approving or changing membership needs a sign-in from the last 15 minutes; refresh does not reset it; a new sign-in does', async () => {
+  const r = await rig();
+  try {
+    await r.bind('g-alice', 'alice');
+    // signed in 20 minutes ago (the session store's clock), still holding a valid access credential
+    r.clock.t = Date.now() - 20 * 60_000;
+    const old = await r.login('g-alice');
+    r.clock.t = Date.now() - 20 * 60_000 + 60_000;
+    const ws = (await r.call('POST', '/workspaces', old.access, { name: 'w' })).json<{ workspaceId: string }>().workspaceId;
+    assert.ok(ws, 'ordinary work does not need a recent sign-in');
+    const refused = await r.call('POST', `/workspaces/${ws}/members`, old.access, { identityId: 'bob', role: 'viewer' });
+    assert.equal(refused.status, 401, refused.bodyText);
+    assert.equal(refused.json<{ error: { code: string } }>().error.code, ErrorCode.AUTH_STEP_UP_REQUIRED);
+
+    // a refresh rotates credentials inside the same sign-in: still not recent
+    r.clock.t = Date.now();
+    const rotated = (await r.refresh(old.refresh)).json<{ accessCredential: string }>().accessCredential;
+    const stillRefused = await r.call('POST', `/workspaces/${ws}/members`, rotated, { identityId: 'bob', role: 'viewer' });
+    assert.equal(stillRefused.status, 401, stillRefused.bodyText);
+
+    // signing in again satisfies it
+    const fresh = await r.login('g-alice');
+    const added = await r.call('POST', `/workspaces/${ws}/members`, fresh.access, { identityId: 'bob', role: 'viewer' });
+    assert.ok(added.status === 200 || added.status === 201, added.bodyText);
+
+    // the refusals are in the workspace audit log, naming step-up as the reason
+    const events = (await r.call('GET', `/workspaces/${ws}/audit/events?event=access.denied`, fresh.access)).json<{
+      events: { detail?: { deniedBy?: string } }[];
+    }>().events;
+    assert.equal(events.filter((e) => e.detail?.deniedBy === 'step_up').length, 2);
+  } finally {
+    await r.stop();
+  }
+});

@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { requireRecentAuthentication } from '../auth/step-up.js';
 import { toRecordedAuthentication } from '../auth/recorded-authentication.js';
 import { errorToResponse } from '../http/error-mapping.js';
 import type { Router } from '../http/router.js';
@@ -345,6 +346,7 @@ export function registerWorkflowControlsRoutes(
     'POST .../workflow-controls/workflows/:workflowId/sign-off',
     [],
     async ({ w, req, compilationId, workflowId, view, store, by }) => {
+      await requireRecentAuthentication(req, w, dataConfig, 'sign off a workflow');
       const current =
         (await store.getDeployment(compilationId, workflowId)) ?? defaultDeployment(compilationId, workflowId, new Date().toISOString());
       const items = await readinessNow(w, req, view, current);

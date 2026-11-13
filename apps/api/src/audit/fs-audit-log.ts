@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { checkAnchors, type AnchorCheck, type AuditAnchorSink, type PurgedRange } from './anchor.js';
 import type { BlobStore } from '@xo/storage';
 import { ErrorCode } from '@xo/errors';
 import {
   computeEntryHash,
   GENESIS_HASH,
+  type AuditActor,
   type AuditEntry,
   type AuditEventInput,
   type AuditEventType,
@@ -13,6 +15,9 @@ import {
 
 const ENTRY_PREFIX = 'entries/';
 const HEAD_KEY = 'head.json';
+/** UW-1: the purge pointer. Absent until the first purge. */
+const BASE_KEY = 'base.json';
+const DAY_MS = 86_400_000;
 
 function entryKey(seq: number): string {
   return `${ENTRY_PREFIX}${String(seq).padStart(12, '0')}.json`;
@@ -21,6 +26,31 @@ function entryKey(seq: number): string {
 interface Head {
   readonly seq: number;
   readonly hash: string;
+}
+
+/** UW-1: entries 1..seq were purged; the chain continues from `hash`; `purgeEventSeq` is the `audit.purged` record that says so. */
+interface Base {
+  readonly seq: number;
+  readonly hash: string;
+  readonly purgeEventSeq: number;
+}
+
+export interface AuditPurgeRequest {
+  /** Entries older than this many days are removed. Must be a positive integer (the operator's declared retention). */
+  readonly retentionDays: number;
+  /** Who ran the purge (an operator, recorded in the purge record). */
+  readonly actor: AuditActor;
+  /** Report what would be removed without changing anything. */
+  readonly dryRun?: boolean;
+}
+
+export interface AuditPurgeResult {
+  readonly removed: number;
+  /** Highest purged seq after this call (0 if the log has never been purged). */
+  readonly purgedThroughSeq: number;
+  readonly cutoff: string;
+  /** The `audit.purged` record, when entries were removed. */
+  readonly event?: AuditEntry;
 }
 
 function decode<T>(bytes: Uint8Array): T | undefined {
@@ -56,16 +86,47 @@ export class FsAuditLog {
     private readonly store: BlobStore,
     private readonly workspaceId: string,
     private readonly now: () => Date = () => new Date(),
+    /** UW-1 — where chain heads are anchored after each append; undefined = unanchored (see anchor.ts). */
+    private readonly anchor?: AuditAnchorSink,
   ) {}
 
+  /** UW-1 — the anchor scope of this log. */
+  get anchorScope(): string {
+    return `workspace:${this.workspaceId}`;
+  }
+
   append(input: AuditEventInput): Promise<AuditEntry> {
+    return this.serialized(() => this.appendLocked(input));
+  }
+
+  /** Every write to one workspace's log (appends and purges) runs one at a time, in order. */
+  private serialized<T>(work: () => Promise<T>): Promise<T> {
     const previous = queues.get(this.workspaceId) ?? Promise.resolve();
-    const run = previous.then(() => this.appendLocked(input));
+    const run = previous.then(work);
     queues.set(
       this.workspaceId,
       run.catch(() => undefined),
     );
     return run;
+  }
+
+  private async readBase(): Promise<Base | undefined> {
+    const raw = await this.store.get(BASE_KEY);
+    if (!raw.ok) {
+      if (raw.error.code === ErrorCode.STORAGE_OBJECT_NOT_FOUND) return undefined;
+      throw raw.error;
+    }
+    const base = decode<Base>(raw.value);
+    if (
+      base === undefined ||
+      !Number.isInteger(base.seq) ||
+      base.seq < 1 ||
+      typeof base.hash !== 'string' ||
+      !Number.isInteger(base.purgeEventSeq)
+    ) {
+      throw new Error('audit log purge pointer is unreadable (run verify)');
+    }
+    return base;
   }
 
   private async readHead(): Promise<Head> {
@@ -103,7 +164,7 @@ export class FsAuditLog {
     }
   }
 
-  private async appendLocked(input: AuditEventInput): Promise<AuditEntry> {
+  private async appendLocked(input: AuditEventInput, options: { readonly strictAnchor?: boolean } = {}): Promise<AuditEntry> {
     const head = await this.adoptTrailingEntries(await this.readHead());
     const unsigned: Omit<AuditEntry, 'hash'> = {
       seq: head.seq + 1,
@@ -124,7 +185,117 @@ export class FsAuditLog {
       contentType: 'application/json',
     });
     if (!headPut.ok) throw headPut.error;
+    if (this.anchor !== undefined) {
+      const anchored = this.anchor.publish({
+        scope: this.anchorScope,
+        seq: entry.seq,
+        hash: entry.hash,
+        entryAt: entry.at,
+        anchoredAt: this.now().toISOString(),
+      });
+      if (options.strictAnchor === true) {
+        await anchored; // a purge is only carried out once its record is anchored
+      } else {
+        // The entry is already durable. A failed anchor is reported but does not fail the append: the next append's anchor covers
+        // this entry too (anchors are cumulative along the chain).
+        await anchored.catch((cause: unknown) => {
+          process.stderr.write(`audit anchor for ${this.anchorScope} seq ${entry.seq} failed: ${String(cause)}\n`);
+        });
+      }
+    }
     return entry;
+  }
+
+  /**
+   * UW-1 — compare this chain against its anchors (no anchors, or no sink: `checked: 0`). Detects a consistently rewritten chain or a
+   * truncated tail, which `verify()` alone cannot.
+   */
+  async verifyAnchors(purged?: PurgedRange): Promise<AnchorCheck> {
+    if (this.anchor === undefined) return { checked: 0, highestAnchoredSeq: 0 };
+    const anchors = await this.anchor.list(this.anchorScope);
+    const head = await this.readHead();
+    return checkAnchors(anchors, head.seq, async (seq) => (await this.get(seq))?.hash, purged);
+  }
+
+  /**
+   * UW-1 — remove entries older than the operator's declared retention, as a recorded event.
+   *
+   * Only a prefix of the chain is ever removed, and only entries whose own time is before `now - retentionDays`. The purge first
+   * appends an `audit.purged` record stating exactly what goes (through which seq and hash, the cutoff, the retention), anchors it
+   * (when anchoring is configured; failure stops the purge before anything is removed), then moves the purge pointer and deletes the
+   * entries. `verify()` then checks the chain from the pointer, checks the pointer against the record, and uses the anchors to prove
+   * every removed entry predated the cutoff. A log that does not verify is never purged: that would destroy the evidence.
+   */
+  purge(request: AuditPurgeRequest): Promise<AuditPurgeResult> {
+    return this.serialized(() => this.purgeLocked(request));
+  }
+
+  private async purgeLocked(request: AuditPurgeRequest): Promise<AuditPurgeResult> {
+    if (!Number.isInteger(request.retentionDays) || request.retentionDays < 1 || request.retentionDays > 36500) {
+      throw new Error('purge needs the declared retention in whole days (1 to 36500)');
+    }
+    const verification = await this.verify();
+    if (!verification.ok) {
+      throw new Error(
+        `refusing to purge: the audit log does not verify (seq ${verification.brokenAt?.seq ?? '?'}: ${verification.brokenAt?.reason ?? '?'})`,
+      );
+    }
+    const head = await this.readHead();
+    const base = await this.readBase();
+    const from = base?.seq ?? 0;
+    const cutoff = new Date(this.now().getTime() - request.retentionDays * DAY_MS).toISOString();
+    let through: AuditEntry | undefined;
+    for (let seq = from + 1; seq <= head.seq; seq++) {
+      const entry = await this.get(seq);
+      if (entry === undefined) throw new Error(`audit entry ${seq} disappeared during purge`);
+      if (entry.at >= cutoff) break;
+      through = entry;
+    }
+    if (through === undefined || request.dryRun === true) {
+      if (base !== undefined && request.dryRun !== true) await this.deletePurged(base.seq);
+      return { removed: through === undefined ? 0 : through.seq - from, purgedThroughSeq: from, cutoff };
+    }
+    const event = await this.appendLocked(
+      {
+        event: 'audit.purged',
+        actor: request.actor,
+        target: { kind: 'audit_log', id: this.workspaceId },
+        result: 'succeeded',
+        detail: {
+          fromSeq: from + 1,
+          throughSeq: through.seq,
+          throughHash: through.hash,
+          throughAt: through.at,
+          removed: through.seq - from,
+          cutoff,
+          retentionDays: request.retentionDays,
+        },
+      },
+      { strictAnchor: true },
+    );
+    const next: Base = { seq: through.seq, hash: through.hash, purgeEventSeq: event.seq };
+    const put = await this.store.put(BASE_KEY, JSON.stringify(next), { contentType: 'application/json' });
+    if (!put.ok) throw put.error;
+    await this.deletePurged(next.seq);
+    return { removed: through.seq - from, purgedThroughSeq: next.seq, cutoff, event };
+  }
+
+  /** Delete every stored entry at or below the purge pointer (idempotent: also finishes a purge interrupted after the pointer moved). */
+  private async deletePurged(throughSeq: number): Promise<void> {
+    const keys = await this.store.list(ENTRY_PREFIX);
+    if (!keys.ok) throw keys.error;
+    for (const key of keys.value) {
+      const seq = Number(key.slice(key.lastIndexOf('/') + 1).replace(/\.json$/, ''));
+      if (Number.isInteger(seq) && seq >= 1 && seq <= throughSeq) {
+        const deleted = await this.store.delete(key);
+        if (!deleted.ok && deleted.error.code !== ErrorCode.STORAGE_OBJECT_NOT_FOUND) throw deleted.error;
+      }
+    }
+  }
+
+  /** UW-1 — the purge pointer, if the log was ever purged (for reporting). */
+  async purgedThrough(): Promise<number> {
+    return (await this.readBase())?.seq ?? 0;
   }
 
   async head(): Promise<Head> {
@@ -142,8 +313,9 @@ export class FsAuditLog {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 500);
     const head = await this.readHead();
     const out: AuditEntry[] = [];
+    const floor = (await this.readBase())?.seq ?? 0;
     let seq = Math.min(head.seq, query.beforeSeq !== undefined ? query.beforeSeq - 1 : head.seq);
-    for (; seq >= 1 && out.length < limit; seq--) {
+    for (; seq > floor && out.length < limit; seq--) {
       const entry = await this.get(seq);
       if (entry === undefined) continue; // a hole is reported by verify(), not hidden or fatal here
       if (query.event !== undefined && entry.event !== query.event) continue;
@@ -157,34 +329,50 @@ export class FsAuditLog {
       if (query.until !== undefined && entry.at > query.until) continue;
       out.push(entry);
     }
-    return { entries: out, ...(seq >= 1 ? { nextBeforeSeq: seq + 1 } : {}) };
+    return { entries: out, ...(seq > floor ? { nextBeforeSeq: seq + 1 } : {}) };
   }
 
   /** Every entry, oldest first — for verification and export. */
   async all(): Promise<readonly AuditEntry[]> {
     const head = await this.readHead();
     const out: AuditEntry[] = [];
-    for (let seq = 1; seq <= head.seq; seq++) {
+    for (let seq = ((await this.readBase())?.seq ?? 0) + 1; seq <= head.seq; seq++) {
       const entry = await this.get(seq);
       if (entry !== undefined) out.push(entry);
     }
     return out;
   }
 
-  /** Re-derives every hash and link from the stored entries. Never repairs anything. */
+  /**
+   * Re-derives every hash and link from the stored entries. Never repairs anything. After a purge the chain is checked from the purge
+   * pointer, and the pointer must match the `audit.purged` record it names. With anchoring configured, the chain is then compared with
+   * the external anchors (detects a wholesale rewrite, a cut tail, or a purge of entries that were not yet old enough).
+   */
   async verify(): Promise<AuditVerification> {
     const head = await this.readHead();
-    let prev = GENESIS_HASH;
-    for (let seq = 1; seq <= head.seq; seq++) {
+    const broken = (seq: number, reason: NonNullable<AuditVerification['brokenAt']>['reason'], extra: Partial<AuditVerification> = {}) =>
+      ({ ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason }, ...extra }) satisfies AuditVerification;
+    let base: Base | undefined;
+    try {
+      base = await this.readBase();
+    } catch {
+      return broken(0, 'bad_purge');
+    }
+    const purgedInfo = base !== undefined ? { purgedThroughSeq: base.seq } : {};
+    if (base !== undefined && (base.seq > head.seq || base.purgeEventSeq <= base.seq || base.purgeEventSeq > head.seq)) {
+      return broken(base.purgeEventSeq, 'bad_purge', purgedInfo);
+    }
+    let prev = base?.hash ?? GENESIS_HASH;
+    for (let seq = (base?.seq ?? 0) + 1; seq <= head.seq; seq++) {
       const raw = await this.store.get(entryKey(seq));
-      if (!raw.ok) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'missing_entry' } };
+      if (!raw.ok) return broken(seq, 'missing_entry', purgedInfo);
       const entry = decode<AuditEntry>(raw.value);
-      if (entry === undefined) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'unreadable' } };
-      if (entry.seq !== seq) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_sequence' } };
-      if (entry.prevHash !== prev) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_link' } };
+      if (entry === undefined) return broken(seq, 'unreadable', purgedInfo);
+      if (entry.seq !== seq) return broken(seq, 'bad_sequence', purgedInfo);
+      if (entry.prevHash !== prev) return broken(seq, 'bad_link', purgedInfo);
       const { hash, ...rest } = entry;
-      if (computeEntryHash(rest) !== hash)
-        return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq, reason: 'bad_hash' } };
+      if (computeEntryHash(rest) !== hash) return broken(seq, 'bad_hash', purgedInfo);
+      if (base !== undefined && seq === base.purgeEventSeq && !purgeRecordMatches(entry, base)) return broken(seq, 'bad_purge', purgedInfo);
       prev = hash;
     }
     // An entry sitting beyond the head is either a crash orphan (valid: the next append adopts it) or a forgery/corruption.
@@ -199,9 +387,50 @@ export class FsAuditLog {
             : computeEntryHash(rest) !== hash
               ? 'bad_hash'
               : undefined;
-      if (reason !== undefined) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq: head.seq + 1, reason } };
+      if (reason !== undefined) return broken(head.seq + 1, reason, purgedInfo);
     }
-    if (prev !== head.hash) return { ok: false, entries: head.seq, headHash: head.hash, brokenAt: { seq: head.seq, reason: 'bad_link' } };
-    return { ok: true, entries: head.seq, headHash: head.hash };
+    if (prev !== head.hash) return broken(head.seq, 'bad_link', purgedInfo);
+    if (this.anchor === undefined) return { ok: true, entries: head.seq, headHash: head.hash, ...purgedInfo };
+    // The chain is internally consistent. Only the external anchors can show it was rewritten wholesale or cut short.
+    let anchors: AnchorCheck;
+    try {
+      const record = base !== undefined ? await this.get(base.purgeEventSeq) : undefined;
+      const cutoff = record?.detail?.['cutoff'];
+      anchors = await this.verifyAnchors(
+        base !== undefined && typeof cutoff === 'string' ? { throughSeq: base.seq, cutoff, purgeEventSeq: base.purgeEventSeq } : undefined,
+      );
+    } catch {
+      return broken(head.seq, 'anchor_unreadable', purgedInfo);
+    }
+    const anchoring = { checked: anchors.checked, highestAnchoredSeq: anchors.highestAnchoredSeq };
+    if (anchors.mismatch !== undefined) {
+      const reason = ANCHOR_REASON[anchors.mismatch.reason];
+      return broken(anchors.mismatch.seq, reason, { ...purgedInfo, anchoring });
+    }
+    return { ok: true, entries: head.seq, headHash: head.hash, ...purgedInfo, anchoring };
   }
 }
+
+const ANCHOR_REASON = {
+  truncated: 'anchor_truncated',
+  rewritten: 'anchor_mismatch',
+  purged_too_recent: 'anchor_purge_too_recent',
+  unattested_purge: 'anchor_unattested_purge',
+} as const satisfies Record<NonNullable<AnchorCheck['mismatch']>['reason'], NonNullable<AuditVerification['brokenAt']>['reason']>;
+
+/** The `audit.purged` record a purge pointer names must state exactly that pointer, and must respect the retention it states. */
+function purgeRecordMatches(entry: AuditEntry, base: Base): boolean {
+  if (entry.event !== 'audit.purged') return false;
+  const d = entry.detail ?? {};
+  const cutoff = d['cutoff'];
+  const throughAt = d['throughAt'];
+  const retentionDays = d['retentionDays'];
+  if (d['throughSeq'] !== base.seq || d['throughHash'] !== base.hash) return false;
+  if (typeof cutoff !== 'string' || typeof throughAt !== 'string' || typeof retentionDays !== 'number') return false;
+  if (!Number.isInteger(retentionDays) || retentionDays < 1 || !(throughAt < cutoff)) return false;
+  const kept = Date.parse(entry.at) - Date.parse(cutoff);
+  return Number.isFinite(kept) && kept >= retentionDays * DAY_MS - CLOCK_TOLERANCE_MS;
+}
+
+/** A purge record is written right after its cutoff is computed; allow for a clock that steps back slightly in between. */
+const CLOCK_TOLERANCE_MS = 1_000;

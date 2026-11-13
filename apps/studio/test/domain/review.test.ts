@@ -111,6 +111,12 @@ describe('coerceFieldValue', () => {
 });
 
 describe('describeProblem', () => {
+  it('a step-up refusal asks for a fresh sign-in rather than a new key (UW-1)', () => {
+    const v = describeProblem({ kind: 'unauthenticated', code: 'XO_AUTH_STEP_UP_REQUIRED', message: 'sign in again' });
+    expect(v.title).toBe('Sign in again to do this');
+    expect(v.next).toMatch(/sign in again/i);
+  });
+
   it('every problem kind yields a title and a next step', () => {
     for (const kind of [
       'unauthenticated',
