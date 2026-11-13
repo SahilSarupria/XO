@@ -46,3 +46,4 @@ export function cellValue(cell: TabularCell): string | number | boolean {
   if (cell.kind === 'boolean') return cell.raw === '1';
   return cell.raw;
 }
+export { describeRecordSet } from './egress.js';

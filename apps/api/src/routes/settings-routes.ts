@@ -1,4 +1,5 @@
 import type { Router } from '../http/router.js';
+import { checkResidency, providerLocality, type ResidencyPolicy } from '@xo/ai-core';
 import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -41,7 +42,8 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
 /** Which model providers this server has credentials for. Names only — a key is never returned, logged or echoed. */
 export function configuredProviders(
   env: Readonly<Record<string, string | undefined>> = process.env,
-): readonly { readonly id: string; readonly configured: boolean; readonly local: boolean }[] {
+  residency?: ResidencyPolicy,
+): readonly { readonly id: string; readonly configured: boolean; readonly local: boolean; readonly allowedByResidency?: boolean }[] {
   const has = (...names: string[]) => names.every((n) => (env[n] ?? '').length > 0);
   const configured: Record<string, boolean> = {
     anthropic: has('ANTHROPIC_API_KEY'),
@@ -51,7 +53,20 @@ export function configuredProviders(
     // Ollama needs no credential; "configured" means the operator pointed the server at one.
     ollama: has('OLLAMA_BASE_URL') || /^(1|true)$/i.test(env['XO_API_OLLAMA_ENABLED'] ?? ''),
   };
-  return SUPPORTED_PROVIDER_IDS.map((id) => ({ id, configured: configured[id] === true, local: LOCAL_PROVIDER_IDS.has(id) }));
+  // UW-14: whether this instance's residency lets chat (ordinary, untyped requests) reach the provider.
+  const allowed = (id: string): boolean =>
+    residency === undefined ||
+    checkResidency(residency, {
+      providerId: id,
+      locality: providerLocality(id, id === 'ollama' ? (env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434') : undefined),
+      typed: false,
+    }) === undefined;
+  return SUPPORTED_PROVIDER_IDS.map((id) => ({
+    id,
+    configured: configured[id] === true,
+    local: LOCAL_PROVIDER_IDS.has(id),
+    ...(residency !== undefined ? { allowedByResidency: allowed(id) } : {}),
+  }));
 }
 
 /** Runtime locations this deployment can honor. Default: only the machine the server runs on. */
@@ -64,7 +79,7 @@ export function availableRuntimeLocations(env: Readonly<Record<string, string | 
 }
 
 /** Says, per setting, whether the server enforces it or merely records it. Nothing here is aspirational. */
-function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings) {
+function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings, residency?: ResidencyPolicy) {
   return {
     runtime: {
       enforced: false,
@@ -74,7 +89,7 @@ function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings)
     model: {
       enforced: true,
       note: 'Used by chat. A provider with no server-side credential is reported unconfigured and chat refuses until it is set up.',
-      providers: configuredProviders(),
+      providers: configuredProviders(process.env, residency),
     },
     airGapped: {
       enforced: true,
@@ -107,7 +122,12 @@ function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings)
   };
 }
 
-export function registerSettingsRoutes(router: Router, workspaceStore: WorkspaceStore, dataConfig: WorkspaceDataConfig): void {
+export function registerSettingsRoutes(
+  router: Router,
+  workspaceStore: WorkspaceStore,
+  dataConfig: WorkspaceDataConfig,
+  residency?: ResidencyPolicy,
+): void {
   const settingsStoreFor = (workspace: WorkspaceRecord) =>
     new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId);
 
@@ -116,7 +136,7 @@ export function registerSettingsRoutes(router: Router, workspaceStore: Workspace
     const settings = await settingsStoreFor(workspace).get();
     return json(200, {
       settings: { ...settings, residency: { region: workspace.region ?? null } },
-      effect: describeEffect(workspace, settings),
+      effect: describeEffect(workspace, settings, residency),
     });
   }
 
@@ -154,7 +174,7 @@ export function registerSettingsRoutes(router: Router, workspaceStore: Workspace
     });
     return json(200, {
       settings: { ...next, residency: { region: updatedWorkspace.region ?? null } },
-      effect: describeEffect(updatedWorkspace, next),
+      effect: describeEffect(updatedWorkspace, next, residency),
     });
   }
 
@@ -181,7 +201,7 @@ export function registerSettingsRoutes(router: Router, workspaceStore: Workspace
       bootstrapOk = false;
       warnings = [cause instanceof Error ? cause.message : String(cause)];
     }
-    const providers = configuredProviders();
+    const providers = configuredProviders(process.env, residency);
     const audit = openWorkspaceAuditLog(workspace, dataConfig);
     const head = await audit.head().catch(() => undefined);
     return json(200, {

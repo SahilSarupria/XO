@@ -89,6 +89,11 @@ environment variables. This means a copy of the data, such as a backup or a volu
 A cloud secret manager can replace the file without touching callers: it implements the same `SecretProvider` interface
 (`packages/instance/src/secrets.ts`).
 
+### Residency
+
+`XO_RESIDENCY` decides where data may go when a model is asked something. It is `strict_local` by default, which means no hosted model
+can be called. See [RESIDENCY.md](RESIDENCY.md).
+
 ### Public address and sign-in
 
 `XO_PUBLIC_BASE_URL` is the address people use. It must be https, except on loopback. `xo up` prints it, and

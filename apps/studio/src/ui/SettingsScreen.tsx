@@ -280,6 +280,7 @@ function ModelsForm(props: { view: SettingsView; ed: ReturnType<typeof useSettin
               {p.id}
               {p.local ? ' (runs locally)' : ''}
               {p.configured ? '' : ' — no credentials on the server'}
+              {p.allowedByResidency === false ? ' — not allowed: this XO keeps data on its own server' : ''}
             </option>
           ))}
         </select>

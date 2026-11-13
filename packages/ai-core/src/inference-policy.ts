@@ -1,6 +1,13 @@
 import { AiError, ErrorCode } from '@xo/errors';
 import { computeCostUsd, findPricing, type PricingTable, DEFAULT_PRICING_TABLE } from './cost.js';
 import type { ProviderId, TokenUsage } from './provider-types.js';
+import {
+  checkResidency,
+  providerLocality,
+  type ProviderLocality,
+  type ResidencyDenialReason,
+  type ResidencyPolicy,
+} from './egress/residency.js';
 
 /**
  * Inference authorization.
@@ -14,6 +21,9 @@ import type { ProviderId, TokenUsage } from './provider-types.js';
  *  2. SERVER — organisation policy: kill-switch, provider allow-list, and a cumulative budget.
  *  3. RUN    — a per-execution restriction. It can only DISABLE inference or TIGHTEN limits (`RunInferenceRestriction` has no
  *              field capable of granting anything, and limits combine with `min`).
+ *  4. RESIDENCY (UW-14, ADR 0020) — where data may go: `strict_local` permits no hosted provider, `masked_hosted` only a contracted
+ *              one and only typed egress requests, `open` (development only) anything. Applied when the server policy carries one;
+ *              the provider guard (`egress/guarded-provider.ts`) applies the same rule to every call regardless.
  *
  * A denial is a structured `InferenceDenial`, never a silent fallback to a different provider or code path.
  */
@@ -33,6 +43,8 @@ export interface ServerInferencePolicy {
   /** Cumulative (process-lifetime, until `resetBudget()`) limits shared by every run. Omit = unlimited. */
   readonly maxTotalTokens?: number;
   readonly maxCostUsd?: number;
+  /** UW-14 — the instance's residency (fourth authority). Absent: not checked here (the provider guard still checks every call). */
+  readonly residency?: ResidencyPolicy;
 }
 
 /** Fail-closed default: inference on only for nodes that declare `'required'`. */
@@ -53,7 +65,9 @@ export type InferenceDenialReason =
   | 'provider_not_allowed'
   | 'budget_exhausted'
   /** A cost cap is configured but the call's cost cannot be reliably bounded (unknown model price, or no input-size estimate). */
-  | 'cost_unestimable';
+  | 'cost_unestimable'
+  /** UW-14: the residency mode forbids sending this request to this provider. */
+  | ResidencyDenialReason;
 
 export interface InferenceDenial {
   readonly reason: InferenceDenialReason;
@@ -85,6 +99,8 @@ export interface AuthorizeInput {
   readonly model?: string;
   /** Required for cost-capped inference: a CONSERVATIVE upper bound on input tokens (see `estimateInputTokensUpperBound`). */
   readonly inputTokensUpperBound?: number;
+  /** UW-14: where the provider runs and whether the request is a typed egress request. Absent: located by provider id, untyped. */
+  readonly egress?: { readonly locality: ProviderLocality; readonly typed: boolean };
 }
 
 export type AuthorizeResult =
@@ -182,6 +198,14 @@ export class InferenceRunScope {
     }
     if (this.policy.allowedProviders && !this.policy.allowedProviders.includes(input.providerId)) {
       return deny('provider_not_allowed', `Provider "${input.providerId}" is not permitted by server policy`);
+    }
+    if (this.policy.residency !== undefined) {
+      const r = checkResidency(this.policy.residency, {
+        providerId: input.providerId,
+        locality: input.egress?.locality ?? providerLocality(input.providerId),
+        typed: input.egress?.typed ?? false,
+      });
+      if (r !== undefined) return deny(r.reason, r.message);
     }
     return undefined;
   }
