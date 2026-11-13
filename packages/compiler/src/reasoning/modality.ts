@@ -33,7 +33,8 @@ export interface ModalityClassification {
 
 const PROHIBITION =
   /\b(?:must\s+not|shall\s+not|may\s+not|cannot|can\s*not|(?:is|are)\s+not\s+(?:permitted|allowed|to\s+be)|(?:is|are)\s+(?:prohibited|forbidden|barred)|must\s+never|never)\b/i;
-const OBLIGATION = /\b(?:must|shall|(?:is|are)\s+(?:not\s+)?required|(?:needs?|has|have)\s+to|will)\b/i;
+const OBLIGATION =
+  /\b(?:must|shall|(?:is|are)\s+(?:not\s+)?required|(?:needs?|has|have)\s+to|will|(?:is|are)\s+(?:also\s+)?(?:expected\s+to|responsible\s+for)|responsibility\s+to)\b/i;
 const ADVISORY = /\b(?:should|ought\s+to|(?:is|are)\s+(?:recommended|encouraged))\b/i;
 const PERMISSION = /\b(?:may|can|(?:is|are)\s+(?:permitted|allowed|entitled))\b/i;
 const IMPERATIVE_LEAD =

@@ -709,7 +709,50 @@ function parsePolicy(sentence: string): ParseResult {
       }
     }
   }
-  return EMPTY_RESULT;
+  return parseDeonticStatement(sentence);
+}
+
+// --- Pattern: deontic statement (UW-3c) --------------------------------------------------------------------------------
+//
+// "All teams are expected to send weekly updates." / "You should submit leave requests three days in advance." /
+// "We need to test the products with real people." / "If you can't do it, you are responsible for ensuring someone does." /
+// "Whether users are public or staff, policy makers must include real people in the design process."
+//
+// An unconditional statement that a subject is required, expected, advised or responsible to do something: a constraint
+// on that subject, with its modality read from the cue. The subject is short (at most six words, a parenthetical between
+// dashes not counted) so a cue deep in a subordinate clause is not read as the sentence's own; a leading subordinate clause
+// ("Whether ..., ", "If ..., ") is read past. "must" without a leading clause keeps its own pattern above; "shall" and "may"
+// are left to the policy grammar.
+const LEAD_SUBORDINATE =
+  /^(?:whether|if|when|whenever|where|while|as|once|unless|although|though|because|since|after|before|for|in|upon)\b[^,]{1,160},\s*/i;
+const DEONTIC_CUE =
+  /\b(?:must|should|ought to|needs? to|(?:is|are) expected to|(?:is|are) responsible for|(?:is|are) (?:also )?required to)\b/i;
+const RESPONSIBILITY_LEAD = /^it is (?:your|our|their|the [a-z]+'s|each [a-z]+'s) responsibility to\b/i;
+const IMPORTANCE_LEAD = /^it is (?:important|essential|critical|necessary|mandatory) (?:to|that)\b/i;
+/** Hedges and estimates: the sentence predicts or estimates; it does not require. */
+const EPISTEMIC = /\b(?:almost certainly|probably|likely|unlikely|perhaps|possibly|may (?:take|vary|differ|change|appear|seem)|might)\b/i;
+
+function parseDeonticStatement(sentence: string): ParseResult {
+  const text = clean(sentence);
+  if (text.length === 0 || EPISTEMIC.test(text)) return EMPTY_RESULT;
+  const candidate = (matchedPattern: string): ParseResult => ({
+    candidates: [{ nodeType: 'policy', canonicalLabel: text, action: text, exceptionConditions: [], confidence: 0.6, matchedPattern }],
+    edges: [],
+  });
+  if (RESPONSIBILITY_LEAD.test(text)) return candidate('policy:responsibility-statement');
+  if (IMPORTANCE_LEAD.test(text)) return candidate('policy:importance-statement');
+  const main = text.replace(LEAD_SUBORDINATE, '');
+  const cue = DEONTIC_CUE.exec(main);
+  if (cue === null) return EMPTY_RESULT;
+  if (/^must$/i.test(cue[0]) && main === text) return EMPTY_RESULT; // the subject-must pattern's own shape
+  const subject = main
+    .slice(0, cue.index)
+    .replace(/\s+[—–-]{1,2}\s+[^—–]*?\s+[—–-]{1,2}\s+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+  if (subject.length === 0 || subject.length > 6) return EMPTY_RESULT;
+  return candidate('policy:subject-deontic');
 }
 
 // --- Pattern: alternative ("Option A is preferred when condition X holds.") ---
@@ -1043,6 +1086,9 @@ function parseUnconditionalStatement(sentence: string): ParseResult {
       edges: [],
     };
   }
+  // UW-3c: a prediction or an estimate is not a rule ("This merge will almost certainly fail.", "Your account may take a
+  // few days to set up.", "There may be a list of checks under this option.").
+  if (EPISTEMIC.test(text) || /^(?:there|it)\s+(?:may|will|can|might|could)\b/i.test(text)) return EMPTY_RESULT;
   // Same structural guard as the established subject-"must" pattern: the modal must sit within the first 4 words
   // (the subject), so a modal buried in a long subordinate clause is never read as this sentence's top-level modality.
   for (const modal of ['may', 'shall', 'should', 'can', 'will']) {

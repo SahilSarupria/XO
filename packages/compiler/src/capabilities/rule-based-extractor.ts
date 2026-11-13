@@ -10,6 +10,8 @@ import { splitSentences } from './sentence-split.js';
 import { nameFromClause, nameFromPassive } from './clause.js';
 import { assessCandidateQuality, qualityMetadata } from './quality.js';
 import { cleanHeading } from '../semantic/structure.js';
+import { imperativeClause, isQuestion } from '../semantic/directive.js';
+import { isBaseVerb } from '../semantic/english-verbs.js';
 import { UNKNOWN_SIGNATURE, type CapabilityCategory } from './types.js';
 import type { CandidateCapability, CapabilityExtractionResult, CapabilityExtractor } from './extractor-types.js';
 
@@ -143,14 +145,98 @@ const NOUN_DETERMINERS = new Set([
   'whose',
 ]);
 
+const POSITION_MODALS = new Set(['shall', 'must', 'will', 'may', 'should', 'can', 'could', 'would', 'might', 'cannot', 'please']);
+const SUBJECT_PRONOUNS = new Set(['i', 'we', 'you', 'they', 'he', 'she', 'it']);
+const PASS_THROUGH = new Set([
+  'not',
+  'never',
+  'also',
+  'then',
+  'instead',
+  'otherwise',
+  'rather',
+  'always',
+  'first',
+  'next',
+  'finally',
+  'now',
+  'just',
+  'simply',
+  'only',
+  'again',
+  'still',
+  'immediately',
+  'promptly',
+]);
+const COORDINATING = new Set(['and', 'or', 'then', 'nor']);
+/** Words after which "to" is a preposition, not an infinitive marker ("subject to review", "prior to approval"). */
+const PREPOSITIONAL_TO = new Set([
+  'subject',
+  'according',
+  'due',
+  'prior',
+  'pursuant',
+  'relative',
+  'compared',
+  'contrary',
+  'similar',
+  'equal',
+  'close',
+  'next',
+  'addition',
+  'regard',
+  'respect',
+  'reference',
+  'access',
+  'changes',
+  'amendments',
+  'response',
+  'reply',
+  'attached',
+  'applicable',
+  'up',
+  'down',
+  'back',
+  'listed',
+]);
+
+/**
+ * UW-3c: is the word at `i` in a place a verb stands? A capability verb is read as a verb only where English puts one: at the
+ * start of a sentence or clause (an instruction), after a modal or "please", after an infinitive "to", after a subject
+ * pronoun, or coordinated with such a verb ("Review and approve"). Elsewhere the same word is a noun ("emergency contact
+ * information", "your personal schedule", "coverage checks").
+ */
+export function inVerbPosition(words: readonly string[], i: number): boolean {
+  if (i === 0) return true;
+  const prevRaw = words[i - 1]!;
+  if (/[,;:(—–]$/.test(prevRaw) || /^\d{1,3}[.)]$/.test(prevRaw) || !/[\p{L}\p{N}]/u.test(prevRaw)) return true;
+  const prev = stripPunctuation(prevRaw).toLowerCase();
+  if (POSITION_MODALS.has(prev) || SUBJECT_PRONOUNS.has(prev)) return true;
+  // The outcome side of a decision line ("Case H: policy expired -> coverage review"): an action named as a noun there is
+  // still the action the line calls for.
+  for (let j = i - 1; j >= Math.max(0, i - 3); j--) if (/^(?:->|=>|→|⇒|—>)$/.test(words[j]!)) return true;
+  if (prev === 'to') return i < 2 || !PREPOSITIONAL_TO.has(stripPunctuation(words[i - 2]!).toLowerCase());
+  if (PASS_THROUGH.has(prev) || (prev.length > 4 && prev.endsWith('ly'))) return inVerbPosition(words, i - 1);
+  if (COORDINATING.has(prev)) {
+    for (let j = i - 2; j >= 0; j--) {
+      const w = stripPunctuation(words[j]!).toLowerCase();
+      // The first conjunct may be any verb in a verb position ("..., wait and retry").
+      if ((CAPABILITY_VERBS[w] !== undefined || isBaseVerb(w)) && inVerbPosition(words, j)) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
 function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
   for (let i = 0; i < words.length; i += 1) {
     const clean = stripPunctuation(words[i]!).toLowerCase();
     const category = CAPABILITY_VERBS[clean];
     // UW-3b: a base form right after a determiner or possessive is a noun ("the Schedule specifies", "your plan"), not a
-    // verb; the scan moves on.
+    // verb; the scan moves on. UW-3c: and a base form outside a verb position is a noun too ("emergency contact
+    // information"), as is a word used as a label ("Contact: the account manager").
     const precededByDeterminer = i > 0 && NOUN_DETERMINERS.has(stripPunctuation(words[i - 1]!).toLowerCase());
-    if (category && !precededByDeterminer) {
+    if (category && !precededByDeterminer && inVerbPosition(words, i) && !/:$/.test(words[i]!)) {
       const precededByModal = i > 0 && MODAL_WORDS.has(stripPunctuation(words[i - 1]!).toLowerCase());
       return { verb: clean, category, wordIndex: i, precededByModal, isPassive: false };
     }
@@ -271,7 +357,113 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
       }
     }
   }
-  return undefined;
+  return imperativeLead(words);
+}
+
+/**
+ * Verbs that open a sentence without asking for an action: they point at something ("Note that ...", "See section 4"),
+ * soften ("Try to ..."), or are too general to name one ("Do", "Make sure", "Be").
+ */
+const NON_ACTION_LEADS = new Set([
+  'note',
+  'see',
+  'refer',
+  'let',
+  'be',
+  'have',
+  'do',
+  'go',
+  'get',
+  'try',
+  'keep',
+  'make',
+  'feel',
+  'remember',
+  'thank',
+  'welcome',
+  'like',
+  'want',
+  'mean',
+  'say',
+  'know',
+  'think',
+  'click',
+]);
+const FINITE_AUX = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'has',
+  'have',
+  'had',
+  'does',
+  'do',
+  'did',
+  'will',
+  'shall',
+  'may',
+  'can',
+  'must',
+  'should',
+  'would',
+  'could',
+  'might',
+]);
+const PARTICLES = new Set([
+  'up',
+  'down',
+  'in',
+  'out',
+  'off',
+  'on',
+  'back',
+  'through',
+  'over',
+  'into',
+  'onto',
+  'to',
+  'with',
+  'for',
+  'under',
+  'at',
+  'by',
+  'from',
+  'across',
+  'around',
+  'against',
+  'of',
+]);
+
+/**
+ * UW-3c: an instruction whose verb is outside the capability lexicon ("Update the charter when the team changes.",
+ * "Designate a captain."). The lexicon stays narrow because it also finds verbs mid-sentence; here only the verb that
+ * OPENS the sentence's main clause counts, so the sentence is an instruction by its grammar.
+ */
+function imperativeLead(words: readonly string[]): VerbMatch | undefined {
+  const text = words.join(' ');
+  // A conditional instruction ("If the amount exceeds 10000, then deny the claim.") is a rule: the reasoning layer reads it
+  // and the rule-capability minter names its outcome. Read here too, it would be a second capability for the same rule.
+  if (/^[\p{P}\p{S}\s]*(?:if|when|whenever|unless|where|once|in case|provided|should|in the event)\b/iu.test(text)) return undefined;
+  const clause = imperativeClause(text);
+  if (clause === undefined) return undefined;
+  const clauseWords = clause.split(/\s+/).filter((w) => w.length > 0);
+  const wordIndex = words.length - clauseWords.length;
+  if (wordIndex < 0) return undefined;
+  const verb = stripPunctuation(words[wordIndex]!).toLowerCase();
+  if (verb.length === 0 || NON_ACTION_LEADS.has(verb) || !isBaseVerb(verb)) return undefined;
+  // The sentence's own grammar must say "instruction": a finished sentence of a few words, no label ("Benchmark intent:
+  // ..."), and a word after the verb that starts its object — not a number, not a finite verb ("Cover is ..."), and not a
+  // preposition followed by a finite verb ("Cover under this policy does not extend ...": the first word was a noun).
+  if (clauseWords.length < 3 || !/[.!]["')\]]*$/.test(text.trim())) return undefined;
+  if (clauseWords.slice(0, 3).some((w) => w.endsWith(':'))) return undefined;
+  const nextRaw = stripPunctuation(words[wordIndex + 1] ?? '');
+  const next = nextRaw.toLowerCase();
+  if (next.length === 0 || /^\d/.test(next) || FINITE_AUX.has(next)) return undefined;
+  // A capitalised word after a verb outside the lexicon reads as a title-case label ("Limit Opted ...", "Damage Cover").
+  if (/^\p{Lu}/u.test(nextRaw)) return undefined;
+  if (PARTICLES.has(next) && clauseWords.slice(2).some((w) => FINITE_AUX.has(stripPunctuation(w).toLowerCase()))) return undefined;
+  return { verb, category: CAPABILITY_VERBS[verb] ?? 'action', wordIndex, precededByModal: false, isPassive: false };
 }
 
 function baseProvenance(
@@ -372,6 +564,8 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
     let localIndex = 0;
 
     for (const sentence of splitSentences(unit.content)) {
+      // UW-3c: a question asks for something; it is not an action ("During what hours can we schedule team meetings?").
+      if (isQuestion(sentence.text)) continue;
       const words = splitWords(sentence.text);
       // A verb inside a prohibition ("Do not create a missing receipt") is the opposite of a capability, so it is
       // skipped and the scan continues past it: "…; instead notify the claimant" still yields "Notify". The

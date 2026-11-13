@@ -53,6 +53,8 @@ export class HybridCapabilityExtractor implements CapabilityExtractor {
     }
     if (role !== undefined) return ok({ capabilities: [], edges: [] });
     if (unit.isTableQuarantined) return ok({ capabilities: [], edges: [] });
+    // UW-3c: preformatted text (code, a command listing) is content, not prose: its lines are never read as actions.
+    if (unit.preformatted === true) return ok({ capabilities: [], edges: [] });
 
     const ruleResult = await this.ruleBased.extract(unit, knowledgeGraph);
     if (!ruleResult.ok) return ruleResult; // RuleBasedCapabilityExtractor never actually returns err, but handled honestly rather than assumed away

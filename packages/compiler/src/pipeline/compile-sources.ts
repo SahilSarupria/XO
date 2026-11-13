@@ -617,7 +617,7 @@ export async function compileSources(
   // capability, a guideline or acceptance-criterion constraint, a form input, a step-table header), so its sentences are
   // not re-checked one by one against rule nodes. Every other unit is checked exactly as before.
   const uncovered = uncoveredNormativeSentences(
-    merged.units.filter((u) => u.structure?.role === undefined).map((u) => u.content),
+    merged.units.filter((u) => u.structure?.role === undefined && u.preformatted !== true).map((u) => u.content),
     reasoning.nodes.map((n) => ({ texts: [n.canonicalLabel, n.condition ?? '', n.action ?? '', n.outcome ?? ''] })),
   );
   for (const u of uncovered.slice(0, 50)) {

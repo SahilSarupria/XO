@@ -111,6 +111,19 @@ export function splitSentences(text: string): readonly Sentence[] {
   let start = 0;
   let i = 0;
   while (i < text.length) {
+    // UW-3c: a blank line ends a sentence whatever came before it. Paragraphs (and a unit's joined blocks) are separate
+    // pieces of text: a heading-like label or a bracketed template line without a full stop does not run into the next.
+    if (text[i] === '\n' && /^\n[ \t\r]*\n/.test(text.slice(i, i + 64))) {
+      const raw = text.slice(start, i);
+      const trimmed = raw.trim();
+      if (trimmed.length > 0) {
+        const leadingTrim = raw.length - raw.trimStart().length;
+        sentences.push({ text: trimmed, startOffset: start + leadingTrim, endOffset: start + leadingTrim + trimmed.length });
+      }
+      start = i + 1;
+      i += 1;
+      continue;
+    }
     if (SENTENCE_END_CHARS.has(text[i]!)) {
       if (text[i] === '.' && precedingWordIsAbbreviation(text, i)) {
         i += 1;

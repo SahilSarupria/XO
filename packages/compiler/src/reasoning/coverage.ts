@@ -37,6 +37,7 @@ export function uncoveredNormativeSentences(unitTexts: readonly string[], nodes:
       if (trimmed.length === 0) continue;
       for (const s of splitSentences(trimmed)) {
         const sentence = s.text.trim();
+        if (/\?["'’”)\]]*$/.test(sentence)) continue; // UW-3c: a question states no rule, so it cannot have been lost as one
         const kind = classifySentenceKind(sentence);
         if (!NORMATIVE.has(kind)) continue;
         const sentenceTokens = new Set(tokens(sentence));

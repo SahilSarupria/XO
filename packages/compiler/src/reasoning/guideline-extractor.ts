@@ -53,6 +53,7 @@ function clean(text: string): string {
 export function structuralReasoningNodes(unit: ExperienceUnit): readonly CandidateReasoningNode[] | undefined {
   const structure = unit.structure;
   if (structure?.role === undefined) return undefined;
+  if (structure.role === 'context') return [];
   const confidence = unit.layoutSuspect === true ? Math.min(unit.confidence, 0.4) : STRUCTURAL_CONFIDENCE;
   if (structure.role === 'guideline' && structure.guideline !== undefined) {
     const g = structure.guideline;

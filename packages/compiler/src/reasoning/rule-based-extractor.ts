@@ -17,6 +17,7 @@ import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
 import { sourceKey, type ConfirmedRule } from './rule-proposals.js';
 import { structuralReasoningNodes } from './guideline-extractor.js';
+import { isQuestion } from '../semantic/directive.js';
 
 interface Paragraph {
   readonly text: string;
@@ -147,6 +148,8 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
     // read by its structural extractor, not by the conditional-rule patterns.
     const structural = structuralReasoningNodes(unit);
     if (structural !== undefined) return ok({ nodes: structural, edges, unclassified });
+    // UW-3c: preformatted text (code, a command listing) is never read as rules.
+    if (unit.preformatted === true) return ok({ nodes: [], edges, unclassified });
 
     // WS1-03: a table row is read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000"). When a
     // decision-bearing column has a value, the row becomes a `policy` (constraint) node: a recorded term of the
@@ -180,6 +183,8 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
     const sentences = splitSentencesByParagraph(unit.content);
     for (let sentenceIndex = 0; sentenceIndex < sentences.length; sentenceIndex += 1) {
       const sentence = sentences[sentenceIndex]!;
+      // UW-3c: a question asks; it states no rule ("What user needs will this service address?").
+      if (isQuestion(sentence.text)) continue;
       const confirmedRule = this.confirmed.get(sourceKey(sentence.text));
       const parsed =
         parseSentence(sentence.text).candidates.length === 0 && confirmedRule !== undefined

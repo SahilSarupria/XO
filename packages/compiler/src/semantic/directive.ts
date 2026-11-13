@@ -10,6 +10,7 @@
  * sentence then goes to the ordinary extractors exactly as before.
  */
 import { CAPABILITY_VERBS } from '../capabilities/capability-lexicon.js';
+import { isBaseVerb } from './english-verbs.js';
 
 const GENERAL_ACTION_VERBS = `
   accept add adjust agree align allocate announce answer apply approve archive arrange ask assign attach attend audit
@@ -34,12 +35,6 @@ const GENERAL_ACTION_VERBS = `
 
 const ACTION_VERBS: ReadonlySet<string> = new Set([...GENERAL_ACTION_VERBS, ...Object.keys(CAPABILITY_VERBS)]);
 
-/** First word, lower-cased, with a leading "re-"/"pre-" prefix allowed ("Re-read", "Pre-fill"). */
-function leadWord(text: string): string {
-  const first = text.trim().split(/\s+/)[0] ?? '';
-  return first.replace(/[^\p{L}'-]/gu, '').toLowerCase();
-}
-
 export function isActionVerb(word: string): boolean {
   const w = word.toLowerCase();
   if (ACTION_VERBS.has(w)) return true;
@@ -47,10 +42,61 @@ export function isActionVerb(word: string): boolean {
   return m !== null && ACTION_VERBS.has(m[1]!);
 }
 
-/** A sentence that opens with a base-form action verb ("Read the task.", "Re-read your diff."). */
+const LEAD_CLAUSE =
+  /^(?:if|when|whenever|before|after|once|unless|until|while|as|as soon as|during|for|in|on|at|upon|with|where)\b[^,]{1,120},\s*(.+)$/i;
+/** A short lead phrase set off by a comma ("The next week, bump ...", "Early in the project, spend ..."). */
+const LEAD_PHRASE = /^([^,.;:!?]{1,60}),\s*(.+)$/;
+const LEAD_FILLER = /^(?:please|then|next|finally|first|second|third|now|also|lastly|afterwards|optionally)[,]?\s+/i;
+const LEAD_ADVERB = /^\p{L}+ly,?\s+/iu;
+
+/** The verb that opens `text`, when it opens with one and is used as a verb: "Name the file" yes, "Name, role, ..." no. */
+function opensWithVerb(text: string): boolean {
+  const m = /^([\p{L}][\p{L}'’-]*)(.?)/u.exec(text);
+  if (m === null) return false;
+  const word = m[1]!;
+  if (!isActionVerb(word.toLowerCase()) && !isBaseVerb(word)) return false;
+  // A verb used as a label or a noun is followed by punctuation or nothing ("Break (5 minutes)", "Contact: ...", "Name,").
+  const rest = text.slice(word.length).trimStart();
+  return rest.length > 0 && !/^[,:;()[\]–—]/.test(rest) && !/^-\s/.test(rest);
+}
+
+/**
+ * The instruction's main clause, starting at its verb ("When complete, paste the ship ..." → "paste the ship ..."), or
+ * undefined when the sentence is not an instruction.
+ */
+export function imperativeClause(sentence: string): string | undefined {
+  // Leading punctuation and symbols (a bullet glyph, an emoji used as an icon) are not words.
+  let text = sentence.trim().replace(/^[\p{P}\p{S}\s]+/u, '');
+  const candidates: string[] = [];
+  const lead = LEAD_CLAUSE.exec(text);
+  if (lead !== null) candidates.push(lead[1]!);
+  else {
+    if (opensWithVerb(text.replace(LEAD_FILLER, ''))) return text.replace(LEAD_FILLER, '');
+    const phrase = LEAD_PHRASE.exec(text);
+    if (phrase !== null && phrase[1]!.split(/\s+/).length <= 8) candidates.push(phrase[2]!);
+  }
+  candidates.push(text);
+  for (const c of candidates) {
+    text = c.replace(LEAD_FILLER, '');
+    if (opensWithVerb(text)) return text;
+    const adverb = LEAD_ADVERB.exec(text);
+    if (adverb !== null && opensWithVerb(text.slice(adverb[0].length))) return text.slice(adverb[0].length);
+  }
+  return undefined;
+}
+
+/**
+ * A sentence that opens with a base-form verb ("Read the task.", "Re-read your diff.", "Designate a captain."). A leading
+ * adverbial clause or short phrase ("When complete, paste ...", "The next week, bump ...") and a leading adverb ("regularly
+ * test ...") are read past, so the main clause decides.
+ */
 export function isImperative(sentence: string): boolean {
-  const text = sentence.trim().replace(/^(?:please|then|next|finally|first|now)[,]?\s+/i, '');
-  return isActionVerb(leadWord(text));
+  return imperativeClause(sentence) !== undefined;
+}
+
+/** A question: text that ends with a question mark. A question asks; it never states a rule or an instruction. */
+export function isQuestion(text: string): boolean {
+  return /\?["'’”)\]]*\s*$/.test(text.trim());
 }
 
 const NEGATIVE_LEAD = /^(?:never|do\s+not|don['’]t|avoid|no\s+\p{L})/iu;

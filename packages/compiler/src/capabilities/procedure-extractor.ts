@@ -19,7 +19,8 @@
  */
 import type { KnowledgeProvenance } from '../knowledge/types.js';
 import type { ExperienceUnit } from '../semantic/types.js';
-import { isActionVerb } from '../semantic/directive.js';
+import { imperativeClause, isActionVerb } from '../semantic/directive.js';
+import { isBaseVerb } from '../semantic/english-verbs.js';
 import { CAPABILITY_VERBS } from './capability-lexicon.js';
 import { nameFromClause } from './clause.js';
 import { isPlausibleCandidateName } from './candidate-plausibility.js';
@@ -70,14 +71,20 @@ export function actionsOf(action: string): readonly string[] {
     .filter((s) => s.length > 0);
 }
 
+/** A step's name keeps its whole first clause, up to this many words after the verb. */
+const STEP_NAME_MAX_OBJECT_WORDS = 12;
+
 function stepNameAndCategory(label: string | undefined, action: string): { name: string; category: CapabilityCategory } {
   const first = actionsOf(action)[0] ?? action;
-  const words = first.split(/\s+/).filter((w) => w.length > 0);
+  // UW-3c: the name starts at the instruction's verb, past a lead clause ("When complete, paste ..." → "Paste ...").
+  const main = imperativeClause(first) ?? first;
+  const words = main.split(/\s+/).filter((w) => w.length > 0);
   const lead = (words[0] ?? '').replace(/[^\p{L}-]/gu, '').toLowerCase();
   const category: CapabilityCategory = CAPABILITY_VERBS[lead] ?? 'action';
   if (label !== undefined && isPlausibleCandidateName(label)) return { name: label, category };
-  if (isActionVerb(lead)) return { name: nameFromClause(words, 0, lead).name, category };
-  return { name: synthesizeTitle(first).replace(/[.…]+$/, ''), category };
+  if (isActionVerb(lead) || isBaseVerb(lead))
+    return { name: nameFromClause(words, 0, lead, STEP_NAME_MAX_OBJECT_WORDS).name.replace(/[,;:]+$/, ''), category };
+  return { name: synthesizeTitle(first).replace(/[.…,;:]+$/, ''), category };
 }
 
 /** The step capability for a unit whose role is `procedure_step`; undefined for any other unit. */

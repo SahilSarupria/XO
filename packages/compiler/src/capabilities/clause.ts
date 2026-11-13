@@ -125,6 +125,31 @@ export interface ClauseName {
   readonly clause: string;
 }
 
+const PAIRS: readonly (readonly [string, string])[] = [
+  ['(', ')'],
+  ['[', ']'],
+  ['{', '}'],
+  ['“', '”'],
+];
+
+/** A name keeps a bracket or quote only when it also keeps its partner ("Request a decision]" -> "Request a decision"). */
+function balanced(name: string): string {
+  let out = name.trim();
+  for (const [open, close] of PAIRS) {
+    const opens = out.split(open).length - 1;
+    const closes = out.split(close).length - 1;
+    if (closes > opens) {
+      const at = out.lastIndexOf(close);
+      out = out.slice(0, at) + out.slice(at + 1);
+    } else if (opens > closes) {
+      const at = out.indexOf(open);
+      out = out.slice(0, at) + out.slice(at + 1);
+    }
+  }
+  if ((out.split('"').length - 1) % 2 === 1) out = out.replace(/^"|"$/, '');
+  return out.replace(/\s+/g, ' ').trim();
+}
+
 function clean(word: string): string {
   let start = 0;
   let end = word.length;
@@ -190,7 +215,11 @@ const TRAILING_STOP = new Set([
  * Names the action that starts at `words[verbIndex]` (`verb` is its base form). `words` are the sentence's words as
  * written (punctuation attached). Returns the name with its object bounded to one clause.
  */
-export function nameFromClause(words: readonly string[], verbIndex: number, verb: string): ClauseName {
+/**
+ * `maxObjectWords` caps the object (6 by default: a capability found mid-prose is named briefly). A procedure step, which is
+ * a whole instruction the author wrote as one item, allows more.
+ */
+export function nameFromClause(words: readonly string[], verbIndex: number, verb: string, maxObjectWords = MAX_OBJECT_WORDS): ClauseName {
   let verbPhrase = capitalize(verb);
   let i = verbIndex + 1;
   // A compound verb: "Merge or deploy", "Review and approve".
@@ -235,7 +264,7 @@ export function nameFromClause(words: readonly string[], verbIndex: number, verb
       }
       const word = clean(raw);
       if (word.length > 0) object.push(word);
-      if (object.length >= MAX_OBJECT_WORDS) {
+      if (object.length >= maxObjectWords) {
         i += 1;
         break;
       }
@@ -261,7 +290,7 @@ export function nameFromClause(words: readonly string[], verbIndex: number, verb
   while (object.length > 0 && TRAILING_STOP.has(object[object.length - 1]!.replace(/,$/, '').toLowerCase())) object.pop();
   if (object.length > 0) object[object.length - 1] = object[object.length - 1]!.replace(/,$/, '');
   const clauseWords = words.slice(verbIndex, Math.max(clauseEnd, verbIndex + 1));
-  const name = object.length > 0 ? `${verbPhrase} ${object.join(' ')}` : verbPhrase;
+  const name = balanced(object.length > 0 ? `${verbPhrase} ${object.join(' ')}` : verbPhrase);
   const nameWordCount = name.split(/\s+/).length;
   return {
     name,
@@ -333,7 +362,7 @@ export function nameFromPassive(words: readonly string[], participleIndex: numbe
   // determined" -> "Determine the meaning ..."). Content words keep their case: they may be defined terms.
   if (SUBJECT_DETERMINERS.has(subject[0]!.toLowerCase())) subject[0] = subject[0]!.toLowerCase();
   const objectWords = [...subject, ...pp];
-  const name = `${capitalize(verb)} ${objectWords.join(' ')}`;
+  const name = balanced(`${capitalize(verb)} ${objectWords.join(' ')}`);
   const clauseWords = words.slice(subjectEnd - subject.length, participleIndex + 1 + pp.length);
   return {
     name,

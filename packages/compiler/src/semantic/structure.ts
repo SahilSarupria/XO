@@ -24,7 +24,7 @@ import type {
   StructureEvidence,
   UnitStructure,
 } from './types.js';
-import { directiveOf, isImperative } from './directive.js';
+import { directiveOf, isImperative, isQuestion } from './directive.js';
 import { splitSentences } from '../capabilities/sentence-split.js';
 
 /** A section is routed only when its winning kind holds at least this share of the section's structural evidence. */
@@ -46,6 +46,8 @@ const HEADING_CUES: readonly { readonly kind: SectionKind; readonly pattern: Reg
   },
   { kind: 'form', pattern: /\b(?:form|brief|fill in|details to provide|questionnaire|intake)\b/i },
 ];
+
+const CHECKLIST_HEADING = HEADING_CUES.find((c) => c.kind === 'checklist')!.pattern;
 
 const STEP_HEADER = /^(?:steps?|actions?|tasks?|activit(?:y|ies)|what to do|procedure|instructions?|how)$/i;
 const ORDINAL_HEADER = /^(?:#|no\.?|nos?\.?|step\s*(?:#|no\.?)|sr\.?\s*no\.?|s\.?\s*no\.?|seq(?:uence)?|order)$/i;
@@ -153,6 +155,11 @@ function scoreSection(group: SectionGroup): { readonly scores: readonly Scored[]
   };
 
   let headerColumns: StepColumns | undefined;
+  const checklistHeading = group.heading !== undefined && CHECKLIST_HEADING.test(group.heading);
+  const topDepth = Math.min(
+    ...group.units.filter((u) => u.listKind !== undefined).map((u) => u.listItem?.depth ?? 0),
+    Number.MAX_SAFE_INTEGER,
+  );
   for (const unit of group.units) {
     if (unit.tableRow !== undefined) {
       if (unit.tableRow.header === undefined) {
@@ -172,17 +179,30 @@ function scoreSection(group: SectionGroup): { readonly scores: readonly Scored[]
     }
     if (unit.listKind !== undefined) {
       const item = unit.listItem;
+      if (isQuestion(unit.content)) {
+        add('reference', 1, unit.id, 'question', unit.content.slice(0, 60));
+        continue;
+      }
       if (item?.checkbox !== undefined) {
         add('checklist', 2, unit.id, 'checkbox-item', unit.content.slice(0, 60));
         continue;
       }
+      // UW-3c: the items of a list under a heading that names a checklist are its items, numbered or not.
+      if (checklistHeading) {
+        add('checklist', 2, unit.id, 'checklist-heading-item', unit.content.slice(0, 60));
+        continue;
+      }
       const guideline = guidelineOf(unit.content, item?.title, item?.body);
       const imperative = isImperative(unit.content);
-      if (item?.title !== undefined && guideline !== undefined) add('guideline', 2, unit.id, 'titled-rule', item.title);
-      else if (guideline?.modality === 'prohibition') add('guideline', 2, unit.id, 'prohibition', guideline.directive.slice(0, 60));
-      else if (unit.listKind === 'ordered' && imperative) add('procedure', 1.5, unit.id, 'ordered-instruction', unit.content.slice(0, 60));
-      else if (guideline !== undefined) add('guideline', 1, unit.id, 'instruction', guideline.directive.slice(0, 60));
-      else add('reference', 1, unit.id, 'list-item', unit.content.slice(0, 60));
+      const topLevel = (item?.depth ?? 0) <= topDepth;
+      const weight = topLevel ? 1 : 0.25; // an item nested under another says little about what the section is
+      if (item?.title !== undefined && guideline !== undefined) add('guideline', 2 * weight, unit.id, 'titled-rule', item.title);
+      else if (guideline?.modality === 'prohibition')
+        add('guideline', 2 * weight, unit.id, 'prohibition', guideline.directive.slice(0, 60));
+      else if (unit.listKind === 'ordered' && imperative && topLevel)
+        add('procedure', 1.5, unit.id, 'ordered-instruction', unit.content.slice(0, 60));
+      else if (guideline !== undefined) add('guideline', weight, unit.id, 'instruction', guideline.directive.slice(0, 60));
+      else add('reference', weight, unit.id, 'list-item', unit.content.slice(0, 60));
       continue;
     }
     // Prose: conditional rules point at policy, which stays with the existing extractors.
@@ -267,15 +287,29 @@ export function analyzeDocumentStructure(doc: ExperienceDocument): ExperienceDoc
     const best = scores[0];
     if (best === undefined || total === 0) continue;
     const confidence = round2(best.score / total);
-    const enoughUnits = best.kind === 'form' ? best.units >= MIN_FORM_FIELDS : best.units >= MIN_ROUTED_UNITS;
+    // A tick box is the author's own mark: one checkbox item is enough to read a checklist.
+    const boxedChecklist = best.kind === 'checklist' && best.evidence.some((e) => e.signal === 'checkbox-item');
+    const enoughUnits = best.kind === 'form' ? best.units >= MIN_FORM_FIELDS : best.units >= (boxedChecklist ? 1 : MIN_ROUTED_UNITS);
     const routed = ROUTABLE.has(best.kind) && confidence >= ROUTE_CONFIDENCE && enoughUnits;
     sections.push({ sectionPath: group.path, kind: best.kind, confidence, routed, evidence: best.evidence });
     if (!routed) continue;
 
     let columns: StepColumns | undefined;
     let fallbackOrdinal = 0;
-    for (const unit of group.units) {
+    const listUnits = group.units.filter((u) => u.listKind !== undefined);
+    const topDepth = Math.min(...listUnits.map((u) => u.listItem?.depth ?? 0), Number.MAX_SAFE_INTEGER);
+    const boxed = listUnits.some((u) => u.listItem?.checkbox !== undefined);
+    for (let ui = 0; ui < group.units.length; ui++) {
+      const unit = group.units[ui]!;
       const base = { sectionKind: best.kind };
+      // UW-3c: a question in a routed section asks; it is read as context, never a step, rule or criterion.
+      if (unit.listKind !== undefined && isQuestion(unit.content)) {
+        roles.set(unit.id, { ...base, role: 'context' });
+        continue;
+      }
+      const depth = unit.listItem?.depth ?? 0;
+      const nextUnit = group.units[ui + 1];
+      const hasChildren = nextUnit?.listKind !== undefined && (nextUnit.listItem?.depth ?? 0) > depth;
       if (best.kind === 'procedure') {
         if (unit.tableRow !== undefined && unit.tableRow.header === undefined) {
           columns = stepColumns(unit.tableRow.cells);
@@ -289,6 +323,15 @@ export function analyzeDocumentStructure(doc: ExperienceDocument): ExperienceDoc
             fallbackOrdinal = step.ordinal;
             roles.set(unit.id, { ...base, role: 'procedure_step', step });
           }
+          continue;
+        }
+        if (unit.listKind !== undefined && depth > topDepth) {
+          // An item nested under a step is guidance for that step: a rule when it states a directive, context otherwise.
+          const g = guidelineOf(unit.content, unit.listItem?.title, unit.listItem?.body);
+          roles.set(
+            unit.id,
+            g !== undefined ? { ...base, sectionKind: 'guideline', role: 'guideline', guideline: g } : { ...base, role: 'context' },
+          );
           continue;
         }
         if (unit.listKind === 'ordered' && isImperative(unit.content)) {
@@ -314,11 +357,27 @@ export function analyzeDocumentStructure(doc: ExperienceDocument): ExperienceDoc
         continue;
       }
       if (best.kind === 'checklist' && unit.listKind !== undefined) {
+        if (boxed && unit.listItem?.checkbox === undefined) {
+          // In a checklist of tick boxes, an item without a box is a group label or a note: a directive is a rule, the rest
+          // is context ("Protect matching branches", "Note: the list will not populate until ...").
+          const g = hasChildren ? undefined : guidelineOf(unit.content, unit.listItem?.title, unit.listItem?.body);
+          roles.set(
+            unit.id,
+            g !== undefined ? { ...base, sectionKind: 'guideline', role: 'guideline', guideline: g } : { ...base, role: 'context' },
+          );
+          continue;
+        }
         roles.set(unit.id, { ...base, role: 'acceptance_criterion' });
         continue;
       }
       if (best.kind === 'form' && unit.formFields !== undefined) roles.set(unit.id, { ...base, role: 'form_field' });
     }
+  }
+
+  // UW-3c: a list item that is only a question is never a rule or an action, in any section, routed or not.
+  for (const unit of doc.units) {
+    if (!roles.has(unit.id) && unit.listKind !== undefined && isQuestion(unit.content))
+      roles.set(unit.id, { sectionKind: 'reference', role: 'context' });
   }
 
   // An acceptance criterion applies to the document's procedure when there is exactly one.
