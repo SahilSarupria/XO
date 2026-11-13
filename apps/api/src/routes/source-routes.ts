@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_CHUNK_BYTES, UploadSessionStore, type UploadSession } from '../sources/upload-sessions.js';
 import { MimeError, parseEmail, tabularFromCsv, tabularFromXlsx } from '@xo/compiler';
 import { ErrorCode, XoError } from '@xo/errors';
 import type { Router } from '../http/router.js';
@@ -10,6 +11,7 @@ import {
   requirePermission,
   requireOwnedWorkspace,
   workspaceSourcesStore,
+  workspaceUploadsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
@@ -77,6 +79,27 @@ export interface SourceRouteOptions {
   readonly fetchDeps?: { readonly lookup?: LookupFn; readonly transport?: TransportFn };
 }
 
+/**
+ * A filename is metadata, never a path: anything that even looks like it is smuggling a directory component is refused, and only
+ * supported extensions are accepted. Shared by single-request and resumable uploads.
+ */
+function acceptedFilename(raw: string | null | undefined): { filename: string; extension: string } {
+  if (raw === null || raw === undefined || raw.trim().length === 0) {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "filename" (the original filename) is required');
+  }
+  if (raw.includes('/') || raw.includes('\\') || raw.includes('..')) {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename" must not contain path separators or ".."');
+  }
+  const extension = extname(raw).toLowerCase();
+  if (!SUPPORTED_EXTENSIONS.has(extension)) {
+    throw new XoError(
+      ErrorCode.INVALID_ARGUMENT,
+      `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`,
+    );
+  }
+  return { filename: raw, extension };
+}
+
 export function registerSourceRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -89,27 +112,7 @@ export function registerSourceRoutes(
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'upload source' });
 
-    const filename = req.query.get('filename');
-    if (filename === null || filename.trim().length === 0) {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "filename" (the original filename) is required');
-    }
-    // A filename is metadata, never a path: reject anything that even
-    // looks like it's trying to smuggle a directory component, and
-    // normalize to its base name regardless, so nothing derived from it
-    // (nothing IS, today — see the doc comment above — but this keeps
-    // that guarantee true even if a future change starts using it) could
-    // ever be interpreted as a path.
-    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename" must not contain path separators or ".."');
-    }
-
-    const extension = extname(filename).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      throw new XoError(
-        ErrorCode.INVALID_ARGUMENT,
-        `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`,
-      );
-    }
+    const { filename, extension } = acceptedFilename(req.query.get('filename'));
 
     const bytes = await req.rawBody();
     if (bytes.length === 0) {
@@ -330,6 +333,78 @@ export function registerSourceRoutes(
     });
     return { status: 204 };
   }
+
+  // ── UW-3: resumable uploads ─────────────────────────────────────────────────────────────────────────────────────
+  async function uploadContext(req: ApiRequest) {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'upload source' });
+    return { workspace, sessions: new UploadSessionStore(workspaceUploadsStore(workspace, dataConfig)), identityId: callerIdentityId(req) };
+  }
+  const sessionWire = (s: UploadSession) => ({
+    uploadId: s.uploadId,
+    filename: s.filename,
+    size: s.size,
+    offset: s.offset,
+    expiresAt: s.expiresAt,
+    maxChunkBytes: MAX_UPLOAD_CHUNK_BYTES,
+  });
+
+  async function openUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    const parsed = await req.json<{ filename?: unknown; size?: unknown; sha256?: unknown; mediaType?: unknown }>();
+    if (!parsed.ok) throw parsed.error;
+    const body = parsed.value ?? {};
+    const { filename, extension } = acceptedFilename(typeof body.filename === 'string' ? body.filename : undefined);
+    const size = body.size;
+    if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_UPLOAD_BYTES) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, `"size" must be the file's size in bytes, 1 to ${MAX_UPLOAD_BYTES}`);
+    }
+    const sha256 = body.sha256;
+    if (sha256 !== undefined && (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256))) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"sha256" must be 64 lower-case hex characters');
+    }
+    const mediaType = inferMediaType(extension, typeof body.mediaType === 'string' ? body.mediaType : undefined);
+    const session = await sessions.open({ identityId, filename, extension, mediaType, size, ...(sha256 !== undefined ? { sha256 } : {}) });
+    return json(201, sessionWire(session));
+  }
+
+  async function uploadStatus(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    return json(200, sessionWire(await sessions.get(req.params['uploadId'] ?? '', identityId)));
+  }
+
+  async function uploadChunk(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    const session = await sessions.get(req.params['uploadId'] ?? '', identityId);
+    const offset = Number(req.query.get('offset'));
+    if (req.query.get('offset') === null || !Number.isInteger(offset) || offset < 0) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "offset" (where this chunk starts) is required');
+    }
+    const bytes = await req.rawBody();
+    return json(200, sessionWire(await sessions.append(session, offset, new Uint8Array(bytes))));
+  }
+
+  async function completeUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { workspace, sessions, identityId } = await uploadContext(req);
+    const session = await sessions.get(req.params['uploadId'] ?? '', identityId);
+    const bytes = await sessions.assemble(session);
+    // The same door as a single-request upload: same checks, same parsing, same audit entry.
+    const created = await storeSource(req, workspace, session.filename, session.extension, session.mediaType, bytes, { kind: 'upload' });
+    await sessions.remove(session);
+    return json(201, toWireRecord(created));
+  }
+
+  async function cancelUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    await sessions.remove(await sessions.get(req.params['uploadId'] ?? '', identityId));
+    return json(200, { cancelled: true });
+  }
+
+  router.post('/workspaces/:workspaceId/uploads', guarded(openUpload));
+  router.get('/workspaces/:workspaceId/uploads/:uploadId', guarded(uploadStatus));
+  router.put('/workspaces/:workspaceId/uploads/:uploadId', guarded(uploadChunk));
+  router.post('/workspaces/:workspaceId/uploads/:uploadId/complete', guarded(completeUpload));
+  router.delete('/workspaces/:workspaceId/uploads/:uploadId', guarded(cancelUpload));
 
   router.post('/workspaces/:workspaceId/sources', guarded(upload));
   router.post('/workspaces/:workspaceId/sources/import', guarded(importFromUrl));

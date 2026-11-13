@@ -36,6 +36,8 @@ import {
   type Workspace,
   type WorkspaceRole,
   str,
+  obj,
+  num,
 } from './wire';
 import {
   parseDecisionAck,
@@ -182,7 +184,18 @@ export interface XoClientOptions {
   /** Per-request bearer source (OIDC access token, refreshed as needed). */
   readonly bearer?: () => Promise<AuthResult<string>>;
   readonly fetch?: FetchLike;
+  /** Test seam: how the client waits between upload retries. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
+
+/**
+ * UW-3 — files larger than this are sent as a resumable upload: verified chunks that carry on from the server's offset after a dropped
+ * connection, instead of starting the whole file again (the usual case on a phone network). Smaller files use one request.
+ */
+export const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 4 * 1024 * 1024;
+const UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024;
+/** Consecutive failed attempts at one chunk before the upload gives up (the session stays resumable on the server for a day). */
+const UPLOAD_MAX_ATTEMPTS = 6;
 
 /** Extensions the API accepts at upload (apps/api/src/sources/source.ts SUPPORTED_EXTENSIONS). */
 export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = [
@@ -207,8 +220,10 @@ export class XoClient {
   private readonly baseUrl: string;
   private readonly bearer: () => Promise<AuthResult<string>>;
   private readonly doFetch: FetchLike;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(opts: XoClientOptions) {
+    this.sleep = opts.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.baseUrl = (opts.baseUrl ?? '/api').replace(/\/$/, '');
     const key = opts.apiKey;
     if (opts.bearer !== undefined) this.bearer = opts.bearer;
@@ -674,12 +689,59 @@ export class XoClient {
   listSources(ws: string): Promise<Result<Source[]>> {
     return this.call('GET', `/workspaces/${enc(ws)}/sources`, parseSourceList);
   }
-  async uploadSource(ws: string, file: File): Promise<Result<Source>> {
+  async uploadSource(ws: string, file: File, onProgress?: (sentBytes: number, totalBytes: number) => void): Promise<Result<Source>> {
     const buf = await readBytes(file);
+    if (buf.byteLength > RESUMABLE_UPLOAD_THRESHOLD_BYTES) return this.uploadResumable(ws, file, buf, onProgress);
     return this.call('POST', `/workspaces/${enc(ws)}/sources?filename=${encodeURIComponent(file.name)}`, (b) => parseSource(b), {
       body: buf,
       ...(file.type.length > 0 ? { contentType: file.type } : {}),
     });
+  }
+
+  /**
+   * UW-3 — chunked upload that resumes from the server's offset. A network failure or a server error waits and retries (asking the
+   * server where it got to first, since a chunk may have arrived even though its response did not); a refusal (bad type, bad file,
+   * checksum mismatch) stops at once. The file's SHA-256 is declared up front, so the server verifies what it assembled.
+   */
+  private async uploadResumable(
+    ws: string,
+    file: File,
+    buffer: ArrayBuffer,
+    onProgress?: (sentBytes: number, totalBytes: number) => void,
+  ): Promise<Result<Source>> {
+    const base = `/workspaces/${enc(ws)}/uploads`;
+    const bytes = new Uint8Array(buffer);
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', buffer);
+    const sha256 = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const opened = await this.call('POST', base, parseUploadSession, {
+      ...this.json({ filename: file.name, size: bytes.byteLength, sha256, ...(file.type.length > 0 ? { mediaType: file.type } : {}) }),
+    });
+    if (!opened.ok) return opened;
+    const session = opened.value;
+    let offset = session.offset;
+    let attempts = 0;
+    const transient = (kind: ProblemKind) => kind === 'network' || kind === 'server' || kind === 'unavailable';
+    while (offset < bytes.byteLength) {
+      const end = Math.min(offset + Math.min(UPLOAD_CHUNK_BYTES, session.maxChunkBytes), bytes.byteLength);
+      const sent = await this.call('PUT', `${base}/${enc(session.uploadId)}?offset=${offset}`, parseUploadSession, {
+        body: bytes.slice(offset, end),
+        contentType: 'application/octet-stream',
+      });
+      if (sent.ok) {
+        offset = sent.value.offset;
+        attempts = 0;
+        onProgress?.(offset, bytes.byteLength);
+        continue;
+      }
+      const offsetMoved = sent.problem.status === 412;
+      if (!offsetMoved && !transient(sent.problem.kind)) return sent;
+      if (!offsetMoved && ++attempts >= UPLOAD_MAX_ATTEMPTS) return sent;
+      if (!offsetMoved) await this.sleep(Math.min(30_000, 500 * 2 ** (attempts - 1)));
+      const where = await this.call('GET', `${base}/${enc(session.uploadId)}`, parseUploadSession);
+      if (where.ok) offset = where.value.offset;
+      else if (!transient(where.problem.kind)) return where;
+    }
+    return this.call('POST', `${base}/${enc(session.uploadId)}/complete`, (b) => parseSource(b));
   }
 
   // ---- registry (read-only). The registry has no "list everything" route: it answers a search, or one package.
@@ -863,4 +925,21 @@ function readBytes(file: Blob): Promise<ArrayBuffer> {
     reader.onerror = () => reject(reader.error ?? new Error('unreadable file'));
     reader.readAsArrayBuffer(file);
   });
+}
+
+interface UploadSessionWire {
+  readonly uploadId: string;
+  readonly offset: number;
+  readonly size: number;
+  readonly maxChunkBytes: number;
+}
+
+function parseUploadSession(v: unknown): UploadSessionWire {
+  const o = obj(v, 'body');
+  return {
+    uploadId: str(o['uploadId'], 'uploadId'),
+    offset: num(o['offset'], 'offset'),
+    size: num(o['size'], 'size'),
+    maxChunkBytes: num(o['maxChunkBytes'], 'maxChunkBytes'),
+  };
 }

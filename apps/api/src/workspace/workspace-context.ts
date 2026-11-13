@@ -159,6 +159,11 @@ export function workspaceSourcesStore(record: WorkspaceRecord, config: Workspace
  * from the others: "compilation records and results" is a distinct
  * concern from "raw uploaded sources awaiting compilation".
  */
+/** UW-3 — unfinished resumable uploads (chunks and session records); removed on completion, cancellation or expiry. */
+export function workspaceUploadsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'uploads'));
+}
+
 export function workspaceCompilationsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'compilations'));
 }
