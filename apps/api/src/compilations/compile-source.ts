@@ -1,7 +1,7 @@
 import { compileSources, discoverAndResolveCapabilities } from '@xo/compiler';
 import { nodesOfKind, toJson, type XoirNode, type CapabilityNodeProps } from '@xo/xoir';
 import { XoError, ErrorCode } from '@xo/errors';
-import type { CompilationStore, CapabilityProjection } from './compilation.js';
+import type { CompilationStore, CapabilityProjection, CompilationSourceReport } from './compilation.js';
 import type { SourceRecord } from '../sources/source.js';
 import { buildCompilerSourceInput } from './source-input-adapter.js';
 
@@ -88,7 +88,34 @@ export async function compileSourceRecord(
       };
     });
 
+    const report = compiled.value.sources[0];
+    const sourceReport: CompilationSourceReport | undefined =
+      report === undefined
+        ? undefined
+        : {
+            ...(report.qualityState !== undefined ? { qualityState: report.qualityState } : {}),
+            ...(report.coverage !== undefined
+              ? {
+                  coverage: {
+                    totalPages: report.coverage.totalPages,
+                    extractedPages: report.coverage.extractedPages,
+                    ocrPages: report.coverage.ocrPages,
+                    excludedPages: report.coverage.excludedPages,
+                    unaccountedPages: report.coverage.unaccountedPages,
+                    complete: report.coverage.complete,
+                  },
+                }
+              : {}),
+            kindProposals: (report.kindProposals ?? []).map((p) => ({
+              kind: p.kind,
+              label: p.label,
+              score: p.score,
+              status: p.status,
+              evidence: p.evidence.map((e) => ({ cue: e.cue, matched: e.matched, where: e.where })),
+            })),
+          };
     await store.markSucceeded(compilationId, {
+      ...(sourceReport !== undefined ? { sourceReport } : {}),
       capabilities,
       discoveredCount: resolved.value.discoveredCount,
       resolvedCount: resolved.value.resolvedCount,

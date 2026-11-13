@@ -85,6 +85,7 @@ test('the default registry has every built-in frontend registered', () => {
   assert.deepEqual([...registry.sourceTypes()].sort(), [
     'document',
     'docx',
+    'eml',
     'html',
     'image',
     'openapi',

@@ -2,6 +2,17 @@ export interface Provenance {
   readonly page: number;
   /** Approximate bounding y-range (PDF user-space units, origin bottom-left) this block occupied — top (higher y) first. */
   readonly yRange: readonly [number, number];
+  /**
+   * UW-3 — present when the text was NOT read from the page's own text layer but recovered (OCR, vision): which tier recovered it, at
+   * what confidence, and its cost class. Absent = read directly. It travels with the block into every unit built from it, so a claim
+   * resting on recovered text can be told apart (and held to review) everywhere downstream.
+   */
+  readonly textSource?: {
+    readonly kind: 'recovered';
+    readonly tier: string;
+    readonly confidence: number;
+    readonly costClass?: 'free' | 'local' | 'model';
+  };
 }
 
 /** A structured field's literal value, preserved without interpretation. CSV cells are always `string` (CSV has no native typing). A nested JSON object/array value is NOT recursively preserved here — it arrives already collapsed to a string by the structured frontend's existing `fieldToText` behavior. */

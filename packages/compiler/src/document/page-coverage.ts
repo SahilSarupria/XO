@@ -6,9 +6,9 @@ import type { Diagnostic } from '@xo/xoir';
  * Every page of a paginated source ends in exactly one of four states:
  *
  * - `extracted`   its text was read and fed to the compiler.
- * - `ocr`         its text was recovered by an OCR engine and fed to the compiler. No OCR engine
- *                 ships today, so nothing produces this state yet; the ledger carries it so an OCR
- *                 stage can be added without changing any consumer.
+ * - `ocr`         its text was recovered by a recovery tier (OCR, a second reader, vision; see
+ *                 `../extraction/`) and fed to the compiler. Every block from such a page carries
+ *                 the tier and confidence in its provenance (`Provenance.textSource`, UW-3).
  * - `excluded`    the page was deliberately left out for a recorded, reviewable reason. Only
  *                 reasons that provably carry no content qualify (see `EXCLUDABLE_REASONS`).
  * - `unaccounted` the page may carry content that the compiler did NOT read, or its fate is

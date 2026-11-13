@@ -574,3 +574,25 @@ test('UW-3 upload .eml: the message is read at the door, attachments are listed 
     assert.match(notEmail.bodyText, /cannot read this \.eml: it has no email headers/);
   });
 });
+
+test('UW-3 compile: the compilation record carries the source report — quality, page accounting and proposed document kinds', async () => {
+  await withServer({}, async ({ server, base }) => {
+    const up = await server.request(
+      'POST',
+      `${base}/sources?filename=certificate-asha.txt`,
+      Buffer.from('Certificate of Insurance\n\nThis is to certify that Asha Rao holds policy P-9. Valid until 31 March 2027.'),
+    );
+    assert.equal(up.status, 201, up.bodyText);
+    const compiled = await server.request('POST', `${base}/sources/${up.json<{ sourceId: string }>().sourceId}/compile`);
+    const rec = compiled.json<{
+      status: string;
+      compilationId: string;
+      sourceReport?: { qualityState?: string; kindProposals: { kind: string; status: string; evidence: { where: string }[] }[] };
+    }>();
+    assert.equal(rec.status, 'succeeded', compiled.bodyText);
+    assert.equal(rec.sourceReport?.kindProposals[0]?.kind, 'certificate');
+    assert.equal(rec.sourceReport?.kindProposals[0]?.status, 'proposed');
+    const again = (await server.request('GET', `${base}/compilations/${rec.compilationId}`)).json<{ sourceReport?: unknown }>();
+    assert.deepEqual(again.sourceReport, rec.sourceReport, 'stored with the record');
+  });
+});
