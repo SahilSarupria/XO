@@ -43,6 +43,12 @@ export interface LoadedPdfDocument {
   readonly metadata: PdfMetadata;
   readonly pages: readonly LoadedPdfPage[];
   readonly pageCount: number;
+  /**
+   * UW-3 — set when this "document" is a single photographed or scanned IMAGE wrapped as one page so the same recovery tiers can read
+   * it (`../extraction/image-document.ts`). The bytes handed to tiers are then the image itself, not a PDF; only tiers that declare
+   * `acceptsImages` are offered it.
+   */
+  readonly sourceImage?: { readonly mimeType: string; readonly width?: number; readonly height?: number };
 }
 
 /** Stage 1 of the compiler pipeline: PDF -> plain text (+ positioned text runs + provenance), per this package's README. */

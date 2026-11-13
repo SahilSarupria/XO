@@ -21,6 +21,7 @@ import type { ConnectService } from '@xo/connect';
 import type { PermissionPolicy } from '@xo/permissions';
 import { createAuthorizationPoint, type AuthorizationPoint } from './auth/authorization-point.js';
 import { parseStepUpMaxAgeMinutes } from './auth/step-up.js';
+import { extractionFromEnv, type CompileExtraction } from './compilations/extraction-tiers.js';
 import { auditAnchorSinkFromEnv, type AuditAnchorSink } from './audit/anchor.js';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
@@ -97,6 +98,8 @@ export interface ServerDeps {
   readonly authorization?: AuthorizationPoint;
   /** UW-1 — where workspace audit chain heads are anchored. Default: a file sink in `XO_AUDIT_ANCHOR_DIR`, or none. */
   readonly auditAnchor?: AuditAnchorSink;
+  /** UW-3 — how compiles read pages and photos with no text layer. Default: `extractionFromEnv` (local OCR on, vision off). */
+  readonly extraction?: CompileExtraction;
   /** UW-1 — minutes within which a person must have signed in to approve or change membership (0 = off). Default `XO_API_STEP_UP_MAX_AGE_MINUTES` or 15. */
   readonly stepUpMaxAgeMinutes?: number;
   /**
@@ -249,6 +252,8 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
     packageTrustPolicy,
     ...(auditAnchor !== undefined ? { auditAnchor } : {}),
+    // UW-3: local OCR for scans and photos by default; throws on invalid configuration so startup fails visibly.
+    extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env),
   };
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();

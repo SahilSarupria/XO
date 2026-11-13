@@ -29,6 +29,41 @@ export interface CompilationRecord {
   /** Present only when `status === 'failed'` — always an existing `@xo/errors` `ErrorCode`, never an invented one (see the completion report's "error/status behavior"). */
   readonly errorCode?: string;
   readonly errorMessage?: string;
+  /** UW-3 — what the compiler reported about the source itself (succeeded compilations compiled from UW-3 on). */
+  readonly sourceReport?: CompilationSourceReport;
+}
+
+/**
+ * UW-3 — the compiler's account of the source: its quality state, page accounting (pages read, recovered, left unread), and the
+ * document kinds it PROPOSES with their evidence. Kinds are proposals: a person confirms one; nothing treats them as fact.
+ */
+export interface CompilationSourceReport {
+  readonly qualityState?: string;
+  readonly coverage?: {
+    readonly totalPages: number;
+    readonly extractedPages: number;
+    readonly ocrPages: number;
+    readonly excludedPages: number;
+    readonly unaccountedPages: number;
+    readonly complete: boolean;
+  };
+  /**
+   * UW-3 — pages or photos with no text layer that were read by OCR/vision: how many needed it, how many were read, by which tiers and
+   * at what cost. Absent when nothing needed reading.
+   */
+  readonly textRecovery?: {
+    readonly pagesNeedingRecovery: number;
+    readonly pagesRecovered: number;
+    readonly tiers: readonly { readonly tier: string; readonly attempts: number; readonly recovered: number; readonly costUsd: number }[];
+    readonly totalCostUsd: number;
+  };
+  readonly kindProposals: readonly {
+    readonly kind: string;
+    readonly label: string;
+    readonly score: number;
+    readonly status: 'proposed';
+    readonly evidence: readonly { readonly cue: string; readonly matched: string; readonly where: string }[];
+  }[];
 }
 
 /**
@@ -75,6 +110,7 @@ export interface CreateCompilationInput {
 
 export interface CompilationSuccessInput {
   readonly capabilities: readonly CapabilityProjection[];
+  readonly sourceReport?: CompilationSourceReport;
   readonly discoveredCount: number;
   readonly resolvedCount: number;
   /**

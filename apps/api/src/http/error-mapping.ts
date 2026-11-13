@@ -223,6 +223,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUTH_KEY_REVOKED]: 401,
   [ErrorCode.AUTH_KEY_EXPIRED]: 401,
   [ErrorCode.AUTH_STEP_UP_REQUIRED]: 401,
+  [ErrorCode.UPLOAD_SESSION_LIMIT]: 429,
+  [ErrorCode.UPLOAD_INTEGRITY_FAILED]: 422,
   // OIDC bearer tokens: credential problems are 401. A provider outage is
   // 503, not 401 — the request is still refused (fail closed), but a client
   // must not conclude its session is invalid and discard its credentials.

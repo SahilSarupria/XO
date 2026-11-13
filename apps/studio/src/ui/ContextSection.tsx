@@ -190,6 +190,7 @@ export function ContextSection(props: {
                 <h3 title={s.originalFilename}>{s.originalFilename}</h3>
                 <p className="muted small">
                   {formatBytes(s.byteSize)} · added {formatWhen(s.createdAt)}
+                  {s.fromEmail !== undefined ? <> · attached to {s.fromEmail.emailFilename}</> : null}
                   {mode === 'builder' ? (
                     <span className="mono">
                       {' '}

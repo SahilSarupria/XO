@@ -220,6 +220,10 @@ export const ErrorCode = {
   AUTH_KEY_EXPIRED: 'XO_AUTH_KEY_EXPIRED',
   /** UW-1: the action needs a recent sign-in (step-up re-authentication). */
   AUTH_STEP_UP_REQUIRED: 'XO_AUTH_STEP_UP_REQUIRED',
+  /** UW-3: too many unfinished resumable uploads for one identity. */
+  UPLOAD_SESSION_LIMIT: 'XO_UPLOAD_SESSION_LIMIT',
+  /** UW-3: the assembled upload does not match the SHA-256 its client declared. */
+  UPLOAD_INTEGRITY_FAILED: 'XO_UPLOAD_INTEGRITY_FAILED',
 
   // OIDC bearer-token authentication (apps/api src/auth/oidc). Deliberately
   // coarse: TOKEN_INVALID covers every verification failure (signature,
