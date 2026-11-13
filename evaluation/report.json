@@ -1,0 +1,703 @@
+{
+  "format": "xo-evaluation/1",
+  "run": {
+    "node": "22",
+    "suites": [
+      "document-kinds",
+      "egress-boundary",
+      "injection-corpus",
+      "intelligence-oracle",
+      "tabular-reading"
+    ]
+  },
+  "suites": [
+    {
+      "suite": "document-kinds",
+      "title": "Proposing what kind of document a source is",
+      "uac": [
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "document-kinds",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 37,
+          "contentHash": "ae35ea7a81e41ce71eaf1ced4205b4289460c7bd4e4746e639b204e33a4b8edf",
+          "description": "Short synthetic documents, four or five per kind in the default cue pack plus four that should get no kind. Labelled by hand when the set was written (UW-13); file names carry no cue, so only the content decides."
+        }
+      ],
+      "measures": [
+        {
+          "id": "document-kinds/top1-accuracy",
+          "title": "Right kind proposed first",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 33,
+          "denominator": 33
+        },
+        {
+          "id": "document-kinds/abstention",
+          "title": "No kind proposed when none applies",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 4,
+          "denominator": 4
+        },
+        {
+          "id": "document-kinds/certificate-precision",
+          "title": "Certificate precision",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 5,
+          "denominator": 5
+        },
+        {
+          "id": "document-kinds/certificate-recall",
+          "title": "Certificate recall",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 5,
+          "denominator": 5
+        }
+      ],
+      "notes": [],
+      "limits": [
+        "A small synthetic set written with the cue pack in view; it shows the mechanism works, not how it does on real documents.",
+        "Kinds are proposals for a person to confirm, never decisions; this measures the proposal only."
+      ]
+    },
+    {
+      "suite": "egress-boundary",
+      "title": "Keeping real values out of model requests",
+      "uac": [
+        "UAC-24",
+        "UAC-25"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "egress-random-tables",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 200,
+          "contentHash": "f643b0b122e79416b9e89670910f92eabf4c05949059e24ecc62a6bbd2f63372",
+          "description": "Seeded random tables of names, ids, emails and PAN-shaped values."
+        }
+      ],
+      "measures": [
+        {
+          "id": "egress-boundary/leaked-values",
+          "title": "Real cell values found in a typed request",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0,
+          "denominator": 9922
+        },
+        {
+          "id": "egress-boundary/strict-local-hosted-calls",
+          "title": "Hosted calls reaching the provider in strict_local",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0,
+          "denominator": 50
+        }
+      ],
+      "notes": [],
+      "limits": [
+        "Covers the schema-descriptor and synthetic-record channels only. The canary test across every input channel (cells, file and folder names, PDF text, prompts, error paths) is UW-14e (UAC-24).",
+        "Measures the boundary in-process; network capture of the running instance is in apps/api/test/residency.test.ts."
+      ]
+    },
+    {
+      "suite": "injection-corpus",
+      "title": "Prompt injection in documents",
+      "uac": [
+        "UAC-17"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "injection-corpus",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 8,
+          "contentHash": "7661bfd520df1d56e7e4fb1aaa36999036c03e2933ee46bfec8173c1b613163a",
+          "description": "specs/security/injection-corpus.json (UW-1)."
+        }
+      ],
+      "measures": [
+        {
+          "id": "injection-corpus/structural-checks",
+          "title": "Structural checks passing across compiler, intelligence and workflow runtime",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 6,
+          "denominator": 6
+        }
+      ],
+      "notes": [],
+      "limits": [
+        "Structural checks: where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a person. How often a live model is misled is not measured here.",
+        "Chat as an injection channel is covered by the intelligence suite’s security items, not by this corpus."
+      ]
+    },
+    {
+      "suite": "intelligence-oracle",
+      "title": "Customer intelligence, with a stand-in model",
+      "uac": [
+        "UAC-17",
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "intelligence-dataset",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 93,
+          "contentHash": "4b01500ce2301829a0a99d772ed6083969ea019a49f388d73f1cf662b7b1c5aa",
+          "description": "The intelligence evaluation dataset and fixture corpus (packages/intelligence-eval)."
+        }
+      ],
+      "measures": [
+        {
+          "id": "intelligence-oracle/ask",
+          "title": "Ask items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 18,
+          "denominator": 18
+        },
+        {
+          "id": "intelligence-oracle/evidence",
+          "title": "Evidence items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 8,
+          "denominator": 8
+        },
+        {
+          "id": "intelligence-oracle/retrieval",
+          "title": "Retrieval items passing (6 known limits excluded)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": null,
+          "numerator": 0,
+          "denominator": 0
+        },
+        {
+          "id": "intelligence-oracle/decide",
+          "title": "Decide items passing (3 known limits excluded)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 7,
+          "denominator": 7
+        },
+        {
+          "id": "intelligence-oracle/uncertainty",
+          "title": "Uncertainty items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 10,
+          "denominator": 10
+        },
+        {
+          "id": "intelligence-oracle/routing",
+          "title": "Routing items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 16,
+          "denominator": 16
+        },
+        {
+          "id": "intelligence-oracle/security",
+          "title": "Security items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 11,
+          "denominator": 11
+        },
+        {
+          "id": "intelligence-oracle/feedback",
+          "title": "Feedback items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 6,
+          "denominator": 6
+        },
+        {
+          "id": "intelligence-oracle/do",
+          "title": "Do items passing",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 8,
+          "denominator": 8
+        },
+        {
+          "id": "intelligence-oracle/restricted-leaks",
+          "title": "Restricted content reaching an answer or a prompt",
+          "unit": "count",
+          "better": "lower",
+          "value": 0
+        }
+      ],
+      "notes": [
+        "Failing items: ret-01 (known limit), ret-04 (known limit), ret-05 (known limit), dec-01 (known limit), dec-02 (known limit), dec-09 (known limit)."
+      ],
+      "limits": [
+        "Oracle mode: the answers come from a deterministic stand-in. Live-model evaluation (Q1) runs through `npm run eval -w @xo/intelligence-eval -- --mode live` and is not part of this report.",
+        "A synthetic organisation; no real customer corpus."
+      ]
+    },
+    {
+      "suite": "tabular-reading",
+      "title": "Reading workbooks and CSV files",
+      "uac": [
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "tabular-labelled-corpus",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 170,
+          "contentHash": "e01cdda0c0dfe902d5c0fc87d461299b2bddbb09e361cfd859a35cbac75cf8a3",
+          "description": "Seeded synthetic tables (packages/compiler/test/tabular/labelled-corpus.ts): clean, titled, typed edge cases, headerless and known-hard."
+        }
+      ],
+      "measures": [
+        {
+          "id": "tabular-reading/header-accuracy",
+          "title": "Header row found",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9705882352941176,
+          "numerator": 165,
+          "denominator": 170
+        },
+        {
+          "id": "tabular-reading/column-type-accuracy",
+          "title": "Column type right",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9867724867724867,
+          "numerator": 746,
+          "denominator": 756
+        },
+        {
+          "id": "tabular-reading/record-count-accuracy",
+          "title": "Record count right",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9705882352941176,
+          "numerator": 165,
+          "denominator": 170
+        },
+        {
+          "id": "tabular-reading/designed-cases-exact",
+          "title": "Tables read exactly, excluding the known-hard category",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 160,
+          "denominator": 160
+        }
+      ],
+      "notes": [
+        "Missed: textlist0 (known-hard), textlist1 (known-hard), textlist2 (known-hard), textlist3 (known-hard), textlist4 (known-hard)."
+      ],
+      "limits": [
+        "Synthetic tables generated from templates. Real customer workbooks (UW-13 real sets) are not measured yet.",
+        "Headerless lists of plain text are taken as having a header; no reader can tell \"Asha, Pune\" from \"Name, City\" without knowing names."
+      ]
+    }
+  ],
+  "thresholds": [
+    {
+      "measure": "tabular-reading/header-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 0.9705882352941176,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "tabular-reading/column-type-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.97",
+      "value": 0.9867724867724867,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "tabular-reading/record-count-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 0.9705882352941176,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "tabular-reading/designed-cases-exact",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "document-kinds/top1-accuracy",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "document-kinds/abstention",
+      "status": "proposed",
+      "bound": "≥ 0.75",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "document-kinds/certificate-precision",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "document-kinds/certificate-recall",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "egress-boundary/leaked-values",
+      "status": "proposed",
+      "bound": "≤ 0",
+      "value": 0,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "egress-boundary/strict-local-hosted-calls",
+      "status": "proposed",
+      "bound": "≤ 0",
+      "value": 0,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/security",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/feedback",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/do",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/routing",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/ask",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/evidence",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/decide",
+      "status": "proposed",
+      "bound": "≥ 0.8",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/uncertainty",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "intelligence-oracle/retrieval",
+      "status": "proposed",
+      "bound": "≥ 0.8",
+      "outcome": "no-cases"
+    },
+    {
+      "measure": "intelligence-oracle/restricted-leaks",
+      "status": "proposed",
+      "bound": "≤ 0",
+      "value": 0,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "injection-corpus/structural-checks",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    }
+  ],
+  "register": {
+    "problems": [],
+    "pilotBlocking": 10,
+    "pilotBlockers": [
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R6",
+      "R10",
+      "R11",
+      "R12",
+      "R13",
+      "R17"
+    ],
+    "byStatus": {
+      "open": 11,
+      "in_progress": 6,
+      "closed": 1,
+      "accepted": 0
+    },
+    "items": [
+      {
+        "id": "R1",
+        "title": "Model egress: what customer data reaches which model provider",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-14) and owner with counsel (D-J)",
+        "status": "in_progress",
+        "evidence": [
+          "docs/adr/0019-hosted-model-terms.md",
+          "docs/adr/0020-path-level-model-policy.md",
+          "docs/RESIDENCY.md"
+        ],
+        "next": "UW-14c to 14e (known-value masking, tokens, leak guard, canary test) in wave W2; provider terms review and processing agreement by owner and counsel (14f)."
+      },
+      {
+        "id": "R2",
+        "title": "Isolation between customers",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-17) and owner (D-G)",
+        "status": "in_progress",
+        "evidence": [
+          "docs/adr/0016-one-instance-per-customer.md",
+          "docs/INSTANCE.md"
+        ],
+        "next": "One instance per customer is packaged (UW-17 W1); the per-customer deployment template is W5; isolation test matrix."
+      },
+      {
+        "id": "R3",
+        "title": "Single sign-on for the customer's people",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-1, UW-12)",
+        "status": "in_progress",
+        "evidence": [
+          "apps/api/src/auth/oidc",
+          "docs/studio/GOOGLE_SIGNIN_RUNBOOK.md"
+        ],
+        "next": "OIDC bearer tokens and Google sign-in exist; the customer's own identity provider (Microsoft, generic OIDC/SAML) for people is not done."
+      },
+      {
+        "id": "R4",
+        "title": "Retention and erasure",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-1, UW-14, UW-17) and owner",
+        "status": "in_progress",
+        "evidence": [
+          "docs/audit-operations.md",
+          "docs/INSTANCE.md"
+        ],
+        "next": "Audit purge and verified instance erasure exist; token-map erasure with the workflow is UW-14d; a written retention procedure is the owner's (14f)."
+      },
+      {
+        "id": "R5",
+        "title": "Audit integrity",
+        "pilotBlocking": false,
+        "owner": "engineering (UW-1)",
+        "status": "in_progress",
+        "evidence": [
+          "docs/baseline/UW1_RECORD.md",
+          "docs/audit-operations.md"
+        ],
+        "next": "Workspace logs are chained and anchored; the instance-level platform log is still unchained (accepted P1.0 limitation)."
+      },
+      {
+        "id": "R6",
+        "title": "Deployment",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-17)",
+        "status": "in_progress",
+        "evidence": [
+          "docs/INSTANCE.md",
+          "Dockerfile",
+          "compose.yaml"
+        ],
+        "next": "Production image, compose file and smoke test exist (W1); provider-neutral deployment template is W5."
+      },
+      {
+        "id": "R7",
+        "title": "Backup, restore and upgrade guide",
+        "pilotBlocking": false,
+        "owner": "engineering (UW-17)",
+        "status": "closed",
+        "evidence": [
+          "docs/INSTANCE.md",
+          "packages/instance"
+        ],
+        "next": "Revisit with the cloud template (W5)."
+      },
+      {
+        "id": "R8",
+        "title": "Title not recorded in the plan text",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Confirm the title and scope from the A1 audit.",
+        "titleUnconfirmed": true
+      },
+      {
+        "id": "R9",
+        "title": "Title not recorded in the plan text",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Confirm the title and scope from the A1 audit.",
+        "titleUnconfirmed": true
+      },
+      {
+        "id": "R10",
+        "title": "Security attestation for hosting customer data",
+        "pilotBlocking": true,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Security posture work before hosting a pilot's data (plan RK20); SOC 2/ISO material is before-scale."
+      },
+      {
+        "id": "R11",
+        "title": "Contract terms with the customer",
+        "pilotBlocking": true,
+        "owner": "owner with counsel",
+        "status": "open",
+        "evidence": [],
+        "next": "Customer contract and data-processing terms."
+      },
+      {
+        "id": "R12",
+        "title": "Accuracy pass criteria",
+        "pilotBlocking": true,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [
+          "evaluation/thresholds.json",
+          "evaluation/REPORT.md"
+        ],
+        "next": "Ratify thresholds before measuring; real labelled sets for the first vertical (UW-13)."
+      },
+      {
+        "id": "R13",
+        "title": "Pilot definition",
+        "pilotBlocking": true,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Scope, success criteria and exit of the first pilot."
+      },
+      {
+        "id": "R14",
+        "title": "Pricing and metering",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Before scale, not before a pilot."
+      },
+      {
+        "id": "R15",
+        "title": "Title not recorded in the plan text",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Confirm the title and scope from the A1 audit.",
+        "titleUnconfirmed": true
+      },
+      {
+        "id": "R16",
+        "title": "Title not recorded in the plan text",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Confirm the title and scope from the A1 audit.",
+        "titleUnconfirmed": true
+      },
+      {
+        "id": "R17",
+        "title": "System fit for the first vertical",
+        "pilotBlocking": true,
+        "owner": "engineering (UW-2 to UW-10) and owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Certificate-distribution acceptance (V1 exit)."
+      },
+      {
+        "id": "R18",
+        "title": "Regulatory mapping and accessibility review",
+        "pilotBlocking": false,
+        "owner": "owner",
+        "status": "open",
+        "evidence": [],
+        "next": "Before scale."
+      }
+    ]
+  },
+  "verdict": {
+    "failedRatified": [],
+    "proposals": 20,
+    "pilotGate": "blocked",
+    "problems": []
+  }
+}
