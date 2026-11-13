@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>cisa-style-guide</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<h1 id="style-guide">Style Guide</h1>
+<p>Here lie the heretofore-unwritten rules and styles we use when
+writing documentation, issues, pull requests, and other forms of written
+expression.</p>
+<h2 id="references">References</h2>
+<ul>
+<li><a href="https://www.plainlanguage.gov/guidelines/">Plain Language
+guide</a></li>
+<li><a
+href="https://github.com/github/linguist/blob/master/lib/linguist/languages.yml">GitHub
+list of supported languages</a></li>
+</ul>
+<h2 id="capitalization">Capitalization</h2>
+<p>Follow standard capitalization for written work such as comments,
+documentation, reports, and emails, namely that</p>
+<blockquote>
+<p>words are lowercase unless there is specific guidance to capitalize
+them. For example, capitalize the first word of a sentence, unless the
+sentence begins with the name of a person whose name starts with a
+lowercase letter.</p>
+</blockquote>
+<p>Reference: <a
+href="https://apastyle.apa.org/style-grammar-guidelines/capitalization">APA's
+capitalization guidelines</a></p>
+<p>When an object being referenced has a nonstandard capitalization,
+defer to its capitalization. For example, GitHub has a capital letter
+mid-word.</p>
+<p>Use uppercase for abbreviations, including technical protocols such
+as HTTPS and SSL.</p>
+<p>Please note that this guidance is specifically for <em>written work
+such as documentation</em> and that code capitalization has its own
+standards that vary by language.</p>
+<h2 id="repositories">Repositories</h2>
+<p><strong>All repositories should be public.</strong></p>
+<p>Whether creating new repositories or transferring existing
+repositories, remember that we work in the open by default. For a
+discussion of the rare cases in which we might use private repositories,
+read our <a
+href="https://github.com/cisagov/development-guide/tree/develop/open-source-policy">open
+source policy</a>.</p>
+<h3 id="repository-naming">Repository naming</h3>
+<p>Use a repository's name to describe its purpose. Names should be:</p>
+<ol type="1">
+<li>Descriptive</li>
+<li>Readable</li>
+<li>Consistent</li>
+<li>Contextual</li>
+<li>Future-friendly</li>
+<li>Extensible</li>
+<li>Reusable</li>
+</ol>
+<p>Avoid references to pop culture or other implicit references. GitLab
+has a good guide on using <a
+href="https://docs.gitlab.com/ee/development/documentation/styleguide/#inclusive-language">inclusive
+language in documentation</a>.</p>
+<p>Specifically, when naming a repository:</p>
+<ul>
+<li>Use lower case</li>
+<li>Use dashes
+<ul>
+<li>For readability, where spaces would otherwise separate words</li>
+<li>Avoid underscores, which require extra keystrokes</li>
+</ul></li>
+</ul>
+<h3 id="repository-settings">Repository settings</h3>
+<p>Specify code owners in each repository's
+<code>.github/codeowners</code> file to make sure that changes and pull
+requests are reviewed by people familiar with the codebase. This way,
+we'll catch more problems before they get into the protected branch.</p>
+<ul>
+<li>Set a minimum of two code owners for all repositories.
+<ul>
+<li>Add or edit each repository's <code>.github/codeowners</code>
+file.</li>
+</ul></li>
+<li>Set up <a href="project_setup/branch-protection.md">branch
+protection</a>.</li>
+</ul>
+<h2 id="titles-and-subjects">Titles and subjects</h2>
+<p>Use <a
+href="https://apastyle.apa.org/style-grammar-guidelines/capitalization/title-case">title
+case</a> for the main title of a document.</p>
+<h2 id="headers-and-headings">Headers and headings</h2>
+<p>Use <a
+href="https://apastyle.apa.org/style-grammar-guidelines/capitalization/sentence-case">sentence
+case</a> for headings within a document that are not the inital document
+title.</p>
+<p>When referencing an object or another document, use the
+capitalization of the referenced item, such as "GitHub" or "the Style
+Guide".</p>
+<p>Use both opening and closing octothorpes (<code>#</code>) to indicate
+the Markdown header level. Our Markdown linting enforces this as
+well.</p>
+<p>For example:</p>
+<ul>
+<li><code>### Use variables to configure pipelines ###</code></li>
+<li><code>## Using the Style Guide ##</code></li>
+</ul>
+<h2 id="lists">Lists</h2>
+<p>Use bulleted lists unless order matters, in which case use numbered
+lists.</p>
+<p>Always capitalize the first word of list items, unless they’re
+parameters or commands that are in backticks, or a similar
+situation.</p>
+<h3 id="list-punctuation">List punctuation</h3>
+<p>Periods or no periods?</p>
+<ul>
+<li>Use periods at the end of bullets that are full sentences.</li>
+<li>Omit periods at the end of partial sentences.</li>
+<li>Match the rest of the bulleted or numbered list as much as
+possible.</li>
+</ul>
+<h2 id="code-blocks">Code blocks</h2>
+<p>When formatting code blocks, use the formatting that best highlights
+the syntax in the code block.</p>
+<p>We generally use code blocks for scripts, command-line usage, and
+when showing file contents like configuration files.</p>
+<h3 id="scripts">Scripts</h3>
+<ul>
+<li>Use <code>shell</code> formatting for shell scripts
+<ul>
+<li><code>shell</code> is also aliased as <code>sh</code>,
+<code>bash</code>, <code>zsh</code>, and others</li>
+</ul></li>
+<li>Use language-specific formatting, such as <code>python</code>, for
+blocks with scripts written in specific languages
+<ul>
+<li>Reference the <a
+href="https://github.com/github/linguist/blob/master/lib/linguist/languages.yml">GitHub
+list of supported languages</a></li>
+</ul></li>
+</ul>
+<h3 id="command-line">Command-line</h3>
+<ul>
+<li><p><code>console</code> is most effective at highlighting a command
+<em>and</em> its resulting output, like this:</p>
+<pre class="console"><code>$ the_first_command
+the output
+more output
+$ the_second_command
+yet more output</code></pre></li>
+<li><p><code>shell</code> should be used for result-less commands,
+<em>especially</em> if there is any shell-fu like pipes, file redirects,
+shell variables, etc. to apply syntax highlighting so the reader is more
+aware of the magic happening</p></li>
+</ul>
+<h3 id="file-contents">File contents</h3>
+<ul>
+<li>Extension-specific formatting, such as <code>hcl</code> for
+Terraform, should be used</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,2488 @@
+{
+  "id": "real-documents",
+  "version": "1",
+  "provenance": "real",
+  "description": "Fourteen public-domain / CC0 documents by US federal teams (18F, CISA, USDS), each in the formats it travels in (original Word, Markdown or PDF; web page; Word; PDF export; Word HTML export; printed-and-scanned PDF). Every sentence or list item is labelled with its expected reading under a written policy. Three splits: dev (used to find and fix failures), held-out (labelled before XO ran on it; its failures were seen once, at the baseline, and never used to tune), and blind (labelled before any fix and measured once, at the end).",
+  "policy": [
+    "step: an action in an ordered procedure (a numbered list or step table presented as a sequence) -> a capability, in order.",
+    "criterion: a checklist item (a check box, or an item under a heading that names a checklist) -> a constraint; a capability is a kind error.",
+    "rule: a statement with an explicit normative cue (must, required, expected to, need to, should, mandatory, never, do not, responsible for) -> a normative node; modality is checked only where the cue is unambiguous.",
+    "action: an instruction outside an ordered procedure (a plain imperative) -> a capability or a normative node; both are acceptable.",
+    "none: text that is neither normative nor an action (questions, placeholders, field labels, headings, link titles, descriptive or purpose statements); any output built from it is spurious.",
+    "opt: genuinely ambiguous text (permissions, label-value instructions, bracketed template guidance, code comments); neutral either way.",
+    "A numbered list under a \"Checklist\" heading is a checklist, not an ordered procedure."
+  ],
+  "documents": [
+    {
+      "id": "18f-weekly-ship",
+      "split": "dev",
+      "title": "18F Weekly ship template",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/TEMPLATE_Weekly_ship_template.docx",
+        "authoredIn": "Microsoft Word (native .docx)"
+      },
+      "formats": [
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/sources/18f-weekly-ship.docx",
+          "sha256": "f7561af76ee33cc932e25d8ac2645ffdc7fe98f717697d74c0b0fc435b81c1f0"
+        },
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/18f-weekly-ship.pdf",
+          "sha256": "875ec2a58149c9813bb0979c1e57ccbf18955435eed732886d48e557b37d5255"
+        },
+        {
+          "format": "scan",
+          "path": "examples/real-corpus/18f-weekly-ship.scan.pdf",
+          "sha256": "bea0df4d8343fd362640f80e5682388cf944c208c92f64084948467f43ea8385"
+        }
+      ],
+      "items": [
+        {
+          "id": "w-fm1",
+          "read": "rule",
+          "phrases": ["expected to send weekly ship updates"],
+          "modality": "obligation"
+        },
+        {
+          "id": "w-fm2",
+          "read": "none",
+          "phrases": ["Stakeholders know the project's status, blockers, and progress toward outcomes"]
+        },
+        {
+          "id": "w-fm3",
+          "read": "none",
+          "phrases": ["Executives aren't taken by surprise, and know how they can help"]
+        },
+        {
+          "id": "w-fm4",
+          "read": "none",
+          "phrases": ["Robin Carnahan explains"]
+        },
+        {
+          "id": "w-fm5",
+          "read": "opt",
+          "phrases": ["This is a recommended Weekly Ship template"]
+        },
+        {
+          "id": "w-fm6",
+          "read": "opt",
+          "phrases": ["Suggestions? Contact: 18F Director of Account Management"]
+        },
+        {
+          "id": "w-s1",
+          "read": "step",
+          "phrases": ["Fill the distribution list with names or emails"],
+          "procedure": "how-to-use",
+          "order": 1
+        },
+        {
+          "id": "w-s1b",
+          "read": "opt",
+          "phrases": ["Consider adding more people, rather than fewer"]
+        },
+        {
+          "id": "w-s2",
+          "read": "step",
+          "phrases": ["Plan to send the ship on the day most helpful to the partner"],
+          "procedure": "how-to-use",
+          "order": 2
+        },
+        {
+          "id": "w-s3",
+          "read": "step",
+          "phrases": ["to captain the weekly ship"],
+          "procedure": "how-to-use",
+          "order": 3
+        },
+        {
+          "id": "w-s4",
+          "read": "step",
+          "phrases": ["Copy the template and paste it under ships"],
+          "procedure": "how-to-use",
+          "order": 4
+        },
+        {
+          "id": "w-s5",
+          "read": "step",
+          "phrases": ["Fill in its sections"],
+          "procedure": "how-to-use",
+          "order": 5
+        },
+        {
+          "id": "w-s5b",
+          "read": "opt",
+          "phrases": ["Invite your teammates to contribute"]
+        },
+        {
+          "id": "w-s5x",
+          "read": "action",
+          "phrases": ["Focus on outcomes the team is driving toward"]
+        },
+        {
+          "id": "w-s5y",
+          "read": "action",
+          "phrases": ["Consider the audience"]
+        },
+        {
+          "id": "w-s5z",
+          "read": "action",
+          "phrases": ["burn numbers from your account manager"]
+        },
+        {
+          "id": "w-s6",
+          "read": "step",
+          "phrases": ["paste the ship into an email"],
+          "procedure": "how-to-use",
+          "order": 6
+        },
+        {
+          "id": "w-s7",
+          "read": "step",
+          "phrases": ["the email to the distribution list in the morning"],
+          "procedure": "how-to-use",
+          "order": 7
+        },
+        {
+          "id": "w-s8",
+          "read": "step",
+          "phrases": ["Post the same text in the"],
+          "procedure": "how-to-use",
+          "order": 8
+        },
+        {
+          "id": "w-s9",
+          "read": "step",
+          "phrases": ["bump the prior week's ship down"],
+          "procedure": "how-to-use",
+          "order": 9
+        },
+        {
+          "id": "w-s9b",
+          "read": "opt",
+          "phrases": ["stack the new one above it"]
+        },
+        {
+          "id": "w-t1",
+          "read": "none",
+          "phrases": ["Agency Name / Project Name / Weekly Ship"]
+        },
+        {
+          "id": "w-t2",
+          "read": "opt",
+          "phrases": ["Write an intro summary note"]
+        },
+        {
+          "id": "w-t3",
+          "read": "opt",
+          "phrases": ["explain the purpose of the weekly ship"]
+        },
+        {
+          "id": "w-h1",
+          "read": "none",
+          "phrases": ["Leadership decisions needed"]
+        },
+        {
+          "id": "w-t4",
+          "read": "opt",
+          "phrases": ["When a lack of a decision could lead to a risk, request a decision"]
+        },
+        {
+          "id": "w-t5",
+          "read": "opt",
+          "phrases": ["Tactfully but honestly list risks and blockers"]
+        },
+        {
+          "id": "w-t6",
+          "read": "opt",
+          "phrases": ["List what was completed this week"]
+        },
+        {
+          "id": "w-t6b",
+          "read": "opt",
+          "phrases": ["Focus on progress towards outcomes for users"]
+        },
+        {
+          "id": "w-t7",
+          "read": "opt",
+          "phrases": ["List some things that are planned for the near future"]
+        },
+        {
+          "id": "w-t8",
+          "read": "opt",
+          "phrases": ["List any team members who will be out of office"]
+        },
+        {
+          "id": "w-t9",
+          "read": "opt",
+          "phrases": ["List your financials for this week"]
+        },
+        {
+          "id": "w-t10",
+          "read": "none",
+          "phrases": ["of the total budget of"]
+        },
+        {
+          "id": "w-t11",
+          "read": "opt",
+          "phrases": ["Fill in the send-on date"]
+        },
+        {
+          "id": "w-t12",
+          "read": "opt",
+          "phrases": ["paste template here and fill it out"]
+        }
+      ]
+    },
+    {
+      "id": "18f-team-charter",
+      "split": "dev",
+      "title": "18F Team charter template",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/TEMPLATE_Team_charter.docx",
+        "authoredIn": "Microsoft Word (native .docx)"
+      },
+      "formats": [
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/sources/18f-team-charter.docx",
+          "sha256": "9781231b59bd4a8adf3a2de46a4cf49bac0dc3285459e8346e18252430430aa6"
+        }
+      ],
+      "items": [
+        {
+          "id": "c-fm1",
+          "read": "rule",
+          "phrases": ["expected to have a team charter"],
+          "modality": "obligation"
+        },
+        {
+          "id": "c-fm2",
+          "read": "rule",
+          "phrases": ["The team should meet and create the charter together"],
+          "modality": "advisory"
+        },
+        {
+          "id": "c-fm3",
+          "read": "opt",
+          "phrases": ["This is a recommended charter template"]
+        },
+        {
+          "id": "c-fm4",
+          "read": "opt",
+          "phrases": ["Suggestions? Contact: 18F Director of Account Management"]
+        },
+        {
+          "id": "c-1",
+          "read": "none",
+          "phrases": ["A list of our team, including part-time people and the account manager"]
+        },
+        {
+          "id": "c-2",
+          "read": "none",
+          "phrases": ["allocation = 36 hours / week"]
+        },
+        {
+          "id": "c-th",
+          "read": "none",
+          "phrases": ["Name Role Location Pronouns Allocation"]
+        },
+        {
+          "id": "c-tr",
+          "read": "none",
+          "phrases": ["Title or chapter", "City or time zone"]
+        },
+        {
+          "id": "c-3",
+          "read": "action",
+          "phrases": ["exchange emergency contact information"]
+        },
+        {
+          "id": "c-4",
+          "read": "action",
+          "phrases": ["Save your team members' phone numbers"]
+        },
+        {
+          "id": "c-q1",
+          "read": "none",
+          "phrases": ["What are your normal working hours"]
+        },
+        {
+          "id": "c-q2",
+          "read": "none",
+          "phrases": ["Who on the team is a morning person"]
+        },
+        {
+          "id": "c-q3",
+          "read": "none",
+          "phrases": ["During what hours can we reliably schedule team meetings"]
+        },
+        {
+          "id": "c-rt",
+          "read": "none",
+          "phrases": ["Ritual Frequency/Day Notes", "Lead/AM sync", "Project health"]
+        },
+        {
+          "id": "c-n1",
+          "read": "none",
+          "phrases": ["How will we identify a notetaker", "Verbatim or summary"]
+        },
+        {
+          "id": "c-n2",
+          "read": "none",
+          "phrases": ["How we share the project coordination tasks", "Our tools for task management"]
+        },
+        {
+          "id": "c-n3",
+          "read": "none",
+          "phrases": ["How we communicate our personal schedule", "When we use headphones", "When we turn our cameras on"]
+        },
+        {
+          "id": "c-r1",
+          "read": "none",
+          "phrases": ["How do you define your role", "What are you good at", "What do you like to do"]
+        },
+        {
+          "id": "c-r2",
+          "read": "none",
+          "phrases": ["What do you prefer not to do", "Prefer not to happen", "How do you like to give and receive feedback"]
+        },
+        {
+          "id": "c-r3",
+          "read": "none",
+          "phrases": [
+            "Formal or informal mechanisms",
+            "What else do you want your teammates to know about you",
+            "Speed feedback session agenda"
+          ]
+        },
+        {
+          "id": "c-r4",
+          "read": "opt",
+          "phrases": ["add more columns for larger teams"]
+        },
+        {
+          "id": "c-p",
+          "read": "none",
+          "phrases": ["We are excited about", "Opportunities we see", "Concerns we have", "Strengths we bring"]
+        },
+        {
+          "id": "c-5",
+          "read": "action",
+          "phrases": ["Update the charter, usually when team members roll on or off"]
+        },
+        {
+          "id": "c-6",
+          "read": "opt",
+          "phrases": ["Track the updates here"]
+        }
+      ]
+    },
+    {
+      "id": "cisa-onboarding",
+      "split": "dev",
+      "title": "CISA onboarding checklist",
+      "source": {
+        "repository": "https://github.com/cisagov/development-guide",
+        "commit": "c22ca838ba50b8f5e7dc44b79ca0515c48497a6a",
+        "license": "CC0 1.0 (LICENSE)",
+        "path": "onboarding-checklist.md",
+        "authoredIn": "Markdown (GitHub task lists)"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/cisa-onboarding.md",
+          "sha256": "38509911a0c7cc039b3806896c2b02858ce39ac7d5f759146e0128fd9c14ad5c"
+        },
+        {
+          "format": "html",
+          "path": "examples/real-corpus/cisa-onboarding.html",
+          "sha256": "8be245daa18cf9913ee512ad126401639726c060972bd1da7619fd979785adb3"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/cisa-onboarding.docx",
+          "sha256": "d179c887588b7a5a79bfc1daef18531d47a3cdb90c4458a228e0062d9573830c"
+        }
+      ],
+      "items": [
+        {
+          "id": "o-0",
+          "read": "opt",
+          "phrases": ["When someone new joins the team"]
+        },
+        {
+          "id": "o-s1",
+          "read": "step",
+          "phrases": ["Create a new issue called"],
+          "procedure": "instructions",
+          "order": 1
+        },
+        {
+          "id": "o-s2",
+          "read": "step",
+          "phrases": ["Remove any block of tasks that doesn't apply"],
+          "procedure": "instructions",
+          "order": 2
+        },
+        {
+          "id": "o-s3",
+          "read": "step",
+          "phrases": ["Assign the new person's onboarding buddy to this issue"],
+          "procedure": "instructions",
+          "order": 3
+        },
+        {
+          "id": "o-s4",
+          "read": "step",
+          "phrases": ["Remove this Instructions block"],
+          "procedure": "instructions",
+          "order": 4
+        },
+        {
+          "id": "o-s5",
+          "read": "step",
+          "phrases": ["Submit this issue"],
+          "procedure": "instructions",
+          "order": 5
+        },
+        {
+          "id": "o-d1",
+          "read": "action",
+          "phrases": ["Try to go through your checklists in order"]
+        },
+        {
+          "id": "o-d2",
+          "read": "rule",
+          "phrases": ["you are responsible for ensuring that someone with the correct access completes that item"],
+          "modality": "obligation"
+        },
+        {
+          "id": "o-c1",
+          "read": "criterion",
+          "phrases": ["Take notes on anything that is confusing or frustrating"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c1a",
+          "read": "action",
+          "phrases": ["Please share this information with your buddy and the team"]
+        },
+        {
+          "id": "o-c1b",
+          "read": "opt",
+          "phrases": ["you are more than welcome to fix it"]
+        },
+        {
+          "id": "o-c1c",
+          "read": "opt",
+          "phrases": ["You can also file issues and pull requests"]
+        },
+        {
+          "id": "o-c2",
+          "read": "criterion",
+          "phrases": ["Meet with your onboarding buddy"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c3",
+          "read": "criterion",
+          "phrases": ["make suggestions for steps that would have improved your onboarding experience"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-i1",
+          "read": "none",
+          "phrases": ["Completing these items helps us fulfill security and compliance requirements"]
+        },
+        {
+          "id": "o-i2",
+          "read": "action",
+          "phrases": ["ask for help from your onboarding buddy"]
+        },
+        {
+          "id": "o-c4",
+          "read": "criterion",
+          "phrases": ["create a GitHub account with your government email address"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c5",
+          "read": "criterion",
+          "phrases": ["add your government email address", "If you already have a GitHub account"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c6",
+          "read": "criterion",
+          "phrases": ["Go through the FISMA-Ready GitHub guide"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c7",
+          "read": "criterion",
+          "phrases": ["make sure you're assigned to this issue"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c8",
+          "read": "criterion",
+          "phrases": ["Complete Cybersecurity Training at the CISA Course Management"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-g1",
+          "read": "none",
+          "phrases": ["you'll also get an account on CISA GWE", "Your CISA GWE account may take a few days"]
+        },
+        {
+          "id": "o-g2",
+          "read": "action",
+          "phrases": ["ask a dev team member to help you perform the following"]
+        },
+        {
+          "id": "o-c9",
+          "read": "criterion",
+          "phrases": ["Join the appropriate rooms in Google Chat"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c10",
+          "read": "criterion",
+          "phrases": ["Join the appropriate Google Groups"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c11",
+          "read": "criterion",
+          "phrases": ["Get access to the Google Drive dev team share"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-c11b",
+          "read": "opt",
+          "phrases": ["it'll get the right access permissions"]
+        },
+        {
+          "id": "o-c12",
+          "read": "criterion",
+          "phrases": ["Get access to the dev team's shared Google Calendar"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-l1",
+          "read": "opt",
+          "phrases": ["NCATS Data Dictionary"]
+        },
+        {
+          "id": "o-l2",
+          "read": "opt",
+          "phrases": ["COOL Wiki", "Although they do not currently display as a wiki"]
+        },
+        {
+          "id": "o-l3",
+          "read": "none",
+          "phrases": ["We maintain these pages in the hope that they can again be made public"]
+        },
+        {
+          "id": "o-l4",
+          "read": "opt",
+          "phrases": ["CyHy Wiki"]
+        },
+        {
+          "id": "o-l5",
+          "read": "criterion",
+          "phrases": ["Set up your environment on your CISA-provided Mac laptop"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-b1",
+          "read": "criterion",
+          "phrases": ["Introduce yourself to the new team member"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-b2",
+          "read": "criterion",
+          "phrases": ["Identify a straightforward and well-defined first issue"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-b2b",
+          "read": "opt",
+          "phrases": ["Discuss the context with them, then make them the assignee"]
+        },
+        {
+          "id": "o-b3",
+          "read": "criterion",
+          "phrases": ["Discuss suggestions for how the onboarding experience could have been improved"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-b4",
+          "read": "criterion",
+          "phrases": ["Invite the new team member to all relevant recurring meetings"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "o-b5",
+          "read": "criterion",
+          "phrases": ["Invite the new team member to all relevant GitHub cisagov teams"],
+          "checkbox": "unchecked"
+        }
+      ]
+    },
+    {
+      "id": "usds-play-01",
+      "split": "dev",
+      "title": "USDS Digital Services Playbook, play 1",
+      "source": {
+        "repository": "https://github.com/usds/playbook",
+        "commit": "f5d71f1939efe87db9f0be414bcfa7c489e01c19",
+        "license": "Public domain (US Government work; CC0 per the repository README)",
+        "path": "_plays/01.md",
+        "authoredIn": "Markdown"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/usds-play-01.md",
+          "sha256": "3ae222d51cade3efda62c46775d24ec5055d58ce28796d50b37fd5df4817245e"
+        },
+        {
+          "format": "html",
+          "path": "examples/real-corpus/usds-play-01.html",
+          "sha256": "332dc505fdf526472bfa6aef480ea8bc6ef833210b259f39a140f205371b834f"
+        },
+        {
+          "format": "scan",
+          "path": "examples/real-corpus/usds-play-01.scan.pdf",
+          "sha256": "10edc74e42b805a21c8ee6eab011884d18aa6c1080e8b4629ed17d8c2db7d92f"
+        }
+      ],
+      "items": [
+        {
+          "id": "p1-title",
+          "read": "opt",
+          "phrases": ["Understand what people need"]
+        },
+        {
+          "id": "p1-i1",
+          "read": "rule",
+          "phrases": ["We must begin digital projects by exploring and pinpointing the needs"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-i2",
+          "read": "rule",
+          "phrases": ["policy makers must include real people in their design process"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-i3",
+          "read": "rule",
+          "phrases": ["should inform technical and design decisions"],
+          "modality": "advisory"
+        },
+        {
+          "id": "p1-i4",
+          "read": "rule",
+          "phrases": ["We need to continually test the products we build with real people"]
+        },
+        {
+          "id": "p1-c1",
+          "read": "criterion",
+          "phrases": ["Early in the project, spend time with current and prospective users"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c2",
+          "read": "criterion",
+          "phrases": ["Use a range of qualitative and quantitative research methods"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c3",
+          "read": "criterion",
+          "phrases": ["Test prototypes of solutions with real people"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c4",
+          "read": "criterion",
+          "phrases": ["Document the findings about user goals, needs, behaviors, and preferences"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c5",
+          "read": "criterion",
+          "phrases": ["Share findings with the team and agency leadership"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c6",
+          "read": "criterion",
+          "phrases": ["Create a prioritized list of tasks the user is trying to accomplish"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-c7",
+          "read": "criterion",
+          "phrases": ["regularly test it with potential users"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p1-q1",
+          "read": "none",
+          "phrases": ["Who are your primary users"]
+        },
+        {
+          "id": "p1-q2",
+          "read": "none",
+          "phrases": ["What user needs will this service address"]
+        },
+        {
+          "id": "p1-q3",
+          "read": "none",
+          "phrases": ["Why does the user want or need this service"]
+        },
+        {
+          "id": "p1-q4",
+          "read": "none",
+          "phrases": ["Which people will have the most difficulty with the service"]
+        },
+        {
+          "id": "p1-q5",
+          "read": "none",
+          "phrases": ["Which research methods were used"]
+        },
+        {
+          "id": "p1-q6",
+          "read": "none",
+          "phrases": ["What were the key findings"]
+        },
+        {
+          "id": "p1-q7",
+          "read": "none",
+          "phrases": ["How were the findings documented"]
+        },
+        {
+          "id": "p1-q8",
+          "read": "none",
+          "phrases": ["How often are you testing with real people"]
+        }
+      ]
+    },
+    {
+      "id": "18f-kickoff-agenda",
+      "split": "held-out",
+      "title": "18F Internal kickoff agenda template",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/TEMPLATE_Internal_kickoff_agenda.docx",
+        "authoredIn": "Microsoft Word (native .docx)"
+      },
+      "formats": [
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/sources/18f-kickoff-agenda.docx",
+          "sha256": "deae57c7728991a1ad14de0781cc9aeaa2f5dc888e8afb164d7bca4bda82e7cf"
+        },
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/18f-kickoff-agenda.pdf",
+          "sha256": "52e53eccc3d939928f9c3204f5b13040e1eff62ac48113694be6f0687e832603"
+        },
+        {
+          "format": "scan",
+          "path": "examples/real-corpus/18f-kickoff-agenda.scan.pdf",
+          "sha256": "a8d29701c742828f8670cc1c11d094af33dd8d22a07ecdfda998d5b099ef2c4e"
+        }
+      ],
+      "items": [
+        {
+          "id": "k-fm1",
+          "read": "rule",
+          "phrases": ["expected to hold a team kickoff at the start of a project"],
+          "modality": "obligation"
+        },
+        {
+          "id": "k-fm2",
+          "read": "action",
+          "phrases": ["send the team an agenda for the kickoff meeting"]
+        },
+        {
+          "id": "k-fm3",
+          "read": "opt",
+          "phrases": ["This is a recommended agenda template"]
+        },
+        {
+          "id": "k-fm4",
+          "read": "opt",
+          "phrases": ["Suggestions? Contact: 18F Director of Account Management"]
+        },
+        {
+          "id": "k-t1",
+          "read": "none",
+          "phrases": ["Project Name Internal Kickoff", "Total time: 1.5-2 hours"]
+        },
+        {
+          "id": "k-a1",
+          "read": "opt",
+          "phrases": ["Team introductions (10 minutes)"]
+        },
+        {
+          "id": "k-a1a",
+          "read": "none",
+          "phrases": ["Name, discipline, role on the project, location, pronouns"]
+        },
+        {
+          "id": "k-a1b",
+          "read": "none",
+          "phrases": ["Icebreaker question"]
+        },
+        {
+          "id": "k-a2",
+          "read": "opt",
+          "phrases": ["Team building exercise"]
+        },
+        {
+          "id": "k-q1",
+          "read": "none",
+          "phrases": ["What are you most proud of during your time at 18F"]
+        },
+        {
+          "id": "k-q2",
+          "read": "none",
+          "phrases": ["what's something in your career that you're proud of"]
+        },
+        {
+          "id": "k-q3",
+          "read": "none",
+          "phrases": ["What strengths and skills are you bringing to this project"]
+        },
+        {
+          "id": "k-q4",
+          "read": "none",
+          "phrases": ["what are you excited about with this project"]
+        },
+        {
+          "id": "k-q5",
+          "read": "none",
+          "phrases": ["What challenges are you anticipating"]
+        },
+        {
+          "id": "k-q6",
+          "read": "none",
+          "phrases": ["What's the most creative way you've solved a problem as a team"]
+        },
+        {
+          "id": "k-q7",
+          "read": "none",
+          "phrases": ["How do you approach building trust and rapport in conflict situations"]
+        },
+        {
+          "id": "k-a3",
+          "read": "opt",
+          "phrases": [
+            "Break (5 minutes)",
+            "walk-through (45-60 minutes)",
+            "Review next steps (5-10 minutes)",
+            "A moment of ceremony (5 minutes)"
+          ]
+        },
+        {
+          "id": "k-ns",
+          "read": "opt",
+          "phrases": ["Next steps may include"]
+        },
+        {
+          "id": "k-n1",
+          "read": "action",
+          "phrases": ["Read the background documents provided in the project repo"]
+        },
+        {
+          "id": "k-n2",
+          "read": "action",
+          "phrases": ["Schedule an introductory meeting with the partner"]
+        },
+        {
+          "id": "k-n3",
+          "read": "action",
+          "phrases": ["begin planning the kickoff with the partner"]
+        },
+        {
+          "id": "k-n4",
+          "read": "action",
+          "phrases": ["Schedule a time to build out a team charter"]
+        },
+        {
+          "id": "k-n5",
+          "read": "action",
+          "phrases": ["Set up a team calendar with sprint ceremonies"]
+        },
+        {
+          "id": "k-n6",
+          "read": "action",
+          "phrases": ["Set up a project management space"]
+        },
+        {
+          "id": "k-n7",
+          "read": "action",
+          "phrases": ["Start preparing the first weekly ship"]
+        },
+        {
+          "id": "k-n8",
+          "read": "action",
+          "phrases": ["Prepare for big exec briefing"]
+        },
+        {
+          "id": "k-n9",
+          "read": "none",
+          "phrases": ["What else?"]
+        },
+        {
+          "id": "k-c1",
+          "read": "opt",
+          "phrases": ["we'll take a team photo"]
+        }
+      ]
+    },
+    {
+      "id": "cisa-branch-protection",
+      "split": "held-out",
+      "title": "CISA branch protection settings",
+      "source": {
+        "repository": "https://github.com/cisagov/development-guide",
+        "commit": "c22ca838ba50b8f5e7dc44b79ca0515c48497a6a",
+        "license": "CC0 1.0 (LICENSE)",
+        "path": "project_setup/branch-protection.md",
+        "authoredIn": "Markdown (GitHub task lists)"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/cisa-branch-protection.md",
+          "sha256": "c6063be6c8d365759464e16054163f1ca9f77db0104328b14cf480fd5dfc0bf6"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/cisa-branch-protection.docx",
+          "sha256": "46b1ff155870a461f3cbaa4d21565bbe53d3d35074c0f2cd8f63ff9cf145f48d"
+        },
+        {
+          "format": "html",
+          "path": "examples/real-corpus/cisa-branch-protection.html",
+          "sha256": "249dc432ccfd6065dfaa1d104f0c45c80978027ada4fc9ec6e80445a3b76b830"
+        }
+      ],
+      "items": [
+        {
+          "id": "b-1",
+          "read": "rule",
+          "phrases": ["We require branch protection to be enabled on all cisagov repositories"],
+          "modality": "obligation"
+        },
+        {
+          "id": "b-2",
+          "read": "rule",
+          "phrases": ["you must have permission to access the Settings menu"],
+          "modality": "obligation"
+        },
+        {
+          "id": "b-3",
+          "read": "action",
+          "phrases": ["go to the Branches entry and create a rule with the following"]
+        },
+        {
+          "id": "b-4",
+          "read": "opt",
+          "phrases": ["Branch name pattern"]
+        },
+        {
+          "id": "b-5",
+          "read": "none",
+          "phrases": ["Our primary branches are named"]
+        },
+        {
+          "id": "b-6",
+          "read": "action",
+          "phrases": ["Verify that adding this name pattern then shows"]
+        },
+        {
+          "id": "b-7",
+          "read": "opt",
+          "phrases": ["Protect matching branches", "Rules applied to everyone including administrators", "Required approving reviews"]
+        },
+        {
+          "id": "b-c1",
+          "read": "criterion",
+          "phrases": ["Require pull request reviews before merging"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c2",
+          "read": "criterion",
+          "phrases": ["Dismiss stale pull request approvals when new commits are pushed"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "b-c3",
+          "read": "criterion",
+          "phrases": ["Require review from Code Owners"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c4",
+          "read": "criterion",
+          "phrases": ["Restrict who can dismiss pull request reviews"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c5",
+          "read": "criterion",
+          "phrases": ["Require status checks to pass before merging"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c6",
+          "read": "criterion",
+          "phrases": ["Require branches to be up to date before merging"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-8",
+          "read": "none",
+          "phrases": ["There may be a list of status checks under this option"]
+        },
+        {
+          "id": "b-9",
+          "read": "rule",
+          "phrases": ["We require passing status checks to merge"]
+        },
+        {
+          "id": "b-10",
+          "read": "none",
+          "phrases": ["the list of status checks will not fully populate in a new repository"]
+        },
+        {
+          "id": "b-c7",
+          "read": "criterion",
+          "phrases": ["Require conversation resolution before merging"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c8",
+          "read": "criterion",
+          "phrases": ["Require signed commits"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "b-c9",
+          "read": "criterion",
+          "phrases": ["Require linear history"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "b-c10",
+          "read": "criterion",
+          "phrases": ["Include administrators"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-c11",
+          "read": "criterion",
+          "phrases": ["Restrict who can push to matching branches"],
+          "checkbox": "checked"
+        },
+        {
+          "id": "b-11",
+          "read": "opt",
+          "phrases": ["you likely don't have to make any changes"]
+        },
+        {
+          "id": "b-c12",
+          "read": "criterion",
+          "phrases": ["Allow force pushes"],
+          "checkbox": "unchecked"
+        },
+        {
+          "id": "b-c13",
+          "read": "criterion",
+          "phrases": ["Allow deletions"],
+          "checkbox": "unchecked"
+        }
+      ]
+    },
+    {
+      "id": "usds-play-04",
+      "split": "held-out",
+      "title": "USDS Digital Services Playbook, play 4",
+      "source": {
+        "repository": "https://github.com/usds/playbook",
+        "commit": "f5d71f1939efe87db9f0be414bcfa7c489e01c19",
+        "license": "Public domain (US Government work; CC0 per the repository README)",
+        "path": "_plays/04.md",
+        "authoredIn": "Markdown"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/usds-play-04.md",
+          "sha256": "855d31e547af74d160ed598cb50f85ab4b250b007368de50bc8e2a0c3156039b"
+        },
+        {
+          "format": "word-html",
+          "path": "examples/real-corpus/usds-play-04.word.html",
+          "sha256": "33e0c739b5c3cbd74b881375930a01ef539e6f5be41490cf0f4746d00a6cb611"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/usds-play-04.docx",
+          "sha256": "72c580d0a4d01c0b0e62688b1ceecbf45c740735680347d2005b914e1e171216"
+        },
+        {
+          "format": "scan",
+          "path": "examples/real-corpus/usds-play-04.scan.pdf",
+          "sha256": "91d011f3a0de1221c88734593d11cc7fa8885a086a7acf5b57253627d1141913"
+        }
+      ],
+      "items": [
+        {
+          "id": "p4-title",
+          "read": "opt",
+          "phrases": ["Build the service using agile and iterative practices"]
+        },
+        {
+          "id": "p4-i1",
+          "read": "rule",
+          "phrases": ["We should use an incremental, fast-paced style of software development"],
+          "modality": "advisory"
+        },
+        {
+          "id": "p4-i2",
+          "read": "none",
+          "phrases": ["We want to get working software into users' hands as early as possible"]
+        },
+        {
+          "id": "p4-i3",
+          "read": "none",
+          "phrases": ["A critical capability is being able to automatically test and deploy the service"]
+        },
+        {
+          "id": "p4-c1",
+          "read": "criterion",
+          "phrases": ["Ship a functioning"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c2",
+          "read": "criterion",
+          "phrases": ["Run usability tests frequently"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c3",
+          "read": "criterion",
+          "phrases": ["Ensure the individuals building the service communicate closely"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c4",
+          "read": "criterion",
+          "phrases": ["Keep delivery teams small and focused"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c5",
+          "read": "criterion",
+          "phrases": ["Release features and improvements multiple times each month"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c6",
+          "read": "criterion",
+          "phrases": ["Create a prioritized list of features and bugs"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c7",
+          "read": "criterion",
+          "phrases": ["Use a source code version control system"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c8",
+          "read": "criterion",
+          "phrases": ["Give the entire project team access to the issue tracker"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-c9",
+          "read": "criterion",
+          "phrases": ["Use code reviews to ensure quality"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p4-q1",
+          "read": "none",
+          "phrases": ["How long did it take to ship the MVP"]
+        },
+        {
+          "id": "p4-q2",
+          "read": "none",
+          "phrases": ["How long does it take for a production deployment"]
+        },
+        {
+          "id": "p4-q3",
+          "read": "none",
+          "phrases": ["How many days or weeks are in each iteration"]
+        },
+        {
+          "id": "p4-q4",
+          "read": "none",
+          "phrases": ["Which version control system is being used"]
+        },
+        {
+          "id": "p4-q5",
+          "read": "none",
+          "phrases": ["How are bugs tracked and tickets issued"]
+        },
+        {
+          "id": "p4-q6",
+          "read": "none",
+          "phrases": ["How is the feature backlog managed"]
+        },
+        {
+          "id": "p4-q7",
+          "read": "none",
+          "phrases": ["How often do you review and reprioritize the feature and bug backlog"]
+        },
+        {
+          "id": "p4-q8",
+          "read": "none",
+          "phrases": ["How do you collect user feedback during development"]
+        },
+        {
+          "id": "p4-q9",
+          "read": "none",
+          "phrases": ["which gaps were identified in addressing user needs"]
+        }
+      ]
+    },
+    {
+      "id": "gsa-eft-form",
+      "split": "held-out",
+      "title": "GSA Electronic Funds Transfer enrollment form",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/EFT_Enrollment_Form.pdf",
+        "authoredIn": "Adobe LiveCycle Designer (native PDF form)"
+      },
+      "formats": [
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/sources/gsa-eft-form.pdf",
+          "sha256": "797cf1c2ee43ef4c9a9bca2f7b62c2fd20abe167396256af8996d3533271c95e"
+        }
+      ],
+      "items": [
+        {
+          "id": "e-t",
+          "read": "none",
+          "phrases": ["ELECTRONIC FUNDS TRANSFER (EFT) ENROLLMENT FORM"]
+        },
+        {
+          "id": "e-1",
+          "read": "opt",
+          "phrases": ["Use this form to enroll in Direct Deposit"]
+        },
+        {
+          "id": "e-2",
+          "read": "none",
+          "phrases": ["Collection of this information is authorized by"]
+        },
+        {
+          "id": "e-3",
+          "read": "none",
+          "phrases": ["The information will be used by the Government to make payments by EFT"]
+        },
+        {
+          "id": "e-4",
+          "read": "none",
+          "phrases": ["This information may also be used for income reporting"]
+        },
+        {
+          "id": "e-5",
+          "read": "rule",
+          "phrases": ["Disclosure of the information by the vendor is mandatory"],
+          "modality": "obligation"
+        },
+        {
+          "id": "e-6",
+          "read": "rule",
+          "phrases": ["Failure to provide the requested information may result in the delay"]
+        },
+        {
+          "id": "e-f1",
+          "read": "none",
+          "phrases": ["Last Name", "First Name", "Social Security Number"]
+        },
+        {
+          "id": "e-f2",
+          "read": "none",
+          "phrases": ["Home Address", "Financial Institution Name", "Routing Transit Number"]
+        },
+        {
+          "id": "e-f3",
+          "read": "none",
+          "phrases": ["Depositor Account Number", "Account Type", "Payee Email", "Work Phone"]
+        },
+        {
+          "id": "e-7",
+          "read": "action",
+          "phrases": ["Return to Heartland Finance Center"]
+        },
+        {
+          "id": "e-8",
+          "read": "opt",
+          "phrases": ["Fax to"]
+        },
+        {
+          "id": "e-9",
+          "read": "none",
+          "phrases": ["Finance Helpdesk Phone Number"]
+        }
+      ]
+    },
+    {
+      "id": "cisa-skeletonize",
+      "split": "held-out",
+      "title": "CISA: skeletonize an existing repository",
+      "source": {
+        "repository": "https://github.com/cisagov/development-guide",
+        "commit": "c22ca838ba50b8f5e7dc44b79ca0515c48497a6a",
+        "license": "CC0 1.0 (LICENSE)",
+        "path": "project_setup/skeletonize-existing-repository.md",
+        "authoredIn": "Markdown"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/cisa-skeletonize.md",
+          "sha256": "b913d64463985f9076a45589b0c1eb72e7e4e10b330f2e87ec558849262f4761"
+        },
+        {
+          "format": "html",
+          "path": "examples/real-corpus/cisa-skeletonize.html",
+          "sha256": "d2164d36b2fb9c31dd9b4fba9f6baa7f52219cd2888a18c51521692a468a951e"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/cisa-skeletonize.docx",
+          "sha256": "81a5ee2be06d4590bbd782ffb66c4d5192a474799fd2ac84a7fd53254f0480bc"
+        },
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/cisa-skeletonize.pdf",
+          "sha256": "aa9c2a1a6c2e21572de61f9d8cb6bce98255fdef394612805514b00566cbf293"
+        }
+      ],
+      "items": [
+        {
+          "id": "s-1",
+          "read": "none",
+          "phrases": ["Skeletonizing a repository standardizes our development setup"]
+        },
+        {
+          "id": "s-2",
+          "read": "none",
+          "phrases": ["Skeleton projects contain licensing information", "This lets us standardize"]
+        },
+        {
+          "id": "s-3",
+          "read": "opt",
+          "phrases": ["The general outline of how to add a skeleton to a repository"]
+        },
+        {
+          "id": "s-s1",
+          "read": "step",
+          "phrases": ["Add the skeleton as a remote"],
+          "procedure": "skeletonize",
+          "order": 1
+        },
+        {
+          "id": "s-s2",
+          "read": "step",
+          "phrases": ["Pull with --allow-unrelated-histories"],
+          "procedure": "skeletonize",
+          "order": 2
+        },
+        {
+          "id": "s-s3",
+          "read": "step",
+          "phrases": ["Fix all the inevitable conflicts"],
+          "procedure": "skeletonize",
+          "order": 3
+        },
+        {
+          "id": "s-s4",
+          "read": "step",
+          "phrases": ["Review non-conflicting changes"],
+          "procedure": "skeletonize",
+          "order": 4
+        },
+        {
+          "id": "s-s5",
+          "read": "step",
+          "phrases": ["Update skeleton's example references"],
+          "procedure": "skeletonize",
+          "order": 5
+        },
+        {
+          "id": "s-s6",
+          "read": "step",
+          "phrases": ["Set up pre-commit"],
+          "procedure": "skeletonize",
+          "order": 6
+        },
+        {
+          "id": "s-s7",
+          "read": "step",
+          "phrases": ["Fix additional problems that may arise"],
+          "procedure": "skeletonize",
+          "order": 7
+        },
+        {
+          "id": "s-s8",
+          "read": "step",
+          "phrases": ["Make a pull request"],
+          "procedure": "skeletonize",
+          "order": 8
+        },
+        {
+          "id": "s-4",
+          "read": "action",
+          "phrases": ["decide which of the available skeletons fits your existing repository"]
+        },
+        {
+          "id": "s-5",
+          "read": "action",
+          "phrases": ["use the skeleton list command"]
+        },
+        {
+          "id": "s-6",
+          "read": "none",
+          "phrases": ["we'll be using"]
+        },
+        {
+          "id": "s-7",
+          "read": "opt",
+          "phrases": [
+            "You can verify the remote has been added by",
+            "Create a new branch for this work",
+            "Pull skeleton's history",
+            "git remote add skeleton-parent"
+          ]
+        },
+        {
+          "id": "s-8",
+          "read": "action",
+          "phrases": ["Follow the instructions in CONTRIBUTING.md on setting up pre-commit"]
+        },
+        {
+          "id": "s-9",
+          "read": "opt",
+          "phrases": ["If you have already set up the prerequisites", "In the root directory of the repository"]
+        },
+        {
+          "id": "s-10",
+          "read": "none",
+          "phrases": ["This merge process will almost certainly fail"]
+        },
+        {
+          "id": "s-11",
+          "read": "action",
+          "phrases": ["fix those conflicts and add the files once the fixes are in place"]
+        },
+        {
+          "id": "s-12",
+          "read": "opt",
+          "phrases": [
+            "Determine which files need fixes",
+            "After fixing the merge conflicts in a file",
+            "When all conflicts have been fixed and added",
+            "Remember to add a descriptive and useful commit message",
+            "You don't only have to fix merge conflicts",
+            "Check all existing files"
+          ]
+        },
+        {
+          "id": "s-13",
+          "read": "rule",
+          "phrases": ["It is important to also look at the unconflicted changes"]
+        },
+        {
+          "id": "s-14",
+          "read": "none",
+          "phrases": ["This step is often overlooked because it is rarely needed"]
+        },
+        {
+          "id": "s-15",
+          "read": "opt",
+          "phrases": ["This step includes such activities as"]
+        },
+        {
+          "id": "s-16",
+          "read": "action",
+          "phrases": ["Update setup.py with non-example information"]
+        },
+        {
+          "id": "s-17",
+          "read": "action",
+          "phrases": ["Arrange into appropriate folders"]
+        },
+        {
+          "id": "s-18",
+          "read": "action",
+          "phrases": ["Update the codeowners to reflect subject matter expertise"]
+        },
+        {
+          "id": "s-19",
+          "read": "rule",
+          "phrases": ["Aim to have at least two codeowners for every repository"]
+        },
+        {
+          "id": "s-20",
+          "read": "none",
+          "phrases": ["Some skeletons need additional configuration"]
+        },
+        {
+          "id": "s-21",
+          "read": "none",
+          "phrases": ["The skeleton will bring along with it our standard pre-commit hook configurations"]
+        },
+        {
+          "id": "s-22",
+          "read": "none",
+          "phrases": ["The linters will automatically fix files where it can"]
+        },
+        {
+          "id": "s-23",
+          "read": "opt",
+          "phrases": ["You may want to send this output to a file"]
+        },
+        {
+          "id": "s-24",
+          "read": "rule",
+          "phrases": ["you'll need to do some configuration with isort"]
+        },
+        {
+          "id": "s-25",
+          "read": "action",
+          "phrases": ["Remove known-first-party and known-third-party packages"]
+        },
+        {
+          "id": "s-26",
+          "read": "action",
+          "phrases": ["Manually add your package name"]
+        },
+        {
+          "id": "s-27",
+          "read": "opt",
+          "phrases": ["If the repository needs coverage checks and integration with"]
+        },
+        {
+          "id": "s-28",
+          "read": "action",
+          "phrases": ["Modify the .coveragerc to point to the src package"]
+        },
+        {
+          "id": "s-29",
+          "read": "action",
+          "phrases": ["Add appropriate secrets so they're available to the Actions workflow"]
+        },
+        {
+          "id": "s-30",
+          "read": "action",
+          "phrases": ["run pytest manually to verify"]
+        },
+        {
+          "id": "s-31",
+          "read": "none",
+          "phrases": ["you've probably accumulated a number of commits"]
+        },
+        {
+          "id": "s-32",
+          "read": "action",
+          "phrases": ["have the team perform code reviews"]
+        }
+      ]
+    },
+    {
+      "id": "18f-out-of-office",
+      "split": "blind",
+      "title": "18F Handbook: Going out of office",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "pages/travel-and-leave/going-out-of-office.md",
+        "authoredIn": "Markdown with Liquid template tags"
+      },
+      "formats": [
+        {
+          "format": "markdown",
+          "path": "examples/real-corpus/sources/18f-out-of-office.md",
+          "sha256": "e1a3bb95a35fee2d6a96b66eb3f694061fb35f00dfd7cdf057e57de95031f204"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/18f-out-of-office.docx",
+          "sha256": "375f56f8cf5c05f46a9944fc91d8e54e1d19bdd9a90a0839cc21c98372bda8cc"
+        },
+        {
+          "format": "scan",
+          "path": "examples/real-corpus/18f-out-of-office.scan.pdf",
+          "sha256": "d44d273f2df9ad105285e40f7910166c1c48a424636b33d504235f07f0b6f3fe"
+        }
+      ],
+      "items": [
+        {
+          "id": "oo-1",
+          "read": "rule",
+          "phrases": ["You must report to work or have an approved"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-2",
+          "read": "rule",
+          "phrases": ["You are also responsible for submitting your timesheet"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-3",
+          "read": "rule",
+          "phrases": ["You should submit leave requests at least three business days in advance"],
+          "modality": "advisory"
+        },
+        {
+          "id": "oo-4",
+          "read": "action",
+          "phrases": ["do what you can to contact your supervisor"]
+        },
+        {
+          "id": "oo-5",
+          "read": "rule",
+          "phrases": ["your responsibility to submit all necessary documents"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-6",
+          "read": "rule",
+          "phrases": ["you are required to notify GSA"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-7",
+          "read": "action",
+          "phrases": ["Follow the guidance on international travel for clearance holders"]
+        },
+        {
+          "id": "oo-8",
+          "read": "opt",
+          "phrases": ["This notification is optional if you do not hold a clearance"]
+        },
+        {
+          "id": "oo-9",
+          "read": "rule",
+          "phrases": ["Billable TTS employees taking leave should follow the Handbook guidance"],
+          "modality": "advisory"
+        },
+        {
+          "id": "oo-10",
+          "read": "none",
+          "phrases": ["HR Links is separate from Tock"]
+        },
+        {
+          "id": "oo-11",
+          "read": "rule",
+          "phrases": ["make sure you're accounted for in both systems"]
+        },
+        {
+          "id": "oo-12",
+          "read": "opt",
+          "phrases": ["Before taking leave, be sure to"]
+        },
+        {
+          "id": "oo-c1",
+          "read": "criterion",
+          "phrases": ["Submit a leave request through HR Links"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c1b",
+          "read": "opt",
+          "phrases": ["Discuss the dates with your supervisor"]
+        },
+        {
+          "id": "oo-c2",
+          "read": "criterion",
+          "phrases": ["Mark your out of office time on your calendar"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c2b",
+          "read": "none",
+          "phrases": ["Google Calendar has an OOO setting"]
+        },
+        {
+          "id": "oo-c3",
+          "read": "criterion",
+          "phrases": ["Decline, cancel, or reschedule any meetings"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c4",
+          "read": "criterion",
+          "phrases": ["Tell team members or partners via Slack or email"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c4b",
+          "read": "action",
+          "phrases": ["Notify your Engagement Manager, Account Manager, and project lead"]
+        },
+        {
+          "id": "oo-c5",
+          "read": "criterion",
+          "phrases": ["Set up an email auto-responder as appropriate"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c5b",
+          "read": "opt",
+          "phrases": ["This should include both when you"]
+        },
+        {
+          "id": "oo-c5c",
+          "read": "none",
+          "phrases": ["I am out of the office on Wednesday January 2nd"]
+        },
+        {
+          "id": "oo-c6",
+          "read": "criterion",
+          "phrases": ["Update your Slack status to indicate that you are OOO"],
+          "modality": "obligation"
+        },
+        {
+          "id": "oo-c6b",
+          "read": "opt",
+          "phrases": ["You can also set up a Slackbot reminder", "Update my OOO reminder"]
+        },
+        {
+          "id": "oo-c7",
+          "read": "opt",
+          "phrases": ["TTS team members should also"]
+        },
+        {
+          "id": "oo-c7a",
+          "read": "action",
+          "phrases": ["Submit correct Tock entries"]
+        },
+        {
+          "id": "oo-c7b",
+          "read": "action",
+          "phrases": ["Update your Slack username and profile"]
+        },
+        {
+          "id": "oo-c7c",
+          "read": "action",
+          "phrases": ["add an event to the All Things Product"]
+        },
+        {
+          "id": "oo-r0",
+          "read": "opt",
+          "phrases": ["Upon returning from leave, remember to"]
+        },
+        {
+          "id": "oo-r1",
+          "read": "action",
+          "phrases": ["Change your Slack name/status back to normal"]
+        },
+        {
+          "id": "oo-r2",
+          "read": "action",
+          "phrases": ["Turn off your email auto-response"]
+        }
+      ]
+    },
+    {
+      "id": "cisa-style-guide",
+      "split": "blind",
+      "title": "CISA development style guide",
+      "source": {
+        "repository": "https://github.com/cisagov/development-guide",
+        "commit": "c22ca838ba50b8f5e7dc44b79ca0515c48497a6a",
+        "license": "CC0 1.0 (LICENSE)",
+        "path": "style-guide.md",
+        "authoredIn": "Markdown"
+      },
+      "formats": [
+        {
+          "format": "html",
+          "path": "examples/real-corpus/cisa-style-guide.html",
+          "sha256": "5d7b3ee61c5b4095c1b2427d0a4e0a8f99ff648666c19a88797a81d21dfe3889"
+        },
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/cisa-style-guide.pdf",
+          "sha256": "34540a04e0decbfcd88d83bb7f4abdbaf322f8fc2c5a9ea71edca96e25b91eed"
+        }
+      ],
+      "items": [
+        {
+          "id": "sg-0",
+          "read": "none",
+          "phrases": ["Here lie the heretofore-unwritten rules and styles"]
+        },
+        {
+          "id": "sg-r",
+          "read": "none",
+          "phrases": ["Plain Language guide", "GitHub list of supported languages"]
+        },
+        {
+          "id": "sg-1",
+          "read": "action",
+          "phrases": ["Follow standard capitalization for written work"]
+        },
+        {
+          "id": "sg-2",
+          "read": "opt",
+          "phrases": ["words are lowercase unless there is specific guidance", "capitalize the first word of a sentence"]
+        },
+        {
+          "id": "sg-2b",
+          "read": "none",
+          "phrases": ["APA's capitalization guidelines"]
+        },
+        {
+          "id": "sg-3",
+          "read": "action",
+          "phrases": ["defer to its capitalization"]
+        },
+        {
+          "id": "sg-3b",
+          "read": "none",
+          "phrases": ["GitHub has a capital letter mid-word"]
+        },
+        {
+          "id": "sg-4",
+          "read": "action",
+          "phrases": ["Use uppercase for abbreviations"]
+        },
+        {
+          "id": "sg-4b",
+          "read": "none",
+          "phrases": ["this guidance is specifically for written work such as documentation"]
+        },
+        {
+          "id": "sg-5",
+          "read": "rule",
+          "phrases": ["All repositories should be public"],
+          "modality": "advisory"
+        },
+        {
+          "id": "sg-6",
+          "read": "opt",
+          "phrases": ["remember that we work in the open by default", "read our open source policy"]
+        },
+        {
+          "id": "sg-7",
+          "read": "action",
+          "phrases": ["Use a repository's name to describe its purpose"]
+        },
+        {
+          "id": "sg-8",
+          "read": "opt",
+          "phrases": ["Names should be", "Descriptive", "Readable", "Consistent", "Contextual", "Future-friendly", "Extensible", "Reusable"]
+        },
+        {
+          "id": "sg-9",
+          "read": "action",
+          "phrases": ["Avoid references to pop culture or other implicit references"]
+        },
+        {
+          "id": "sg-9b",
+          "read": "none",
+          "phrases": ["GitLab has a good guide on using inclusive language"]
+        },
+        {
+          "id": "sg-9c",
+          "read": "opt",
+          "phrases": ["Specifically, when naming a repository"]
+        },
+        {
+          "id": "sg-10",
+          "read": "action",
+          "phrases": ["Use lower case"]
+        },
+        {
+          "id": "sg-11",
+          "read": "action",
+          "phrases": ["Use dashes"]
+        },
+        {
+          "id": "sg-12",
+          "read": "opt",
+          "phrases": ["where spaces would otherwise separate words"]
+        },
+        {
+          "id": "sg-13",
+          "read": "action",
+          "phrases": ["Avoid underscores, which require extra keystrokes"]
+        },
+        {
+          "id": "sg-14",
+          "read": "action",
+          "phrases": ["Specify code owners in each repository"]
+        },
+        {
+          "id": "sg-14b",
+          "read": "none",
+          "phrases": ["we'll catch more problems before they get into the protected branch"]
+        },
+        {
+          "id": "sg-15",
+          "read": "action",
+          "phrases": ["Set a minimum of two code owners for all repositories"]
+        },
+        {
+          "id": "sg-16",
+          "read": "action",
+          "phrases": ["Add or edit each repository's"]
+        },
+        {
+          "id": "sg-17",
+          "read": "action",
+          "phrases": ["Set up branch protection"]
+        },
+        {
+          "id": "sg-18",
+          "read": "action",
+          "phrases": ["Use title case for the main title of a document"]
+        },
+        {
+          "id": "sg-19",
+          "read": "action",
+          "phrases": ["Use sentence case for headings within a document"]
+        },
+        {
+          "id": "sg-20",
+          "read": "action",
+          "phrases": ["use the capitalization of the referenced item"]
+        },
+        {
+          "id": "sg-21",
+          "read": "action",
+          "phrases": ["Use both opening and closing octothorpes"]
+        },
+        {
+          "id": "sg-21b",
+          "read": "none",
+          "phrases": ["Our Markdown linting enforces this as well"]
+        },
+        {
+          "id": "sg-21c",
+          "read": "opt",
+          "phrases": ["Use variables to configure pipelines", "Using the Style Guide"]
+        },
+        {
+          "id": "sg-22",
+          "read": "action",
+          "phrases": ["Use bulleted lists unless order matters"]
+        },
+        {
+          "id": "sg-23",
+          "read": "rule",
+          "phrases": ["Always capitalize the first word of list items"],
+          "modality": "obligation"
+        },
+        {
+          "id": "sg-23b",
+          "read": "none",
+          "phrases": ["Periods or no periods"]
+        },
+        {
+          "id": "sg-24",
+          "read": "action",
+          "phrases": ["Use periods at the end of bullets that are full sentences"]
+        },
+        {
+          "id": "sg-25",
+          "read": "action",
+          "phrases": ["Omit periods at the end of partial sentences"]
+        },
+        {
+          "id": "sg-26",
+          "read": "action",
+          "phrases": ["Match the rest of the bulleted or numbered list as much as possible"]
+        },
+        {
+          "id": "sg-27",
+          "read": "action",
+          "phrases": ["use the formatting that best highlights the syntax"]
+        },
+        {
+          "id": "sg-27b",
+          "read": "none",
+          "phrases": ["We generally use code blocks for scripts"]
+        },
+        {
+          "id": "sg-28",
+          "read": "action",
+          "phrases": ["Use shell formatting for shell scripts"]
+        },
+        {
+          "id": "sg-28b",
+          "read": "none",
+          "phrases": ["is also aliased as"]
+        },
+        {
+          "id": "sg-29",
+          "read": "action",
+          "phrases": ["Use language-specific formatting"]
+        },
+        {
+          "id": "sg-29b",
+          "read": "opt",
+          "phrases": ["Reference the GitHub list of supported languages"]
+        },
+        {
+          "id": "sg-30",
+          "read": "opt",
+          "phrases": ["is most effective at highlighting a command"]
+        },
+        {
+          "id": "sg-30b",
+          "read": "none",
+          "phrases": ["the_first_command", "yet more output"]
+        },
+        {
+          "id": "sg-31",
+          "read": "rule",
+          "phrases": ["should be used for result-less commands"],
+          "modality": "advisory"
+        },
+        {
+          "id": "sg-32",
+          "read": "rule",
+          "phrases": ["Extension-specific formatting, such as hcl for Terraform, should be used"],
+          "modality": "advisory"
+        }
+      ]
+    },
+    {
+      "id": "18f-project-readme",
+      "split": "blind",
+      "title": "18F Project README template",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/TEMPLATE_Project_README.docx",
+        "authoredIn": "Microsoft Word (native .docx)"
+      },
+      "formats": [
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/sources/18f-project-readme.docx",
+          "sha256": "8b1bcb13d94e7f45774aa8d13165583831024d1ed7c98a5ce86cd672145cc52c"
+        },
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/18f-project-readme.pdf",
+          "sha256": "1938b5fad2bbc5719c0a116dfb570a84e9d9e58e93207b841daff1ebdd6094cf"
+        }
+      ],
+      "items": [
+        {
+          "id": "pr-1",
+          "read": "rule",
+          "phrases": ["expected to maintain a README of key information"],
+          "modality": "obligation"
+        },
+        {
+          "id": "pr-2",
+          "read": "rule",
+          "phrases": ["The team should update the README upon a new project phase"],
+          "modality": "advisory"
+        },
+        {
+          "id": "pr-3",
+          "read": "opt",
+          "phrases": ["This is a recommended README template", "Suggestions? Contact: 18F Director of Account Management"]
+        },
+        {
+          "id": "pr-f",
+          "read": "none",
+          "phrases": ["Partner agency", "Project start date", "Projected end date", "Tock code", "Last updated", "Welcome to PROJECT NAME"]
+        },
+        {
+          "id": "pr-l1",
+          "read": "none",
+          "phrases": [
+            "Project folder",
+            "Slack channel",
+            "Burn document",
+            "Running notes doc",
+            "Arising questions doc",
+            "BD Qualification",
+            "BD Proposal to partner"
+          ]
+        },
+        {
+          "id": "pr-l2",
+          "read": "none",
+          "phrases": [
+            "IAA / Statement of Work",
+            "Risk tracker",
+            "Task tracker",
+            "Project plan or high-level schedule",
+            "Weekly ship record",
+            "Launch plan",
+            "Mural space"
+          ]
+        },
+        {
+          "id": "pr-l3",
+          "read": "none",
+          "phrases": [
+            "Related partner satisfaction interviews",
+            "Engagement brief",
+            "Project Resources Airtable",
+            "Big Picture Engagement Brief"
+          ]
+        },
+        {
+          "id": "pr-q1",
+          "read": "none",
+          "phrases": [
+            "What is our partner's mission",
+            "Who do they serve",
+            "What's the ultimate impact headline",
+            "Partner can issue passports in one week or less"
+          ]
+        },
+        {
+          "id": "pr-q2",
+          "read": "none",
+          "phrases": [
+            "What problems are our partners facing",
+            "What have our partners done to work around their challenges",
+            "What has the partner indicated they need"
+          ]
+        },
+        {
+          "id": "pr-q3",
+          "read": "none",
+          "phrases": [
+            "What deliverables are listed in the Statement of Work",
+            "Why is the partner coming to 18F now",
+            "Did 18F identify this lead"
+          ]
+        },
+        {
+          "id": "pr-s",
+          "read": "none",
+          "phrases": [
+            "Strategy development",
+            "Vendor acquisition support",
+            "Website modernization",
+            "Digital service transformation",
+            "Other (custom shape)"
+          ]
+        },
+        {
+          "id": "pr-4",
+          "read": "opt",
+          "phrases": [
+            "Link to risk tracker here",
+            "Add any information about how the partners prefer to communicate",
+            "Include any relevant technology documentation"
+          ]
+        },
+        {
+          "id": "pr-t",
+          "read": "none",
+          "phrases": [
+            "Name Title Organization Contact Notes",
+            "Communication type Preferred platform",
+            "File sharing",
+            "Video meetings",
+            "Written conversation",
+            "Visual collaboration"
+          ]
+        },
+        {
+          "id": "pr-q4",
+          "read": "none",
+          "phrases": [
+            "What video meeting technologies work best for them",
+            "Will they need GACA account",
+            "How much time do they have to dedicate to this project",
+            "How does the executive sponsor want to be involved"
+          ]
+        },
+        {
+          "id": "pr-q5",
+          "read": "none",
+          "phrases": [
+            "Are there third-party stakeholders funding this work",
+            "Do we have documentation on the office structure",
+            "Are there any known naysayers for this work"
+          ]
+        },
+        {
+          "id": "pr-q6",
+          "read": "none",
+          "phrases": [
+            "How could the partner go about recruiting users",
+            "What is the current tech stack",
+            "Is there anything the team needs to do to gain credentials"
+          ]
+        },
+        {
+          "id": "pr-q7",
+          "read": "none",
+          "phrases": [
+            "What is the program office's relationship with the CIO shop",
+            "What is the process for launching a site",
+            "relationship with its procurement shop",
+            "What is the process like for procuring a piece of software"
+          ]
+        },
+        {
+          "id": "pr-q8",
+          "read": "none",
+          "phrases": [
+            "Are there existing vendor teams in place",
+            "How are they performing",
+            "Does the partner release changes regularly",
+            "Has anyone received agile or scrum training"
+          ]
+        },
+        {
+          "id": "pr-q9",
+          "read": "none",
+          "phrases": ["Has the partner shared any important documents or resources", "background materials, prior research"]
+        }
+      ]
+    },
+    {
+      "id": "google-docs-demo-pdf",
+      "split": "blind",
+      "title": "A one-sentence demo PDF (Google Docs export)",
+      "source": {
+        "repository": "https://github.com/18F/handbook",
+        "commit": "c220f93896b39e9e4ab0f486a1d5bf346ac06e3e",
+        "license": "Public domain (US Government work) and CC0 1.0 (LICENSE.md)",
+        "path": "downloads/my-form.pdf",
+        "authoredIn": "Google Docs (PDF export)"
+      },
+      "formats": [
+        {
+          "format": "pdf",
+          "path": "examples/real-corpus/sources/google-docs-demo.pdf",
+          "sha256": "20a0638d167e3831895e429cd19c6ecb8f20917ca6c3f49e745d64970b20dd84"
+        }
+      ],
+      "items": [
+        {
+          "id": "d-1",
+          "read": "none",
+          "phrases": ["This page intentionally left blank", "This is just a demo PDF", "Sorry to have wasted your time"]
+        }
+      ]
+    },
+    {
+      "id": "usds-play-12",
+      "split": "blind",
+      "title": "USDS Digital Services Playbook, play 12",
+      "source": {
+        "repository": "https://github.com/usds/playbook",
+        "commit": "f5d71f1939efe87db9f0be414bcfa7c489e01c19",
+        "license": "Public domain (US Government work; CC0 per the repository README)",
+        "path": "_plays/12.md",
+        "authoredIn": "Markdown"
+      },
+      "formats": [
+        {
+          "format": "word-html",
+          "path": "examples/real-corpus/usds-play-12.word.html",
+          "sha256": "27314675b9bba059520217ec0b56168212dd37b7ec5b64e7bd32ec90f0ef0e92"
+        },
+        {
+          "format": "docx",
+          "path": "examples/real-corpus/usds-play-12.docx",
+          "sha256": "12b2aae1711dddd93542c0a85c80b8505432e5fe1cba410a3343ac9a9e93ec88"
+        }
+      ],
+      "items": [
+        {
+          "id": "p12-title",
+          "read": "opt",
+          "phrases": ["Use data to drive decisions"]
+        },
+        {
+          "id": "p12-i1",
+          "read": "rule",
+          "phrases": ["we should measure how well our service is working for our users"],
+          "modality": "advisory"
+        },
+        {
+          "id": "p12-i2",
+          "read": "none",
+          "phrases": ["This includes measuring how well a system performs"]
+        },
+        {
+          "id": "p12-i3",
+          "read": "rule",
+          "phrases": ["should carefully watch these metrics"],
+          "modality": "advisory"
+        },
+        {
+          "id": "p12-i4",
+          "read": "rule",
+          "phrases": ["a feedback mechanism should be in place"],
+          "modality": "advisory"
+        },
+        {
+          "id": "p12-c1",
+          "read": "criterion",
+          "phrases": ["Monitor system-level resource utilization in real time"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c2",
+          "read": "criterion",
+          "phrases": ["Monitor system performance in real-time"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c3",
+          "read": "criterion",
+          "phrases": ["Ensure monitoring can measure median, 95th percentile"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c4",
+          "read": "criterion",
+          "phrases": ["Create automated alerts based on this monitoring"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c5",
+          "read": "criterion",
+          "phrases": ["Track concurrent users in real-time"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c6",
+          "read": "criterion",
+          "phrases": ["Publish metrics internally"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c7",
+          "read": "criterion",
+          "phrases": ["Publish metrics externally"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-c8",
+          "read": "criterion",
+          "phrases": ["Use an experimentation tool that supports multivariate testing"],
+          "modality": "obligation"
+        },
+        {
+          "id": "p12-q1",
+          "read": "none",
+          "phrases": ["What are the key metrics for the service"]
+        },
+        {
+          "id": "p12-q2",
+          "read": "none",
+          "phrases": ["How have these metrics performed over the life of the service"]
+        },
+        {
+          "id": "p12-q3",
+          "read": "none",
+          "phrases": ["Which system monitoring tools are in place"]
+        },
+        {
+          "id": "p12-q4",
+          "read": "none",
+          "phrases": ["What is the targeted average response time for your service"]
+        },
+        {
+          "id": "p12-q5",
+          "read": "none",
+          "phrases": ["What is the average response time and percentile breakdown"]
+        },
+        {
+          "id": "p12-q6",
+          "read": "none",
+          "phrases": ["What is the volume of each of your service's top 10 transactions"]
+        },
+        {
+          "id": "p12-q7",
+          "read": "none",
+          "phrases": ["What is your service's monthly uptime target"]
+        },
+        {
+          "id": "p12-q8",
+          "read": "none",
+          "phrases": ["What is your service's monthly uptime percentage"]
+        },
+        {
+          "id": "p12-q9",
+          "read": "none",
+          "phrases": ["How does your team receive automated alerts"]
+        },
+        {
+          "id": "p12-q10",
+          "read": "none",
+          "phrases": ["How does your team respond to incidents"]
+        },
+        {
+          "id": "p12-q11",
+          "read": "none",
+          "phrases": ["Which tools are in place to measure user behavior"]
+        },
+        {
+          "id": "p12-q12",
+          "read": "none",
+          "phrases": ["What tools or technologies are used for A/B testing"]
+        },
+        {
+          "id": "p12-q13",
+          "read": "none",
+          "phrases": ["How do you measure customer satisfaction"]
+        }
+      ]
+    }
+  ]
+}
