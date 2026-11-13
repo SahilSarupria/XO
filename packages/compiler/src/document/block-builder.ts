@@ -1,6 +1,7 @@
-import type { ClassifiedLine } from './block-classifier.js';
+import { decodedRuns, type ClassifiedLine } from './block-classifier.js';
 import type { DocumentBlock, Provenance } from './types.js';
 import { decodeRunText } from '../pdf/text-runs-to-plain-text.js';
+import { estimateRunAdvanceWidth } from './line-grouper.js';
 
 /** How much larger a line-to-line y-gap has to be, relative to the body font size, before it's treated as a paragraph break rather than a wrapped line within the same paragraph. An approximation — see this package's README, "Known limitations." */
 const PARAGRAPH_BREAK_GAP_MULTIPLIER = 1.6;
@@ -129,7 +130,18 @@ export function detectTableRowLines(lines: readonly ClassifiedLine[]): ReadonlyS
       if (!aligned) break;
       j += 1;
     }
-    if (j - i >= MIN_TABLE_ROWS) {
+    // UW-3b: two text runs that start at the same x are one column whose font changes mid-line (a bold title, then its
+    // body), not two cells — no table puts two cells at one position. A group in which EVERY line is like that, and so
+    // has fewer than MIN_TABLE_COLUMNS real columns, is a marker-plus-text list ("1 | Never commit secrets. API keys
+    // ..."), which block-classifier.ts reads as list items. Blank runs are ignored either way, as before.
+    const sharedTextColumn = (line: ClassifiedLine): boolean => {
+      const runs = decodedRuns(line);
+      return (
+        runs.some((r, k) => k > 0 && Math.abs(r.x - runs[k - 1]!.x) <= COLUMN_X_TOLERANCE) && cellsOfLine(line).length < MIN_TABLE_COLUMNS
+      );
+    };
+    const markerPlusText = j - i >= MIN_TABLE_ROWS && lines.slice(i, j).every(sharedTextColumn);
+    if (j - i >= MIN_TABLE_ROWS && !markerPlusText) {
       for (let k = i; k < j; k += 1) tableLineIndices.add(k);
       i = j;
     } else {
@@ -138,6 +150,229 @@ export function detectTableRowLines(lines: readonly ClassifiedLine[]): ReadonlyS
   }
   return tableLineIndices;
 }
+
+// ── UW-3b: tables whose cells wrap ─────────────────────────────────────────────────────────────────────────────────
+//
+// `detectTableRowLines` needs every row on one physical line. Real tables wrap long cells, so one logical row spans
+// several lines with different run counts and it falls through to prose, where the columns interleave ("List inputs,
+// Goal is clear and written outputs, and constraints. down"). This reconstructs such a table from geometry alone:
+//
+//   header   a line of at least MIN_TABLE_COLUMNS short label cells at distinct x positions → the column starts;
+//   row      a following line whose runs all start at column starts and that has text in the FIRST column;
+//   wrapped  a line whose runs all start at column starts, with nothing in the first column, a wrapped-line gap below
+//            the line above → appended, cell by cell, to the row above.
+//
+// It is all or nothing: if a line inside the region breaks a rule (a first-column-less line that is not a tight
+// continuation, a run between columns), the whole candidate is rejected and the lines stay exactly as before. At least
+// two rows and at least one wrapped line are required, so a single-line table is left to `detectTableRowLines` and
+// anything else to ordinary prose. Same page only.
+
+const MAX_HEADER_CELL_WORDS = 5;
+const MAX_HEADER_CELL_CHARS = 40;
+const MIN_WRAPPED_ROWS = 2;
+/** Same rule the paragraph builder uses for a wrapped line versus a new paragraph. */
+const WRAPPED_LINE_GAP_MULTIPLIER = PARAGRAPH_BREAK_GAP_MULTIPLIER;
+
+export interface ReconstructedTable {
+  readonly header: { readonly line: number; readonly cells: readonly string[] };
+  readonly rows: readonly { readonly lines: readonly number[]; readonly cells: readonly string[] }[];
+  /** Every line index the table claims (header, rows and their wrapped lines). */
+  readonly lines: readonly number[];
+}
+
+/** Runs of a line merged into cells: runs at the same x, or flowing straight on from the previous run, are one cell. */
+function cellsOfLine(line: ClassifiedLine): { readonly x: number; readonly text: string }[] {
+  const out: { x: number; text: string }[] = [];
+  let prevEnd = Number.NEGATIVE_INFINITY;
+  for (const r of decodedRuns(line)) {
+    const last = out[out.length - 1];
+    if (last !== undefined && (Math.abs(r.x - last.x) <= COLUMN_X_TOLERANCE || (r.x >= last.x && r.x - prevEnd <= 4))) {
+      last.text = `${last.text}${r.text}`;
+    } else {
+      out.push({ x: r.x, text: r.text });
+    }
+    prevEnd = Math.max(prevEnd, r.x + estimateRunAdvanceWidth(r.text, r.fontSizePt));
+  }
+  return out.map((c) => ({ x: c.x, text: c.text.replace(/\s+/g, ' ').trim() })).filter((c) => c.text.length > 0);
+}
+
+function isHeaderCell(text: string): boolean {
+  if (text.length > MAX_HEADER_CELL_CHARS) return false;
+  if (text.split(/\s+/).length > MAX_HEADER_CELL_WORDS) return false;
+  return !/[.;,]$/.test(text);
+}
+
+function columnOf(x: number, columns: readonly number[]): number | undefined {
+  const k = columns.findIndex((c) => Math.abs(c - x) <= COLUMN_X_TOLERANCE);
+  return k < 0 ? undefined : k;
+}
+
+function joinCellText(a: string, b: string): string {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  // A word broken across lines with a hyphen ("re-" / "test") is rejoined; a real hyphenated word keeps its hyphen.
+  return a.endsWith('-') && /^[a-z]/.test(b) ? `${a}${b}` : `${a} ${b}`;
+}
+
+function wrappedTableAt(
+  lines: readonly ClassifiedLine[],
+  start: number,
+  claimed: ReadonlySet<number>,
+  bodySize: number,
+): ReconstructedTable | undefined {
+  const head = lines[start]!;
+  if (head.blockKind === 'heading') return undefined;
+  const headerCells = cellsOfLine(head);
+  if (headerCells.length < MIN_TABLE_COLUMNS) return undefined;
+  if (!headerCells.every((c) => isHeaderCell(c.text))) return undefined;
+  if (headerCells.filter((c) => /\p{L}/u.test(c.text)).length < 2) return undefined;
+  const columns = headerCells.map((c) => c.x);
+  for (let k = 1; k < columns.length; k += 1) if (columns[k]! - columns[k - 1]! <= 2 * COLUMN_X_TOLERANCE) return undefined;
+
+  const rows: { lines: number[]; cells: string[] }[] = [];
+  let continuationCount = 0;
+  let previousY = head.y;
+  let j = start + 1;
+  for (; j < lines.length; j += 1) {
+    const line = lines[j]!;
+    if (line.pageNumber !== head.pageNumber || claimed.has(j) || line.blockKind === 'heading' || line.blockKind === 'footnote') break;
+    const cells = cellsOfLine(line);
+    if (cells.length === 0) continue;
+    const placed = cells.map((c) => ({ column: columnOf(c.x, columns), text: c.text }));
+    if (placed.some((p) => p.column === undefined)) break; // a run between columns: the table (if any) ended above
+    const gap = previousY - line.y;
+    const startsRow = placed.some((p) => p.column === 0);
+    if (startsRow) {
+      const rowCells = columns.map(() => '');
+      for (const p of placed) rowCells[p.column!] = joinCellText(rowCells[p.column!]!, p.text);
+      rows.push({ lines: [j], cells: rowCells });
+    } else {
+      const current = rows[rows.length - 1];
+      if (current === undefined || gap <= 0 || gap > bodySize * WRAPPED_LINE_GAP_MULTIPLIER) return undefined; // not a clean wrap: reject the whole table
+      for (const p of placed) current.cells[p.column!] = joinCellText(current.cells[p.column!]!, p.text);
+      current.lines.push(j);
+      continuationCount += 1;
+    }
+    previousY = line.y;
+  }
+  if (rows.length < MIN_WRAPPED_ROWS || continuationCount === 0) return undefined;
+  if (!rows.every((r) => r.cells.filter((c) => c.length > 0).length >= 2)) return undefined;
+  return {
+    header: { line: start, cells: headerCells.map((c) => c.text) },
+    rows,
+    lines: [start, ...rows.flatMap((r) => r.lines)],
+  };
+}
+
+/** UW-3b: every wrapped table in the line stream (see above), skipping lines `claimed` by the single-line table detector. */
+export function detectWrappedTables(
+  lines: readonly ClassifiedLine[],
+  claimed: ReadonlySet<number>,
+  bodySize: number,
+): readonly ReconstructedTable[] {
+  const tables: ReconstructedTable[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const table = claimed.has(i) ? undefined : wrappedTableAt(lines, i, claimed, bodySize);
+    if (table === undefined) {
+      i += 1;
+      continue;
+    }
+    tables.push(table);
+    i = Math.max(...table.lines) + 1;
+  }
+  return tables;
+}
+
+// ── UW-3b: fill-in forms ──────────────────────────────────────────────────────────────────────────────────────────────
+//
+// A form prints labels in one column and leaves the value column blank, or shows a hint or the options there:
+//   Task title
+//   Task type      Feature / Bug fix / Refactor / Docs / Other
+//   Owner
+// Read as prose these lines became rules ("Out of scope What will NOT be done in this task?" as an obligation). A
+// region is a form only when it has at least MIN_FORM_FIELDS consecutive lines, all labels start at one x and every
+// value at one other x, labels are short, AND at least one label has no value (a blank to fill in). A label/value
+// list where every value is filled in is a record of data, not a form, and is left exactly as before.
+
+const MIN_FORM_FIELDS = 3;
+const MAX_FORM_LABEL_WORDS = 6;
+/** Fields of one form sit at most this many body-line heights apart (forms leave room to write). */
+const MAX_FORM_FIELD_GAP_MULTIPLIER = 4;
+
+export interface FormField {
+  readonly line: number;
+  readonly label: string;
+  readonly hint?: string;
+}
+
+function formRegionAt(
+  lines: readonly ClassifiedLine[],
+  start: number,
+  claimed: ReadonlySet<number>,
+  bodySize: number,
+): readonly FormField[] | undefined {
+  const first = lines[start]!;
+  if (first.blockKind !== 'paragraph' || claimed.has(start)) return undefined;
+  const fields: FormField[] = [];
+  let labelX: number | undefined;
+  let valueX: number | undefined;
+  let previousY: number | undefined;
+  for (let j = start; j < lines.length; j += 1) {
+    const line = lines[j]!;
+    if (line.pageNumber !== first.pageNumber || claimed.has(j) || line.blockKind !== 'paragraph') break;
+    if (previousY !== undefined && (previousY - line.y <= 0 || previousY - line.y > bodySize * MAX_FORM_FIELD_GAP_MULTIPLIER)) break;
+    const cells = cellsOfLine(line);
+    if (cells.length === 0 || cells.length > 2) break;
+    const label = cells[0]!;
+    if (labelX === undefined) labelX = label.x;
+    if (Math.abs(label.x - labelX) > COLUMN_X_TOLERANCE) break;
+    if (label.text.split(/\s+/).length > MAX_FORM_LABEL_WORDS || /[.;]$/.test(label.text)) break;
+    const value = cells[1];
+    if (value !== undefined) {
+      if (valueX === undefined) valueX = value.x;
+      if (Math.abs(value.x - valueX) > COLUMN_X_TOLERANCE || value.x - label.x <= 2 * COLUMN_X_TOLERANCE) break;
+    }
+    fields.push({ line: j, label: label.text, ...(value !== undefined ? { hint: value.text } : {}) });
+    previousY = line.y;
+  }
+  if (fields.length < MIN_FORM_FIELDS || valueX === undefined) return undefined;
+  if (!fields.some((f) => f.hint === undefined)) return undefined; // every value filled in: data, not a form
+  return fields;
+}
+
+/** UW-3b: the fields of every fill-in form in the line stream (see above). */
+export function detectFormFields(
+  lines: readonly ClassifiedLine[],
+  claimed: ReadonlySet<number>,
+  bodySize: number,
+): ReadonlyMap<number, FormField> {
+  const out = new Map<number, FormField>();
+  let i = 0;
+  while (i < lines.length) {
+    const fields = formRegionAt(lines, i, claimed, bodySize);
+    if (fields === undefined) {
+      i += 1;
+      continue;
+    }
+    for (const f of fields) out.set(f.line, f);
+    i = fields[fields.length - 1]!.line + 1;
+  }
+  return out;
+}
+
+/** UW-3b: a line whose runs sit in separate columns (a gap far wider than word spacing) — joined as prose, its meaning may be garbled. */
+export function hasColumnGap(line: ClassifiedLine): boolean {
+  const runs = decodedRuns(line);
+  for (let k = 1; k < runs.length; k += 1) {
+    const prev = runs[k - 1]!;
+    const end = prev.x + estimateRunAdvanceWidth(prev.text, prev.fontSizePt);
+    if (runs[k]!.x - end > Math.max(COLUMN_GAP_MIN_PT, COLUMN_GAP_FONT_MULTIPLIER * prev.fontSizePt)) return true;
+  }
+  return false;
+}
+const COLUMN_GAP_MIN_PT = 20;
+const COLUMN_GAP_FONT_MULTIPLIER = 2;
 
 function provenanceOf(lines: readonly ClassifiedLine[]): Provenance {
   const ys = lines.map((l) => l.y);
@@ -180,10 +415,26 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
   // otherwise indistinguishable, at the classifier stage, from a genuine
   // numbered list item.
   const tableLineIndices = detectTableRowLines(lines);
+  // UW-3b: wrapped-cell tables and fill-in forms, each claiming only lines no earlier detector took.
+  const wrappedTables = detectWrappedTables(lines, tableLineIndices, bodySize);
+  const wrappedRowAt = new Map<number, { cells: readonly string[]; lines: readonly number[] }>();
+  const wrappedLines = new Set<number>();
+  for (const t of wrappedTables) {
+    wrappedRowAt.set(t.header.line, { cells: t.header.cells, lines: [t.header.line] });
+    for (const r of t.rows) wrappedRowAt.set(r.lines[0]!, r);
+    for (const l of t.lines) wrappedLines.add(l);
+  }
+  const formFields = detectFormFields(lines, new Set([...tableLineIndices, ...wrappedLines]), bodySize);
 
   const flushParagraph = (): void => {
     if (paragraphBuffer.length === 0) return;
-    blocks.push({ kind: 'paragraph', text: paragraphBuffer.map((l) => l.text).join(' '), provenance: provenanceOf(paragraphBuffer) });
+    const suspect = paragraphBuffer.some(hasColumnGap);
+    blocks.push({
+      kind: 'paragraph',
+      text: paragraphBuffer.map((l) => l.text).join(' '),
+      provenance: provenanceOf(paragraphBuffer),
+      ...(suspect ? { layoutSuspect: true as const } : {}),
+    });
     paragraphBuffer = [];
   };
 
@@ -206,6 +457,49 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
       flushHeading();
       blocks.push({ kind: 'table_row', cells: line.runs.map((r) => decodeRunText(r).trim()), provenance: provenanceOf([line]) });
       continue;
+    }
+
+    if (wrappedLines.has(index)) {
+      flushParagraph();
+      flushHeading();
+      const row = wrappedRowAt.get(index);
+      if (row !== undefined) {
+        blocks.push({
+          kind: 'table_row',
+          cells: row.cells,
+          provenance: provenanceOf(row.lines.map((l) => lines[l]!)),
+          reconstruction: 'wrapped',
+        });
+      }
+      continue; // a wrapped line is already part of its row
+    }
+
+    const field = formFields.get(index);
+    if (field !== undefined) {
+      flushParagraph();
+      flushHeading();
+      blocks.push({
+        kind: 'paragraph',
+        text: line.text,
+        provenance: provenanceOf([line]),
+        formField: { label: field.label, ...(field.hint !== undefined ? { hint: field.hint } : {}) },
+      });
+      continue;
+    }
+
+    // UW-3b: the wrapped tail of a marker-led list item (block-classifier.ts) belongs to that item.
+    if (line.listContinuation === true) {
+      const last = blocks[blocks.length - 1];
+      if (paragraphBuffer.length === 0 && headingBuffer.length === 0 && last !== undefined && last.kind === 'list_item') {
+        const extra = line.text.trim();
+        blocks[blocks.length - 1] = {
+          ...last,
+          text: `${last.text} ${extra}`,
+          ...(last.body !== undefined ? { body: `${last.body} ${extra}` } : {}),
+          provenance: { page: last.provenance.page, yRange: [last.provenance.yRange[0], Math.min(last.provenance.yRange[1], line.y)] },
+        };
+        continue;
+      }
     }
 
     if (line.blockKind === 'paragraph') {
@@ -243,6 +537,9 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
         listKind: line.listKind!,
         text: line.listText ?? line.text,
         provenance: provenanceOf([line]),
+        ...(line.checkbox !== undefined ? { checkbox: line.checkbox } : {}),
+        ...(line.ordinal !== undefined ? { ordinal: line.ordinal } : {}),
+        ...(line.itemTitle !== undefined && line.itemBody !== undefined ? { title: line.itemTitle, body: line.itemBody } : {}),
       });
     } else if (line.blockKind === 'footnote') {
       blocks.push({ kind: 'footnote', text: line.text, provenance: provenanceOf([line]) });

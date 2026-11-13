@@ -39,6 +39,14 @@ export interface ParagraphBlock {
   readonly provenance: Provenance;
   /** Present only when this block was created by the structured (CSV/JSON) source frontend from one field of a source record; absent for every other source. */
   readonly structuredField?: StructuredFieldValue;
+  /**
+   * UW-3b: this paragraph is one field of a fill-in form ("Owner: ____", "Goal | What should be true when this is
+   * done?"): a label and, when printed, the hint or options shown in the value column. The author asks for a value here;
+   * it is not a statement of fact or a rule.
+   */
+  readonly formField?: { readonly label: string; readonly hint?: string };
+  /** UW-3b: the line(s) this paragraph came from held text in separate columns that were joined; meaning may be garbled. */
+  readonly layoutSuspect?: true;
 }
 
 export interface ListItemBlock {
@@ -48,12 +56,24 @@ export interface ListItemBlock {
   readonly listKind: 'ordered' | 'unordered';
   readonly text: string;
   readonly provenance: Provenance;
+  /** UW-3b: the item is a checklist entry (`[ ]`, `☑`), with the author's tick state. */
+  readonly checkbox?: 'unchecked' | 'checked';
+  /** UW-3b: the position the marker claims (`3.` → 3, `c)` → 3), when it claims one. */
+  readonly ordinal?: number;
+  /** UW-3b: a short title set apart from the item's body ("Never commit secrets." / "API keys stay in ..."). `text` stays the whole item. */
+  readonly title?: string;
+  readonly body?: string;
 }
 
 export interface TableRowBlock {
   readonly kind: 'table_row';
   readonly cells: readonly string[];
   readonly provenance: Provenance;
+  /**
+   * UW-3b: how the row was recovered. `wrapped` = rebuilt from a table whose cells wrap over several physical lines
+   * (each cell is that column's lines joined). Absent for a row read from one physical line.
+   */
+  readonly reconstruction?: 'wrapped';
 }
 
 export interface FootnoteBlock {
