@@ -105,6 +105,14 @@ function qualify(sheet: string | undefined, range: string): string {
   return `${prefix}${range}`;
 }
 
+function isYearHeader(cell: TabularCell, below: readonly Row[]): boolean {
+  const raw = cell.raw.trim();
+  const year = /^\d{4}$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(year >= 1900 && year <= 2100) || (cell.kind !== 'number' && cell.kind !== 'string')) return false;
+  const values = below.flatMap((b) => b.cells.filter((c) => c.column === cell.column));
+  return values.length > 0 && !values.every((c) => /^\d{4}$/.test(c.raw.trim()) && Number(c.raw) >= 1900 && Number(c.raw) <= 2100);
+}
+
 export interface RecordSetOptions {
   /** True for CSV: values are text, so their class comes from what they look like. */
   readonly fromText: boolean;
@@ -141,17 +149,23 @@ function recordSetFromRegion(grid: SheetGrid, region: readonly Row[], id: string
   for (let i = 0; i < scan; i++) {
     const r = region[i]!;
     if (r.cells.length < minWidth) continue;
-    if (!r.cells.every((c) => c.kind === 'string' && classify(c, true) === 'string')) continue;
+    const below = region.slice(i + 1);
+    // Year headers (Particulars | 2024 | 2025), common in financial schedules: a whole-number cell from 1900 to 2100 counts as header text
+    // when the row also has text and the values under that column are not themselves years.
+    const yearHeaders = r.cells.filter((c) => isYearHeader(c, below));
+    const headerLike = (c: TabularCell) => (c.kind === 'string' && classify(c, true) === 'string') || yearHeaders.includes(c);
+    if (!r.cells.every(headerLike)) continue;
+    if (yearHeaders.length > 0 && !r.cells.some((c) => c.kind === 'string' && classify(c, true) === 'string')) continue;
     const texts = r.cells.map((c) => c.raw.trim().toLowerCase());
     if (new Set(texts).size < Math.ceil(texts.length * 0.8)) continue;
     // The rows below must not all be text rows of the same shape that would equally qualify (then the first of them is the header only
     // if something below is not text, or the table is text-only and this row is its first full-width row).
-    const below = region.slice(i + 1);
     const belowHasNonText = below.some((b) => b.cells.some((c) => classify(c, options.fromText) !== 'string'));
     headerIndex = i;
     evidence = belowHasNonText
       ? `row ${r.row} is the first row of ${r.cells.length} distinct text values with typed data below it`
       : `row ${r.row} is the first full-width row of distinct text values (every value in this table is text)`;
+    if (yearHeaders.length > 0) evidence += `; ${yearHeaders.map((c) => c.raw).join(', ')} read as year headings`;
     break;
   }
 

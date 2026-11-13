@@ -42,6 +42,14 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Audit (UW-1):** per-workspace logs are hash-chained, externally anchored when `XO_AUDIT_ANCHOR_DIR` is set, and purgeable only by a recorded operator purge. The instance-level platform log (`FileAuditStore`, API/CLI/runtime events) is still unchained: it was accepted as a P1.0 limitation by the owner and UW-1 did not change it. Moving it onto the chained store needs segment-based retention there first (the chained store has no purge); until then its tamper evidence is filesystem permissions only.
 - **Step-up (UW-1):** an OIDC access token without `auth_time` can never satisfy step-up, so API clients that approve must request tokens that carry it. API keys are exempt from step-up by design (not interactive).
 - **Trust boundary (UW-1):** the injection corpus checks are structural (where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a human); they do not measure how often a live model is misled (UW-13). A document can state a harmful rule in plain words and the rule validator will accept the proposal; a named reviewer is the control (`specs/security/TRUST_BOUNDARY.md`).
+- **Ingestion (UW-3):**
+  - Images are stored but not read: the recovery tiers run on PDF pages only. A photo of a certificate needs to be a PDF, or wait for
+    image recovery.
+  - Email attachments are listed (with SHA-256), not read; each must be uploaded on its own.
+  - A headerless table of plain text is taken as having a header.
+  - Measured accuracy is on a synthetic labelled set (`docs/INGESTION.md`); accuracy on real customer documents needs a real labelled
+    set (UW-13).
+  - The API still has its own `.docx` reader beside the compiler's.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

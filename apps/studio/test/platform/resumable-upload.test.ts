@@ -71,7 +71,7 @@ const bigFile = () => {
   return { file: new File([bytes], 'scan.pdf', { type: 'application/pdf' }), bytes };
 };
 const sha256 = async (b: Uint8Array) =>
-  [...new Uint8Array(await crypto.subtle.digest('SHA-256', b))].map((x) => x.toString(16).padStart(2, '0')).join('');
+  [...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(b)))].map((x) => x.toString(16).padStart(2, '0')).join('');
 
 describe('resumable uploads', () => {
   it('a small file still goes in one request', async () => {
