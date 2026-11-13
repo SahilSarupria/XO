@@ -22,7 +22,8 @@ export function envProviderFactory(env: Readonly<Record<string, string | undefin
       case 'gemini':
         return env['GEMINI_API_KEY'] ? new GeminiProvider({ apiKey: env['GEMINI_API_KEY'] }) : undefined;
       case 'ollama':
-        return env['OLLAMA_BASE_URL'] || env['XO_API_OLLAMA_ENABLED']
+        // UW-17: XO_API_OLLAMA_ENABLED=0 means off (it used to mean on, like any non-empty value).
+        return env['OLLAMA_BASE_URL'] || /^(1|true)$/i.test(env['XO_API_OLLAMA_ENABLED'] ?? '')
           ? new OllamaProvider(env['OLLAMA_BASE_URL'] ? { baseUrl: env['OLLAMA_BASE_URL'] } : {})
           : undefined;
       default:

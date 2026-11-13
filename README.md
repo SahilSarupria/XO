@@ -133,7 +133,8 @@ npm run lint         # eslint (max-warnings=0)
 npm test             # every workspace's test script
 npm run build        # emit dist/ per package
 npm run format       # prettier
-docker compose up    # local Postgres + Redis (Neo4j via --profile graph)
+xo up                # one complete local instance: API, schedule triggers and Studio on one port (docs/INSTANCE.md)
+docker compose up    # the same instance from the production image (Postgres/Redis via --profile backing)
 ```
 
 Generated `.xo` archives (`xo pack`, `xo build`, `xo create`) are build

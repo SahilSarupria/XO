@@ -22,7 +22,7 @@ memory.
 - **Blob storage**: `BlobStore` interface (`packages/storage`), backed
   today by `LocalFsBlobStore`. Production target: S3/GCS/R2-compatible
   object storage behind the same interface.
-- **Relational storage**: Postgres, provisioned in `docker-compose.yml`,
+- **Relational storage**: Postgres, provisioned in `docker-compose.yml` (since UW-17: `compose.yaml`, `--profile backing`),
   not yet consumed by any code (no registry implementation exists yet).
 - **Graph storage**: `GraphStore` interface (`packages/graph-engine`),
   backed today by `InMemoryGraphStore`. Neo4j is provisioned but
@@ -52,7 +52,7 @@ memory.
 
 ## Consequences
 
-- `docker-compose.yml` provisions Postgres/Redis unconditionally and
+- `docker-compose.yml` provisions Postgres/Redis unconditionally (UW-17 moved them to `compose.yaml` behind `--profile backing`, so `docker compose up` starts only the instance) and
   Neo4j behind a profile flag, so the next module (registry
   implementation) has real backing services to develop against
   immediately, without this module needing to write any SQL/Cypher

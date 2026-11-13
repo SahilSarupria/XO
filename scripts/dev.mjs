@@ -170,6 +170,9 @@ async function dev() {
     WORKSPACES_DIR: s.workspaces,
     WORKSPACE_DATA_DIR: s.workspaceData,
     XO_API_URL: env.XO_API_URL ?? `http://${s.host}:${s.apiPort}`,
+    // The API now starts through the same path as `xo up` (UW-17), which requires an explicit package-trust decision. Development
+    // compiles unsigned local packages, so say so explicitly (never inferred); set XO_TRUST_MODE=enforce in .env to test signed ones.
+    XO_TRUST_MODE: env.XO_TRUST_MODE ?? 'development',
   };
   const kids = [];
   const pipe = (tag, color, child) => {
@@ -318,6 +321,7 @@ async function desktop() {
         API_KEYS_DIR: s.keys,
         WORKSPACES_DIR: s.workspaces,
         WORKSPACE_DATA_DIR: s.workspaceData,
+        XO_TRUST_MODE: env.XO_TRUST_MODE ?? 'development',
       },
       stdio: 'inherit',
     });

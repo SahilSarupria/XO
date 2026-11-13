@@ -5,3 +5,14 @@ node_modules
 .git
 .github
 *.log
+# Never in the image: local settings and secrets, local instance data, build output, reports.
+.env
+.env.*
+!.env.example
+.xo-data
+.xo-dev
+**/.xo-data
+output
+coverage
+backups
+*.tar.gz

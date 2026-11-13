@@ -49,7 +49,7 @@ export function configuredProviders(
     'azure-openai': has('AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT'),
     gemini: has('GEMINI_API_KEY'),
     // Ollama needs no credential; "configured" means the operator pointed the server at one.
-    ollama: has('OLLAMA_BASE_URL') || has('XO_API_OLLAMA_ENABLED'),
+    ollama: has('OLLAMA_BASE_URL') || /^(1|true)$/i.test(env['XO_API_OLLAMA_ENABLED'] ?? ''),
   };
   return SUPPORTED_PROVIDER_IDS.map((id) => ({ id, configured: configured[id] === true, local: LOCAL_PROVIDER_IDS.has(id) }));
 }

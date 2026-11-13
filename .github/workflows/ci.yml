@@ -58,3 +58,46 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # UW-17: the one production image, built and run as a user would run it (compose.yaml), then the instance smoke test against it.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Build the production image
+        run: docker compose build xo
+
+      - name: Production settings refuse to start without durable audit and package trust
+        run: |
+          set +e
+          out=$(docker run --rm xo-instance:local 2>&1); code=$?
+          echo "$out"
+          test "$code" -ne 0 && echo "$out" | grep -q 'startup aborted'
+
+      - name: Start one instance (compose defaults)
+        run: docker compose up -d --wait --wait-timeout 120 xo
+
+      - name: Issue a sign-in key
+        run: echo "XO_KEY=$(docker compose exec -T xo xo instance access-key --data /data | grep -o 'xoak_[A-Za-z0-9_-]*')" >> "$GITHUB_ENV"
+
+      - name: Smoke test the running instance
+        run: node scripts/smoke-instance.mjs --url http://127.0.0.1:4000 --key "$XO_KEY"
+
+      - name: Back up the running instance and verify the archive
+        run: |
+          docker compose exec -T xo xo instance backup --data /data --live --out /tmp/xo.tar.gz
+          docker compose exec -T xo xo instance verify-backup /tmp/xo.tar.gz
+
+      - name: Instance logs
+        if: failure()
+        run: docker compose logs xo
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v

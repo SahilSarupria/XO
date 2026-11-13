@@ -37,7 +37,8 @@
     "@xo/types": "0.1.0",
     "@xo/workflow-composer": "0.1.0",
     "@xo/xoir": "0.1.0",
-    "jose": "^6.2.12"
+    "jose": "^6.2.12",
+    "@xo/instance": "0.1.0"
   },
   "devDependencies": {
     "@xo/adapters": "0.1.0",
