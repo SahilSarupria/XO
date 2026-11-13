@@ -1,11 +1,12 @@
 import { err, type Result } from '@xo/types';
-import type { SourceError } from '@xo/errors';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource } from './types.js';
 import { DocumentSourceFrontend } from './document-frontend.js';
 import { computeSourceId } from './source-id.js';
-import { extractXlsxText } from './xlsx-text.js';
+import { renderSheetsAsText } from './xlsx-text.js';
+import { tabularFromXlsx } from '../tabular/index.js';
 import { ok } from '@xo/types';
+import { ErrorCode, SourceError } from '@xo/errors';
 
 /** An Excel (.xlsx) workbook as raw bytes. Extracted deterministically; refused loudly if it cannot be read faithfully. */
 export interface XlsxSourceInput {
@@ -30,15 +31,33 @@ export class XlsxSourceFrontend implements SourceFrontend<XlsxSourceInput> {
   }
 
   ingest(input: XlsxSourceInput, context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
-    const extracted = extractXlsxText(input.bytes);
-    if (!extracted.ok) return err(extracted.error);
-    const doc = this.documents.ingest({ kind: 'document', text: extracted.value, sourcePath: input.sourcePath }, context);
+    // One parse: the record sets and the text the semantic pipeline reads come from the same typed reader.
+    const tables = tabularFromXlsx(input.bytes);
+    if (!tables.ok) {
+      return err(
+        new SourceError(
+          ErrorCode.PRECONDITION_FAILED,
+          tables.error.message.replace(/^cannot read this workbook: /, 'could not read XLSX: '),
+        ),
+      );
+    }
+    const text = renderSheetsAsText(tables.value.sheets);
+    if (text.length === 0) return err(new SourceError(ErrorCode.PRECONDITION_FAILED, 'the workbook contains no extractable text'));
+    const doc = this.documents.ingest({ kind: 'document', text, sourcePath: input.sourcePath }, context);
     if (!doc.ok) return doc;
+    if (doc.value.content.kind !== 'document') return doc;
     return ok({
       ...doc.value,
-      sourceId: computeSourceId('xlsx', input.sourcePath, extracted.value),
+      sourceId: computeSourceId('xlsx', input.sourcePath, text),
       sourceType: 'xlsx',
-      metadata: { ...doc.value.metadata, format: 'xlsx' },
+      content: { ...doc.value.content, tables: tables.value },
+      metadata: {
+        ...doc.value.metadata,
+        format: 'xlsx',
+        sheetCount: String(tables.value.sheets.length),
+        recordSetCount: String(tables.value.recordSets.length),
+        recordCount: String(tables.value.recordSets.reduce((n, r) => n + r.records.length, 0)),
+      },
     });
   }
 }

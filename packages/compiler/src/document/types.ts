@@ -11,6 +11,8 @@ export type StructuredRawValue = string | number | boolean | null;
 export interface StructuredFieldValue {
   readonly fieldName: string;
   readonly rawValue: StructuredRawValue;
+  /** UW-3 — the cell the value came from (`B7`, `Clients!B7`), for tabular sources. Absent for JSON records and for empty cells. */
+  readonly cellRef?: string;
 }
 
 export interface HeadingBlock {

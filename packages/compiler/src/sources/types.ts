@@ -1,5 +1,6 @@
 import type { ParsedDocument } from '../document/types.js';
 import type { CoverageReport } from '../document/page-coverage.js';
+import type { TabularSource } from '../tabular/types.js';
 
 /**
  * The set of source families this package's frontends currently know
@@ -40,6 +41,12 @@ export interface DocumentSourceContent {
    * NOT the same as "complete": quality assessment treats absence as nothing to check.
    */
   readonly coverage?: CoverageReport;
+  /**
+   * UW-3 — record-level structure for tabular sources (XLSX, CSV): record sets with headers, declared column types and per-cell
+   * provenance. The text in `parsed` is still what the semantic pipeline reads; this is what record-level consumers (knowledge, entity
+   * resolution) read, without re-parsing the file.
+   */
+  readonly tables?: TabularSource;
 }
 
 /**
