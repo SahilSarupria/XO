@@ -14,11 +14,11 @@ import { scoreDocument, type FailureMode, type LabelledItem, type OutputNode, ty
 /**
  * UW-3c — how XO reads real documents it was not written against.
  *
- * The set (sets/real-documents.json) holds nine public-domain / CC0 documents written by US federal teams (18F, CISA, USDS), each
+ * The set (sets/real-documents.json) holds fourteen public-domain / CC0 documents written by US federal teams (18F, CISA, USDS), each
  * read in the formats it travels in: the original (Word, Markdown, a PDF form), a web page, a Word file, a PDF export, a Word HTML
  * export and a printed-and-scanned copy. Every sentence or list item carries its expected reading, labelled from the source text.
- * The held-out documents were labelled before XO was run on them and were never used to tune the compiler; the dev documents were.
- * Both are reported, separately. PDFs are read with the instance's default page recovery (a second PDF reader, then local OCR).
+ * The held-out and blind documents were labelled before XO was run on them and were never used to tune the compiler; the dev documents were.
+ * All three splits are reported, separately. PDFs are read with the instance's default page recovery (a second PDF reader, then local OCR).
  */
 
 export type Split = 'dev' | 'held-out' | 'blind';

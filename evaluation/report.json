@@ -7,6 +7,7 @@
       "egress-boundary",
       "injection-corpus",
       "intelligence-oracle",
+      "real-documents",
       "tabular-reading"
     ]
   },
@@ -267,6 +268,274 @@
       ]
     },
     {
+      "suite": "real-documents",
+      "title": "Reading real documents XO was not written against",
+      "uac": [
+        "UAC-19"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "real-documents",
+          "version": "1",
+          "provenance": "real",
+          "cases": 35,
+          "contentHash": "0dd30a5875d75a5dee873792abd7dd1332a67c2e04d77a80586bd120cd6c99ba",
+          "description": "Fourteen public-domain / CC0 documents by US federal teams (18F, CISA, USDS), each in the formats it travels in (original Word, Markdown or PDF; web page; Word; PDF export; Word HTML export; printed-and-scanned PDF). Every sentence or list item is labelled with its expected reading under a written policy. Three splits: dev (used to find and fix failures), held-out (labelled before XO ran on it; its failures were seen once, at the baseline, and never used to tune), and blind (labelled before any fix and measured once, at the end)."
+        }
+      ],
+      "measures": [
+        {
+          "id": "real-documents/blind/items-read",
+          "title": "Expected items read at all (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.7692307692307693,
+          "numerator": 110,
+          "denominator": 143
+        },
+        {
+          "id": "real-documents/blind/items-read-right",
+          "title": "Expected items read as the right kind (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.7692307692307693,
+          "numerator": 110,
+          "denominator": 143
+        },
+        {
+          "id": "real-documents/blind/modality",
+          "title": "Modality right where the wording is unambiguous (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 56,
+          "denominator": 56
+        },
+        {
+          "id": "real-documents/blind/checkbox",
+          "title": "Check-box state kept (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": null,
+          "numerator": 0,
+          "denominator": 0
+        },
+        {
+          "id": "real-documents/blind/order",
+          "title": "Procedure order kept (consecutive step pairs) (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": null,
+          "numerator": 0,
+          "denominator": 0
+        },
+        {
+          "id": "real-documents/blind/output-precision",
+          "title": "Output that is a right reading of something in the document (blind)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.6875,
+          "numerator": 110,
+          "denominator": 160
+        },
+        {
+          "id": "real-documents/blind/missed-silently",
+          "title": "Expected items lost without any report (blind)",
+          "unit": "count",
+          "better": "lower",
+          "value": 13,
+          "numerator": 13
+        },
+        {
+          "id": "real-documents/blind/mixed-text",
+          "title": "Outputs built from text of two items (blind)",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0
+        },
+        {
+          "id": "real-documents/blind/spurious",
+          "title": "Outputs built from questions, labels, placeholders or descriptions (blind)",
+          "unit": "count",
+          "better": "lower",
+          "value": 7,
+          "numerator": 7
+        },
+        {
+          "id": "real-documents/held-out/items-read",
+          "title": "Expected items read at all (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.8251121076233184,
+          "numerator": 184,
+          "denominator": 223
+        },
+        {
+          "id": "real-documents/held-out/items-read-right",
+          "title": "Expected items read as the right kind (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.820627802690583,
+          "numerator": 183,
+          "denominator": 223
+        },
+        {
+          "id": "real-documents/held-out/modality",
+          "title": "Modality right where the wording is unambiguous (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 43,
+          "denominator": 43
+        },
+        {
+          "id": "real-documents/held-out/checkbox",
+          "title": "Check-box state kept (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 39,
+          "denominator": 39
+        },
+        {
+          "id": "real-documents/held-out/order",
+          "title": "Procedure order kept (consecutive step pairs) (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 28,
+          "denominator": 28
+        },
+        {
+          "id": "real-documents/held-out/output-precision",
+          "title": "Output that is a right reading of something in the document (held-out)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.8237885462555066,
+          "numerator": 187,
+          "denominator": 227
+        },
+        {
+          "id": "real-documents/held-out/missed-silently",
+          "title": "Expected items lost without any report (held-out)",
+          "unit": "count",
+          "better": "lower",
+          "value": 32,
+          "numerator": 32
+        },
+        {
+          "id": "real-documents/held-out/mixed-text",
+          "title": "Outputs built from text of two items (held-out)",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0
+        },
+        {
+          "id": "real-documents/held-out/spurious",
+          "title": "Outputs built from questions, labels, placeholders or descriptions (held-out)",
+          "unit": "count",
+          "better": "lower",
+          "value": 13,
+          "numerator": 13
+        },
+        {
+          "id": "real-documents/dev/items-read",
+          "title": "Expected items read at all (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9875776397515528,
+          "numerator": 159,
+          "denominator": 161
+        },
+        {
+          "id": "real-documents/dev/items-read-right",
+          "title": "Expected items read as the right kind (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9875776397515528,
+          "numerator": 159,
+          "denominator": 161
+        },
+        {
+          "id": "real-documents/dev/modality",
+          "title": "Modality right where the wording is unambiguous (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 38,
+          "denominator": 38
+        },
+        {
+          "id": "real-documents/dev/checkbox",
+          "title": "Check-box state kept (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 54,
+          "denominator": 54
+        },
+        {
+          "id": "real-documents/dev/order",
+          "title": "Procedure order kept (consecutive step pairs) (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9444444444444444,
+          "numerator": 34,
+          "denominator": 36
+        },
+        {
+          "id": "real-documents/dev/output-precision",
+          "title": "Output that is a right reading of something in the document (dev)",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9754601226993865,
+          "numerator": 159,
+          "denominator": 163
+        },
+        {
+          "id": "real-documents/dev/missed-silently",
+          "title": "Expected items lost without any report (dev)",
+          "unit": "count",
+          "better": "lower",
+          "value": 2,
+          "numerator": 2
+        },
+        {
+          "id": "real-documents/dev/mixed-text",
+          "title": "Outputs built from text of two items (dev)",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0
+        },
+        {
+          "id": "real-documents/dev/spurious",
+          "title": "Outputs built from questions, labels, placeholders or descriptions (dev)",
+          "unit": "count",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0
+        }
+      ],
+      "notes": [
+        "blind by format: Markdown: 18/21 items read right, 18/28 outputs right; Word: 29/34 items read right, 29/42 outputs right; scanned PDF: 16/21 items read right, 16/25 outputs right; web page: 19/27 items read right, 19/25 outputs right; PDF: 19/29 items read right, 19/29 outputs right; Word HTML export: 9/11 items read right, 9/11 outputs right.",
+        "blind failure modes: missed-silently 13, missed-reported 20, spurious-from-non-content 7, unmatched-output 40.",
+        "held-out by format: Word: 56/62 items read right, 57/67 outputs right; PDF: 23/37 items read right, 24/34 outputs right; scanned PDF: 12/20 items read right, 12/14 outputs right; Markdown: 46/52 items read right, 47/56 outputs right; web page: 36/42 items read right, 37/45 outputs right; Word HTML export: 10/10 items read right, 10/11 outputs right.",
+        "held-out failure modes: missed-silently 32, missed-reported 7, wrong-kind 1, duplicate 4, spurious-from-non-content 13, unmatched-output 26.",
+        "dev by format: Word: 46/46 items read right, 46/48 outputs right; PDF: 13/13 items read right, 13/14 outputs right; scanned PDF: 22/24 items read right, 22/23 outputs right; Markdown: 39/39 items read right, 39/39 outputs right; web page: 39/39 items read right, 39/39 outputs right.",
+        "dev failure modes: missed-silently 2, order-lost 2."
+      ],
+      "limits": [
+        "Fourteen documents from three US federal teams, all English and all about software delivery or administration. They are real, but they are not a customer's documents; the pilot set is still owed (R12).",
+        "Labels are one reader's reading under a written policy; ambiguous text is labelled neutral rather than forced either way.",
+        "Format variants other than the originals were produced by pandoc and LibreOffice, and the scans by rasterising and degrading a PDF export (examples/real-corpus/build.sh). A phone photo of a crumpled page is harder than these scans.",
+        "Matching is by distinctive phrase with OCR tolerance; a reading with the right words in the wrong structure can still match."
+      ]
+    },
+    {
       "suite": "tabular-reading",
       "title": "Reading workbooks and CSV files",
       "uac": [
@@ -475,6 +744,41 @@
       "status": "proposed",
       "bound": "≥ 1",
       "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "real-documents/blind/items-read-right",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 0.7692307692307693,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "real-documents/blind/output-precision",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 0.6875,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "real-documents/blind/missed-silently",
+      "status": "proposed",
+      "bound": "≤ 0",
+      "value": 13,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "real-documents/held-out/items-read-right",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 0.820627802690583,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "real-documents/dev/items-read-right",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 0.9875776397515528,
       "outcome": "proposal"
     }
   ],
@@ -696,7 +1000,7 @@
   },
   "verdict": {
     "failedRatified": [],
-    "proposals": 20,
+    "proposals": 25,
     "pilotGate": "blocked",
     "problems": []
   }
