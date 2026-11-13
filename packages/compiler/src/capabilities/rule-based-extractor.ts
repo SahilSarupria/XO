@@ -208,7 +208,8 @@ const PREPOSITIONAL_TO = new Set([
  */
 export function inVerbPosition(words: readonly string[], i: number): boolean {
   if (i === 0) return true;
-  const prevRaw = words[i - 1]!;
+  // Emphasis markup is not punctuation: "**Buddy:** Review ..." puts "Review" after a label's colon.
+  const prevRaw = words[i - 1]!.replace(/(?:\*\*|__)+$/, '');
   if (/[,;:(—–]$/.test(prevRaw) || /^\d{1,3}[.)]$/.test(prevRaw) || !/[\p{L}\p{N}]/u.test(prevRaw)) return true;
   const prev = stripPunctuation(prevRaw).toLowerCase();
   if (POSITION_MODALS.has(prev) || SUBJECT_PRONOUNS.has(prev)) return true;
@@ -440,18 +441,53 @@ const PARTICLES = new Set([
  * "Designate a captain."). The lexicon stays narrow because it also finds verbs mid-sentence; here only the verb that
  * OPENS the sentence's main clause counts, so the sentence is an instruction by its grammar.
  */
+/** "Go through" and "go over" name an action (complete, review); "go" alone is movement or a name ("Go Digit"). */
+const PHRASAL_GO = new Set(['through', 'over']);
+const TIME_SPAN = /^(?:minutes?|moments?|time|hours?|days?|seconds?|while)$/;
+
+/**
+ * UW-3c: the index of the action verb after a soft lead — "try to V", "remember to V", "make sure to V", "be sure to V",
+ * "feel free to V", "take <a span of time> to V" — or undefined when the verb at `verbIndex` is not such a lead.
+ */
+function afterSoftLead(words: readonly string[], verbIndex: number): number | undefined {
+  const w = (k: number): string => stripPunctuation(words[k] ?? '').toLowerCase();
+  const lead = w(verbIndex);
+  let k = verbIndex + 1;
+  if (lead === 'make' || lead === 'be') {
+    if (w(k) !== 'sure') return undefined;
+    k += 1;
+  } else if (lead === 'feel') {
+    if (w(k) !== 'free') return undefined;
+    k += 1;
+  } else if (lead === 'take') {
+    // Plain lowercase words naming a span of time ("a few minutes now", "the time", "a moment"), then "to".
+    const start = k;
+    while (k < words.length && k - start < 5 && w(k) !== 'to') {
+      if (!/^[a-z]+$/.test(words[k]!)) return undefined;
+      k += 1;
+    }
+    if (!words.slice(start, k).some((x) => TIME_SPAN.test(x))) return undefined;
+  } else if (lead !== 'try' && lead !== 'remember') return undefined;
+  if (w(k) !== 'to' || k + 1 >= words.length) return undefined;
+  return k + 1;
+}
+
 function imperativeLead(words: readonly string[]): VerbMatch | undefined {
   const text = words.join(' ');
   // A conditional instruction ("If the amount exceeds 10000, then deny the claim.") is a rule: the reasoning layer reads it
   // and the rule-capability minter names its outcome. Read here too, it would be a second capability for the same rule.
-  if (/^[\p{P}\p{S}\s]*(?:if|when|whenever|unless|where|once|in case|provided|should|in the event)\b/iu.test(text)) return undefined;
+  if (/^[\p{P}\p{S}\p{M}\p{Cf}\s]*(?:if|when|whenever|unless|where|once|in case|provided|should|in the event)\b/iu.test(text))
+    return undefined;
   const clause = imperativeClause(text);
   if (clause === undefined) return undefined;
   const clauseWords = clause.split(/\s+/).filter((w) => w.length > 0);
-  const wordIndex = words.length - clauseWords.length;
+  let wordIndex = words.length - clauseWords.length;
   if (wordIndex < 0) return undefined;
+  // A soft lead ("Try to ...", "Take a few minutes now to ...") names no action; the verb after its "to" does.
+  wordIndex = afterSoftLead(words, wordIndex) ?? wordIndex;
   const verb = stripPunctuation(words[wordIndex]!).toLowerCase();
-  if (verb.length === 0 || NON_ACTION_LEADS.has(verb) || !isBaseVerb(verb)) return undefined;
+  const phrasal = verb === 'go' && PHRASAL_GO.has(stripPunctuation(words[wordIndex + 1] ?? '').toLowerCase());
+  if (verb.length === 0 || (NON_ACTION_LEADS.has(verb) && !phrasal) || !isBaseVerb(verb)) return undefined;
   // The sentence's own grammar must say "instruction": a finished sentence of a few words, no label ("Benchmark intent:
   // ..."), and a word after the verb that starts its object — not a number, not a finite verb ("Cover is ..."), and not a
   // preposition followed by a finite verb ("Cover under this policy does not extend ...": the first word was a noun).

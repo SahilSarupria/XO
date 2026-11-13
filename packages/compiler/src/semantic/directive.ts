@@ -48,6 +48,8 @@ const LEAD_CLAUSE =
 const LEAD_PHRASE = /^([^,.;:!?]{1,60}),\s*(.+)$/;
 const LEAD_FILLER = /^(?:please|then|next|finally|first|second|third|now|also|lastly|afterwards|optionally)[,]?\s+/i;
 const LEAD_ADVERB = /^\p{L}+ly,?\s+/iu;
+/** "**Label:** rest" or "**Label**: rest" — the label is short and ends in a colon. */
+const BOLD_LABEL = /^\s*(?:\*\*|__)([^*_]{1,40}?)(:?)(?:\*\*|__)(:?)\s+(.+)$/;
 
 /** The verb that opens `text`, when it opens with one and is used as a verb: "Name the file" yes, "Name, role, ..." no. */
 function opensWithVerb(text: string): boolean {
@@ -65,8 +67,11 @@ function opensWithVerb(text: string): boolean {
  * undefined when the sentence is not an instruction.
  */
 export function imperativeClause(sentence: string): string | undefined {
-  // Leading punctuation and symbols (a bullet glyph, an emoji used as an icon) are not words.
-  let text = sentence.trim().replace(/^[\p{P}\p{S}\s]+/u, '');
+  // A bold run-in label saying who or what the instruction is for ("**Onboardee and buddy:** Try to ...") is not the clause.
+  const label = BOLD_LABEL.exec(sentence);
+  const labelled = label !== null && (label[2] !== '' || label[3] !== '') && label[1]!.trim().split(/\s+/).length <= 5;
+  // Leading punctuation and symbols (a bullet glyph, an emoji used as an icon, with its variation selector) are not words.
+  let text = (labelled ? label[4]! : sentence).trim().replace(/^[\p{P}\p{S}\p{M}\p{Cf}\s]+/u, '');
   const candidates: string[] = [];
   const lead = LEAD_CLAUSE.exec(text);
   if (lead !== null) candidates.push(lead[1]!);

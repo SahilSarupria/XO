@@ -25,6 +25,47 @@ test('an instruction is found behind a lead clause, a lead phrase, a filler word
   assert.equal(imperativeClause('Name, role, start date'), undefined);
 });
 
+test('a bold run-in label and an emoji icon are not part of the instruction; a soft lead names the verb after its "to"', async () => {
+  assert.equal(
+    imperativeClause('**Onboardee and buddy:** Try to go through your checklists in order.'),
+    'Try to go through your checklists in order.',
+  );
+  assert.equal(
+    imperativeClause('\u260e\ufe0f Take a few minutes now to exchange contact details.'),
+    'Take a few minutes now to exchange contact details.',
+  );
+  // A bold title that is a sentence, not a label, is left alone.
+  assert.equal(imperativeClause('**Never commit secrets.** Keys stay in the vault.'), undefined);
+  const md = [
+    '# Onboarding',
+    '',
+    'Welcome.',
+    '',
+    '**Onboardee and buddy:** Try to go through your checklists in order.',
+    '',
+    '\u260e\ufe0f Take a few minutes now to exchange emergency contact information.',
+    '',
+    '**Buddy:** Review the access list.',
+    '',
+    'Take the bus to the office.',
+    '',
+    'Go Digit General Insurance Ltd is the insurer.',
+  ].join('\n');
+  const r = await compileSources([{ kind: 'document', text: md, sourcePath: 'onboarding.md' }], { now: () => '2026-01-01T00:00:00.000Z' });
+  assert.ok(r.ok, r.ok ? '' : r.error.message);
+  const names = r.value.graph
+    .allNodes()
+    .filter((n) => n.kind === 'capability')
+    .map((n) => (n.properties as { name: string }).name)
+    .sort();
+  assert.deepEqual(names, [
+    'Exchange emergency contact information',
+    'Go through your checklists in order',
+    'Review the access list',
+    'Take the bus to the office',
+  ]);
+});
+
 test('a question asks: it ends with a question mark, quotes and brackets allowed', () => {
   assert.equal(isQuestion('Who are your primary users?'), true);
   assert.equal(isQuestion('Ask: "What problem are we solving?"'), true);
