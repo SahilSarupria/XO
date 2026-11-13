@@ -32,6 +32,35 @@ const MIN_TABLE_ROWS = 3;
 
 /** How close two runs' x-coordinates must be to be considered "the same column start" — small enough that two genuinely different column positions are never merged, large enough to absorb the sub-point rounding a real content stream's positioning can produce. Same order of magnitude as `line-grouper.ts`'s `Y_TOLERANCE`, applied to the perpendicular axis. */
 const COLUMN_X_TOLERANCE = 3;
+/** Right edges and centres come from estimated glyph widths, so they are compared a little more loosely than left edges. */
+const ESTIMATED_EDGE_TOLERANCE = 4;
+
+interface Bounds {
+  readonly left: number;
+  readonly right: number | undefined;
+}
+
+/** Each run's left edge and, when its text is known, its estimated right edge. */
+function runBounds(line: ClassifiedLine): Bounds[] {
+  return line.runs.map((r, k) => {
+    const text = line.runTexts?.[k];
+    return {
+      left: r.x,
+      right: text !== undefined && text.trim().length > 0 ? r.x + estimateRunAdvanceWidth(text.trimEnd(), r.fontSizePt) : undefined,
+    };
+  });
+}
+
+/**
+ * UW-3c: two cells are in one column when their left edges align (text), their right edges align (right-aligned amounts)
+ * or their centres align (centred headings and codes).
+ */
+function sameColumn(a: Bounds, b: Bounds): boolean {
+  if (Math.abs(a.left - b.left) < COLUMN_X_TOLERANCE) return true;
+  if (a.right === undefined || b.right === undefined) return false;
+  if (Math.abs(a.right - b.right) <= ESTIMATED_EDGE_TOLERANCE) return true;
+  return Math.abs((a.left + a.right) / 2 - (b.left + b.right) / 2) <= ESTIMATED_EDGE_TOLERANCE;
+}
 
 /** A two-column grid is only trusted when its header row names a decision-bearing term (limit, excess, waiting period, ...): alignment alone cannot tell a grid from a label/value list (a warranty grid in burglary-policy.pdf is extracted as prose today and must stay so). */
 const TWO_COLUMN_HEADER =
@@ -120,13 +149,15 @@ export function detectTableRowLines(lines: readonly ClassifiedLine[]): ReadonlyS
       i += 1;
       continue;
     }
-    const baseXs = base.runs.map((r) => r.x);
+    const baseBounds = runBounds(base);
     let j = i + 1;
     while (j < lines.length) {
       const candidate = lines[j]!;
       if (candidate.pageNumber !== base.pageNumber) break;
-      if (candidate.runs.length !== baseXs.length) break;
-      const aligned = candidate.runs.every((r, k) => Math.abs(r.x - baseXs[k]!) < COLUMN_X_TOLERANCE);
+      if (candidate.runs.length !== baseBounds.length) break;
+      // UW-3c: a column may be aligned on its left edge, its right edge (amounts) or its centre.
+      const bounds = runBounds(candidate);
+      const aligned = bounds.every((b, k) => sameColumn(b, baseBounds[k]!));
       if (!aligned) break;
       j += 1;
     }
@@ -181,19 +212,21 @@ export interface ReconstructedTable {
 }
 
 /** Runs of a line merged into cells: runs at the same x, or flowing straight on from the previous run, are one cell. */
-function cellsOfLine(line: ClassifiedLine): { readonly x: number; readonly text: string }[] {
-  const out: { x: number; text: string }[] = [];
+function cellsOfLine(line: ClassifiedLine): { readonly x: number; readonly right: number; readonly text: string }[] {
+  const out: { x: number; right: number; text: string }[] = [];
   let prevEnd = Number.NEGATIVE_INFINITY;
   for (const r of decodedRuns(line)) {
     const last = out[out.length - 1];
+    const end = r.x + estimateRunAdvanceWidth(r.text.trimEnd(), r.fontSizePt);
     if (last !== undefined && (Math.abs(r.x - last.x) <= COLUMN_X_TOLERANCE || (r.x >= last.x && r.x - prevEnd <= 4))) {
       last.text = `${last.text}${r.text}`;
+      last.right = Math.max(last.right, end);
     } else {
-      out.push({ x: r.x, text: r.text });
+      out.push({ x: r.x, right: end, text: r.text });
     }
     prevEnd = Math.max(prevEnd, r.x + estimateRunAdvanceWidth(r.text, r.fontSizePt));
   }
-  return out.map((c) => ({ x: c.x, text: c.text.replace(/\s+/g, ' ').trim() })).filter((c) => c.text.length > 0);
+  return out.map((c) => ({ x: c.x, right: c.right, text: c.text.replace(/\s+/g, ' ').trim() })).filter((c) => c.text.length > 0);
 }
 
 function isHeaderCell(text: string): boolean {
@@ -202,8 +235,11 @@ function isHeaderCell(text: string): boolean {
   return !/[.;,]$/.test(text);
 }
 
-function columnOf(x: number, columns: readonly number[]): number | undefined {
-  const k = columns.findIndex((c) => Math.abs(c - x) <= COLUMN_X_TOLERANCE);
+/** The column a cell belongs to: by left edge first, then by right edge or centre (right-aligned or centred columns). */
+function columnOf(cell: { readonly x: number; readonly right: number }, columns: readonly Bounds[]): number | undefined {
+  const byLeft = columns.findIndex((c) => Math.abs(c.left - cell.x) <= COLUMN_X_TOLERANCE);
+  if (byLeft >= 0) return byLeft;
+  const k = columns.findIndex((c) => sameColumn({ left: cell.x, right: cell.right }, c));
   return k < 0 ? undefined : k;
 }
 
@@ -226,8 +262,8 @@ function wrappedTableAt(
   if (headerCells.length < MIN_TABLE_COLUMNS) return undefined;
   if (!headerCells.every((c) => isHeaderCell(c.text))) return undefined;
   if (headerCells.filter((c) => /\p{L}/u.test(c.text)).length < 2) return undefined;
-  const columns = headerCells.map((c) => c.x);
-  for (let k = 1; k < columns.length; k += 1) if (columns[k]! - columns[k - 1]! <= 2 * COLUMN_X_TOLERANCE) return undefined;
+  const columns: Bounds[] = headerCells.map((c) => ({ left: c.x, right: c.right }));
+  for (let k = 1; k < columns.length; k += 1) if (columns[k]!.left - columns[k - 1]!.left <= 2 * COLUMN_X_TOLERANCE) return undefined;
 
   const rows: { lines: number[]; cells: string[] }[] = [];
   let continuationCount = 0;
@@ -238,7 +274,7 @@ function wrappedTableAt(
     if (line.pageNumber !== head.pageNumber || claimed.has(j) || line.blockKind === 'heading' || line.blockKind === 'footnote') break;
     const cells = cellsOfLine(line);
     if (cells.length === 0) continue;
-    const placed = cells.map((c) => ({ column: columnOf(c.x, columns), text: c.text }));
+    const placed = cells.map((c) => ({ column: columnOf(c, columns), text: c.text }));
     if (placed.some((p) => p.column === undefined)) break; // a run between columns: the table (if any) ended above
     const gap = previousY - line.y;
     const startsRow = placed.some((p) => p.column === 0);
