@@ -158,6 +158,8 @@ export interface ProviderInfo {
   readonly id: string;
   readonly configured: boolean;
   readonly local: boolean;
+  /** UW-14: false when the instance's residency mode never sends chat to this provider. Absent on older servers. */
+  readonly allowedByResidency?: boolean;
 }
 export interface WorkspaceSettings {
   readonly revision: number;
@@ -222,6 +224,9 @@ export function parseSettingsView(v: unknown): SettingsView {
           id: str(po['id'], `${path}.id`),
           configured: bool(po['configured'], `${path}.configured`),
           local: bool(po['local'], `${path}.local`),
+          ...(po['allowedByResidency'] !== undefined
+            ? { allowedByResidency: bool(po['allowedByResidency'], `${path}.allowedByResidency`) }
+            : {}),
         };
       }),
       signedPackagesNote: str(sign['note'], 'effect.trust.requireSignedPackages.note'),

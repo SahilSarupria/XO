@@ -33,6 +33,8 @@ services:
       XO_METRICS_TOKEN: ${XO_METRICS_TOKEN:-}
       XO_LOG_LEVEL: ${XO_LOG_LEVEL:-info}
       XO_OCR: ${XO_OCR:-local}
+      XO_RESIDENCY: ${XO_RESIDENCY:-strict_local}
+      XO_HOSTED_MODEL_PROVIDERS: ${XO_HOSTED_MODEL_PROVIDERS:-}
     volumes:
       - xo_data:/data
       - xo_anchors:/anchors

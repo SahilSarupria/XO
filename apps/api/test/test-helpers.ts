@@ -73,10 +73,13 @@ export class TestServer {
     // development mode unless a test injects its own `packageTrustPolicy` (package-trust.test.ts does).
     // UW-3: tests read no scans by default (real OCR engines are slow and hold worker threads); a test that wants recovery passes
     // `extraction` explicitly.
+    // UW-14: likewise these tests exercise HTTP behaviour with stand-in providers, not residency, so they run in EXPLICIT open residency
+    // unless a test passes its own `residency` (residency tests do).
     const server = createHttpServer({
       apiKeyStore,
       packageTrustPolicy: PackageTrustPolicy.development(),
       extraction: { pageTiers: [] },
+      residency: { mode: 'open', contractedProviders: [] },
       ...deps,
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));

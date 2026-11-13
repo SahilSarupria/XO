@@ -22,6 +22,7 @@ import type { PermissionPolicy } from '@xo/permissions';
 import { createAuthorizationPoint, type AuthorizationPoint } from './auth/authorization-point.js';
 import { parseStepUpMaxAgeMinutes } from './auth/step-up.js';
 import { extractionFromEnv, type CompileExtraction } from './compilations/extraction-tiers.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
 import { auditAnchorSinkFromEnv, type AuditAnchorSink } from './audit/anchor.js';
 import { AuditAccessController, NonProductionAuditSink, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS, createConnectRuntime, type ConnectRuntime } from '@xo/connect';
@@ -103,6 +104,8 @@ export interface ServerDeps {
   readonly auditAnchor?: AuditAnchorSink;
   /** UW-3 — how compiles read pages and photos with no text layer. Default: `extractionFromEnv` (local OCR on, vision off). */
   readonly extraction?: CompileExtraction;
+  /** UW-14 — residency (`XO_RESIDENCY`): where data may go when a model is asked something. Default: from the environment. */
+  readonly residency?: ResidencyPolicy;
   /** UW-17 — the built Studio, served at `/` with the API under `/api` on the same port. Absent: API only, at the root. */
   readonly studio?: StudioStatic;
   /** UW-17 — request metrics, and `GET /metrics` for a scraper holding `metricsToken`. */
@@ -258,12 +261,15 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   if (auditAnchor === undefined && process.env['NODE_ENV'] === 'production') {
     deps.logger?.warn('audit anchoring is off: set XO_AUDIT_ANCHOR_DIR to storage this host cannot rewrite (see docs/operations)');
   }
+  // UW-14: where data may go when a model is asked something. Resolved once; throws on an unsafe value (open in production).
+  const residency = deps.residency ?? resolveResidency(deps.env ?? process.env);
   const workspaceDataConfig: WorkspaceDataConfig = {
     dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
     packageTrustPolicy,
     ...(auditAnchor !== undefined ? { auditAnchor } : {}),
     // UW-3: local OCR for scans and photos by default; throws on invalid configuration so startup fails visibly.
-    extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env),
+    // UW-14: a hosted vision tier is refused unless residency allows sending page images.
+    extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env, undefined, residency),
   };
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
@@ -370,6 +376,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     connect = runtime.service;
   }
   registerRoutes(router, {
+    residency,
     workspaceStore,
     workspaceDataConfig,
     permissionManager,

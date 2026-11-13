@@ -322,6 +322,23 @@ export const SETTINGS: readonly SettingSpec[] = [
   },
   { name: 'XO_PACKAGE_TRUST_POLICY', group: 'trust', kind: PATH, description: 'The package trust policy file (trusted signers).' },
 
+  // ---------------------------------------------------------------- residency (UW-14)
+  {
+    name: 'XO_RESIDENCY',
+    group: 'models',
+    kind: { type: 'enum', values: ['strict_local', 'masked_hosted', 'open'] },
+    defaultText: 'strict_local',
+    description:
+      'Where data may go when a model is asked something. strict_local: no hosted model or vision call is possible (models on this server only). masked_hosted: contracted hosted providers, typed requests only (schemas, synthetic records, filtered intent). open: anything; development only, refused in production.',
+  },
+  {
+    name: 'XO_HOSTED_MODEL_PROVIDERS',
+    group: 'models',
+    kind: STR,
+    description:
+      'masked_hosted only: comma-separated hosted providers whose paid, no-training contract you have reviewed (for example anthropic).',
+  },
+
   // ---------------------------------------------------------------- models
   {
     name: 'XO_INFERENCE_PROVIDER',
@@ -653,6 +670,18 @@ export function resolveSettings(processEnv: Env, options: ResolveSettingsOptions
       message:
         'is required: name the operator trust-policy file (for local development only, XO_TRUST_MODE=development turns verification off)',
     });
+  if (env['XO_RESIDENCY'] === 'open' && (env['XO_ENV'] === 'production' || env['NODE_ENV'] === 'production'))
+    errors.push({
+      name: 'XO_RESIDENCY',
+      message: 'open is for development only and is refused in production (use strict_local or masked_hosted)',
+    });
+  if (env['XO_RESIDENCY'] === 'masked_hosted' && (env['XO_HOSTED_MODEL_PROVIDERS'] ?? '').trim() === '')
+    errors.push({
+      name: 'XO_HOSTED_MODEL_PROVIDERS',
+      message: 'is required with XO_RESIDENCY=masked_hosted: name the hosted providers whose contract you have reviewed',
+    });
+  if ((env['XO_HOSTED_MODEL_PROVIDERS'] ?? '').trim() !== '' && env['XO_RESIDENCY'] !== 'masked_hosted')
+    warnings.push({ name: 'XO_HOSTED_MODEL_PROVIDERS', message: 'is ignored unless XO_RESIDENCY=masked_hosted' });
   if (env['XO_ENV'] === 'production' && env['XO_TRUST_MODE'] === 'development')
     errors.push({ name: 'XO_TRUST_MODE', message: 'development package trust is refused when XO_ENV=production' });
 

@@ -78,6 +78,8 @@ beforeAll(async () => {
     },
   ]);
   server = createHttpServer({
+    // UW-14: these contract tests use stand-in hosted providers; residency is decided explicitly here, not by default.
+    residency: { mode: 'open', contractedProviders: [] },
     // The API refuses to start without a package trust policy; the test server opts into the explicit development mode.
     packageTrustPolicy: PackageTrustPolicy.development(),
     apiKeyStore: keys,

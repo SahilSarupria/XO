@@ -85,6 +85,8 @@ state. A storage setting for a feature that is off stays unset.
 
 | Setting | Accepts | Default | In data dir | What it does |
 | --- | --- | --- | --- | --- |
+| `XO_RESIDENCY` | strict_local \| masked_hosted \| open | strict_local |  | Where data may go when a model is asked something. strict_local: no hosted model or vision call is possible (models on this server only). masked_hosted: contracted hosted providers, typed requests only (schemas, synthetic records, filtered intent). open: anything; development only, refused in production. |
+| `XO_HOSTED_MODEL_PROVIDERS` | string |  |  | masked_hosted only: comma-separated hosted providers whose paid, no-training contract you have reviewed (for example anthropic). |
 | `XO_INFERENCE_PROVIDER` | none \| gemini | none |  | Compile-time inference provider. |
 | `GEMINI_API_KEY` (secret) | string |  |  | Gemini key. |
 | `XO_GEMINI_MODEL` | string |  |  | Gemini model id. |

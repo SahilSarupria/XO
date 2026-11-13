@@ -19,3 +19,4 @@ export * from './model-selection.js';
 export * from './router.js';
 export * from './conversation.js';
 export * from './providers/index.js';
+export * from './egress/index.js';
