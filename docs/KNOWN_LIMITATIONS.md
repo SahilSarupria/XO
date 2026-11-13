@@ -29,6 +29,17 @@ This is the single list of what is **not** true or **not** verified. Detail live
 - `LayerCache` reuses a loaded package by object identity; mutating a bundle after load is not detected.
 - An abandoned model call at the wall-clock cap is not cancelled and may still be billed. A running tool is not interrupted.
 
+## Reading documents (UW-3b; ADR 0027)
+
+- **A manual step is understood, not bound.** A procedure step with no declared operation (TaskTest.pdf's 8 steps) is reported as "Understood, manual step" and stays unresolved. It is not bound to the human-in-the-loop executor. Prose tasks in Aastha.pdf do resolve to human-in-the-loop, because they carry action knowledge references that steps do not. The two paths should agree on how a person-performed step runs; that decision is W2 (workflow execution).
+- **Table reconstruction needs left-aligned columns.** A wrapped table is rebuilt only when every column starts at a consistent x and every continuation line has a tight gap. Right-aligned or centred columns, and tables without a short header row, are rejected whole; their lines stay as before.
+- **Per-glyph PDFs are not recovered as lists.** When a PDF writes each glyph as its own text run (Aastha.pdf's bullets), marker-led list detection does not fire, and the items are read as ordinary paragraphs.
+- **Routing is a heuristic, and the language is English.** A section is routed when one kind holds at least 60% of the evidence. The threshold and the cue lists (instruction verbs, prohibition and modal phrases, heading cues) are English and uncalibrated. The document kind is reported as a proposal.
+- **Confidence is not calibrated.** Quality penalties (cross-column, label-glued, leaked marker, fragment, unbounded) lower a prior; they are not fitted to measured error rates.
+- **The model fallback for unrouted sections is a library function only.** `assistStructure` is off by default, enforces UW-14 residency and validates every proposal, but no product surface calls it yet.
+- **Rule-outcome capabilities keep title-cased outcome text** ("The Claim Must Be Routed To An Authorized Manager"). They are decision-tree outcome identifiers pinned by golden expectations; renaming them is a separate golden change.
+- **Measured on a small corpus.** The `document-structure` benchmark suite has 7 documents: 6 written for this work (4 PDFs, 2 Markdown) and TaskTest.pdf. Real procedure documents from a pilot are not yet measured.
+
 ## Found in UW-0 (main `26f0052`; see `docs/baseline/UW0_BASELINE.md`)
 
 Each item names the workstream that owns the fix. None is fixed by UW-0 except where stated.
