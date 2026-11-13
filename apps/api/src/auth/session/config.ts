@@ -41,6 +41,19 @@ export interface SessionAuthConfig {
   readonly selfSignup: boolean;
   /** Most NEW self-signed-up accounts allowed in any rolling 24 hours. Existing accounts are never affected. */
   readonly selfSignupMaxPerDay: number;
+  /**
+   * UW-17 — `${XO_PUBLIC_BASE_URL}/auth/callback`: a sign-in return address accepted besides the desktop app's loopback one, so a
+   * Studio served from a domain can complete the code exchange. Absent when no public base URL is configured.
+   */
+  readonly publicRedirectUri?: string;
+}
+
+/** The public callback for a configured `XO_PUBLIC_BASE_URL` (already validated at start-up by the settings registry). */
+export function publicRedirectUriFrom(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  const raw = env['XO_PUBLIC_BASE_URL']?.trim();
+  if (raw === undefined || raw === '') return undefined;
+  const u = new URL(raw);
+  return `${u.origin}${u.pathname.replace(/\/+$/, '')}/auth/callback`;
 }
 
 export const DEFAULT_SELF_SIGNUP_MAX_PER_DAY = 200;
@@ -107,5 +120,6 @@ export function loadSessionAuthConfig(env: Readonly<Record<string, string | unde
     tokenUri,
     selfSignup: /^(1|true)$/i.test((env['XO_API_SELF_SIGNUP'] ?? '').trim()),
     selfSignupMaxPerDay: parseMaxPerDay(env['XO_API_SELF_SIGNUP_MAX_PER_DAY']),
+    ...(publicRedirectUriFrom(env) !== undefined ? { publicRedirectUri: publicRedirectUriFrom(env) as string } : {}),
   };
 }

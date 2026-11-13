@@ -45,7 +45,8 @@ import type { ApiRequest, Middleware } from './types.js';
  * anything not listed requires authentication, so a new route is protected by
  * default.
  */
-const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/openapi.json', ...SESSION_PUBLIC_PATHS]);
+// UW-17: /readyz reports check names only; /metrics checks its own scrape token (XO_METRICS_TOKEN), never an API key.
+const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/readyz', '/metrics', '/openapi.json', ...SESSION_PUBLIC_PATHS]);
 
 const API_KEY_PREFIX = 'xoak_';
 

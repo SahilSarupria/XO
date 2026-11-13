@@ -16,6 +16,12 @@
       "path": "../../packages/logger"
     },
     {
+      "path": "../../packages/instance"
+    },
+    {
+      "path": "../api"
+    },
+    {
       "path": "../../packages/config"
     },
     {

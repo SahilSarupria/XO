@@ -4,6 +4,7 @@
     { "path": "packages/types" },
     { "path": "packages/errors" },
     { "path": "packages/logger" },
+    { "path": "packages/instance" },
     { "path": "packages/config" },
     { "path": "packages/observability" },
     { "path": "packages/di" },

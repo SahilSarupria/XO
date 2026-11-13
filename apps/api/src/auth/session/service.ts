@@ -55,9 +55,11 @@ function invalidArgument(name: string): XoError {
   return new XoError(ErrorCode.INVALID_ARGUMENT, `"${name}" is not valid`);
 }
 
-export function assertCodeExchangeInput(code: string, codeVerifier: string, redirectUri: string): void {
+export function assertCodeExchangeInput(code: string, codeVerifier: string, redirectUri: string, publicRedirectUri?: string): void {
   if (!CODE_SHAPE.test(code)) throw invalidArgument('code');
   if (!VERIFIER_SHAPE.test(codeVerifier)) throw invalidArgument('codeVerifier');
+  // UW-17: the configured public callback is the one exact non-loopback address accepted (compared whole, never as a prefix).
+  if (publicRedirectUri !== undefined && redirectUri === publicRedirectUri) return;
   const m = LOOPBACK_REDIRECT.exec(redirectUri);
   const port = m === null ? 0 : Number(m[1]);
   if (m === null || port < 1024 || port > 65535) throw invalidArgument('redirectUri');
@@ -99,6 +101,8 @@ export class SessionAuthService {
       readonly gate?: SessionGate;
       /** Absent unless the operator configured the OAuth client secret. */
       readonly codeExchanger?: CodeExchanger;
+      /** UW-17 — the instance's public callback (`XO_PUBLIC_BASE_URL` + `/auth/callback`), accepted besides loopback. */
+      readonly publicRedirectUri?: string;
     },
   ) {}
 
@@ -131,7 +135,7 @@ export class SessionAuthService {
     const exchanger = this.deps.codeExchanger;
     if (exchanger === undefined) throw new XoError(ErrorCode.UNIMPLEMENTED, 'server-side code exchange is not enabled on this API');
     if (!this.deps.limits.exchange.allow(clientKey)) throw rateLimited();
-    assertCodeExchangeInput(code, codeVerifier, redirectUri); // before consuming: a malformed request must not burn a challenge
+    assertCodeExchangeInput(code, codeVerifier, redirectUri, this.deps.publicRedirectUri); // before consuming: a malformed request must not burn a challenge
     const challenge = await this.deps.challenges.consume(challengeId);
     if (challenge === undefined) throw challengeInvalid();
     const idToken = await exchanger.exchange({ code, codeVerifier, redirectUri });

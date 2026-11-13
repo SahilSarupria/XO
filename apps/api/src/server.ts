@@ -50,6 +50,9 @@ import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
 import type { IdentityBindingStore } from './auth/oidc/binding-store.interface.js';
 import type { FsSessionStore } from './auth/session/session-store.js';
 import { registerRoutes, type RegisterRoutesDeps } from './routes/index.js';
+import type { StudioStatic } from './instance/studio-static.js';
+import type { InstanceMetrics } from './instance/metrics.js';
+import type { ReadinessProbe } from './instance/readiness.js';
 
 export interface ServerDeps {
   readonly logger?: Logger;
@@ -100,6 +103,13 @@ export interface ServerDeps {
   readonly auditAnchor?: AuditAnchorSink;
   /** UW-3 — how compiles read pages and photos with no text layer. Default: `extractionFromEnv` (local OCR on, vision off). */
   readonly extraction?: CompileExtraction;
+  /** UW-17 — the built Studio, served at `/` with the API under `/api` on the same port. Absent: API only, at the root. */
+  readonly studio?: StudioStatic;
+  /** UW-17 — request metrics, and `GET /metrics` for a scraper holding `metricsToken`. */
+  readonly metrics?: InstanceMetrics;
+  readonly metricsToken?: string;
+  /** UW-17 — readiness checks reported by `/readyz` (names only) and `/ready` (with reasons). */
+  readonly readiness?: ReadinessProbe;
   /** UW-1 — minutes within which a person must have signed in to approve or change membership (0 = off). Default `XO_API_STEP_UP_MAX_AGE_MINUTES` or 15. */
   readonly stepUpMaxAgeMinutes?: number;
   /**
@@ -374,6 +384,9 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     ...(deps.chatProviderFactory !== undefined ? { chatProviderFactory: deps.chatProviderFactory } : {}),
     ...(deps.intelligenceKnowledge !== undefined ? { intelligenceKnowledge: deps.intelligenceKnowledge } : {}),
     ...(deps.intelligenceCapabilities !== undefined ? { intelligenceCapabilities: deps.intelligenceCapabilities } : {}),
+    ...(deps.readiness !== undefined ? { readiness: deps.readiness } : {}),
+    ...(deps.metrics !== undefined ? { metrics: deps.metrics } : {}),
+    ...(deps.metricsToken !== undefined ? { metricsToken: deps.metricsToken } : {}),
   });
   if (sessionAuth !== undefined) registerAuthSessionRoutes(router, sessionAuth.service);
   if (passwordBundle !== undefined) {
@@ -403,14 +416,36 @@ async function runHandler(handler: (req: ApiRequest) => Promise<ApiResponse>, re
   }
 }
 
+/** Reachable at the root even when Studio is served there: liveness, readiness, metrics, the API description. */
+const ROOT_API_PATHS: ReadonlySet<string> = new Set(['/health', '/ready', '/readyz', '/metrics', '/openapi.json']);
+const QUIET_ROUTES: ReadonlySet<string> = new Set(['/health', '/readyz', '/metrics']);
+
 export function createHttpServer(deps: ServerDeps = {}): Server {
   const router = buildRouter(deps);
   const trustedProxyHops = parseTrustedProxyHops((deps.env ?? process.env)['XO_API_TRUSTED_PROXY_HOPS']); // throws on an invalid value
 
   return createServer((incoming, res) => {
+    // UW-17: every request is counted by route template and status class, and logged (probes are counted, not logged).
+    const started = process.hrtime.bigint();
+    let route = 'unmatched';
+    res.on('finish', () => {
+      const seconds = Number(process.hrtime.bigint() - started) / 1e9;
+      deps.metrics?.observeRequest(incoming.method ?? 'GET', route, res.statusCode, seconds);
+      if (!QUIET_ROUTES.has(route))
+        deps.logger?.info('request', { method: incoming.method ?? 'GET', route, status: res.statusCode, ms: Math.round(seconds * 1000) });
+    });
     void (async () => {
       try {
         const url = new URL(incoming.url ?? '/', 'http://localhost');
+        if (deps.studio !== undefined) {
+          // One port: Studio at /, the API under /api (the prefix Studio calls), and the probes also at the root for orchestrators.
+          if (url.pathname === '/api' || url.pathname.startsWith('/api/')) url.pathname = url.pathname.slice(4) || '/';
+          else if (!ROOT_API_PATHS.has(url.pathname)) {
+            route = 'studio';
+            await deps.studio.serve(incoming, res, url.pathname);
+            return;
+          }
+        }
         const resolved = router.resolve(incoming.method ?? 'GET', url.pathname);
 
         if (resolved === undefined) {
@@ -424,6 +459,7 @@ export function createHttpServer(deps: ServerDeps = {}): Server {
           return;
         }
 
+        route = resolved.route;
         const apiRequest = buildApiRequest(incoming, resolved.params, url, trustedProxyHops);
         const response = await runHandler(resolved.handler, apiRequest);
         writeResponse(res, response);

@@ -1,13 +1,13 @@
-// Temporary launcher — works around dist/index.js's isMainModule() check
-// not detecting Windows as the entrypoint. Doesn't modify any project
-// file; calls the exact same exported functions the real entrypoint does.
-import { createHttpServer } from './dist/index.js';
-import { loadConfig } from './dist/config.js';
-import { ConsoleLogger } from '@xo/logger';
+// Launcher used by `npm run dev` (and on Windows, where dist/index.js's main-module check does not detect the entrypoint).
+// UW-17: it starts the instance exactly as `xo up` and the container do (instance/start.ts), so development runs the same start-up.
+import { startInstance } from './dist/index.js';
 
-const config = loadConfig();
-const logger = new ConsoleLogger({ name: 'xo-api' });
-const server = createHttpServer({ logger, apiKeysDir: config.apiKeysDir });
-server.listen(config.port, config.host, () => {
-  logger.info(`listening on http://${config.host}:${config.port}`);
-});
+try {
+  const instance = await startInstance();
+  const shutdown = () => void instance.stop().then(() => process.exit(0));
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+} catch (cause) {
+  process.stderr.write(`startup aborted: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+  process.exit(1);
+}

@@ -42,6 +42,21 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Audit (UW-1):** per-workspace logs are hash-chained, externally anchored when `XO_AUDIT_ANCHOR_DIR` is set, and purgeable only by a recorded operator purge. The instance-level platform log (`FileAuditStore`, API/CLI/runtime events) is still unchained: it was accepted as a P1.0 limitation by the owner and UW-1 did not change it. Moving it onto the chained store needs segment-based retention there first (the chained store has no purge); until then its tamper evidence is filesystem permissions only.
 - **Step-up (UW-1):** an OIDC access token without `auth_time` can never satisfy step-up, so API clients that approve must request tokens that carry it. API keys are exempt from step-up by design (not interactive).
 - **Trust boundary (UW-1):** the injection corpus checks are structural (where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a human); they do not measure how often a live model is misled (UW-13). A document can state a harmful rule in plain words and the rule validator will accept the proposal; a named reviewer is the control (`specs/security/TRUST_BOUNDARY.md`).
+- **Instance packaging (UW-17):**
+  - The provider-neutral deployment template is scheduled for W5 (ADR 0023). This is the infrastructure as code that brings up a
+    customer instance from a small config file. Until then a cloud host runs the same image with `compose.yaml` and
+    `deploy/instance.env.example`.
+  - Storage is local only (files in one data directory). Postgres and object-storage adapters are not written yet.
+  - The instance lock is a file on one host. Two hosts sharing one network volume would not see each other's lock.
+  - Backups are full archives, not incremental. A `--live` backup is taken while files may be changing; the consistent one needs the
+    instance stopped.
+  - Erasure removes files and verifies they are gone. It cannot erase what the storage medium, snapshots or backups keep; use an
+    encrypted volume for that.
+  - Metrics cover HTTP requests, build and process memory only; there are no per-feature metrics (compiles, OCR, workflows) yet.
+  - The served Studio accepts a web sign-in return address (`XO_PUBLIC_BASE_URL/auth/callback`). Studio's own web Google sign-in page
+    is not built yet; the desktop app and the access-key sign-in work.
+  - The production image was not built in the development environment (its network blocks the Docker registry). The CI `image` job
+    builds it, smoke-tests it and takes a backup. The same build steps were run outside Docker and the result smoke-tested.
 - **Ingestion (UW-3):**
   - Photos are read by local OCR. Quality depends on the photo: a skewed, shadowed or low-resolution shot may read with low
     confidence or not at all, and then stays unread rather than guessed. Local OCR does not correct perspective; vision handles that

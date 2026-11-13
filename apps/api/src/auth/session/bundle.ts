@@ -79,6 +79,7 @@ export function createSessionAuth(config: SessionAuthConfig, options: SessionAut
     ...(options.gate !== undefined ? { gate: options.gate } : {}),
     ...(options.now !== undefined ? { now: options.now } : {}),
     ...(codeExchanger !== undefined ? { codeExchanger } : {}),
+    ...(config.publicRedirectUri !== undefined ? { publicRedirectUri: config.publicRedirectUri } : {}),
   });
   return { service, sessions, bindings, unbound };
 }

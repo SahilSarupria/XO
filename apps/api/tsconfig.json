@@ -9,6 +9,7 @@
     { "path": "../../packages/types" },
     { "path": "../../packages/errors" },
     { "path": "../../packages/logger" },
+    { "path": "../../packages/instance" },
     { "path": "../../packages/crypto" },
     { "path": "../../packages/storage" },
     { "path": "../../packages/package-sdk" },
