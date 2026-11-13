@@ -517,7 +517,7 @@
         {
           "id": "o-c5",
           "read": "criterion",
-          "phrases": ["add your government email address", "If you already have a GitHub account"],
+          "phrases": ["add your government email address"],
           "checkbox": "unchecked"
         },
         {

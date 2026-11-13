@@ -98,10 +98,20 @@ export async function runCase(doc: LabelledDocument, f: CaseFormat, tiers: reado
     .map((n) => {
       const p = n.properties as Record<string, unknown>;
       const custom = (n.metadata as { custom?: Record<string, unknown> }).custom ?? {};
+      const joined = (a: string | undefined, b: string | undefined): string =>
+        a !== undefined && b !== undefined && a !== b ? `${a} ${b}` : (a ?? b ?? '');
       const primary =
         n.kind === 'capability'
           ? (str(p['name']) ?? '')
-          : (str(p['rule']) ?? str(p['statement']) ?? str(p['name']) ?? str(p['condition']) ?? str(p['description']) ?? '');
+          : n.kind === 'constraint'
+            ? (str(p['rule']) ?? '')
+            : n.kind === 'heuristic'
+              ? joined(str(p['condition']), str(p['action']))
+              : n.kind === 'decision_node'
+                ? joined(str(p['question']), str(p['outcome']))
+                : n.kind === 'escalation_rule'
+                  ? joined(str(p['triggerCondition']), str(p['escalationTarget']))
+                  : (str(p['domain']) ?? '');
       return {
         id: n.id,
         kind: n.kind,

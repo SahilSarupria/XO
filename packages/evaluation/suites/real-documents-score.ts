@@ -79,7 +79,10 @@ export interface Score {
   readonly checkboxCorrect: number;
   readonly orderPairs: number;
   readonly orderKept: number;
-  /** Output nodes judged: those matching an expected or `none` item, or nothing. Nodes matching only `opt` items are neutral. */
+  /**
+   * Output nodes judged: those matching an expected item, only `none` items, or nothing. Nodes matching `opt` items and no
+   * expected item are neutral.
+   */
   readonly judgedOutput: number;
   /** Judged output that represents an expected item with an acceptable kind. */
   readonly correctOutput: number;
@@ -286,10 +289,12 @@ export function scoreDocument(input: ScoringInput): Score {
     const none = m.filter((i) => i.read === 'none');
     const opt = m.filter((i) => i.read === 'opt');
     const label = `${n.kind}: "${n.primary.slice(0, 70)}"`;
-    if (expected.length + none.length >= 2) failures['mixed-text'].push(`${label} = ${[...expected, ...none].map((i) => i.id).join('+')}`);
-    if (expected.length === 0 && none.length === 0 && opt.length > 0) continue; // neutral
+    // Mixed: one output built from two separate expected items (two cells, two list items, two rules run together). A
+    // `none` or `opt` sentence inside an expected item's own text is that item's text, not a second item.
+    if (expected.length >= 2) failures['mixed-text'].push(`${label} = ${expected.map((i) => i.id).join('+')}`);
+    if (expected.length === 0 && opt.length > 0) continue; // neutral: a reading of ambiguous text
     judgedOutput++;
-    if (expected.some((i) => acceptable(i.read, n.kind)) && none.length === 0) correctOutput++;
+    if (expected.some((i) => acceptable(i.read, n.kind))) correctOutput++;
     else if (expected.length === 0 && none.length > 0)
       failures['spurious-from-non-content'].push(`${label} = ${none.map((i) => i.id).join('+')}`);
     else if (m.length === 0) failures['unmatched-output'].push(label);
