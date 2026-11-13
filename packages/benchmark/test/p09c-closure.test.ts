@@ -55,13 +55,14 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
   for (const e of hist) assert.equal(sha256Hex(await readFile(join(PKG, e.reportFile), 'utf8')), e.reportSha256, e.reportFile);
   const vh = hist.find((e) => e.suiteId === 'vertical-fixtures')!;
   // The six P0.9C-closure records are never rewritten; later controlled refreshes only APPEND declared drift
-  // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md).
+  // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md). UW-3b document structure
+  // appended seven: six stage outputs and the aastha capabilityPrecision rename.
   assert.equal(
     vh.knownDrift.length,
-    17,
-    'the six closure drift records are kept; eight WS1 recall and three semantic-hardening records were appended',
+    24,
+    'the six closure drift records are kept; eight WS1 recall, three semantic-hardening and seven UW-3b records were appended',
   );
-  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall|Semantic hardening consolidation/.test(d.reason)));
+  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall|Semantic hardening consolidation|UW-3b/.test(d.reason)));
   assert.equal(vh.declaredGoldenChanges.length, 5);
   assert.equal(hist.find((e) => e.suiteId === 'runtime-mechanics')!.knownDrift.length, 0);
   for (const e of entries.filter((x) => x.status === 'accepted')) {
@@ -70,8 +71,9 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
     const laterRefresh = e.refreshRecord !== 'baselines/refresh/p09c-final.refresh.json' && e.predecessor?.startsWith('baselines/archive/');
     assert.ok(retained || laterRefresh, `${e.suiteId}: predecessor is retained`);
   }
-  // the two P0.9C predecessors plus the accepted vertical-fixtures report superseded by the CR WS1 recall and the semantic hardening refreshes
-  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 4);
+  // the two P0.9C predecessors plus the accepted vertical-fixtures reports superseded by the CR WS1 recall, the semantic
+  // hardening and the UW-3b document structure refreshes
+  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 5);
 });
 
 test('the refresh record is auditable: both suites refreshed together, every difference accounted for, no regression, evaluation version unchanged', async () => {
@@ -188,7 +190,8 @@ test('frozen: golden expectation fingerprints are unchanged by the closure', asy
   const want: Record<string, string> = {
     'synthetic-claim-rules': '0a3003db9bfe87de',
     // CR WS1 recall refresh: clause 4.1's deadline is now a normalised executable rule (see CHANGELOG.md)
-    'commercial-property-policy': '3c735dae96b59f24',
+    // UW-3b refresh: two name matchers corrected to the clause-bounded names (see CHANGELOG.md)
+    'commercial-property-policy': '3d36c848051e895b',
     'aastha-operations': 'bbcc3cdac2c9a97c',
     'burglary-policy-schedule': '2384164b83638c58',
     'multidoc-burglary-claims': '6eb147408d795389',

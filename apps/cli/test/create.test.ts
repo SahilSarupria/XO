@@ -113,7 +113,8 @@ test('create against a source with real decision-rule content (the vertical-test
     // alongside it; that is not a CLI regression by itself. What this
     // test actually guards is that `create.ts` reports whatever the
     // Packager's real LowerCapabilitiesResult says, never a hardcoded 0.
-    assert.equal(parsed.discoveredCapabilities, 31);
+    // UW-3b: 31 -> 25 discovered (six placeholder / noun-as-verb capabilities no longer minted; see capabilities.test.ts).
+    assert.equal(parsed.discoveredCapabilities, 25);
     assert.equal(parsed.resolvedCapabilities, 19);
     assert.equal(parsed.loweredCapabilities, 19);
     assert.ok(parsed.resolvedCapabilities > 0, 'must prove the positive case, not just 0-resolved');
@@ -121,7 +122,7 @@ test('create against a source with real decision-rule content (the vertical-test
       parsed.resolvedCapabilities < parsed.discoveredCapabilities,
       'must also prove some discovered capabilities remain unresolved',
     );
-    assert.equal(parsed.capabilityOutcomes.length, 31);
+    assert.equal(parsed.capabilityOutcomes.length, 25);
 
     // And the manifest actually on disk must agree with what was
     // printed — the CLI must never report a number it didn't actually

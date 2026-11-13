@@ -127,7 +127,10 @@ test("the vertical suite reports the pipeline's real failure MODES separately (n
   // The honest distributions of what the pipeline produced are always present, expectations or not.
   assert.ok(current.aggregate.observed.capabilities.byResolution['unresolved']! > 0);
   assert.ok(current.aggregate.observed.workflows.byExecutability['not_executable_yet']! > 0);
-  assert.ok(current.aggregate.observed.workflows.byExecutability['semantically_invalid']! > 0);
+  // UW-3b: the vertical fixtures no longer compose a semantically_invalid workflow. The only one (commercial-property's
+  // catch-all) was tied together by benchmark-forbidden placeholder capabilities that are no longer minted; the
+  // semantically_invalid status itself stays measured on runtime-mechanics (1, asserted above in this file).
+  assert.equal(current.aggregate.observed.workflows.byExecutability['semantically_invalid'] ?? 0, 0);
 });
 
 test('running a suite twice yields byte-identical reports (deterministic: no timestamps, no unordered iteration)', async () => {

@@ -68,6 +68,12 @@ const MIN_MENTION_LABEL_LENGTH = 4;
 export const SEQUENCE_RELATION_TYPE: CapabilityRelationType = 'custom:sequence';
 const SEQUENCE_WITHIN_UNIT_CONFIDENCE = 0.45;
 const SEQUENCE_CROSS_UNIT_CONFIDENCE = 0.35;
+/**
+ * UW-3b: the order of an author-numbered procedure (a step table's "#" column, a numbered instruction list) is stated,
+ * not inferred from adjacency, so it is the strongest sequence evidence — still below every named logical relation
+ * (`complements` 0.5 and up), because "step 2 comes after step 1" is not "step 2 needs step 1's output".
+ */
+const SEQUENCE_NUMBERED_STEP_CONFIDENCE = 0.48;
 
 function unitProvenance(
   unit: {
@@ -241,6 +247,8 @@ export function buildCapabilityRelationships(
       // followed by plain prose) is left exactly as before: this
       // exclusion only fires on a *proven* unordered/unordered pair.
       if (prevUnit.listKind === 'unordered' && nextUnit.listKind === 'unordered') continue;
+      // UW-3b: numbered procedure steps get their stated order below; adjacency adds nothing to it.
+      if (prevUnit.structure?.role === 'procedure_step' && nextUnit.structure?.role === 'procedure_step') continue;
       pushEdge(
         SEQUENCE_RELATION_TYPE,
         prevEndpoints.lastId,
@@ -251,8 +259,33 @@ export function buildCapabilityRelationships(
     }
   }
 
+  // 3c. UW-3b: numbered procedure steps in their stated order.
+  {
+    const steps = new Map<string, { ordinal: number; id: CapabilityId; provenance: KnowledgeProvenance }[]>();
+    for (const cap of mergeResult.capabilities) {
+      const key = cap.metadata['step.procedure'];
+      const ordinal = Number(cap.metadata['step.ordinal']);
+      if (key === undefined || !Number.isFinite(ordinal)) continue;
+      const list = steps.get(key) ?? [];
+      list.push({ ordinal, id: cap.id, provenance: cap.provenance[0]! });
+      steps.set(key, list);
+    }
+    for (const list of steps.values()) {
+      list.sort((a, b) => a.ordinal - b.ordinal || (a.id < b.id ? -1 : 1));
+      for (let k = 0; k + 1 < list.length; k += 1) {
+        pushEdge(SEQUENCE_RELATION_TYPE, list[k]!.id, list[k + 1]!.id, SEQUENCE_NUMBERED_STEP_CONFIDENCE, {
+          ...list[k]!.provenance,
+          confidence: SEQUENCE_NUMBERED_STEP_CONFIDENCE,
+        });
+      }
+    }
+  }
+
   // 4. Content-mention depends_on — scanned once over the final merged capabilities themselves, not per source unit (a capability's description already carries everything relevant; it needs no additional per-unit context here).
   for (const fromCap of mergeResult.capabilities) {
+    // UW-3b: a procedure step's relations are stated by the document's structure (3c), not by a name that happens to
+    // appear in another step's text.
+    if (fromCap.metadata['structure.role'] !== undefined) continue;
     for (const toCap of mergeResult.capabilities) {
       if (fromCap.id === toCap.id) continue;
       if (toCap.canonicalName.length < MIN_MENTION_LABEL_LENGTH) continue;

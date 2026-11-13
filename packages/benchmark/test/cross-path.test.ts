@@ -364,9 +364,15 @@ test('real pipeline (all 8 cases): the three paths are built from the same graph
     'the graph content hash survives a serialization round trip in all 7 compiled cases',
   );
   assert.equal(totals['live_vs_package.graph_hash.not_comparable'], 7, 'never compared across lowering');
-  assert.equal(totals['live_vs_package.binding.not_comparable'], 19, 'the by-design HITL scope difference is visible, not hidden');
+  // UW-3b: 19 -> 18. One burglary human_in_the_loop capability is no longer minted ("Contact and 9821631474 AASTHA
+  // INSURANCE BROKER aastha9ins@rediffmail.com", a contact table row joined across columns and benchmark-forbidden as
+  // x-partner-contact-row), so one fewer by-design HITL scope difference exists.
+  assert.equal(totals['live_vs_package.binding.not_comparable'], 18, 'the by-design HITL scope difference is visible, not hidden');
   // Semantic hardening + WS1 recall merged: values re-measured on the combined compiler.
-  assert.equal(totals['live_vs_package.contract_hash.match'], 41, 'every lowered contract equals the live contract');
+  // UW-3b: 41 -> 39. Two resolved burglary capabilities are no longer minted, so two fewer contracts are lowered: the
+  // "Schedule Action" placeholder (deterministic_rule; benchmark-forbidden as x-schedule-action) and the cross-column
+  // partner-contact row (human_in_the_loop; x-partner-contact-row).
+  assert.equal(totals['live_vs_package.contract_hash.match'], 39, 'every lowered contract equals the live contract');
   assert.equal(Object.entries(totals).filter(([k]) => k.endsWith('.mismatch')).length, 0);
 });
 

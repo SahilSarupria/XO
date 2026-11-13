@@ -47,6 +47,8 @@ export const REASONING_NODE_TYPE_TO_CANONICAL_KIND: Readonly<Record<KnownReasoni
   exception: 'heuristic',
   escalation: 'escalation_rule',
   risk_threshold: 'risk_policy',
+  // UW-3b: a definition-of-done item is a condition the work must satisfy — a constraint, not a decision.
+  acceptance_criterion: 'constraint',
 };
 
 function isKnownReasoningNodeType(nodeType: ReasoningNodeType): nodeType is KnownReasoningNodeType {

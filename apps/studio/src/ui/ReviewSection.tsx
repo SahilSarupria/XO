@@ -6,6 +6,7 @@ import {
   latestExecutionByCapability,
   REVIEW_STATE_EXPLANATION,
   REVIEW_STATE_LABEL,
+  possibleExtractionError,
   reviewStateOf,
   summarize,
   type ReviewState,
@@ -19,6 +20,7 @@ import { useSession } from './session';
 type Filter = 'all' | ReviewState;
 const TONE: Record<ReviewState, 'warning' | 'accent' | 'success'> = {
   needs_attention: 'warning',
+  manual_step: 'accent',
   ready_for_review: 'accent',
   approved: 'success',
 };
@@ -92,6 +94,9 @@ export function ReviewSection(props: {
       <div className="summary" role="group" aria-label="Review summary">
         <FilterChip current={filter} id="all" onSelect={setFilter} label="All" n={s.total} />
         <FilterChip current={filter} id="needs_attention" onSelect={setFilter} label="Needs more information" n={s.needsAttention} />
+        {s.manualSteps > 0 ? (
+          <FilterChip current={filter} id="manual_step" onSelect={setFilter} label="Understood, manual step" n={s.manualSteps} />
+        ) : null}
         <FilterChip current={filter} id="ready_for_review" onSelect={setFilter} label="Ready for review" n={s.readyForReview} />
         <FilterChip current={filter} id="approved" onSelect={setFilter} label="Approval recorded" n={s.approved} />
       </div>
@@ -171,6 +176,12 @@ function CapabilityCard(props: {
           {c.description}
         </blockquote>
         <p className="muted small">{REVIEW_STATE_EXPLANATION[state]}</p>
+        {possibleExtractionError(c) ? (
+          <p className="notice notice-warning small" role="note">
+            Possible extraction error: this name may mix text from different places on the page. Check it against your document before
+            relying on it.
+          </p>
+        ) : null}
         <p className="muted small">
           {classLabel !== undefined ? `${classLabel} · ` : ''}XO&rsquo;s own confidence: {Math.round(c.confidence * 100)}% (an estimate, not
           independently verified)

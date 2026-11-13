@@ -1152,14 +1152,22 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
         // more step in the catch-all section (5 -> 6). Recorded from the merged build, still exactly one executable workflow.
         // Semantic hardening consolidation: two multi-step siblings (4 and 5 steps) now split into 3 + 3 steps because
         // permission ("may") rules and rules with dropped operands no longer mint executable capabilities. Still exactly one executable workflow.
+        // UW-3b (clause-bounded naming): the benchmark-forbidden placeholders ("Schedule Action", "Record Action", "Review
+        // Action", "Schedule specifies a higher deductible", "Schedule and the loss is not excluded") are no longer minted.
+        // They were what tied the 6-step semantically_invalid catch-all and the 9-step group together; without them those
+        // split into the 2-, 3- and 4-step groups below, and the deterministic rule capability "The Claim Requires Manager
+        // Approval Before Settlement", now alone in its section, is a second single-step executable candidate. The HITL
+        // workflow this demo runs is unchanged.
         assert.deepEqual(statuses, [
           'executable_candidate:1',
+          'executable_candidate:1',
+          'not_executable_yet:2',
+          'not_executable_yet:2',
           'not_executable_yet:2',
           'not_executable_yet:3',
           'not_executable_yet:3',
+          'not_executable_yet:4',
           'not_executable_yet:7',
-          'not_executable_yet:9',
-          'semantically_invalid:6',
         ]);
 
         // Honest rejection of everything that is not executable.
@@ -1171,7 +1179,8 @@ test('DEMO (real fixture): Commercial Property PDF -> compile -> discover -> the
           assert.equal(res.json<ErrorWire>().error.code, 'XO_WORKFLOW_NOT_EXECUTABLE');
         }
 
-        const runnable = workflows.find((w) => w.status === 'executable_candidate')!;
+        const runnable = workflows.find((w) => w.status === 'executable_candidate' && w.steps[0]?.executionClass === 'human_in_the_loop')!;
+        assert.ok(runnable, 'the human-in-the-loop executable workflow');
         assert.equal(runnable.steps[0]!.executionClass, 'human_in_the_loop');
         // Unapproved -> 403; approve -> start.
         assert.equal(

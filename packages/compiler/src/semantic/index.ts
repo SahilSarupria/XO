@@ -7,3 +7,5 @@ export * from './boundary-resolver.js';
 export * from './unit-builder.js';
 export * from './relationship-builder.js';
 export * from './semantic-chunker.js';
+export * from './structure.js';
+export * from './directive.js';

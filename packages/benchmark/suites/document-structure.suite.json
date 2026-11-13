@@ -1,0 +1,1601 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "document-structure",
+  "description": "UW-3b evaluation corpus: documents whose meaning is in their STRUCTURE (wrapped step tables, numbered rules with titles, checklists, fill-in forms), in PDF and markdown, across non-insurance domains. Measures that procedures become ordered steps, rules and checklist items become constraints with the right modality, and form prompts and table cells are never misread as rules or stitched into names. The insurance fixtures are measured by vertical-fixtures and must not regress.",
+  "sourceRoot": "../../..",
+  "cases": [
+    {
+      "caseId": "tasktest-software-guide",
+      "description": "TaskTest.pdf: a one-page software task guide (fill-in brief, numbered ground rules with bold titles, an 8-step workflow table whose cells wrap, a definition-of-done checklist, an empty progress log, troubleshooting bullets). Ground truth from the document's own text. The case that motivated UW-3b.",
+      "sources": [
+        {
+          "kind": "pdf",
+          "path": "examples/vertical-test/TaskTest.pdf"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "gr1-one-task",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Do not mix unrelated changes in the same piece of work"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr2-understand",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Understand before you build"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr3-small-steps",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Work in small steps"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr4-secrets",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Never commit secrets"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr5-test",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Test your own work"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr6-readable",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Keep it readable"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr7-no-break",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Do not break existing behavior"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "gr8-review",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Ask for review"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "stuck1-reproduce",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Reproduce the problem with the smallest possible example"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "stuck2-read",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Read the error message fully"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "stuck3-change",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Change one thing at a time"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "stuck4-timebox",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Timebox it"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod1",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Requirement understood and goal written"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod2",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Branch created from latest code"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod3",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Code runs locally without errors"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod4",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "New tests added; all tests pass"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod5",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Edge cases and error handling checked"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod6",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "No secrets, debug logs, or dead code left"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod7",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Documentation / README updated if needed"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod8",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Peer review completed"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "dod9",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Merged / deployed and stakeholders informed"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            }
+          ],
+          "forbidden": [
+            {
+              "id": "x-form-prompt-out-of-scope",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "What will NOT be done"
+                }
+              ],
+              "reason": "a form prompt (Task Brief \"Out of scope\") is a field to fill in, not a rule"
+            },
+            {
+              "id": "x-form-prompt-goal",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "What should be true when this is done"
+                }
+              ],
+              "reason": "a form prompt (Task Brief \"Goal\") is a field to fill in, not a rule"
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "step1-understand",
+              "name": {
+                "equals": "Understand"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step2-plan",
+              "name": {
+                "equals": "Plan"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step3-set-up",
+              "name": {
+                "equals": "Set up"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step4-build",
+              "name": {
+                "equals": "Build"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step5-test",
+              "name": {
+                "equals": "Test"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step6-review",
+              "name": {
+                "equals": "Review"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step7-deliver",
+              "name": {
+                "equals": "Deliver"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            },
+            {
+              "id": "step8-reflect",
+              "name": {
+                "equals": "Reflect"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "TaskTest.pdf",
+                "pages": [
+                  2
+                ]
+              }
+            }
+          ],
+          "forbidden": [
+            {
+              "id": "x-stitched-review",
+              "name": {
+                "equals": "Review Re-read your diff"
+              },
+              "reason": "a step label glued to its action by a flattened table"
+            },
+            {
+              "id": "x-stitched-check",
+              "name": {
+                "equals": "Check naming Diff is clean feedback errors"
+              },
+              "reason": "text from two table columns"
+            },
+            {
+              "id": "x-stitched-run",
+              "name": {
+                "equals": "Run existing tests add new ones"
+              },
+              "reason": "two instructions joined across a comma"
+            }
+          ]
+        },
+        "workflows": {
+          "items": [
+            {
+              "id": "wf-step-by-step",
+              "steps": [
+                {
+                  "contains": "Understand"
+                },
+                {
+                  "contains": "Plan"
+                },
+                {
+                  "contains": "Set up"
+                },
+                {
+                  "contains": "Build"
+                },
+                {
+                  "contains": "Test"
+                },
+                {
+                  "contains": "Review"
+                },
+                {
+                  "contains": "Deliver"
+                },
+                {
+                  "contains": "Reflect"
+                }
+              ],
+              "ordered": true,
+              "executability": "not_executable_yet"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "caseId": "sop-wrapped-table",
+      "description": "A maintenance SOP (synthetic, examples/structure-corpus/build.py) whose 5-step table has wrapping instruction and done-when cells. Non-software domain.",
+      "sources": [
+        {
+          "kind": "pdf",
+          "path": "examples/structure-corpus/sop-wrapped-table.pdf"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "step4-never-reuse-gasket",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Never reuse an old gasket"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "step1-isolate",
+              "name": {
+                "equals": "Isolate"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step2-drain",
+              "name": {
+                "equals": "Drain"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step3-inspect",
+              "name": {
+                "equals": "Inspect"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step4-replace",
+              "name": {
+                "equals": "Replace"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "step5-restore",
+              "name": {
+                "equals": "Restore"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "sop-wrapped-table.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "workflows": {
+          "items": [
+            {
+              "id": "wf-seal-replacement",
+              "steps": [
+                {
+                  "contains": "Isolate"
+                },
+                {
+                  "contains": "Drain"
+                },
+                {
+                  "contains": "Inspect"
+                },
+                {
+                  "contains": "Replace"
+                },
+                {
+                  "contains": "Restore"
+                }
+              ],
+              "ordered": true,
+              "executability": "not_executable_yet"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "caseId": "checklist-venue",
+      "description": "A two-section venue readiness checklist with '[ ]' boxes in a column of their own (synthetic).",
+      "sources": [
+        {
+          "kind": "pdf",
+          "path": "examples/structure-corpus/checklist.pdf"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "item1",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Fire exits are unlocked and clearly signed"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "item2",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "First aid kit is stocked"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "item3",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Emergency contact list is posted at the entrance"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "item4",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Chairs arranged for 120 guests"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "item5",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Microphones tested"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "item6",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "No cables left across walkways"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "checklist.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": []
+        }
+      }
+    },
+    {
+      "caseId": "form-incident-report",
+      "description": "An incident report form (labels with blank or hinted values) followed by three numbered reporting rules with bold titles (synthetic).",
+      "sources": [
+        {
+          "kind": "pdf",
+          "path": "examples/structure-corpus/form.pdf"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "rule1-report-24h",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Report within 24 hours"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "form.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "rule2-never-name",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Never name a person as the cause"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "form.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "rule3-keep-evidence",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Keep the evidence"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "form.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            }
+          ],
+          "forbidden": [
+            {
+              "id": "x-hint-what-happened",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "What happened"
+                }
+              ],
+              "reason": "a form hint is not a rule"
+            },
+            {
+              "id": "x-hint-building",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Building / floor / room"
+                }
+              ],
+              "reason": "a form hint is not a rule"
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": []
+        }
+      }
+    },
+    {
+      "caseId": "guidelines-data-handling",
+      "description": "Four numbered data-handling principles with bold titles: an instruction, a prohibition, an instruction and a 'should' (synthetic).",
+      "sources": [
+        {
+          "kind": "pdf",
+          "path": "examples/structure-corpus/guidelines.pdf"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "p1-collect",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Collect only what you need"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "guidelines.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "p2-no-email",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Do not email personal data"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "guidelines.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "p3-encrypt",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Encrypt laptops"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "guidelines.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            },
+            {
+              "id": "p4-review-access",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "You should review access every quarter"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "advisory"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "guidelines.pdf",
+                "pages": [
+                  1
+                ]
+              }
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": []
+        }
+      }
+    },
+    {
+      "caseId": "onboarding-markdown",
+      "description": "Markdown: a numbered procedure, bold-titled house rules and a GitHub task-list checklist (synthetic). The same structure through the text frontend.",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "examples/structure-corpus/onboarding.md"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "semantics": {
+          "closedWorldKinds": [
+            "constraint"
+          ],
+          "facts": [
+            {
+              "id": "rule-password",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Never share your password"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "prohibition"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "negative"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "rule-lock",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "Lock your screen when you leave your desk"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "rule-expenses",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "contains": "You should file expenses within 30 days"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "advisory"
+                },
+                {
+                  "path": "polarity",
+                  "equals": "positive"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "dod-laptop",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Laptop handed over and working"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "dod-badge",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Badge collected"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "dod-lunch",
+              "kind": "constraint",
+              "identify": [
+                {
+                  "path": "rule",
+                  "equals": "Welcome lunch booked"
+                }
+              ],
+              "assert": [
+                {
+                  "path": "modality",
+                  "equals": "obligation"
+                }
+              ],
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            }
+          ]
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "step1",
+              "name": {
+                "equals": "Order the laptop and the access badge"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "step2",
+              "name": {
+                "equals": "Create the email account"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            },
+            {
+              "id": "step3",
+              "name": {
+                "equals": "Book a welcome lunch"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "onboarding.md"
+              }
+            }
+          ]
+        },
+        "workflows": {
+          "items": [
+            {
+              "id": "wf-before-day-one",
+              "steps": [
+                {
+                  "contains": "Order the laptop and the access badge"
+                },
+                {
+                  "contains": "Create the email account"
+                },
+                {
+                  "contains": "Book a welcome lunch"
+                }
+              ],
+              "ordered": true,
+              "executability": "not_executable_yet"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "caseId": "release-markdown-table",
+      "description": "Markdown: a pipe table of four release steps with done-when cells, then one conditional rule (synthetic). The rule section must keep the policy extractors.",
+      "sources": [
+        {
+          "kind": "document",
+          "path": "examples/structure-corpus/release.md"
+        }
+      ],
+      "expect": {
+        "compile": {
+          "outcome": "succeeds"
+        },
+        "capabilities": {
+          "closedWorld": true,
+          "items": [
+            {
+              "id": "step1-freeze",
+              "name": {
+                "equals": "Freeze"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "release.md"
+              }
+            },
+            {
+              "id": "step2-build",
+              "name": {
+                "equals": "Build"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "release.md"
+              }
+            },
+            {
+              "id": "step3-verify",
+              "name": {
+                "equals": "Verify"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "release.md"
+              }
+            },
+            {
+              "id": "step4-ship",
+              "name": {
+                "equals": "Ship"
+              },
+              "resolution": "unresolved",
+              "evidence": {
+                "documentPath": "release.md"
+              }
+            }
+          ]
+        },
+        "workflows": {
+          "items": [
+            {
+              "id": "wf-release",
+              "steps": [
+                {
+                  "contains": "Freeze"
+                },
+                {
+                  "contains": "Build"
+                },
+                {
+                  "contains": "Verify"
+                },
+                {
+                  "contains": "Ship"
+                }
+              ],
+              "ordered": true,
+              "executability": "not_executable_yet"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

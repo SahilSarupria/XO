@@ -105,6 +105,9 @@ export function buildRelationships(draftUnits: readonly DraftExperienceUnit[]): 
     ...(draft.isTableQuarantined !== undefined ? { isTableQuarantined: draft.isTableQuarantined } : {}),
     ...(draft.tableRow !== undefined ? { tableRow: draft.tableRow } : {}),
     ...(draft.listKind !== undefined ? { listKind: draft.listKind } : {}),
+    ...(draft.listItem !== undefined ? { listItem: draft.listItem } : {}),
+    ...(draft.formFields !== undefined ? { formFields: draft.formFields } : {}),
+    ...(draft.layoutSuspect !== undefined ? { layoutSuspect: draft.layoutSuspect } : {}),
   }));
 
   return { units, relationshipGraph: { relationships } };

@@ -9,7 +9,9 @@ const PDF = fileURLToPath(new URL('../../../examples/vertical-test/XO_Commercial
 // Re-derived after the semantic hardening merge (rule-minted deterministic capability at or above the 0.7 execution floor; another capability that does not bind).
 const DETERMINISTIC = 'cap_rule_0f731679e7120779542267faaabe10ff';
 const HITL = 'cap_ce5ac3d1b7e3d22d184b1d089f8c3522';
-const UNRESOLVED = 'cap_696db4008c271cda08da032e8b520a27';
+// UW-3b: the previous pick ("Schedule specifies a higher deductible", the noun "the Schedule" read as a verb) is a
+// benchmark-forbidden capability that is no longer minted; "Assess the claim" is a genuine one that does not bind.
+const UNRESOLVED = 'cap_a20c1aed32626f9cb11df7fe80e73c39';
 
 interface Preview {
   previewOnly: boolean;
