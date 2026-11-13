@@ -98,6 +98,13 @@ function inMerge(merges: readonly string[], ref: string): string | undefined {
   return undefined;
 }
 
+/** A range with its sheet, quoted the way `cellRef` quotes it: `Clients!A2:A3`. */
+function qualify(sheet: string | undefined, range: string): string {
+  if (sheet === undefined) return range;
+  const prefix = cellRef(sheet, 1, 1).slice(0, -2); // "Clients!" or "'My sheet'!"
+  return `${prefix}${range}`;
+}
+
 export interface RecordSetOptions {
   /** True for CSV: values are text, so their class comes from what they look like. */
   readonly fromText: boolean;
@@ -285,7 +292,7 @@ function recordSetFromRegion(grid: SheetGrid, region: readonly Row[], id: string
   if (merged.size > 0) {
     findings.push({
       code: 'MERGED_CELLS',
-      ref: [...merged][0]!,
+      ref: qualify(grid.name, [...merged][0]!),
       message: `merged range(s) ${[...merged].slice(0, 5).join(', ')}${merged.size > 5 ? ' and more' : ''}: only the first cell holds the value, and it was not copied into the others`,
     });
   }

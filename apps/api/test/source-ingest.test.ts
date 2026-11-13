@@ -489,3 +489,88 @@ test('transport: a server that trickles bytes forever is cut off by the hard dea
   assert.ok(Date.now() - started < 600, `cut off after ${Date.now() - started} ms (deadline is 2 x the idle limit)`);
   assert.equal(destroyed, true, 'the connection was torn down');
 });
+
+// ── UW-3: workbooks and emails ──────────────────────────────────────────────────────────────────────────────────────
+
+const XLSX_NS =
+  'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+const clientsXlsx = zip({
+  'xl/workbook.xml': `<workbook ${XLSX_NS}><sheets><sheet name="Clients" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+  'xl/_rels/workbook.xml.rels':
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/></Relationships>',
+  'xl/worksheets/sheet1.xml': `<worksheet ${XLSX_NS}><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Client</t></is></c><c r="B1" t="inlineStr"><is><t>Premium</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Asha Rao</t></is></c><c r="B2"><v>12000</v></c></row><row r="3"><c r="A3" t="inlineStr"><is><t>Ravi Iyer</t></is></c><c r="B3"><v>8450</v></c></row></sheetData><mergeCells><mergeCell ref="A2:A3"/></mergeCells></worksheet>`,
+});
+
+test('UW-3 upload .xlsx: read into record sets at the door; counts and reader findings are shown; compile reads it', async () => {
+  await withServer({}, async ({ server, base }) => {
+    const res = await server.request('POST', `${base}/sources?filename=clients.xlsx`, clientsXlsx);
+    assert.equal(res.status, 201, res.bodyText);
+    const rec = res.json<{
+      sourceId: string;
+      mediaType: string;
+      stats: { rows: number; sheets: number; tables: number };
+      ingestNotes?: string[];
+    }>();
+    assert.match(rec.mediaType, /spreadsheetml/);
+    assert.deepEqual(rec.stats, { rows: 2, sheets: 1, tables: 1 });
+    assert.ok(
+      rec.ingestNotes?.some((n) => /Clients!A2:A3: merged range/.test(n)),
+      JSON.stringify(rec.ingestNotes),
+    );
+    const compiled = await server.request('POST', `${base}/sources/${rec.sourceId}/compile`);
+    assert.ok(compiled.status === 201 || compiled.status === 200, compiled.bodyText);
+  });
+});
+
+test('UW-3 upload: a broken workbook, a hostile workbook and a broken CSV are refused at the door with the reason', async () => {
+  await withServer({}, async ({ server, base }) => {
+    const cases: [string, Buffer, RegExp][] = [
+      ['fake.xlsx', Buffer.from('name,amount\n1,2'), /cannot read this \.xlsx: not a ZIP/],
+      ['bomb.xlsx', zip({ 'xl/workbook.xml': '<!DOCTYPE x [<!ENTITY a "a">]><workbook/>' }), /DOCTYPE/],
+      ['open.csv', Buffer.from('a,b\n"never closed,1'), /cannot read this \.csv: a quoted field that starts on line 2 is never closed/],
+      ['bin.csv', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]), /NUL bytes/],
+    ];
+    for (const [name, body, pattern] of cases) {
+      const res = await server.request('POST', `${base}/sources?filename=${name}`, body);
+      assert.equal(res.status, 400, `${name}: ${res.bodyText}`);
+      assert.match(res.bodyText, pattern, name);
+    }
+    assert.equal((await server.request('GET', `${base}/sources`)).json<{ sources: unknown[] }>().sources.length, 0, 'nothing was stored');
+  });
+});
+
+test('UW-3 upload .eml: the message is read at the door, attachments are listed (not read), and compile reads the body', async () => {
+  const eml = Buffer.from(
+    [
+      'From: Priya <priya@example.com>',
+      'To: ops@example.com',
+      'Subject: Renewal for Asha Rao',
+      'Content-Type: multipart/mixed; boundary="b"',
+      '',
+      '--b',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Please renew policy P-9 before 31 March 2026.',
+      '--b',
+      'Content-Type: application/pdf',
+      'Content-Disposition: attachment; filename="cert.pdf"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      Buffer.from('%PDF-1.4').toString('base64'),
+      '--b--',
+    ].join('\r\n'),
+  );
+  await withServer({}, async ({ server, base }) => {
+    const res = await server.request('POST', `${base}/sources?filename=renewal.eml`, eml);
+    assert.equal(res.status, 201, res.bodyText);
+    const rec = res.json<{ sourceId: string; mediaType: string; stats: { words: number; attachments: number }; ingestNotes?: string[] }>();
+    assert.equal(rec.mediaType, 'message/rfc822');
+    assert.equal(rec.stats.attachments, 1);
+    assert.ok(rec.ingestNotes?.some((n) => /cert\.pdf\)\. They are listed, not read/.test(n)));
+    const compiled = await server.request('POST', `${base}/sources/${rec.sourceId}/compile`);
+    assert.ok(compiled.status === 201 || compiled.status === 200, compiled.bodyText);
+    const notEmail = await server.request('POST', `${base}/sources?filename=fake.eml`, Buffer.from('just some words'));
+    assert.equal(notEmail.status, 400);
+    assert.match(notEmail.bodyText, /cannot read this \.eml: it has no email headers/);
+  });
+});

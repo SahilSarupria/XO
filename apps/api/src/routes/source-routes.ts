@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { MimeError, parseEmail, tabularFromCsv, tabularFromXlsx } from '@xo/compiler';
 import { ErrorCode, XoError } from '@xo/errors';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -145,10 +146,40 @@ export function registerSourceRoutes(
         if (cause instanceof DocxError) throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot read this .docx: ${cause.message}`);
         throw cause;
       }
-    } else if (extension === '.csv') {
-      const text = new TextDecoder().decode(bytes);
-      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      stats = { rows: Math.max(0, lines.length - 1) };
+    } else if (extension === '.csv' || extension === '.xlsx') {
+      // UW-3: tabular files are read into record sets here, so a broken or hostile file is refused at the door with the reason, and
+      // what the reader could not settle (no header, merged cells, ambiguous dates, ...) is shown to the person who uploaded it.
+      const tables = extension === '.csv' ? tabularFromCsv(new TextDecoder().decode(bytes)) : tabularFromXlsx(bytes);
+      if (!tables.ok)
+        throw new XoError(
+          ErrorCode.INVALID_ARGUMENT,
+          `cannot read this ${extension}: ${tables.error.message.replace(/^cannot read this (CSV|workbook): /, '')}`,
+        );
+      const sets = tables.value.recordSets;
+      stats = {
+        rows: sets.reduce((n, r) => n + r.records.length, 0),
+        ...(extension === '.xlsx' ? { sheets: tables.value.sheets.length, tables: sets.length } : {}),
+      };
+      const notes = [...tables.value.findings, ...sets.flatMap((r) => r.findings)].map((f) =>
+        f.ref !== undefined ? `${f.ref}: ${f.message}` : f.message,
+      );
+      if (notes.length > 0) ingestNotes = notes.length > 20 ? [...notes.slice(0, 20), `and ${notes.length - 20} more`] : notes;
+    } else if (extension === '.eml') {
+      let email;
+      try {
+        email = parseEmail(bytes);
+      } catch (cause) {
+        if (cause instanceof MimeError) throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot read this .eml: ${cause.message}`);
+        throw cause;
+      }
+      stats = { words: email.body.split(/\s+/).filter(Boolean).length, attachments: email.attachments.length };
+      const notes = [...email.findings];
+      if (email.attachments.length > 0) {
+        notes.push(
+          `This email has ${email.attachments.length} attachment(s) (${email.attachments.map((a) => a.filename ?? a.contentType).join(', ')}). They are listed, not read: upload each one to use its contents.`,
+        );
+      }
+      if (notes.length > 0) ingestNotes = notes;
     } else if (extension === '.txt' || extension === '.md') {
       stats = { words: new TextDecoder().decode(bytes).split(/\s+/).filter(Boolean).length };
     }
@@ -175,6 +206,8 @@ export function registerSourceRoutes(
   const MEDIA_TYPE_EXTENSIONS: Readonly<Record<string, string>> = {
     'application/pdf': '.pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'message/rfc822': '.eml',
     'text/html': '.html',
     'text/plain': '.txt',
     'text/markdown': '.md',

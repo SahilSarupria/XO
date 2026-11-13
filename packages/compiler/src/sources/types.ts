@@ -1,6 +1,7 @@
 import type { ParsedDocument } from '../document/types.js';
 import type { CoverageReport } from '../document/page-coverage.js';
 import type { TabularSource } from '../tabular/types.js';
+import type { ParsedEmail } from './mime.js';
 
 /**
  * The set of source families this package's frontends currently know
@@ -15,7 +16,7 @@ import type { TabularSource } from '../tabular/types.js';
  * with zero change to `document/`, `semantic/`, `knowledge/`,
  * `capabilities/`, `reasoning/`, or `xoir/`.
  */
-export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi' | 'prompt' | 'docx' | 'xlsx';
+export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi' | 'prompt' | 'docx' | 'xlsx' | 'eml';
 
 /**
  * A source whose content has been (or can be) normalized into the same
@@ -47,6 +48,8 @@ export interface DocumentSourceContent {
    * resolution) read, without re-parsing the file.
    */
   readonly tables?: TabularSource;
+  /** UW-3 — for email sources: the decoded envelope, the body's MIME part and the attachment list (name, type, size, SHA-256). */
+  readonly email?: ParsedEmail;
 }
 
 /**

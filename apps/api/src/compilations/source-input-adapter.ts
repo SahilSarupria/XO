@@ -24,6 +24,10 @@ export function buildCompilerSourceInput(extension: string, bytes: Uint8Array, s
     case '.docx':
       // Converted to text here (never inside the compiler); a document that passed the upload-time check converts again deterministically.
       return { kind: 'document', text: extractDocxText(bytes).text, sourcePath };
+    case '.xlsx':
+      return { kind: 'xlsx', bytes, sourcePath };
+    case '.eml':
+      return { kind: 'eml', bytes, sourcePath };
     case '.html':
     case '.htm':
       return { kind: 'html', html: new TextDecoder().decode(bytes), sourcePath };

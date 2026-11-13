@@ -39,7 +39,17 @@ export interface SourceRecord {
   /** Things the server could not carry over when it read this file (e.g. .docx list numbering). Shown to the user; never silently dropped. */
   readonly ingestNotes?: readonly string[];
   /** Cheap, deterministic counts computed at ingest. Only fields that were actually measured are present. */
-  readonly stats?: { readonly rows?: number; readonly words?: number; readonly paragraphs?: number; readonly tableRows?: number };
+  readonly stats?: {
+    readonly rows?: number;
+    readonly words?: number;
+    readonly paragraphs?: number;
+    readonly tableRows?: number;
+    /** UW-3: workbooks — sheets read and tables (record sets) found. */
+    readonly sheets?: number;
+    readonly tables?: number;
+    /** UW-3: emails — attachments listed (each must be uploaded on its own to be read). */
+    readonly attachments?: number;
+  };
 }
 
 export interface CreateSourceInput {
@@ -74,6 +84,8 @@ export interface CreateSourceInput {
 export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
   '.pdf',
   '.docx',
+  '.xlsx',
+  '.eml',
   '.html',
   '.htm',
   '.json',
@@ -90,6 +102,8 @@ export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
 const DEFAULT_MEDIA_TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.pdf': 'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.eml': 'message/rfc822',
   '.html': 'text/html',
   '.htm': 'text/html',
   '.json': 'application/json',

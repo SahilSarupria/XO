@@ -109,7 +109,7 @@ test('hidden sheets are read and marked; merged ranges are reported, never fille
   assert.ok(r.value.findings.some((f) => f.code === 'HIDDEN_SHEET' && f.ref === 'Lookup'));
   const visible = r.value.recordSets.find((s) => s.sheet === 'Visible')!;
   assert.equal(visible.records[1]!.cells[1], undefined, 'Ravi has no region of their own: the merged West is not copied down');
-  assert.ok(visible.findings.some((f) => f.code === 'MERGED_CELLS' && f.ref === 'A2:A3'));
+  assert.ok(visible.findings.some((f) => f.code === 'MERGED_CELLS' && f.ref === 'Visible!A2:A3'));
 });
 
 test('hostile or broken workbooks are refused loudly with the reason', () => {

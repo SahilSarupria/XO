@@ -188,6 +188,8 @@ export interface XoClientOptions {
 export const SUPPORTED_UPLOAD_EXTENSIONS: readonly string[] = [
   '.pdf',
   '.docx',
+  '.xlsx',
+  '.eml',
   '.html',
   '.htm',
   '.json',
