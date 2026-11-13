@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "refreshedAt": "2026-11-13T00:00:00Z",
+  "scope": "UW-3b document structure",
+  "suites": [
+    {
+      "suiteId": "vertical-fixtures",
+      "fromReportSha256": "b44e692ba7d63abf51239ab73cf6fbafd997deccaef6456ab55e21fb72fed866",
+      "toReportSha256": "f63630f394044fbe0af912eb840a5c9635616bcfd7a9a294fe770a51004feaeb",
+      "evaluationVersion": {
+        "from": "p0.9c-1",
+        "to": "p0.9c-1"
+      },
+      "reason": "UW-3b document structure: layout recovery (wrapped tables, marker-led lists, checklists, forms), section routing by document structure, clause-bounded capability naming and quality-based confidence. The insurance fixtures route no section (policy text keeps the existing extractors); their capability lists lose benchmark-forbidden placeholders and garbled cross-column names, and keep clause-bounded names. One declared golden change (commercial-property-policy). Evaluation version unchanged.",
+      "dispositions": [
+        {
+          "differenceId": "golden|commercial-property-policy",
+          "disposition": "accepted",
+          "reason": "declared golden change: two name matchers corrected to the clause-bounded names (see declaredGoldenChanges)"
+        },
+        {
+          "differenceId": "metric|aastha-operations|capabilityPrecision",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the ratio is unchanged (15/16). The one unexpected capability (from the descriptive section 2 item \"Business is generated via direct sales, ...\") is the same source sentence, now named by its passive subject (\"Generate Business\") instead of the cut prepositional phrase (\"Generate via direct sales referral partners digital\"); the compare procedure reports a renamed unexpected item as one newly failing and one resolved item, so it is recorded as acknowledged, not tuned away."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|crossPathConsistency",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|observedSourceRefCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|producerAttributionCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|provenanceChainCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|spuriousCapabilityAvoidance",
+          "disposition": "accepted",
+          "reason": "UW-3b: the metric improved — UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect, so the forbidden capabilities of this case are no longer produced"
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|crossPathConsistency",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|observedSourceRefCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|producerAttributionCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|provenanceChainCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|commercial-property-policy|spuriousCapabilityAvoidance",
+          "disposition": "accepted",
+          "reason": "UW-3b: the metric improved — UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect, so the forbidden capabilities of this case are no longer produced"
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|crossPathConsistency",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|observedSourceRefCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|producerAttributionCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|provenanceChainCoverage",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3b: the metric value is unchanged; its population shrank because UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect. Fewer, cleaner capabilities means fewer cross-path / provenance / attribution units to measure. A deliberate precision gain recorded as an acknowledged coverage reduction (see CHANGELOG.md)."
+        },
+        {
+          "differenceId": "metric|multidoc-burglary-claims|spuriousCapabilityAvoidance",
+          "disposition": "accepted",
+          "reason": "UW-3b: the metric improved — UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect, so the forbidden capabilities of this case are no longer produced"
+        },
+        {
+          "differenceId": "output|aastha-operations|capabilities",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|aastha-operations|compile",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|aastha-operations|execution",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|aastha-operations|workflows",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|capabilities",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|compile",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|workflows",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|capabilities",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|compile",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|commercial-property-policy|workflows",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|multidoc-burglary-claims|capabilities",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|multidoc-burglary-claims|compile",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        },
+        {
+          "differenceId": "output|multidoc-burglary-claims|workflows",
+          "disposition": "accepted",
+          "reason": "UW-3b: this stage output changed because capability names are clause-bounded (verb + object of one clause, passive subjects, stated deadlines kept) and UW-3b no longer mints capabilities that are benchmark-forbidden or of that class: the \"<verb> Action\" placeholder (a verb with nothing to act on), nouns read as verbs after a determiner (\"the Schedule specifies\"), passives inside a condition, and names built from text joined across layout columns with a second structural defect; workflow groupings follow from the capability set. Rules, constraints, decision trees and table rows of the insurance fixtures are unchanged (verified node by node on burglary-policy.pdf). No metric was lowered by a defect."
+        }
+      ],
+      "declaredGoldenChanges": [
+        {
+          "caseId": "commercial-property-policy",
+          "fromFingerprint": "3c735dae96b59f24",
+          "toFingerprint": "3d36c848051e895b",
+          "reason": "UW-3b clause-bounded capability naming: two name matchers encoded the old six-word-window cut. c4.1 \"Notify the Insurer of a loss within\" (equals) is now \"Notify the Insurer of a loss within 7 days\" (the stated deadline is kept); c10.2 \"Request additional information where the circumstances\" (contains) is now \"Request additional information\" (the name ends at the subordinate clause). Same capabilities, same resolution and class expectations.",
+          "evidence": "CHANGELOG.md UW-3b refresh; ground-truth register entries c4.1-notify-within-7-days and c10.2-request-information (notes updated); docs/adr/0027-structural-reading-of-documents.md",
+          "affectedMetrics": [
+            "capabilityRecall"
+          ],
+          "acceptedAt": "CHANGELOG.md, UW-3b document structure refresh (capabilityRecall unchanged at 17/19 after the matcher correction)"
+        }
+      ],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — UW-3b document structure",
+      "predecessorRetainedAs": "baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json",
+      "counts": {
+        "golden_expectation_change": 1,
+        "semantic_regression": 26,
+        "semantic_improvement": 3
+      },
+      "decision": "regression"
+    }
+  ]
+}

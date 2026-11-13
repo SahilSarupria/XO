@@ -69,6 +69,16 @@ export const PRODUCER_TAXONOMY: readonly ProducerValueModel[] = [
     exercisedBy: ['openapi-operation-data-flow', 'structured-operation-data-flow'],
   },
   {
+    value: 'procedure-step',
+    assignedAt: 'capabilities/hybrid-extractor.ts and capabilities/capability-extractor.ts (ProcedureStepCapabilityExtractor.name), UW-3b',
+    receivers: 'capability nodes for the steps and the procedure of a section routed as a procedure (semantic/structure.ts)',
+    stamped: true,
+    independentlyEstablishable:
+      'Yes: only units whose section was routed as a procedure (a step table or numbered instructions) reach that extractor, and the routing evidence is reported per section.',
+    // The vertical-fixtures and runtime-mechanics cases contain no routed procedure; the document-structure suite does.
+    exercisedBy: [],
+  },
+  {
     value: 'ai',
     assignedAt:
       'knowledge/hybrid-extractor.ts and capabilities/hybrid-extractor.ts (aiExtractor.name), only when an AI extractor is configured',
@@ -160,6 +170,7 @@ export const REASONING_SUBTYPE_KIND: Readonly<Record<string, string>> = {
   exception: 'heuristic',
   escalation: 'escalation_rule',
   risk_threshold: 'risk_policy',
+  acceptance_criterion: 'constraint',
 };
 
 /** `capabilities/rule-capability-linking.ts` RULE_DERIVED_METADATA_KEY: written by the minter into the capability's own metadata. */

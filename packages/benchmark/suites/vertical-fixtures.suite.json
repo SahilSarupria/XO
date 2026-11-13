@@ -1033,7 +1033,7 @@
             {
               "id": "c4.1-notify-within-7-days",
               "name": {
-                "equals": "Notify the Insurer of a loss within"
+                "equals": "Notify the Insurer of a loss within 7 days"
               },
               "resolution": "resolved",
               "executionClass": "deterministic_rule"
@@ -1049,7 +1049,7 @@
             {
               "id": "c10.2-request-information",
               "name": {
-                "contains": "Request additional information where the circumstances"
+                "contains": "Request additional information"
               },
               "resolution": "unresolved",
               "executionClass": "not_executable"

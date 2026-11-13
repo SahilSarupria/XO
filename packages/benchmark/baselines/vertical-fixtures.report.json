@@ -19,8 +19,8 @@
         "missing": [],
         "unexpected": [
           {
-            "id": "capability|generate via direct sales referral partners digital",
-            "reason": "discovered \"Generate via direct sales referral partners digital\" (resolved/human_in_the_loop) matches no expected capability",
+            "id": "capability|generate business",
+            "reason": "discovered \"Generate Business\" (resolved/human_in_the_loop) matches no expected capability",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
           }
@@ -86,27 +86,27 @@
         "id": "crossPathConsistency",
         "stage": "capabilities",
         "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-        "numerator": 350,
-        "denominator": 350,
+        "numerator": 306,
+        "denominator": 306,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "live_vs_package.binding.match": 22,
-          "live_vs_package.binding.not_comparable": 19,
-          "live_vs_package.contract_embedded.match": 41,
-          "live_vs_package.contract_embedded.not_comparable": 28,
-          "live_vs_package.contract_hash.match": 41,
+          "live_vs_package.binding.match": 21,
+          "live_vs_package.binding.not_comparable": 18,
+          "live_vs_package.contract_embedded.match": 39,
+          "live_vs_package.contract_embedded.not_comparable": 17,
+          "live_vs_package.contract_hash.match": 39,
           "live_vs_package.execution_outcome.match": 16,
           "live_vs_package.execution_outcome.not_comparable": 2,
           "live_vs_package.execution_outcome.not_exercised": 7,
           "live_vs_package.execution_provenance.match": 16,
           "live_vs_package.graph_hash.not_comparable": 7,
-          "live_vs_serialized.binding.match": 69,
-          "live_vs_serialized.capability_present.match": 69,
-          "live_vs_serialized.contract_hash.match": 69,
+          "live_vs_serialized.binding.match": 56,
+          "live_vs_serialized.capability_present.match": 56,
+          "live_vs_serialized.contract_hash.match": 56,
           "live_vs_serialized.graph_hash.match": 7
         }
       },
@@ -178,7 +178,7 @@
         "mismatched": [
           {
             "id": "request-statements-is-a-human-task",
-            "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+            "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
           }
@@ -204,8 +204,8 @@
         "id": "observedSourceRefCoverage",
         "stage": "compile",
         "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-        "numerator": 501,
-        "denominator": 501,
+        "numerator": 488,
+        "denominator": 488,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -231,15 +231,15 @@
         "id": "producerAttributionCoverage",
         "stage": "compile",
         "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-        "numerator": 413,
-        "denominator": 413,
+        "numerator": 400,
+        "denominator": 400,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "in_population.capability_extractor.attributed": 52,
+          "in_population.capability_extractor.attributed": 39,
           "in_population.knowledge_extractor.attributed": 361,
           "not_judged.reasoning_extractor.unattributed": 71,
           "not_judged.rule_minted_capability.unattributed": 17
@@ -249,20 +249,20 @@
         "id": "provenanceChainCoverage",
         "stage": "capabilities",
         "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-        "numerator": 69,
-        "denominator": 69,
+        "numerator": 56,
+        "denominator": 56,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "binding.resolved": 41,
-          "binding.unresolved": 28,
-          "link.hash_deterministic.ok": 69,
-          "link.nodes_resolve.ok": 69,
-          "link.refs_carried.ok": 69,
-          "link.source_resolves.ok": 69
+          "binding.resolved": 39,
+          "binding.unresolved": 17,
+          "link.hash_deterministic.ok": 56,
+          "link.nodes_resolve.ok": 56,
+          "link.refs_carried.ok": 56,
+          "link.source_resolves.ok": 56
         }
       },
       {
@@ -290,7 +290,7 @@
         "mismatched": [
           {
             "id": "t3.1-request-insurer-statements",
-            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
           }
@@ -350,73 +350,12 @@
         "id": "spuriousCapabilityAvoidance",
         "stage": "capabilities",
         "definition": "forbidden capabilities absent / forbidden capabilities",
-        "numerator": 0,
+        "numerator": 10,
         "denominator": 10,
-        "ratio": 0,
+        "ratio": 1,
         "measured": true,
         "missing": [],
-        "unexpected": [
-          {
-            "id": "x-contact-no-email-id",
-            "reason": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
-            "attributedStage": "capabilities",
-            "caseId": "burglary-policy-schedule"
-          },
-          {
-            "id": "x-partner-contact-row",
-            "reason": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
-            "attributedStage": "capabilities",
-            "caseId": "burglary-policy-schedule"
-          },
-          {
-            "id": "x-schedule-action",
-            "reason": "forbidden capability \"Schedule Action\" — not an action in the document",
-            "attributedStage": "capabilities",
-            "caseId": "burglary-policy-schedule"
-          },
-          {
-            "id": "x-record-action",
-            "reason": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-review-action",
-            "reason": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-schedule-action",
-            "reason": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-schedule-fragment-higher-deductible",
-            "reason": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-schedule-fragment-must-bear",
-            "reason": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-schedule-fragment-not-excluded",
-            "reason": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
-            "attributedStage": "capabilities",
-            "caseId": "commercial-property-policy"
-          },
-          {
-            "id": "x-schedule-action",
-            "reason": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
-            "attributedStage": "capabilities",
-            "caseId": "multidoc-burglary-claims"
-          }
-        ],
+        "unexpected": [],
         "mismatched": []
       },
       {
@@ -508,31 +447,30 @@
     ],
     "observed": {
       "nodeCountsByKind": {
-        "capability": 69,
+        "capability": 56,
         "concept": 339,
         "constraint": 67,
         "decision_node": 1,
         "heuristic": 25
       },
       "capabilities": {
-        "total": 69,
+        "total": 56,
         "byResolution": {
-          "resolved": 41,
-          "unresolved": 28
+          "resolved": 39,
+          "unresolved": 17
         },
         "byExecutionClass": {
-          "deterministic_rule": 22,
-          "human_in_the_loop": 19,
-          "not_executable": 28
+          "deterministic_rule": 21,
+          "human_in_the_loop": 18,
+          "not_executable": 17
         }
       },
       "workflows": {
-        "total": 28,
-        "totalSteps": 69,
+        "total": 24,
+        "totalSteps": 56,
         "byExecutability": {
-          "executable_candidate": 9,
-          "not_executable_yet": 18,
-          "semantically_invalid": 1
+          "executable_candidate": 8,
+          "not_executable_yet": 16
         }
       },
       "executions": {
@@ -629,10 +567,10 @@
         }
       },
       "fingerprints": {
-        "compile": "38a3c448e30be5b2",
-        "capabilities": "974ae71e9bcf8635",
-        "workflows": "16454cd0647ee6fa",
-        "execution": "516b1c01b2496d5f"
+        "compile": "95397e9045aa7f4a",
+        "capabilities": "76cb64a103dba33f",
+        "workflows": "e7fecfd90005ff95",
+        "execution": "01ec4dfd6918d314"
       },
       "observed": {
         "nodeCountsByKind": {
@@ -679,8 +617,8 @@
           "missing": [],
           "unexpected": [
             {
-              "id": "capability|generate via direct sales referral partners digital",
-              "reason": "discovered \"Generate via direct sales referral partners digital\" (resolved/human_in_the_loop) matches no expected capability",
+              "id": "capability|generate business",
+              "reason": "discovered \"Generate Business\" (resolved/human_in_the_loop) matches no expected capability",
               "attributedStage": "capabilities"
             }
           ],
@@ -770,7 +708,7 @@
           "mismatched": [
             {
               "id": "request-statements-is-a-human-task",
-              "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+              "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
               "attributedStage": "capabilities"
             }
           ]
@@ -864,7 +802,7 @@
           "mismatched": [
             {
               "id": "t3.1-request-insurer-statements",
-              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
               "attributedStage": "capabilities"
             }
           ]
@@ -914,11 +852,11 @@
       ],
       "items": [
         {
-          "id": "capability|generate via direct sales referral partners digital",
+          "id": "capability|generate business",
           "dimension": "capability",
           "outcome": "unexpected",
-          "ref": "cap_80dd750291fa0ecabf18d1f05781fa68",
-          "detail": "Generate via direct sales referral partners digital",
+          "ref": "cap_7835be016438de454612d6a28a52e6c2",
+          "detail": "Generate Business",
           "attributedStage": "capabilities"
         },
         {
@@ -931,27 +869,27 @@
           "id": "t3.1-request-insurer-statements",
           "dimension": "capability",
           "outcome": "incorrect",
-          "ref": "cap_ef9c3f234890b96bfafef81f00934385",
-          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "ref": "cap_9c105575ef6fa09bbe93857087b54622",
+          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
           "attributedStage": "capabilities"
         },
         {
           "id": "t3.2-map-crm-to-insurer-data",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_270ef87251e2f71815d2ac9b8bb2e21a"
+          "ref": "cap_9dda051a479818d764a3ececcea65165"
         },
         {
           "id": "t3.3-identify-discrepancies",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_4b778fe3fcad534f782608c8ca4fd244"
+          "ref": "cap_e9f37767a7d13d6493db56a3acc82081"
         },
         {
           "id": "t3.3a-identify-actual-brokerage",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_465ecbb6fd440f19e95da381f6413c95"
+          "ref": "cap_6833fdb7d16390bfdd37859091121d4e"
         },
         {
           "id": "t3.4-match-crm-vs-statements",
@@ -975,19 +913,19 @@
           "id": "t3.4-verify-expected-vs-actual-brokerage",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_8cd3abab91d849bcdd0122b140313ddb"
+          "ref": "cap_bc38f0c14c7d8e29d6607bad97146777"
         },
         {
           "id": "t4.1-create-invoices-in-tally",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_55493c57e902d8cf730beee1ae77f114"
+          "ref": "cap_ababdc809874daea5aeaaeb7ecc29e7e"
         },
         {
           "id": "t4.2-calculate-and-book-tds",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_2db5bd2c2810954f26ea0c9517a05199"
+          "ref": "cap_7011177ec83a655edd8e688912ec6b35"
         },
         {
           "id": "t4.2-reconcile-invoice-balance",
@@ -999,19 +937,19 @@
           "id": "t4.2-record-incoming-payments",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_294ef4795cac6301523332d1e4600f64"
+          "ref": "cap_15c39d4302b842351320fb81627bbcd4"
         },
         {
           "id": "t5.1-generate-monthly-mis",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_21dd23446cf05de3535c218df30b9fad"
+          "ref": "cap_b4cd1ab117b27b06a2c7582c3e0cb709"
         },
         {
           "id": "t5.2-calculate-channel-revenue-share",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_e483d9c26d846739090a0e610711e961"
+          "ref": "cap_1ba78f47bbafb0dc0182e65142e12cb1"
         },
         {
           "id": "compile",
@@ -1027,7 +965,7 @@
           "id": "request-statements-is-a-human-task",
           "dimension": "execution",
           "outcome": "failed",
-          "detail": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_ef9c3f234890b96bfafef81f00934385\" has no linked decision_node/heuristic/constraint rules — nothing for)",
+          "detail": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
           "attributedStage": "capabilities"
         },
         {
@@ -1039,13 +977,13 @@
           "id": "wf-partner-payouts",
           "dimension": "workflow",
           "outcome": "found",
-          "ref": "wf_bb34fe0eb9809315"
+          "ref": "wf_69533882a9b46653"
         },
         {
           "id": "wf-receipts-and-bookkeeping",
           "dimension": "workflow",
           "outcome": "found",
-          "ref": "wf_6acf3e1f2d42b67f"
+          "ref": "wf_6d9c67692286fbab"
         },
         {
           "id": "wf-reconciliation-tasks",
@@ -1090,17 +1028,17 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 218,
+            "nodeCount": 215,
             "total": {
               "producers": {
-                "rule-based": 208
+                "rule-based": 205
               },
               "unattributed": 10
             },
             "byKind": {
               "capability": {
                 "producers": {
-                  "rule-based": 6
+                  "rule-based": 3
                 },
                 "unattributed": 1
               },
@@ -1143,36 +1081,36 @@
         }
       },
       "fingerprints": {
-        "compile": "eb76a90a3dc4ec00",
-        "capabilities": "68b51db9da6c7125",
-        "workflows": "633ade63efbe8e94",
+        "compile": "23d09ac3423b857a",
+        "capabilities": "b2b608643fb541c3",
+        "workflows": "2ffc157b03b8d9e1",
         "execution": "4f53cda18c2baa0c"
       },
       "observed": {
         "nodeCountsByKind": {
-          "capability": 7,
+          "capability": 4,
           "concept": 200,
           "constraint": 10,
           "heuristic": 1
         },
         "capabilities": {
-          "total": 7,
+          "total": 4,
           "byResolution": {
-            "resolved": 5,
-            "unresolved": 2
+            "resolved": 3,
+            "unresolved": 1
           },
           "byExecutionClass": {
-            "deterministic_rule": 2,
-            "human_in_the_loop": 3,
-            "not_executable": 2
+            "deterministic_rule": 1,
+            "human_in_the_loop": 2,
+            "not_executable": 1
           }
         },
         "workflows": {
-          "total": 7,
-          "totalSteps": 7,
+          "total": 4,
+          "totalSteps": 4,
           "byExecutability": {
-            "executable_candidate": 5,
-            "not_executable_yet": 2
+            "executable_candidate": 3,
+            "not_executable_yet": 1
           }
         },
         "executions": {
@@ -1209,23 +1147,23 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 34,
-          "denominator": 34,
+          "numerator": 20,
+          "denominator": 20,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "live_vs_package.binding.match": 2,
-            "live_vs_package.binding.not_comparable": 3,
-            "live_vs_package.contract_embedded.match": 5,
-            "live_vs_package.contract_embedded.not_comparable": 2,
-            "live_vs_package.contract_hash.match": 5,
+            "live_vs_package.binding.match": 1,
+            "live_vs_package.binding.not_comparable": 2,
+            "live_vs_package.contract_embedded.match": 3,
+            "live_vs_package.contract_embedded.not_comparable": 1,
+            "live_vs_package.contract_hash.match": 3,
             "live_vs_package.graph_hash.not_comparable": 1,
-            "live_vs_serialized.binding.match": 7,
-            "live_vs_serialized.capability_present.match": 7,
-            "live_vs_serialized.contract_hash.match": 7,
+            "live_vs_serialized.binding.match": 4,
+            "live_vs_serialized.capability_present.match": 4,
+            "live_vs_serialized.contract_hash.match": 4,
             "live_vs_serialized.graph_hash.match": 1
           }
         },
@@ -1248,8 +1186,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 218,
-          "denominator": 218,
+          "numerator": 215,
+          "denominator": 215,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1260,15 +1198,15 @@
           "id": "producerAttributionCoverage",
           "stage": "compile",
           "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-          "numerator": 208,
-          "denominator": 208,
+          "numerator": 205,
+          "denominator": 205,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "in_population.capability_extractor.attributed": 6,
+            "in_population.capability_extractor.attributed": 3,
             "in_population.knowledge_extractor.attributed": 202,
             "not_judged.reasoning_extractor.unattributed": 9,
             "not_judged.rule_minted_capability.unattributed": 1
@@ -1278,20 +1216,20 @@
           "id": "provenanceChainCoverage",
           "stage": "capabilities",
           "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-          "numerator": 7,
-          "denominator": 7,
+          "numerator": 4,
+          "denominator": 4,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "binding.resolved": 5,
-            "binding.unresolved": 2,
-            "link.hash_deterministic.ok": 7,
-            "link.nodes_resolve.ok": 7,
-            "link.refs_carried.ok": 7,
-            "link.source_resolves.ok": 7
+            "binding.resolved": 3,
+            "binding.unresolved": 1,
+            "link.hash_deterministic.ok": 4,
+            "link.nodes_resolve.ok": 4,
+            "link.refs_carried.ok": 4,
+            "link.source_resolves.ok": 4
           }
         },
         {
@@ -1334,28 +1272,12 @@
           "id": "spuriousCapabilityAvoidance",
           "stage": "capabilities",
           "definition": "forbidden capabilities absent / forbidden capabilities",
-          "numerator": 0,
+          "numerator": 3,
           "denominator": 3,
-          "ratio": 0,
+          "ratio": 1,
           "measured": true,
           "missing": [],
-          "unexpected": [
-            {
-              "id": "x-contact-no-email-id",
-              "reason": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-partner-contact-row",
-              "reason": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-schedule-action",
-              "reason": "forbidden capability \"Schedule Action\" — not an action in the document",
-              "attributedStage": "capabilities"
-            }
-          ],
+          "unexpected": [],
           "mismatched": []
         }
       ],
@@ -1365,30 +1287,6 @@
           "dimension": "capability",
           "outcome": "found",
           "ref": "cap_b5d98c4951a707403ac1450bbe1e6c26"
-        },
-        {
-          "id": "x-contact-no-email-id",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_915ec7f5b134c31082b29a710001769a",
-          "detail": "forbidden capability \"Contact No Email ID\" — table field labels, not an action",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-partner-contact-row",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_dd14c5df01ea19ad29af0357e28556ed",
-          "detail": "forbidden capability \"Contact and 9821631474 AASTHA INSURANCE BROKER aastha9ins@rediffmail.com\" — a contact-details table row, not an action",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-action",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
-          "detail": "forbidden capability \"Schedule Action\" — not an action in the document",
-          "attributedStage": "capabilities"
         },
         {
           "id": "compile",
@@ -1446,17 +1344,17 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 152,
+            "nodeCount": 146,
             "total": {
               "producers": {
-                "rule-based": 84
+                "rule-based": 78
               },
               "unattributed": 68
             },
             "byKind": {
               "capability": {
                 "producers": {
-                  "rule-based": 16
+                  "rule-based": 10
                 },
                 "unattributed": 15
               },
@@ -1499,37 +1397,36 @@
         }
       },
       "fingerprints": {
-        "compile": "5886e4284cc54406",
-        "capabilities": "a5d4cb1d40269f37",
-        "workflows": "2ca638ef00764f2f",
+        "compile": "d396031a36eeabdd",
+        "capabilities": "12ac5a761283f84e",
+        "workflows": "2c787029298e607f",
         "execution": "0ea71eb3a58cdadb"
       },
       "observed": {
         "nodeCountsByKind": {
-          "capability": 31,
+          "capability": 25,
           "concept": 55,
           "constraint": 42,
           "heuristic": 24
         },
         "capabilities": {
-          "total": 31,
+          "total": 25,
           "byResolution": {
             "resolved": 19,
-            "unresolved": 12
+            "unresolved": 6
           },
           "byExecutionClass": {
             "deterministic_rule": 18,
             "human_in_the_loop": 1,
-            "not_executable": 12
+            "not_executable": 6
           }
         },
         "workflows": {
-          "total": 7,
-          "totalSteps": 31,
+          "total": 9,
+          "totalSteps": 25,
           "byExecutability": {
-            "executable_candidate": 1,
-            "not_executable_yet": 5,
-            "semantically_invalid": 1
+            "executable_candidate": 2,
+            "not_executable_yet": 7
           }
         },
         "executions": {
@@ -1583,8 +1480,8 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 176,
-          "denominator": 176,
+          "numerator": 158,
+          "denominator": 158,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1594,16 +1491,16 @@
             "live_vs_package.binding.match": 18,
             "live_vs_package.binding.not_comparable": 1,
             "live_vs_package.contract_embedded.match": 19,
-            "live_vs_package.contract_embedded.not_comparable": 12,
+            "live_vs_package.contract_embedded.not_comparable": 6,
             "live_vs_package.contract_hash.match": 19,
             "live_vs_package.execution_outcome.match": 13,
             "live_vs_package.execution_outcome.not_comparable": 1,
             "live_vs_package.execution_outcome.not_exercised": 2,
             "live_vs_package.execution_provenance.match": 13,
             "live_vs_package.graph_hash.not_comparable": 1,
-            "live_vs_serialized.binding.match": 31,
-            "live_vs_serialized.capability_present.match": 31,
-            "live_vs_serialized.contract_hash.match": 31,
+            "live_vs_serialized.binding.match": 25,
+            "live_vs_serialized.capability_present.match": 25,
+            "live_vs_serialized.contract_hash.match": 25,
             "live_vs_serialized.graph_hash.match": 1
           }
         },
@@ -1668,8 +1565,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 152,
-          "denominator": 152,
+          "numerator": 146,
+          "denominator": 146,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1680,15 +1577,15 @@
           "id": "producerAttributionCoverage",
           "stage": "compile",
           "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-          "numerator": 84,
-          "denominator": 84,
+          "numerator": 78,
+          "denominator": 78,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "in_population.capability_extractor.attributed": 16,
+            "in_population.capability_extractor.attributed": 10,
             "in_population.knowledge_extractor.attributed": 68,
             "not_judged.reasoning_extractor.unattributed": 53,
             "not_judged.rule_minted_capability.unattributed": 15
@@ -1698,8 +1595,8 @@
           "id": "provenanceChainCoverage",
           "stage": "capabilities",
           "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-          "numerator": 31,
-          "denominator": 31,
+          "numerator": 25,
+          "denominator": 25,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1707,11 +1604,11 @@
           "mismatched": [],
           "breakdown": {
             "binding.resolved": 19,
-            "binding.unresolved": 12,
-            "link.hash_deterministic.ok": 31,
-            "link.nodes_resolve.ok": 31,
-            "link.refs_carried.ok": 31,
-            "link.source_resolves.ok": 31
+            "binding.unresolved": 6,
+            "link.hash_deterministic.ok": 25,
+            "link.nodes_resolve.ok": 25,
+            "link.refs_carried.ok": 25,
+            "link.source_resolves.ok": 25
           }
         },
         {
@@ -1784,43 +1681,12 @@
           "id": "spuriousCapabilityAvoidance",
           "stage": "capabilities",
           "definition": "forbidden capabilities absent / forbidden capabilities",
-          "numerator": 0,
+          "numerator": 6,
           "denominator": 6,
-          "ratio": 0,
+          "ratio": 1,
           "measured": true,
           "missing": [],
-          "unexpected": [
-            {
-              "id": "x-record-action",
-              "reason": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-review-action",
-              "reason": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-schedule-action",
-              "reason": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-schedule-fragment-higher-deductible",
-              "reason": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-schedule-fragment-must-bear",
-              "reason": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
-              "attributedStage": "capabilities"
-            },
-            {
-              "id": "x-schedule-fragment-not-excluded",
-              "reason": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
-              "attributedStage": "capabilities"
-            }
-          ],
+          "unexpected": [],
           "mismatched": []
         },
         {
@@ -1895,13 +1761,13 @@
           "id": "c10.2-request-information",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_2e78ba265a5b570fb4aac7bd463fbf65"
+          "ref": "cap_7f485521810490b9f99499c1eeadb5be"
         },
         {
           "id": "c10.3-reasonable-precautions",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_8ba2d6004e8c5e8fe862e3661b18c05f"
+          "ref": "cap_41c6be5fe042bd47df6baeaf0acea81e"
         },
         {
           "id": "c11.2-both-approvals",
@@ -1925,7 +1791,7 @@
           "id": "c4.1-notify-within-7-days",
           "dimension": "capability",
           "outcome": "found",
-          "ref": "cap_0c9cb78c4f61ea1ac0064e7040b94e9a"
+          "ref": "cap_b438cc073cf5310446642bcd70e61b8d"
         },
         {
           "id": "c7.1-manager-approval-required",
@@ -2006,54 +1872,6 @@
           "dimension": "capability",
           "outcome": "found",
           "ref": "cap_ce5ac3d1b7e3d22d184b1d089f8c3522"
-        },
-        {
-          "id": "x-record-action",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_7e9fdfdc1b8f0046f2b094ea5f698785",
-          "detail": "forbidden capability \"Record Action\" — generic label, not a capability the document states",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-review-action",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_e92290458ae026c1eabe7e113277c644",
-          "detail": "forbidden capability \"Review Action\" — generic label, not a capability the document states",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-action",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
-          "detail": "forbidden capability \"Schedule Action\" — not an action in the document; artifact of the word 'Schedule'",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-fragment-higher-deductible",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_696db4008c271cda08da032e8b520a27",
-          "detail": "forbidden capability \"Schedule specifies a higher deductible\" — fragment of clause 3.1's exception, not an action",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-fragment-must-bear",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_cd4656f45c9dc594603ff79451c75e1a",
-          "detail": "forbidden capability \"Schedule that the Insured must bear\" — fragment of definition 1.4, not an action",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-fragment-not-excluded",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_98f78bf213471d99293206a28ded9419",
-          "detail": "forbidden capability \"Schedule and the loss is not excluded\" — fragment of clause 11.1's condition list, not an action",
-          "attributedStage": "capabilities"
         },
         {
           "id": "compile",
@@ -2372,17 +2190,17 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 34,
+            "nodeCount": 30,
             "total": {
               "producers": {
-                "rule-based": 26
+                "rule-based": 22
               },
               "unattributed": 8
             },
             "byKind": {
               "capability": {
                 "producers": {
-                  "rule-based": 9
+                  "rule-based": 5
                 },
                 "unattributed": 0
               },
@@ -2421,31 +2239,31 @@
         }
       },
       "fingerprints": {
-        "compile": "a2d27028a4718957",
-        "capabilities": "f4cdf85c12b99244",
-        "workflows": "4191b6d386070e29",
+        "compile": "4ea7e912b8ba8418",
+        "capabilities": "f3f39e9f8a02da79",
+        "workflows": "692482f6bf5d4ed9",
         "execution": "4f53cda18c2baa0c"
       },
       "observed": {
         "nodeCountsByKind": {
-          "capability": 9,
+          "capability": 5,
           "concept": 11,
           "constraint": 14
         },
         "capabilities": {
-          "total": 9,
+          "total": 5,
           "byResolution": {
-            "unresolved": 9
+            "unresolved": 5
           },
           "byExecutionClass": {
-            "not_executable": 9
+            "not_executable": 5
           }
         },
         "workflows": {
-          "total": 5,
-          "totalSteps": 9,
+          "total": 2,
+          "totalSteps": 5,
           "byExecutability": {
-            "not_executable_yet": 5
+            "not_executable_yet": 2
           }
         },
         "executions": {
@@ -2498,19 +2316,19 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 28,
-          "denominator": 28,
+          "numerator": 16,
+          "denominator": 16,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "live_vs_package.contract_embedded.not_comparable": 9,
+            "live_vs_package.contract_embedded.not_comparable": 5,
             "live_vs_package.graph_hash.not_comparable": 1,
-            "live_vs_serialized.binding.match": 9,
-            "live_vs_serialized.capability_present.match": 9,
-            "live_vs_serialized.contract_hash.match": 9,
+            "live_vs_serialized.binding.match": 5,
+            "live_vs_serialized.capability_present.match": 5,
+            "live_vs_serialized.contract_hash.match": 5,
             "live_vs_serialized.graph_hash.match": 1
           }
         },
@@ -2549,8 +2367,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 34,
-          "denominator": 34,
+          "numerator": 30,
+          "denominator": 30,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -2561,15 +2379,15 @@
           "id": "producerAttributionCoverage",
           "stage": "compile",
           "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-          "numerator": 26,
-          "denominator": 26,
+          "numerator": 22,
+          "denominator": 22,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "in_population.capability_extractor.attributed": 9,
+            "in_population.capability_extractor.attributed": 5,
             "in_population.knowledge_extractor.attributed": 17,
             "not_judged.reasoning_extractor.unattributed": 8
           }
@@ -2578,19 +2396,19 @@
           "id": "provenanceChainCoverage",
           "stage": "capabilities",
           "definition": "observed capabilities whose compile-side chain (source -> node -> capability -> contract) is internally connected / all observed capabilities (P0.9C Step 5; descriptive, structural connectedness, not semantic correctness)",
-          "numerator": 9,
-          "denominator": 9,
+          "numerator": 5,
+          "denominator": 5,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "binding.unresolved": 9,
-            "link.hash_deterministic.ok": 9,
-            "link.nodes_resolve.ok": 9,
-            "link.refs_carried.ok": 9,
-            "link.source_resolves.ok": 9
+            "binding.unresolved": 5,
+            "link.hash_deterministic.ok": 5,
+            "link.nodes_resolve.ok": 5,
+            "link.refs_carried.ok": 5,
+            "link.source_resolves.ok": 5
           }
         },
         {
@@ -2639,18 +2457,12 @@
           "id": "spuriousCapabilityAvoidance",
           "stage": "capabilities",
           "definition": "forbidden capabilities absent / forbidden capabilities",
-          "numerator": 0,
+          "numerator": 1,
           "denominator": 1,
-          "ratio": 0,
+          "ratio": 1,
           "measured": true,
           "missing": [],
-          "unexpected": [
-            {
-              "id": "x-schedule-action",
-              "reason": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
-              "attributedStage": "capabilities"
-            }
-          ],
+          "unexpected": [],
           "mismatched": []
         },
         {
@@ -2685,7 +2497,7 @@
           "id": "ob-notify-insurer-48h",
           "dimension": "capability",
           "outcome": "incorrect",
-          "ref": "cap_0c9cb78c4f61ea1ac0064e7040b94e9a",
+          "ref": "cap_d2970778b4289b2c4b5a2ca4ed97f8b7",
           "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
           "attributedStage": "capabilities"
         },
@@ -2693,7 +2505,7 @@
           "id": "ob-notify-material-change-30d",
           "dimension": "capability",
           "outcome": "incorrect",
-          "ref": "cap_e6b4305b43c14b0e9e0fc5ab6d08d5a9",
+          "ref": "cap_27e01f37458234476258a43720f8924f",
           "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
           "attributedStage": "capabilities"
         },
@@ -2701,7 +2513,7 @@
           "id": "ob-notify-police",
           "dimension": "capability",
           "outcome": "incorrect",
-          "ref": "cap_4189650ee39ea40987f33ca4cdba7d34",
+          "ref": "cap_0d7142f9e9b6e4727fb4f36a2cd6a948",
           "detail": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
           "attributedStage": "capabilities"
         },
@@ -2710,14 +2522,6 @@
           "dimension": "capability",
           "outcome": "missing",
           "detail": "no discovered capability with name contains \"settle or decline a claim\"",
-          "attributedStage": "capabilities"
-        },
-        {
-          "id": "x-schedule-action",
-          "dimension": "capability",
-          "outcome": "spurious",
-          "ref": "cap_8eb40cf730c87711eb2fb21e811cd138",
-          "detail": "forbidden capability \"Schedule Action\" — not an action in any of the documents",
           "attributedStage": "capabilities"
         },
         {

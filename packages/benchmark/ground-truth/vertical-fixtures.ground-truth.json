@@ -433,7 +433,7 @@
           "identity": "strongly_evidenced",
           "assertions": "derived",
           "source": "clause 4.1",
-          "note": "the verb-derived capability for the obligation, exactly named. Its sentence states a day-based deadline that XO now normalises to a temporal rule linked to it, so 'resolved / deterministic_rule' follows XO's execution-class semantics, not a source statement (it was unresolved before the deadline normalisation). A dedicated rule capability is c4.1-notify-deadline-rule."
+          "note": "the verb-derived capability for the obligation, exactly named. Its sentence states a day-based deadline that XO now normalises to a temporal rule linked to it, so 'resolved / deterministic_rule' follows XO's execution-class semantics, not a source statement (it was unresolved before the deadline normalisation). A dedicated rule capability is c4.1-notify-deadline-rule. UW-3b: the matcher was the six-word-window cut 'Notify the Insurer of a loss within'; clause-bounded naming keeps the stated deadline, so the name is now 'Notify the Insurer of a loss within 7 days' (clause 4.1's own words)."
         },
         {
           "category": "capability",
@@ -449,7 +449,7 @@
           "identity": "strongly_evidenced",
           "assertions": "strongly_evidenced",
           "source": "clause 10.2",
-          "note": "section 10 is titled 'Ambiguous and Semantic Provisions' and the Benchmark-intent paragraph says such provisions need model-assisted interpretation, which supports unresolved / not_executable."
+          "note": "section 10 is titled 'Ambiguous and Semantic Provisions' and the Benchmark-intent paragraph says such provisions need model-assisted interpretation, which supports unresolved / not_executable. UW-3b: the matcher required the where-clause ('... where the circumstances'); clause-bounded naming ends the name at the subordinate clause, so it is 'Request additional information'."
         },
         {
           "category": "capability",
@@ -651,7 +651,7 @@
           "note": "9.x actions are triggered by 7.x outcomes, but the source states no sequence, so no multi-step workflow is established beyond the two asserted."
         }
       ],
-      "expectationsFingerprint": "3c735dae96b59f24"
+      "expectationsFingerprint": "3d36c848051e895b"
     },
     {
       "caseId": "aastha-operations",

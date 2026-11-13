@@ -299,7 +299,12 @@ test('real pipeline (all 8 cases): every compiled capability has a connected cha
     }
   }
   // Semantic hardening + WS1 recall merged: values re-measured on the combined compiler.
-  assert.equal(compiledCaps, 69, 'capabilities across the 7 compiled cases');
+  // UW-3b: 69 -> 56. Benchmark-forbidden and garbled capabilities are no longer minted: burglary 7 -> 4 ("Schedule
+  // Action", "Contact No Email ID", the cross-column partner-contact row), commercial 31 -> 25 ("Record / Review /
+  // Schedule Action" placeholders and three "Schedule ..." fragments where the defined term "Schedule" was read as a
+  // verb), multidoc 9 -> 5 ("Schedule Action" and three "Schedule ..." fragments). Kept capabilities are renamed to
+  // clause-bounded names; Aastha and the operation cases keep their counts. See packages/benchmark/CHANGELOG.md (UW-3b).
+  assert.equal(compiledCaps, 56, 'capabilities across the 7 compiled cases');
   assert.ok(executed >= 20, `executions judged: ${executed}`);
 });
 

@@ -58,7 +58,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "b44e692ba7d63abf51239ab73cf6fbafd997deccaef6456ab55e21fb72fed866",
+      "reportSha256": "f63630f394044fbe0af912eb840a5c9635616bcfd7a9a294fe770a51004feaeb",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -122,7 +122,7 @@
               "sha256": "73e11e737a061be43b06e1de154110997b1fd16fdf0ad4f4802a00da1987ecc9"
             }
           ],
-          "expectationsFingerprint": "3c735dae96b59f24",
+          "expectationsFingerprint": "3d36c848051e895b",
           "goldenState": "recorded"
         },
         {
@@ -185,8 +185,8 @@
       "knownDrift": [],
       "declaredGoldenChanges": [],
       "declaredPopulationChanges": [],
-      "refreshRecord": "baselines/refresh/semantic-hardening.refresh.json",
-      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json",
+      "refreshRecord": "baselines/refresh/uw-3b.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json",
       "history": [
         {
           "step": "P0.9C final closure",
@@ -199,6 +199,10 @@
         {
           "step": "Semantic hardening consolidation",
           "note": "accepted baseline refreshed from 8d15c83533ae to b44e692ba7d6; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.8d15c83533ae.report.json; every difference dispositioned in baselines/refresh/semantic-hardening.refresh.json (CHANGELOG.md)."
+        },
+        {
+          "step": "UW-3b document structure refresh",
+          "note": "accepted baseline refreshed from b44e692ba7d6 to f63630f39404; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json; every difference dispositioned in baselines/refresh/uw-3b.refresh.json; one declared golden change (commercial-property-policy, two name matchers) (CHANGELOG.md)."
         }
       ]
     },
@@ -484,6 +488,48 @@
           "stage": "compile",
           "reason": "Semantic hardening consolidation: comma-listed conditions, unconditional statements and dropped-operand/permission-rule capability minting change this stage output; no metric moved and no expectation changed (CHANGELOG.md, packages/benchmark)",
           "evidence": "CHANGELOG.md Semantic hardening consolidation; accepted-baseline refresh record baselines/refresh/semantic-hardening.refresh.json"
+        },
+        {
+          "caseId": "aastha-operations",
+          "stage": "capabilities",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "aastha-operations",
+          "stage": "compile",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "aastha-operations",
+          "stage": "execution",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "stage": "capabilities",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "burglary-policy-schedule",
+          "stage": "workflows",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "multidoc-burglary-claims",
+          "stage": "workflows",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "aastha-operations",
+          "metricId": "capabilityPrecision",
+          "reason": "UW-3b: the ratio is unchanged (15/16). The one unexpected capability (from the descriptive sentence \"Business is generated via direct sales, ...\") is the same source sentence, now named by its passive subject (\"Generate Business\") instead of a cut prepositional phrase; a renamed unexpected item compares as one newly failing and one resolved item (\"mixed\"), so it is recorded, not tuned away",
+          "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         }
       ],
       "declaredGoldenChanges": [
@@ -523,9 +569,9 @@
         {
           "caseId": "commercial-property-policy",
           "fromFingerprint": "fc7333250a689842",
-          "toFingerprint": "3c735dae96b59f24",
-          "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks",
-          "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30",
+          "toFingerprint": "3d36c848051e895b",
+          "reason": "clause 4.1 states a day-based deadline; XO now normalises it to a temporal rule, so its verb-derived capability is resolved/deterministic_rule (was unresolved/not_executable), a dedicated rule capability exists, one new heuristic is a real source rule, and the unresolved execution expectation became deterministic deadline checks. Then (UW-3b, 3c735dae96b59f24 -> 3d36c848051e895b): UW-3b clause-bounded capability naming: two name matchers encoded the old six-word-window cut. c4.1 \"Notify the Insurer of a loss within\" (equals) is now \"Notify the Insurer of a loss within 7 days\" (the stated deadline is kept); c10.2 \"Request additional information where the circumstances\" (contains) is now \"Request additional information\" (the name ends at the subordinate clause). Same capabilities, same resolution and class expectations.",
+          "evidence": "CHANGELOG.md CR WS1 recall refresh; ground-truth register entries r4.1-notify-within-7-days, c4.1-notify-within-7-days (note updated), c4.1-notify-deadline-rule, det-notify-*; verified on the real pipeline: deadline met at 3 days, missed at 30; CHANGELOG.md UW-3b refresh; ground-truth register entries c4.1-notify-within-7-days and c10.2-request-information (notes updated); docs/adr/0027-structural-reading-of-documents.md",
           "affectedMetrics": [
             "capabilityRecall",
             "executionClassAccuracy",
@@ -535,7 +581,7 @@
             "semanticPrecision",
             "semanticRecall"
           ],
-          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (every affected metric improved; none regressed)"
+          "acceptedAt": "CHANGELOG.md, CR WS1 recall refresh (every affected metric improved; none regressed); CHANGELOG.md, UW-3b document structure refresh (capabilityRecall unchanged at 17/19 after the matcher correction)"
         },
         {
           "caseId": "synthetic-claim-rules",
@@ -561,6 +607,10 @@
         {
           "step": "P0.9C final closure",
           "note": "retained as the historical predecessor of the accepted baseline; bytes unchanged (moved to baselines/archive/vertical-fixtures.unversioned.ea4d33081f6b.report.json)."
+        },
+        {
+          "step": "UW-3b document structure refresh",
+          "note": "seven differences against this historical baseline declared as known drift (six stage outputs, aastha capabilityPrecision mixed at an unchanged 15/16); historical records not rewritten (CHANGELOG.md)."
         }
       ]
     }

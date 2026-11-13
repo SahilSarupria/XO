@@ -4,6 +4,83 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## UW-3b document structure — vertical-fixtures baseline refresh, new `document-structure` suite
+
+**Context.** UW-3b (ADR 0027) makes the compiler read a document's structure before reading it as policy:
+
+- the PDF reader rebuilds wrapped tables, marker-led lists, checkboxes and fill-in forms from geometry;
+- sections are routed as procedure, guideline, checklist or form only on clear evidence;
+- capability names are bounded by one clause;
+- confidence is lowered by observed extraction defects, and cross-column text with a second defect is not minted.
+
+Policy, reference and data sections are not routed and keep the existing extractors.
+
+**New suite.** `suites/document-structure.suite.json` and `ground-truth/document-structure.ground-truth.json` (audit clean) cover 7
+documents, six in `examples/structure-corpus/` and `examples/vertical-test/TaskTest.pdf`: a step table with wrapped cells, a checklist, a
+fill-in form, a guideline list, and two Markdown procedures. Before → after on the same suite:
+
+| Metric                      | Before | After |
+| --------------------------- | ------ | ----- |
+| capabilityRecall            | 0/20   | 20/20 |
+| capabilityPrecision         | 0/22   | 20/20 |
+| semanticRecall              | 2/41   | 41/41 |
+| semanticPrecision           | 2/5    | 41/41 |
+| spuriousCapabilityAvoidance | 0/3    | 3/3   |
+| spuriousFactAvoidance       | 1/4    | 4/4   |
+| workflowRecall              | 0/4    | 4/4   |
+
+Six of the seven documents were written for this work, so the numbers show the mechanism works; they are not a measure of accuracy on
+real documents.
+
+**What moved in vertical-fixtures.**
+
+- No section of the insurance fixtures is routed. Every non-capability node (rules, constraints, table rows, concepts) and every
+  policy tree is byte-identical for burglary-policy.pdf, the Commercial Property policy and Aastha.pdf.
+- Capability counts:
+
+  | Case       | Before | After | Change |
+  | ---------- | ------ | ----- | ------ |
+  | burglary   | 7      | 4     | −3     |
+  | commercial | 31     | 25    | −6     |
+  | multidoc   | 9      | 5     | −4     |
+  | Aastha     | 16     | 16    | 0      |
+  | Total      | 69     | 56    | −13    |
+
+  Every removed capability is benchmark-forbidden or of that class:
+  - "Schedule Action", "Record Action" and "Review Action" placeholders;
+  - "Schedule ..." fragments where the defined term "Schedule" was read as a verb;
+  - "Contact No Email ID";
+  - the cross-column partner-contact row.
+
+- The kept capabilities are renamed to clause-bounded names.
+- `spuriousCapabilityAvoidance` improved for burglary, commercial and multidoc.
+- `crossPathConsistency`, `provenanceChainCoverage`, `observedSourceRefCoverage` and `producerAttributionCoverage` keep their values over
+  smaller populations. They are recorded as `acknowledged_regression` (coverage reduction).
+- `aastha-operations` `capabilityPrecision` stays at 15/16 but reads as "mixed": its one unexpected capability (a descriptive sentence) was
+  renamed.
+- Pinned counts were re-measured, with the reasons in the tests:
+  - capabilities across the 7 compiled cases: 69 → 56;
+  - `binding.not_comparable`: 19 → 18;
+  - lowered contracts: 41 → 39, after the burglary "Schedule Action" (deterministic_rule) and partner-contact (human_in_the_loop)
+    capabilities were removed.
+
+**Declared golden change (`commercial-property-policy`, `3c735dae96b59f24` → `3d36c848051e895b`).** Two name matchers encoded the old
+six-word-window cut:
+
+- c4.1 `equals` "Notify the Insurer of a loss within" is now "Notify the Insurer of a loss within 7 days";
+- c10.2 `contains` "Request additional information where the circumstances" is now "Request additional information".
+
+The capabilities, resolution and class expectations are the same. The historical entry's declared golden change for this case now ends
+at the new fingerprint.
+
+**Controlled refresh.**
+
+- Predecessor archived at `baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json`.
+- Every difference (1 golden, 3 improvements, 26 recorded regressions) is dispositioned in `baselines/refresh/uw-3b.refresh.json`, which
+  is validated by `validateRefreshRecord`.
+- Against the historical entry, seven differences are declared as known drift: six stage outputs, and the Aastha precision rename.
+- The evaluation version (`p0.9c-1`) is unchanged.
+
 ## Semantic hardening consolidation — vertical-fixtures baseline refresh
 
 **Context.** The semantic-compiler-hardening work (comma-listed conditions, unconditional statements read as
