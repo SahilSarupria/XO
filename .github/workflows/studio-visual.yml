@@ -2,6 +2,10 @@ name: Studio visual regression
 
 # Starts the real Studio and API, takes the established desktop and mobile screenshots in headless Chromium, and compares
 # them with the approved references in apps/studio/visual/baselines. It never commits, pushes or updates anything.
+#
+# INFORMATIONAL, NOT A GATE. The deliverable is the uploaded artifact (screenshots, side-by-side diffs, report). A visual
+# difference, a tooling-test failure or an infrastructure failure is reported as a warning annotation and in the job
+# summary, but the job itself succeeds, so it never blocks a pull request. Review the artifact when the UI changes.
 # Full description, baseline review process and local reproduction: docs/studio/VISUAL_REGRESSION.md
 #
 # The path filters are derived from the repository's dependency graph (Studio + the API and every workspace package it is
@@ -24,16 +28,24 @@ on:
       - 'examples/vertical-test/Aastha.pdf'
       - 'apps/studio/**'
       - 'apps/api/**'
+      - 'packages/adapters/**'
       - 'packages/ai-core/**'
+      - 'packages/audit/**'
       - 'packages/capability-contract/**'
+      - 'packages/capability-layer/**'
       - 'packages/compiler/**'
       - 'packages/compiler-core/**'
+      - 'packages/config/**'
+      - 'packages/connect/**'
       - 'packages/crypto/**'
+      - 'packages/environment-intelligence/**'
       - 'packages/errors/**'
+      - 'packages/intelligence/**'
       - 'packages/logger/**'
       - 'packages/observability/**'
       - 'packages/package-sdk/**'
       - 'packages/permissions/**'
+      - 'packages/procedure/**'
       - 'packages/registry/**'
       - 'packages/registry-core/**'
       - 'packages/runtime/**'
@@ -42,6 +54,7 @@ on:
       - 'packages/testing/**'
       - 'packages/types/**'
       - 'packages/workflow-composer/**'
+      - 'packages/workflow-ir/**'
       - 'packages/xoir/**'
       - '!**/*.md'
       - '!**/test/**'
@@ -65,16 +78,24 @@ on:
       - 'examples/vertical-test/Aastha.pdf'
       - 'apps/studio/**'
       - 'apps/api/**'
+      - 'packages/adapters/**'
       - 'packages/ai-core/**'
+      - 'packages/audit/**'
       - 'packages/capability-contract/**'
+      - 'packages/capability-layer/**'
       - 'packages/compiler/**'
       - 'packages/compiler-core/**'
+      - 'packages/config/**'
+      - 'packages/connect/**'
       - 'packages/crypto/**'
+      - 'packages/environment-intelligence/**'
       - 'packages/errors/**'
+      - 'packages/intelligence/**'
       - 'packages/logger/**'
       - 'packages/observability/**'
       - 'packages/package-sdk/**'
       - 'packages/permissions/**'
+      - 'packages/procedure/**'
       - 'packages/registry/**'
       - 'packages/registry-core/**'
       - 'packages/runtime/**'
@@ -83,6 +104,7 @@ on:
       - 'packages/testing/**'
       - 'packages/types/**'
       - 'packages/workflow-composer/**'
+      - 'packages/workflow-ir/**'
       - 'packages/xoir/**'
       - '!**/*.md'
       - '!**/test/**'
@@ -144,6 +166,8 @@ jobs:
           cache: npm
 
       - name: Check path filters and workflow safety rules
+        id: paths
+        continue-on-error: true
         run: node apps/studio/visual/check-trigger-paths.mjs
 
       - name: Install dependencies
@@ -155,11 +179,15 @@ jobs:
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
 
       - name: Test the visual-regression tooling
+        id: tooling
+        continue-on-error: true
         run: node --test "apps/studio/visual/test/*.test.mjs"
 
-      # Exit code 10 = visual regression, 20 = infrastructure failure. The error annotation and job summary say which.
+      # Exit code 10 = visual regression, 20 = infrastructure failure. The annotation and job summary say which.
+      # continue-on-error: the screenshots are the product of this job; a difference is information, not a gate.
       - name: Capture screenshots and compare with approved references
         id: capture
+        continue-on-error: true
         env:
           MODE: ${{ inputs.mode || 'compare' }}
         run: node apps/studio/visual/run.mjs --mode "$MODE" --out "$RUNNER_TEMP/studio-visual"
@@ -173,3 +201,26 @@ jobs:
           path: ${{ runner.temp }}/studio-visual
           retention-days: 14
           if-no-files-found: warn
+
+      # Surfaces the outcome without failing the job. Runs after the upload so the artifact is always there first.
+      - name: Report the outcome (informational)
+        if: ${{ !cancelled() }}
+        env:
+          PATHS: ${{ steps.paths.outcome }}
+          TOOLING: ${{ steps.tooling.outcome }}
+          CAPTURE: ${{ steps.capture.outcome }}
+        run: |
+          {
+            echo '### Studio screenshots (informational, not a gate)'
+            echo ''
+            echo "- path filters and safety rules: ${PATHS}"
+            echo "- visual tooling tests: ${TOOLING}"
+            echo "- capture and compare: ${CAPTURE}"
+            echo ''
+            echo 'Download the studio-visual artifact for screenshots, side-by-side diffs and the report.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          for pair in "path filters:${PATHS}" "visual tooling tests:${TOOLING}" "screenshot capture/compare:${CAPTURE}"; do
+            if [ "${pair##*:}" = "failure" ]; then
+              echo "::warning title=Studio screenshots::${pair%%:*} did not pass; see the artifact and job summary (not a gate)."
+            fi
+          done

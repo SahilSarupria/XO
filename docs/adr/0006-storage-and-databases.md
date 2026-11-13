@@ -4,6 +4,10 @@
 
 Accepted
 
+> **Superseded in part (2026-11-13, UW-0)** by [ADR 0017](0017-knowledge-state-per-instance.md): per-instance state uses SQLite with
+> a Postgres adapter for high availability; `BlobStore` is unchanged; Redis and Neo4j stay unprovisioned by default. The text below is
+> kept unchanged as the historical record.
+
 ## Context
 
 Three storage-shaped needs exist across the eventual platform: (1) blob

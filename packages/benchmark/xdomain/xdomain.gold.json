@@ -1,682 +1,682 @@
 {
- "schemaVersion": 1,
- "suiteId": "xdomain-candidate-v0",
- "status": "candidate (not an accepted baseline)",
- "annotation": "single annotator (author), not independently reviewed; documents are synthetic",
- "documents": {
-  "leave": {
-   "title": "Employee Leave Policy",
-   "domain": "hr",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "Full-time employees may take up to 20 days of annual leave per year.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
+  "schemaVersion": 1,
+  "suiteId": "xdomain-candidate-v0",
+  "status": "candidate (not an accepted baseline)",
+  "annotation": "single annotator (author), not independently reviewed; documents are synthetic",
+  "documents": {
+    "leave": {
+      "title": "Employee Leave Policy",
+      "domain": "hr",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "Full-time employees may take up to 20 days of annual leave per year.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "Leave requests longer than 5 days require line manager approval.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.3",
+          "text": "If an employee has less than 90 days of service, annual leave is not permitted unless the HR director approves.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 1,
+          "exceptions": 1,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.4",
+          "text": "Leave must be requested at least 14 days in advance.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.5",
+          "text": "If the leave balance is insufficient or the request overlaps a blackout period, the request must be rejected.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "or"
+          }
+        },
+        {
+          "id": "2.1",
+          "text": "Employees must provide a medical certificate when absent for more than 3 consecutive days.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "2.2",
+          "text": "Sick leave is never deducted from annual leave.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        }
+      ]
     },
-    {
-     "id": "1.2",
-     "text": "Leave requests longer than 5 days require line manager approval.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
+    "loan": {
+      "title": "Equipment Loan Policy",
+      "domain": "operations",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "Staff may borrow equipment for up to 30 days.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "If the equipment value exceeds 2000 USD, department head approval is required.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.3",
+          "text": "Loans are not permitted for contractors, except when a sponsor employee signs the loan form.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 1,
+          "exceptions": 1,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "2.1",
+          "text": "If equipment is returned more than 7 days late, the borrower is suspended from borrowing for 90 days.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {
+            "label_disputed": "consequence statement; \"must\" vs declarative needs second-annotator review"
+          }
+        },
+        {
+          "id": "2.2",
+          "text": "When equipment is returned damaged and the damage is not caused by normal use, the borrower must pay the repair cost.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "negation": true,
+            "connective": "and"
+          }
+        }
+      ]
     },
-    {
-     "id": "1.3",
-     "text": "If an employee has less than 90 days of service, annual leave is not permitted unless the HR director approves.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 1,
-     "exceptions": 1,
-     "temporal": false,
-     "extra": {}
+    "sop": {
+      "title": "Incident Response SOP",
+      "domain": "it-ops",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "The on-call engineer must acknowledge the alert within 15 minutes.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "The on-call engineer must open an incident ticket and assign a severity.",
+          "type": "procedure",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "compound_actions": 2
+          }
+        },
+        {
+          "id": "2.1",
+          "text": "If severity is 1 or the outage lasts more than 60 minutes, notify the engineering director.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "escalate",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {
+            "connective": "or",
+            "label_disputed": "outcome: \"notify\" is a notification, not an explicit escalation/referral; second-annotator review needed"
+          }
+        },
+        {
+          "id": "2.2",
+          "text": "After resolution, the incident owner must write a post-incident report within 5 business days.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "3.1",
+          "text": "Severity 1 means a complete outage of a customer-facing service.",
+          "type": "definition",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        }
+      ]
     },
-    {
-     "id": "1.4",
-     "text": "Leave must be requested at least 14 days in advance.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
+    "contract": {
+      "title": "Software Services Agreement",
+      "domain": "legal",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "The Customer shall pay each invoice within 30 days of receipt.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "If payment is late by more than 15 days, the Supplier may suspend the service.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.3",
+          "text": "Late payments accrue interest at 1.5% per month.",
+          "type": "obligation",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "2.1",
+          "text": "Either party may terminate this Agreement with 60 days written notice.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "2.2",
+          "text": "The Supplier shall not terminate for convenience during the first 12 months unless the Customer is in material breach.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 1,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "3.1",
+          "text": "Each party must keep the other party's confidential information secret and must not disclose it to third parties.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "compound_actions": 2
+          }
+        }
+      ]
     },
-    {
-     "id": "1.5",
-     "text": "If the leave balance is insufficient or the request overlaps a blackout period, the request must be rejected.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "or"
-     }
+    "warranty": {
+      "title": "Product Warranty Policy",
+      "domain": "consumer",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "The warranty period is 24 months from the date of purchase.",
+          "type": "definition",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "A claim within the warranty period is approved if the defect is a manufacturing defect and proof of purchase is provided.",
+          "type": "rule",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 3,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {
+            "connective": "and"
+          }
+        },
+        {
+          "id": "1.3",
+          "text": "Damage caused by misuse is not covered.",
+          "type": "rule",
+          "modality": "declarative",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.4",
+          "text": "If the product has been repaired by an unauthorised party, the warranty is void unless the repair was approved in writing by the manufacturer.",
+          "type": "rule",
+          "modality": "declarative",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 1,
+          "exceptions": 1,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.5",
+          "text": "Replacement is offered only when repair is not possible within 30 days.",
+          "type": "rule",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {
+            "negation": true
+          }
+        },
+        {
+          "id": "1.6",
+          "text": "Claims over 5,000 USD must be referred to the warranty committee.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "escalate",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        }
+      ]
     },
-    {
-     "id": "2.1",
-     "text": "Employees must provide a medical certificate when absent for more than 3 consecutive days.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
+    "procurement": {
+      "title": "Procurement Approval Policy",
+      "domain": "finance",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "Purchases up to 1,000 USD may be approved by the department manager.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "conflicts_with": "1.6"
+          }
+        },
+        {
+          "id": "1.2",
+          "text": "Purchases above 1,000 USD and up to 10,000 USD require approval from the finance director.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "and"
+          }
+        },
+        {
+          "id": "1.3",
+          "text": "Purchases above 10,000 USD require approval from the board.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.4",
+          "text": "A purchase must not be split into smaller orders to avoid an approval threshold.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.5",
+          "text": "Purchases from a vendor that is not on the approved vendor list must be approved by the procurement head regardless of value.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "negation": true
+          }
+        },
+        {
+          "id": "1.6",
+          "text": "Purchases up to 1,500 USD may be approved by the department manager.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "conflicts_with": "1.1"
+          }
+        }
+      ]
     },
-    {
-     "id": "2.2",
-     "text": "Sick leave is never deducted from annual leave.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
+    "travel": {
+      "title": "Employee Travel and Expense Policy",
+      "domain": "hr-finance",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "Employees may claim reimbursement for eligible travel expenses if receipts are submitted within 30 days.",
+          "type": "permission",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {
+            "connective": "and"
+          }
+        },
+        {
+          "id": "1.2",
+          "text": "Expenses exceeding ₹50,000 require manager approval.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "currency": "INR"
+          }
+        },
+        {
+          "id": "1.3",
+          "text": "Alcohol purchases are never reimbursable.",
+          "type": "prohibition",
+          "modality": "must_not",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.4",
+          "text": "Hotel rates should be reasonable for the city of travel.",
+          "type": "obligation",
+          "modality": "should",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "requires_review": true,
+            "reason": "vague standard"
+          }
+        },
+        {
+          "id": "1.5",
+          "text": "Employees travelling internationally must obtain approval before booking.",
+          "type": "obligation",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "requires_approval",
+          "conditions": 1,
+          "exceptions": 0,
+          "temporal": true,
+          "extra": {}
+        },
+        {
+          "id": "1.6",
+          "text": "Meal expenses above ₹2,000 are denied unless the employee is on an approved client trip.",
+          "type": "rule",
+          "modality": "declarative",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 1,
+          "exceptions": 1,
+          "temporal": false,
+          "extra": {
+            "currency": "INR"
+          }
+        }
+      ]
+    },
+    "research": {
+      "title": "Clinical Study Abstract",
+      "domain": "research",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "The study enrolled 240 participants across three hospitals.",
+          "type": "reference",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.2",
+          "text": "Participants receiving the intervention showed a 12% reduction in symptoms.",
+          "type": "reference",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        },
+        {
+          "id": "1.3",
+          "text": "Larger trials are needed to confirm these findings.",
+          "type": "reference",
+          "modality": "declarative",
+          "polarity": "positive",
+          "outcome": "none",
+          "conditions": 0,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {}
+        }
+      ]
+    },
+    "facility": {
+      "title": "Facility Access Policy",
+      "domain": "facilities",
+      "clauses": [
+        {
+          "id": "1.1",
+          "text": "If the badge is missing or the visitor is unregistered, entry must be denied.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "negative",
+          "outcome": "deny",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "or"
+          }
+        },
+        {
+          "id": "1.2",
+          "text": "If the badge is valid and the visitor is escorted by a staff member, entry is permitted.",
+          "type": "rule",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "and",
+            "label_note": "corrected from declarative: text says \"is permitted\" (annotation error found during M1 review)"
+          }
+        },
+        {
+          "id": "1.3",
+          "text": "If the badge is valid, the visitor is registered, the area is open, and the escort is present, entry may proceed.",
+          "type": "rule",
+          "modality": "may",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 4,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "and"
+          }
+        },
+        {
+          "id": "1.4",
+          "text": "If the badge is valid, the visitor is registered, approve the entry.",
+          "type": "rule",
+          "modality": "must",
+          "polarity": "positive",
+          "outcome": "approve",
+          "conditions": 2,
+          "exceptions": 0,
+          "temporal": false,
+          "extra": {
+            "connective": "and"
+          }
+        }
+      ]
     }
-   ]
-  },
-  "loan": {
-   "title": "Equipment Loan Policy",
-   "domain": "operations",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "Staff may borrow equipment for up to 30 days.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.2",
-     "text": "If the equipment value exceeds 2000 USD, department head approval is required.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.3",
-     "text": "Loans are not permitted for contractors, except when a sponsor employee signs the loan form.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 1,
-     "exceptions": 1,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "2.1",
-     "text": "If equipment is returned more than 7 days late, the borrower is suspended from borrowing for 90 days.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {
-      "label_disputed": "consequence statement; \"must\" vs declarative needs second-annotator review"
-     }
-    },
-    {
-     "id": "2.2",
-     "text": "When equipment is returned damaged and the damage is not caused by normal use, the borrower must pay the repair cost.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "negation": true,
-      "connective": "and"
-     }
-    }
-   ]
-  },
-  "sop": {
-   "title": "Incident Response SOP",
-   "domain": "it-ops",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "The on-call engineer must acknowledge the alert within 15 minutes.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.2",
-     "text": "The on-call engineer must open an incident ticket and assign a severity.",
-     "type": "procedure",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "compound_actions": 2
-     }
-    },
-    {
-     "id": "2.1",
-     "text": "If severity is 1 or the outage lasts more than 60 minutes, notify the engineering director.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "escalate",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {
-      "connective": "or",
-      "label_disputed": "outcome: \"notify\" is a notification, not an explicit escalation/referral; second-annotator review needed"
-     }
-    },
-    {
-     "id": "2.2",
-     "text": "After resolution, the incident owner must write a post-incident report within 5 business days.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "3.1",
-     "text": "Severity 1 means a complete outage of a customer-facing service.",
-     "type": "definition",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    }
-   ]
-  },
-  "contract": {
-   "title": "Software Services Agreement",
-   "domain": "legal",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "The Customer shall pay each invoice within 30 days of receipt.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.2",
-     "text": "If payment is late by more than 15 days, the Supplier may suspend the service.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.3",
-     "text": "Late payments accrue interest at 1.5% per month.",
-     "type": "obligation",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "2.1",
-     "text": "Either party may terminate this Agreement with 60 days written notice.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "2.2",
-     "text": "The Supplier shall not terminate for convenience during the first 12 months unless the Customer is in material breach.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 1,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "3.1",
-     "text": "Each party must keep the other party's confidential information secret and must not disclose it to third parties.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "compound_actions": 2
-     }
-    }
-   ]
-  },
-  "warranty": {
-   "title": "Product Warranty Policy",
-   "domain": "consumer",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "The warranty period is 24 months from the date of purchase.",
-     "type": "definition",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.2",
-     "text": "A claim within the warranty period is approved if the defect is a manufacturing defect and proof of purchase is provided.",
-     "type": "rule",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 3,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {
-      "connective": "and"
-     }
-    },
-    {
-     "id": "1.3",
-     "text": "Damage caused by misuse is not covered.",
-     "type": "rule",
-     "modality": "declarative",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.4",
-     "text": "If the product has been repaired by an unauthorised party, the warranty is void unless the repair was approved in writing by the manufacturer.",
-     "type": "rule",
-     "modality": "declarative",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 1,
-     "exceptions": 1,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.5",
-     "text": "Replacement is offered only when repair is not possible within 30 days.",
-     "type": "rule",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {
-      "negation": true
-     }
-    },
-    {
-     "id": "1.6",
-     "text": "Claims over 5,000 USD must be referred to the warranty committee.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "escalate",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    }
-   ]
-  },
-  "procurement": {
-   "title": "Procurement Approval Policy",
-   "domain": "finance",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "Purchases up to 1,000 USD may be approved by the department manager.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "conflicts_with": "1.6"
-     }
-    },
-    {
-     "id": "1.2",
-     "text": "Purchases above 1,000 USD and up to 10,000 USD require approval from the finance director.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "and"
-     }
-    },
-    {
-     "id": "1.3",
-     "text": "Purchases above 10,000 USD require approval from the board.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.4",
-     "text": "A purchase must not be split into smaller orders to avoid an approval threshold.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.5",
-     "text": "Purchases from a vendor that is not on the approved vendor list must be approved by the procurement head regardless of value.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "negation": true
-     }
-    },
-    {
-     "id": "1.6",
-     "text": "Purchases up to 1,500 USD may be approved by the department manager.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "conflicts_with": "1.1"
-     }
-    }
-   ]
-  },
-  "travel": {
-   "title": "Employee Travel and Expense Policy",
-   "domain": "hr-finance",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "Employees may claim reimbursement for eligible travel expenses if receipts are submitted within 30 days.",
-     "type": "permission",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {
-      "connective": "and"
-     }
-    },
-    {
-     "id": "1.2",
-     "text": "Expenses exceeding ₹50,000 require manager approval.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "currency": "INR"
-     }
-    },
-    {
-     "id": "1.3",
-     "text": "Alcohol purchases are never reimbursable.",
-     "type": "prohibition",
-     "modality": "must_not",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.4",
-     "text": "Hotel rates should be reasonable for the city of travel.",
-     "type": "obligation",
-     "modality": "should",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "requires_review": true,
-      "reason": "vague standard"
-     }
-    },
-    {
-     "id": "1.5",
-     "text": "Employees travelling internationally must obtain approval before booking.",
-     "type": "obligation",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "requires_approval",
-     "conditions": 1,
-     "exceptions": 0,
-     "temporal": true,
-     "extra": {}
-    },
-    {
-     "id": "1.6",
-     "text": "Meal expenses above ₹2,000 are denied unless the employee is on an approved client trip.",
-     "type": "rule",
-     "modality": "declarative",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 1,
-     "exceptions": 1,
-     "temporal": false,
-     "extra": {
-      "currency": "INR"
-     }
-    }
-   ]
-  },
-  "research": {
-   "title": "Clinical Study Abstract",
-   "domain": "research",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "The study enrolled 240 participants across three hospitals.",
-     "type": "reference",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.2",
-     "text": "Participants receiving the intervention showed a 12% reduction in symptoms.",
-     "type": "reference",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    },
-    {
-     "id": "1.3",
-     "text": "Larger trials are needed to confirm these findings.",
-     "type": "reference",
-     "modality": "declarative",
-     "polarity": "positive",
-     "outcome": "none",
-     "conditions": 0,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {}
-    }
-   ]
-  },
-  "facility": {
-   "title": "Facility Access Policy",
-   "domain": "facilities",
-   "clauses": [
-    {
-     "id": "1.1",
-     "text": "If the badge is missing or the visitor is unregistered, entry must be denied.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "negative",
-     "outcome": "deny",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "or"
-     }
-    },
-    {
-     "id": "1.2",
-     "text": "If the badge is valid and the visitor is escorted by a staff member, entry is permitted.",
-     "type": "rule",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "and",
-      "label_note": "corrected from declarative: text says \"is permitted\" (annotation error found during M1 review)"
-     }
-    },
-    {
-     "id": "1.3",
-     "text": "If the badge is valid, the visitor is registered, the area is open, and the escort is present, entry may proceed.",
-     "type": "rule",
-     "modality": "may",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 4,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "and"
-     }
-    },
-    {
-     "id": "1.4",
-     "text": "If the badge is valid, the visitor is registered, approve the entry.",
-     "type": "rule",
-     "modality": "must",
-     "polarity": "positive",
-     "outcome": "approve",
-     "conditions": 2,
-     "exceptions": 0,
-     "temporal": false,
-     "extra": {
-      "connective": "and"
-     }
-    }
-   ]
   }
- }
 }

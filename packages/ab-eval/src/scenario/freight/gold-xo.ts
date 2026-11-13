@@ -399,7 +399,10 @@ export function buildGoldXo(options: GoldXoOptions = {}): PackageBundle {
     .addComponent({ kind: 'prompt_strategies', path: 'prompting/strategies.json', required: false, data: enc(strategies) })
     .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', required: true, data: enc(safety) })
     .addComponent({ kind: 'benchmark_suite', path: 'evaluation/benchmark_suite.json', required: true, data: enc(benchmark) });
-  const withWf = options.workflows !== undefined ? built0.addComponent({ kind: 'workflows', path: 'workflows/workflows.json', required: false, data: enc(options.workflows) }) : built0;
+  const withWf =
+    options.workflows !== undefined
+      ? built0.addComponent({ kind: 'workflows', path: 'workflows/workflows.json', required: false, data: enc(options.workflows) })
+      : built0;
   const built = withWf.build();
   if (!built.ok) throw new Error(`gold XO failed to build: ${JSON.stringify(built.error)}`);
   return built.value;
