@@ -396,17 +396,27 @@ test('Problem C — insurance fixture: existing behavior does not regress', asyn
   // additions are references to domain concepts from the new nodes' text (Deductible +3, Cover +2, Damage +2,
   // Flood, Loss, Insured, Sum Insured, and schedule labels such as "Water Damage Limit"), verified by diffing the
   // matched-label histogram before and after; no closed-class function word appears among them (the Layer 3 guard).
+  //
+  // 40 -> 20 under UW-3b (clause-bounded naming): every removed link pointed at a capability the vertical-fixtures
+  // benchmark lists as FORBIDDEN (`Record Action` x8, `Review Action` x7 — generic "<verb> Action" placeholders —
+  // `Schedule specifies a higher deductible` x4 and `Schedule and the loss is not excluded` x4, the noun "Schedule" read
+  // as a verb), none of which UW-3b mints any more. The remaining 20 are the same links, re-pointed at the clause-bounded
+  // names ("Notify the Insurer of a loss within 7 days", "Record the settlement amount", "Request additional
+  // information"). Diffed link-by-link: 20 removed (all to forbidden capabilities), 0 genuine links lost.
   assert.equal(
     sameUnitEdges.length,
-    40,
-    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1 quantified-term patterns and semantic-hardening unconditional-statement nodes (re-measured after merge: 40)",
+    20,
+    "same_unit_term_overlap edge count reflects Layer 2B's active-voice verb-inflection improvements plus WS1 quantified-term patterns and semantic-hardening unconditional-statement nodes, minus UW-3b's removal of links to forbidden placeholder capabilities (re-measured: 20)",
   );
   // M2: 108 -> 132 (+24). Every added edge originates from a newly recovered sentence node (e.g. the unconditional "The Insurer
   // may consider/assess ..." provisions), linking it to the concepts and the capability discovered from that same sentence — the
   // same provenance linkage every constraint node already gets. Diffed edge-by-edge: 24 added, 0 removed.
+  // UW-3b: 152 -> 151. The one removed edge linked clause 3.1's deductible constraint to the forbidden capability
+  // "Schedule specifies a higher deductible" (the noun "the Schedule" read as a verb), no longer minted. Diffed
+  // edge-by-edge: 1 removed, 0 added; the other renamed target ("Request additional information") keeps its edge.
   assert.equal(
     exactLabelEdges.length,
-    152,
+    151,
     'exact_label edge count: Layer 3 removed 5 spurious "Before"-substring links; WS1 recall then added 20 references to domain concepts from the new nodes (see comment above)',
   );
 

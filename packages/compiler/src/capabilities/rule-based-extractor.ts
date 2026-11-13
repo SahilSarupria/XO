@@ -7,6 +7,9 @@ import { CAPABILITY_VERBS, CATEGORY_TITLE_KEYWORDS, MODAL_WORDS, PASSIVE_AUX_WOR
 import { detectCommandSnippets } from './command-snippet-detector.js';
 import { isPlausibleCandidateName, isPlausibleCommandIdentifier } from './candidate-plausibility.js';
 import { splitSentences } from './sentence-split.js';
+import { nameFromClause, nameFromPassive } from './clause.js';
+import { assessCandidateQuality, qualityMetadata } from './quality.js';
+import { cleanHeading } from '../semantic/structure.js';
 import { UNKNOWN_SIGNATURE, type CapabilityCategory } from './types.js';
 import type { CandidateCapability, CapabilityExtractionResult, CapabilityExtractor } from './extractor-types.js';
 
@@ -24,64 +27,8 @@ function splitWords(text: string): readonly string[] {
   return text.split(' ').filter((w) => w.length > 0);
 }
 
-function capitalize(word: string): string {
-  return word.length === 0 ? word : word[0]!.toUpperCase() + word.slice(1);
-}
-
-/**
- * Upper bound on how many words after the matched verb are considered for
- * a candidate's object phrase. Wider than the prior hardcoded 3-word
- * window (which truncated names like "Contact the complainant to",
- * "Determine whether there is" mid-phrase on real, non-synthetic prose)
- * but still bounded, so a name can't run away to the end of a long
- * sentence. Combined with `trimTrailingStopWords` below, which trims the
- * low-content words a fixed-length slice tends to end on.
- */
-const MAX_OBJECT_WINDOW_WORDS = 6;
-
-/**
- * Low-content words (articles, prepositions, conjunctions, auxiliary
- * verbs) that make a poor final word for a capability name — a fixed-
- * length word window will sometimes end mid-phrase on exactly one of
- * these ("...to", "...an", "...with the Superior", "...there is"). Trims
- * them off the end of an object-word slice, repeatedly, so the name ends
- * on its last real content word instead. Never trims down to zero words;
- * a name that's nothing but stop words falls back to "<Verb> Action"
- * (unchanged existing behavior for an empty object-word list).
- */
-const TRAILING_STOP_WORDS = new Set([
-  'a',
-  'an',
-  'the',
-  'to',
-  'with',
-  'of',
-  'in',
-  'on',
-  'for',
-  'is',
-  'are',
-  'was',
-  'were',
-  'there',
-  'and',
-  'or',
-  'that',
-  'this',
-  'which',
-  'by',
-  'at',
-  'from',
-  'as',
-]);
-
-function trimTrailingStopWords(words: readonly string[]): readonly string[] {
-  const out = [...words];
-  while (out.length > 1 && TRAILING_STOP_WORDS.has(out[out.length - 1]!.toLowerCase())) {
-    out.pop();
-  }
-  return out;
-}
+// UW-3b: the fixed six-word object window and its trailing-stop-word trim were replaced by clause-bounded naming
+// (`clause.ts`), which also bounds the name at six object words.
 
 interface VerbMatch {
   readonly verb: string;
@@ -157,11 +104,53 @@ const AUX_FOLLOWER_WORDS = new Set(['is', 'are', 'was', 'were', 'be', 'been', 'b
 /** Prepositions that, immediately after a candidate active "-ed" verb form, are strong evidence it's a reduced relative clause (a participle modifying the preceding noun — "reports generated FROM the CRM", "data validated BY the auditor") rather than a genuine transitive main-clause verb, which takes its direct object — a noun phrase, never a bare preposition — immediately after it. See `findCapabilityVerb`'s active-past-tense branch. */
 const REDUCED_RELATIVE_PREPOSITIONS = new Set(['by', 'from', 'via', 'through', 'of', 'without', 'with', 'using']);
 
+const CONDITIONAL_OPENERS = new Set(['if', 'when', 'whenever', 'where', 'unless', 'provided', 'once']);
+const SUBORDINATE_OPENERS = new Set([...CONDITIONAL_OPENERS, 'until', 'after', 'before', 'because', 'since', 'while', 'whether']);
+
+/**
+ * Whether `index` lies in the condition of a sentence that opens with a conditional ("If A, B, and C, the claim is
+ * paid."): before "then" when there is one, otherwise before the last comma (the main clause follows it).
+ */
+function inConditionOfSentence(words: readonly string[], index: number): boolean {
+  // The verb's own clause opens with a subordinator ("... must be denied unless a flood endorsement is recorded").
+  for (let k = index - 1; k >= 0; k -= 1) {
+    const w = words[k]!;
+    if (/[,;:]$/.test(w)) break;
+    if (SUBORDINATE_OPENERS.has(stripPunctuation(w).toLowerCase())) return true;
+  }
+  const lead = words.findIndex((w) => !/^\d+(?:\.\d+)*[.)]?$/.test(w));
+  if (lead < 0 || !CONDITIONAL_OPENERS.has(stripPunctuation(words[lead]!).toLowerCase())) return false;
+  const thenIndex = words.findIndex((w, k) => k > lead && stripPunctuation(w).toLowerCase() === 'then');
+  if (thenIndex >= 0) return index < thenIndex;
+  let lastComma = -1;
+  for (let k = 0; k < words.length; k += 1) if (words[k]!.endsWith(',')) lastComma = k;
+  return lastComma >= 0 && index <= lastComma;
+}
+
+const NOUN_DETERMINERS = new Set([
+  ...DETERMINER_WORDS,
+  'my',
+  'your',
+  'his',
+  'her',
+  'its',
+  'our',
+  'their',
+  'any',
+  'no',
+  'another',
+  'which',
+  'whose',
+]);
+
 function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
   for (let i = 0; i < words.length; i += 1) {
     const clean = stripPunctuation(words[i]!).toLowerCase();
     const category = CAPABILITY_VERBS[clean];
-    if (category) {
+    // UW-3b: a base form right after a determiner or possessive is a noun ("the Schedule specifies", "your plan"), not a
+    // verb; the scan moves on.
+    const precededByDeterminer = i > 0 && NOUN_DETERMINERS.has(stripPunctuation(words[i - 1]!).toLowerCase());
+    if (category && !precededByDeterminer) {
       const precededByModal = i > 0 && MODAL_WORDS.has(stripPunctuation(words[i - 1]!).toLowerCase());
       return { verb: clean, category, wordIndex: i, precededByModal, isPassive: false };
     }
@@ -401,17 +390,47 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
       }
       if (!match) continue;
 
-      const rawObjectWords = words
-        .slice(match.wordIndex + 1, match.wordIndex + 1 + MAX_OBJECT_WINDOW_WORDS)
-        .map(stripPunctuation)
-        .filter((w) => w.length > 0);
-      const objectWords = trimTrailingStopWords(rawObjectWords);
-      const name = objectWords.length > 0 ? `${capitalize(match.verb)} ${objectWords.join(' ')}` : `${capitalize(match.verb)} Action`;
+      // UW-3b: the name is the verb and its object from ONE clause (clause.ts), never words past a comma that starts the
+      // next instruction, a subordinate clause or another cell. A verb that acts on nothing ("Policy Schedule" read as
+      // "Schedule") states no action, so it is not a capability; the old "<Verb> Action" placeholder is gone.
+      // UW-3b: a passive inside the condition of a conditional sentence describes a state the condition tests ("If the
+      // Policy is active, ..., the property is scheduled, and the loss is not excluded, the claim ..."), not an action.
+      if (match.isPassive && inConditionOfSentence(words, match.wordIndex)) {
+        localIndex += 1;
+        continue;
+      }
+      const clause =
+        (match.isPassive ? nameFromPassive(words, match.wordIndex, match.verb) : undefined) ??
+        nameFromClause(words, match.wordIndex, match.verb);
+      // An intransitive instruction ("..., wait and retry.") is an action without an object; a verb form trailing a noun
+      // ("Policy Schedule") is not.
+      const previous = match.wordIndex > 0 ? words[match.wordIndex - 1]! : undefined;
+      const imperativePosition =
+        previous === undefined || /[,;:]$/.test(previous) || ['and', 'or', 'then'].includes(stripPunctuation(previous).toLowerCase());
+      if (clause.objectWords.length === 0 && clause.verbPhrase.split(' ').length === 1 && !imperativePosition) {
+        localIndex += 1;
+        continue;
+      }
+      const name = clause.name;
       if (!isPlausibleCandidateName(name)) {
         localIndex += 1;
         continue;
       }
-      const confidence = match.wordIndex === 0 ? 0.6 : match.precededByModal ? 0.55 : match.isPassive ? 0.5 : 0.45;
+      // UW-3b: the positional prior is kept and multiplied down by what can be seen about the text (quality.ts).
+      const prior = match.wordIndex === 0 ? 0.6 : match.precededByModal ? 0.55 : match.isPassive ? 0.5 : 0.45;
+      const quality = assessCandidateQuality({
+        prior,
+        sentence: sentence.text,
+        words,
+        verbIndex: match.wordIndex,
+        clause,
+        layoutSuspect: unit.layoutSuspect === true,
+      });
+      if (quality.reject) {
+        localIndex += 1;
+        continue;
+      }
+      const confidence = quality.confidence;
       const { nodeIds, conceptLabels } = findMentionedKnowledgeNodes(sentence.text, unit, knowledgeGraph);
 
       capabilities.push({
@@ -428,7 +447,7 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
         invocationHints: [],
         examples: [],
         signature: UNKNOWN_SIGNATURE,
-        metadata: {},
+        metadata: qualityMetadata(quality),
         sourceUnitId: unit.id,
       });
       localIndex += 1;
@@ -447,12 +466,14 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
     if (unit.headingTitle !== undefined) {
       const titleWords = splitWords(unit.headingTitle).map((w) => stripPunctuation(w).toLowerCase());
       const titleCategory = titleWords.map((w) => CATEGORY_TITLE_KEYWORDS[w]).find((c) => c !== undefined);
-      if (titleCategory && isPlausibleCandidateName(unit.headingTitle)) {
+      // UW-3b: the author's section number is position, not name ("6. Claims Procedure" names "Claims Procedure").
+      const headingName = cleanHeading(unit.headingTitle);
+      if (titleCategory && headingName.length > 0 && isPlausibleCandidateName(headingName)) {
         const { nodeIds, conceptLabels } = findMentionedKnowledgeNodes(unit.content, unit, knowledgeGraph);
         capabilities.push({
           localId: 'title',
           category: titleCategory,
-          name: unit.headingTitle,
+          name: headingName,
           description: unit.content.slice(0, 280),
           confidence: 0.65,
           provenance: baseProvenance(unit, 0.65, [0, unit.content.length]),

@@ -8,6 +8,7 @@ import type { ExperienceUnit } from '../semantic/types.js';
 import type { CapabilityExtractionResult, CapabilityExtractor } from './extractor-types.js';
 import { RuleBasedCapabilityExtractor } from './rule-based-extractor.js';
 import { StructuredOperationCapabilityExtractor } from './structured-operation-extractor.js';
+import { stepCandidate } from './procedure-extractor.js';
 
 /**
  * The default extractor Stage 5 uses: `RuleBasedCapabilityExtractor` and
@@ -42,6 +43,15 @@ export class HybridCapabilityExtractor implements CapabilityExtractor {
     // here, but gating centrally keeps this one check authoritative for
     // every current and future extractor in this union, rather than
     // relying on each one to individually decline table content.
+    // UW-3b: a unit routed by `semantic/structure.ts` is read by its structural extractor only. A procedure step is ONE
+    // step capability (its table cells are never scanned as prose); a guideline, an acceptance criterion, a form field or
+    // a step-table header is not a capability at all (the reasoning stage reads the first two as constraints).
+    const role = unit.structure?.role;
+    if (role === 'procedure_step') {
+      const step = stepCandidate(unit);
+      return ok({ capabilities: step !== undefined ? [step] : [], edges: [] });
+    }
+    if (role !== undefined) return ok({ capabilities: [], edges: [] });
     if (unit.isTableQuarantined) return ok({ capabilities: [], edges: [] });
 
     const ruleResult = await this.ruleBased.extract(unit, knowledgeGraph);
