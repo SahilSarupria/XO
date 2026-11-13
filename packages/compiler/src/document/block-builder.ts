@@ -406,6 +406,7 @@ function provenanceOf(lines: readonly ClassifiedLine[]): Provenance {
  */
 export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number): readonly DocumentBlock[] {
   const blocks: DocumentBlock[] = [];
+  const itemX = new Map<number, number>();
   let paragraphBuffer: ClassifiedLine[] = [];
   let headingBuffer: ClassifiedLine[] = [];
   // P0.9A area C: computed once up front over the whole line stream, since
@@ -494,8 +495,8 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
         const extra = line.text.trim();
         blocks[blocks.length - 1] = {
           ...last,
-          text: `${last.text} ${extra}`,
-          ...(last.body !== undefined ? { body: `${last.body} ${extra}` } : {}),
+          text: `${last.text} ${extra}`.trim(),
+          ...(last.body !== undefined ? { body: `${last.body} ${extra}`.trim() } : {}),
           provenance: { page: last.provenance.page, yRange: [last.provenance.yRange[0], Math.min(last.provenance.yRange[1], line.y)] },
         };
         continue;
@@ -531,6 +532,7 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
     flushHeading();
 
     if (line.blockKind === 'list_item') {
+      itemX.set(blocks.length, line.minX);
       blocks.push({
         kind: 'list_item',
         marker: line.listMarker!,
@@ -548,5 +550,44 @@ export function buildBlocks(lines: readonly ClassifiedLine[], bodySize: number):
   flushParagraph();
   flushHeading();
 
-  return blocks;
+  return withListDepth(blocks, itemX);
+}
+
+/** Marker positions closer than this are the same list level. */
+const LIST_LEVEL_X_TOLERANCE_PT = 6;
+
+/**
+ * UW-3c: nesting from indentation. In each run of consecutive list items, the distinct marker positions, left to right, are
+ * the list's levels; an item's depth is its level. A run with a single level gets no depth (nothing is nested).
+ */
+function withListDepth(blocks: DocumentBlock[], itemX: ReadonlyMap<number, number>): DocumentBlock[] {
+  const out = [...blocks];
+  let i = 0;
+  while (i < out.length) {
+    if (out[i]!.kind !== 'list_item') {
+      i += 1;
+      continue;
+    }
+    // A run is cut at a page break: positions on different pages are not comparable (a scanned page is cropped on its own).
+    let j = i;
+    while (j < out.length && out[j]!.kind === 'list_item' && out[j]!.provenance.page === out[i]!.provenance.page) j += 1;
+    const xs = [...new Set([...Array(j - i).keys()].map((k) => itemX.get(i + k)).filter((x): x is number => x !== undefined))].sort(
+      (a, b) => a - b,
+    );
+    // Levels are clusters of marker positions: a gap wider than the tolerance between neighbouring positions starts a level.
+    const levelOf = new Map<number, number>();
+    let level = 0;
+    xs.forEach((x, n) => {
+      if (n > 0 && x - xs[n - 1]! > LIST_LEVEL_X_TOLERANCE_PT) level += 1;
+      levelOf.set(x, level);
+    });
+    if (level >= 1) {
+      for (let k = i; k < j; k++) {
+        const x = itemX.get(k);
+        if (x !== undefined) out[k] = { ...(out[k] as DocumentBlock & { kind: 'list_item' }), depth: levelOf.get(x)! };
+      }
+    }
+    i = j;
+  }
+  return out;
 }

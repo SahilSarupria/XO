@@ -102,10 +102,18 @@ export const GOLD: readonly GoldUnit[] = [
   { file: 'burgla', textStart: 'Warranted that for stocks of high value and low vo', entities: [], primaryOk: true },
   { file: 'burgla', textStart: 'Warranted that there is 24 hours security in the p', entities: [], primaryOk: false },
   { file: 'burgla', textStart: 'Gross Invoice Number Invoice Date Net Premium Igst', entities: [], primaryOk: false },
+  // UW-3c: the "Important Notice" list used to be read as one oversized heading unit; it is now read as its four numbered
+  // items, so the two annotated entities sit in the items that name them (same entities, same annotation).
   {
     file: 'burgla',
-    textStart: '1. *Cheque dishonor / Non-receipt of payment: If p',
-    entities: ['Digit Burglary Insurance Policy', 'Go Digit General Insurance Ltd'],
+    textStart: 'This policy is subject to the standard policy word',
+    entities: ['Digit Burglary Insurance Policy'],
+    primaryOk: true,
+  },
+  {
+    file: 'burgla',
+    textStart: 'The Policy Wording attached herewith includes all ',
+    entities: ['Go Digit General Insurance Ltd'],
     primaryOk: true,
   },
   {

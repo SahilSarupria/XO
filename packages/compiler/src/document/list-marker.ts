@@ -113,7 +113,7 @@ export function splitTitleBody(text: string, maxTitleWords = 6): { readonly titl
   return undefined;
 }
 
-const BULLET_CHARS = ['•', '◦', '‣', '·', '-', '*', '○'];
+const BULLET_CHARS = ['•', '◦', '‣', '·', '-', '*', '○', '●', '▪', '■', '►', '▸', '➢', '➤', '❖', '◆', '◇', '♦', '⁃', '∙', '–'];
 
 function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9';
