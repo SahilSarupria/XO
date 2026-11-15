@@ -24,7 +24,7 @@ import type {
   StructureEvidence,
   UnitStructure,
 } from './types.js';
-import { directiveOf, isImperative, isQuestion } from './directive.js';
+import { isPlainInstruction, directiveOf, isImperative, isQuestion } from './directive.js';
 import { splitSentences } from '../capabilities/sentence-split.js';
 
 /** A section is routed only when its winning kind holds at least this share of the section's structural evidence. */
@@ -226,6 +226,39 @@ function scoreSection(group: SectionGroup): { readonly scores: readonly Scored[]
   return { scores, total: scores.reduce((s, x) => s + x.score, 0) };
 }
 
+/** Whether a guideline-section item is a task (an action) rather than a rule: see the guideline branch below. */
+function isTask(unit: ExperienceUnit, g: GuidelineFacts, parent: ExperienceUnit | undefined): boolean {
+  const title = unit.listItem?.title;
+  if (title === undefined)
+    return parent !== undefined && /:\s*$/.test(parent.content.replace(/\*\*|__/g, '')) && isPlainInstruction(g.directive);
+  const plain = unit.content.replace(/\*\*|__/g, '').trimStart();
+  const colonLabel =
+    plain.startsWith(
+      title
+        .replace(/\*\*|__/g, '')
+        .replace(/[:.]+$/, '')
+        .trim(),
+    ) && /^[^.!?]{1,80}?:\s/.test(plain);
+  if (!colonLabel) return false;
+  return (
+    isPlainInstruction(title.replace(/[:.]+$/, '')) ||
+    (g.directive !== g.title && isPlainInstruction(g.directive)) ||
+    (directiveOf(title) === undefined && isPlainInstruction(g.directive))
+  );
+}
+
+/** The nearest list item before `index` that is one level up: the item `units[index]` is nested under. */
+function parentItem(units: readonly ExperienceUnit[], index: number): ExperienceUnit | undefined {
+  const depth = units[index]!.listItem?.depth ?? 0;
+  if (depth === 0) return undefined;
+  for (let k = index - 1; k >= 0; k -= 1) {
+    const u = units[k]!;
+    if (u.listKind === undefined) return undefined;
+    if ((u.listItem?.depth ?? 0) < depth) return u;
+  }
+  return undefined;
+}
+
 const ROUTABLE: ReadonlySet<SectionKind> = new Set<SectionKind>(['procedure', 'guideline', 'checklist', 'form']);
 
 function round2(v: number): number {
@@ -353,7 +386,14 @@ export function analyzeDocumentStructure(doc: ExperienceDocument): ExperienceDoc
       }
       if (best.kind === 'guideline' && unit.listKind !== undefined) {
         const g = guidelineOf(unit.content, unit.listItem?.title, unit.listItem?.body);
-        if (g !== undefined) roles.set(unit.id, { ...base, role: 'guideline', guideline: g });
+        // UW-3c: a task — a plain instruction under a label item ("Reconciliation Tasks:" → "Match CRM records vs. insurer
+        // statements.") or after a colon label of its own
+        // ("Statement Collection: Request insurer-wise brokerage statements", "Identify discrepancies: policies missing
+        // from ...") — names an action, not a norm. It is marked a task: the action extractors read it (and when they find
+        // if nothing reads it, the constraint stands in). A rule stated as a sentence title ("**Work in small steps.** Small changes are easier to
+        // review"), "Always ...", "must", "should" and prohibitions stay the section's rules.
+        const labelledTask = g !== undefined && isTask(unit, g, parentItem(group.units, ui));
+        if (g !== undefined) roles.set(unit.id, { ...base, role: 'guideline', guideline: labelledTask ? { ...g, task: true } : g });
         continue;
       }
       if (best.kind === 'checklist' && unit.listKind !== undefined) {

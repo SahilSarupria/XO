@@ -66,6 +66,52 @@ test('a bold run-in label and an emoji icon are not part of the instruction; a s
   ]);
 });
 
+test('in a guideline section, a task under a label item or after a colon label is an action; a titled rule stays a rule', async () => {
+  const md = [
+    '# Operations guide',
+    '',
+    '## Reconciliation',
+    '',
+    '- **Statement Collection:** Request insurer-wise brokerage statements.',
+    '- **Never** share statements outside the finance team.',
+    '- Reconciliation Tasks:',
+    '  - Match CRM records vs. insurer statements.',
+    '  - Timebox it: after 30 minutes with no progress, ask for help.',
+    '- **Work in small steps.** Small changes are easier to review.',
+    '- Always record the reason for an adjustment.',
+  ].join('\n');
+  const r = await compileSources([{ kind: 'document', text: md, sourcePath: 'ops.md' }], { now: () => '2026-01-01T00:00:00.000Z' });
+  assert.ok(r.ok, r.ok ? '' : r.error.message);
+  const nodes = r.value.graph.allNodes();
+  const caps = nodes
+    .filter((n) => n.kind === 'capability')
+    .map((n) => (n.properties as { name: string }).name)
+    .sort();
+  const rules = nodes
+    .filter((n) => n.kind === 'constraint')
+    .map((n) => (n.properties as { rule: string }).rule)
+    .sort();
+  assert.ok(caps.includes('Request insurer-wise brokerage statements'), caps.join(' | '));
+  assert.ok(
+    caps.some((c) => c.startsWith('Match CRM records')),
+    caps.join(' | '),
+  );
+  assert.ok(
+    rules.some((x) => /^Never share statements/.test(x)),
+    rules.join(' | '),
+  );
+  assert.ok(
+    rules.some((x) => /^Work in small steps/.test(x)),
+    rules.join(' | '),
+  );
+  assert.ok(
+    rules.some((x) => /^Always record the reason/.test(x)),
+    rules.join(' | '),
+  );
+  // A task with no action the extractors can read is kept as a constraint, never lost.
+  assert.ok(rules.some((x) => /^Timebox it/.test(x)) || caps.some((c) => /Ask for help/i.test(c)), [...caps, ...rules].join(' | '));
+});
+
 test('a question asks: it ends with a question mark, quotes and brackets allowed', () => {
   assert.equal(isQuestion('Who are your primary users?'), true);
   assert.equal(isQuestion('Ask: "What problem are we solving?"'), true);

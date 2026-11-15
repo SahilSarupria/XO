@@ -619,6 +619,7 @@ export async function compileSources(
   const uncovered = uncoveredNormativeSentences(
     merged.units.filter((u) => u.structure?.role === undefined && u.preformatted !== true).map((u) => u.content),
     reasoning.nodes.map((n) => ({ texts: [n.canonicalLabel, n.condition ?? '', n.action ?? '', n.outcome ?? ''] })),
+    capability.capabilities.map((c) => ({ texts: [c.canonicalName] })),
   );
   for (const u of uncovered.slice(0, 50)) {
     qualityDiagnostics.push({

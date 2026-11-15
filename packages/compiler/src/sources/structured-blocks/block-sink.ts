@@ -56,6 +56,9 @@ function boldLead(spans: readonly Span[]): { readonly title: string; readonly bo
   const title = lead.replace(/[:\-–—]\s*$/, '').trim();
   const body = joinSpans(spans.slice(k));
   if (title.length === 0 || body.length === 0) return undefined;
+  // UW-3c: bold that runs on into the sentence ("**Never** share statements ...") is emphasis, not a run-in title: a title
+  // ends in punctuation or is followed by a new sentence.
+  if (!/[.:!?\-–—]$/.test(lead.trim()) && /^[a-z(]/.test(body)) return undefined;
   return { title, body, lead };
 }
 

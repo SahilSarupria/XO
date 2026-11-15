@@ -72,6 +72,7 @@ export function imperativeClause(sentence: string): string | undefined {
   const labelled = label !== null && (label[2] !== '' || label[3] !== '') && label[1]!.trim().split(/\s+/).length <= 5;
   // Leading punctuation and symbols (a bullet glyph, an emoji used as an icon, with its variation selector) are not words.
   let text = (labelled ? label[4]! : sentence).trim().replace(/^[\p{P}\p{S}\p{M}\p{Cf}\s]+/u, '');
+  if (isTitleCaseLabel(text)) return undefined;
   const candidates: string[] = [];
   const lead = LEAD_CLAUSE.exec(text);
   if (lead !== null) candidates.push(lead[1]!);
@@ -88,6 +89,20 @@ export function imperativeClause(sentence: string): string | undefined {
     if (adverb !== null && opensWithVerb(text.slice(adverb[0].length))) return text.slice(adverb[0].length);
   }
   return undefined;
+}
+
+const LABEL_FUNCTION_WORDS = new Set(['a', 'an', 'the', 'of', 'and', 'or', 'for', 'to', 'in', 'on', 'at', 'by', 'with', '&', '/']);
+
+/**
+ * UW-3c: a title-case label ("Total Sum Insured", "Policy Booking Report", "Limit Opted") — every word capitalised or a
+ * function word, no sentence punctuation at the end — names a thing; its first word is not a verb even when it could be.
+ */
+function isTitleCaseLabel(text: string): boolean {
+  const t = text.trim();
+  if (/[.!?;:]["')\]]*$/.test(t)) return false;
+  const words = t.split(/\s+/).filter((w) => /\p{L}/u.test(w));
+  if (words.length < 2 || words.length > 8) return false;
+  return words.every((w, k) => (k > 0 && LABEL_FUNCTION_WORDS.has(w.toLowerCase())) || /^[("'“]?\p{Lu}/u.test(w));
 }
 
 /**
@@ -109,6 +124,19 @@ const ALWAYS_LEAD = /^always\s+/i;
 const PROHIBITION_MODAL = /\b(?:must\s+not|shall\s+not|may\s+not|cannot|can\s*not|must\s+never|should\s+not|should\s+never)\b/i;
 const OBLIGATION_MODAL = /\b(?:must|shall|(?:is|are)\s+required\s+to|(?:need|needs|has|have)\s+to)\b/i;
 const ADVISORY_MODAL = /\b(?:should|ought\s+to|(?:is|are)\s+(?:recommended|encouraged))\b/i;
+
+/**
+ * UW-3c: a plain instruction — a positive imperative that names something to do ("Request insurer-wise brokerage
+ * statements", "Copy the template"), with no "always", no modal and no negation. It is an action; a norm about conduct
+ * ("Always ...", "must", "should", "Never ...") is a rule.
+ */
+export function isPlainInstruction(sentence: string): boolean {
+  const d = directiveOf(sentence);
+  if (d === undefined || d.modality !== 'obligation' || d.polarity !== 'positive') return false;
+  const clause = imperativeClause(sentence);
+  if (clause === undefined || ALWAYS_LEAD.test(clause)) return false;
+  return !OBLIGATION_MODAL.test(clause) && !ADVISORY_MODAL.test(clause) && !PROHIBITION_MODAL.test(clause);
+}
 
 export interface Directive {
   readonly modality: 'obligation' | 'prohibition' | 'advisory';

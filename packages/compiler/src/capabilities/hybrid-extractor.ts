@@ -51,7 +51,9 @@ export class HybridCapabilityExtractor implements CapabilityExtractor {
       const step = stepCandidate(unit);
       return ok({ capabilities: step !== undefined ? [step] : [], edges: [] });
     }
-    if (role !== undefined) return ok({ capabilities: [], edges: [] });
+    // UW-3c: a guideline item marked a task names an action: it is read like prose below.
+    if (role !== undefined && !(role === 'guideline' && unit.structure?.guideline?.task === true))
+      return ok({ capabilities: [], edges: [] });
     if (unit.isTableQuarantined) return ok({ capabilities: [], edges: [] });
     // UW-3c: preformatted text (code, a command listing) is content, not prose: its lines are never read as actions.
     if (unit.preformatted === true) return ok({ capabilities: [], edges: [] });

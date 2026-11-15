@@ -160,6 +160,11 @@ export interface GuidelineFacts {
   readonly rationale?: string;
   readonly modality: 'obligation' | 'prohibition' | 'advisory';
   readonly polarity: 'positive' | 'negative';
+  /**
+   * UW-3c: the item is a task — a plain instruction under a label item or after a colon label — so it names an action.
+   * The action extractors read it; it becomes a constraint only when they find no action in it (never lost).
+   */
+  readonly task?: boolean;
 }
 
 export interface UnitStructure {

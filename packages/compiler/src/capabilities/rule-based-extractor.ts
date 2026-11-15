@@ -229,7 +229,7 @@ export function inVerbPosition(words: readonly string[], i: number): boolean {
   return false;
 }
 
-function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
+function findCapabilityVerb(words: readonly string[], listItem = false): VerbMatch | undefined {
   for (let i = 0; i < words.length; i += 1) {
     const clean = stripPunctuation(words[i]!).toLowerCase();
     const category = CAPABILITY_VERBS[clean];
@@ -358,7 +358,7 @@ function findCapabilityVerb(words: readonly string[]): VerbMatch | undefined {
       }
     }
   }
-  return imperativeLead(words);
+  return imperativeLead(words, listItem);
 }
 
 /**
@@ -472,7 +472,27 @@ function afterSoftLead(words: readonly string[], verbIndex: number): number | un
   return k + 1;
 }
 
-function imperativeLead(words: readonly string[]): VerbMatch | undefined {
+/**
+ * UW-3c: whether the action scan of `extract` finds an action verb in `text` (a non-negated capability verb, or an
+ * imperative lead, in any sentence that is not a question). The structural reasoning stage asks this of a task item so that
+ * it becomes a constraint only when no action is read from it.
+ */
+export function namesAnAction(text: string, listItem = false): boolean {
+  for (const sentence of splitSentences(text)) {
+    if (isQuestion(sentence.text)) continue;
+    const words = splitWords(sentence.text);
+    let from = 0;
+    while (from < words.length) {
+      const found = findCapabilityVerb(words.slice(from), listItem);
+      if (found === undefined) break;
+      if (!isNegatedAt(words, found.wordIndex + from)) return true;
+      from = found.wordIndex + from + 1;
+    }
+  }
+  return false;
+}
+
+function imperativeLead(words: readonly string[], listItem = false): VerbMatch | undefined {
   const text = words.join(' ');
   // A conditional instruction ("If the amount exceeds 10000, then deny the claim.") is a rule: the reasoning layer reads it
   // and the rule-capability minter names its outcome. Read here too, it would be a second capability for the same rule.
@@ -491,7 +511,8 @@ function imperativeLead(words: readonly string[]): VerbMatch | undefined {
   // The sentence's own grammar must say "instruction": a finished sentence of a few words, no label ("Benchmark intent:
   // ..."), and a word after the verb that starts its object — not a number, not a finite verb ("Cover is ..."), and not a
   // preposition followed by a finite verb ("Cover under this policy does not extend ...": the first word was a noun).
-  if (clauseWords.length < 3 || !/[.!]["')\]]*$/.test(text.trim())) return undefined;
+  // UW-3c: a list item is complete without a full stop ("- Modify the .coveragerc to point to the src package").
+  if (clauseWords.length < 3 || (!listItem && !/[.!]["')\]]*$/.test(text.trim()))) return undefined;
   if (clauseWords.slice(0, 3).some((w) => w.endsWith(':'))) return undefined;
   const nextRaw = stripPunctuation(words[wordIndex + 1] ?? '');
   const next = nextRaw.toLowerCase();
@@ -609,7 +630,7 @@ export class RuleBasedCapabilityExtractor implements CapabilityExtractor {
       let match: ReturnType<typeof findCapabilityVerb>;
       let from = 0;
       for (;;) {
-        const found = findCapabilityVerb(words.slice(from));
+        const found = findCapabilityVerb(words.slice(from), unit.listKind !== undefined);
         match = found === undefined ? undefined : { ...found, wordIndex: found.wordIndex + from };
         if (match === undefined || !isNegatedAt(words, match.wordIndex)) break;
         from = match.wordIndex + 1;

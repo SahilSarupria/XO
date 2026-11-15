@@ -68,7 +68,7 @@ const SENTENCE_END_CHARS = new Set(['.', '!', '?']);
  * is a known abbreviation (see `SENTENCE_ABBREVIATIONS`) — meaning that
  * `.` is not a genuine sentence-ending period.
  */
-function precedingWordIsAbbreviation(text: string, periodIndex: number): boolean {
+export function precedingWordIsAbbreviation(text: string, periodIndex: number): boolean {
   let wordStart = periodIndex;
   while (
     wordStart > 0 &&
