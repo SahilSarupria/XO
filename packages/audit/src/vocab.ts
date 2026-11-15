@@ -31,6 +31,9 @@ export const AUDIT_EVENT_TYPES = [
   'approval.attempted',
   'approval.granted',
   'approval.denied',
+  // PX-2: a reviewer accepted (or was refused) the findings of a partial or degraded source version.
+  'waiver.granted',
+  'waiver.denied',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.
