@@ -1,4 +1,7 @@
-import { compileSources, resolveDomainProfile, listDomainProfiles, type CompileSourcesOptions } from '@xo/compiler';
+import { writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { resolveDomainProfile, listDomainProfiles } from '@xo/compiler';
+import { artifactOpenWork, compileSourceSet, defaultCompileConfiguration, type SourceSetMember } from '@xo/pre-execution';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { collectSources } from './source-collection.js';
@@ -14,6 +17,8 @@ export interface CompileOptions {
   /** Domain profile id whose vocabulary extends the neutral grammar for this compilation. */
   readonly profile?: string;
   readonly json?: boolean;
+  /** PX-1: write the complete compilation artifact (`@xo/pre-execution`) as JSON to this path. */
+  readonly artifactPath?: string;
 }
 
 /**
@@ -33,18 +38,12 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
   const prompts = options.prompts ?? [];
   if (options.sources.length === 0 && prompts.length === 0) return failWith('at least one source path or --prompt is required');
 
-  let lexicon: CompileSourcesOptions['lexicon'];
-  const autoProfile = options.profile === 'auto';
-  if (options.profile !== undefined && !autoProfile) {
-    const profile = resolveDomainProfile(options.profile);
-    if (profile === undefined) {
-      return failWith(
-        `unknown domain profile "${options.profile}" (known: ${listDomainProfiles()
-          .map((p) => p.id)
-          .join(', ')})`,
-      );
-    }
-    lexicon = profile.lexicon;
+  if (options.profile !== undefined && options.profile !== 'auto' && resolveDomainProfile(options.profile) === undefined) {
+    return failWith(
+      `unknown domain profile "${options.profile}" (known: ${listDomainProfiles()
+        .map((p) => p.id)
+        .join(', ')})`,
+    );
   }
 
   let collected: Awaited<ReturnType<typeof collectSources>>;
@@ -52,26 +51,41 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     collected =
       options.sources.length > 0
         ? await collectSources(options.sources)
-        : { inputs: [], discovered: [], unsupported: [], cleanup: async () => undefined };
+        : { inputs: [], entries: [], discovered: [], unsupported: [], cleanup: async () => undefined };
   } catch (cause) {
     return failWith(`could not read source(s): ${(cause as Error).message}`);
   }
 
   try {
-    const compileOptions: CompileSourcesOptions = {
+    // PX-1: the same entry point and configuration type the API uses, so the same sources give the same artifact digest.
+    const configuration = defaultCompileConfiguration({
       ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
       ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
-      ...(lexicon !== undefined ? { lexicon } : {}),
-      ...(autoProfile ? { autoProfile: true } : {}),
-    };
-
-    const promptInputs = prompts.map((text, i) => ({
-      kind: 'prompt' as const,
-      text,
-      sourcePath: `prompt-${i + 1}`,
-      ...(options.confirmedBy !== undefined ? { confirmedBy: options.confirmedBy } : {}),
-    }));
-    const result = await compileSources([...collected.inputs, ...promptInputs], compileOptions);
+      ...(options.profile !== undefined ? { profile: options.profile } : {}),
+    });
+    const members: SourceSetMember[] = [
+      ...collected.inputs.map((input, i) => ({ entry: collected.entries[i]!, input })),
+      ...prompts.map((text, i) => {
+        const bytes = new TextEncoder().encode(text);
+        return {
+          entry: {
+            sourceId: `prompt:${i + 1}`,
+            digestSha256: createHash('sha256').update(bytes).digest('hex'),
+            name: `prompt-${i + 1}`,
+            byteSize: bytes.length,
+            role: 'instruction' as const,
+          },
+          input: {
+            kind: 'prompt' as const,
+            text,
+            sourcePath: `prompt-${i + 1}`,
+            ...(options.confirmedBy !== undefined ? { confirmedBy: options.confirmedBy } : {}),
+          },
+        };
+      }),
+    ];
+    const compiledSet = await compileSourceSet(members, configuration);
+    const result = compiledSet.ok ? { ok: true as const, value: compiledSet.value.result } : compiledSet;
     if (!result.ok) {
       const lines = [`[${result.error.code}] ${result.error.message}`];
       const interpretations = (
@@ -92,6 +106,10 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     }
 
     const { value } = result;
+    const artifact = compiledSet.ok ? compiledSet.value.artifact : undefined;
+    if (options.artifactPath !== undefined && artifact !== undefined)
+      await writeFile(options.artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
+    const openWork = artifact !== undefined ? artifactOpenWork(artifact) : undefined;
 
     if (options.json) {
       return ok([
@@ -105,6 +123,14 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
           diagnostics: value.diagnostics,
           ...(value.promptInterpretations !== undefined ? { promptInterpretations: value.promptInterpretations } : {}),
           graphContentHash: value.graph.contentHash(),
+          ...(artifact !== undefined
+            ? {
+                sourceSetId: artifact.sourceSet.sourceSetId,
+                artifactDigest: artifact.digest,
+                configurationDigest: artifact.configurationDigest,
+                openWork,
+              }
+            : {}),
         }),
       ]);
     }
@@ -136,6 +162,15 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     }
 
     lines.push('', `Graph content hash: ${value.graph.contentHash()}`);
+    if (artifact !== undefined && openWork !== undefined) {
+      lines.push(
+        `Source set:         ${artifact.sourceSet.sourceSetId}`,
+        `Artifact digest:    ${artifact.digest}`,
+        `Open work:          ${openWork.reviewItems} review item(s), ${openWork.unclassified} unclassified sentence(s), ${openWork.unresolvedConflicts} unresolved conflict(s)`,
+      );
+      for (const note of artifact.runNotes) lines.push(`Note: ${note}`);
+      if (options.artifactPath !== undefined) lines.push(`Artifact written:   ${options.artifactPath}`);
+    }
 
     return { exitCode: value.valid ? 0 : 1, lines };
   } finally {

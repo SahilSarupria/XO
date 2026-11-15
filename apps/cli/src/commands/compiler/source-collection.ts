@@ -1,42 +1,10 @@
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, dirname, sep, posix as posixPath } from 'node:path';
+import { readCentralDirectory, readZipEntry, type ZipEntry } from '@xo/compiler';
+import { createHash } from 'node:crypto';
+import { checkArchiveEntries, classifySourceContent, type SourceSetEntry } from '@xo/pre-execution';
 import { KNOWN_EXTENSIONS, loadSourceInput } from './source-input.js';
-
-/**
- * `adm-zip` is a real, ordinary npm dependency of this package — never
- * hidden, still declared in `package.json` — but it is only ever needed
- * for the one `.zip`-archive code path below. Loading it lazily (only
- * when a `.zip` argument is actually resolved) means an environment
- * that genuinely can't install it (offline, restricted registry, etc.)
- * can still run every other `xo compile`/`xo capabilities`/`xo workflow`
- * invocation — PDF, JSON, OpenAPI, directories — none of which need it
- * at all. A `.zip` argument still fails, explicitly and with a clear
- * actionable message, exactly as it should; nothing about ZIP support
- * is silently faked or replaced.
- */
-interface AdmZipEntry {
-  readonly isDirectory: boolean;
-  readonly entryName: string;
-  getData(): Buffer;
-}
-interface AdmZipLike {
-  getEntries(): readonly AdmZipEntry[];
-}
-async function loadAdmZip(buffer: Buffer): Promise<AdmZipLike> {
-  let AdmZipCtor: new (buf: Buffer) => AdmZipLike;
-  try {
-    const mod = (await import('adm-zip')) as { default: new (buf: Buffer) => AdmZipLike };
-    AdmZipCtor = mod.default;
-  } catch (cause) {
-    throw new Error(
-      `.zip input requires the optional "adm-zip" dependency, which is not installed in this environment. ` +
-        `PDF/JSON/OpenAPI/directory inputs do not need it and are unaffected. ` +
-        `Install it (npm install adm-zip) to use .zip inputs. (${cause instanceof Error ? cause.message : String(cause)})`,
-    );
-  }
-  return new AdmZipCtor(buffer);
-}
 
 /**
  * One file this module has decided is worth handing to `@xo/compiler` —
@@ -158,26 +126,48 @@ async function walkDirectory(root: string): Promise<{ sources: DiscoveredSource[
  * written back to.
  */
 async function extractZipToTempDir(zipBytes: Uint8Array): Promise<string> {
-  const tempRoot = await mkdtemp(join(tmpdir(), 'xo-cli-zip-'));
-  const zip = await loadAdmZip(Buffer.from(zipBytes));
-
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) continue;
-
-    const normalized = posixPath.normalize(entry.entryName);
-    if (posixPath.isAbsolute(normalized) || normalized === '..' || normalized.startsWith('../')) {
-      throw new Error(`refusing to extract unsafe zip entry path "${entry.entryName}" (path traversal)`);
-    }
-
-    const destination = join(tempRoot, ...normalized.split('/'));
-    if (!destination.startsWith(tempRoot + sep) && destination !== tempRoot) {
-      throw new Error(`refusing to extract zip entry "${entry.entryName}" outside the extraction root`);
-    }
-
-    await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, entry.getData());
+  // PX-1 (gap PX-G03): the archive is held to the shared limits (entry count, per-entry and total inflated size, compression
+  // ratio, paths that leave the root) BEFORE anything is inflated, and each entry is inflated by the compiler's hardened ZIP
+  // reader, which caps the inflated size whatever the header claims and checks the CRC.
+  const buffer = Buffer.from(zipBytes);
+  let entries: Map<string, ZipEntry>;
+  try {
+    entries = readCentralDirectory(buffer);
+  } catch (cause) {
+    throw new Error(`refusing this .zip: ${cause instanceof Error ? cause.message : String(cause)}`);
   }
+  const files = [...entries.values()].filter((e) => !e.name.endsWith('/'));
+  const check = checkArchiveEntries(
+    files.map((e) => ({ name: e.name, compressedSize: e.compressedSize, uncompressedSize: e.uncompressedSize })),
+  );
+  if (!check.ok) throw new Error(`refusing this .zip (${check.code}): ${check.message}`);
 
+  const tempRoot = await mkdtemp(join(tmpdir(), 'xo-cli-zip-'));
+  try {
+    for (const entry of files) {
+      const normalized = posixPath.normalize(entry.name.replace(/\\/g, '/'));
+      if (posixPath.isAbsolute(normalized) || normalized === '..' || normalized.startsWith('../')) {
+        throw new Error(`refusing to extract unsafe zip entry path "${entry.name}" (path traversal)`);
+      }
+      const destination = join(tempRoot, ...normalized.split('/'));
+      if (!destination.startsWith(tempRoot + sep) && destination !== tempRoot) {
+        throw new Error(`refusing to extract zip entry "${entry.name}" outside the extraction root`);
+      }
+      let data: Buffer;
+      try {
+        data = readZipEntry(buffer, entry);
+      } catch (cause) {
+        throw new Error(
+          `refusing this .zip (SOURCE_ARCHIVE_UNSAFE): entry "${entry.name}": ${cause instanceof Error ? cause.message : String(cause)}`,
+        );
+      }
+      await mkdir(dirname(destination), { recursive: true });
+      await writeFile(destination, data);
+    }
+  } catch (cause) {
+    await rm(tempRoot, { recursive: true, force: true });
+    throw cause;
+  }
   return tempRoot;
 }
 
@@ -221,6 +211,8 @@ export async function resolveSourceArg(argPath: string): Promise<ResolvedSourceA
 
 export interface CollectedSources {
   readonly inputs: readonly unknown[];
+  /** PX-1: one source-set entry per input, in input order (digest and size of the exact bytes compiled). */
+  readonly entries: readonly SourceSetEntry[];
   readonly discovered: readonly DiscoveredSource[];
   readonly unsupported: readonly UnsupportedEntry[];
   readonly cleanup: () => Promise<void>;
@@ -283,11 +275,44 @@ export async function collectSources(argPaths: readonly string[]): Promise<Colle
     );
   }
 
-  const inputs = await Promise.all(deduped.map((source) => loadSourceInput(source.absolutePath, source.declaredPath)));
+  // PX-1 (ADR 0029 decision 3): content is checked against the extension, as at the API's door. A file whose bytes
+  // contradict its name is listed as unsupported with the reason, never compiled as something it is not.
+  const accepted: { source: DiscoveredSource; bytes: Uint8Array }[] = [];
+  for (const source of deduped) {
+    const bytes = new Uint8Array(await readFile(source.absolutePath));
+    const content = classifySourceContent(bytes, extname(source.declaredPath).toLowerCase(), { maxBytes: Number.MAX_SAFE_INTEGER });
+    if (!content.ok && content.code !== 'SOURCE_UNSUPPORTED') {
+      allUnsupported.push({ relativePath: source.declaredPath, reason: `${content.code}: ${content.message}` });
+      continue;
+    }
+    accepted.push({ source, bytes });
+  }
+  if (accepted.length === 0) {
+    await Promise.all(cleanups.map((c) => c()));
+    throw new Error(
+      `no readable source files were found in: ${argPaths.join(', ')}\n` +
+        allUnsupported
+          .slice(0, 10)
+          .map((u) => `  ${u.relativePath} (${u.reason})`)
+          .join('\n'),
+    );
+  }
+  const inputs = await Promise.all(accepted.map(({ source }) => loadSourceInput(source.absolutePath, source.declaredPath)));
+  const entries: SourceSetEntry[] = accepted.map(({ source, bytes }) => {
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    return {
+      sourceId: `file:${source.declaredPath}`,
+      digestSha256: digest,
+      name: source.declaredPath,
+      byteSize: bytes.length,
+      role: 'primary',
+    };
+  });
 
   return {
     inputs,
-    discovered: deduped,
+    entries,
+    discovered: accepted.map((a) => a.source),
     unsupported: allUnsupported,
     cleanup: async () => {
       await Promise.all(cleanups.map((c) => c()));

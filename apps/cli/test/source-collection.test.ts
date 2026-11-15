@@ -409,3 +409,55 @@ test('collectSources combines an explicit file argument with a directory argumen
     await collected.cleanup();
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// PX-1: archive limits and content checks (gap PX-G03)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** A ZIP whose one entry DECLARES a huge inflated size (the header lies about a bomb). Nothing is inflated before refusal. */
+function zipDeclaring(entryName: string, declaredSize: number): Buffer {
+  const zip = buildRawZipWithMaliciousEntry(entryName, 'x');
+  // Patch the uncompressed size in the local header (offset 22) and the central header (offset 24 of the central record).
+  zip.writeUInt32LE(declaredSize, 22);
+  const central = zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  zip.writeUInt32LE(declaredSize, central + 24);
+  return zip;
+}
+
+test('zip: an entry declaring a decompression bomb is refused before anything is inflated or written', async () => {
+  await withTempDir('xo-px1-', async (dir) => {
+    const zipPath = join(dir, 'bomb.zip');
+    await writeFile(zipPath, zipDeclaring('notes.txt', 900 * 1024 * 1024));
+    await assert.rejects(resolveSourceArg(zipPath), /SOURCE_ARCHIVE_UNSAFE|inflates to more than/);
+  });
+});
+
+test('zip: an entry that inflates to more than its header says is stopped by the reader', async () => {
+  await withTempDir('xo-px1-', async (dir) => {
+    const zipPath = join(dir, 'liar.zip');
+    // The header says 1 byte; the data is 2. The hardened reader refuses the mismatch (CRC and size check).
+    const zip = buildRawZipWithMaliciousEntry('notes.txt', 'xy');
+    zip.writeUInt32LE(1, 22);
+    zip.writeUInt32LE(1, zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])) + 24);
+    await writeFile(zipPath, zip);
+    await assert.rejects(resolveSourceArg(zipPath), /refusing this \.zip/);
+  });
+});
+
+test('content check: a file whose bytes contradict its extension is listed as unsupported with its code, not compiled', async () => {
+  await withTempDir('xo-px1-', async (dir) => {
+    await writeFiles(dir, { 'real.md': '# Policy\n\nSubmit the form.\n', 'fake.pdf': '<html>not a pdf</html>' });
+    const collected = await collectSources([dir]);
+    try {
+      assert.deepEqual(
+        collected.discovered.map((d) => d.declaredPath),
+        ['real.md'],
+      );
+      assert.ok(collected.unsupported.some((u) => u.relativePath === 'fake.pdf' && /SOURCE_SIGNATURE_MISMATCH/.test(u.reason)));
+      assert.equal(collected.entries.length, 1);
+      assert.match(collected.entries[0]!.digestSha256, /^[0-9a-f]{64}$/);
+    } finally {
+      await collected.cleanup();
+    }
+  });
+});

@@ -1,5 +1,6 @@
 import type { CapabilityInputSchema, Result } from '@xo/types';
 import type { NotFoundError, XoError } from '@xo/errors';
+import type { CompilationArtifact } from '@xo/pre-execution';
 
 /**
  * `running` exists in this union for forward-compatibility only — see
@@ -31,6 +32,9 @@ export interface CompilationRecord {
   readonly errorMessage?: string;
   /** UW-3 — what the compiler reported about the source itself (succeeded compilations compiled from UW-3 on). */
   readonly sourceReport?: CompilationSourceReport;
+  /** PX-1 — the source set this compilation ran on (ADR 0029 decision 1), and the digest of its complete artifact. */
+  readonly sourceSetId?: string;
+  readonly artifactDigest?: string;
 }
 
 /**
@@ -116,6 +120,8 @@ export interface CreateCompilationInput {
 }
 
 export interface CompilationSuccessInput {
+  /** PX-1 — everything the compiler returned, bound to the source set and configuration (`@xo/pre-execution`). */
+  readonly artifact?: CompilationArtifact;
   readonly capabilities: readonly CapabilityProjection[];
   readonly sourceReport?: CompilationSourceReport;
   readonly discoveredCount: number;
@@ -157,6 +163,8 @@ export interface CompilationStore {
   getCapabilities(compilationId: string): Promise<Result<readonly CapabilityProjection[], NotFoundError>>;
   /** The serialized graph a succeeded compilation ran against — see `CompilationSuccessInput.graph`'s doc comment. `unknown` here too; the caller (`executions/execute-capability.ts`) is responsible for validating it as a real `XoirGraphJson` via `@xo/xoir`'s own `fromJson`. */
   getCompiledGraph(compilationId: string): Promise<Result<unknown, NotFoundError>>;
+  /** PX-1 — the complete compilation artifact; absent for compilations made before PX-1. */
+  getArtifact(compilationId: string): Promise<Result<CompilationArtifact, NotFoundError>>;
 }
 
 const COMPILATION_ID_PATTERN = /^cmp_[0-9a-f]{32}$/;

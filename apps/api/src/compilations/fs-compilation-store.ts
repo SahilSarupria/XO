@@ -3,6 +3,7 @@ import type { Result } from '@xo/types';
 import { err, ok } from '@xo/types';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import type { BlobStore } from '@xo/storage';
+import { verifyCompilationArtifact, type CompilationArtifact } from '@xo/pre-execution';
 import {
   isValidCompilationId,
   type CapabilityProjection,
@@ -19,6 +20,10 @@ function metadataKey(compilationId: string): string {
 
 function resultKey(compilationId: string): string {
   return `${compilationId}/result.json`;
+}
+
+function artifactKey(compilationId: string): string {
+  return `${compilationId}/artifact.json`;
 }
 
 function mintCompilationId(): string {
@@ -81,6 +86,12 @@ export class FsCompilationStore implements CompilationStore {
     };
     const putResult = await this.store.put(resultKey(compilationId), JSON.stringify(stored), { contentType: 'application/json' });
     if (!putResult.ok) return err(putResult.error);
+    if (input.artifact !== undefined) {
+      const putArtifact = await this.store.put(artifactKey(compilationId), JSON.stringify(input.artifact), {
+        contentType: 'application/json',
+      });
+      if (!putArtifact.ok) return err(putArtifact.error);
+    }
 
     const record: CompilationRecord = {
       ...found.value,
@@ -88,6 +99,7 @@ export class FsCompilationStore implements CompilationStore {
       completedAt: new Date().toISOString(),
       resultStorageKey: resultKey(compilationId),
       ...(input.sourceReport !== undefined ? { sourceReport: input.sourceReport } : {}),
+      ...(input.artifact !== undefined ? { sourceSetId: input.artifact.sourceSet.sourceSetId, artifactDigest: input.artifact.digest } : {}),
     };
     const putMetadata = await this.store.put(metadataKey(compilationId), JSON.stringify(record), { contentType: 'application/json' });
     if (!putMetadata.ok) return err(putMetadata.error);
@@ -151,6 +163,31 @@ export class FsCompilationStore implements CompilationStore {
     } catch {
       return err(new NotFoundError(`compilation "${compilationId}" result (stored result is corrupt)`));
     }
+  }
+
+  async getArtifact(compilationId: string): Promise<Result<CompilationArtifact, NotFoundError>> {
+    const found = await this.get(compilationId);
+    if (!found.ok) return err(found.error);
+    if (found.value.status !== 'succeeded' || found.value.artifactDigest === undefined) {
+      return err(new NotFoundError(`compilation "${compilationId}" has no compilation artifact (status: ${found.value.status})`));
+    }
+    const raw = await this.store.get(artifactKey(compilationId));
+    if (!raw.ok) return err(new NotFoundError(`compilation "${compilationId}" artifact`));
+    let artifact: CompilationArtifact;
+    try {
+      artifact = JSON.parse(new TextDecoder().decode(raw.value)) as CompilationArtifact;
+    } catch {
+      return err(new NotFoundError(`compilation "${compilationId}" artifact (stored artifact is corrupt)`));
+    }
+    // A stored artifact is checked against its own digest and the digest the record names before anyone reads it.
+    const verified = verifyCompilationArtifact(artifact);
+    if (!verified.ok || artifact.digest !== found.value.artifactDigest)
+      return err(
+        new NotFoundError(
+          `compilation "${compilationId}" artifact (failed integrity check: ${verified.ok ? 'digest differs from the record' : verified.reason})`,
+        ),
+      );
+    return ok(artifact);
   }
 
   async getCompiledGraph(compilationId: string): Promise<Result<unknown, NotFoundError>> {

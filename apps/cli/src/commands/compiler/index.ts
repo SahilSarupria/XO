@@ -25,14 +25,14 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'compile',
     subsystem: SUBSYSTEM,
     usage:
-      'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--json]\n' +
+      'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--json]\n' +
       '                                         Compile one or more sources into XOIR and print a summary',
     run: async (args) => {
       const sources = args.positionals;
       const prompt = requireFlag(args.flags, 'prompt');
       if (sources.length === 0 && prompt === undefined) {
         process.stdout.write(
-          'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--json]\n',
+          'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--json]\n',
         );
         return 1;
       }
@@ -49,6 +49,7 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(profile !== undefined ? { profile } : {}),
           ...(domainHint !== undefined ? { domainHint } : {}),
           ...(focusQuestion !== undefined ? { focusQuestion } : {}),
+          ...(requireFlag(args.flags, 'artifact') !== undefined ? { artifactPath: requireFlag(args.flags, 'artifact')! } : {}),
         }),
       );
     },

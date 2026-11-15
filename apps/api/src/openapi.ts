@@ -1008,6 +1008,21 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/artifact': {
+      get: {
+        summary: 'Get the complete compilation artifact (PX-1)',
+        description:
+          'Everything the compiler returned — validation, diagnostics, review queue, unclassified sentences, cross-document conflicts, execution readiness, per-page coverage, pass history — bound to the source set (`sourceSet`, id `ss_…`) and the compile configuration (`configurationDigest`), content-addressed by `digest`. Verified against its digest and the compilation record before it is served; a stored artifact that fails the check is reported, never served. Compilations made before PX-1 have none.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'CompilationArtifact (@xo/pre-execution)' },
+          '404': { description: 'Unknown compilation, no artifact, failed integrity check, or workspace not owned by the caller' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',
@@ -1028,6 +1043,20 @@ export const openApiDocument = {
     },
 
     // P0.3: workspace-bound source upload/registration (storage only — no compilation).
+    '/workspaces/{workspaceId}/source-versions': {
+      get: {
+        summary: 'List source versions (PX-1)',
+        description:
+          'A version is the exact bytes (their SHA-256). Every upload or import that delivered those bytes is listed as its own record, with origin and time; nothing is merged away.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description:
+              '{ versions: { digestSha256, byteSize, firstSeenAt, records: { sourceId, originalFilename, createdAt, origin }[] }[] }',
+          },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/sources': {
       post: {
         summary: 'Upload a source document into this workspace',

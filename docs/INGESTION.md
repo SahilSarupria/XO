@@ -4,15 +4,16 @@ What XO reads, how faithfully, and what it refuses. Everything here runs on the 
 
 ## Formats
 
-| Format           | Frontend                                     | What comes out                                                                                                                                     |
-| ---------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PDF              | `sources/pdf-frontend.ts`                    | Text with page provenance; every page accounted for (read, recovered, excluded as blank, or left unaccounted). Recovered text is marked per block. |
-| Word (.docx)     | `sources/docx-frontend.ts`                   | Text, headings and tables.                                                                                                                         |
-| Excel (.xlsx)    | `sources/xlsx-frontend.ts`, `tabular/`       | Record sets (below), and the same cells as text for rule extraction, from one parse.                                                               |
-| CSV              | `sources/structured-frontend.ts`, `tabular/` | Record sets; one field block per value, naming its cell.                                                                                           |
-| Email (.eml)     | `sources/eml-frontend.ts`, `sources/mime.ts` | Envelope (from, to, cc, date, subject, message id) and the readable body. Attachments are opened as sources of their own at upload (below).        |
-| HTML, JSON, text | existing frontends                           | Unchanged by UW-3.                                                                                                                                 |
-| Images           | `sources/image-frontend.ts`                  | A photo or scan is read by the same recovery tiers as a scanned PDF page (below); its text is marked as recovered. Unread, it stays binary.        |
+| Format         | Frontend                                     | What comes out                                                                                                                                     |
+| -------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PDF            | `sources/pdf-frontend.ts`                    | Text with page provenance; every page accounted for (read, recovered, excluded as blank, or left unaccounted). Recovered text is marked per block. |
+| Word (.docx)   | `sources/docx-frontend.ts`                   | Headings, paragraphs, list numbering and nesting, check boxes, bold run-in titles, tables, footnotes (UW-3c, ADR 0028).                            |
+| Excel (.xlsx)  | `sources/xlsx-frontend.ts`, `tabular/`       | Record sets (below), and the same cells as text for rule extraction, from one parse.                                                               |
+| CSV            | `sources/structured-frontend.ts`, `tabular/` | Record sets; one field block per value, naming its cell.                                                                                           |
+| Email (.eml)   | `sources/eml-frontend.ts`, `sources/mime.ts` | Envelope (from, to, cc, date, subject, message id) and the readable body. Attachments are opened as sources of their own at upload (below).        |
+| HTML, Markdown | `sources/structured-blocks/`                 | WHATWG HTML (parse5) and CommonMark + GitHub tables and task lists (markdown-it) into one block model (UW-3c, ADR 0028).                           |
+| JSON, text     | existing frontends                           | Unchanged.                                                                                                                                         |
+| Images         | `sources/image-frontend.ts`                  | A photo or scan is read by the same recovery tiers as a scanned PDF page (below); its text is marked as recovered. Unread, it stays binary.        |
 
 ## Tabular data: record sets
 
@@ -143,6 +144,47 @@ cue pack that is data and can be replaced per operator or vertical.
 - Studio uses the resumable route for files over 4 MB.
 - `.docx`, `.xlsx`, `.csv` and `.eml` are read at the door, so a broken or hostile file is refused with the reason before anything is
   stored.
+
+## Content checks and source versions (PX-1, ADR 0029)
+
+Every upload, link import, resumable upload and email attachment, and every file given to the CLI, is classified **from its
+bytes** (`@xo/pre-execution` `classifySourceContent`), never from its name or the client's media type alone. Content that
+contradicts the extension is refused with a structured code in the error's `context.sourceRejection`:
+
+| Code                        | When                                                                             |
+| --------------------------- | -------------------------------------------------------------------------------- |
+| `SOURCE_EMPTY`              | The body is empty.                                                               |
+| `SOURCE_TOO_LARGE`          | Over the size limit (64 MB at the API).                                          |
+| `SOURCE_UNSUPPORTED`        | The extension is not in the table below.                                         |
+| `SOURCE_SIGNATURE_MISMATCH` | The bytes are not what the extension holds (a `.pdf` of HTML, a renamed binary). |
+| `SOURCE_ARCHIVE_UNSAFE`     | A `.zip` given to the CLI breaks the archive limits (below).                     |
+
+| Extension                                                                  | Must contain                                                          | Support                                          |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------ |
+| `.pdf`                                                                     | A PDF header in the first 1 KiB                                       | Supported (text layer, layout, OCR when enabled) |
+| `.docx`, `.xlsx`                                                           | A ZIP container (then the Word or workbook reader checks the parts)   | Supported                                        |
+| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.tif`, `.tiff`, `.bmp`, `.heic` | Any image signature; the record takes the detected image's media type | Supported through OCR; HEIC is refused by OCR    |
+| `.eml`                                                                     | Text                                                                  | Supported, with attachments                      |
+| `.html`, `.htm`, `.md`, `.txt`, `.csv`, `.json`                            | Text (UTF-8, Windows-1252 or UTF-16 with a byte-order mark)           | Supported                                        |
+| `.zip` (CLI only)                                                          | A ZIP container, held to the archive limits                           | Supported as a folder of sources                 |
+
+**Archive limits** (`DEFAULT_ARCHIVE_LIMITS`), checked against the declared sizes before anything is inflated, and again
+by the hardened reader, which refuses an entry that inflates to a size other than its header declares:
+
+- at most 2,000 entries;
+- at most 50 MB per entry and 200 MB in total;
+- a compression ratio above 200 on any entry over 1 MB is refused as a bomb;
+- nesting at most 2 deep;
+- no absolute paths, drive letters, NUL bytes or `..` segments.
+
+**Source versions.** A version is the bytes (their SHA-256). Each upload or import that delivered those bytes stays its
+own record, with its own origin, uploader and time; nothing is merged away. `GET /workspaces/:id/source-versions` lists
+versions with their records.
+
+**Source sets and the compilation artifact.** A compilation runs on a source set (an ordered list of versions; id
+`ss_…`) under a compile configuration, and keeps everything the compiler returned in a content-addressed artifact
+(`GET /workspaces/:id/compilations/:cid/artifact`, verified against its digest before it is served; `xo compile
+--artifact <file>` on the CLI). The same bytes, names and configuration give the same artifact digest on both surfaces.
 
 ## Refused loudly
 
