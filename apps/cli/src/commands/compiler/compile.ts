@@ -4,6 +4,7 @@ import { resolveDomainProfile, listDomainProfiles } from '@xo/compiler';
 import {
   artifactOpenWork,
   assessCompleteness,
+  buildCapabilityInventory,
   buildSourceSet,
   compileSourceSet,
   confirmedRulesFrom,
@@ -28,6 +29,8 @@ export interface CompileOptions {
   readonly json?: boolean;
   /** PX-1: write the complete compilation artifact (`@xo/pre-execution`) as JSON to this path. */
   readonly artifactPath?: string;
+  /** PX-5: write the capability inventory (statuses, four readiness answers, human task contracts, gaps) to this path. */
+  readonly inventoryPath?: string;
   /** PX-3: a JSON file of human rulings (an array of `HumanRuling`). Confirm-rule rulings for this source set compile as confirmed rules. */
   readonly rulingsPath?: string;
 }
@@ -137,6 +140,12 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
       await writeFile(options.artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
     const openWork = artifact !== undefined ? artifactOpenWork(artifact) : undefined;
     const completeness = artifact !== undefined ? assessCompleteness(artifact, rulings) : undefined;
+    const inventory =
+      options.inventoryPath !== undefined
+        ? buildCapabilityInventory(value.graph, artifact !== undefined ? { artifactDigest: artifact.digest } : {})
+        : undefined;
+    if (options.inventoryPath !== undefined && inventory !== undefined)
+      await writeFile(options.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`);
 
     if (options.json) {
       return ok([
@@ -159,6 +168,7 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
                 completeness,
               }
             : {}),
+          ...(inventory !== undefined ? { inventoryDigest: inventory.digest, inventoryCounts: inventory.counts } : {}),
         }),
       ]);
     }
@@ -205,6 +215,13 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
       }
       for (const note of artifact.runNotes) lines.push(`Note: ${note}`);
       if (options.artifactPath !== undefined) lines.push(`Artifact written:   ${options.artifactPath}`);
+    }
+    if (inventory !== undefined) {
+      const c = inventory.counts;
+      lines.push(
+        `Capabilities:       ${c.total} (${c.explicit} explicit, ${c.inferred} inferred, ${c.unresolved} unresolved, ${c.duplicate} duplicate, ${c.unsupported} unsupported); runnable only after approval at start`,
+      );
+      lines.push(`Inventory written:  ${options.inventoryPath}`);
     }
 
     return { exitCode: value.valid ? 0 : 1, lines };

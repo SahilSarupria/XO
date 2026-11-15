@@ -125,6 +125,36 @@ export interface ActionKnowledgeRef {
   readonly subtype: string;
 }
 
+/**
+ * PX-5 (ADR 0029 decision 11) — the human task contract: what a person must be given and must return for a step to run as
+ * human-in-the-loop. ONE rule (`humanTaskContractOf`, `human-task.ts`) decides whether a contract has one, for both paths
+ * the compiler produces:
+ *
+ *   `procedure-step`   a step of a procedure the document lays out (step table row, numbered instruction): the
+ *                      instruction is the step's own text, `doneWhen` its completion criterion, `actorRole` its owner cell
+ *   `action-knowledge` a prose capability with no rules and at least one linked action/process knowledge node: the
+ *                      instruction is the capability's source sentence
+ *
+ * Without a contract a step stays unresolved: nothing becomes an approvable human step just because it reads like an action.
+ */
+export interface HumanTaskContract {
+  readonly origin: 'procedure-step' | 'action-knowledge';
+  /** What the person does, exactly as the source states it (never paraphrased). */
+  readonly instruction: string;
+  /** When the task counts as done, when the source states it. */
+  readonly doneWhen?: string;
+  /** Who does it: the role the source names (`stated`), or `unassigned` — a role must then be assigned before start. */
+  readonly actorRole: { readonly value: string; readonly derivation: 'stated' | 'unassigned' };
+  /** Names of the inputs the person needs (the contract's inputs). */
+  readonly requiredInputs: readonly string[];
+  /** What the person returns: always `completed` (boolean), plus one string field per declared output. */
+  readonly outcomeSchema: {
+    readonly type: 'object';
+    readonly properties: Readonly<Record<string, { readonly type: 'boolean' | 'string' }>>;
+    readonly required: readonly string[];
+  };
+}
+
 export interface SemanticCapabilityContract {
   /**
    * Reused verbatim from the source XOIR capability node's id — never a
@@ -145,6 +175,13 @@ export interface SemanticCapabilityContract {
   readonly rules: readonly SemanticCapabilityRule[];
   /** Every linked `concept` node classified as action/process content — see {@link ActionKnowledgeRef}. Deterministic (sorted-by-id) order, same convention as `rules`. Empty for a capability with no such linkage — a legitimate, non-error outcome, exactly like an empty `rules`. Orthogonal to `rules`: a contract can have rules, action refs, both, or neither; nothing in this builder treats them as mutually exclusive. */
   readonly actionKnowledgeRefs: readonly ActionKnowledgeRef[];
+  /**
+   * PX-5, optional and additive: the human task contract the SOURCE states for a procedure step (built by
+   * `contract-builder.ts` from the step's own metadata). Absent for every other capability; a prose capability's contract
+   * is derived by `humanTaskContractOf` from fields every contract already has, so older embedded contracts keep resolving
+   * exactly as before. Part of the content hash when present.
+   */
+  readonly humanTask?: HumanTaskContract;
   readonly confidence: number;
   readonly sourceRefs: readonly ContractSourceRef[];
   /** Every XOIR node id this contract was projected from — the capability node plus every linked rule node plus every linked action-knowledge node — for provenance chains that need to point back through the contract to XOIR (see `@xo/runtime`'s execution receipt). Plain strings (a XOIR node id's own wire representation), not `@xo/xoir`'s branded `XoirNodeId` — see this file's top doc comment. */

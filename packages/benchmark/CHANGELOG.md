@@ -4,6 +4,28 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## PX-5 human-task contract rule — `document-structure` expectations for two procedure workflows
+
+ADR 0029 decision 11 makes one rule decide whether a step runs as human-in-the-loop: a procedure step the source lays out
+(its instruction, done-when and owner) and a ruleless prose action with linked action knowledge both get a human task
+contract and bind `human_in_the_loop`; without a contract neither does. Before PX-5 a procedure step stayed unresolved, so
+a procedure's workflow was `not_executable_yet`.
+
+- Capability resolution: 15 of the suite's 20 procedure steps now resolve (`unresolved` → `resolved`):
+  `onboarding-markdown` step1-3, `release-markdown-table` step1-4, `sop-wrapped-table` step1-3 and step5,
+  `tasktest-software-guide` step2, step3, step7, step8. The other five stay unresolved, because those steps are linked to
+  rules, so they are the deterministic resolver's to compile and never a human task.
+- Workflow executability: `onboarding-markdown` / `wf-before-day-one` and `release-markdown-table` / `wf-release` change
+  from `not_executable_yet` to `executable_candidate`, because every step now has a human task contract. The other two
+  procedure workflows stay `not_executable_yet`, because they contain one of the five unresolved steps.
+- Fingerprints: `tasktest-software-guide` `fa32c554c45d55b2` → `05ce6c7715522847`, `sop-wrapped-table`
+  `221fc941184d0433` → `dae3ebde749ce0d3`, `onboarding-markdown` `32d4be93c84aed98` → `94cc6f6005b804db`,
+  `release-markdown-table` `5c39b6b9a8d1e227` → `a7bd5d00684e7c80`. Register notes updated.
+- No accepted baseline moved: the prose-action escalation record and binding derivation are byte-identical to before, so
+  `runtime-mechanics` and `vertical-fixtures` reproduce exactly.
+- Also in PX-5: a step column that only numbers the steps ("1", "2") is no longer used as a step's name; the name comes
+  from the instruction ("Pull the latest code"). No suite expectation depended on the numeric name.
+
 ## UW-3c real-document hardening — vertical-fixtures baseline refresh
 
 **Context.** UW-3c hardens reading of documents XO was not written against (`packages/evaluation/suites/real-documents.ts`,

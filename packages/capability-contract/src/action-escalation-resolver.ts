@@ -1,3 +1,4 @@
+import { humanTaskContractOf } from './human-task.js';
 import type { BindingOutcome, BindingResolver, CapabilityBinding, Result_LikeUnknown, SemanticCapabilityContract } from './types.js';
 
 const RESOLVER_NAME = 'action-escalation-resolver';
@@ -88,14 +89,17 @@ export class ActionEscalationBindingResolver implements BindingResolver {
   readonly name = RESOLVER_NAME;
 
   resolve(contract: SemanticCapabilityContract): BindingOutcome | undefined {
-    if (contract.rules.length > 0) return undefined;
-    // `?? []`: defends against an embedded contract produced by a
-    // pre-Action-Capability-Binding-v1 compiler, where this field simply
-    // did not exist yet — the correct forward-compatible reading of an
-    // absent, newly-added, non-`required` field is "no evidence," never
-    // a crash. See SPECIFICATION.md §6.6's forward-compatibility rule.
+    // PX-5: one rule for every path (ADR 0029 decision 11) — `humanTaskContractOf` returns a contract for a procedure step
+    // (stated by the source) and for a ruleless prose capability with linked action knowledge (derived from its source
+    // sentence), and nothing otherwise. The prose case is unchanged from Action Capability Binding v1.
+    const humanTask = humanTaskContractOf(contract);
+    if (humanTask === undefined) return undefined;
+    // `?? []`: an embedded contract from a compiler that predates action knowledge refs.
     const actionKnowledgeRefs = contract.actionKnowledgeRefs ?? [];
-    if (actionKnowledgeRefs.length === 0) return undefined;
+    const grounding =
+      humanTask.origin === 'procedure-step'
+        ? 'a step of a procedure the source lays out'
+        : `an operational action grounded in ${actionKnowledgeRefs.length} linked source node(s)`;
 
     const evaluate = (input: Readonly<Record<string, unknown>>): Result_LikeUnknown => ({
       ok: true,
@@ -103,8 +107,11 @@ export class ActionEscalationBindingResolver implements BindingResolver {
         status: 'escalation_required',
         capabilityId: contract.id,
         capabilityName: contract.name,
-        reason: `"${contract.name}" has no known deterministic execution procedure; XO recognized it as an operational action grounded in ${actionKnowledgeRefs.length} linked source node(s), but a human must actually perform it.`,
+        reason: `"${contract.name}" has no known deterministic execution procedure; XO recognized it as ${grounding}, but a human must actually perform it.`,
         actionKnowledgeRefs,
+        // The prose (action-knowledge) record is unchanged from Action Capability Binding v1; a procedure step carries the
+        // contract the source states, so the person sees the instruction, done-when and role.
+        ...(humanTask.origin === 'procedure-step' ? { humanTask } : {}),
         input,
       },
     });
@@ -114,10 +121,14 @@ export class ActionEscalationBindingResolver implements BindingResolver {
       contractId: contract.id,
       implementationClass: 'human_in_the_loop',
       resolverName: RESOLVER_NAME,
-      description: `No deterministic decision procedure exists for "${contract.name}" — this binding routes execution to a human, grounded in ${actionKnowledgeRefs.length} linked operational-action/process knowledge node(s) (${actionKnowledgeRefs.map((r) => r.sourceNodeId).join(', ')}).`,
+      description:
+        humanTask.origin === 'procedure-step'
+          ? `"${contract.name}" is a step of a procedure the source lays out — this binding routes it to a person under its human task contract (instruction${humanTask.doneWhen !== undefined ? ', done-when' : ''}, role ${humanTask.actorRole.value}).`
+          : `No deterministic decision procedure exists for "${contract.name}" — this binding routes execution to a human, grounded in ${actionKnowledgeRefs.length} linked operational-action/process knowledge node(s) (${actionKnowledgeRefs.map((r) => r.sourceNodeId).join(', ')}).`,
       evaluate,
       derivation: {
         actionKnowledgeRefs,
+        ...(humanTask.origin === 'procedure-step' ? { humanTask } : {}),
       },
     };
     return { status: 'resolved', binding };

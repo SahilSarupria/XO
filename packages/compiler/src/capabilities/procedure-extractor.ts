@@ -81,7 +81,8 @@ function stepNameAndCategory(label: string | undefined, action: string): { name:
   const words = main.split(/\s+/).filter((w) => w.length > 0);
   const lead = (words[0] ?? '').replace(/[^\p{L}-]/gu, '').toLowerCase();
   const category: CapabilityCategory = CAPABILITY_VERBS[lead] ?? 'action';
-  if (label !== undefined && isPlausibleCandidateName(label)) return { name: label, category };
+  // PX-5: a step column that only numbers the steps ("1", "2.", "iv" is still a word) is not a name.
+  if (label !== undefined && /\p{L}/u.test(label) && isPlausibleCandidateName(label)) return { name: label, category };
   if (isActionVerb(lead) || isBaseVerb(lead))
     return { name: nameFromClause(words, 0, lead, STEP_NAME_MAX_OBJECT_WORDS).name.replace(/[,;:]+$/, ''), category };
   return { name: synthesizeTitle(first).replace(/[.…,;:]+$/, ''), category };

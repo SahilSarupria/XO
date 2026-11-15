@@ -67,6 +67,8 @@ export function computeContractContentHash(contract: SemanticCapabilityContract)
     // action knowledge refs has no such field — same forward-compatible
     // reading `ActionEscalationBindingResolver` already applies.
     actionKnowledgeRefs: sortedSet((contract.actionKnowledgeRefs ?? []).map(({ subtype }) => ({ subtype }))),
+    // PX-5: present only on procedure-step contracts, so every other contract's hash is unchanged.
+    ...(contract.humanTask !== undefined ? { humanTask: normalize(contract.humanTask) } : {}),
   };
   return ContentHash(new Sha256Hasher().hash(canonicalStringify(payload)));
 }

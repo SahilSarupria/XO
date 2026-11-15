@@ -25,14 +25,14 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'compile',
     subsystem: SUBSYSTEM,
     usage:
-      'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--rulings <file>] [--json]\n' +
+      'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--inventory <file>] [--rulings <file>] [--json]\n' +
       '                                         Compile one or more sources into XOIR and print a summary',
     run: async (args) => {
       const sources = args.positionals;
       const prompt = requireFlag(args.flags, 'prompt');
       if (sources.length === 0 && prompt === undefined) {
         process.stdout.write(
-          'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--rulings <file>] [--json]\n',
+          'xo compile <source>... [--prompt <text> [--confirmed-by <id>]] [--profile <id>|auto] [--domain-hint <text>] [--focus-question <text>] [--artifact <file>] [--inventory <file>] [--rulings <file>] [--json]\n',
         );
         return 1;
       }
@@ -51,6 +51,7 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(focusQuestion !== undefined ? { focusQuestion } : {}),
           ...(requireFlag(args.flags, 'artifact') !== undefined ? { artifactPath: requireFlag(args.flags, 'artifact')! } : {}),
           ...(requireFlag(args.flags, 'rulings') !== undefined ? { rulingsPath: requireFlag(args.flags, 'rulings')! } : {}),
+          ...(requireFlag(args.flags, 'inventory') !== undefined ? { inventoryPath: requireFlag(args.flags, 'inventory')! } : {}),
         }),
       );
     },

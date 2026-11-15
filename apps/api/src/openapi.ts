@@ -1255,6 +1255,28 @@ export const openApiDocument = {
         responses: { '200': { description: '{ waivers: SourceWaiver[] }' } },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/capability-inventory': {
+      get: {
+        summary: 'Capability inventory of a compilation (PX-5)',
+        description:
+          'One report per discovered capability: status (explicit | inferred | accepted | rejected | duplicate | unresolved | unsupported), four independent readiness answers (eligible, bound, runtimeSupported, authorized — runnable only when all four are yes), the human task contract (one rule for procedure steps and prose actions), parameter derivation (structured | declared | inferred; inferred required inputs need review), duplicate groups (fully equivalent only) and gaps for each `need` query parameter. Authorized is the approval verdict the execution boundary reaches; permission is rechecked at start.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'need',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'A capability a goal needs (repeatable); unmet needs are reported as gaps',
+          },
+        ],
+        responses: {
+          '200': { description: '{ compilationId, inventory: CapabilityInventory }' },
+          '404': { description: 'Unknown compilation or no compiled graph' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',

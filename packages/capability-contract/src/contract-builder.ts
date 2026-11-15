@@ -12,6 +12,7 @@ import type {
   SemanticCapabilityRule,
 } from './types.js';
 import type { StructuredAction, StructuredCondition, StructuredExceptionCondition } from './structured-expression-grammar.js';
+import { procedureStepHumanTask } from './human-task.js';
 
 const RULE_KINDS = new Set(['decision_node', 'heuristic', 'constraint']);
 
@@ -366,17 +367,27 @@ export function buildSemanticCapabilityContract(
 
   const determinism: ContractDeterminism = props.determinism ?? 'unknown';
 
+  const outputs = (props.outputs ?? []).map(parseParam);
+  // PX-5: a procedure step's human task contract, from the step's own metadata (instruction, done-when, owner).
+  const humanTask = procedureStepHumanTask(
+    (props as unknown as { readonly metadata?: Readonly<Record<string, unknown>> }).metadata,
+    props.description,
+    inputs,
+    outputs,
+  );
+
   const contract: SemanticCapabilityContract = {
     id: node.id,
     name: props.name,
     description: props.description,
     ...(props.category !== undefined ? { category: props.category } : {}),
     inputs,
-    outputs: (props.outputs ?? []).map(parseParam),
+    outputs,
     requiredPermissions: props.requiredPermissions ?? [],
     determinism,
     rules,
     actionKnowledgeRefs,
+    ...(humanTask !== undefined ? { humanTask } : {}),
     confidence: node.metadata.confidence,
     sourceRefs: node.metadata.sourceRefs.map(toContractSourceRef),
     sourceXoirNodeIds: [node.id as string, ...rules.map((r) => r.sourceNodeId), ...actionKnowledgeRefs.map((r) => r.sourceNodeId)].sort(),

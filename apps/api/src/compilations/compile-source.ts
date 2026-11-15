@@ -101,7 +101,7 @@ export async function compileSourceRecord(
           ...(ref.locator !== undefined ? { locator: ref.locator } : {}),
           ...(ref.pages !== undefined ? { pages: ref.pages } : {}),
         })),
-        ...understandingOf(nodeProps, outcome.status),
+        ...understandingOf(nodeProps),
       };
     });
 
@@ -186,14 +186,12 @@ export { XoError };
 
 /**
  * UW-3b: the compiler's own reading of a discovered capability, from its node metadata (`understanding`, `quality.review`).
- * A suspected extraction error wins over "manual step"; neither changes `status`, approval or execution.
+ * A suspected extraction error wins over "manual step"; neither changes `status`, approval or execution. PX-5: a manual
+ * step stays a manual step when it binds as a human task.
  */
-function understandingOf(
-  props: CapabilityNodeProps | undefined,
-  status: CapabilityProjection['status'],
-): { readonly understanding?: 'manual_step' | 'possible_extraction_error' } {
+function understandingOf(props: CapabilityNodeProps | undefined): { readonly understanding?: 'manual_step' | 'possible_extraction_error' } {
   const meta = (props as { readonly metadata?: Readonly<Record<string, unknown>> } | undefined)?.metadata ?? {};
   if (meta['quality.review'] === 'possible-extraction-error') return { understanding: 'possible_extraction_error' };
-  if (status !== 'resolved' && meta['understanding'] === 'manual-step') return { understanding: 'manual_step' };
+  if (meta['understanding'] === 'manual-step') return { understanding: 'manual_step' };
   return {};
 }

@@ -4,7 +4,7 @@
   "cases": [
     {
       "caseId": "tasktest-software-guide",
-      "expectationsFingerprint": "fa32c554c45d55b2",
+      "expectationsFingerprint": "05ce6c7715522847",
       "authoring": "Authored by reading TaskTest.pdf (pdftotext -layout and the rendered pages), independently of XO's output: the 8 numbered ground rules, the 4 'When You Get Stuck' bullets, the 9 definition-of-done checkboxes and the 8 workflow-table rows.",
       "world": [
         {
@@ -309,7 +309,7 @@
     },
     {
       "caseId": "sop-wrapped-table",
-      "expectationsFingerprint": "221fc941184d0433",
+      "expectationsFingerprint": "dae3ebde749ce0d3",
       "authoring": "Authored from build.py's source text for this document (the generator is the document's specification).",
       "world": [
         {
@@ -606,7 +606,7 @@
     },
     {
       "caseId": "onboarding-markdown",
-      "expectationsFingerprint": "32d4be93c84aed98",
+      "expectationsFingerprint": "94cc6f6005b804db",
       "authoring": "Authored from the markdown source.",
       "world": [
         {
@@ -709,14 +709,14 @@
           "id": "wf-before-day-one",
           "identity": "explicit",
           "source": "Before day one, items 1-3",
-          "note": "numbered order"
+          "note": "numbered order; an executable candidate since PX-5: each step is a human task under its stated instruction (ADR 0029 decision 11)"
         }
       ],
       "unestablished": []
     },
     {
       "caseId": "release-markdown-table",
-      "expectationsFingerprint": "5c39b6b9a8d1e227",
+      "expectationsFingerprint": "a7bd5d00684e7c80",
       "authoring": "Authored from the markdown source.",
       "world": [
         {
@@ -776,7 +776,7 @@
           "id": "wf-release",
           "identity": "explicit",
           "source": "table rows 1-4",
-          "note": "numbered order"
+          "note": "numbered order; an executable candidate since PX-5: each step is a human task under its stated instruction (ADR 0029 decision 11)"
         }
       ],
       "unestablished": []

@@ -579,7 +579,7 @@
               "name": {
                 "equals": "Plan"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "TaskTest.pdf",
                 "pages": [
@@ -592,7 +592,7 @@
               "name": {
                 "equals": "Set up"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "TaskTest.pdf",
                 "pages": [
@@ -644,7 +644,7 @@
               "name": {
                 "equals": "Deliver"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "TaskTest.pdf",
                 "pages": [
@@ -657,7 +657,7 @@
               "name": {
                 "equals": "Reflect"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "TaskTest.pdf",
                 "pages": [
@@ -781,7 +781,7 @@
               "name": {
                 "equals": "Isolate"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "sop-wrapped-table.pdf",
                 "pages": [
@@ -794,7 +794,7 @@
               "name": {
                 "equals": "Drain"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "sop-wrapped-table.pdf",
                 "pages": [
@@ -807,7 +807,7 @@
               "name": {
                 "equals": "Inspect"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "sop-wrapped-table.pdf",
                 "pages": [
@@ -833,7 +833,7 @@
               "name": {
                 "equals": "Restore"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "sop-wrapped-table.pdf",
                 "pages": [
@@ -1465,7 +1465,7 @@
               "name": {
                 "equals": "Order the laptop and the access badge"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "onboarding.md"
               }
@@ -1475,7 +1475,7 @@
               "name": {
                 "equals": "Create the email account"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "onboarding.md"
               }
@@ -1485,7 +1485,7 @@
               "name": {
                 "equals": "Book a welcome lunch"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "onboarding.md"
               }
@@ -1508,7 +1508,7 @@
                 }
               ],
               "ordered": true,
-              "executability": "not_executable_yet"
+              "executability": "executable_candidate"
             }
           ]
         }
@@ -1535,7 +1535,7 @@
               "name": {
                 "equals": "Freeze"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "release.md"
               }
@@ -1545,7 +1545,7 @@
               "name": {
                 "equals": "Build"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "release.md"
               }
@@ -1555,7 +1555,7 @@
               "name": {
                 "equals": "Verify"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "release.md"
               }
@@ -1565,7 +1565,7 @@
               "name": {
                 "equals": "Ship"
               },
-              "resolution": "unresolved",
+              "resolution": "resolved",
               "evidence": {
                 "documentPath": "release.md"
               }
@@ -1591,7 +1591,7 @@
                 }
               ],
               "ordered": true,
-              "executability": "not_executable_yet"
+              "executability": "executable_candidate"
             }
           ]
         }
