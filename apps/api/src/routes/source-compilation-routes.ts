@@ -1,7 +1,6 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import { err } from '@xo/types';
-import { fromJson as xoirFromJson, type XoirGraphJson } from '@xo/xoir';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -34,9 +33,9 @@ import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
 import { FsWaiverStore } from '../waivers/waiver-store.js';
 import { FsRulingStore } from '../waivers/ruling-store.js';
+import { loadPreExecutionContext } from '../pre-execution/context.js';
 import {
   assessCompleteness,
-  buildCapabilityInventory,
   buildSourceSet,
   confirmedRulesFrom,
   createHumanRuling,
@@ -385,36 +384,8 @@ export function registerCompilationRoutes(
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const compilationId = req.params['compilationId'];
     if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
-    const store = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
-    const record = await store.get(compilationId);
-    if (!record.ok) throw record.error;
-    const graphJson = await store.getCompiledGraph(compilationId);
-    if (!graphJson.ok) throw graphJson.error;
-    const graph = xoirFromJson(graphJson.value as XoirGraphJson);
-    if (!graph.ok) throw new XoError(ErrorCode.INVALID_ARGUMENT, `compilation "${compilationId}" graph: ${graph.error.message}`);
-    const artifact = await store.getArtifact(compilationId);
-    const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
-    const approved = new Map<string, boolean>();
-    for (const node of graph.value.allNodes()) {
-      if (node.kind !== 'capability') continue;
-      const current = deriveCapabilityApprovalStateFromJson(graphJson.value, node.id, record.value.sourceDigestSha256);
-      const verdict = await verifyApproval(
-        approvalStore,
-        { workspaceId: workspace.workspaceId, compilationId, capabilityId: node.id },
-        current,
-      );
-      approved.set(node.id, verdict.ok && verdict.value.approved);
-    }
-    const inventory = buildCapabilityInventory(graph.value, {
-      ...(artifact.ok ? { artifactDigest: artifact.value.digest } : {}),
-      decisions: new Map([...approved].filter(([, a]) => a).map(([id]) => [id, 'accepted' as const])),
-      authorize: (c) =>
-        approved.get(c.capabilityId) === true
-          ? { value: 'yes', reason: 'approved for its current contract; permission is rechecked when a workflow starts' }
-          : { value: 'no', reason: 'not approved for its current contract' },
-      needs: req.query.getAll('need'),
-    });
-    return json(200, { compilationId, inventory });
+    const ctx = await loadPreExecutionContext(workspace, dataConfig, compilationId, req.query.getAll('need'));
+    return json(200, { compilationId, inventory: ctx.inventory });
   }
 
   async function getCapabilities(req: ApiRequest): Promise<ApiResponse> {

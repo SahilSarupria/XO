@@ -7,3 +7,5 @@ export * from './compile-source-set.js';
 export * from './source-quality.js';
 export * from './completeness.js';
 export * from './capability-inventory.js';
+export * from './goal.js';
+export * from './lower-workflow.js';

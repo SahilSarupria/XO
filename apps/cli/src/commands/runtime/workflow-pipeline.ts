@@ -27,6 +27,7 @@ import {
   RuleBasedPolicy,
 } from '@xo/permissions';
 import { XoirNodeId } from '@xo/xoir';
+import { goalSpecification, selectWorkflowScope } from '@xo/pre-execution';
 import { collectSources } from '../compiler/source-collection.js';
 
 /**
@@ -42,6 +43,10 @@ export interface WorkflowPipelineOptions {
   readonly domainHint?: string;
   readonly workflowId?: string;
   readonly workflowIndex?: number;
+  /** PX-6: what the workflow is for; selects the candidate by needed steps, section and words — or asks, never guesses. */
+  readonly goal?: string;
+  /** PX-6: capabilities the goal needs (scored first). */
+  readonly needs?: readonly string[];
   /** A real, user-supplied "trigger payload" — see `workflow.ts`'s own doc comment for the exact contract (merged unmodified, never inferred/defaulted). */
   readonly input?: Readonly<Record<string, unknown>>;
 }
@@ -223,13 +228,30 @@ export function selectWorkflow(
       ? { workflow: found, rationale: `explicit --workflow-index ${options.workflowIndex}` }
       : { workflow: undefined, rationale: `no discovered workflow at index ${options.workflowIndex} (${workflows.length} discovered)` };
   }
+  if (options.goal !== undefined) {
+    let goal;
+    try {
+      goal = goalSpecification({ text: options.goal, ...(options.needs !== undefined ? { needs: options.needs } : {}) });
+    } catch (cause) {
+      return { workflow: undefined, rationale: (cause as Error).message };
+    }
+    const selection = selectWorkflowScope(workflows, goal);
+    if (selection.status === 'selected')
+      return { workflow: workflows.find((w) => w.id === selection.workflowId), rationale: `goal: ${selection.rationale}` };
+    if (selection.status === 'needs_clarification')
+      return {
+        workflow: undefined,
+        rationale: `${selection.question} (rerun with --workflow-id: ${selection.options.map((o) => `${o.workflowId} = "${o.name}"`).join(', ')})`,
+      };
+    return { workflow: undefined, rationale: selection.reason };
+  }
   const ranked = [...workflows].sort((a, b) =>
     b.steps.length !== a.steps.length ? b.steps.length - a.steps.length : b.confidence - a.confidence,
   );
   const best = ranked[0]!;
   return {
     workflow: best,
-    rationale: `highest-confidence workflow with the most steps (${best.steps.length} steps, confidence ${best.confidence.toFixed(2)}) among ${workflows.length} discovered`,
+    rationale: `no goal given: the highest-confidence workflow with the most steps (${best.steps.length} steps, confidence ${best.confidence.toFixed(2)}) among ${workflows.length} discovered — pass --goal "<what it is for>" to choose by purpose`,
   };
 }
 

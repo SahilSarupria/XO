@@ -1277,6 +1277,39 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/generated-workflows': {
+      post: {
+        summary: 'Generate Workflow IR from a goal (PX-6)',
+        description:
+          'Body `{ goal: { text, needs?, section? }, workflowId? }`. The goal selects the candidate workflow (scored on needed steps, section and words, with the reasons) unless `workflowId` names one; when two fit equally the response is `{ definition: null, selection: { status: "needs_clarification", question, options } }` and nothing is generated, and `no_match` likewise. The candidate is lowered by the one lowering function (human-task steps → approve, each later step running only when the person confirmed the previous one; rule-bound steps → decide with rules rendered from the stated conditions; anything else reported, never invented), validated with the package validator, and persisted with its digest. Distinct from the Studio\'s authored `workflow-definitions`.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ definition: GeneratedWorkflow, selection }' },
+          '200': { description: '{ definition: null, selection }: the goal did not select one workflow' },
+          '400': { description: 'Invalid goal' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows': {
+      get: {
+        summary: 'List generated workflows (PX-6)',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ definitions: GeneratedWorkflow[] }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}': {
+      get: {
+        summary: 'One generated workflow: goal, selection, Workflow IR, rationale, issues, digest (PX-6)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'GeneratedWorkflow' }, '404': { description: 'Unknown id' } },
+      },
+    },
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',
