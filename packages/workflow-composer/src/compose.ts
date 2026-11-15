@@ -152,6 +152,9 @@ function connectedComponents(graph: XoirGraph, scope: ReadonlySet<XoirNodeId>): 
       for (let j = i + 1; j < members.length; j++) {
         const mJ = members[j];
         if (mJ === undefined) continue;
+        // UW-3c: a shared concept is not a process boundary across sections: two capabilities that mention the same
+        // process concept from different multi-capability sections are co-located by vocabulary, not one process.
+        if (!sameSection(graph, mI, mJ, sectionSizes)) continue;
         adjacency.get(mI)?.add(mJ);
         adjacency.get(mJ)?.add(mI);
       }
