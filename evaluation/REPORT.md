@@ -90,21 +90,21 @@ Evidence for UAC-19. Mode: deterministic.
 
 | Measure | Value | Threshold |
 | --- | --- | --- |
-| Expected items read at all (blind) | 76.9% (110/143) |  |
-| Expected items read as the right kind (blind) | 76.9% (110/143) | ≥ 0.9 (proposed) |
+| Expected items read at all (blind) | 79.7% (114/143) |  |
+| Expected items read as the right kind (blind) | 79.7% (114/143) | ≥ 0.9 (proposed) |
 | Modality right where the wording is unambiguous (blind) | 100.0% (56/56) |  |
 | Check-box state kept (blind) | no cases (0/0) |  |
 | Procedure order kept (consecutive step pairs) (blind) | no cases (0/0) |  |
-| Output that is a right reading of something in the document (blind) | 68.8% (110/160) | ≥ 0.9 (proposed) |
-| Expected items lost without any report (blind) | 13 | ≤ 0 (proposed) |
+| Output that is a right reading of something in the document (blind) | 67.9% (114/168) | ≥ 0.9 (proposed) |
+| Expected items lost without any report (blind) | 7 | ≤ 0 (proposed) |
 | Outputs built from text of two items (blind) | 0 |  |
-| Outputs built from questions, labels, placeholders or descriptions (blind) | 7 |  |
+| Outputs built from questions, labels, placeholders or descriptions (blind) | 9 |  |
 | Expected items read at all (held-out) | 82.5% (184/223) |  |
 | Expected items read as the right kind (held-out) | 82.1% (183/223) | ≥ 0.9 (proposed) |
 | Modality right where the wording is unambiguous (held-out) | 100.0% (43/43) |  |
 | Check-box state kept (held-out) | 100.0% (39/39) |  |
 | Procedure order kept (consecutive step pairs) (held-out) | 100.0% (28/28) |  |
-| Output that is a right reading of something in the document (held-out) | 82.4% (187/227) |  |
+| Output that is a right reading of something in the document (held-out) | 81.3% (187/230) |  |
 | Expected items lost without any report (held-out) | 32 |  |
 | Outputs built from text of two items (held-out) | 0 |  |
 | Outputs built from questions, labels, placeholders or descriptions (held-out) | 13 |  |
@@ -119,10 +119,10 @@ Evidence for UAC-19. Mode: deterministic.
 | Outputs built from questions, labels, placeholders or descriptions (dev) | 0 |  |
 
 **Notes:**
-- blind by format: Markdown: 18/21 items read right, 18/28 outputs right; Word: 29/34 items read right, 29/42 outputs right; scanned PDF: 16/21 items read right, 16/25 outputs right; web page: 19/27 items read right, 19/25 outputs right; PDF: 19/29 items read right, 19/29 outputs right; Word HTML export: 9/11 items read right, 9/11 outputs right.
-- blind failure modes: missed-silently 13, missed-reported 20, spurious-from-non-content 7, unmatched-output 40.
-- held-out by format: Word: 56/62 items read right, 57/67 outputs right; PDF: 23/37 items read right, 24/34 outputs right; scanned PDF: 12/20 items read right, 12/14 outputs right; Markdown: 46/52 items read right, 47/56 outputs right; web page: 36/42 items read right, 37/45 outputs right; Word HTML export: 10/10 items read right, 10/11 outputs right.
-- held-out failure modes: missed-silently 32, missed-reported 7, wrong-kind 1, duplicate 4, spurious-from-non-content 13, unmatched-output 26.
+- blind by format: Markdown: 18/21 items read right, 18/28 outputs right; Word: 29/34 items read right, 29/43 outputs right; scanned PDF: 16/21 items read right, 16/25 outputs right; web page: 20/27 items read right, 20/27 outputs right; PDF: 22/29 items read right, 22/34 outputs right; Word HTML export: 9/11 items read right, 9/11 outputs right.
+- blind failure modes: missed-silently 7, missed-reported 22, spurious-from-non-content 9, unmatched-output 42.
+- held-out by format: Word: 56/62 items read right, 57/68 outputs right; PDF: 23/37 items read right, 24/35 outputs right; scanned PDF: 12/20 items read right, 12/15 outputs right; Markdown: 46/52 items read right, 47/56 outputs right; web page: 36/42 items read right, 37/45 outputs right; Word HTML export: 10/10 items read right, 10/11 outputs right.
+- held-out failure modes: missed-silently 32, missed-reported 7, wrong-kind 1, duplicate 4, spurious-from-non-content 13, unmatched-output 29.
 - dev by format: Word: 46/46 items read right, 46/48 outputs right; PDF: 13/13 items read right, 13/14 outputs right; scanned PDF: 22/24 items read right, 22/23 outputs right; Markdown: 39/39 items read right, 39/39 outputs right; web page: 39/39 items read right, 39/39 outputs right.
 - dev failure modes: missed-silently 2, order-lost 2.
 
@@ -131,6 +131,7 @@ Evidence for UAC-19. Mode: deterministic.
 - Labels are one reader's reading under a written policy; ambiguous text is labelled neutral rather than forced either way.
 - Format variants other than the originals were produced by pandoc and LibreOffice, and the scans by rasterising and degrading a PDF export (examples/real-corpus/build.sh). A phone photo of a crumpled page is harder than these scans.
 - Matching is by distinctive phrase with OCR tolerance; a reading with the right words in the wrong structure can still match.
+- The blind split was measured twice, never to choose a change: after the dev tuning (items read right 110/143), and after generic fixes made for failures found elsewhere — a benchmark regression on a per-glyph-bullet PDF and one held-out item lost silently (114/143). Both measurements are kept in docs/baseline/uw3c.
 
 ## Reading workbooks and CSV files (`tabular-reading`)
 

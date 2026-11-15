@@ -293,6 +293,7 @@ export const realDocumentsSuite: Suite = {
         "Labels are one reader's reading under a written policy; ambiguous text is labelled neutral rather than forced either way.",
         'Format variants other than the originals were produced by pandoc and LibreOffice, and the scans by rasterising and degrading a PDF export (examples/real-corpus/build.sh). A phone photo of a crumpled page is harder than these scans.',
         'Matching is by distinctive phrase with OCR tolerance; a reading with the right words in the wrong structure can still match.',
+        'The blind split was measured twice, never to choose a change: after the dev tuning (items read right 110/143), and after generic fixes made for failures found elsewhere — a benchmark regression on a per-glyph-bullet PDF and one held-out item lost silently (114/143). Both measurements are kept in docs/baseline/uw3c.',
       ],
     };
   },

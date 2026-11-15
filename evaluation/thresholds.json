@@ -132,19 +132,19 @@
       "measure": "real-documents/blind/items-read-right",
       "min": 0.9,
       "status": "proposed",
-      "rationale": "Engineering proposal for the pilot bar: at least 90% of labelled items in documents never used for tuning are read as the right kind. UW-3c measured 76.9%; this proposal is not met yet."
+      "rationale": "Engineering proposal for the pilot bar: at least 90% of labelled items in documents never used for tuning are read as the right kind. UW-3c measured 79.7%; this proposal is not met yet."
     },
     {
       "measure": "real-documents/blind/output-precision",
       "min": 0.9,
       "status": "proposed",
-      "rationale": "Engineering proposal: at least 90% of judged output is a right reading of something in the document. UW-3c measured 68.8%; not met yet."
+      "rationale": "Engineering proposal: at least 90% of judged output is a right reading of something in the document. UW-3c measured 67.9%; not met yet."
     },
     {
       "measure": "real-documents/blind/missed-silently",
       "max": 0,
       "status": "proposed",
-      "rationale": "Engineering proposal: nothing expected is lost without a report (fail closed). UW-3c measured 13; not met yet."
+      "rationale": "Engineering proposal: nothing expected is lost without a report (fail closed). UW-3c measured 7; not met yet."
     },
     {
       "measure": "real-documents/held-out/items-read-right",
