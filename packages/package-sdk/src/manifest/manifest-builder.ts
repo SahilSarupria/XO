@@ -4,6 +4,7 @@ import type {
   ComponentEntry,
   ComponentKind,
   DependencyDeclaration,
+  DomainPackDeclaration,
   ManifestPermissionDeclaration,
   XoManifest,
   XoMetadata,
@@ -23,6 +24,7 @@ interface BuilderState {
   readonly compatibility?: CompatibilityDeclaration;
   readonly capabilities: readonly CapabilityDeclaration[];
   readonly dependencies: readonly DependencyDeclaration[];
+  readonly domainPacks: readonly DomainPackDeclaration[];
   readonly permissions: readonly ManifestPermissionDeclaration[];
   readonly metadata?: XoMetadata;
   readonly changelogMd?: Uint8Array;
@@ -61,6 +63,7 @@ export class ManifestBuilder {
         signatures: [],
         capabilities: [],
         dependencies: [],
+        domainPacks: [],
         permissions: [],
       },
       hasher,
@@ -101,6 +104,13 @@ export class ManifestBuilder {
 
   setDependencies(dependencies: readonly DependencyDeclaration[]): ManifestBuilder {
     return new ManifestBuilder({ ...this.state, dependencies }, this.hasher);
+  }
+
+  /** PX-4: the Domain Knowledge Packs the package's knowledge depends on, each pinned by exact digest. Replaces the set. */
+  setDomainPacks(domainPacks: readonly DomainPackDeclaration[]): ManifestBuilder {
+    for (const p of domainPacks)
+      if (!/^sha256:[0-9a-f]{64}$/.test(p.digest)) throw new Error(`domain pack ${p.packId}: digest must be "sha256:" + 64 hex characters`);
+    return new ManifestBuilder({ ...this.state, domainPacks }, this.hasher);
   }
 
   /**
@@ -178,6 +188,7 @@ export class ManifestBuilder {
       components: components as XoManifest['components'],
       ...(this.state.capabilities.length > 0 ? { capabilities: this.state.capabilities } : {}),
       ...(this.state.dependencies.length > 0 ? { dependencies: this.state.dependencies } : {}),
+      ...(this.state.domainPacks.length > 0 ? { domainPacks: this.state.domainPacks } : {}),
       ...(this.state.permissions.length > 0 ? { permissions: this.state.permissions } : {}),
       merkleRoot: ContentHash(buildMerkleRoot(leafHashes, this.hasher)),
       ...(this.state.signatures.length > 0

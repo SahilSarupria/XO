@@ -1,0 +1,26 @@
+{
+  "name": "@xo/knowledge-base",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Business Knowledge Base (BKB) core, ADR 0029: domain-agnostic claims, entities, relationships and evidence; lifecycle, authority and conflicts; governed change sets; reproducible, digest-identified knowledge states; tenant-scoped append-only storage; lexical retrieval pinned to a state; Domain Knowledge Pack manifests, schema validation and exact-digest resolution; and the XOIR reconciliation boundary.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

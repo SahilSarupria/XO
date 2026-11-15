@@ -1082,6 +1082,172 @@ export const openApiDocument = {
         responses: { '200': { description: '{ rulings: HumanRuling[] }' } },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/knowledge-change-sets': {
+      post: {
+        summary: 'Propose the knowledge in a compilation as a Business Knowledge Base change set (PX-4)',
+        description:
+          'Maps the compiled graph through the XOIR→BKB adapter (mapping xoir-bkb.v1) against the current head state. Nothing is applied: the change set waits for a reviewer. The report lists accepted, unchanged, updated (proposed as supersessions), conflicting, unresolved (ambiguous entities, never merged), rejected (no evidence) and unsupported items. Recompiling the same sources proposes nothing (200, changeSet null). Needs the author role; audited as knowledge.change-set.proposed.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ changeSet: ChangeSet, report }' },
+          '200': { description: '{ changeSet: null, report }: nothing new' },
+          '404': { description: 'Unknown compilation or no artifact' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/change-sets': {
+      get: {
+        summary: 'List knowledge change sets with their decisions (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'status', in: 'query', required: false, schema: { type: 'string' }, description: 'proposed | approved | rejected' },
+        ],
+        responses: { '200': { description: '{ changeSets: ChangeSet[] }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/change-sets/{changeSetId}': {
+      get: {
+        summary: 'One knowledge change set: operations, validation findings, reconciliation report, decision (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'changeSetId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'ChangeSet' }, '404': { description: 'Unknown change set' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/change-sets/{changeSetId}/approve': {
+      post: {
+        summary: 'Approve a knowledge change set, creating the next immutable knowledge state (PX-4)',
+        description:
+          'Body `{ reason, precedencePolicy? }`. Needs the review role and a recent sign-in. Refused (409 XO_KNOWLEDGE_CHANGE_SET_REFUSED, context.knowledgeError) when already decided, proposed against an older head (stale_base: propose again), or carrying error findings. Competing claims are both kept; the state records the conflict, resolved by the precedence policy when given or left for a ruling.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'changeSetId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ changeSet, state }' },
+          '409': { description: 'Refused' },
+          '404': { description: 'Unknown change set' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/change-sets/{changeSetId}/reject': {
+      post: {
+        summary: 'Reject a knowledge change set (PX-4)',
+        description:
+          'Body `{ reason }`. Needs the review role and a recent sign-in. Its records stay stored for audit but never enter a state through it.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'changeSetId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ changeSet }' }, '409': { description: 'Already decided' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/state': {
+      get: {
+        summary: 'The head knowledge state: the one created by the last approval (PX-4)',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description: 'KnowledgeState (entries with record digests and lifecycle, conflicts, pack bindings, precedence policy, digest)',
+          },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/states/{stateId}': {
+      get: {
+        summary: 'A pinned knowledge state (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stateId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'KnowledgeState' }, '404': { description: 'Unknown state' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/states/{stateId}/verify': {
+      get: {
+        summary: 'Verify a knowledge state: its digest, every record digest, dangling references, authority and evidence (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stateId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ stateId, verified, findings }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/records': {
+      get: {
+        summary: 'Records of a knowledge state with their entries (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'state', in: 'query', required: false, schema: { type: 'string' }, description: 'Pinned state id; the head when absent' },
+          { name: 'kind', in: 'query', required: false, schema: { type: 'string' }, description: 'entity | claim | relationship' },
+          { name: 'type', in: 'query', required: false, schema: { type: 'string' }, description: 'Namespaced type or predicate' },
+          {
+            name: 'lifecycle',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'active (default) | superseded | retired | needs_review | any',
+          },
+        ],
+        responses: { '200': { description: '{ stateId, records: { entry, record }[] }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/search': {
+      get: {
+        summary: 'BM25 search over a pinned knowledge state, returning evidence and authority (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'state', in: 'query', required: false, schema: { type: 'string' }, description: 'Pinned state id; the head when absent' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'string' }, description: '1-100, default 10' },
+        ],
+        responses: { '200': { description: '{ stateId, hits: SearchHit[] }' }, '400': { description: 'q missing' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/resolve-entity': {
+      get: {
+        summary: 'Resolve a name to an entity: linked on a strong identifier or one exact name; otherwise candidates for review (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'name', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'type', in: 'query', required: false, schema: { type: 'string' } },
+          { name: 'state', in: 'query', required: false, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ stateId, status: linked | unresolved, entityId?, method?, candidates }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/conflicts': {
+      get: {
+        summary: 'Conflicts recorded in a knowledge state (PX-4)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'state', in: 'query', required: false, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ stateId, conflicts: Conflict[] }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/packs': {
+      get: {
+        summary: "The workspace's installed Domain Knowledge Packs (PX-4)",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ packs: PackBinding[] }' } },
+      },
+      post: {
+        summary: 'Install a Domain Knowledge Pack (PX-4)',
+        description:
+          'Body: a pack artifact `{ manifest, digest }` (schema xo.domain-pack.v1). The digest must match the manifest; one pack per namespace (a second is refused, never settled by install order). Needs the manage role and a recent sign-in. A pack adds semantics (types and their schemas), never authority.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: '{ packs }' },
+          '400': { description: 'Invalid or tampered pack' },
+          '409': { description: 'Namespace already defined by another pack' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/waivers': {
       get: {
         summary: "List the workspace's source-quality waivers (PX-2)",
