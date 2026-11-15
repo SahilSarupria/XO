@@ -107,6 +107,10 @@ function describeEffect(workspace: WorkspaceRecord, settings: WorkspaceSettings,
         enforced: true,
         note: 'Registry publish and XO install refuse a package whose manifest carries NO signature entries. This is a presence check only: this server has no signer-key resolution or trust anchors, so it does not verify that any signature is valid or who made it. Do not treat it as proof of authenticity.',
       },
+      requireReadinessCertificate: {
+        enforced: true,
+        note: 'A workflow start must present a current readiness certificate (READY, or READY with declared conditions) for that exact workflow; every digest it binds is recomputed at start and a stale certificate is refused. Off by default.',
+      },
       requireCompilerAttestation: {
         enforced: false,
         available: false,

@@ -5,6 +5,9 @@
 import { writeFile } from 'node:fs/promises';
 import { composeWorkflows } from '@xo/workflow-composer';
 import {
+  assessCompleteness,
+  assessReadiness,
+  assessSourceQuality,
   buildCapabilityInventory,
   compileSourceSet,
   defaultCompileConfiguration,
@@ -25,11 +28,15 @@ export interface GenerateWorkflowOptions {
   readonly workflowId?: string;
   /** Write the Workflow IR component (`workflows/workflows.json` shape) here. */
   readonly out?: string;
+  /** PX-7: also assess readiness and print the certificate (locally, approval is unknown, so it is never READY here). */
+  readonly certify?: boolean;
+  /** Write the readiness certificate here (implies `certify`). */
+  readonly certificateOut?: string;
   readonly json?: boolean;
 }
 
 export const GENERATE_WORKFLOW_USAGE =
-  'xo generate-workflow <source>... --goal <text> [--need <step>]... [--section <heading>] [--workflow-id <id>] [--out <workflows.json>] [--json]';
+  'xo generate-workflow <source>... --goal <text> [--need <step>]... [--section <heading>] [--workflow-id <id>] [--out <workflows.json>] [--certify [--certificate <file>]] [--json]';
 
 export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promise<CommandResult> {
   if (o.sources.length === 0) return failWith(GENERATE_WORKFLOW_USAGE);
@@ -60,8 +67,10 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
 
     let candidateId = o.workflowId;
     let rationale = `named explicitly (--workflow-id ${o.workflowId})`;
+    let selected: ReturnType<typeof selectWorkflowScope> | undefined;
     if (candidateId === undefined) {
       const scope = selectWorkflowScope(composed.value, goal);
+      selected = scope;
       if (scope.status === 'needs_clarification')
         return { exitCode: 1, lines: [scope.question, ...scope.options.map((x) => `  --workflow-id ${x.workflowId}   ${x.name}`)] };
       if (scope.status === 'no_match')
@@ -73,10 +82,34 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
     if (candidate === undefined) return failWith(`no workflow "${candidateId}" in these sources`);
     const lowered = lowerCandidateWorkflow(result.graph, candidate, inventory);
     if (o.out !== undefined && lowered.component !== undefined) await writeFile(o.out, `${JSON.stringify(lowered.component, null, 2)}\n`);
+    const certificate =
+      o.certify === true || o.certificateOut !== undefined
+        ? assessReadiness({
+            artifact,
+            sourceQuality: assessSourceQuality(artifact, [], 'readiness'),
+            completeness: assessCompleteness(artifact, []),
+            inventory,
+            candidate,
+            lowered,
+            goal,
+            ...(selected !== undefined ? { scope: selected } : {}),
+            issuedBy: { id: 'local', kind: 'cli' },
+            issuedAt: new Date().toISOString(),
+          })
+        : undefined;
+    if (o.certificateOut !== undefined && certificate !== undefined)
+      await writeFile(o.certificateOut, `${JSON.stringify(certificate, null, 2)}\n`);
     if (o.json === true)
       return ok([
         JSON.stringify(
-          { goal, selection: rationale, candidateWorkflowId: candidate.id, inventoryDigest: inventory.digest, lowered },
+          {
+            goal,
+            selection: rationale,
+            candidateWorkflowId: candidate.id,
+            inventoryDigest: inventory.digest,
+            lowered,
+            ...(certificate !== undefined ? { certificate } : {}),
+          },
           null,
           2,
         ),
@@ -89,6 +122,16 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
       ...lowered.rationale.map((r) => `  ${r.stepId.padEnd(28)} ${r.construct.padEnd(8)} ${r.reason}`),
       ...lowered.issues.map((i) => `  [${i.severity}] ${i.code}: ${i.message}`),
       ...(o.out !== undefined && lowered.component !== undefined ? [`Written:            ${o.out}`] : []),
+      ...(certificate !== undefined
+        ? [
+            `Readiness:          ${certificate.status} (${certificate.certificateId})`,
+            ...certificate.gates.map((g) => `  ${g.id.padEnd(20)} ${g.outcome.padEnd(9)} ${g.findings[0] ?? ''}`),
+            ...(certificate.gates.some((g) => g.id === 'authorization' && g.outcome !== 'pass')
+              ? ['  (approval is recorded by a workspace; a local certificate can only say what it would need)']
+              : []),
+          ]
+        : []),
+      ...(o.certificateOut !== undefined ? [`Certificate:        ${o.certificateOut}`] : []),
     ];
     return { exitCode: lowered.complete ? 0 : 1, lines };
   } finally {

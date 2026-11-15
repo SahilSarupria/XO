@@ -44,3 +44,21 @@ test('xo workflow --goal selects by purpose, and says so when no goal is given',
   assert.equal(selectWorkflow(flows, { source: 'x', goal: 'evaluate a refund' }).workflow?.id, 'b');
   assert.match(selectWorkflow(flows, { source: 'x' }).rationale, /no goal given/);
 });
+
+test('xo generate-workflow --certify: a local certificate names every gate and never claims approval', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xo-cli-cert-'));
+  const src = join(dir, 'ops.md');
+  await writeFile(src, DOC);
+  const certPath = join(dir, 'cert.json');
+  const r = await generateWorkflowCommand({
+    sources: [src],
+    goal: 'ship a release',
+    needs: ['Run the full test suite'],
+    certificateOut: certPath,
+  });
+  assert.ok(r.lines.some((l) => l.startsWith('Readiness:          NEEDS_REVIEW')));
+  const cert = JSON.parse(await readFile(certPath, 'utf8')) as { status: string; gates: { id: string; outcome: string }[] };
+  assert.equal(cert.status, 'NEEDS_REVIEW');
+  assert.equal(cert.gates.find((g) => g.id === 'authorization')!.outcome, 'review');
+  assert.ok(cert.gates.filter((g) => g.id !== 'authorization').every((g) => g.outcome === 'pass'));
+});

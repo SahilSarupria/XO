@@ -1,5 +1,6 @@
 import { ErrorCode, XoError } from '@xo/errors';
-import { fromJson, type XoirGraph, type XoirGraphJson } from '@xo/xoir';
+import { fromJson, type XoirGraph, type XoirGraphJson, type XoirNodeId } from '@xo/xoir';
+import { buildSemanticCapabilityContract, computeContractContentHash } from '@xo/capability-contract';
 import {
   composeWorkflows,
   auditWorkflowExecutability,
@@ -56,6 +57,8 @@ export interface ResolvedWorkflow {
   /** `audit.status === 'executable_candidate'` AND every step bound. The only condition under which a workflow may be started. */
   readonly executable: boolean;
   readonly notExecutableReasons: readonly string[];
+  /** PX-7: each step's contract content hash, so a sign-off can bind to what the steps ARE, not just which ids they have. */
+  readonly contractHashes: ReadonlyMap<string, string>;
 }
 
 /** Runs the audit + data-flow audit + bridge preparation for one composed workflow — the exact three calls `apps/cli`'s `workflow-pipeline.ts` makes, in the same order. */
@@ -76,7 +79,12 @@ export function resolveWorkflow(graph: XoirGraph, workflow: CandidateWorkflow): 
     if (step.status === 'unbound')
       reasons.push(`step "${step.capabilityId}" could not be bound to an executable capability: ${step.reason ?? 'no reason reported'}`);
   }
-  return { workflow, audit, dataFlow, prepared, registry, executable: reasons.length === 0, notExecutableReasons: reasons };
+  const contractHashes = new Map<string, string>();
+  for (const step of workflow.steps) {
+    const built = buildSemanticCapabilityContract(graph, step.capabilityId as XoirNodeId);
+    if (built.ok) contractHashes.set(step.capabilityId, computeContractContentHash(built.value));
+  }
+  return { workflow, audit, dataFlow, prepared, registry, executable: reasons.length === 0, notExecutableReasons: reasons, contractHashes };
 }
 
 export function findWorkflow(composed: ComposedCompilation, workflowId: string): CandidateWorkflow | undefined {
@@ -115,6 +123,8 @@ export interface WorkflowStepView {
   readonly name: string;
   readonly description: string;
   readonly contractId?: string;
+  /** PX-7: the step's contract content hash (`computeContractContentHash`); part of the sign-off's identity. */
+  readonly contractHash?: string;
   readonly bindingId?: string;
   /** `'deterministic_rule' | 'human_in_the_loop'` when the bridge could bind the step; absent when `bound` is false. */
   readonly executionClass?: string;
@@ -209,6 +219,9 @@ export function buildWorkflowView(
       authority: auditStep?.authority ?? 'insufficient',
       confidence: step.confidence,
       approved: approvedCapabilityIds.has(step.capabilityId),
+      ...(resolved.contractHashes.get(step.capabilityId) !== undefined
+        ? { contractHash: resolved.contractHashes.get(step.capabilityId)! }
+        : {}),
       inputs: (bridgeStep?.inputs ?? []).map((p) => ({
         name: p.name,
         runtimeKey: p.runtimeKey,

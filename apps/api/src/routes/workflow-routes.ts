@@ -27,6 +27,8 @@ import { REPLAY_HEADER, gateIdempotent, recordInvalid } from '../idempotency/ide
 import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { startGated } from '../workflow-controls/service.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
 import {
   getWorkflowExecution,
   listWorkflowExecutions,
@@ -317,7 +319,7 @@ export function registerWorkflowRoutes(
     if (workflowId === undefined || workflowId.length === 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing workflow id');
 
     const body = await readJsonObject(req, { allowEmpty: false });
-    rejectUnknownFields(body, ['compilationId', 'workflowId', 'input'], 'POST .../workflows/:workflowId/executions');
+    rejectUnknownFields(body, ['compilationId', 'workflowId', 'input', 'certificateId'], 'POST .../workflows/:workflowId/executions');
     if (typeof body['compilationId'] !== 'string' || body['compilationId'].length === 0)
       throw new XoError(ErrorCode.INVALID_ARGUMENT, '"compilationId" (string) is required');
     if (body['workflowId'] !== undefined && body['workflowId'] !== workflowId)
@@ -326,6 +328,11 @@ export function registerWorkflowRoutes(
     // M6: optional; a malformed key is a 400 before anything else happens and its value is never echoed.
     const idemKey = readIdempotencyKey(req.headers);
     if (!idemKey.ok) throw idemKey.error;
+
+    // PX-7 — the readiness gate. A presented certificate must be for this workflow, intact, READY (or READY with declared
+    // conditions) and current: every digest it binds is recomputed now. A workspace that requires certificates refuses a
+    // start without one. Permission is then rechecked live for every step by the start itself.
+    await readinessGate(req, workspace, body['compilationId'], workflowId, body['certificateId'], correlationId);
 
     const principal = requirePrincipal(req);
     const ctx = runnerContext(workspace, principal, req);
@@ -350,6 +357,66 @@ export function registerWorkflowRoutes(
     return json(record.status === 'failed' ? 200 : 201, {
       ...(await toWorkflowExecutionView(ctx, record)),
       ...finalizationNotice(finalization),
+    });
+  }
+
+  async function readinessGate(
+    req: ApiRequest,
+    workspace: WorkspaceRecord,
+    compilationId: string,
+    workflowId: string,
+    certificateId: unknown,
+    correlationId: string,
+  ): Promise<void> {
+    const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+    const required = settings.trust.requireReadinessCertificate === true;
+    if (certificateId === undefined) {
+      if (!required) return;
+      await refuse(req, workspace, workflowId, correlationId, 'certificate_required');
+      throw new XoError(
+        ErrorCode.READINESS_CERTIFICATE_REQUIRED,
+        'this workspace requires a readiness certificate to start a workflow: generate the workflow, request its certificate, and pass its certificateId',
+      );
+    }
+    if (typeof certificateId !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"certificateId" must be a string');
+    const certificate = await workspaceCertificatesStore(workspace, dataConfig).get(certificateId);
+    const reasons: string[] = [];
+    if (certificate.scope.compilationId !== compilationId || certificate.scope.candidateWorkflowId !== workflowId)
+      reasons.push(
+        `certificate ${certificateId} is for workflow ${certificate.scope.candidateWorkflowId} of compilation ${certificate.scope.compilationId ?? '(none)'}`,
+      );
+    else {
+      const v = await verifyCertificateNow(workspace, dataConfig, certificate);
+      if (!v.ok) reasons.push(...v.reasons);
+    }
+    if (reasons.length === 0) return;
+    await refuse(req, workspace, workflowId, correlationId, 'certificate_refused', certificateId);
+    throw new XoError(
+      ErrorCode.READINESS_CERTIFICATE_REFUSED,
+      `the readiness certificate does not allow this start: ${reasons.join('; ')}`,
+      {
+        context: { certificateId, reasons },
+      },
+    );
+  }
+
+  async function refuse(
+    req: ApiRequest,
+    workspace: WorkspaceRecord,
+    workflowId: string,
+    correlationId: string,
+    reasonCode: string,
+    certificateId?: string,
+  ): Promise<void> {
+    await audit.tryRecord({
+      action: 'start.workflow',
+      actor: actorFromPrincipal(requirePrincipal(req)),
+      correlationId,
+      target: { kind: 'workflow', id: safeId(workflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+      type: 'readiness.start.refused',
+      outcome: 'denied',
+      reasonCode,
+      ...(certificateId !== undefined ? { metadata: { certificateId } } : {}),
     });
   }
 

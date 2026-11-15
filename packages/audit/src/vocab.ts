@@ -43,6 +43,9 @@ export const AUDIT_EVENT_TYPES = [
   'knowledge.change-set.rejected',
   'knowledge.change-set.denied',
   'knowledge.pack.installed',
+  // PX-7: a readiness certificate was issued, or a start was refused at the certificate gate.
+  'readiness.certificate.issued',
+  'readiness.start.refused',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.

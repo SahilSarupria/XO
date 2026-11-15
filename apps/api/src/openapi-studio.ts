@@ -378,7 +378,7 @@ export const studioPaths = {
     put: {
       summary: 'Update settings (partial patch)',
       description:
-        'Unknown fields are rejected. Settings the deployment cannot honor are refused, not stored: a runtime location the deployment does not offer is 412; air-gapped mode with an off-box model is 412 (checked on the merged result, so field order does not matter). Air-gapped mode blocks URL import and off-box chat providers. requireSignedPackages makes registry publish and install refuse a package whose manifest has no signature entries — a presence check only; signature validity is not verified by this server. Region updates the workspace record.',
+        'Unknown fields are rejected. Settings the deployment cannot honor are refused, not stored: a runtime location the deployment does not offer is 412; air-gapped mode with an off-box model is 412 (checked on the merged result, so field order does not matter). Air-gapped mode blocks URL import and off-box chat providers. requireSignedPackages makes registry publish and install refuse a package whose manifest has no signature entries — a presence check only; signature validity is not verified by this server. requireReadinessCertificate (PX-7) makes every workflow start present a current readiness certificate. Region updates the workspace record.',
       'x-xo-permission': 'manage',
       parameters: [WS],
       requestBody: body(
@@ -388,7 +388,7 @@ export const studioPaths = {
           model: obj({ primary: { ...modelChoice, nullable: true }, fallback: { ...modelChoice, nullable: true } }),
           airGapped: bool,
           region: str,
-          trust: obj({ requireSignedPackages: bool }),
+          trust: obj({ requireSignedPackages: bool, requireReadinessCertificate: bool }),
           notifications: obj({ onEscalation: bool, onRunFailure: bool, onWorkflowComplete: bool }),
         }),
       ),

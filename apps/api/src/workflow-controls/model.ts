@@ -92,14 +92,20 @@ export function defaultDeployment(compilationId: string, workflowId: string, now
   };
 }
 
-/** The identity of one version of a workflow: its compilation and its ordered steps. A sign-off is tied to this. */
+/**
+ * The identity of one version of a workflow: its compilation and its ordered steps, each with its contract's content hash
+ * (PX-7, gap PX-G25). A sign-off is tied to this, so changing what a step IS — its rules, inputs, human task — makes the
+ * sign-off stale even when the ids stay the same.
+ */
 export function contentHash(v: {
   readonly compilationId: string;
   readonly workflowId: string;
-  readonly steps: readonly { readonly order: number; readonly capabilityId: string }[];
+  readonly steps: readonly { readonly order: number; readonly capabilityId: string; readonly contractHash?: string }[];
 }): string {
   return createHash('sha256')
-    .update(JSON.stringify({ c: v.compilationId, w: v.workflowId, s: v.steps.map((s) => [s.order, s.capabilityId]) }))
+    .update(
+      JSON.stringify({ c: v.compilationId, w: v.workflowId, s: v.steps.map((s) => [s.order, s.capabilityId, s.contractHash ?? null]) }),
+    )
     .digest('hex');
 }
 
