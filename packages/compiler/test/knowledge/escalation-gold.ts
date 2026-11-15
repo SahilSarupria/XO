@@ -132,8 +132,10 @@ export const GOLD: readonly GoldUnit[] = [
   { file: 'Aastha', textStart: 'internal sales personnel, business associates, and', entities: ['POSPs'], primaryOk: false },
   {
     file: 'Aastha',
-    textStart: 'period, which includes IRDA-prescribed brokerage p',
-    entities: ['CRM', 'Policy Booking Report', 'IRDA'],
+    // UW-3c: was 'period, which includes IRDA-prescribed brokerage p' (two list items glued together, entities CRM, Policy
+    // Booking Report, IRDA). The reader now cuts at the item boundary; this is the item that holds that text.
+    textStart: 'Policy Entry: New policies and all types of endors',
+    entities: ['IRDA'],
     primaryOk: false,
   },
   { file: 'Aastha', textStart: 'Data Mapping: Map the CRM policy records against t', entities: ['CRM'], primaryOk: true },

@@ -135,7 +135,13 @@ test('eval set integrity: disjoint from the earlier gold, split fixed by hash, e
   const old = new Set(GOLD.map((g) => `${g.file}|${g.textStart}`));
   for (const e of EVAL_SET) {
     assert.ok(!old.has(`${e.file}|${e.textStart}`), `overlaps the earlier gold: ${e.textStart}`);
-    const parity = Number(BigInt(`0x${createHash('sha256').update(`${e.file}|${e.textStart}`).digest('hex')}`) % 2n);
+    const parity = Number(
+      BigInt(
+        `0x${createHash('sha256')
+          .update(`${e.file}|${e.annotatedAs ?? e.textStart}`)
+          .digest('hex')}`,
+      ) % 2n,
+    );
     assert.equal(e.split, parity === 0 ? 'dev' : 'held', `split must follow the pre-annotation hash rule: ${e.textStart}`);
   }
   const rows = await loadRows();
@@ -210,7 +216,10 @@ test('MODEL-FREE: rule-only baseline, rule-confidence calibration (dev), and gat
   if (process.env['XO_EVAL_REPORT_PATH']) await writeFile(process.env['XO_EVAL_REPORT_PATH'], JSON.stringify(report, null, 2));
 
   // Invariants only; no claim about improvement.
-  assert.ok(ruleOnly.dev.gold === 46 && ruleOnly.held.gold === 33, 'gold totals changed: the labels must not be edited after results');
+  // UW-3c: held-out was 33. Four Aastha.pdf units were re-cut at list-item boundaries by the PDF reader and their entries re-keyed
+  // (escalation-eval-set.ts); six annotated forms sit in items that are not units of this set. Results from before UW-3c are not
+  // comparable on the held-out split.
+  assert.ok(ruleOnly.dev.gold === 46 && ruleOnly.held.gold === 27, 'gold totals changed: the labels must not be edited after results');
   for (const g of gateDev) assert.ok(g.escalated <= dev.length);
 });
 
