@@ -1,7 +1,16 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolveDomainProfile, listDomainProfiles } from '@xo/compiler';
-import { artifactOpenWork, compileSourceSet, defaultCompileConfiguration, type SourceSetMember } from '@xo/pre-execution';
+import {
+  artifactOpenWork,
+  assessCompleteness,
+  buildSourceSet,
+  compileSourceSet,
+  confirmedRulesFrom,
+  defaultCompileConfiguration,
+  type HumanRuling,
+  type SourceSetMember,
+} from '@xo/pre-execution';
 import type { CommandResult } from '../../command-result.js';
 import { failWith, ok } from '../../command-result.js';
 import { collectSources } from './source-collection.js';
@@ -19,6 +28,8 @@ export interface CompileOptions {
   readonly json?: boolean;
   /** PX-1: write the complete compilation artifact (`@xo/pre-execution`) as JSON to this path. */
   readonly artifactPath?: string;
+  /** PX-3: a JSON file of human rulings (an array of `HumanRuling`). Confirm-rule rulings for this source set compile as confirmed rules. */
+  readonly rulingsPath?: string;
 }
 
 /**
@@ -58,6 +69,16 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
 
   try {
     // PX-1: the same entry point and configuration type the API uses, so the same sources give the same artifact digest.
+    let rulings: readonly HumanRuling[] = [];
+    if (options.rulingsPath !== undefined) {
+      try {
+        const parsed = JSON.parse(await readFile(options.rulingsPath, 'utf8')) as unknown;
+        if (!Array.isArray(parsed)) return failWith(`${options.rulingsPath} must hold a JSON array of rulings`);
+        rulings = parsed as HumanRuling[];
+      } catch (cause) {
+        return failWith(`could not read rulings: ${(cause as Error).message}`);
+      }
+    }
     const configuration = defaultCompileConfiguration({
       ...(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
       ...(options.focusQuestion !== undefined ? { focusQuestion: options.focusQuestion } : {}),
@@ -84,7 +105,12 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
         };
       }),
     ];
-    const compiledSet = await compileSourceSet(members, configuration);
+    const setId = members.length > 0 ? buildSourceSet(members.map((mm) => mm.entry)).sourceSetId : undefined;
+    const confirmed = setId !== undefined ? confirmedRulesFrom(rulings, setId) : [];
+    const compiledSet = await compileSourceSet(
+      members,
+      confirmed.length > 0 ? { ...configuration, confirmedRules: confirmed } : configuration,
+    );
     const result = compiledSet.ok ? { ok: true as const, value: compiledSet.value.result } : compiledSet;
     if (!result.ok) {
       const lines = [`[${result.error.code}] ${result.error.message}`];
@@ -110,6 +136,7 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
     if (options.artifactPath !== undefined && artifact !== undefined)
       await writeFile(options.artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
     const openWork = artifact !== undefined ? artifactOpenWork(artifact) : undefined;
+    const completeness = artifact !== undefined ? assessCompleteness(artifact, rulings) : undefined;
 
     if (options.json) {
       return ok([
@@ -129,6 +156,7 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
                 artifactDigest: artifact.digest,
                 configurationDigest: artifact.configurationDigest,
                 openWork,
+                completeness,
               }
             : {}),
         }),
@@ -168,6 +196,13 @@ export async function compileCommand(options: CompileOptions): Promise<CommandRe
         `Artifact digest:    ${artifact.digest}`,
         `Open work:          ${openWork.reviewItems} review item(s), ${openWork.unclassified} unclassified sentence(s), ${openWork.unresolvedConflicts} unresolved conflict(s)`,
       );
+      if (completeness !== undefined) {
+        const open = completeness.dimensions.filter((d) => d.status === 'incomplete');
+        lines.push(
+          `Completeness:       ${completeness.complete ? 'complete' : `incomplete (${open.map((d) => `${d.id} ${d.open.length}`).join(', ')})`}`,
+        );
+        for (const st of completeness.staleRulings) lines.push(`Stale ruling:       ${st.rulingId} — ${st.reason}`);
+      }
       for (const note of artifact.runNotes) lines.push(`Note: ${note}`);
       if (options.artifactPath !== undefined) lines.push(`Artifact written:   ${options.artifactPath}`);
     }

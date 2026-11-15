@@ -1,4 +1,4 @@
-import { discoverAndResolveCapabilities } from '@xo/compiler';
+import { discoverAndResolveCapabilities, type ConfirmedRule } from '@xo/compiler';
 import { compileSourceSet, defaultCompileConfiguration, type SourceSetEntry } from '@xo/pre-execution';
 import { nodesOfKind, toJson, type XoirNode, type CapabilityNodeProps } from '@xo/xoir';
 import { XoError, ErrorCode } from '@xo/errors';
@@ -46,6 +46,8 @@ export async function compileSourceRecord(
   source: SourceRecord,
   bytes: Uint8Array,
   extraction?: CompileExtraction,
+  /** PX-3: rules a reviewer confirmed for this source set (`confirm-rule` rulings). */
+  confirmedRules: readonly ConfirmedRule[] = [],
 ): Promise<void> {
   try {
     const input = buildCompilerSourceInput(source.extension, bytes, source.originalFilename);
@@ -54,6 +56,7 @@ export async function compileSourceRecord(
     // UW-3: scanned pages and photos are read by the instance's recovery tiers (local OCR by default; see extraction-tiers.ts).
     const configuration = defaultCompileConfiguration({
       ocr: extraction?.ocr ?? (extraction !== undefined && extraction.pageTiers.length > 0 ? { mode: 'local' } : { mode: 'off' }),
+      ...(confirmedRules.length > 0 ? { confirmedRules } : {}),
     });
     const set = await compileSourceSet([{ entry: sourceSetEntryOf(source), input }], configuration, {
       ...(extraction !== undefined && extraction.pageTiers.length > 0 ? { pageTiers: extraction.pageTiers } : {}),

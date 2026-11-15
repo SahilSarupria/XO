@@ -1051,6 +1051,37 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/completeness': {
+      get: {
+        summary: 'Completeness of a compilation, apart from validity (PX-3)',
+        description:
+          'Dimensions: structure (graph validity), source-coverage (unread pages net of readiness waivers), unparsed-sentences, conflicts, review-items (priority 1-2). Each lists its open items; rulings and waivers close them. Stale rulings (another set, changed text, failed digest) are reported, never applied.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'CompletenessAssessment' }, '404': { description: 'Unknown compilation or no artifact' } },
+      },
+    },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/rulings': {
+      post: {
+        summary: 'Record a human ruling on a review item (PX-3)',
+        description:
+          'Body `{ reviewItemId, decision }`, decision one of `{kind:"not-operational", note?}`, `{kind:"confirm-rule", condition, outcome}`, `{kind:"resolve-conflict", prevails:"a"|"b", rationale}`, `{kind:"acknowledge", note}`. Needs the review role and a recent sign-in. Bound to the compilation\'s source set; attributed, audited (ruling.recorded / ruling.denied), append-only. A confirm-rule ruling is a confirmed rule in the next compilation of the same source set.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '201': { description: 'HumanRuling' }, '400': { description: 'Unknown item, or a decision that does not fit it' } },
+      },
+    },
+    '/workspaces/{workspaceId}/rulings': {
+      get: {
+        summary: "List the workspace's human rulings (PX-3)",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ rulings: HumanRuling[] }' } },
+      },
+    },
     '/workspaces/{workspaceId}/waivers': {
       get: {
         summary: "List the workspace's source-quality waivers (PX-2)",
