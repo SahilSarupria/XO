@@ -80,6 +80,55 @@ function recoveredBareNumber(lines: readonly Line[], index: number): string | un
   return undefined;
 }
 
+/** How far apart two baselines may be and still be one printed line, as a share of the type size. */
+const SAME_BASELINE_EM = 0.3;
+
+/**
+ * UW-3c: a list marker drawn as a glyph of its own ("●", "○", "2.") can sit a point off its text's baseline, so the line
+ * grouper leaves it on a line by itself, before or after the text it marks. Such a marker is put back in front of the
+ * neighbouring line that shares its baseline and starts to its right. A marker with no such neighbour is left alone.
+ */
+function joinBaselineMarkers(lines: readonly Line[]): readonly Line[] {
+  const out: Line[] = [];
+  const used = new Set<number>();
+  const isMarker = (l: Line): boolean => {
+    const t = l.text.trim();
+    return t.length > 0 && t.length <= 4 && detectListMarker(`${t} x`)?.remainder === 'x';
+  };
+  const marks = (m: Line, t: Line | undefined): t is Line =>
+    t !== undefined &&
+    t.pageNumber === m.pageNumber &&
+    t.text.trim().length > 0 &&
+    !isMarker(t) &&
+    detectListMarker(t.text) === undefined &&
+    t.minX > m.minX &&
+    Math.abs(t.y - m.y) <= SAME_BASELINE_EM * Math.max(m.maxFontSizePt, t.maxFontSizePt);
+  const join = (m: Line, t: Line): Line => ({
+    ...t,
+    minX: m.minX,
+    maxFontSizePt: Math.max(m.maxFontSizePt, t.maxFontSizePt),
+    text: `${m.text.trim()} ${t.text.trimStart()}`,
+    runs: [...m.runs, ...t.runs],
+    ...(m.runTexts !== undefined && t.runTexts !== undefined ? { runTexts: [...m.runTexts, ...t.runTexts] } : {}),
+  });
+  for (let k = 0; k < lines.length; k += 1) {
+    if (used.has(k)) continue;
+    const line = lines[k]!;
+    if (!isMarker(line)) {
+      out.push(line);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (marks(line, prev)) {
+      out[out.length - 1] = join(line, prev);
+    } else if (marks(line, lines[k + 1])) {
+      out.push(join(line, lines[k + 1]!));
+      used.add(k + 1);
+    } else out.push(line);
+  }
+  return out;
+}
+
 /** Bottom fraction of a page's height treated as the footnote zone — a real, if approximate, structural signal (most footnotes sit in a page's bottom margin), not a content-based rule. */
 const FOOTNOTE_ZONE_FRACTION = 0.1;
 
@@ -98,11 +147,12 @@ export function classifyLines(
   const classified: ClassifiedLine[] = [];
 
   for (const page of pages) {
+    const lines = joinBaselineMarkers(page.lines);
     const pageHeight = page.mediaBox[3] - page.mediaBox[1];
     const footnoteThresholdY = page.mediaBox[1] + pageHeight * FOOTNOTE_ZONE_FRACTION;
-    const structural = detectStructuralListLines(page.lines, bodySize);
+    const structural = detectStructuralListLines(lines, bodySize);
     // UW-3c: the last text-marked list item on this page, so its wrapped lines can join it.
-    const lineSpace = page.recovered === true ? typicalLineSpace(page.lines, bodySize) : 0;
+    const lineSpace = page.recovered === true ? typicalLineSpace(lines, bodySize) : 0;
     let openItem:
       | {
           readonly markerX: number;
@@ -114,10 +164,10 @@ export function classifyLines(
         }
       | undefined;
 
-    for (let lineIndex = 0; lineIndex < page.lines.length; lineIndex += 1) {
-      const original = page.lines[lineIndex]!;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const original = lines[lineIndex]!;
       if (original.text.trim().length === 0) continue;
-      const bare = page.recovered === true ? recoveredBareNumber(page.lines, lineIndex) : undefined;
+      const bare = page.recovered === true ? recoveredBareNumber(lines, lineIndex) : undefined;
       const line = bare !== undefined ? { ...original, text: original.text.trim().replace(/^\d{1,2}\s+/, `${bare} `) } : original;
 
       // UW-3b: a bullet or checkbox marks a list item whatever its type size. Headings are numbered ("2. Scope"), but a
@@ -154,7 +204,7 @@ export function classifyLines(
         classified.push({ ...line, blockKind: 'heading', headingLevel: level > 0 ? level : headingSizeLevels.length + 1 });
         continue;
       }
-      if (page.recovered === true && recoveredHeading(page.lines, lineIndex, lineSpace, bodySize)) {
+      if (page.recovered === true && recoveredHeading(lines, lineIndex, lineSpace, bodySize)) {
         classified.push({ ...line, blockKind: 'heading', headingLevel: headingSizeLevels.length + 1 });
         continue;
       }

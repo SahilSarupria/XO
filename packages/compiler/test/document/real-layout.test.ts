@@ -68,9 +68,52 @@ test('a bold label after a regular item is its own line, not the item’s contin
   assert.deepEqual(r.map(brief), ['-@- [When a lack of a decision could lead to a risk, request a decision', 'p Risks/blockers']);
 });
 
-test('a marker printed on a line of its own (a per-glyph bullet) takes the text on the next line', () => {
-  const r = blocksOf([line([[60, '○']], 700), line([[72, 'Reconcile invoice amounts vs. receipt amounts received from insurers.']], 690)]);
-  assert.deepEqual(r.map(brief), ['-@- Reconcile invoice amounts vs. receipt amounts received from insurers.']);
+test('a marker drawn a point off its text baseline (a per-glyph bullet) is put back in front of its text, before or after it', () => {
+  const r = blocksOf([
+    line([[78, '2. ']], 628.0),
+    line([[96, 'Receipts & Bookkeeping:']], 629.4),
+    // The text line sorts first here: its baseline is the higher of the two.
+    line([[116, 'Record incoming payments from the insurer.']], 613.5),
+    line([[98, '\u25cb  ']], 612.2),
+    line([[98, '\u25cb  ']], 597.9),
+    line([[116, 'Calculate and book TDS for each receipt.']], 596.3),
+    // A marker with no text on its baseline is left as it is.
+    line([[98, '\u25cb  ']], 560),
+    line([[116, 'A paragraph a full line below.']], 530),
+  ]);
+  assert.deepEqual(r.map(brief).slice(0, 3), [
+    '2@0 Receipts & Bookkeeping:',
+    '-@1 Record incoming payments from the insurer.',
+    '-@1 Calculate and book TDS for each receipt.',
+  ]);
+  assert.equal(r.at(-1)!.text, 'A paragraph a full line below.');
+  assert.equal(r.at(-1)!.kind, 'paragraph');
+});
+
+test('list levels carry across a page break when the markers sit where they did; a cropped page starts afresh', () => {
+  const lines = [
+    line([[50, '1. Reconciliation Tasks:']], 700),
+    line([[72, '\u2022 Match CRM records vs. insurer statements.']], 686),
+    line([[72, '\u2022 Verify expected brokerage.']], 100),
+    line([[72, '\u2022 Validate TDS and GST figures.']], 700, { page: 2 }),
+    line([[50, '2. Invoicing.']], 686, { page: 2 }),
+  ];
+  const classified = classifyLines(
+    [
+      { pageNumber: 1, mediaBox: [0, 0, 600, 800], lines: lines.slice(0, 3) },
+      { pageNumber: 2, mediaBox: [0, 0, 600, 800], lines: lines.slice(3) },
+    ],
+    10,
+    [12, 14],
+  );
+  const r = buildBlocks(classified, 10);
+  assert.deepEqual(r.map(brief), [
+    '1@0 Reconciliation Tasks:',
+    '-@1 Match CRM records vs. insurer statements.',
+    '-@1 Verify expected brokerage.',
+    '-@1 Validate TDS and GST figures.',
+    '2@0 Invoicing.',
+  ]);
 });
 
 test('a numbered line set larger is a heading only when it is short: "2. Scope" yes, a numbered sentence no', () => {

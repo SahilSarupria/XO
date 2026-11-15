@@ -604,9 +604,24 @@ function withListDepth(blocks: DocumentBlock[], itemX: ReadonlyMap<number, numbe
       i += 1;
       continue;
     }
-    // A run is cut at a page break: positions on different pages are not comparable (a scanned page is cropped on its own).
-    let j = i;
-    while (j < out.length && out[j]!.kind === 'list_item' && out[j]!.provenance.page === out[i]!.provenance.page) j += 1;
+    // A run of items may continue across a page break, but positions on different pages are comparable only when the new
+    // page's markers sit where the previous page's do (a scanned page is cropped on its own, so its positions shift).
+    let j = i + 1;
+    const seen = new Set<number>([itemX.get(i)].filter((x): x is number => x !== undefined));
+    while (j < out.length && out[j]!.kind === 'list_item') {
+      if (out[j]!.provenance.page !== out[j - 1]!.provenance.page) {
+        let k = j;
+        while (k < out.length && out[k]!.kind === 'list_item' && out[k]!.provenance.page === out[j]!.provenance.page) k += 1;
+        const fits = [...Array(k - j).keys()].every((n) => {
+          const x = itemX.get(j + n);
+          return x === undefined || [...seen].some((y) => Math.abs(x - y) <= LIST_LEVEL_X_TOLERANCE_PT);
+        });
+        if (!fits) break;
+      }
+      const x = itemX.get(j);
+      if (x !== undefined) seen.add(x);
+      j += 1;
+    }
     const xs = [...new Set([...Array(j - i).keys()].map((k) => itemX.get(i + k)).filter((x): x is number => x !== undefined))].sort(
       (a, b) => a - b,
     );
