@@ -1,5 +1,12 @@
 import type { AuthResult } from '../auth/oidc';
 import {
+  parseCertificateCheck,
+  parseGeneratedWorkflowReply,
+  parseReadinessCertificate,
+  type CertificateCheck,
+  type ReadinessCertificateView,
+} from './wire-readiness';
+import {
   parseApiDescription,
   parseCapabilityList,
   parseCompilation,
@@ -810,6 +817,31 @@ export class XoClient {
   // ---- workflow controls (mode, triggers, limit, sign-off, practice review, pause). The platform decides; these just ask.
   getWorkflowControls(ws: string): Promise<Result<WorkflowControls>> {
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-controls`, parseWorkflowControls);
+  }
+  /**
+   * PX-8: the pre-start proof for one workflow. Generates the workflow's definition (named explicitly, so no goal guessing)
+   * and asks the platform for a readiness certificate; the platform recomputes everything and decides the status.
+   */
+  async certifyWorkflow(ws: string, compilationId: string, workflowId: string, goal: string): Promise<Result<ReadinessCertificateView>> {
+    const gen = await this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/compilations/${enc(compilationId)}/generated-workflows`,
+      parseGeneratedWorkflowReply,
+      this.json({ goal: { text: goal }, workflowId }),
+    );
+    if (!gen.ok) return gen;
+    if (gen.value.definitionId === undefined)
+      return fail({ kind: 'rejected', message: gen.value.question ?? 'The goal did not select a workflow.' });
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(gen.value.definitionId)}/readiness`,
+      (b) => parseReadinessCertificate(b),
+      this.json({}),
+    );
+  }
+  /** Whether a certificate still allows a start: the same check the start gate makes. */
+  checkReadinessCertificate(ws: string, certificateId: string): Promise<Result<CertificateCheck>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/readiness-certificates/${enc(certificateId)}/verify`, parseCertificateCheck);
   }
   setWorkflowMode(ws: string, workflowId: string, compilationId: string, mode: WorkflowMode): Promise<Result<WorkflowControl>> {
     return this.call(

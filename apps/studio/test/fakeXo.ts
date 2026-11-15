@@ -106,6 +106,10 @@ export class FakeXo {
   /** Workflow runs, in the platform's real record shape (see scripts/live-smoke.mjs). */
   workflowRuns: Array<Record<string, any>> = [];
   workflowExecutable = true;
+  /** PX-8: what the readiness certificate says (the platform recomputes it; the fake just plays it back). */
+  certificateStatus: 'READY' | 'NEEDS_REVIEW' | 'BLOCKED' = 'NEEDS_REVIEW';
+  certificateCurrent = true;
+  certifyCalls = 0;
   /** Workflow controls (mode, triggers, limit, sign-off, practice reviews, pause). `false` simulates a platform that predates them (404). */
   supportsControls = true;
   controls: {
@@ -735,6 +739,46 @@ export class FakeXo {
       };
       e.status = body.decision === 'approve' ? 'succeeded' : 'rejected';
       return reply(200, e);
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/compilations\/([^/]+)\/generated-workflows$/))) {
+      const wf = (body as unknown as { workflowId?: string }).workflowId;
+      return reply(201, {
+        definition: { definitionId: `gwf_${'0'.repeat(23)}1`, candidateWorkflowId: wf, compilationId: m[1] },
+        selection: { status: 'explicit' },
+      });
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/readiness$/))) {
+      this.certifyCalls += 1;
+      const ready = this.certificateStatus === 'READY';
+      return reply(201, {
+        certificateId: `wrc_${'0'.repeat(23)}${this.certifyCalls}`,
+        status: this.certificateStatus,
+        scope: { compilationId: 'cmp_1', definitionId: m[1], candidateWorkflowId: 'wf_1', workflowName: 'Record before payment' },
+        gates: [
+          { id: 'source-quality', outcome: 'pass', findings: ['every source was read and can be relied on'] },
+          {
+            id: 'authorization',
+            outcome: ready ? 'pass' : 'review',
+            findings: ready ? ['every step is approved'] : ['"Review not covered": not approved for its current contract'],
+          },
+          ...(this.certificateStatus === 'BLOCKED'
+            ? [{ id: 'capabilities', outcome: 'block', findings: ['"Pay out" bound: not bound'] }]
+            : []),
+        ],
+        blockers: this.certificateStatus === 'BLOCKED' ? ['"Pay out" bound: not bound'] : [],
+        reviewItems: ready ? [] : ['"Review not covered": not approved for its current contract'],
+        conditions: [],
+        issuedAt: new Date().toISOString(),
+        digest: `sha256:${'a'.repeat(64)}`,
+      });
+    }
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/readiness-certificates\/([^/]+)\/verify$/))) {
+      return reply(200, {
+        certificateId: m[1],
+        status: this.certificateStatus,
+        startAllowed: this.certificateCurrent && this.certificateStatus === 'READY',
+        ...(this.certificateCurrent ? {} : { reasons: ['stale: the knowledge state changed since the certificate was issued'] }),
+      });
     }
     return err(404, 'XO_NOT_FOUND', `no route ${method} ${path}`);
   };

@@ -1024,3 +1024,50 @@
     background: color-mix(in srgb, var(--accent) 70%, transparent);
   }
 }
+
+/* PX-8: the pre-start proof (the platform's readiness certificate), shown apart from the mode readiness above. */
+.wr {
+  margin-top: var(--s-6);
+}
+.wr .wp-head span[data-readiness='READY'] {
+  color: var(--accent);
+}
+.wr .wp-head span[data-readiness='READY_WITH_CONDITIONS'] {
+  color: var(--info);
+}
+.wr .wp-head span[data-readiness='NEEDS_REVIEW'],
+.wr .wp-head span[data-readiness='BLOCKED'] {
+  color: var(--warning);
+}
+.wr-gates {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+}
+.wr-gates > li {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+}
+.wr-gates li[data-outcome='pass'] .wp-mark {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.wr-gates li[data-outcome='condition'] .wp-mark {
+  color: var(--info);
+  border: 2.5px solid var(--info);
+}
+.wr-gates li[data-outcome='review'] .wp-mark,
+.wr-gates li[data-outcome='block'] .wp-mark {
+  color: var(--warning);
+  border: 2.5px solid var(--warning);
+}
+.wr-findings {
+  margin: var(--s-1) 0 0;
+  padding-left: var(--s-5);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}

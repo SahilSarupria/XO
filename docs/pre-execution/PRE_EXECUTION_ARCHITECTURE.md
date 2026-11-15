@@ -79,3 +79,22 @@ upload / import / attachment ──► SourceRegistration (signature check, dige
         ▲
 apps/api, apps/cli   (Studio only through the API)
 ```
+
+## 6. As built after PX-8
+
+The target sequence in section 4 is the path the code now follows. Each stage is a function in `@xo/pre-execution`, or in
+`@xo/knowledge-base` for the knowledge stage, and the API, the CLI and Studio (through the API) all call the same ones:
+
+| Stage        | Function                                                              | API                                        | CLI                              |
+| ------------ | --------------------------------------------------------------------- | ------------------------------------------ | -------------------------------- |
+| Register     | `classifySourceContent`, `buildSourceSet`                             | `POST …/sources`                           | `collectSources`                 |
+| Compile      | `compileSourceSet` → `CompilationArtifact`                            | `POST …/compile`, `GET …/artifact`         | `xo compile --artifact`          |
+| Quality      | `assessSourceQuality`, `createSourceWaiver`                           | `…/source-quality`, `…/waivers`            | —                                |
+| Completeness | `assessCompleteness`, `createHumanRuling`                             | `…/completeness`, `…/rulings`              | `xo compile --rulings`           |
+| Knowledge    | `reconcileXoirGraph`, `KnowledgeBase`                                 | `…/knowledge-change-sets`, `/knowledge/*`  | `xo knowledge`                   |
+| Inventory    | `buildCapabilityInventory`, `humanTaskContractOf`                     | `…/capability-inventory`                   | `xo compile --inventory`         |
+| Generate     | `selectWorkflowScope`, `lowerCandidateWorkflow`                       | `…/generated-workflows`                    | `xo generate-workflow`           |
+| Certify      | `assessReadiness`, `verifyReadinessCertificate`                       | `…/readiness`, `/readiness-certificates/*` | `xo generate-workflow --certify` |
+| Start        | the start gate (`certificateId`, `trust.requireReadinessCertificate`) | `POST …/executions`                        | —                                |
+
+Studio shows the certificate in each workflow's "Pre-start check". `PRE_EXECUTION_HARDENING_REPORT.md` holds the evidence.

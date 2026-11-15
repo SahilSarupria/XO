@@ -1,4 +1,4 @@
-import { compileSources, type CompileSourcesOptions, type CompileSourcesResult } from '@xo/compiler';
+import type { CompileSourcesResult } from '@xo/compiler';
 import {
   composeWorkflows,
   auditWorkflowExecutability,
@@ -27,7 +27,7 @@ import {
   RuleBasedPolicy,
 } from '@xo/permissions';
 import { XoirNodeId } from '@xo/xoir';
-import { goalSpecification, selectWorkflowScope } from '@xo/pre-execution';
+import { compileSourceSet, defaultCompileConfiguration, goalSpecification, selectWorkflowScope } from '@xo/pre-execution';
 import { collectSources } from '../compiler/source-collection.js';
 
 /**
@@ -94,8 +94,12 @@ export async function runWorkflowPipeline(options: WorkflowPipelineOptions): Pro
   }
 
   try {
-    const compileOptions: CompileSourcesOptions = options.domainHint !== undefined ? { domainHint: options.domainHint } : {};
-    const compileResult = await compileSources(collected.inputs, compileOptions);
+    // PX-8 (gap PX-G07): the same entry point and configuration type as `xo compile` and the API.
+    const set = await compileSourceSet(
+      collected.inputs.map((input, i) => ({ entry: collected.entries[i]!, input })),
+      defaultCompileConfiguration(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
+    );
+    const compileResult = set.ok ? { ok: true as const, value: set.value.result } : set;
     if (!compileResult.ok) return { ok: false, message: `[${compileResult.error.code}] ${compileResult.error.message}` };
     const compiled = compileResult.value;
     const { graph } = compiled;

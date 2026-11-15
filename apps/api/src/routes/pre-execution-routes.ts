@@ -5,6 +5,7 @@ import {
   goalSpecification,
   lowerCandidateWorkflow,
   selectWorkflowScope,
+  sourceNamesOf,
   type GoalSpecification,
   type LoweredWorkflow,
   type ScopeSelection,
@@ -122,7 +123,7 @@ export function registerPreExecutionRoutes(
     }
     const candidate = ctx.workflows.find((w) => w.id === candidateId);
     if (candidate === undefined) throw new NotFoundError(`workflow "${candidateId}" in compilation "${compilationId}"`);
-    const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory);
+    const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, { sourceNames: sourceNamesOf(ctx.artifact) });
     const gd = goalDigest(goal);
     const id = digestOf({ compilationId, candidateId, goal: gd, definition: lowered.definitionDigest });
     const record: WorkflowDefinitionRecord = {
