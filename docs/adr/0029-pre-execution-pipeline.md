@@ -4,6 +4,8 @@
 
 Accepted under owner delegation, 2026-11-15 (pre-execution program, PX-0). The owner gave Claude authority to make design decisions that make the product better, more accurate and easier to use. This is a delegated sign-off, not an independent review. Items marked **owner ratification** are decided provisionally and stay conservative until the owner ratifies them.
 
+Amended 2026-11-16 by [ADR 0030](0030-pre-execution-launch-completion.md): decisions 12 (every construct is generated on evidence and the Workflow IR is what runs), 14 (exactly two allowed conditions), 16 (SQLite and Postgres knowledge stores) and 17 (ratified regression floors; targets stay proposals).
+
 ## Context
 
 The owner's _XO Pre-Execution Pipeline Hardening_ specification (1.0, 14 November 2026) asks for one source-independent path from a source to an authoritative readiness decision, just before a workflow starts. It includes a persistent, governed Business Knowledge Base (BKB).

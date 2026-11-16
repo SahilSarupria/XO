@@ -2,7 +2,7 @@
  * PX-6 — `xo generate-workflow`: sources + a goal → Workflow IR, through the same `@xo/pre-execution` functions the API
  * uses (scope selection, capability inventory, lowering), so the same sources and goal give the same definition digest.
  */
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { composeWorkflows } from '@xo/workflow-composer';
 import {
   assessCompleteness,
@@ -13,8 +13,10 @@ import {
   defaultCompileConfiguration,
   goalSpecification,
   lowerCandidateWorkflow,
+  parseConnectorBindings,
   selectWorkflowScope,
   sourceNamesOf,
+  type ConnectorBinding,
   type SourceSetMember,
 } from '@xo/pre-execution';
 import type { CommandResult } from '../../command-result.js';
@@ -34,17 +36,36 @@ export interface GenerateWorkflowOptions {
   /** Write the readiness certificate here (implies `certify`). */
   readonly certificateOut?: string;
   readonly json?: boolean;
+  /** `text`: runs receive free text and facts are extracted before any step (`--intake text`). */
+  readonly intake?: string;
+  /** Repeat the workflow once per item of this named list (`--for-each <item>`). */
+  readonly forEach?: string;
+  /** A connector-bindings JSON file (`[{capability, connector, kind, operation, sideEffect, compensation?, adapter}]` or `{bindings:[…]}`), the same document a workspace stores. */
+  readonly connectors?: string;
 }
 
 export const GENERATE_WORKFLOW_USAGE =
-  'xo generate-workflow <source>... --goal <text> [--need <step>]... [--section <heading>] [--workflow-id <id>] [--out <workflows.json>] [--certify [--certificate <file>]] [--json]';
+  'xo generate-workflow <source>... --goal <text> [--need <step>]... [--section <heading>] [--workflow-id <id>] [--out <workflows.json>] [--intake text] [--for-each <item>] [--connectors <bindings.json>] [--certify [--certificate <file>]] [--json]';
 
 export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promise<CommandResult> {
   if (o.sources.length === 0) return failWith(GENERATE_WORKFLOW_USAGE);
+  if (o.intake !== undefined && o.intake !== 'text' && o.intake !== 'structured') return failWith('--intake must be text or structured');
+  let bindings: ConnectorBinding[] = [];
+  if (o.connectors !== undefined) {
+    try {
+      const doc = JSON.parse(await readFile(o.connectors, 'utf8')) as unknown;
+      bindings = parseConnectorBindings(Array.isArray(doc) ? doc : (doc as { bindings?: unknown }).bindings);
+    } catch (cause) {
+      return failWith(`--connectors ${o.connectors}: ${(cause as Error).message}`);
+    }
+  }
+  const connectorBindings = new Map(bindings.map((b) => [b.capability, b] as const));
   let goal;
   try {
     goal = goalSpecification({
       text: o.goal,
+      ...(o.intake === 'text' ? { intake: 'text' as const } : {}),
+      ...(o.forEach !== undefined ? { forEach: o.forEach } : {}),
       ...(o.needs !== undefined ? { needs: o.needs } : {}),
       ...(o.section !== undefined ? { section: o.section } : {}),
     });
@@ -64,7 +85,13 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
     const { result, artifact } = compiled.value;
     const composed = composeWorkflows(result.graph, { now: () => '1970-01-01T00:00:00.000Z' });
     if (!composed.ok) return failWith(`[${composed.error.code}] ${composed.error.message}`);
-    const inventory = buildCapabilityInventory(result.graph, { artifactDigest: artifact.digest, needs: goal.needs ?? [] });
+    // Locally the host adapters a bindings file names are taken as present; a workspace checks they are installed.
+    const inventory = buildCapabilityInventory(result.graph, {
+      artifactDigest: artifact.digest,
+      needs: goal.needs ?? [],
+      externalBindings: connectorBindings,
+      availableAdapters: new Set(bindings.map((b) => b.adapter)),
+    });
 
     let candidateId = o.workflowId;
     let rationale = `named explicitly (--workflow-id ${o.workflowId})`;
@@ -81,7 +108,12 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
     }
     const candidate = composed.value.find((w) => w.id === candidateId);
     if (candidate === undefined) return failWith(`no workflow "${candidateId}" in these sources`);
-    const lowered = lowerCandidateWorkflow(result.graph, candidate, inventory, { sourceNames: sourceNamesOf(artifact) });
+    const lowered = lowerCandidateWorkflow(result.graph, candidate, inventory, {
+      sourceNames: sourceNamesOf(artifact),
+      connectorBindings,
+      ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
+      ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
+    });
     if (o.out !== undefined && lowered.component !== undefined) await writeFile(o.out, `${JSON.stringify(lowered.component, null, 2)}\n`);
     const certificate =
       o.certify === true || o.certificateOut !== undefined
@@ -93,6 +125,7 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
             candidate,
             lowered,
             goal,
+            connectorBindings: bindings,
             ...(selected !== undefined ? { scope: selected } : {}),
             issuedBy: { id: 'local', kind: 'cli' },
             issuedAt: new Date().toISOString(),

@@ -91,16 +91,16 @@ Evidence for UAC-19. Mode: deterministic.
 | Measure | Value | Threshold |
 | --- | --- | --- |
 | Expected items read at all (blind) | 79.7% (114/143) |  |
-| Expected items read as the right kind (blind) | 79.7% (114/143) | ≥ 0.9 (proposed) |
+| Expected items read as the right kind (blind) | 79.7% (114/143) | ≥ 0.9 (proposed); floor ≥ 0.797 (ratified, met) |
 | Modality right where the wording is unambiguous (blind) | 100.0% (56/56) |  |
 | Check-box state kept (blind) | no cases (0/0) |  |
 | Procedure order kept (consecutive step pairs) (blind) | no cases (0/0) |  |
-| Output that is a right reading of something in the document (blind) | 67.9% (114/168) | ≥ 0.9 (proposed) |
-| Expected items lost without any report (blind) | 7 | ≤ 0 (proposed) |
+| Output that is a right reading of something in the document (blind) | 67.9% (114/168) | ≥ 0.9 (proposed); floor ≥ 0.678 (ratified, met) |
+| Expected items lost without any report (blind) | 7 | ≤ 0 (proposed); floor ≤ 7 (ratified, met) |
 | Outputs built from text of two items (blind) | 0 |  |
 | Outputs built from questions, labels, placeholders or descriptions (blind) | 9 |  |
 | Expected items read at all (held-out) | 82.5% (184/223) |  |
-| Expected items read as the right kind (held-out) | 82.1% (183/223) | ≥ 0.9 (proposed) |
+| Expected items read as the right kind (held-out) | 82.1% (183/223) | ≥ 0.9 (proposed); floor ≥ 0.82 (ratified, met) |
 | Modality right where the wording is unambiguous (held-out) | 100.0% (43/43) |  |
 | Check-box state kept (held-out) | 100.0% (39/39) |  |
 | Procedure order kept (consecutive step pairs) (held-out) | 100.0% (28/28) |  |
@@ -109,7 +109,7 @@ Evidence for UAC-19. Mode: deterministic.
 | Outputs built from text of two items (held-out) | 0 |  |
 | Outputs built from questions, labels, placeholders or descriptions (held-out) | 13 |  |
 | Expected items read at all (dev) | 98.8% (159/161) |  |
-| Expected items read as the right kind (dev) | 98.8% (159/161) | ≥ 0.95 (proposed) |
+| Expected items read as the right kind (dev) | 98.8% (159/161) | ≥ 0.95 (proposed); floor ≥ 0.98 (ratified, met) |
 | Modality right where the wording is unambiguous (dev) | 100.0% (38/38) |  |
 | Check-box state kept (dev) | 100.0% (54/54) |  |
 | Procedure order kept (consecutive step pairs) (dev) | 94.4% (34/36) |  |
@@ -168,7 +168,7 @@ Evidence for UAC-19. Mode: deterministic.
 | R9 Title not recorded in the plan text (title to confirm) |  | owner | open | Confirm the title and scope from the A1 audit. |
 | R10 Security attestation for hosting customer data | yes | owner | open | Security posture work before hosting a pilot's data (plan RK20); SOC 2/ISO material is before-scale. |
 | R11 Contract terms with the customer | yes | owner with counsel | open | Customer contract and data-processing terms. |
-| R12 Accuracy pass criteria | yes | owner | open | Ratify thresholds before measuring; real labelled sets for the first vertical (UW-13). |
+| R12 Accuracy pass criteria | yes | owner | in progress | Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves. |
 | R13 Pilot definition | yes | owner | open | Scope, success criteria and exit of the first pilot. |
 | R14 Pricing and metering |  | owner | open | Before scale, not before a pilot. |
 | R15 Title not recorded in the plan text (title to confirm) |  | owner | open | Confirm the title and scope from the A1 audit. |

@@ -71,6 +71,9 @@ export function registerCommands(registry: CommandRegistry): void {
       const section = requireFlag(args.flags, 'section');
       const workflowId = requireFlag(args.flags, 'workflow-id');
       const out = requireFlag(args.flags, 'out');
+      const intake = requireFlag(args.flags, 'intake');
+      const forEach = requireFlag(args.flags, 'for-each');
+      const connectors = requireFlag(args.flags, 'connectors');
       return printResult(
         await generateWorkflowCommand({
           sources: args.positionals,
@@ -79,6 +82,9 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(section !== undefined ? { section } : {}),
           ...(workflowId !== undefined ? { workflowId } : {}),
           ...(out !== undefined ? { out } : {}),
+          ...(intake !== undefined ? { intake } : {}),
+          ...(forEach !== undefined ? { forEach } : {}),
+          ...(connectors !== undefined ? { connectors } : {}),
           ...(args.flags['certify'] === true ? { certify: true } : {}),
           ...(requireFlag(args.flags, 'certificate') !== undefined ? { certificateOut: requireFlag(args.flags, 'certificate')! } : {}),
           json: args.flags['json'] === true,

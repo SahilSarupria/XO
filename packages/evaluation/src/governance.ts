@@ -11,7 +11,14 @@ export interface ThresholdCheck {
   readonly value?: number;
   /** For a ratified threshold: whether the measure meets it. A proposal is never pass or fail. `no-cases`: nothing to measure this run. */
   readonly outcome: 'pass' | 'fail' | 'proposal' | 'not-measured' | 'no-cases';
+  /** The ratified non-regression floor, when the threshold has one: it gates even while the target is a proposal. */
+  readonly floor?: { readonly bound: string; readonly outcome: 'pass' | 'fail' };
 }
+
+const boundOf = (b: { readonly min?: number; readonly max?: number }): string =>
+  [b.min !== undefined ? `≥ ${b.min}` : undefined, b.max !== undefined ? `≤ ${b.max}` : undefined].filter(Boolean).join(' and ');
+const meetsBound = (v: number, b: { readonly min?: number; readonly max?: number }): boolean =>
+  (b.min === undefined || v >= b.min) && (b.max === undefined || v <= b.max);
 
 export function validateThresholds(thresholds: readonly Threshold[]): readonly string[] {
   const problems: string[] = [];
@@ -24,6 +31,12 @@ export function validateThresholds(thresholds: readonly Threshold[]): readonly s
     if (t.status === 'ratified' && (t.ratifiedBy === undefined || t.ratifiedAt === undefined))
       problems.push(`${t.measure}: a ratified threshold records who ratified it and when`);
     if (t.rationale.trim() === '') problems.push(`${t.measure}: needs a rationale`);
+    if (t.floor !== undefined) {
+      const f = t.floor;
+      if (f.min === undefined && f.max === undefined) problems.push(`${t.measure}: a floor needs min or max`);
+      if (f.ratifiedBy === undefined || f.ratifiedAt === undefined) problems.push(`${t.measure}: a floor records who ratified it and when`);
+      if (f.rationale === undefined || f.rationale.trim() === '') problems.push(`${t.measure}: a floor needs a rationale`);
+    }
   }
   return problems;
 }
@@ -32,18 +45,19 @@ export function checkThresholds(thresholds: readonly Threshold[], measures: read
   const byId = new Map(measures.map((m) => [m.id, m]));
   return thresholds.map((t) => {
     const m = byId.get(t.measure);
-    const bound = [t.min !== undefined ? `≥ ${t.min}` : undefined, t.max !== undefined ? `≤ ${t.max}` : undefined]
-      .filter(Boolean)
-      .join(' and ');
+    const bound = boundOf(t);
     if (m === undefined) return { measure: t.measure, status: t.status, bound, outcome: 'not-measured' };
     if (m.value === null) return { measure: t.measure, status: t.status, bound, outcome: 'no-cases' };
-    const meets = (t.min === undefined || m.value >= t.min) && (t.max === undefined || m.value <= t.max);
+    const meets = meetsBound(m.value, t);
     return {
       measure: t.measure,
       status: t.status,
       bound,
       value: m.value,
       outcome: t.status === 'proposed' ? 'proposal' : meets ? 'pass' : 'fail',
+      ...(t.floor !== undefined
+        ? { floor: { bound: boundOf(t.floor), outcome: meetsBound(m.value, t.floor) ? ('pass' as const) : ('fail' as const) } }
+        : {}),
     };
   });
 }

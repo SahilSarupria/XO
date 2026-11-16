@@ -13,6 +13,7 @@ import { registerCompilationRoutes } from './source-compilation-routes.js';
 import { registerKnowledgeRoutes } from './knowledge-routes.js';
 import { registerPreExecutionRoutes } from './pre-execution-routes.js';
 import { registerReadinessRoutes } from './readiness-routes.js';
+import { registerGeneratedRunRoutes } from './generated-run-routes.js';
 import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
@@ -146,6 +147,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerPreExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerReadinessRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerGeneratedRunRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);

@@ -21,6 +21,27 @@ const thresholds = (JSON.parse(readFileSync(`${ROOT}evaluation/thresholds.json`,
 const register = (JSON.parse(readFileSync(`${ROOT}evaluation/register.json`, 'utf8')) as { items: RegisterItem[] }).items;
 const m = (id: string, value: number | null): Measure => ({ id, title: id, unit: 'ratio', better: 'higher', value });
 
+test('ADR 0030: a ratified floor under a proposed target gates now, the target still does not', () => {
+  const floor = { rationale: 'no regression', ratifiedBy: 'owner', ratifiedAt: '2026-11-16' };
+  const ts: Threshold[] = [
+    { measure: 's/a', min: 0.9, status: 'proposed', rationale: 'r', floor: { min: 0.8, ...floor } },
+    { measure: 's/b', max: 0, status: 'proposed', rationale: 'r', floor: { max: 7, ...floor } },
+  ];
+  const checks = checkThresholds(ts, [m('s/a', 0.85), m('s/b', 8)]);
+  assert.deepEqual(
+    checks.map((c) => [c.measure, c.outcome, c.floor?.outcome]),
+    [
+      ['s/a', 'proposal', 'pass'],
+      ['s/b', 'proposal', 'fail'],
+    ],
+  );
+  assert.deepEqual(validateThresholds([{ measure: 'y', min: 1, status: 'proposed', rationale: 'r', floor: { rationale: ' ' } as never }]), [
+    'y: a floor needs min or max',
+    'y: a floor records who ratified it and when',
+    'y: a floor needs a rationale',
+  ]);
+});
+
 test('a threshold is a proposal until the owner ratifies it; only ratified thresholds pass or fail', () => {
   const ts: Threshold[] = [
     { measure: 's/a', min: 0.9, status: 'proposed', rationale: 'r' },

@@ -58,7 +58,26 @@ export function useStartWorkflow(args: {
         return;
       }
       intentKey.current ??= newIdempotencyKey();
-      const r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current);
+      let r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current);
+      if (!r.ok && r.problem.code === 'XO_READINESS_CERTIFICATE_REQUIRED') {
+        // The workspace requires proof before a start. Ask the platform for this workflow's certificate (it recomputes
+        // every gate) and start with it only when it is READY; otherwise say what stands in the way. Nothing was created.
+        const cert = await client.certifyWorkflow(args.workspaceId, w.compilationId, w.workflowId, w.name);
+        if (!cert.ok) {
+          intentKey.current = undefined;
+          setNotice({ problem: cert.problem });
+          return;
+        }
+        if (cert.value.status !== 'READY' && cert.value.status !== 'READY_WITH_CONDITIONS') {
+          intentKey.current = undefined;
+          const reasons = [...cert.value.blockers, ...cert.value.reviewItems].slice(0, 3);
+          setNotice({
+            info: `This process is not ready to start (${cert.value.status.replace(/_/g, ' ').toLowerCase()}).${reasons.length > 0 ? ` ${reasons.join(' ')}` : ''} Open its readiness check for the full list.`,
+          });
+          return;
+        }
+        r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current, cert.value.certificateId);
+      }
       if (r.ok) {
         intentKey.current = undefined;
         args.onChanged();

@@ -37,15 +37,20 @@ says so.
 
 ## Lowering
 
-`lowerCandidateWorkflow(graph, candidate, inventory)` lowers each step from what its capability report says it is bound
-to:
+`lowerCandidateWorkflow(graph, candidate, inventory, options)` lowers each step from what its capability report says it
+is bound to (ADR 0030):
 
-| Bound strategy       | Workflow IR                                                                                                                                                                                                                                               |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `human_in_the_loop`  | `approve`. The summary is the human task contract's instruction, done-when and role. Required inputs are attached as evidence. `decision` is `approved` or `rejected`. A timeout escalates; there is never an auto-approve.                               |
-| `deterministic_rule` | `decide` with `rules`. Each linked rule's structured condition is rendered in the closed expression language (`refund_amount > 500`). No match escalates. A temporal condition or an exception clause has no faithful rendering, so the step is reported. |
-| `external_tool`      | Not generated. The host binds connector operations and their side effects; generation never guesses them.                                                                                                                                                 |
-| unbound              | Not generated. Reported as blocking.                                                                                                                                                                                                                      |
+| Bound strategy       | Workflow IR                                                                                                                                                                                                                                                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `human_in_the_loop`  | `approve`. The summary is the human task contract's instruction, done-when and role. Required inputs are attached as evidence. `decision` is `approved` or `rejected`. A deadline the step states (`within 2 days`) is the timeout; a timeout escalates, never approves.                                                            |
+| `deterministic_rule` | `decide` with `rules`. Each linked rule's structured condition is rendered in the closed expression language (`refund_amount > 500`). No match escalates. A temporal condition or an exception clause has no faithful rendering, so the step is reported.                                                                           |
+| `external_tool`      | `act`, only for a declared operation with a workspace connector binding (connector, operation, side effect, adapter). Effectful acts get the idempotency key `{{workflow.id}}:{{run.id}}:{{step.id}}`; the contract's field names are kept. A binding with an undo adds a `compensate` step. Without a binding: reported, blocking. |
+| unbound              | Not generated. Reported as blocking.                                                                                                                                                                                                                                                                                                |
+
+A step that states a delay (`wait 24 hours`) is preceded by a `wait`. When a later step is named as the outcome of a
+`decide` rule, a `branch` on that decision routes to it. A goal with `intake: "text"` gets a leading `extract` step
+that fills the inputs from the run's text; a goal with `forEach: "<item>"` wraps the steps in a `for_each` over the
+bounded JSON list input `<item>_items`.
 
 Steps run in the composed order. A step after a human task runs only when the person confirmed that task (`runIf`
 on the previous step's decision). If the previous step was skipped, the skip cascades instead of running on an
@@ -63,14 +68,17 @@ The result carries:
 - `definitionDigest`, the SHA-256 of the canonical component. It is stable when the same sources are regenerated.
 - `complete`, which is true when every step was generated, the definition is valid and nothing blocks.
 
-`GENERATION_CONSTRUCTS` records which Workflow IR constructs generation emits and why the others are authored rather
-than generated: branch, act, wait, compensate, for_each and extract.
+`GENERATION_CONSTRUCTS` records, for every Workflow IR construct, the evidence generation needs before it emits it. A
+construct without its evidence is reported, never invented.
 
 ## Surfaces
 
-- API: `POST /workspaces/{ws}/compilations/{id}/generated-workflows` with `{ goal, workflowId? }`, then
+- API: `PUT /workspaces/{ws}/connector-bindings` (manage role) states how declared operations are carried out.
+  `POST /workspaces/{ws}/compilations/{id}/generated-workflows` with `{ goal: { text, needs?, section?, intake?, forEach? }, workflowId? }`, then
   `GET /workspaces/{ws}/generated-workflows[/{id}]`. A generated workflow is persisted with its digest, under an id that
   covers the compilation, the candidate, the goal and the definition. These are separate from the Studio's authored
-  `workflow-definitions`.
-- CLI: `xo generate-workflow <sources> --goal "<text>" [--need <step>]... [--section <heading>] [--out workflows.json]`,
+  `workflow-definitions`. A certified definition runs through `@xo/workflow-runtime` with
+  `POST /workspaces/{ws}/generated-workflows/{id}/runs` (`{ input, certificateId }`; the certificate is always
+  required), and its approvals are decided with `POST …/runs/{runId}/approvals/{approvalId}`.
+- CLI: `xo generate-workflow <sources> --goal "<text>" [--need <step>]... [--section <heading>] [--intake text] [--for-each <item>] [--connectors bindings.json] [--out workflows.json]`,
   and `xo workflow <source> --goal "<text>"`.

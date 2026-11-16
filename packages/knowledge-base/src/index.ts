@@ -5,3 +5,4 @@ export * from './packs.js';
 export * from './store.js';
 export * from './knowledge-base.js';
 export * from './xoir-adapter.js';
+export * from './sql-store.js';

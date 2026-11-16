@@ -12,7 +12,7 @@ This page covers ADR 0029 decisions 14 and 15, and gaps PX-G24 and PX-G25.
 
 | Gate                  | Blocks (BLOCKED)                                                                          | Needs a person (NEEDS_REVIEW)                                   | Condition (READY_WITH_CONDITIONS)                                |
 | --------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `source-quality`      | a source that cannot be relied on, with no waiver                                         |                                                                 |                                                                  |
+| `source-quality`      | a source that cannot be relied on, with no waiver                                         |                                                                 | a finding a reviewer waived (one condition per waiver)           |
 | `completeness`        | a structurally invalid graph                                                              | open conflicts, unparsed sentences, review items, stale rulings |                                                                  |
 | `knowledge`           |                                                                                           | an unresolved conflict in the pinned knowledge state            |                                                                  |
 | `goal`                | no workflow matches the goal; the goal selects another one; a need nobody provides        | the goal asks a clarification question                          |                                                                  |
@@ -27,12 +27,20 @@ The overall status follows this order:
 3. Otherwise, any condition makes it `READY_WITH_CONDITIONS`.
 4. Otherwise it is `READY`.
 
-Mandatory gates never degrade to conditions. The only declared condition is an unstated step order that the owner
-accepts. A numbered procedure states its own order, so that order is a pass, not a condition.
+Mandatory gates never degrade to conditions. There are exactly two declared conditions (ADR 0030): an unstated step
+order that the owner accepts, and a waived source-quality finding. A numbered procedure states its own order, so that order is a pass, not a condition.
+
+## When a certificate is required
+
+`XO_READINESS_CERTIFICATE=required` (the production default) makes every start present a current certificate;
+`workspace` leaves it to the workspace's `trust.requireReadinessCertificate` and is refused in production unless
+`XO_ALLOW_UNCERTIFIED_STARTS=1`. Running a generated workflow's Workflow IR always requires one. Studio obtains the
+certificate itself when a start is refused for lack of one, and starts only when it is READY or READY_WITH_CONDITIONS.
 
 ## Bindings and staleness
 
-A certificate binds the digest of every input its status depends on:
+A certificate (policy `xo.readiness-policy.v2`) binds the digest of every input its status depends on, including the
+connector bindings its steps use:
 
 - the source set
 - the compilation artifact

@@ -72,7 +72,7 @@ export function buildEvaluationReport(input: {
     thresholds: checks,
     register: { ...register, items: input.register },
     verdict: {
-      failedRatified: checks.filter((c) => c.outcome === 'fail').map((c) => c.measure),
+      failedRatified: checks.filter((c) => c.outcome === 'fail' || c.floor?.outcome === 'fail').map((c) => c.measure),
       proposals: checks.filter((c) => c.outcome === 'proposal').length,
       pilotGate: register.pilotBlockers.length === 0 ? 'clear' : 'blocked',
       problems: [
@@ -120,7 +120,10 @@ export function renderReportMarkdown(r: EvaluationReport): string {
         'no-cases': `${c?.status}, nothing to check`,
         'not-measured': '',
       }[c?.outcome ?? 'not-measured'];
-      const threshold = c === undefined ? '' : `${c.bound} (${state})`;
+      const threshold =
+        c === undefined
+          ? ''
+          : `${c.bound} (${state})${c.floor !== undefined ? `; floor ${c.floor.bound} (ratified, ${c.floor.outcome === 'pass' ? 'met' : 'FAILED'})` : ''}`;
       out.push(`| ${m.title} | ${value} | ${threshold} |`);
     }
     if (s.notes.length > 0) out.push('', '**Notes:**', ...s.notes.map((n) => `- ${n}`));

@@ -64,7 +64,11 @@ export class KnowledgeBase {
   // ── packs ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   /** Installs (stores and activates) a pack for this tenant. Installation grants no authority; it only adds semantics. */
-  async installPack(pack: PackArtifact, actor: Actor): Promise<void> {
+  installPack(pack: PackArtifact, actor: Actor): Promise<void> {
+    return this.store.exclusive(() => this.installPackLocked(pack, actor));
+  }
+
+  private async installPackLocked(pack: PackArtifact, actor: Actor): Promise<void> {
     const problems = validatePackArtifact(pack);
     if (problems.length > 0) throw new KnowledgeError('integrity', `pack ${pack.manifest.packId}: ${problems.join('; ')}`);
     const active = await this.packs();
@@ -179,7 +183,16 @@ export class KnowledgeBase {
    * Proposes a change set against the current head. It is validated now (findings recorded with it); nothing changes the
    * active state until it is approved. An empty change set is not stored: the report says everything was unchanged.
    */
-  async propose(input: {
+  propose(input: {
+    readonly operations: readonly ChangeOperation[];
+    readonly origin: ChangeSet['origin'];
+    readonly report?: ReconciliationReport;
+    readonly proposedBy: Actor;
+  }): Promise<ChangeSet | undefined> {
+    return this.store.exclusive(() => this.proposeLocked(input));
+  }
+
+  private async proposeLocked(input: {
     readonly operations: readonly ChangeOperation[];
     readonly origin: ChangeSet['origin'];
     readonly report?: ReconciliationReport;
@@ -249,7 +262,11 @@ export class KnowledgeBase {
    * Approves a proposed change set: refused when it has error findings, when it was decided already, or when the head has
    * moved since it was proposed (re-propose against the new head). Creates the next immutable state.
    */
-  async approve(changeSetId: string, reviewer: Actor, reason: string, policy: PrecedencePolicy = NO_PRECEDENCE): Promise<KnowledgeState> {
+  approve(changeSetId: string, reviewer: Actor, reason: string, policy: PrecedencePolicy = NO_PRECEDENCE): Promise<KnowledgeState> {
+    return this.store.exclusive(() => this.approveLocked(changeSetId, reviewer, reason, policy));
+  }
+
+  private async approveLocked(changeSetId: string, reviewer: Actor, reason: string, policy: PrecedencePolicy): Promise<KnowledgeState> {
     const cs = await this.changeSet(changeSetId);
     if (cs.status !== 'proposed') throw new KnowledgeError('already_decided', `change set ${changeSetId} is already ${cs.status}`);
     const errors = cs.findings.filter((f) => f.severity === 'error');
@@ -286,7 +303,11 @@ export class KnowledgeBase {
   }
 
   /** Rejects a proposed change set. Its records stay stored (auditable) but never enter a state through it. */
-  async reject(changeSetId: string, reviewer: Actor, reason: string): Promise<void> {
+  reject(changeSetId: string, reviewer: Actor, reason: string): Promise<void> {
+    return this.store.exclusive(() => this.rejectLocked(changeSetId, reviewer, reason));
+  }
+
+  private async rejectLocked(changeSetId: string, reviewer: Actor, reason: string): Promise<void> {
     const cs = await this.changeSet(changeSetId);
     if (cs.status !== 'proposed') throw new KnowledgeError('already_decided', `change set ${changeSetId} is already ${cs.status}`);
     await this.store.putDecision({ changeSetId, status: 'rejected', by: reviewer, at: this.now(), reason });

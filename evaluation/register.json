@@ -108,9 +108,9 @@
       "title": "Accuracy pass criteria",
       "pilotBlocking": true,
       "owner": "owner",
-      "status": "open",
-      "evidence": ["evaluation/thresholds.json", "evaluation/REPORT.md"],
-      "next": "Ratify thresholds before measuring; real labelled sets for the first vertical (UW-13)."
+      "status": "in_progress",
+      "evidence": ["evaluation/thresholds.json", "evaluation/REPORT.md", "docs/adr/0030-pre-execution-launch-completion.md"],
+      "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves."
     },
     {
       "id": "R13",

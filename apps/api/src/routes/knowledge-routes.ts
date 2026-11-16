@@ -2,7 +2,11 @@ import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import {
   FsKnowledgeStore,
+  SqlKnowledgeStore,
+  sqliteDriver,
   KnowledgeBase,
+  type KnowledgeStore,
+  type SqlDriver,
   KnowledgeError,
   IntegrityError,
   reconcileXoirGraph,
@@ -11,7 +15,9 @@ import {
   type PrecedencePolicy,
   type XoirGraphView,
 } from '@xo/knowledge-base';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+import { pg, postgresDriver } from '@xo/knowledge-store-postgres';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -58,10 +64,42 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
+/** One driver per database for the life of the process (the SQLite file or the Postgres pool), shared by every workspace. */
+const drivers = new Map<string, Promise<SqlDriver>>();
+/** Opened stores by database and tenant: opening runs the schema check once, not on every request. */
+const stores = new Map<string, Promise<KnowledgeStore>>();
+
+function driverFor(kind: 'sqlite' | 'postgres', target: string): Promise<SqlDriver> {
+  const key = `${kind}:${target}`;
+  let d = drivers.get(key);
+  if (d === undefined) {
+    d =
+      kind === 'sqlite'
+        ? mkdir(dirname(target), { recursive: true }).then(() => sqliteDriver(target))
+        : Promise.resolve(postgresDriver(new pg.Pool({ connectionString: target, max: 10 }), { ownsPool: true }));
+    d.catch(() => drivers.delete(key));
+    drivers.set(key, d);
+  }
+  return d;
+}
+
+/** ADR 0030 — the workspace's knowledge store, from `dataConfig.knowledgeStore` (SQLite by default). */
+export async function workspaceKnowledgeStore(workspace: WorkspaceRecord, config: WorkspaceDataConfig): Promise<KnowledgeStore> {
+  const kind = config.knowledgeStore?.kind ?? 'sqlite';
+  if (kind === 'file') return FsKnowledgeStore.open(join(config.dataRootDir, workspace.workspaceId, 'knowledge'), workspace.workspaceId);
+  const target = kind === 'postgres' ? (config.knowledgeStore?.url ?? '') : join(config.dataRootDir, 'knowledge.sqlite');
+  const key = `${kind}:${target}:${workspace.workspaceId}`;
+  let s = stores.get(key);
+  if (s === undefined) {
+    s = driverFor(kind, target).then((driver) => SqlKnowledgeStore.open(driver, workspace.workspaceId));
+    s.catch(() => stores.delete(key));
+    stores.set(key, s);
+  }
+  return s;
+}
+
 export async function workspaceKnowledgeBase(workspace: WorkspaceRecord, config: WorkspaceDataConfig): Promise<KnowledgeBase> {
-  return new KnowledgeBase(
-    await FsKnowledgeStore.open(join(config.dataRootDir, workspace.workspaceId, 'knowledge'), workspace.workspaceId),
-  );
+  return new KnowledgeBase(await workspaceKnowledgeStore(workspace, config));
 }
 
 function parsePolicy(v: unknown): PrecedencePolicy | undefined {

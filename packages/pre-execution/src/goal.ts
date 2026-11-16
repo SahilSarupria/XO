@@ -21,6 +21,10 @@ export interface GoalSpecification {
   readonly section?: string;
   /** Who stated the goal (an actor id), when known. */
   readonly statedBy?: string;
+  /** How cases arrive: `text` adds one quoted reading of the facts (extract); default `structured`. */
+  readonly intake?: 'structured' | 'text';
+  /** The work is done once per item of this kind ("invoice"): the workflow fans out over `<item>_items`. */
+  readonly forEach?: string;
 }
 
 export function goalSpecification(input: Omit<GoalSpecification, 'schema'>): GoalSpecification {
@@ -32,6 +36,8 @@ export function goalSpecification(input: Omit<GoalSpecification, 'schema'>): Goa
     ...(input.needs !== undefined && input.needs.length > 0 ? { needs: input.needs.map((n) => n.trim()).filter((n) => n !== '') } : {}),
     ...(input.section !== undefined && input.section.trim() !== '' ? { section: input.section.trim() } : {}),
     ...(input.statedBy !== undefined ? { statedBy: input.statedBy } : {}),
+    ...(input.intake === 'text' ? { intake: 'text' as const } : {}),
+    ...(input.forEach !== undefined && input.forEach.trim() !== '' ? { forEach: input.forEach.trim() } : {}),
   };
 }
 

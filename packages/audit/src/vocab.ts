@@ -46,6 +46,10 @@ export const AUDIT_EVENT_TYPES = [
   // PX-7: a readiness certificate was issued, or a start was refused at the certificate gate.
   'readiness.certificate.issued',
   'readiness.start.refused',
+  // ADR 0030: generated workflows run as Workflow IR; connector bindings are the operator's statement of effects.
+  'generated-workflow.run.started',
+  'generated-workflow.approval.decided',
+  'connector-bindings.updated',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.

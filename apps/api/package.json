@@ -30,7 +30,9 @@
     "@xo/logger": "0.1.0",
     "@xo/package-sdk": "0.1.0",
     "@xo/permissions": "0.1.0",
+    "@xo/connectors": "0.1.0",
     "@xo/knowledge-base": "0.1.0",
+    "@xo/knowledge-store-postgres": "0.1.0",
     "@xo/pre-execution": "0.1.0",
     "@xo/procedure": "0.1.0",
     "@xo/registry": "0.1.0",
@@ -39,6 +41,7 @@
     "@xo/storage": "0.1.0",
     "@xo/types": "0.1.0",
     "@xo/workflow-composer": "0.1.0",
+    "@xo/workflow-runtime": "0.1.0",
     "@xo/xoir": "0.1.0",
     "jose": "^6.2.12"
   },

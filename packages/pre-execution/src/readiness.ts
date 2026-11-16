@@ -24,11 +24,15 @@ import type { CapabilityInventory } from './capability-inventory.js';
 import type { CompilationArtifact } from './compilation-artifact.js';
 import type { CompletenessAssessment } from './completeness.js';
 import { goalDigest, type GoalSpecification, type ScopeSelection } from './goal.js';
-import type { LoweredWorkflow } from './lower-workflow.js';
+import type { ConnectorBinding, LoweredWorkflow } from './lower-workflow.js';
 import type { SourceQualityAssessment } from './source-quality.js';
 
 export const READINESS_CERTIFICATE_SCHEMA = 'xo.workflow-readiness-certificate.v1';
-export const READINESS_POLICY_VERSION = 'xo.readiness-policy.v1';
+/**
+ * v2 (ADR 0030): the two declared, bounded conditions of ADR 0029 decision 14 — an unstated step order the owner accepted,
+ * and a source-quality finding covered by a recorded waiver — and the workspace's connector bindings are bound.
+ */
+export const READINESS_POLICY_VERSION = 'xo.readiness-policy.v2';
 
 export type ReadinessStatus = 'READY' | 'READY_WITH_CONDITIONS' | 'NEEDS_REVIEW' | 'BLOCKED';
 export type GateOutcome = 'pass' | 'condition' | 'review' | 'block';
@@ -55,6 +59,8 @@ export interface CertificateBindings {
   readonly contractHashes: Readonly<Record<string, string>>;
   readonly workflowDefinitionDigest: string;
   readonly goalDigest: string;
+  /** Digest of the connector bindings the workflow's act steps use (empty list when none). */
+  readonly connectorBindingsDigest: string;
   /** Digests of the waivers and rulings the assessment applied (sorted). */
   readonly decisions: readonly string[];
   readonly policyVersion: typeof READINESS_POLICY_VERSION;
@@ -101,6 +107,8 @@ export interface ReadinessInput {
   readonly accepted?: { readonly ambiguousStepOrder?: boolean };
   /** Digests of the waivers and rulings applied in the assessments (bound so a revoked decision makes the certificate stale). */
   readonly decisionDigests?: readonly string[];
+  /** The connector bindings the lowering used (bound so a changed binding makes the certificate stale). */
+  readonly connectorBindings?: readonly ConnectorBinding[];
   readonly compilationId?: string;
   readonly definitionId?: string;
   readonly issuedBy: { readonly id: string; readonly kind: string };
@@ -127,6 +135,11 @@ export function readinessBindings(
     contractHashes,
     workflowDefinitionDigest: input.lowered.definitionDigest,
     goalDigest: goalDigest(input.goal),
+    connectorBindingsDigest: digestOf(
+      [...(input.connectorBindings ?? [])]
+        .filter((b) => input.candidate.steps.some((st) => st.capabilityName === b.capability))
+        .sort((a, b) => a.capability.localeCompare(b.capability)),
+    ),
     decisions: [...(input.decisionDigests ?? [])].sort(),
     policyVersion: READINESS_POLICY_VERSION,
   };
@@ -149,7 +162,10 @@ export function assessReadiness(input: ReadinessInput): WorkflowReadinessCertifi
       input.sourceQuality.status === 'blocked'
         ? input.sourceQuality.blockers.map((b) => ({ outcome: 'block' as const, text: b }))
         : input.sourceQuality.status === 'pass-with-waivers'
-          ? [{ outcome: 'pass', text: `${input.sourceQuality.appliedWaivers.length} waiver(s) applied` }]
+          ? input.sourceQuality.appliedWaivers.map((w) => ({
+              outcome: 'condition' as const,
+              text: `"${w.sourceName}" is relied on under waiver ${w.waiverId} (${w.findings.length} finding(s) accepted by ${w.actor.id}: ${w.reason})`,
+            }))
           : [],
       'every source was read and can be relied on',
     ),
@@ -306,6 +322,7 @@ export function verifyReadinessCertificate(cert: WorkflowReadinessCertificate, c
     diff(`the contract of ${id}`, b.contractHashes[id] ?? null, current.contractHashes[id] ?? null);
   diff('the workflow definition', b.workflowDefinitionDigest, current.workflowDefinitionDigest);
   diff('the goal', b.goalDigest, current.goalDigest);
+  diff('the connector bindings', b.connectorBindingsDigest, current.connectorBindingsDigest);
   diff('the applied waivers and rulings', b.decisions, current.decisions);
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons };
 }

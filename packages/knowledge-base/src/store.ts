@@ -18,7 +18,7 @@
  * files, as every other XO store in the data directory (`XO_DATA_DIR`, UW-17), so backup, verify and restore cover the BKB
  * with no new infrastructure. A database adapter can implement `KnowledgeStore` later behind the same interface.
  */
-import { mkdir, readFile, readdir, rename, writeFile, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile, appendFile, open, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { digestOf, type Digest } from './canonical.js';
 import type { ChangeSet, KnowledgeEvent, KnowledgeRecord, KnowledgeState } from './types.js';
@@ -52,6 +52,15 @@ export interface KnowledgeStore {
   listPacks(): Promise<readonly PackArtifact[]>;
   appendEvent(event: Omit<KnowledgeEvent, 'seq' | 'prevDigest' | 'digest' | 'tenantId'>): Promise<KnowledgeEvent>;
   events(): Promise<readonly KnowledgeEvent[]>;
+  /**
+   * Runs `fn` with exclusive write access to this tenant's knowledge: across processes and machines for the SQL stores (a
+   * transaction holding the tenant lock), across processes on one filesystem for the file store (a lock file). Every
+   * read-check-write sequence of the BKB (propose, approve, reject, install) runs inside it, so two reviewers can never
+   * both approve against the same head.
+   */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>;
+  /** Releases connections and flushes; the store is unusable afterwards. */
+  close(): Promise<void>;
 }
 
 export class IntegrityError extends Error {}
@@ -171,6 +180,42 @@ export class FsKnowledgeStore implements KnowledgeStore {
 
   async listPacks(): Promise<readonly PackArtifact[]> {
     return this.listDir<PackArtifact>('packs');
+  }
+
+  private exclusiveChain: Promise<unknown> = Promise.resolve();
+
+  /** In-process serialization plus a lock file (`O_EXCL`) for other processes on the same filesystem. A lock older than 60 s is stale. */
+  exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.exclusiveChain.then(async () => {
+      const lockPath = join(this.dir, '.write.lock');
+      const deadline = Date.now() + 30_000;
+      for (;;) {
+        try {
+          const h = await open(lockPath, 'wx');
+          await h.writeFile(`${process.pid}\n`);
+          await h.close();
+          break;
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+          const st = await stat(lockPath).catch(() => undefined);
+          if (st !== undefined && Date.now() - st.mtimeMs > 60_000) await unlink(lockPath).catch(() => undefined);
+          if (Date.now() > deadline)
+            throw new IntegrityError(`the knowledge store of tenant "${this.tenantId}" is locked by another writer`);
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      }
+      try {
+        return await fn();
+      } finally {
+        await unlink(lockPath).catch(() => undefined);
+      }
+    });
+    this.exclusiveChain = next.catch(() => undefined);
+    return next;
+  }
+
+  async close(): Promise<void> {
+    await this.exclusiveChain;
   }
 
   /** Appends one event, chained to the previous one by digest. Serialized within the process. */

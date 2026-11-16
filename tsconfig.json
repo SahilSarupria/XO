@@ -17,6 +17,7 @@
     { "path": "packages/capability-contract" },
     { "path": "packages/workflow-composer" },
     { "path": "packages/knowledge-base" },
+    { "path": "packages/knowledge-store-postgres" },
     { "path": "packages/pre-execution" },
     { "path": "packages/procedure" },
     { "path": "packages/benchmark" },

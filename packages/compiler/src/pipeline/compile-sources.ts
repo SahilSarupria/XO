@@ -640,7 +640,10 @@ export async function compileSources(
   // capability, a guideline or acceptance-criterion constraint, a form input, a step-table header), so its sentences are
   // not re-checked one by one against rule nodes. Every other unit is checked exactly as before.
   const uncovered = uncoveredNormativeSentences(
-    merged.units.filter((u) => u.structure?.role === undefined && u.preformatted !== true).map((u) => u.content),
+    // A structured record (OpenAPI/JSON/CSV) is machine-declared and accounted for whole by the structured-operation extractor.
+    merged.units
+      .filter((u) => u.structure?.role === undefined && u.preformatted !== true && u.structuredFields === undefined)
+      .map((u) => u.content),
     reasoning.nodes.map((n) => ({ texts: [n.canonicalLabel, n.condition ?? '', n.action ?? '', n.outcome ?? ''] })),
     capability.capabilities.map((c) => ({ texts: [c.canonicalName] })),
   );

@@ -11,6 +11,7 @@ import {
   assessSourceQuality,
   buildCapabilityInventory,
   type CapabilityInventory,
+  type ConnectorBinding,
   type CompilationArtifact,
   type CompletenessAssessment,
   type SourceQualityAssessment,
@@ -32,6 +33,7 @@ import { FsRulingStore } from '../waivers/ruling-store.js';
 import { composeCompilationWorkflows } from '../workflows/workflow-catalog.js';
 import { workspaceKnowledgeBase } from '../routes/knowledge-routes.js';
 import { digestOf } from '@xo/pre-execution';
+import { readConnectorBindings } from './connector-bindings.js';
 
 export interface PreExecutionContext {
   readonly compilationId: string;
@@ -45,6 +47,8 @@ export interface PreExecutionContext {
   readonly knowledge?: { readonly stateId: string; readonly digest: string; readonly unresolvedConflicts: readonly string[] };
   /** Digests of the waivers and rulings these assessments applied. */
   readonly decisionDigests: readonly string[];
+  /** The workspace's connector bindings (ADR 0030), by capability name. */
+  readonly connectorBindings: ReadonlyMap<string, ConnectorBinding>;
 }
 
 export async function loadPreExecutionContext(
@@ -78,7 +82,11 @@ export async function loadPreExecutionContext(
     );
     approved.set(node.id, verdict.ok && verdict.value.approved);
   }
+  const bindings = await readConnectorBindings(workspace, dataConfig);
+  const connectorBindings = new Map(bindings.bindings.map((b) => [b.capability, b] as const));
   const inventory = buildCapabilityInventory(graph, {
+    externalBindings: connectorBindings,
+    availableAdapters: new Set(dataConfig.preExecution?.connectorAdapters.keys() ?? []),
     artifactDigest: artifact.value.digest,
     decisions: new Map([...approved].filter(([, a]) => a).map(([id]) => [id, 'accepted' as const])),
     authorize: (c) =>
@@ -114,6 +122,7 @@ export async function loadPreExecutionContext(
     sourceQuality,
     completeness,
     ...(knowledge !== undefined ? { knowledge } : {}),
+    connectorBindings,
     decisionDigests: [
       ...sourceQuality.appliedWaivers.map((w) => digestOf(w)),
       ...rulings.filter((r) => completeness.appliedRulings.includes(r.rulingId)).map((r) => digestOf(r)),

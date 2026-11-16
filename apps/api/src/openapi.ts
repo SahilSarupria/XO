@@ -743,7 +743,7 @@ export const openApiDocument = {
       post: {
         summary: 'Start a persistent workflow execution',
         description:
-          'Body: { compilationId (required), workflowId? (must equal the path if present), input?, certificateId? }. PX-7: a presented `certificateId` must name a readiness certificate for this exact workflow that is intact, READY (or READY_WITH_CONDITIONS) and current — every digest it binds (source set, artifact, graph, knowledge state, inventory, step contracts, workflow definition, goal, applied waivers and rulings) is recomputed now; otherwise 409 XO_READINESS_CERTIFICATE_REFUSED with `context.reasons`. When the workspace setting trust.requireReadinessCertificate is on, a start without one is 409 XO_READINESS_CERTIFICATE_REQUIRED. Permission is still rechecked live for every step. ANY other field is rejected with 400 (XO_INVALID_ARGUMENT, `context.unknownFields`): workflow steps, capability ids, execution classes, bindings, runtime declarations, identity ids, filesystem paths and storage keys can never be supplied by a client — the plan is always re-derived from the stored compilation. ' +
+          'Body: { compilationId (required), workflowId? (must equal the path if present), input?, certificateId? }. PX-7: a presented `certificateId` must name a readiness certificate for this exact workflow that is intact, READY (or READY_WITH_CONDITIONS) and current — every digest it binds (source set, artifact, graph, knowledge state, inventory, step contracts, workflow definition, goal, applied waivers and rulings) is recomputed now; otherwise 409 XO_READINESS_CERTIFICATE_REFUSED with `context.reasons`. When the instance policy XO_READINESS_CERTIFICATE is `required` (the production default) or the workspace setting trust.requireReadinessCertificate is on, a start without one is 409 XO_READINESS_CERTIFICATE_REQUIRED. Permission is still rechecked live for every step. ANY other field is rejected with 400 (XO_INVALID_ARGUMENT, `context.unknownFields`): workflow steps, capability ids, execution classes, bindings, runtime declarations, identity ids, filesystem paths and storage keys can never be supplied by a client — the plan is always re-derived from the stored compilation. ' +
           'Server steps: authenticate -> workspace ownership -> load the stored compilation/graph -> resolve the workflow -> require audit status executable_candidate with every step bound (else 422 XO_WORKFLOW_NOT_EXECUTABLE, `context` carries executabilityStatus/reasons/blockers) -> authorization preflight for EVERY step (capability approved in this workspace, and every non-optional contract permission granted under the fail-closed empty policy; else 403 XO_RUNTIME_PERMISSION_DENIED) -> validate `input` -> persist the record -> execute. Nothing is persisted for a request refused before that point. ' +
           '`input` is a bounded (64 KiB) plain JSON object: each field is delivered to every step whose declared input schema names it (steps with no declared schema, today every human_in_the_loop step, receive the whole object); no mapping is inferred from names or prose. It is validated with the same validateCapabilityInput P0.5 uses, at start (for what the client must supply) and again immediately before each step (client-supplied fields only — values injected by a proven upstream binding are authoritative producer output). A field no step can receive is a 400. Proven upstream values cannot be supplied or overridden by the client. ' +
           'Execution is synchronous and strictly sequential through the existing WorkflowExecutor/RuntimeCapabilityExecutor: it runs until the workflow succeeds, fails, or reaches a human_in_the_loop step, where it STOPS (status waiting_for_human) and returns; later steps do not run. Each step is recorded as a normal P0.5 ExecutionRecord (visible under /executions and, for HITL, /human-tasks). ' +
@@ -768,7 +768,12 @@ export const openApiDocument = {
                 type: 'object',
                 required: ['compilationId'],
                 additionalProperties: false,
-                properties: { compilationId: { type: 'string' }, workflowId: { type: 'string' }, input: { type: 'object' } },
+                properties: {
+                  compilationId: { type: 'string' },
+                  workflowId: { type: 'string' },
+                  input: { type: 'object' },
+                  certificateId: { type: 'string' },
+                },
               },
             },
           },
@@ -1281,7 +1286,7 @@ export const openApiDocument = {
       post: {
         summary: 'Generate Workflow IR from a goal (PX-6)',
         description:
-          'Body `{ goal: { text, needs?, section? }, workflowId? }`. The goal selects the candidate workflow (scored on needed steps, section and words, with the reasons) unless `workflowId` names one; when two fit equally the response is `{ definition: null, selection: { status: "needs_clarification", question, options } }` and nothing is generated, and `no_match` likewise. The candidate is lowered by the one lowering function (human-task steps → approve, each later step running only when the person confirmed the previous one; rule-bound steps → decide with rules rendered from the stated conditions; anything else reported, never invented), validated with the package validator, and persisted with its digest. Distinct from the Studio\'s authored `workflow-definitions`.',
+          'Body `{ goal: { text, needs?, section?, intake?: "structured"|"text", forEach? }, workflowId? }` (any other goal field is a 400). The goal selects the candidate workflow (scored on needed steps, section and words, with the reasons) unless `workflowId` names one; when two fit equally the response is `{ definition: null, selection: { status: "needs_clarification", question, options } }` and nothing is generated, and `no_match` likewise. The candidate is lowered by the one lowering function (ADR 0030: human-task steps → approve, with a timeout when the source states a deadline; rule-bound steps → decide with rules rendered from the stated conditions, plus a branch on its outcome when a later step names one; a stated delay → wait; a declared operation with a workspace connector binding → act with a server-derived idempotency key, and compensate when the binding names an undo; `intake: "text"` → a leading extract step; `forEach` → for_each over a bounded list input; anything without its evidence reported, never invented), validated with the package validator, and persisted with its digest. Distinct from the Studio\'s authored `workflow-definitions`.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
@@ -1314,12 +1319,112 @@ export const openApiDocument = {
       post: {
         summary: 'Issue a Workflow Readiness Certificate for a generated workflow (PX-7)',
         description:
-          'Body `{ acceptUnstatedStepOrder? }`. The server recomputes source quality, completeness, the knowledge state, the capability inventory, the goal scope and the lowering, and issues READY | READY_WITH_CONDITIONS | NEEDS_REVIEW | BLOCKED with one gate per concern and the digest of every input it depends on. Mandatory gates never degrade to conditions; the only declared condition is an unstated step order the owner accepts (`acceptUnstatedStepOrder: true` needs the review role and a recent sign-in). Audited as readiness.certificate.issued. 409 XO_READINESS_CERTIFICATE_REFUSED when the generated workflow no longer matches what its compilation lowers to.',
+          'Body `{ acceptUnstatedStepOrder? }`. The server recomputes source quality, completeness, the knowledge state, the capability inventory, the goal scope and the lowering, and issues READY | READY_WITH_CONDITIONS | NEEDS_REVIEW | BLOCKED with one gate per concern and the digest of every input it depends on. Mandatory gates never degrade to conditions; the declared conditions are exactly two (ADR 0030): an unstated step order the owner accepts (`acceptUnstatedStepOrder: true` needs the review role and a recent sign-in), and a source-quality finding a reviewer waived. The connector bindings the steps use are bound by digest. Audited as readiness.certificate.issued. 409 XO_READINESS_CERTIFICATE_REFUSED when the generated workflow no longer matches what its compilation lowers to.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: { '201': { description: 'WorkflowReadinessCertificate' }, '404': { description: 'Unknown generated workflow' } },
+      },
+    },
+    '/workspaces/{workspaceId}/connector-bindings': {
+      get: {
+        summary: 'The workspace connector bindings (ADR 0030)',
+        description:
+          'How each declared operation is carried out: `{ revision, bindings: [{ capability, connector, kind, operation, sideEffect, compensation?, adapter, adapterInstalled }] }`, where `adapterInstalled` says whether this server has the host adapter the binding names. Act and compensate steps are generated only from these.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'ConnectorBindings' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace' },
+        },
+      },
+      put: {
+        summary: 'Replace the workspace connector bindings (ADR 0030)',
+        description:
+          'Body `{ bindings, expectedRevision? }`. Needs the manage role and a recent sign-in. Every entry is validated field by field (at most 500; connector id `^[a-z][a-z0-9_]{0,63}$`; kind http | webhook_out | file | smtp | slack_webhook | database | mcp; sideEffect read | write | irreversible; database connectors read-only; a read has no compensation); unknown fields are a 400. A stale `expectedRevision` is a 412 XO_PRECONDITION_FAILED. Audited as connector-bindings.updated. Changing a binding makes every certificate that bound it stale.',
+        'x-xo-permission': 'manage',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'ConnectorBindings' },
+          '400': { description: 'Invalid binding' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not a manager, or no recent sign-in' },
+          '404': { description: 'Unknown workspace' },
+          '412': { description: 'Stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs': {
+      post: {
+        summary: 'Run a generated workflow through the Workflow IR runtime (ADR 0030)',
+        description:
+          'Body `{ input?, certificateId }`. The certificate is always required on this path and verified against the current state (409 XO_READINESS_CERTIFICATE_REQUIRED / XO_READINESS_CERTIFICATE_REFUSED otherwise). The stored Workflow IR runs in @xo/workflow-runtime: act and compensate steps go through the host adapter the binding names, approvals wait for a reviewer, waits and timeouts are advanced by the server. An `Idempotency-Key` header returns the original run for a retry. Audited as generated-workflow.run.started.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'Idempotency-Key', in: 'header', required: false, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'GeneratedWorkflowRun { runId, state, outputs?, pendingApprovals, certificateId }' },
+          '400': { description: 'Invalid input' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not an author' },
+          '404': { description: 'Unknown generated workflow' },
+          '409': { description: 'No certificate, or the certificate does not allow this start' },
+        },
+      },
+      get: {
+        summary: 'List the runs of a generated workflow (ADR 0030)',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runs: GeneratedWorkflowRun[] }' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown generated workflow' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}': {
+      get: {
+        summary: 'One run of a generated workflow (ADR 0030)',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'GeneratedWorkflowRun' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/approvals/{approvalId}': {
+      post: {
+        summary: 'Decide a pending approval of a generated-workflow run (ADR 0030)',
+        description:
+          'Body `{ action: "approve" | "reject", comment? }`. Needs the review role and a recent sign-in. The decision is signed by the server for the authenticated reviewer and the run continues. Audited as generated-workflow.approval.decided.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'approvalId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'GeneratedWorkflowRun' },
+          '400': { description: 'Invalid decision' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not a reviewer, or no recent sign-in' },
+          '404': { description: 'Unknown run, or no pending approval with that id (for example, already decided)' },
+        },
       },
     },
     '/workspaces/{workspaceId}/readiness-certificates': {

@@ -62,7 +62,12 @@ export async function currentReadiness(
   const candidate = ctx.workflows.find((w) => w.id === definition.candidateWorkflowId);
   if (candidate === undefined)
     throw new NotFoundError(`workflow "${definition.candidateWorkflowId}" no longer exists in compilation "${definition.compilationId}"`);
-  const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, { sourceNames: sourceNamesOf(ctx.artifact) });
+  const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, {
+    sourceNames: sourceNamesOf(ctx.artifact),
+    connectorBindings: ctx.connectorBindings,
+    ...(definition.goal.intake !== undefined ? { intake: definition.goal.intake } : {}),
+    ...(definition.goal.forEach !== undefined ? { forEach: definition.goal.forEach } : {}),
+  });
   const scope = definition.selection.status === 'explicit' ? undefined : selectWorkflowScope(ctx.workflows, definition.goal);
   const bindings = readinessBindings({
     artifact: ctx.artifact,
@@ -72,6 +77,7 @@ export async function currentReadiness(
     goal: definition.goal,
     ...(ctx.knowledge !== undefined ? { knowledge: ctx.knowledge } : {}),
     decisionDigests: ctx.decisionDigests,
+    connectorBindings: [...ctx.connectorBindings.values()],
   });
   return { ctx, bindings, lowered, ...(scope !== undefined ? { scope } : {}) };
 }
@@ -140,6 +146,7 @@ export function registerReadinessRoutes(
       ...(now.ctx.knowledge !== undefined ? { knowledge: now.ctx.knowledge } : {}),
       ...(accept === true ? { accepted: { ambiguousStepOrder: true } } : {}),
       decisionDigests: now.ctx.decisionDigests,
+      connectorBindings: [...now.ctx.connectorBindings.values()],
       compilationId: definition.compilationId,
       definitionId: definition.definitionId,
       issuedBy: { id: actor.id, kind: actor.kind },
