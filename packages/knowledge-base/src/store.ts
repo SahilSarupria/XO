@@ -40,6 +40,8 @@ export interface KnowledgeStore {
   readonly tenantId: string;
   putRecord(record: KnowledgeRecord): Promise<void>;
   getRecord(id: string): Promise<KnowledgeRecord | undefined>;
+  /** Every record of the tenant (for migration, backup checks and audits). */
+  listRecords(): Promise<readonly KnowledgeRecord[]>;
   putChangeSet(changeSet: ChangeSet): Promise<void>;
   getChangeSet(id: string): Promise<ChangeSet | undefined>;
   listChangeSets(): Promise<readonly ChangeSet[]>;
@@ -122,6 +124,10 @@ export class FsKnowledgeStore implements KnowledgeStore {
     const r = await readJson<KnowledgeRecord>(this.path('records', id));
     if (r !== undefined) this.checkTenant(r.tenantId, `record ${id}`);
     return r;
+  }
+
+  async listRecords(): Promise<readonly KnowledgeRecord[]> {
+    return this.listDir<KnowledgeRecord>('records');
   }
 
   async putChangeSet(changeSet: ChangeSet): Promise<void> {

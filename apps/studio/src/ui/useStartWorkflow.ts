@@ -77,6 +77,26 @@ export function useStartWorkflow(args: {
           return;
         }
         r = await client.startWorkflow(args.workspaceId, w.workflowId, w.compilationId, intentKey.current, cert.value.certificateId);
+        const definitionId = cert.value.scope.definitionId;
+        if (!r.ok && r.problem.code === 'XO_WORKFLOW_REQUIRES_IR_RUNTIME' && definitionId !== undefined) {
+          // ADR 0031: this workflow acts on other systems, waits, branches or repeats, which only the workflow runtime does.
+          // It starts there, under the same certificate; its progress and its approvals are in the pre-start check panel.
+          const ir = await client.startGeneratedRun(args.workspaceId, definitionId, cert.value.certificateId, {}, intentKey.current);
+          if (ir.ok) {
+            intentKey.current = undefined;
+            args.onChanged();
+            setNotice({
+              info:
+                ir.value.pendingApprovals.length > 0
+                  ? `Started on the workflow runtime. It is waiting for a person: ${ir.value.pendingApprovals[0]!.summary}`
+                  : `Started on the workflow runtime (${ir.value.state}).`,
+            });
+          } else {
+            intentKey.current = undefined;
+            setNotice({ problem: ir.problem });
+          }
+          return;
+        }
       }
       if (r.ok) {
         intentKey.current = undefined;

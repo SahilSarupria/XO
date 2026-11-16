@@ -2,7 +2,13 @@ import { useState } from 'react';
 import { can, whyNot } from '../domain/access';
 import type { ApiProblem } from '../platform/client';
 import type { WorkspaceRole } from '../platform/wire';
-import type { CertificateCheck, GateOutcome, ReadinessCertificateView, ReadinessStatus } from '../platform/wire-readiness';
+import type {
+  CertificateCheck,
+  GateOutcome,
+  GeneratedRunView,
+  ReadinessCertificateView,
+  ReadinessStatus,
+} from '../platform/wire-readiness';
 import { useGuardedAction } from './actions';
 import { Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
@@ -45,7 +51,25 @@ export function ReadinessCertificatePanel(props: {
   const [cert, setCert] = useState<ReadinessCertificateView | undefined>();
   const [check, setCheck] = useState<CertificateCheck | undefined>();
   const [problem, setProblem] = useState<ApiProblem | undefined>();
+  const [runs, setRuns] = useState<readonly GeneratedRunView[] | undefined>();
   const author = can(props.role, 'author');
+  const reviewer = can(props.role, 'review');
+  const definitionId = cert?.scope.definitionId;
+
+  const loadRuns = (id: string) =>
+    void run(async () => {
+      const r = await client.listGeneratedRuns(props.workspaceId, id);
+      if (r.ok) setRuns(r.value);
+      else setProblem(r.problem);
+    });
+  const decide = (id: string, runId: string, approvalId: string, action: 'approve' | 'reject') =>
+    void run(async () => {
+      setProblem(undefined);
+      const r = await client.decideGeneratedApproval(props.workspaceId, id, runId, approvalId, action);
+      if (!r.ok) setProblem(r.problem);
+      const all = await client.listGeneratedRuns(props.workspaceId, id);
+      if (all.ok) setRuns(all.value);
+    });
 
   const certify = () =>
     void run(async () => {
@@ -104,6 +128,39 @@ export function ReadinessCertificatePanel(props: {
           ) : null}
         </>
       ) : null}
+      {definitionId !== undefined && runs !== undefined ? (
+        <section aria-label="Runs on the workflow runtime">
+          <h4>Runs on the workflow runtime</h4>
+          {runs.length === 0 ? <p>No runs yet.</p> : null}
+          <ul className="wr-runs">
+            {runs.map((r) => (
+              <li key={r.runId} data-state={r.state}>
+                {r.runId}: {r.state}
+                {r.startedBy !== undefined ? `, started by ${r.startedBy}` : ''}
+                {r.pendingApprovals.map((a) => (
+                  <div key={a.approvalId} className="wm-row">
+                    <span>Waiting for a person: {a.summary}</span>
+                    <Button
+                      onClick={() => decide(definitionId, r.runId, a.approvalId, 'approve')}
+                      disabled={!reviewer || busy}
+                      title={reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+                    >
+                      Done as instructed
+                    </Button>
+                    <Button
+                      onClick={() => decide(definitionId, r.runId, a.approvalId, 'reject')}
+                      disabled={!reviewer || busy}
+                      title={reviewer ? undefined : whyNot(props.role, 'review', 'deciding a step')}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       {problem !== undefined ? <ProblemNotice problem={problem} /> : null}
       <div className="wm-row">
         <Button
@@ -116,6 +173,11 @@ export function ReadinessCertificatePanel(props: {
         {cert !== undefined ? (
           <Button onClick={() => recheck(cert.certificateId)} disabled={busy}>
             Check it is still current
+          </Button>
+        ) : null}
+        {definitionId !== undefined ? (
+          <Button onClick={() => loadRuns(definitionId)} disabled={busy}>
+            Show runs on the workflow runtime
           </Button>
         ) : null}
       </div>

@@ -5,7 +5,16 @@
 import { strict as assert } from 'node:assert';
 import { randomBytes } from 'node:crypto';
 import { after, describe, it } from 'node:test';
-import { IntegrityError, KnowledgeBase, SqlKnowledgeStore, type ClaimRecord, type KnowledgeError } from '@xo/knowledge-base';
+import {
+  IntegrityError,
+  KnowledgeBase,
+  KNOWLEDGE_SCHEMA_VERSION,
+  SqlKnowledgeStore,
+  migrateKnowledgeSchema,
+  verifySqlKnowledge,
+  type ClaimRecord,
+  type KnowledgeError,
+} from '@xo/knowledge-base';
 import { pg, postgresDriver } from '../src/index.js';
 
 const URL = process.env['XO_TEST_POSTGRES_URL'];
@@ -97,5 +106,45 @@ describe('@xo/knowledge-store-postgres', { skip }, () => {
     assert.equal((await k2.head()).entries.length, 0);
     await pool!.query('UPDATE kb_records SET body = replace(body, \'"v"\', \'"w"\') WHERE tenant = $1 AND id = $2', [t1, c.id]);
     await assert.rejects(k1.records(s.stateId), IntegrityError);
+  });
+});
+
+describe('ADR 0031: a clean deployment', { skip }, () => {
+  it('eight instances starting at once against an empty database create the schema exactly once and all serve', async () => {
+    const schema = `xo_clean_${randomBytes(5).toString('hex')}`;
+    const admin = new pg.Client({ connectionString: URL });
+    await admin.connect();
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    const pools = Array.from({ length: 8 }, () => new pg.Pool({ connectionString: URL, max: 2, options: `-c search_path=${schema}` }));
+    try {
+      const drivers = pools.map((p) => postgresDriver(p));
+      await Promise.all(drivers.map((d) => migrateKnowledgeSchema(d)));
+      const versions = await admin.query(`SELECT version FROM ${schema}.kb_schema`);
+      assert.deepEqual(
+        versions.rows.map((r: { version: string }) => Number(r.version)),
+        [KNOWLEDGE_SCHEMA_VERSION],
+        'one schema row, not eight',
+      );
+      // Every instance serves at once: eight tenants approve concurrently, then the whole database verifies.
+      await Promise.all(
+        drivers.map(async (d, i) => {
+          const t = `t_clean_${i}`;
+          const kb = new KnowledgeBase(await SqlKnowledgeStore.open(d, t));
+          const cs = await kb.propose({
+            operations: [{ op: 'add', record: claim(t, i, 's', 'v') }],
+            origin: { kind: 'manual' },
+            proposedBy: A,
+          });
+          await kb.approve(cs!.changeSetId, A, 'ok');
+        }),
+      );
+      const v = await verifySqlKnowledge(drivers[0]!);
+      assert.equal(v.tenants.length, 8);
+      assert.ok(v.tenants.every((t) => t.states === 1 && t.events >= 3));
+    } finally {
+      await Promise.all(pools.map((p) => p.end()));
+      await admin.query(`DROP SCHEMA ${schema} CASCADE`);
+      await admin.end();
+    }
   });
 });

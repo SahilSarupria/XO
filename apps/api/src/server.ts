@@ -387,6 +387,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   }
   registerRoutes(router, {
     residency,
+    env: deps.env ?? process.env,
     workspaceStore,
     workspaceDataConfig,
     permissionManager,

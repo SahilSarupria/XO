@@ -142,6 +142,9 @@ export class SqlKnowledgeStore implements KnowledgeStore {
     if (r !== undefined) this.checkTenant(r.tenantId, `record ${id}`);
     return r;
   }
+  listRecords(): Promise<readonly KnowledgeRecord[]> {
+    return this.listAll<KnowledgeRecord>('kb_records', 'record');
+  }
   async putChangeSet(changeSet: ChangeSet): Promise<void> {
     this.checkTenant(changeSet.tenantId, `change set ${changeSet.changeSetId}`);
     await this.putOnce('kb_change_sets', changeSet.changeSetId, changeSet, 'change set');

@@ -32,12 +32,17 @@ into the desk `HashChainLedger`, bounded in-memory windows and segment recovery 
 - **Fail closed:** undecidable, missing-fact, ungranted, unresolvable-key, over-ceiling, kill-switched and timed-out cases escalate or refuse; nothing defaults.
 - **Compensation:** on `onError: compensate`, completed write steps with a declared `compensatedBy` are undone in reverse completion order; if any
   completed write has none, or an undo fails, the run **escalates and names what could not be undone**. Irreversible steps cannot be undone.
+- **An unknown outcome is never failed or compensated** (ADR 0031): when a connector step ends with a call that was sent but has no recorded outcome,
+  the run escalates (`EFFECT_UNKNOWN`) whatever its `onError` says, because the call may have taken effect: failing would report nothing happened, and
+  compensating would undo the steps before it while leaving this one possibly done.
 
 ## NOT guaranteed (read this)
 
 - **Not exactly-once, and never claimed to be.** Exactly-once against an arbitrary external system is impossible: after a crash or timeout the runner cannot know
   whether the destination acted. What is guaranteed is described precisely under "Duplicate-call window"; the residual risk is named there and surfaced by `xo flow reconcile`.
-- One process per run: there is no cross-process lock or lease yet (section F). Two runners driving the same run directory can race.
+- One driver per run needs the lease: with `lease` set, every write is fenced by the run's lease. `LeaseAuthority` with `crossProcess` (ADR 0031)
+  arbitrates it across processes sharing one filesystem with a per-run lock file; without it, two processes driving the same run directory can race.
+  Operations of one runner on one run share its lease; it is released by the last of them.
 - The journal detects tampering after the fact; it does not stop a user with disk access from deleting a whole run directory.
 - Timers need `tick()` to be called; there is no scheduler daemon yet.
 - Authority ceilings and the kill switch are checked in the runner only; they are not a substitute for upstream controls.

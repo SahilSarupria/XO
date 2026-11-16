@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../../src/ui/App';
 import { withShell } from '../shell';
 import { FakeXo } from '../fakeXo';
-import { openScreen, openWorkflow } from './nav';
+import { findStart, openScreen, openWorkflow } from './nav';
 
 async function openedWorkflow(api: FakeXo) {
   window.history.replaceState(null, '', '#/home');
@@ -66,5 +66,29 @@ describe('the pre-start check', () => {
     await user.click(panel().getByRole('button', { name: 'Check before starting' }));
     expect(await panel().findByText('Blocked')).toBeInTheDocument();
     expect(panel().getByText(/"Pay out" bound: not bound/)).toBeInTheDocument();
+  });
+
+  it('ADR 0031: a workflow that needs the workflow runtime starts there with its certificate, and its approvals are decided from the check', async () => {
+    const api = new FakeXo();
+    api.approvals.all = true;
+    api.certificateStatus = 'READY';
+    api.requireCertificate = true;
+    api.irOnly = true;
+    const { user, panel } = await openedWorkflow(api);
+    await user.click(await findStart(user));
+    expect(
+      await screen.findByText(/Started on the workflow runtime\. It is waiting for a person: Record the settlement amount/),
+    ).toBeInTheDocument();
+    const irStart = api.calls.find((c) => c.method === 'POST' && /\/generated-workflows\/[^/]+\/runs$/.test(c.path));
+    expect(irStart).toBeDefined();
+    expect(api.calls.filter((c) => c.method === 'POST' && /\/workflows\/[^/]+\/executions$/.test(c.path))).toHaveLength(2);
+
+    await openWorkflow(user);
+    await user.click(panel().getByRole('button', { name: 'Check before starting' }));
+    await user.click(await panel().findByRole('button', { name: 'Show runs on the workflow runtime' }));
+    expect(await panel().findByText(/Waiting for a person: Record the settlement amount/)).toBeInTheDocument();
+    await user.click(panel().getByRole('button', { name: 'Done as instructed' }));
+    await waitFor(() => expect(api.generatedRuns[0]!.state).toBe('completed'));
+    expect(await panel().findByText(/run_1: completed/)).toBeInTheDocument();
   });
 });

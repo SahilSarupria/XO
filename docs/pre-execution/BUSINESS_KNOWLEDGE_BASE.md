@@ -75,7 +75,19 @@ state on demand (BM25, k1 = 1.2, b = 0.75), so it can always be rebuilt.
 | `file`               | `<data>/<ws>/knowledge/<ws>/`, a lock file per tenant                        | development; refused in production              | the workspace data backup                                               |
 
 The SQL schema is versioned (`kb_schema`); a database written by a newer version is refused rather than read wrong, and
-migrations run under the schema lock.
+migrations run under the schema lock, so instances starting together against an empty database create it once.
+
+**Moving from the file store (ADR 0031).** The first time a workspace's knowledge is opened on SQLite or PostgreSQL, what
+it kept in files is copied in with `copyKnowledge`: every row is read through the file store's checks and written through
+the SQL store's write-once checks, and the event chain is replayed so the SQL chain is digest-for-digest the file chain.
+The files stay where they were, marked `MIGRATED.json` (with the counts and the head event digest), and are not read
+again. If the SQL store already holds knowledge for that workspace, nothing is merged: the knowledge routes report the
+conflict until the operator keeps one (moves the files aside, or sets `XO_KNOWLEDGE_STORE=file` in development).
+
+**Restoring SQLite.** Stop the instance, then `restoreSqliteKnowledge(backup, <data>/knowledge.sqlite)`: the backup is
+verified completely first (schema version, every row against its digest, every tenant's event chain); only then is the
+live file replaced, atomically, with its WAL and shared-memory files removed. A damaged backup changes nothing.
+`verifySqlKnowledge(driver)` runs the same check on any SQLite or PostgreSQL knowledge database.
 
 ## XOIR mapping (`xoir-bkb.v1`)
 

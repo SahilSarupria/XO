@@ -50,6 +50,8 @@ export const AUDIT_EVENT_TYPES = [
   'generated-workflow.run.started',
   'generated-workflow.approval.decided',
   'connector-bindings.updated',
+  // ADR 0031: a connector call refused at the side-effect boundary (permission, pause, binding or approval changed).
+  'generated-workflow.effect.denied',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.

@@ -1,6 +1,9 @@
 import type { AuthResult } from '../auth/oidc';
 import {
   parseCertificateCheck,
+  parseGeneratedRun,
+  parseGeneratedRunList,
+  type GeneratedRunView,
   parseGeneratedWorkflowReply,
   parseReadinessCertificate,
   type CertificateCheck,
@@ -844,6 +847,41 @@ export class XoClient {
       `/workspaces/${enc(ws)}/generated-workflows/${enc(gen.value.definitionId)}/readiness`,
       (b) => parseReadinessCertificate(b),
       this.json({}),
+    );
+  }
+  /**
+   * ADR 0031 — starts a certified generated workflow on the Workflow IR runtime (the only path for definitions with
+   * connector actions, waits, branches, undo steps, loops or extraction). The certificate is always required there.
+   */
+  startGeneratedRun(
+    ws: string,
+    definitionId: string,
+    certificateId: string,
+    input: Readonly<Record<string, unknown>> = {},
+    idempotencyKey?: string,
+  ): Promise<Result<GeneratedRunView>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs`, (b) => parseGeneratedRun(b), {
+      ...this.json({ input, certificateId }),
+      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    });
+  }
+  listGeneratedRuns(ws: string, definitionId: string): Promise<Result<GeneratedRunView[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs`, parseGeneratedRunList);
+  }
+  /** A reviewer's decision on a waiting step of a generated run; the platform signs it as theirs. */
+  decideGeneratedApproval(
+    ws: string,
+    definitionId: string,
+    runId: string,
+    approvalId: string,
+    action: 'approve' | 'reject',
+    comment?: string,
+  ): Promise<Result<GeneratedRunView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/approvals/${enc(approvalId)}`,
+      (b) => parseGeneratedRun(b),
+      this.json({ action, ...(comment !== undefined ? { comment } : {}) }),
     );
   }
   /** Whether a certificate still allows a start: the same check the start gate makes. */

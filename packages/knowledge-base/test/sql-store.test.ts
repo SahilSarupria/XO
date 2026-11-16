@@ -3,7 +3,7 @@
  * both approve against the same head), schema guard, live backup.
  */
 import { strict as assert } from 'node:assert';
-import { mkdtemp } from 'node:fs/promises';
+import { copyFile, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it } from 'node:test';
@@ -13,6 +13,10 @@ import {
   IntegrityError,
   SqlKnowledgeStore,
   backupSqliteKnowledge,
+  copyKnowledge,
+  FsKnowledgeStore,
+  restoreSqliteKnowledge,
+  KnowledgeTransferError,
   sqliteDriver,
   type ClaimRecord,
 } from '../src/index.js';
@@ -129,5 +133,83 @@ it('a database written by a newer schema is refused; a live backup reopens and v
   await copy.kb.store.close();
   await driver.run('UPDATE kb_schema SET version = 99');
   await assert.rejects(SqlKnowledgeStore.open(driver, 't1'), /newer XO/);
+  await kb.store.close();
+});
+
+it('ADR 0031: a backup is restored only after it verifies; the restored database serves the same head; a damaged backup changes nothing', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kbsql-'));
+  const live = join(dir, 'knowledge.sqlite');
+  const { driver, kb } = await open(live);
+  const first = await kb.approve(
+    (await kb.propose({
+      operations: [{ op: 'add', record: claim(`clm_${hex(7)}`, 'r', '1') }],
+      origin: { kind: 'manual' },
+      proposedBy: A,
+    }))!.changeSetId,
+    A,
+    'ok',
+  );
+  await backupSqliteKnowledge(driver, join(dir, 'backup.sqlite'));
+  // Work after the backup: the restore must roll it back.
+  await kb.approve(
+    (await kb.propose({
+      operations: [{ op: 'add', record: claim(`clm_${hex(8)}`, 'r2', '2') }],
+      origin: { kind: 'manual' },
+      proposedBy: A,
+    }))!.changeSetId,
+    A,
+    'ok',
+  );
+  await kb.store.close();
+
+  // A tampered backup is refused and the live database is untouched.
+  await copyFile(join(dir, 'backup.sqlite'), join(dir, 'tampered.sqlite'));
+  const t = await sqliteDriver(join(dir, 'tampered.sqlite'));
+  await t.run('UPDATE kb_records SET body = replace(body, \'"1"\', \'"9"\')');
+  await t.close();
+  await assert.rejects(restoreSqliteKnowledge(join(dir, 'tampered.sqlite'), live), IntegrityError);
+  await writeFile(join(dir, 'garbage.sqlite'), 'not a database');
+  await assert.rejects(restoreSqliteKnowledge(join(dir, 'garbage.sqlite'), live));
+  const still = await open(live);
+  assert.notEqual((await still.kb.head()).stateId, first.stateId, 'the refused restores changed nothing');
+  await still.kb.store.close();
+
+  const report = await restoreSqliteKnowledge(join(dir, 'backup.sqlite'), live);
+  assert.equal(report.tenants.length, 1);
+  assert.equal(report.tenants[0]!.states, 1);
+  const restored = await open(live);
+  assert.equal((await restored.kb.head()).stateId, first.stateId);
+  assert.deepEqual(await restored.kb.verifyState(first.stateId), []);
+  await restored.kb.store.close();
+});
+
+it('ADR 0031: knowledge moves from the file store to SQL with the same event chain; a non-empty target is refused', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kbmig-'));
+  const fs = await FsKnowledgeStore.open(join(dir, 'files'), 't1');
+  const fkb = new KnowledgeBase(fs);
+  const s1 = await fkb.approve(
+    (await fkb.propose({
+      operations: [{ op: 'add', record: claim(`clm_${hex(10)}`, 'm', '1') }],
+      origin: { kind: 'manual' },
+      proposedBy: A,
+    }))!.changeSetId,
+    A,
+    'ok',
+  );
+  const rejected = await fkb.propose({
+    operations: [{ op: 'add', record: claim(`clm_${hex(11)}`, 'm2', '2') }],
+    origin: { kind: 'manual' },
+    proposedBy: A,
+  });
+  await fkb.reject(rejected!.changeSetId, A, 'no');
+  const { kb } = await open(join(dir, 'k.sqlite'));
+  const report = await copyKnowledge(fs, kb.store);
+  assert.equal(report.states, 1);
+  assert.equal(report.changeSets, 2);
+  assert.equal(report.decisions, 2);
+  assert.equal(report.headEventDigest, (await fs.events()).at(-1)!.digest);
+  assert.equal((await kb.head()).stateId, s1.stateId);
+  assert.deepEqual(await kb.verifyState(s1.stateId), []);
+  await assert.rejects(copyKnowledge(fs, kb.store), KnowledgeTransferError);
   await kb.store.close();
 });

@@ -98,3 +98,59 @@ export function parseGeneratedWorkflowReply(v: unknown): { readonly definitionId
   const d = obj(o['definition'], 'definition');
   return { definitionId: str(d['definitionId'], 'definition.definitionId') };
 }
+
+/**
+ * ADR 0031 — a run of a generated workflow on the Workflow IR runtime, as Studio reads it: its state, the approvals it
+ * waits for, and the decisions already made (each re-verified by the platform against its signing keyring).
+ */
+export interface GeneratedRunView {
+  readonly runId: string;
+  readonly state: string;
+  readonly startedBy?: string;
+  readonly pendingApprovals: readonly {
+    readonly approvalId: string;
+    readonly step: string;
+    readonly summary: string;
+    readonly expiresAt: string;
+  }[];
+  readonly decisions: readonly {
+    readonly step: string;
+    readonly reviewerId: string;
+    readonly action: string;
+    readonly signatureVerified: boolean;
+  }[];
+}
+
+export function parseGeneratedRun(v: unknown, path = 'run'): GeneratedRunView {
+  const o = obj(v, path);
+  const startedBy = optStr(o['startedBy'], `${path}.startedBy`);
+  return {
+    runId: str(o['runId'], `${path}.runId`),
+    state: str(o['state'], `${path}.state`),
+    ...(startedBy !== undefined ? { startedBy } : {}),
+    pendingApprovals: arr(o['pendingApprovals'] ?? [], `${path}.pendingApprovals`).map((a, i) => {
+      const ao = obj(a, `${path}.pendingApprovals[${i}]`);
+      return {
+        approvalId: str(ao['approvalId'], `${path}.pendingApprovals[${i}].approvalId`),
+        step: str(ao['step'], `${path}.pendingApprovals[${i}].step`),
+        summary: str(ao['summary'], `${path}.pendingApprovals[${i}].summary`),
+        expiresAt: str(ao['expiresAt'], `${path}.pendingApprovals[${i}].expiresAt`),
+      };
+    }),
+    decisions: arr(o['decisions'] ?? [], `${path}.decisions`).map((d, i) => {
+      const dobj = obj(d, `${path}.decisions[${i}]`);
+      const verified = dobj['signatureVerified'];
+      if (typeof verified !== 'boolean') throw new WireParseError(`${path}.decisions[${i}].signatureVerified`, 'a boolean');
+      return {
+        step: str(dobj['step'], `${path}.decisions[${i}].step`),
+        reviewerId: str(dobj['reviewerId'], `${path}.decisions[${i}].reviewerId`),
+        action: str(dobj['action'], `${path}.decisions[${i}].action`),
+        signatureVerified: verified,
+      };
+    }),
+  };
+}
+
+export function parseGeneratedRunList(v: unknown): GeneratedRunView[] {
+  return arr(obj(v, 'body')['runs'], 'runs').map((r, i) => parseGeneratedRun(r, `runs[${i}]`));
+}

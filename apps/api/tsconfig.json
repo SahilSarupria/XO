@@ -20,6 +20,7 @@
     { "path": "../../packages/xoir" },
     { "path": "../../packages/compiler" },
     { "path": "../../packages/connectors" },
+    { "path": "../../packages/workflow-ir" },
     { "path": "../../packages/workflow-runtime" },
     { "path": "../../packages/knowledge-base" },
     { "path": "../../packages/knowledge-store-postgres" },

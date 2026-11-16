@@ -212,6 +212,31 @@ describe('lease and fencing', () => {
 
 void ConnectorError;
 
+describe('leases across processes (ADR 0031)', () => {
+  it('two authorities over one directory (two API instances) never both hold a run, and one fenced append lands per token', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'xo-lease-cp-'));
+    const store = new RunStore(join(dir, 'runs'));
+    await store.create('run_cp');
+    // Separate instances: separate in-process chains, so only the lock file can arbitrate between them.
+    const a = new LeaseAuthority(join(dir, 'leases'), store, Date.now, { crossProcess: {} });
+    const b = new LeaseAuthority(join(dir, 'leases'), store, Date.now, { crossProcess: {} });
+    for (let round = 0; round < 20; round++) {
+      const results = await Promise.allSettled([a.acquire('run_cp', 'instance-a', 60_000), b.acquire('run_cp', 'instance-b', 60_000)]);
+      const won = results.filter((r) => r.status === 'fulfilled') as PromiseFulfilledResult<{ owner: string; token: number }>[];
+      assert.equal(won.length, 1, `round ${round}: exactly one instance holds the run`);
+      const holder = won[0]!.value;
+      const loser = holder.owner === 'instance-a' ? b : a;
+      await assert.rejects(
+        loser.fencedAppend('run_cp', holder.owner === 'instance-a' ? 'instance-b' : 'instance-a', holder.token, 'note', {}),
+      );
+      await (holder.owner === 'instance-a' ? a : b).fencedAppend('run_cp', holder.owner, holder.token, 'note', { round });
+      await (holder.owner === 'instance-a' ? a : b).release('run_cp', holder.owner, holder.token);
+    }
+    const notes = (await store.read('run_cp')).filter((e) => e.type === 'note');
+    assert.equal(notes.length, 20);
+  });
+});
+
 describe('ledger replication', () => {
   const mkEntries = async (dir: string, id: string, n: number, tag = 'a') => {
     const s = new RunStore(dir);

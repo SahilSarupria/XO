@@ -29,6 +29,7 @@ import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { startGated } from '../workflow-controls/service.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
+import { workspaceDefinitionsStore } from './pre-execution-routes.js';
 import {
   getWorkflowExecution,
   listWorkflowExecutions,
@@ -389,7 +390,26 @@ export function registerWorkflowRoutes(
       const v = await verifyCertificateNow(workspace, dataConfig, certificate);
       if (!v.ok) reasons.push(...v.reasons);
     }
-    if (reasons.length === 0) return;
+    if (reasons.length === 0) {
+      // ADR 0031: this runner executes the composed workflow's human tasks and rules. A certified definition that needs
+      // more (connector actions, waits, branches, undo steps, loops, extraction) runs only on the Workflow IR runtime, so
+      // the two paths never give one certificate two different meanings.
+      const definitionId = certificate.scope.definitionId;
+      if (definitionId !== undefined) {
+        const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(definitionId);
+        const component = definition.lowered.component as { workflows?: { steps?: { type: string }[]; forEach?: unknown }[] } | undefined;
+        const wf = component?.workflows?.[0];
+        const irOnly = [...new Set((wf?.steps ?? []).map((s) => s.type).filter((t) => t !== 'approve' && t !== 'decide'))];
+        if (wf?.forEach !== undefined) irOnly.push('for_each');
+        if (irOnly.length > 0)
+          throw new XoError(
+            ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
+            `this workflow's certified definition uses ${irOnly.join(', ')}, which only the workflow runtime executes: start it with POST /workspaces/${workspace.workspaceId}/generated-workflows/${definitionId}/runs`,
+            { context: { definitionId, certificateId, constructs: irOnly } },
+          );
+      }
+      return;
+    }
     await refuse(req, workspace, workflowId, correlationId, 'certificate_refused', certificateId);
     throw new XoError(
       ErrorCode.READINESS_CERTIFICATE_REFUSED,
