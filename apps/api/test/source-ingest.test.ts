@@ -323,7 +323,16 @@ test('upload .docx: a corrupt or non-docx file is refused at the door with a 400
   await withServer({}, async ({ server, base }) => {
     const bad = await server.request('POST', `${base}/sources?filename=fake.docx`, Buffer.from('plain text pretending to be word'));
     assert.equal(bad.status, 400);
-    assert.match(bad.bodyText, /cannot read this \.docx/);
+    // PX-1: text is not a ZIP container, so the content check refuses it before the Word reader runs, with a structured code.
+    assert.match(bad.bodyText, /not what a \\?"\.docx\\?" file holds/);
+    assert.equal(
+      bad.json<{ error: { context: { sourceRejection: string } } }>().error.context.sourceRejection,
+      'SOURCE_SIGNATURE_MISMATCH',
+    );
+    // A real ZIP that is not a Word document still reaches the Word reader, which says why.
+    const zipNotWord = await server.request('POST', `${base}/sources?filename=other.docx`, zip({ 'word/other.xml': '<x/>' }));
+    assert.equal(zipNotWord.status, 400);
+    assert.match(zipNotWord.bodyText, /cannot read this \.docx/);
     assert.equal((await server.request('GET', `${base}/sources`)).json<{ sources: unknown[] }>().sources.length, 0, 'nothing was stored');
   });
 });
@@ -364,7 +373,7 @@ test('import from link: file type comes from the content type when the URL has n
   const pdf: TransportFn = async () => ({
     status: 200,
     headers: { 'content-type': 'application/pdf' },
-    body: new Uint8Array([37, 80, 68, 70]),
+    body: new TextEncoder().encode('%PDF-1.4\n%%EOF'),
   });
   await withServer({ lookup: publicLookup, transport: pdf }, async ({ server, base }) => {
     const res = (await server.request('POST', `${base}/sources/import`, { url: 'https://example.com/download/12345' })).json<{
@@ -543,10 +552,11 @@ test('UW-3 upload .xlsx: read into record sets at the door; counts and reader fi
 test('UW-3 upload: a broken workbook, a hostile workbook and a broken CSV are refused at the door with the reason', async () => {
   await withServer({}, async ({ server, base }) => {
     const cases: [string, Buffer, RegExp][] = [
-      ['fake.xlsx', Buffer.from('name,amount\n1,2'), /cannot read this \.xlsx: not a ZIP/],
+      // PX-1: text is not a ZIP container, so the content check refuses it before the workbook reader runs.
+      ['fake.xlsx', Buffer.from('name,amount\n1,2'), /not what a \\?"\.xlsx\\?" file holds \(a ZIP container\)/],
       ['bomb.xlsx', zip({ 'xl/workbook.xml': '<!DOCTYPE x [<!ENTITY a "a">]><workbook/>' }), /DOCTYPE/],
       ['open.csv', Buffer.from('a,b\n"never closed,1'), /cannot read this \.csv: a quoted field that starts on line 2 is never closed/],
-      ['bin.csv', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]), /NUL bytes/],
+      ['bin.csv', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]), /the content is a ZIP container, not what a \\?"\.csv\\?" file holds/],
     ];
     for (const [name, body, pattern] of cases) {
       const res = await server.request('POST', `${base}/sources?filename=${name}`, body);

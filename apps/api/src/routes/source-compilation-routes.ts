@@ -137,6 +137,20 @@ export function registerCompilationRoutes(
     return json(200, toWireRecord(found.value));
   }
 
+  /**
+   * PX-1: the complete compilation artifact — validation, diagnostics, review queue, unclassified sentences, conflicts,
+   * execution readiness, per-page coverage, pass history — verified against its digest before it is returned.
+   */
+  async function getArtifact(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const store = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    const found = await store.getArtifact(compilationId);
+    if (!found.ok) throw found.error;
+    return json(200, found.value);
+  }
+
   async function getCapabilities(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const compilationId = req.params['compilationId'];
@@ -292,6 +306,7 @@ export function registerCompilationRoutes(
   router.post('/workspaces/:workspaceId/sources/:sourceId/compile', guarded(compile));
   router.get('/workspaces/:workspaceId/compilations', guarded(listCompilations));
   router.get('/workspaces/:workspaceId/compilations/:compilationId', guarded(getCompilation));
+  router.get('/workspaces/:workspaceId/compilations/:compilationId/artifact', guarded(getArtifact));
   router.get('/workspaces/:workspaceId/compilations/:compilationId/capabilities', guarded(getCapabilities));
   router.post('/workspaces/:workspaceId/compilations/:compilationId/capabilities/:capabilityId/approve', guarded(approveCapability));
 }

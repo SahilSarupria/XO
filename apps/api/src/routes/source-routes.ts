@@ -31,6 +31,7 @@ import {
   type SourceRecord,
 } from '../sources/source.js';
 import { planEmailAttachments } from '../sources/email-attachments.js';
+import { classifySourceContent, MEDIA_TYPE_BY_FORMAT } from '@xo/pre-execution';
 
 /**
  * Source registration and storage only — no compilation happens here
@@ -148,6 +149,20 @@ export function registerSourceRoutes(
     /** UW-3: how many emails deep this file sits (0 = uploaded or imported directly). */
     emailDepth = 0,
   ): Promise<SourceRecord> {
+    // PX-1 (ADR 0029 decision 3): what the bytes are is decided from the bytes. Content that contradicts the extension, an
+    // empty body or an unsupported type is refused with a structured code before anything is stored or parsed.
+    const content = classifySourceContent(bytes, extension);
+    if (!content.ok)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot accept "${filename}": ${content.message}`, {
+        context: {
+          sourceRejection: content.code,
+          ...(content.detected !== undefined ? { detected: content.detected } : {}),
+          ...(content.expected !== undefined ? { expected: [...content.expected] } : {}),
+        },
+      });
+    // An image is stored under the media type of what it is (a PNG saved as .jpg is image/png).
+    const detectedMediaType = MEDIA_TYPE_BY_FORMAT[content.detected];
+    if (detectedMediaType !== undefined) mediaType = detectedMediaType;
     let ingestNotes: readonly string[] | undefined;
     let stats: SourceRecord['stats'] | undefined;
     let sourceId: string | undefined;
@@ -232,7 +247,7 @@ export function registerSourceRoutes(
           } catch (cause) {
             // An attachment the door refuses (a corrupt .docx, a broken workbook) is reported on the email; it does not fail the email.
             if (!(cause instanceof XoError) || cause.code !== ErrorCode.INVALID_ARGUMENT) throw cause;
-            const reason = cause.message.replace(/^cannot read this [^:]+: /, 'it could not be read: ');
+            const reason = cause.message.replace(/^(?:cannot read this [^:]+|cannot accept "[^"]*"): /, 'it could not be read: ');
             attachments.push({ ...base, notOpened: reason });
             notOpened.push(`${plan.filename} (${reason})`);
           }
@@ -342,6 +357,35 @@ export function registerSourceRoutes(
     const listed = await store.list();
     if (!listed.ok) throw listed.error;
     return json(200, { sources: listed.value.map(toWireRecord) });
+  }
+
+  /**
+   * PX-1 (ADR 0029 decision 1): source versions. A version is the bytes (its SHA-256); each upload or import that delivered
+   * those bytes stays its own record, with its own origin, uploader and time — nothing is merged away.
+   */
+  async function listSourceVersions(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
+    const listed = await store.list();
+    if (!listed.ok) throw listed.error;
+    const byDigest = new Map<string, SourceRecord[]>();
+    for (const r of listed.value) byDigest.set(r.digestSha256, [...(byDigest.get(r.digestSha256) ?? []), r]);
+    const versions = [...byDigest.entries()]
+      .map(([digestSha256, records]) => ({
+        digestSha256,
+        byteSize: records[0]!.byteSize,
+        firstSeenAt: records.map((r) => r.createdAt).sort()[0]!,
+        records: records
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((r) => ({
+            sourceId: r.sourceId,
+            originalFilename: r.originalFilename,
+            createdAt: r.createdAt,
+            origin: r.origin ?? { kind: 'upload' },
+          })),
+      }))
+      .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt));
+    return json(200, { versions });
   }
 
   async function getSource(req: ApiRequest): Promise<ApiResponse> {
@@ -471,6 +515,7 @@ export function registerSourceRoutes(
   router.post('/workspaces/:workspaceId/sources', guarded(upload));
   router.post('/workspaces/:workspaceId/sources/import', guarded(importFromUrl));
   router.get('/workspaces/:workspaceId/sources', guarded(listSources));
+  router.get('/workspaces/:workspaceId/source-versions', guarded(listSourceVersions));
   router.get('/workspaces/:workspaceId/sources/:sourceId', guarded(getSource));
   router.get('/workspaces/:workspaceId/sources/:sourceId/content', guarded(getSourceContent));
   router.add('DELETE', '/workspaces/:workspaceId/sources/:sourceId', guarded(deleteSource));

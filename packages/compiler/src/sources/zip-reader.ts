@@ -78,6 +78,12 @@ export function readZipEntry(buf: Buffer, entry: ZipEntry): Buffer {
   } else throw new ZipFormatError(`unsupported compression method ${entry.method} for "${entry.name}"`);
   if (data.length > MAX_ENTRY_BYTES)
     throw new ZipFormatError(`entry "${entry.name}" is too large after decompression (limit ${MAX_ENTRY_BYTES} bytes)`);
+  // PX-1: an entry that inflates to a size other than its header declares is refused — the declared sizes are what the
+  // archive limits were checked against before anything was inflated.
+  if (data.length !== entry.uncompressedSize)
+    throw new ZipFormatError(
+      `entry "${entry.name}" inflates to ${data.length} bytes, not the ${entry.uncompressedSize} its header declares`,
+    );
   if (typeof crc32 === 'function' && crc32(data) >>> 0 !== entry.crc)
     throw new ZipFormatError(`CRC mismatch in "${entry.name}" (corrupt archive)`);
   return data;

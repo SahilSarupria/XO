@@ -285,11 +285,9 @@ test('compiling malformed content of a supported extension is represented as an 
     const server = await TestServer.start({ workspaceDataDir: dataDir });
     try {
       const workspace = await createWorkspace(server);
-      // A .pdf-extension upload whose bytes are not a real PDF —
-      // SUPPORTED_EXTENSIONS accepts the extension (P0.3's upload gate
-      // only checks extension, not content), so this reaches the
-      // compiler, which must genuinely fail to parse it.
-      const source = await uploadSource(server, workspace.workspaceId, 'fake.pdf', Buffer.from('this is not a real pdf file'), {
+      // A .pdf upload that carries the PDF signature (so it passes the PX-1 content check at the door) but whose body is
+      // not a parseable PDF — this reaches the compiler, which must genuinely fail to parse it.
+      const source = await uploadSource(server, workspace.workspaceId, 'fake.pdf', Buffer.from('%PDF-1.7\nthis is not a real pdf file'), {
         'content-type': 'application/pdf',
       });
 

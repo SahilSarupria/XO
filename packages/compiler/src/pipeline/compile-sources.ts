@@ -101,6 +101,29 @@ export interface SourceCompilationReport {
    * no text; empty when nothing in the cue pack matched.
    */
   readonly kindProposals?: readonly DocumentKindProposal[];
+  /** PX-1: the reader that produced this source's content, as `<sourceType>@<reader version>` (`PARSER_VERSIONS`). */
+  readonly parserVersion?: string;
+}
+
+/**
+ * PX-1: the version of each source reader. Bumped whenever a reader's output for the same bytes can change, so a compilation
+ * artifact says which reading it rests on. UW-3c rewrote the Markdown, HTML and Word readers and the PDF layout recovery.
+ */
+export const PARSER_VERSIONS: Readonly<Record<SourceType, string>> = {
+  pdf: 'uw-3c.1',
+  document: 'uw-3c.1',
+  html: 'uw-3c.1',
+  docx: 'uw-3c.1',
+  image: 'uw-3.1',
+  structured: 'uw-3.1',
+  openapi: 'uw-3.1',
+  prompt: 'uw-3.1',
+  xlsx: 'uw-3.1',
+  eml: 'uw-3.1',
+};
+
+export function parserVersionOf(sourceType: SourceType): string {
+  return `${sourceType}@${PARSER_VERSIONS[sourceType]}`;
 }
 
 /** What the compiler understood a prompt source to say, and whether a person has confirmed it (only confirmed prompts compile). */
@@ -831,7 +854,10 @@ export async function compileSources(
   return ok({
     ...compiled.value,
     diagnostics: [...qualityDiagnostics, ...reviewDiagnostics, ...compiled.value.diagnostics],
-    sources: sourceReports.map((r) => (ledgers.has(r.sourcePath) ? { ...r, recovery: ledgers.get(r.sourcePath)! } : r)),
+    sources: sourceReports.map((r) => ({
+      ...(ledgers.has(r.sourcePath) ? { ...r, recovery: ledgers.get(r.sourcePath)! } : r),
+      parserVersion: parserVersionOf(r.sourceType),
+    })),
     unclassified,
     executionReadiness,
     crossDocument,

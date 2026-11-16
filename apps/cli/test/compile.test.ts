@@ -153,3 +153,24 @@ test('compile on a directory + explicit file combined discovers sources from bot
     assert.equal(parsed.sources.length, 2);
   });
 });
+
+test('PX-1: --artifact writes the complete, verifiable compilation artifact; --json names the source set and digest', async () => {
+  await withTempDir('xo-cli-compile-artifact-', async (dir) => {
+    const path = join(dir, 'leave.md');
+    await writeFile(
+      path,
+      '# Leave\n\n1. Submit the request to your manager.\n2. Record the leave in the HR system.\n\nEmployees must give 10 days notice.\n',
+    );
+    const artifactPath = join(dir, 'artifact.json');
+    const result = await compileCommand({ sources: [path], json: true, artifactPath });
+    assert.equal(result.exitCode, 0, result.lines.join('\n'));
+    const out = JSON.parse(result.lines[0]!) as { sourceSetId: string; artifactDigest: string; openWork: { reviewItems: number } };
+    assert.match(out.sourceSetId, /^ss_[0-9a-f]{24}$/);
+    const { readFile } = await import('node:fs/promises');
+    const { verifyCompilationArtifact } = await import('@xo/pre-execution');
+    const artifact = JSON.parse(await readFile(artifactPath, 'utf8'));
+    assert.equal(artifact.digest, out.artifactDigest);
+    assert.deepEqual(verifyCompilationArtifact(artifact), { ok: true });
+    assert.ok('reviewQueue' in artifact && 'unclassified' in artifact && 'crossDocument' in artifact);
+  });
+});

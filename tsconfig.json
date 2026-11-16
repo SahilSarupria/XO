@@ -16,6 +16,7 @@
     { "path": "packages/xoir" },
     { "path": "packages/capability-contract" },
     { "path": "packages/workflow-composer" },
+    { "path": "packages/pre-execution" },
     { "path": "packages/procedure" },
     { "path": "packages/benchmark" },
     { "path": "packages/storage" },

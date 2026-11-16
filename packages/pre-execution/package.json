@@ -1,0 +1,32 @@
+{
+  "name": "@xo/pre-execution",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The canonical pre-execution pipeline (ADR 0029): source content checks and source-set identity, one compile configuration, the complete compilation artifact, and (in later stages) completeness, capability inventory, workflow lowering and the readiness certificate. Shared by the API and the CLI; Studio reaches it only through the API.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/compiler": "0.1.0",
+    "@xo/crypto": "0.1.0",
+    "@xo/errors": "0.1.0",
+    "@xo/types": "0.1.0",
+    "@xo/xoir": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

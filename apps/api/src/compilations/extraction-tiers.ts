@@ -17,6 +17,8 @@ import { providerLocality, resolveResidency, type ResidencyPolicy } from '@xo/ai
 export interface CompileExtraction {
   readonly pageTiers: readonly PageTier[];
   readonly extractionBudget?: ExtractionBudget;
+  /** PX-1: what these tiers are, as data for the compile configuration (`@xo/pre-execution`). */
+  readonly ocr?: { readonly mode: 'off' | 'local' | 'local+vision'; readonly visionModel?: string; readonly maxCostUsd?: number };
 }
 
 export function extractionFromEnv(
@@ -35,6 +37,7 @@ export function extractionFromEnv(
   }
   const providerId = env['XO_OCR_VISION_PROVIDER']?.trim();
   let maxCostUsd = 0;
+  let visionModel: string | undefined;
   if (providerId !== undefined && providerId !== '') {
     const model = env['XO_OCR_VISION_MODEL']?.trim();
     if (model === undefined || model === '') throw new Error('XO_OCR_VISION_PROVIDER is set but XO_OCR_VISION_MODEL is not');
@@ -61,6 +64,13 @@ export function extractionFromEnv(
     if (!Number.isFinite(maxCostUsd) || maxCostUsd < 0 || maxCostUsd > 100)
       throw new Error('XO_OCR_MAX_COST_USD must be 0 to 100 (per document)');
     tiers.push(createVisionTier({ provider, model, acknowledgeDataLeavesMachine: true }));
+    visionModel = `${providerId}/${model}`;
   }
-  return { pageTiers: tiers, extractionBudget: { maxCostUsd } };
+  const ocr =
+    visionModel !== undefined
+      ? { mode: 'local+vision' as const, visionModel, maxCostUsd }
+      : mode === 'local'
+        ? { mode: 'local' as const }
+        : { mode: 'off' as const };
+  return { pageTiers: tiers, extractionBudget: { maxCostUsd }, ocr };
 }

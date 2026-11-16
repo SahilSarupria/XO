@@ -1,4 +1,5 @@
-import { compileSources, discoverAndResolveCapabilities } from '@xo/compiler';
+import { discoverAndResolveCapabilities } from '@xo/compiler';
+import { compileSourceSet, defaultCompileConfiguration, type SourceSetEntry } from '@xo/pre-execution';
 import { nodesOfKind, toJson, type XoirNode, type CapabilityNodeProps } from '@xo/xoir';
 import { XoError, ErrorCode } from '@xo/errors';
 import type { CompilationStore, CapabilityProjection, CompilationSourceReport } from './compilation.js';
@@ -48,20 +49,21 @@ export async function compileSourceRecord(
 ): Promise<void> {
   try {
     const input = buildCompilerSourceInput(source.extension, bytes, source.originalFilename);
+    // PX-1: one compile entry point and one configuration for every surface (`@xo/pre-execution`). The source set names the
+    // exact bytes; the configuration states what changes the result (OCR intent here); the artifact keeps the whole result.
     // UW-3: scanned pages and photos are read by the instance's recovery tiers (local OCR by default; see extraction-tiers.ts).
-    const compiled = await compileSources(
-      [input],
-      extraction !== undefined && extraction.pageTiers.length > 0
-        ? {
-            pageTiers: extraction.pageTiers,
-            ...(extraction.extractionBudget !== undefined ? { extractionBudget: extraction.extractionBudget } : {}),
-          }
-        : {},
-    );
-    if (!compiled.ok) {
-      await store.markFailed(compilationId, { errorCode: compiled.error.code, errorMessage: compiled.error.message });
+    const configuration = defaultCompileConfiguration({
+      ocr: extraction?.ocr ?? (extraction !== undefined && extraction.pageTiers.length > 0 ? { mode: 'local' } : { mode: 'off' }),
+    });
+    const set = await compileSourceSet([{ entry: sourceSetEntryOf(source), input }], configuration, {
+      ...(extraction !== undefined && extraction.pageTiers.length > 0 ? { pageTiers: extraction.pageTiers } : {}),
+      ...(extraction?.extractionBudget !== undefined ? { extractionBudget: extraction.extractionBudget } : {}),
+    });
+    if (!set.ok) {
+      await store.markFailed(compilationId, { errorCode: set.error.code, errorMessage: set.error.message });
       return;
     }
+    const compiled = { ok: true as const, value: set.value.result };
 
     const capabilityNodes = nodesOfKind(compiled.value.graph, 'capability');
 
@@ -142,6 +144,7 @@ export async function compileSourceRecord(
             })),
           };
     await store.markSucceeded(compilationId, {
+      artifact: set.value.artifact,
       ...(sourceReport !== undefined ? { sourceReport } : {}),
       capabilities,
       discoveredCount: resolved.value.discoveredCount,
@@ -159,6 +162,19 @@ export async function compileSourceRecord(
       errorMessage: `compiler pipeline threw unexpectedly: ${message}`,
     });
   }
+}
+
+/** A stored source as a source-set entry: an email attachment names the email it came from. */
+export function sourceSetEntryOf(source: SourceRecord): SourceSetEntry {
+  const origin = source.origin;
+  return {
+    sourceId: source.sourceId,
+    digestSha256: source.digestSha256,
+    name: source.originalFilename,
+    byteSize: source.byteSize,
+    role: origin?.kind === 'email-attachment' ? 'attachment' : 'primary',
+    ...(origin?.kind === 'email-attachment' ? { parentDigestSha256: origin.emailDigestSha256 } : {}),
+  };
 }
 
 /** Re-exported so route code can construct a well-typed failure without importing `@xo/errors` directly for this one case. */
