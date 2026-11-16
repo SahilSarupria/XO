@@ -999,7 +999,7 @@ export const openApiDocument = {
       post: {
         summary: 'Upload a source document into this workspace',
         description:
-          'Body is the raw file bytes (Content-Type header describes them); original filename is passed as ?filename=. Only formats @xo/compiler already supports are accepted (pdf/html/htm/json/csv/txt/md/png/jpg/jpeg/gif/webp) — see sources/source.ts SUPPORTED_EXTENSIONS.',
+          'Body is the raw file bytes (Content-Type header describes them); original filename is passed as ?filename=. Only formats @xo/compiler supports are accepted (pdf/docx/xlsx/eml/html/htm/json/csv/txt/md/png/jpg/jpeg/gif/webp) — see sources/source.ts SUPPORTED_EXTENSIONS. .docx, .xlsx, .csv and .eml are read at the door: a broken or hostile file is a 400 with the reason. For large files on unreliable networks use the resumable /uploads routes.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'filename', in: 'query', required: true, schema: { type: 'string' } },
@@ -1015,6 +1015,61 @@ export const openApiDocument = {
         summary: 'List sources uploaded to this workspace',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: { '200': { description: '{ sources: SourceRecord[] }' } },
+      },
+    },
+    // UW-3: resumable uploads. Same door as POST .../sources once complete.
+    '/workspaces/{workspaceId}/uploads': {
+      post: {
+        summary: 'Open a resumable upload',
+        description:
+          'Body { filename, size, sha256?, mediaType? }. Returns { uploadId, offset: 0, size, expiresAt, maxChunkBytes }. Sessions belong to the caller and expire after 24 hours; at most 10 open per identity (429 XO_UPLOAD_SESSION_LIMIT).',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '201': { description: 'Upload session' }, '400': { description: 'Bad filename, type, size or sha256' } },
+      },
+    },
+    '/workspaces/{workspaceId}/uploads/{uploadId}': {
+      get: {
+        summary: 'Where a resumable upload got to (the offset to continue from)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'uploadId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'Upload session' }, '404': { description: 'Unknown, expired, or someone else’s upload' } },
+      },
+      put: {
+        summary: 'Send the next chunk at ?offset= (must equal the session offset; at most maxChunkBytes)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'uploadId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'offset', in: 'query', required: true, schema: { type: 'integer' } },
+        ],
+        requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
+        responses: {
+          '200': { description: 'Upload session with the new offset' },
+          '412': { description: 'The offset is not where the upload continues; GET the session for the right one' },
+        },
+      },
+      delete: {
+        summary: 'Cancel a resumable upload',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'uploadId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ cancelled: true }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/uploads/{uploadId}/complete': {
+      post: {
+        summary: 'Finish a resumable upload: verify size and declared SHA-256, then store it as a source',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'uploadId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'SourceRecord' },
+          '412': { description: 'Bytes are still missing' },
+          '422': { description: 'XO_UPLOAD_INTEGRITY_FAILED: the received file is not the declared one (the upload is discarded)' },
+        },
       },
     },
     '/workspaces/{workspaceId}/sources/{sourceId}': {

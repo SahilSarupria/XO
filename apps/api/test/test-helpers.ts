@@ -71,7 +71,14 @@ export class TestServer {
 
     // P1.0 M5: a server cannot start without a trust configuration. These tests exercise HTTP behaviour, not trust, so they run in EXPLICIT
     // development mode unless a test injects its own `packageTrustPolicy` (package-trust.test.ts does).
-    const server = createHttpServer({ apiKeyStore, packageTrustPolicy: PackageTrustPolicy.development(), ...deps });
+    // UW-3: tests read no scans by default (real OCR engines are slow and hold worker threads); a test that wants recovery passes
+    // `extraction` explicitly.
+    const server = createHttpServer({
+      apiKeyStore,
+      packageTrustPolicy: PackageTrustPolicy.development(),
+      extraction: { pageTiers: [] },
+      ...deps,
+    });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('expected server to bind a port');

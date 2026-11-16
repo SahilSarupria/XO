@@ -38,6 +38,11 @@ export interface PageRecoveryContext {
 }
 
 export interface PageTier {
+  /**
+   * UW-3 — true when the tier can read an image (JPEG, PNG, WebP, GIF) handed to it as the document bytes (`document.sourceImage`
+   * set). Tiers without it are never offered a photo.
+   */
+  readonly acceptsImages?: boolean;
   /** Stable id, recorded in coverage and in the ledger. */
   readonly name: string;
   /** Bump when the tier's output could change, so cached recoveries are not reused across versions. */

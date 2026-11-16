@@ -27,7 +27,7 @@ export interface ZipEntry {
 
 export function readCentralDirectory(buf: Buffer): Map<string, ZipEntry> {
   const eocd = findEndOfCentralDirectory(buf);
-  if (eocd < 0) throw new ZipFormatError('not a ZIP/DOCX file (no end-of-central-directory record)');
+  if (eocd < 0) throw new ZipFormatError('not a ZIP file such as .docx or .xlsx (no end-of-central-directory record)');
   const count = buf.readUInt16LE(eocd + 10);
   const cdSize = buf.readUInt32LE(eocd + 12);
   const cdOffset = buf.readUInt32LE(eocd + 16);

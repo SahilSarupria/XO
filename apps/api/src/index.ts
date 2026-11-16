@@ -1,4 +1,5 @@
 import { ConsoleLogger } from '@xo/logger';
+import { shutdownPdfium, shutdownTesseract } from '@xo/compiler';
 import { loadConfig } from './config.js';
 import { createHttpServer } from './server.js';
 import { assertTrustPolicyAllowedHere, loadOperatorTrustPolicy } from '@xo/package-sdk';
@@ -58,7 +59,12 @@ if (isMainModule()) {
       authorization,
       ...(auditAnchor !== undefined ? { auditAnchor } : {}),
     });
-    server.on('close', () => authorization.stop());
+    server.on('close', () => {
+      authorization.stop();
+      // UW-3: local OCR workers and the PDF renderer hold native resources; release them with the server.
+      void shutdownTesseract().catch(() => undefined);
+      void shutdownPdfium().catch(() => undefined);
+    });
     server.listen(config.port, config.host, () => {
       logger.info(`listening on http://${config.host}:${config.port}`);
     });

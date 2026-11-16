@@ -1,5 +1,7 @@
 import type { ParsedDocument } from '../document/types.js';
 import type { CoverageReport } from '../document/page-coverage.js';
+import type { TabularSource } from '../tabular/types.js';
+import type { ParsedEmail } from './mime.js';
 
 /**
  * The set of source families this package's frontends currently know
@@ -14,7 +16,7 @@ import type { CoverageReport } from '../document/page-coverage.js';
  * with zero change to `document/`, `semantic/`, `knowledge/`,
  * `capabilities/`, `reasoning/`, or `xoir/`.
  */
-export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi' | 'prompt' | 'docx' | 'xlsx';
+export type SourceType = 'pdf' | 'document' | 'image' | 'html' | 'structured' | 'openapi' | 'prompt' | 'docx' | 'xlsx' | 'eml';
 
 /**
  * A source whose content has been (or can be) normalized into the same
@@ -40,6 +42,14 @@ export interface DocumentSourceContent {
    * NOT the same as "complete": quality assessment treats absence as nothing to check.
    */
   readonly coverage?: CoverageReport;
+  /**
+   * UW-3 — record-level structure for tabular sources (XLSX, CSV): record sets with headers, declared column types and per-cell
+   * provenance. The text in `parsed` is still what the semantic pipeline reads; this is what record-level consumers (knowledge, entity
+   * resolution) read, without re-parsing the file.
+   */
+  readonly tables?: TabularSource;
+  /** UW-3 — for email sources: the decoded envelope, the body's MIME part and the attachment list (name, type, size, SHA-256). */
+  readonly email?: ParsedEmail;
 }
 
 /**

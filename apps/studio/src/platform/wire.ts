@@ -97,10 +97,21 @@ export interface Source {
   readonly byteSize: number;
   readonly digestSha256: string;
   readonly createdAt: string;
+  /** UW-3: set when the server opened this file from an uploaded email. */
+  readonly fromEmail?: { readonly emailSourceId: string; readonly emailFilename: string };
 }
 export function parseSource(v: unknown, path = 'source'): Source {
   const o = obj(v, path);
+  const origin = o['origin'];
+  const fromEmail =
+    origin !== null && typeof origin === 'object' && (origin as Record<string, unknown>)['kind'] === 'email-attachment'
+      ? {
+          emailSourceId: str((origin as Record<string, unknown>)['emailSourceId'], `${path}.origin.emailSourceId`),
+          emailFilename: str((origin as Record<string, unknown>)['emailFilename'], `${path}.origin.emailFilename`),
+        }
+      : undefined;
   return {
+    ...(fromEmail !== undefined ? { fromEmail } : {}),
     sourceId: str(o['sourceId'], `${path}.sourceId`),
     originalFilename: str(o['originalFilename'], `${path}.originalFilename`),
     mediaType: str(o['mediaType'], `${path}.mediaType`),

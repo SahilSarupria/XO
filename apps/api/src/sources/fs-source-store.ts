@@ -17,6 +17,11 @@ function mintSourceId(): string {
   return `src_${randomUUID().replace(/-/g, '')}`;
 }
 
+/** A fresh source id, for a record that others must reference before it is created (an email and its attachments). */
+export function newSourceId(): string {
+  return mintSourceId();
+}
+
 function decodeRecord(bytes: Uint8Array): SourceRecord | undefined {
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as SourceRecord;
@@ -39,9 +44,13 @@ export class FsSourceStore implements SourceStore {
   constructor(private readonly store: BlobStore) {}
 
   async create(workspaceId: string, identityId: string, input: CreateSourceInput): Promise<Result<SourceRecord, XoError>> {
-    let sourceId = mintSourceId();
+    if (input.sourceId !== undefined) {
+      if (!isValidSourceId(input.sourceId)) return err(new XoError(ErrorCode.INVALID_ARGUMENT, 'invalid pre-minted source id'));
+      if (await this.store.has(metadataKey(input.sourceId))) return err(new XoError(ErrorCode.ALREADY_EXISTS, 'source id already in use'));
+    }
+    let sourceId = input.sourceId ?? mintSourceId();
     let attempts = 0;
-    while (await this.store.has(metadataKey(sourceId))) {
+    while (input.sourceId === undefined && (await this.store.has(metadataKey(sourceId)))) {
       if (++attempts > 5) return err(new XoError(ErrorCode.UNKNOWN, 'could not mint a unique source id'));
       sourceId = mintSourceId();
     }
@@ -66,6 +75,7 @@ export class FsSourceStore implements SourceStore {
       ...(input.origin !== undefined ? { origin: input.origin } : {}),
       ...(input.ingestNotes !== undefined && input.ingestNotes.length > 0 ? { ingestNotes: input.ingestNotes } : {}),
       ...(input.stats !== undefined && Object.keys(input.stats).length > 0 ? { stats: input.stats } : {}),
+      ...(input.attachments !== undefined && input.attachments.length > 0 ? { attachments: input.attachments } : {}),
     };
 
     const putMetadata = await this.store.put(metadataKey(sourceId), JSON.stringify(record), { contentType: 'application/json' });

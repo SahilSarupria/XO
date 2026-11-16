@@ -5,6 +5,8 @@ import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource } from './types.js';
 import { computeSourceId } from './source-id.js';
 import { parsedDocumentFromBlocks, syntheticProvenance } from './block-source-helpers.js';
+import { tabularFromCsv } from '../tabular/index.js';
+import type { TabularSource } from '../tabular/types.js';
 
 export type StructuredFormat = 'json' | 'csv';
 
@@ -180,35 +182,45 @@ export function blocksForOperationRecord(record: StructuredOperationRecord, reco
 }
 
 /** Naive CSV: comma-separated, one row per line, no quoted-field/embedded-comma support — an explicit, documented limitation (Stage 8 §2's "do not overbuild"), not a bug. */
-function parseCsv(text: string): Result<readonly Record_[], string> {
-  const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
-  if (lines.length === 0) return { ok: false, error: 'CSV has no content' };
-  const headers = lines[0]!.split(',').map((h) => h.trim());
-  if (headers.some((h) => h.length === 0)) return { ok: false, error: 'CSV header row has an empty column name' };
-
-  const records: Record_[] = [];
-  for (const line of lines.slice(1)) {
-    const cells = line.split(',').map((c) => c.trim());
-    const record: Record<string, unknown> = {};
-    headers.forEach((header, i) => {
-      record[header] = cells[i] ?? '';
-    });
-    records.push(record);
-  }
-  return { ok: true, value: records };
+interface ParsedRecords {
+  readonly records: readonly Record_[];
+  /** Per record, the cell each field came from (CSV only). */
+  readonly refs?: readonly Readonly<Record<string, string>>[];
+  readonly tables?: TabularSource;
 }
 
 /**
- * The Structured family (Stage 8 §10): JSON and CSV, the two formats
- * that fit naturally with this repository's existing zero-dependency
- * approach (no new parser library needed). Each top-level record becomes
- * one `page` (mirroring "PDF page 7" — Stage 8 §12's provenance
- * example — a caller citing "record 42" is citing exactly the same kind
- * of location a PDF citation would use) with one heading block plus one
- * paragraph block per field, so field-level provenance survives into
- * `ExperienceUnit.provenance.blockProvenance` the same way a PDF
- * paragraph's does.
+ * UW-3: CSV through the RFC 4180 reader and header detection (`../tabular`). Every record of every table becomes one record here, with
+ * one field per column in header order (an empty cell is an empty string, as before); the record sets themselves, with declared types
+ * and findings, ride along on the source content.
  */
+function parseCsv(text: string): Result<ParsedRecords, string> {
+  const t = tabularFromCsv(text);
+  if (!t.ok) return { ok: false, error: t.error.message.replace(/^cannot read this CSV: /, '') };
+  const records: Record_[] = [];
+  const refs: Record<string, string>[] = [];
+  for (const set of t.value.recordSets) {
+    if (
+      set.headerRow !== undefined &&
+      set.columns.some((c) => c.headerRef === undefined && c.counts !== undefined && Object.keys(c.counts).length > 0)
+    ) {
+      return { ok: false, error: 'CSV header row has an empty column name' };
+    }
+    for (const rec of set.records) {
+      const record: Record<string, unknown> = {};
+      const recordRefs: Record<string, string> = {};
+      for (const col of set.columns) {
+        const cell = rec.cells[col.column];
+        record[col.header] = cell?.raw.trim() ?? '';
+        if (cell !== undefined) recordRefs[col.header] = cell.ref;
+      }
+      records.push(record);
+      refs.push(recordRefs);
+    }
+  }
+  return { ok: true, value: { records, refs, tables: t.value } };
+}
+
 export class StructuredSourceFrontend implements SourceFrontend<StructuredSourceInput> {
   readonly sourceType = 'structured' as const;
 
@@ -217,7 +229,13 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
   }
 
   ingest(input: StructuredSourceInput, _context?: SourceIngestContext): Result<CanonicalSource, SourceError> {
-    const parsed = input.format === 'json' ? parseJson(input.text) : parseCsv(input.text);
+    const parsed: Result<ParsedRecords, string> =
+      input.format === 'json'
+        ? (() => {
+            const j = parseJson(input.text);
+            return j.ok ? { ok: true as const, value: { records: j.value } } : j;
+          })()
+        : parseCsv(input.text);
     if (!parsed.ok) {
       return err(
         new SourceError(
@@ -227,7 +245,7 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
         ),
       );
     }
-    if (parsed.value.length === 0) {
+    if (parsed.value.records.length === 0) {
       return err(
         new SourceError(ErrorCode.PRECONDITION_FAILED, `Structured source "${input.sourcePath}" contains no records`, {
           context: { sourcePath: input.sourcePath },
@@ -236,7 +254,8 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
     }
 
     const blocks: DocumentBlock[] = [];
-    parsed.value.forEach((record, recordIndex) => {
+    parsed.value.records.forEach((record, recordIndex) => {
+      const refs = parsed.value.refs?.[recordIndex];
       if (isOperationRecord(record)) {
         blocks.push(...blocksForOperationRecord(record, recordIndex));
         return;
@@ -254,7 +273,11 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
           kind: 'paragraph',
           text: `${key}: ${fieldToText(value)}`,
           provenance: syntheticProvenance(recordIndex + 1, fieldIndex + 1, blocksForRecord),
-          structuredField: { fieldName: key, rawValue: toStructuredRawValue(value) },
+          structuredField: {
+            fieldName: key,
+            rawValue: toStructuredRawValue(value),
+            ...(refs?.[key] !== undefined ? { cellRef: refs[key] } : {}),
+          },
         });
       });
     });
@@ -266,8 +289,14 @@ export class StructuredSourceFrontend implements SourceFrontend<StructuredSource
       sourceId,
       sourceType: 'structured',
       sourcePath: input.sourcePath,
-      content: { kind: 'document', parsed: parsedDocument, documentTitle: undefined, plainText: input.text },
-      metadata: { format: input.format, recordCount: String(parsed.value.length) },
+      content: {
+        kind: 'document',
+        parsed: parsedDocument,
+        documentTitle: undefined,
+        plainText: input.text,
+        ...(parsed.value.tables !== undefined ? { tables: parsed.value.tables } : {}),
+      },
+      metadata: { format: input.format, recordCount: String(parsed.value.records.length) },
       semanticExtractionAvailable: true,
     });
   }

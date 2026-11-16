@@ -9,6 +9,9 @@ import { chunkDocument } from '../semantic/semantic-chunker.js';
 import type { ExperienceDocument } from '../semantic/types.js';
 import type { CoverageReport } from '../document/page-coverage.js';
 import { needsRecovery, recoverUnreadPages } from '../extraction/router.js';
+import { proposeDocumentKinds, type DocumentKindProposal } from '../sources/kind-proposals.js';
+import { extractDimensions, sniffMimeType, type ImageSourceInput } from '../sources/image-frontend.js';
+import { imageAsRecoverableDocument } from '../extraction/image-document.js';
 import type { ExtractionBudget, ExtractionLedger, PageTier, RecoveryCache } from '../extraction/types.js';
 import { NodePdfLoader } from '../pdf/pdf-loader.js';
 import type { PdfSourceInput } from '../sources/pdf-frontend.js';
@@ -92,6 +95,12 @@ export interface SourceCompilationReport {
    * evidence); absent for ordinary documents, whose class is the default `source_document`.
    */
   readonly sourceClass?: 'user_instruction';
+  /**
+   * UW-3 — what kind of document this looks like (certificate, invoice, register, ...), best first, each with the cues that matched and
+   * where. Always `status: 'proposed'`: a person confirms a kind; nothing downstream treats a proposal as fact. Absent for sources with
+   * no text; empty when nothing in the cue pack matched.
+   */
+  readonly kindProposals?: readonly DocumentKindProposal[];
 }
 
 /** What the compiler understood a prompt source to say, and whether a person has confirmed it (only confirmed prompts compile). */
@@ -243,6 +252,28 @@ async function withRecoveredPages(
   ledgers: Map<string, ExtractionLedger>,
 ): Promise<unknown> {
   const candidate = input as Partial<PdfSourceInput> | null;
+  const image = input as Partial<ImageSourceInput> | null;
+  // UW-3: a photo or scanned image is read by the same tiers, as a one-page document with no text layer.
+  if (
+    image !== null &&
+    typeof image === 'object' &&
+    image.kind === 'image' &&
+    image.bytes instanceof Uint8Array &&
+    typeof image.sourcePath === 'string'
+  ) {
+    const mimeType = image.mimeType ?? sniffMimeType(image.bytes);
+    if (mimeType === undefined || image.bytes.length === 0) return input;
+    const wrapped = imageAsRecoverableDocument(image.sourcePath, mimeType, extractDimensions(image.bytes, mimeType));
+    const { document, ledger } = await recoverUnreadPages(
+      wrapped,
+      image.bytes,
+      options.pageTiers!,
+      options.extractionBudget,
+      options.recoveryCache,
+    );
+    ledgers.set(image.sourcePath, ledger);
+    return { ...image, mimeType, preloaded: document };
+  }
   if (
     candidate === null ||
     typeof candidate !== 'object' ||
@@ -384,6 +415,7 @@ export async function compileSources(
         sourcePath: source.sourcePath,
         semanticExtractionAvailable: false,
         unitCount: 0,
+        kindProposals: proposeDocumentKinds(source), // file name only: a photo named certificate.jpg still gets a proposal to confirm
       });
       options.logger?.info('Source has no semantic extraction available; it will not contribute XOIR content', {
         sourceId: source.sourceId,
@@ -422,6 +454,7 @@ export async function compileSources(
         unitCount: 0,
         qualityState: quality.state,
         ...(coverage !== undefined ? { coverage } : {}),
+        kindProposals: proposeDocumentKinds(source),
       });
       options.logger?.warn(
         'Source quality check blocked semantic extraction — extracted text was not trustworthy enough to feed into semantic extraction',
@@ -497,6 +530,7 @@ export async function compileSources(
       ...(source.sourceType === 'prompt' ? { sourceClass: 'user_instruction' as const } : {}),
       qualityState: quality.state,
       ...(coverage !== undefined ? { coverage } : {}),
+      kindProposals: proposeDocumentKinds(source),
     });
   }
 

@@ -267,7 +267,8 @@ test('payload e2e: the step PAUSES with nothing dispatched; a human approves the
       ['procedure.attempted/attempted', 'procedure.attempted/completed'],
     );
     assert.equal(String(events[0]!.metadata?.['digestPrefix']).length, 12);
-    assert.ok(!JSON.stringify(env.node.sink.events()).includes('4242'), 'no input value reached the audit trail');
+    // The value as a value, not as four characters inside a random id, digest or UUID (which contain "4242" about one run in twenty).
+    assert.ok(!/(?<![\w-])4242(?![\w-])/.test(JSON.stringify(env.node.sink.events())), 'no input value reached the audit trail');
     // A second continue cannot dispatch again.
     assert.equal((await proceed(env, exec)).status, 409);
     assert.equal(env.node.service.effects.length, 1);

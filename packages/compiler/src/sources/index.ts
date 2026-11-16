@@ -16,3 +16,6 @@ export * from './docx-text.js';
 export * from './xlsx-frontend.js';
 export * from './xlsx-text.js';
 export * from './zip-reader.js';
+export * from './eml-frontend.js';
+export * from './mime.js';
+export * from './kind-proposals.js';

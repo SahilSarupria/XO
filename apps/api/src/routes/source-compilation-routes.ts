@@ -105,7 +105,7 @@ export function registerCompilationRoutes(
     // has already called `markSucceeded`/`markFailed` — see that
     // function's own doc comment. The HTTP response always reports the
     // finished (`succeeded`/`failed`) status, never `running`.
-    await compileSourceRecord(compilationStore, created.value.compilationId, source, contentFound.value);
+    await compileSourceRecord(compilationStore, created.value.compilationId, source, contentFound.value, dataConfig.extraction);
 
     const finished = await compilationStore.get(created.value.compilationId);
     if (!finished.ok) throw finished.error;

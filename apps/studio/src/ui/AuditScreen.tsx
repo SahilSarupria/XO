@@ -25,6 +25,7 @@ const EVENT: Record<string, string> = {
   'settings.updated': 'Changed settings',
   'source.uploaded': 'Uploaded a document',
   'source.imported': 'Imported a document from a link',
+  'source.extracted': 'Opened an attachment from an email',
   'source.deleted': 'Deleted a document',
   'compilation.started': 'Analysed a document',
   'capability.approved': 'Approved a capability',

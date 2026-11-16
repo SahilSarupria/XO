@@ -140,3 +140,24 @@ test('extraction: a recovered page is cached, so a second run never calls the ti
     'a new tier version does not reuse old results',
   );
 });
+
+test('UW-3: blocks from recovered pages carry the tier and confidence in their provenance; blocks read directly do not', async () => {
+  const { PdfSourceFrontend } = await import('../../src/sources/pdf-frontend.js');
+  const { document } = await recoverUnreadPages(load(), bytes, [tier('stub-ocr', 'local', { confidence: 0.82 })]);
+  const r = new PdfSourceFrontend().ingest({ kind: 'pdf', bytes, sourcePath: 'scanned-and-mixed.pdf', preloaded: document });
+  assert.ok(r.ok);
+  if (r.value.content.kind !== 'document') return assert.fail('document expected');
+  const blocks: { provenance: { page: number; textSource?: unknown } }[] = [];
+  const walk = (s: (typeof r.value.content.parsed)['root']): void => {
+    if (s.heading !== undefined) blocks.push(s.heading);
+    blocks.push(...s.blocks);
+    s.subsections.forEach(walk);
+  };
+  walk(r.value.content.parsed.root);
+  const recovered = blocks.filter((b) => b.provenance.page === 2 || b.provenance.page === 3);
+  assert.ok(recovered.length > 0);
+  for (const b of recovered)
+    assert.deepEqual(b.provenance.textSource, { kind: 'recovered', tier: 'stub-ocr', confidence: 0.82, costClass: 'local' });
+  const direct = blocks.filter((b) => b.provenance.page === 1);
+  assert.ok(direct.length > 0 && direct.every((b) => b.provenance.textSource === undefined));
+});

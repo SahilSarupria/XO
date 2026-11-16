@@ -180,7 +180,7 @@ describe('honest handling of things that cannot proceed', () => {
     const input = document.getElementById('file-upload') as HTMLInputElement;
     // userEvent honours `accept`, so bypass it to exercise our own check
     const u2 = userEvent.setup({ applyAccept: false });
-    await u2.upload(input, new File(['x'], 'rules.xlsx'));
+    await u2.upload(input, new File(['x'], 'rules.pptx')); // UW-3: .xlsx is accepted now; .pptx is not
     expect(await screen.findByText(/is not one of those/i)).toBeInTheDocument();
     expect(api.calls.some((c) => c.path.includes('/sources') && c.method === 'POST')).toBe(false);
   });

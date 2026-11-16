@@ -90,26 +90,27 @@ test('CSV: each paragraph block carries structuredField with the raw string cell
   assert.equal(fieldNameBlock?.kind, 'paragraph');
   if (fieldNameBlock?.kind === 'paragraph') {
     assert.equal(fieldNameBlock.text, 'field_name: subtotal'); // existing text behavior unchanged
-    assert.deepEqual(fieldNameBlock.structuredField, { fieldName: 'field_name', rawValue: 'subtotal' });
+    // UW-3: the field also names the cell it came from
+    assert.deepEqual(fieldNameBlock.structuredField, { fieldName: 'field_name', rawValue: 'subtotal', cellRef: 'A2' });
   }
 
   const formulaBlock = byField.get('formula');
   assert.equal(formulaBlock?.kind, 'paragraph');
   if (formulaBlock?.kind === 'paragraph')
-    assert.deepEqual(formulaBlock.structuredField, { fieldName: 'formula', rawValue: 'sum of line item amounts' });
+    assert.deepEqual(formulaBlock.structuredField, { fieldName: 'formula', rawValue: 'sum of line item amounts', cellRef: 'C2' });
 
   const derivedFromBlock = byField.get('derived_from');
   assert.equal(derivedFromBlock?.kind, 'paragraph');
   if (derivedFromBlock?.kind === 'paragraph') {
     // A field named "derived_from" remains an ordinary field with one unsplit rawValue — no delimiter splitting.
-    assert.deepEqual(derivedFromBlock.structuredField, { fieldName: 'derived_from', rawValue: 'line_items' });
+    assert.deepEqual(derivedFromBlock.structuredField, { fieldName: 'derived_from', rawValue: 'line_items', cellRef: 'B2' });
   }
 
   const typeBlock = byField.get('type');
   assert.equal(typeBlock?.kind, 'paragraph');
   if (typeBlock?.kind === 'paragraph') {
     // A field named "type" is preserved as an ordinary field — its rawValue is not coerced into any schema-type enum.
-    assert.deepEqual(typeBlock.structuredField, { fieldName: 'type', rawValue: 'number' });
+    assert.deepEqual(typeBlock.structuredField, { fieldName: 'type', rawValue: 'number', cellRef: 'D2' });
   }
 });
 

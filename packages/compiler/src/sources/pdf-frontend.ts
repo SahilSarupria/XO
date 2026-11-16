@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, SourceError } from '@xo/errors';
 import { NodePdfLoader, type LoadedPdfDocument, type PdfLoader } from '../pdf/pdf-loader.js';
+import { markRecoveredText } from '../document/recovered-text.js';
 import { computePdfCoverage } from '../pdf/pdf-coverage.js';
 import { parseDocument } from '../document/document-parser.js';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
@@ -65,7 +66,7 @@ export class PdfSourceFrontend implements SourceFrontend<PdfSourceInput> {
       );
     }
 
-    const parsed = parseDocument(loaded.value);
+    const parsed = markRecoveredText(parseDocument(loaded.value), loaded.value.pages);
     const plainText = loaded.value.pages.map((page) => page.plainText).join('\n\n');
     const sourceId = computeSourceId('pdf', input.sourcePath, input.bytes);
 

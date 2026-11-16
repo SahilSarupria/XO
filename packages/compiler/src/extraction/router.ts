@@ -141,6 +141,7 @@ export async function recoverUnreadPages(
 
   const recoverOne = async (page: LoadedPdfPage): Promise<void> => {
     for (const tier of ordered) {
+      if (document.sourceImage !== undefined && tier.acceptsImages !== true) continue;
       if (!tier.handles(page)) continue;
       const key = cacheKey(documentHash, page, tier);
       const t0 = Date.now();

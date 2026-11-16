@@ -150,7 +150,7 @@ class OcrAborted extends Error {}
 
 async function ocr(
   pool: WorkerPool,
-  img: GrayImage,
+  img: GrayImage | Buffer,
   signal: AbortSignal | undefined,
 ): Promise<{ lines: readonly TessLine[]; confidence: number; text: string }> {
   if (signal?.aborted === true) throw new OcrAborted();
@@ -168,7 +168,8 @@ async function ocr(
   aborted.catch(() => undefined);
   try {
     // tesseract.js only returns the block/paragraph/line tree when asked for it.
-    const work = w.recognize(encodeGrayPng(img.width, img.height, img.data), {}, { blocks: true });
+    // A photo (Buffer) goes to the engine as-is: it decodes JPEG, PNG, WebP and GIF itself and applies EXIF orientation.
+    const work = w.recognize(Buffer.isBuffer(img) ? img : encodeGrayPng(img.width, img.height, img.data), {}, { blocks: true });
     work.catch(() => undefined);
     const r = await Promise.race([work, aborted]);
     const lines = (r.data.blocks ?? []).flatMap((b) => (b.paragraphs ?? []).flatMap((p) => p.lines ?? []));
@@ -189,12 +190,14 @@ export function createTesseractTier(options: TesseractOptions = {}): PageTier {
     // Output depends on the engine, language data and settings; bump any of them and old cache entries stop matching.
     version: `1|${tesseractVersion()}|${lang}|${dpi}`,
     costClass: 'local',
+    acceptsImages: true,
     handles: needsEngineHelp,
-    async recover({ page, bytes, signal: outer }): Promise<PageRecovery | undefined> {
-      const limit = AbortSignal.timeout(options.maxMsPerPage ?? 20_000);
+    async recover({ page, document, bytes, signal: outer }): Promise<PageRecovery | undefined> {
+      const limit = AbortSignal.timeout((options.maxMsPerPage ?? 20_000) * (document.sourceImage !== undefined ? 3 : 1));
       const signal = outer === undefined ? limit : AbortSignal.any([outer, limit]);
       const aborted = (): boolean => signal?.aborted === true;
       if (aborted() || !(await isTesseractAvailable())) return undefined;
+      if (document.sourceImage !== undefined) return recoverImage(poolFor(options), Buffer.from(bytes), page.mediaBox, signal);
       const rendered = await renderPageGray(bytes, page.pageNumber, { dpi });
       if (rendered === undefined) return undefined;
       const pool = poolFor(options);
@@ -229,4 +232,30 @@ export function createTesseractTier(options: TesseractOptions = {}): PageTier {
       return { lines: out, confidence: Number(Math.max(0, Math.min(1, best.confidence)).toFixed(3)) };
     },
   };
+}
+
+/**
+ * UW-3 — a photographed or scanned image: one recognition over the original bytes (photos are large; a phone camera's EXIF orientation is
+ * honoured by the engine). Positions are in the image's pixel grid, which is the wrapped page's point space.
+ */
+async function recoverImage(
+  pool: WorkerPool,
+  image: Buffer,
+  mediaBox: readonly [number, number, number, number],
+  signal: AbortSignal,
+): Promise<PageRecovery | undefined> {
+  let res: Awaited<ReturnType<typeof ocr>>;
+  try {
+    res = await ocr(pool, image, signal);
+  } catch (e) {
+    if (e instanceof OcrAborted) return undefined;
+    throw e;
+  }
+  if (res.text.trim().length === 0) return undefined;
+  const [, , , top] = mediaBox;
+  const lines: RecoveredLine[] = res.lines
+    .filter((l) => l.text.trim().length > 0)
+    .map((l) => ({ text: l.text.trim(), x: l.bbox.x0, y: top - l.bbox.y1, fontSizePt: Math.max(6, (l.bbox.y1 - l.bbox.y0) * 0.8) }));
+  if (lines.length === 0) return undefined;
+  return { lines, confidence: Number(Math.max(0, Math.min(1, res.confidence)).toFixed(3)) };
 }

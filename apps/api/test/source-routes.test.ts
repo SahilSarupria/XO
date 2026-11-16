@@ -302,7 +302,7 @@ test('an unsupported file extension is rejected clearly with 400, naming the sup
   const server = await TestServer.start();
   try {
     const workspace = await createWorkspace(server);
-    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=contract.xlsx`, Buffer.from('x'));
+    const res = await server.request('POST', `/workspaces/${workspace.workspaceId}/sources?filename=deck.pptx`, Buffer.from('x')); // UW-3: .xlsx is supported now; .pptx is not
     assert.equal(res.status, 400);
     assert.match(res.json<{ error: { message: string } }>().error.message, /unsupported file extension/);
   } finally {

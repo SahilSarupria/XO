@@ -150,3 +150,31 @@ test('vision: a ceiling that fits one call is never overrun by pages running in 
   assert.equal(p.requests.length, 1);
   assert.ok(ledger.totalCostUsd <= one * 1.5);
 });
+
+test('vision: a photo is sent as the original JPEG bytes (no render, no re-encode) and its text is read like a scanned page', async () => {
+  const { imageAsRecoverableDocument } = await import('../../src/extraction/image-document.js');
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xd9]);
+  const p = fakeProvider(() => GOOD());
+  const doc = imageAsRecoverableDocument('IMG_2041.jpg', 'image/jpeg', { width: 4032, height: 3024 });
+  const { document, ledger } = await recoverUnreadPages(doc, jpeg, [tierOf(p)], { maxCostUsd: 1 });
+  assert.equal(p.requests.length, 1);
+  const img = p.requests[0]!.messages.find((m) => m.images !== undefined)!.images![0]!;
+  assert.equal(img.mediaType, 'image/jpeg');
+  assert.deepEqual(new Uint8Array(Buffer.from(img.dataBase64, 'base64')), jpeg, 'the photo as taken, nothing lost to re-encoding');
+  assert.equal(ledger.pagesRecovered, 1);
+  assert.match(document.pages[0]!.plainText, /exceeds 10000/);
+});
+
+test('vision: a photo type the provider cannot take (e.g. WebP) is never sent, and nothing is billed', async () => {
+  const { imageAsRecoverableDocument } = await import('../../src/extraction/image-document.js');
+  const p = fakeProvider(() => GOOD());
+  const doc = imageAsRecoverableDocument('IMG.webp', 'image/webp');
+  const { ledger } = await recoverUnreadPages(
+    doc,
+    new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
+    [tierOf(p)],
+    { maxCostUsd: 1 },
+  );
+  assert.equal(p.requests.length, 0);
+  assert.equal(ledger.pagesRecovered, 0);
+});

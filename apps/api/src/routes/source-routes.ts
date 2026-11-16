@@ -1,4 +1,6 @@
 import { extname } from 'node:path';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_CHUNK_BYTES, UploadSessionStore, type UploadSession } from '../sources/upload-sessions.js';
+import { MimeError, parseEmail, tabularFromCsv, tabularFromXlsx } from '@xo/compiler';
 import { ErrorCode, XoError } from '@xo/errors';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -9,6 +11,7 @@ import {
   requirePermission,
   requireOwnedWorkspace,
   workspaceSourcesStore,
+  workspaceUploadsStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
@@ -18,8 +21,16 @@ import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { workspaceStateStore } from '../workspace/workspace-context.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { auditedRead, type AuditService } from '../audit/audit-service.js';
-import { FsSourceStore } from '../sources/fs-source-store.js';
-import { SUPPORTED_EXTENSIONS, inferMediaType, type SourceRecord } from '../sources/source.js';
+import { createHash } from 'node:crypto';
+import { FsSourceStore, newSourceId } from '../sources/fs-source-store.js';
+import {
+  EXTENSION_FOR_MEDIA_TYPE,
+  SUPPORTED_EXTENSIONS,
+  inferMediaType,
+  type EmailAttachmentRecord,
+  type SourceRecord,
+} from '../sources/source.js';
+import { planEmailAttachments } from '../sources/email-attachments.js';
 
 /**
  * Source registration and storage only — no compilation happens here
@@ -76,6 +87,27 @@ export interface SourceRouteOptions {
   readonly fetchDeps?: { readonly lookup?: LookupFn; readonly transport?: TransportFn };
 }
 
+/**
+ * A filename is metadata, never a path: anything that even looks like it is smuggling a directory component is refused, and only
+ * supported extensions are accepted. Shared by single-request and resumable uploads.
+ */
+function acceptedFilename(raw: string | null | undefined): { filename: string; extension: string } {
+  if (raw === null || raw === undefined || raw.trim().length === 0) {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "filename" (the original filename) is required');
+  }
+  if (raw.includes('/') || raw.includes('\\') || raw.includes('..')) {
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename" must not contain path separators or ".."');
+  }
+  const extension = extname(raw).toLowerCase();
+  if (!SUPPORTED_EXTENSIONS.has(extension)) {
+    throw new XoError(
+      ErrorCode.INVALID_ARGUMENT,
+      `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`,
+    );
+  }
+  return { filename: raw, extension };
+}
+
 export function registerSourceRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -88,27 +120,7 @@ export function registerSourceRoutes(
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'upload source' });
 
-    const filename = req.query.get('filename');
-    if (filename === null || filename.trim().length === 0) {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "filename" (the original filename) is required');
-    }
-    // A filename is metadata, never a path: reject anything that even
-    // looks like it's trying to smuggle a directory component, and
-    // normalize to its base name regardless, so nothing derived from it
-    // (nothing IS, today — see the doc comment above — but this keeps
-    // that guarantee true even if a future change starts using it) could
-    // ever be interpreted as a path.
-    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"filename" must not contain path separators or ".."');
-    }
-
-    const extension = extname(filename).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      throw new XoError(
-        ErrorCode.INVALID_ARGUMENT,
-        `unsupported file extension "${extension || '(none)'}" — supported: ${[...SUPPORTED_EXTENSIONS].join(', ')}`,
-      );
-    }
+    const { filename, extension } = acceptedFilename(req.query.get('filename'));
 
     const bytes = await req.rawBody();
     if (bytes.length === 0) {
@@ -133,9 +145,14 @@ export function registerSourceRoutes(
     mediaType: string,
     bytes: Uint8Array,
     origin: NonNullable<SourceRecord['origin']>,
+    /** UW-3: how many emails deep this file sits (0 = uploaded or imported directly). */
+    emailDepth = 0,
   ): Promise<SourceRecord> {
     let ingestNotes: readonly string[] | undefined;
     let stats: SourceRecord['stats'] | undefined;
+    let sourceId: string | undefined;
+    let attachments: EmailAttachmentRecord[] | undefined;
+    const children: string[] = [];
     if (extension === '.docx') {
       try {
         const extracted = extractDocxText(bytes);
@@ -145,10 +162,88 @@ export function registerSourceRoutes(
         if (cause instanceof DocxError) throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot read this .docx: ${cause.message}`);
         throw cause;
       }
-    } else if (extension === '.csv') {
-      const text = new TextDecoder().decode(bytes);
-      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      stats = { rows: Math.max(0, lines.length - 1) };
+    } else if (extension === '.csv' || extension === '.xlsx') {
+      // UW-3: tabular files are read into record sets here, so a broken or hostile file is refused at the door with the reason, and
+      // what the reader could not settle (no header, merged cells, ambiguous dates, ...) is shown to the person who uploaded it.
+      const tables = extension === '.csv' ? tabularFromCsv(new TextDecoder().decode(bytes)) : tabularFromXlsx(bytes);
+      if (!tables.ok)
+        throw new XoError(
+          ErrorCode.INVALID_ARGUMENT,
+          `cannot read this ${extension}: ${tables.error.message.replace(/^cannot read this (CSV|workbook): /, '')}`,
+        );
+      const sets = tables.value.recordSets;
+      stats = {
+        rows: sets.reduce((n, r) => n + r.records.length, 0),
+        ...(extension === '.xlsx' ? { sheets: tables.value.sheets.length, tables: sets.length } : {}),
+      };
+      const notes = [...tables.value.findings, ...sets.flatMap((r) => r.findings)].map((f) =>
+        f.ref !== undefined ? `${f.ref}: ${f.message}` : f.message,
+      );
+      if (notes.length > 0) ingestNotes = notes.length > 20 ? [...notes.slice(0, 20), `and ${notes.length - 20} more`] : notes;
+    } else if (extension === '.eml') {
+      let email;
+      try {
+        email = parseEmail(bytes, { withContent: true });
+      } catch (cause) {
+        if (cause instanceof MimeError) throw new XoError(ErrorCode.INVALID_ARGUMENT, `cannot read this .eml: ${cause.message}`);
+        throw cause;
+      }
+      stats = { words: email.body.split(/\s+/).filter(Boolean).length, attachments: email.attachments.length };
+      const notes = [...email.findings];
+      // UW-3: every attachment the server can read is opened now, as a source of its own linked back to this email, so a certificate
+      // forwarded as an attachment is read and compiled like any upload. The email's id is minted first so each attachment can name it.
+      sourceId = newSourceId();
+      const emailDigestSha256 = createHash('sha256').update(bytes).digest('hex');
+      attachments = [];
+      const opened: string[] = [];
+      const notOpened: string[] = [];
+      const bySha = new Map<string, string>();
+      try {
+        for (const plan of planEmailAttachments(email.attachments, emailDepth)) {
+          const a = plan.attachment;
+          const base = {
+            part: a.part,
+            ...(a.filename !== undefined ? { filename: a.filename } : {}),
+            contentType: a.contentType,
+            size: a.size,
+            sha256: a.sha256,
+          };
+          if (!plan.open) {
+            const same = plan.sameAsPart !== undefined ? bySha.get(a.sha256) : undefined;
+            attachments.push({ ...base, ...(same !== undefined ? { sourceId: same } : {}), notOpened: plan.reason });
+            if (same === undefined) notOpened.push(`${a.filename ?? `part ${a.part}`} (${plan.reason})`);
+            continue;
+          }
+          try {
+            const child = await storeSource(
+              req,
+              workspace,
+              plan.filename,
+              plan.extension,
+              inferMediaType(plan.extension, undefined),
+              a.content!,
+              { kind: 'email-attachment', emailSourceId: sourceId, emailDigestSha256, emailFilename: filename, part: a.part },
+              emailDepth + 1,
+            );
+            children.push(child.sourceId);
+            bySha.set(a.sha256, child.sourceId);
+            attachments.push({ ...base, sourceId: child.sourceId });
+            opened.push(plan.filename);
+          } catch (cause) {
+            // An attachment the door refuses (a corrupt .docx, a broken workbook) is reported on the email; it does not fail the email.
+            if (!(cause instanceof XoError) || cause.code !== ErrorCode.INVALID_ARGUMENT) throw cause;
+            const reason = cause.message.replace(/^cannot read this [^:]+: /, 'it could not be read: ');
+            attachments.push({ ...base, notOpened: reason });
+            notOpened.push(`${plan.filename} (${reason})`);
+          }
+        }
+      } catch (cause) {
+        await removeSources(workspace, children);
+        throw cause;
+      }
+      if (opened.length > 0) notes.push(`Opened ${opened.length} attachment(s) as their own sources: ${opened.join(', ')}.`);
+      if (notOpened.length > 0) notes.push(`Not opened: ${notOpened.join('; ')}.`);
+      if (notes.length > 0) ingestNotes = notes;
     } else if (extension === '.txt' || extension === '.md') {
       stats = { words: new TextDecoder().decode(bytes).split(/\s+/).filter(Boolean).length };
     }
@@ -161,30 +256,33 @@ export function registerSourceRoutes(
       origin,
       ...(ingestNotes !== undefined ? { ingestNotes } : {}),
       ...(stats !== undefined ? { stats } : {}),
+      ...(attachments !== undefined ? { attachments } : {}),
+      ...(sourceId !== undefined ? { sourceId } : {}),
     });
-    if (!created.ok) throw created.error;
+    if (!created.ok) {
+      await removeSources(workspace, children);
+      throw created.error;
+    }
     await recordAudit(req, workspace, dataConfig, {
-      event: origin.kind === 'url' ? 'source.imported' : 'source.uploaded',
+      event: origin.kind === 'url' ? 'source.imported' : origin.kind === 'email-attachment' ? 'source.extracted' : 'source.uploaded',
       result: 'succeeded',
       target: { kind: 'source', id: created.value.sourceId, label: filename },
-      detail: { bytes: bytes.length, mediaType, ...(origin.kind === 'url' ? { from: safeOriginLabel(origin.url) } : {}) },
+      detail: {
+        bytes: bytes.length,
+        mediaType,
+        ...(origin.kind === 'url' ? { from: safeOriginLabel(origin.url) } : {}),
+        ...(origin.kind === 'email-attachment' ? { fromEmail: origin.emailSourceId, part: origin.part } : {}),
+        ...(children.length > 0 ? { attachmentsOpened: children.length } : {}),
+      },
     });
     return created.value;
   }
 
-  const MEDIA_TYPE_EXTENSIONS: Readonly<Record<string, string>> = {
-    'application/pdf': '.pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'text/html': '.html',
-    'text/plain': '.txt',
-    'text/markdown': '.md',
-    'text/csv': '.csv',
-    'application/json': '.json',
-    'image/png': '.png',
-    'image/jpeg': '.jpg',
-    'image/gif': '.gif',
-    'image/webp': '.webp',
-  };
+  /** Best-effort undo of attachment sources stored for an email that then could not be stored itself. */
+  async function removeSources(workspace: Parameters<typeof workspaceSourcesStore>[0], sourceIds: readonly string[]): Promise<void> {
+    const store = new FsSourceStore(workspaceSourcesStore(workspace, dataConfig));
+    for (const id of sourceIds) await store.delete(id).catch(() => undefined);
+  }
 
   async function importFromUrl(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
@@ -219,7 +317,7 @@ export function registerSourceRoutes(
     }
     let extension = extname(name).toLowerCase();
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
-      const fromType = contentType !== undefined ? MEDIA_TYPE_EXTENSIONS[contentType] : undefined;
+      const fromType = contentType !== undefined ? EXTENSION_FOR_MEDIA_TYPE[contentType] : undefined;
       if (fromType === undefined) {
         throw new XoError(
           ErrorCode.INVALID_ARGUMENT,
@@ -297,6 +395,78 @@ export function registerSourceRoutes(
     });
     return { status: 204 };
   }
+
+  // ── UW-3: resumable uploads ─────────────────────────────────────────────────────────────────────────────────────
+  async function uploadContext(req: ApiRequest) {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'upload source' });
+    return { workspace, sessions: new UploadSessionStore(workspaceUploadsStore(workspace, dataConfig)), identityId: callerIdentityId(req) };
+  }
+  const sessionWire = (s: UploadSession) => ({
+    uploadId: s.uploadId,
+    filename: s.filename,
+    size: s.size,
+    offset: s.offset,
+    expiresAt: s.expiresAt,
+    maxChunkBytes: MAX_UPLOAD_CHUNK_BYTES,
+  });
+
+  async function openUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    const parsed = await req.json<{ filename?: unknown; size?: unknown; sha256?: unknown; mediaType?: unknown }>();
+    if (!parsed.ok) throw parsed.error;
+    const body = parsed.value ?? {};
+    const { filename, extension } = acceptedFilename(typeof body.filename === 'string' ? body.filename : undefined);
+    const size = body.size;
+    if (typeof size !== 'number' || !Number.isInteger(size) || size < 1 || size > MAX_UPLOAD_BYTES) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, `"size" must be the file's size in bytes, 1 to ${MAX_UPLOAD_BYTES}`);
+    }
+    const sha256 = body.sha256;
+    if (sha256 !== undefined && (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256))) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"sha256" must be 64 lower-case hex characters');
+    }
+    const mediaType = inferMediaType(extension, typeof body.mediaType === 'string' ? body.mediaType : undefined);
+    const session = await sessions.open({ identityId, filename, extension, mediaType, size, ...(sha256 !== undefined ? { sha256 } : {}) });
+    return json(201, sessionWire(session));
+  }
+
+  async function uploadStatus(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    return json(200, sessionWire(await sessions.get(req.params['uploadId'] ?? '', identityId)));
+  }
+
+  async function uploadChunk(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    const session = await sessions.get(req.params['uploadId'] ?? '', identityId);
+    const offset = Number(req.query.get('offset'));
+    if (req.query.get('offset') === null || !Number.isInteger(offset) || offset < 0) {
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'query parameter "offset" (where this chunk starts) is required');
+    }
+    const bytes = await req.rawBody();
+    return json(200, sessionWire(await sessions.append(session, offset, new Uint8Array(bytes))));
+  }
+
+  async function completeUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { workspace, sessions, identityId } = await uploadContext(req);
+    const session = await sessions.get(req.params['uploadId'] ?? '', identityId);
+    const bytes = await sessions.assemble(session);
+    // The same door as a single-request upload: same checks, same parsing, same audit entry.
+    const created = await storeSource(req, workspace, session.filename, session.extension, session.mediaType, bytes, { kind: 'upload' });
+    await sessions.remove(session);
+    return json(201, toWireRecord(created));
+  }
+
+  async function cancelUpload(req: ApiRequest): Promise<ApiResponse> {
+    const { sessions, identityId } = await uploadContext(req);
+    await sessions.remove(await sessions.get(req.params['uploadId'] ?? '', identityId));
+    return json(200, { cancelled: true });
+  }
+
+  router.post('/workspaces/:workspaceId/uploads', guarded(openUpload));
+  router.get('/workspaces/:workspaceId/uploads/:uploadId', guarded(uploadStatus));
+  router.put('/workspaces/:workspaceId/uploads/:uploadId', guarded(uploadChunk));
+  router.post('/workspaces/:workspaceId/uploads/:uploadId/complete', guarded(completeUpload));
+  router.delete('/workspaces/:workspaceId/uploads/:uploadId', guarded(cancelUpload));
 
   router.post('/workspaces/:workspaceId/sources', guarded(upload));
   router.post('/workspaces/:workspaceId/sources/import', guarded(importFromUrl));

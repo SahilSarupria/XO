@@ -87,6 +87,7 @@ export class FsCompilationStore implements CompilationStore {
       status: 'succeeded',
       completedAt: new Date().toISOString(),
       resultStorageKey: resultKey(compilationId),
+      ...(input.sourceReport !== undefined ? { sourceReport: input.sourceReport } : {}),
     };
     const putMetadata = await this.store.put(metadataKey(compilationId), JSON.stringify(record), { contentType: 'application/json' });
     if (!putMetadata.ok) return err(putMetadata.error);
