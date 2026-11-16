@@ -192,7 +192,8 @@ test('first request with a key executes once; the durable record holds hashes an
     assert.deepEqual(rec['principal'], { kind: 'service', id: 'test-identity' });
     const raw = JSON.stringify(rec);
     assert.ok(!raw.includes(KEY), 'the client key is never stored');
-    assert.ok(!raw.includes('20000') && !raw.includes('claim_amount'), 'no request payload is stored');
+    // The value as a value, not as five characters inside a random hash or id.
+    assert.ok(!/(?<![\w-])20000(?![\w-])/.test(raw) && !raw.includes('claim_amount'), 'no request payload is stored');
     assert.ok(!JSON.stringify(env.sink.events()).includes(KEY), 'the client key never reaches the audit trail');
     assert.ok(!res.bodyText.includes(KEY));
   });

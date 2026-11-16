@@ -1,4 +1,15 @@
-import { AnthropicProvider, AzureOpenAiProvider, GeminiProvider, OllamaProvider, OpenAiProvider, type ModelProvider } from '@xo/ai-core';
+import {
+  AnthropicProvider,
+  AzureOpenAiProvider,
+  GeminiProvider,
+  guardProvider,
+  OllamaProvider,
+  OpenAiProvider,
+  resolveResidency,
+  type EgressDecision,
+  type ModelProvider,
+  type ResidencyPolicy,
+} from '@xo/ai-core';
 
 /**
  * Builds a model provider from SERVER-SIDE configuration only (environment). Deliberately unlike
@@ -8,7 +19,36 @@ import { AnthropicProvider, AzureOpenAiProvider, GeminiProvider, OllamaProvider,
  */
 export type ProviderFactory = (providerId: string) => ModelProvider | undefined;
 
-export function envProviderFactory(env: Readonly<Record<string, string | undefined>> = process.env): ProviderFactory {
+/**
+ * UW-14 — the only place this API builds a model provider, and every provider it builds passes the residency guard
+ * (`@xo/ai-core` egress/guarded-provider.ts): in `strict_local` no hosted provider can be reached at all, in `masked_hosted` only a
+ * contracted one with typed egress requests. A test fails if a provider class is constructed anywhere else in `apps/api/src`.
+ */
+export function envProviderFactory(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  residency: ResidencyPolicy = resolveResidency(env),
+  onDecision?: (decision: EgressDecision) => void,
+): ProviderFactory {
+  const build = rawProviderFactory(env);
+  return (providerId) => {
+    const provider = build(providerId);
+    if (provider === undefined) return undefined;
+    return guardProvider(provider, residency, {
+      ...(providerId === 'ollama' ? { endpoint: env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434' } : {}),
+      ...(onDecision !== undefined ? { onDecision } : {}),
+    });
+  };
+}
+
+/** Guards providers from any factory (tests and alternative deployments inject their own); guarded providers pass through unchanged. */
+export function guardedFactory(factory: ProviderFactory, residency: ResidencyPolicy): ProviderFactory {
+  return (providerId) => {
+    const provider = factory(providerId);
+    return provider === undefined ? undefined : guardProvider(provider, residency);
+  };
+}
+
+function rawProviderFactory(env: Readonly<Record<string, string | undefined>>): ProviderFactory {
   return (providerId) => {
     switch (providerId) {
       case 'anthropic':

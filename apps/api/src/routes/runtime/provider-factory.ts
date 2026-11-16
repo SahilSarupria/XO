@@ -1,6 +1,6 @@
 import { err, ok, type Result } from '@xo/types';
 import { ConfigError } from '@xo/errors';
-import { resolveInference, type ModelProvider } from '@xo/ai-core';
+import { guardProvider, resolveInference, resolveResidency, type ModelProvider } from '@xo/ai-core';
 import type { ApiRequest } from '../../http/types.js';
 
 /**
@@ -53,7 +53,9 @@ export function resolveProvider(
     if (resolution.state === 'unconfigured') {
       return err('inference is not configured on this server (set XO_INFERENCE_PROVIDER; see docs/inference-gemini.md)');
     }
-    return ok(resolution.provider);
+    // UW-14: runtime capability inference carries the run's input values, so it is an ordinary (untyped) request; the residency guard
+    // refuses it for a hosted provider unless residency is open.
+    return ok(guardProvider(resolution.provider, resolveResidency(env)));
   } catch (cause) {
     if (cause instanceof ConfigError) return err(`inference configuration is invalid: ${cause.message}`);
     throw cause;

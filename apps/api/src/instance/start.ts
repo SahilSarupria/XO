@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { ConsoleLogger, type Logger, type LogLevel } from '@xo/logger';
 import { shutdownPdfium, shutdownTesseract } from '@xo/compiler';
+import { resolveResidency, sealTemplates } from '@xo/ai-core';
 import { assertTrustPolicyAllowedHere, loadOperatorTrustPolicy } from '@xo/package-sdk';
 import { FileAuditStore, NonProductionAuditSink, resolveAuditConfig, type AuditSink } from '@xo/audit';
 import { EI_AUDIT_EXTENSION_SCHEMAS } from '@xo/connect';
@@ -122,6 +123,16 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
         scheduler: schedulerOn ? 'on' : 'off',
       }),
     });
+    // UW-14b: every prompt template has been defined by now (they are module-level constants). From here on, nothing arriving while
+    // the instance serves can become a template, so it can never be sent as one.
+    sealTemplates();
+    const residency = resolveResidency(env);
+    if (residency.mode === 'open')
+      logger.warn('XO_RESIDENCY=open: any provider may receive any data (development only; refused in production)');
+    else if (residency.mode === 'masked_hosted')
+      logger.warn(
+        `XO_RESIDENCY=masked_hosted: ${residency.contractedProviders.join(', ')} may receive typed requests (schemas, synthetic records, filtered intent). The known-value dictionary and full-request leak guard (UW-14c to 14e) are not in place yet.`,
+      );
     const port = opts.listen?.port ?? config.port;
     const host = opts.listen?.host ?? config.host;
     await new Promise<void>((resolve, reject) => {
@@ -164,7 +175,12 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
     const bound = `http://${address.family === 'IPv6' ? `[${address.address}]` : address.address}:${address.port}`;
     const local = host === '0.0.0.0' || host === '::' ? `http://127.0.0.1:${address.port}` : bound;
     const publicUrl = env['XO_PUBLIC_BASE_URL']?.replace(/\/+$/, '') ?? local;
-    logger.info(`listening on ${bound}`, { publicUrl, studio: studio !== undefined, scheduler: schedulerOn ? 'on' : 'off' });
+    logger.info(`listening on ${bound}`, {
+      publicUrl,
+      studio: studio !== undefined,
+      scheduler: schedulerOn ? 'on' : 'off',
+      residency: residency.mode,
+    });
     return { url: bound, publicUrl, server, opened, servesStudio: studio !== undefined, stop };
   } catch (cause) {
     await stop();

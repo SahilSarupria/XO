@@ -17,7 +17,8 @@ import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js'
 import { recordAudit } from '../audit/record.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { FsChatStore, MAX_THREADS_PER_IDENTITY, type ChatThread } from '../chat/chat-store.js';
-import { envProviderFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
 import { usableModelChoices } from '../chat/usable-models.js';
 
 /**
@@ -31,6 +32,8 @@ import { usableModelChoices } from '../chat/usable-models.js';
 export interface ChatRouteOptions {
   /** Test seam / alternative deployments: how a provider id becomes a provider. Default reads server environment. */
   readonly providerFactory?: ProviderFactory;
+  /** UW-14 — the instance's residency (resolved once at start-up). Default: from the environment. */
+  readonly residency?: ResidencyPolicy;
 }
 
 const MAX_MESSAGE_CHARS = 8000;
@@ -67,7 +70,9 @@ export function registerChatRoutes(
   dataConfig: WorkspaceDataConfig,
   options: ChatRouteOptions = {},
 ): void {
-  const providerFor = options.providerFactory ?? envProviderFactory();
+  // UW-14: every provider passes the residency guard, injected factories included.
+  const residency = options.residency ?? resolveResidency(process.env);
+  const providerFor = guardedFactory(options.providerFactory ?? envProviderFactory(process.env, residency), residency);
   const chats = (workspace: WorkspaceRecord) => new FsChatStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId);
 
   async function ownedThread(req: ApiRequest, workspace: WorkspaceRecord): Promise<ChatThread> {

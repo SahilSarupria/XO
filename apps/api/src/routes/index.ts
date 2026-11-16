@@ -32,7 +32,7 @@ import type { AuditAccessController, AuditSink } from '@xo/audit';
 import type { AuditService } from '../audit/audit-service.js';
 import { registerAuditRoutes } from './audit-routes.js';
 import type { ExternalToolWiring } from '@xo/runtime';
-import { describeInferenceReadiness } from '@xo/ai-core';
+import { describeInferenceReadiness, type ResidencyPolicy } from '@xo/ai-core';
 import { registerConnectRoutes } from './connect-routes.js';
 import type { ConnectService } from '@xo/connect';
 
@@ -63,6 +63,8 @@ export interface RegisterRoutesDeps {
   readonly intelligenceKnowledge?: IntelligenceRouteOptions['knowledge'];
   readonly intelligenceCapabilities?: IntelligenceRouteOptions['capabilities'];
   readonly readiness?: ReadinessProbe;
+  /** UW-14 — the instance residency policy. */
+  readonly residency?: ResidencyPolicy;
   readonly metrics?: InstanceMetrics;
   readonly metricsToken?: string;
 }
@@ -78,6 +80,9 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
       status: ok ? 'ok' : 'not-ready',
       checks,
       inference: describeInferenceReadiness(deps.inferenceEnv ?? process.env),
+      ...(deps.residency !== undefined
+        ? { residency: { mode: deps.residency.mode, contractedProviders: deps.residency.contractedProviders } }
+        : {}),
     });
   });
   // UW-17: for load balancers and orchestrators, without a credential: which checks pass, never why (that is /ready, authenticated).
@@ -111,19 +116,18 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerCompilerRoutes(router);
   registerWorkspaceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerWorkspaceAdminRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
-  registerSettingsRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
+  registerSettingsRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.residency);
   registerNotificationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerInboxRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerLibraryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);
   registerWorkflowDefinitionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerTestCaseRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
-  registerChatRoutes(
-    router,
-    deps.workspaceStore,
-    deps.workspaceDataConfig,
-    deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {},
-  );
+  registerChatRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, {
+    ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
+    ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
+  });
   registerIntelligenceRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, {
+    ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
     ...(deps.intelligenceKnowledge !== undefined ? { knowledge: deps.intelligenceKnowledge } : {}),
     ...(deps.intelligenceCapabilities !== undefined ? { capabilities: deps.intelligenceCapabilities } : {}),

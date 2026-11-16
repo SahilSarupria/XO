@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { PageTier } from '@xo/compiler';
+import { resolveResidency } from '@xo/ai-core';
 import { TestServer, withTempDir } from './test-helpers.js';
 import { extractionFromEnv } from '../src/compilations/extraction-tiers.js';
 import type { ModelProvider } from '../src/chat/model-provider.js';
@@ -85,11 +86,13 @@ test('UW-3 API: OCR configuration — local by default, explicit off, and vision
   );
   assert.throws(() => extractionFromEnv({ ...vision, XO_OCR_VISION_SENDS_IMAGES: 'yes' }, none), /not configured on this server/);
   const provider = { id: 'anthropic', describeCapabilities: () => ({ supportsVision: true }) } as unknown as ModelProvider;
-  const configured = extractionFromEnv({ ...vision, XO_OCR_VISION_SENDS_IMAGES: 'yes', XO_OCR_MAX_COST_USD: '0.5' }, () => provider);
+  // UW-14: a hosted vision provider is only possible in open residency (docs/RESIDENCY.md); residency.test.ts covers the refusals.
+  const open = resolveResidency({ XO_RESIDENCY: 'open' });
+  const configured = extractionFromEnv({ ...vision, XO_OCR_VISION_SENDS_IMAGES: 'yes', XO_OCR_MAX_COST_USD: '0.5' }, () => provider, open);
   assert.equal(configured.pageTiers.length, 3);
   assert.equal(configured.extractionBudget?.maxCostUsd, 0.5);
   assert.throws(
-    () => extractionFromEnv({ ...vision, XO_OCR_VISION_SENDS_IMAGES: 'yes', XO_OCR_MAX_COST_USD: '-1' }, () => provider),
+    () => extractionFromEnv({ ...vision, XO_OCR_VISION_SENDS_IMAGES: 'yes', XO_OCR_MAX_COST_USD: '-1' }, () => provider, open),
     /XO_OCR_MAX_COST_USD/,
   );
 });

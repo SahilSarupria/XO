@@ -19,7 +19,8 @@ import {
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { recordAudit } from '../audit/record.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
-import { envProviderFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
 import { usableModelChoices } from '../chat/usable-models.js';
 import { FsConversationStore, MAX_CONVERSATIONS_PER_IDENTITY, type Conversation } from '../intelligence/conversation-store.js';
 import { FsLearningPort } from '../intelligence/learning-store.js';
@@ -38,6 +39,8 @@ import { CompositeKnowledgePort } from '../intelligence/composite-knowledge.js';
 
 export interface IntelligenceRouteOptions {
   readonly providerFactory?: ProviderFactory;
+  /** UW-14 — the instance's residency (resolved once at start-up). Default: from the environment. */
+  readonly residency?: ResidencyPolicy;
   /** The C6 boundary, per workspace. Default: the interim adapter over XOs installed in the workspace (installed XOs plus uploaded files and what was compiled from them). */
   readonly knowledge?: (workspace: WorkspaceRecord) => KnowledgePort;
   /** DO. Default: none — DO is reported unavailable. */
@@ -72,7 +75,9 @@ export function registerIntelligenceRoutes(
   dataConfig: WorkspaceDataConfig,
   options: IntelligenceRouteOptions = {},
 ): void {
-  const providerFor = options.providerFactory ?? envProviderFactory();
+  // UW-14: every provider passes the residency guard, injected factories included.
+  const residency = options.residency ?? resolveResidency(process.env);
+  const providerFor = guardedFactory(options.providerFactory ?? envProviderFactory(process.env, residency), residency);
   // One layer for the process, so circuit-breaker and rate-limit state is shared across requests, as it must be.
   const model = new ConversationLayer({ resolveProvider: (id) => providerFor(id) });
   const conversations = (w: WorkspaceRecord) => new FsConversationStore(workspaceStateStore(w, dataConfig), w.workspaceId);

@@ -103,6 +103,8 @@ beforeAll(async () => {
   const key = generateApiKey();
   await keys.create({ keyHash: hashApiKey(key), identityId: 'owner', principalKind: 'service', createdAt: new Date().toISOString() });
   api = createHttpServer({
+    // UW-14: these contract tests use stand-in hosted providers; residency is decided explicitly here, not by default.
+    residency: { mode: 'open', contractedProviders: [] },
     apiKeyStore: keys,
     workspacesDir: join(dir, 'w'),
     workspaceDataDir: join(dir, 'd'),

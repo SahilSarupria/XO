@@ -42,6 +42,20 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Audit (UW-1):** per-workspace logs are hash-chained, externally anchored when `XO_AUDIT_ANCHOR_DIR` is set, and purgeable only by a recorded operator purge. The instance-level platform log (`FileAuditStore`, API/CLI/runtime events) is still unchained: it was accepted as a P1.0 limitation by the owner and UW-1 did not change it. Moving it onto the chained store needs segment-based retention there first (the chained store has no purge); until then its tamper evidence is filesystem permissions only.
 - **Step-up (UW-1):** an OIDC access token without `auth_time` can never satisfy step-up, so API clients that approve must request tokens that carry it. API keys are exempt from step-up by design (not interactive).
 - **Trust boundary (UW-1):** the injection corpus checks are structural (where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a human); they do not measure how often a live model is misled (UW-13). A document can state a harmful rule in plain words and the rule validator will accept the proposal; a named reviewer is the control (`specs/security/TRUST_BOUNDARY.md`).
+- **Residency and egress (UW-14, wave W1):**
+  - **Chat behaviour changed.** Chat with a hosted model (Anthropic, OpenAI, Gemini, Azure) is refused by default, because
+    `strict_local` is the default residency. Use a local model (Ollama), or `XO_RESIDENCY=open` for development with test data.
+  - **`masked_hosted` relies on the typed boundary alone** until wave W2 adds the known-value dictionary, locale patterns, reversible
+    tokens and the full-request leak guard (UW-14c to 14e). Intent text is filtered by patterns only (emails, links, digit runs,
+    credentials), so a name typed into a goal would pass.
+  - **Column names are disclosed in schema descriptors.** Exceptions: a header that looks like a value, and any column the caller
+    withholds. A schema can be sensitive in itself, and combinations of fields can re-identify people.
+  - **Locality is decided by address.** Local means Ollama at a private address or an internal name. An internal name that resolves
+    to a public address is not detected.
+  - **The command-line tools are outside the instance boundary.** `xo -p`, `xo run --provider` and `xo compile` with AI escalation
+    run on the developer's machine, and residency does not govern them.
+  - **Compliance artefacts (14f) are owner and counsel items.** These are the data-handling statement, processing agreement, provider
+    terms review and legal position on masked data. They are not done.
 - **Instance packaging (UW-17):**
   - The provider-neutral deployment template is scheduled for W5 (ADR 0023). This is the infrastructure as code that brings up a
     customer instance from a small config file. Until then a cloud host runs the same image with `compose.yaml` and

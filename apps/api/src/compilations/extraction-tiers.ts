@@ -1,5 +1,6 @@
 import { createPdfiumReaderTier, createTesseractTier, createVisionTier, type ExtractionBudget, type PageTier } from '@xo/compiler';
 import { envProviderFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { providerLocality, resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
 
 /**
  * UW-3 — how this instance reads pages and photos that have no text layer (scanned PDFs, phone photos of certificates). Built once
@@ -20,8 +21,10 @@ export interface CompileExtraction {
 
 export function extractionFromEnv(
   env: Readonly<Record<string, string | undefined>> = process.env,
-  providers: ProviderFactory = envProviderFactory(env),
+  providers?: ProviderFactory,
+  residency: ResidencyPolicy = resolveResidency(env),
 ): CompileExtraction {
+  const factory = providers ?? envProviderFactory(env, residency);
   const mode = (env['XO_OCR'] ?? 'local').trim().toLowerCase();
   if (mode !== 'local' && mode !== 'off') throw new Error(`XO_OCR must be "local" or "off" (got "${env['XO_OCR']}")`);
   const tiers: PageTier[] = [];
@@ -40,9 +43,20 @@ export function extractionFromEnv(
         'XO_OCR_VISION_PROVIDER is set: also set XO_OCR_VISION_SENDS_IMAGES=yes to confirm page images and photos may be sent to it',
       );
     }
-    const provider = providers(providerId);
+    const provider = factory(providerId);
     if (provider === undefined)
       throw new Error(`XO_OCR_VISION_PROVIDER "${providerId}" is not configured on this server (missing its key)`);
+    // UW-14 (ADR 0020): reading a page is a data-bearing path. Page images and photos are real data, never masked, so a hosted vision
+    // provider is refused in strict_local and in masked_hosted; only a model on this server, or open residency (development), reads them.
+    const locality = providerLocality(
+      providerId,
+      providerId === 'ollama' ? (env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434') : undefined,
+    );
+    if (locality === 'hosted' && residency.mode !== 'open') {
+      throw new Error(
+        `XO_OCR_VISION_PROVIDER "${providerId}" is a hosted model, and page images are real customer data: XO_RESIDENCY=${residency.mode} never sends them. Use a vision model on this server (Ollama), or XO_RESIDENCY=open for development.`,
+      );
+    }
     maxCostUsd = Number(env['XO_OCR_MAX_COST_USD'] ?? '0');
     if (!Number.isFinite(maxCostUsd) || maxCostUsd < 0 || maxCostUsd > 100)
       throw new Error('XO_OCR_MAX_COST_USD must be 0 to 100 (per document)');
