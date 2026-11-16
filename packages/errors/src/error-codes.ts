@@ -324,6 +324,9 @@ export const ErrorCode = {
   CREDENTIAL_SCOPE_REFUSED: 'XO_CREDENTIAL_SCOPE_REFUSED',
   OAUTH_STATE_INVALID: 'XO_OAUTH_STATE_INVALID',
   OAUTH_PROVIDER_REFUSED: 'XO_OAUTH_PROVIDER_REFUSED',
+  // UW-12a part 2 — source connections (the local agent).
+  SOURCE_CONNECTION_RETIRED: 'XO_SOURCE_CONNECTION_RETIRED',
+  SOURCE_UPLOAD_TOO_LARGE: 'XO_SOURCE_UPLOAD_TOO_LARGE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

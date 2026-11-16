@@ -63,10 +63,12 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - **Not yet suites:** the benchmark package's cross-domain corpus, the vertical runs and the agent baseline (wave W5).
   - **Four register titles are unconfirmed.** R8, R9, R15 and R16 are not titled in the plan text available.
 - **Source connections (UW-12a, ADR 0038):**
-  - **Local folders on the instance's machine only.** The folders must be under `XO_SOURCE_FOLDER_ROOTS`. Cloud drives (through the
-    UW-9 broker) and a folder on a person's own computer (the local agent) are not built.
+  - **Cloud drives and the agent (ADR 0039).** Google Drive in production needs Google's restricted-scope verification and security
+    assessment for `drive.readonly`. Google Slides, Forms and other native formats are not read; Docs and Sheets over 10 MB fail to
+    export. The agent syncs every 15 minutes (it does not watch the folder) and only while it runs.
   - **Discovery is rule-based.** It recognises a list by its name and email columns, and a document collection by its folder and
-    file-name words. Per-person matching needs every word of a name in the file's path, so nicknames and initials do not match.
+    file-name words. Name matching knows a fixed list of common short forms; an unknown nickname matches only as the start of the
+    first name, and the surname is always needed.
   - **Two instances on one data directory can sync the same connection at once.** The connection's record stays consistent; at worst
     a changed file is stored twice with the same bytes.
   - **Large folders sync in part.** Past 2,000 files, depth 8 or 2 GiB, a sync is partial and retires nothing for being absent.

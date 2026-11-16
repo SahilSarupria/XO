@@ -45,7 +45,9 @@
     "@xo/instance": "0.1.0",
     "@xo/api": "0.1.0",
     "@xo/knowledge-base": "0.1.0",
-    "@xo/pre-execution": "0.1.0"
+    "@xo/pre-execution": "0.1.0",
+    "@xo/connect": "0.1.0",
+    "@xo/environment-intelligence": "0.1.0"
   },
   "devDependencies": {
     "tsx": "^4.16.0",

@@ -151,7 +151,8 @@ test('discovery: a client list, a folder of certificates, and each client’s ce
   assert.equal(folder.counts['documents'], 4);
   const pairing = p.find((x) => x.role === 'per_person_documents')!;
   assert.equal(pairing.label, "each client's certificate");
-  assert.deepEqual(pairing.counts, { documents: 4, matched: 3, ambiguous: 0, unmatchedDocuments: 1, peopleWithout: 1 });
+  // (Corrected in UW-12a part 2: counts now also say how each match was made, by_<kind>; all three here are full-name matches: "ZoyaKhan" splits at the capital.)
+  assert.deepEqual(pairing.counts, { documents: 4, matched: 3, ambiguous: 0, unmatchedDocuments: 1, peopleWithout: 1, by_full: 3 });
   assert.equal(pairing.strength, 'weak', 'one certificate matches no one');
   assert.match(pairing.proposalId, /^rol_[0-9a-f]{16}$/);
   assert.equal(proposeRoles(items).find((x) => x.role === 'per_person_documents')!.proposalId, pairing.proposalId, 'stable across syncs');

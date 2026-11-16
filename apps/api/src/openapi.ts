@@ -1194,7 +1194,7 @@ export const openApiDocument = {
         summary: 'The workspace source connections (UW-12a; read role)',
         'x-xo-permission': 'read',
         description:
-          "Each connection: connectionId, kind (local_folder), displayName (the folder's last segment: the path is never returned), sync (manual or every N minutes), paused, freshness (never_synced | current | stale | needs_attention | paused | retired), files, lastSync (counts only) and how many role proposals it has. `?retired=true` includes retired connections. See docs/SOURCE_CONNECTIONS.md.",
+          "Each connection: connectionId, kind (local_folder | agent_folder | microsoft_drive | google_drive), displayName (the folder's last segment: the path is never returned), sync (manual or every N minutes), paused, freshness (never_synced | current | stale | needs_attention | paused | retired), files, lastSync (counts only) and how many role proposals it has. `?retired=true` includes retired connections. See docs/SOURCE_CONNECTIONS.md.",
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: { '200': { description: '{ connections }' } },
       },
@@ -1202,13 +1202,41 @@ export const openApiDocument = {
         summary: 'Connect a folder as a source (UW-12a; manage role, recent sign-in)',
         'x-xo-permission': 'manage',
         description:
-          'Body `{ kind: "local_folder", root, sync? }`; sync is `{ mode: "manual" }` (default) or `{ mode: "interval", everyMinutes: 15…10080 }`. The folder\'s real path must be inside one of the instance\'s XO_SOURCE_FOLDER_ROOTS (412 otherwise, and always when none is set); links are judged by where they really go. Synced at once: every supported file is stored as a workspace source (origin `connection`) through the same checks as an upload; links, hidden files, secret-looking names and hard-linked files are counted, never read. One active connection per folder (409). Audited.',
+          'Body `{ kind: "local_folder", root, sync? }`, `{ kind: "microsoft_drive" | "google_drive", credentialId, folder, sync? }` (a workspace credential with the files.read capability; folder from …/drive-folders) or `{ kind: "agent_folder", sync? }` (a folder on a person\'s own computer, sent by the XO agent: answers 201 with a one-time pairing code and the command to run there; nothing is synced until it pairs). sync is `{ mode: "manual" }` (default) or `{ mode: "interval", everyMinutes: 15…10080 }`. The folder\'s real path must be inside one of the instance\'s XO_SOURCE_FOLDER_ROOTS (412 otherwise, and always when none is set); links are judged by where they really go. Synced at once: every supported file is stored as a workspace source (origin `connection`) through the same checks as an upload; links, hidden files, secret-looking names and hard-linked files are counted, never read. One active connection per folder (409). Audited.',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
           '201': { description: '{ connection } (detail)' },
           '409': { description: 'the folder is already connected' },
           '412': { description: 'the folder is not allowed' },
         },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/drive-folders': {
+      get: {
+        summary: 'Browse the folders of a connected drive, to choose one (UW-12a part 2; manage role)',
+        'x-xo-permission': 'manage',
+        description:
+          'Query `provider` (microsoft | google), `credentialId` (a workspace credential with files.read) and `parent` (a ref from a previous answer; absent = the drives). Answers `{ folders: [{ ref, name, kind: drive | folder }] }`, folders only. Every call goes through the credential broker to the provider. 412 when the credential cannot be used.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'provider', in: 'query', required: true, schema: { type: 'string', enum: ['microsoft', 'google'] } },
+          { name: 'credentialId', in: 'query', required: true, schema: { type: 'string' } },
+          { name: 'parent', in: 'query', required: false, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ folders }' }, '412': { description: 'the credential cannot be used' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/agent/pair': {
+      post: {
+        summary: 'Make a new pairing code for an agent folder (UW-12a part 2; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'Revokes the agent currently paired (its token stops working at once) and answers `{ connection, pairing: { code, expiresAt, command } }`. The code is single-use and expires after 15 minutes. The agent itself talks to the public /agent/v1/* endpoints with its own token (protocol xo.agent/1, docs/SOURCE_CONNECTIONS.md).',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection, pairing }' }, '400': { description: 'not an agent folder' } },
       },
     },
     '/workspaces/{workspaceId}/source-connections/{id}': {
@@ -1229,7 +1257,7 @@ export const openApiDocument = {
         summary: 'Sync a source connection now (UW-12a; author role)',
         'x-xo-permission': 'author',
         description:
-          'New and changed files become new source versions; the version a changed file replaces, and the version of a file that left the folder, are retired (kept, with `retired`; knowledge citing them resolves as source_retired and no longer feeds execution). A listing stopped at a limit retires nothing. A file the door refuses is counted (refused_at_door) and the version already held stays current. 412 when paused or retired.',
+          'New and changed files become new source versions; the version a changed file replaces, and the version of a file that left the folder, are retired (kept, with `retired`; knowledge citing them resolves as source_retired and no longer feeds execution). A listing stopped at a limit retires nothing. A file the door refuses is counted (refused_at_door) and the version already held stays current. 412 when paused or retired. For an agent folder this asks the agent to sync at its next check (about a minute) and answers 202.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'id', in: 'path', required: true, schema: { type: 'string' } },

@@ -9,7 +9,32 @@ import type { RoleProposal } from './discovery.js';
 export const SOURCE_CONNECTION_ID = /^scn_[0-9a-f]{24}$/;
 export const SOURCE_CONNECTION_SCHEMA = 'xo.source-connection/1' as const;
 
-export type SourceConnectionKind = 'local_folder';
+export type SourceConnectionKind = 'local_folder' | 'agent_folder' | 'microsoft_drive' | 'google_drive';
+export const SOURCE_CONNECTION_KINDS: readonly SourceConnectionKind[] = ['local_folder', 'agent_folder', 'microsoft_drive', 'google_drive'];
+
+/** A cloud drive folder, read through a UW-9 credential of the workspace. */
+export interface RemoteDriveLocation {
+  readonly provider: 'microsoft' | 'google';
+  readonly credentialId: string;
+  /** Microsoft: `<driveId>:<folderId>`; Google: the folder id. */
+  readonly folder: string;
+}
+
+/** A folder on a person's own computer, read by the local agent there. */
+export interface AgentLink {
+  /** sha256 of the agent token (the token itself is shown once, to the agent). Absent until paired. */
+  readonly tokenHash?: string;
+  readonly pairedAt?: string;
+  readonly lastSeenAt?: string;
+  /** The computer, as the agent named it. */
+  readonly label?: string;
+  readonly platform?: string;
+  readonly agentVersion?: string;
+  /** Until when the current pairing code works (its hash is kept apart, in the instance's pairing index). */
+  readonly pairingExpiresAt?: string;
+  /** A person asked for a sync now; the agent sees it at its next check. */
+  readonly syncRequestedAt?: string;
+}
 
 /** One file of the connection, as last synced: which workspace source holds its current version. */
 export interface ConnectionItem {
@@ -65,8 +90,12 @@ export interface SourceConnection {
   readonly kind: SourceConnectionKind;
   /** The folder's last segment. */
   readonly displayName: string;
-  /** Server-side only: the approved real root. Never returned by the API. */
-  readonly root: string;
+  /** `local_folder` only, server-side only: the approved real root. Never returned by the API. */
+  readonly root?: string;
+  /** `microsoft_drive` and `google_drive`. */
+  readonly remote?: RemoteDriveLocation;
+  /** `agent_folder`. */
+  readonly agent?: AgentLink;
   /** `manual`, or sync every N minutes (the scheduler runs it). */
   readonly sync: { readonly mode: 'manual' } | { readonly mode: 'interval'; readonly everyMinutes: number };
   readonly paused: boolean;
@@ -99,7 +128,11 @@ export function freshnessOf(c: SourceConnection, now: Date): Freshness {
   if (c.paused) return asOf !== undefined ? { state: 'paused', asOf } : { state: 'paused' };
   if (c.lastSync?.outcome === 'failed')
     return { state: 'needs_attention', ...(asOf !== undefined ? { asOf } : {}), problem: c.lastSync.problem ?? 'the last sync failed' };
-  if (asOf === undefined) return { state: 'never_synced' };
+  if (asOf === undefined) {
+    if (c.kind === 'agent_folder' && c.agent?.tokenHash === undefined)
+      return { state: 'needs_attention', problem: 'waiting for the agent on the computer to be paired' };
+    return { state: 'never_synced' };
+  }
   if (c.lastSync?.outcome === 'partial')
     return { state: 'needs_attention', asOf, problem: 'some files could not be read at the last sync' };
   if (c.sync.mode === 'interval') {

@@ -111,6 +111,6 @@ knowledge itself (A3 §7).
 - **Discovery's limits.**
   - Discovery is rule-based. It recognises lists by name and email columns, and collections by folder and file-name words.
   - A list without an email column is "a table".
-  - Per-person matching needs every word of the person's name in the file's path. Nicknames and initials do not match.
-- **No local agent.** A folder on the person's own computer, when XO runs elsewhere, still needs the local agent (C7 design, not
-  built). Today the folder must be on the instance's machine.
+  - Per-person matching needed every word of the person's name in the file's path. Superseded by ADR 0039: tiered matching with
+    spellings, short forms and initials.
+- **The local agent.** Built in ADR 0039, together with cloud drives, through the reader port this ADR describes.

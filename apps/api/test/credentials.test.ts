@@ -84,6 +84,9 @@ test('connect with OAuth: PKCE, least-privilege scopes, tokens sealed, nothing s
     }>();
     assert.deepEqual(providers.oauth.find((p) => p.provider === 'google')?.capabilities, [
       { capability: 'message.send', scopes: ['openid', 'email', GMAIL_SEND] },
+      // UW-12a part 2 (ADR 0039) added a second capability: read-only Drive access for source connections. Each capability is
+      // still asked for separately, so connecting for sending (below) asks for send only.
+      { capability: 'files.read', scopes: ['openid', 'email', 'https://www.googleapis.com/auth/drive.readonly'] },
     ]);
     assert.equal(providers.oauth.find((p) => p.provider === 'microsoft')?.configured, false);
 

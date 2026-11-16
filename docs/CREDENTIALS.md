@@ -17,7 +17,7 @@ The decision record is ADR 0036.
 | `XO_CREDENTIALS_KEY`                                               | The master key: 32 bytes, base64 (`openssl rand -base64 32`). Store it with `xo secrets set`. Without it in production, connections are unavailable (`503 XO_CREDENTIALS_NOT_CONFIGURED`), and XO never stores them unsealed. In development, a key is generated once into `<data>/credentials.key`. |
 | `XO_OAUTH_REDIRECT_URI`                                            | The callback address you register with each provider, ending in `/oauth/callback`. It must be https in production.                                                                                                                                                                                   |
 | `XO_OAUTH_GOOGLE_CLIENT_ID`, `XO_OAUTH_GOOGLE_CLIENT_SECRET`       | A Google OAuth client of type "Web application", with the callback address as an authorized redirect URI.                                                                                                                                                                                            |
-| `XO_OAUTH_MICROSOFT_CLIENT_ID`, `XO_OAUTH_MICROSOFT_CLIENT_SECRET` | A Microsoft Entra app registration (Web platform, the callback address as a redirect URI), with the **delegated** Microsoft Graph permission `Mail.Send`.                                                                                                                                            |
+| `XO_OAUTH_MICROSOFT_CLIENT_ID`, `XO_OAUTH_MICROSOFT_CLIENT_SECRET` | A Microsoft Entra app registration (Web platform, the callback address as a redirect URI), with the **delegated** Microsoft Graph permissions `Mail.Send` and, for drive source connections, `Files.Read.All`.                                                                                       |
 | `XO_OAUTH_MICROSOFT_TENANT`                                        | `common` (default), `organizations`, `consumers` or one tenant id.                                                                                                                                                                                                                                   |
 
 Losing the master key loses every stored connection; reconnect them. Rotating it means reconnecting, because XO does not re-seal
@@ -48,9 +48,10 @@ For a server without OAuth (SMTP or IMAP with an app password), use `POST /works
 XO asks for capabilities, never for scope names. Each capability maps to the narrowest scope that does the job, plus the identity
 scopes needed to know which account was connected:
 
-| Capability     | Google                                                    | Microsoft                                           |
-| -------------- | --------------------------------------------------------- | --------------------------------------------------- |
-| `message.send` | `openid email https://www.googleapis.com/auth/gmail.send` | `openid email offline_access Mail.Send` (delegated) |
+| Capability     | Google                                                        | Microsoft                                                |
+| -------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| `message.send` | `openid email https://www.googleapis.com/auth/gmail.send`     | `openid email offline_access Mail.Send` (delegated)      |
+| `files.read`   | `openid email https://www.googleapis.com/auth/drive.readonly` | `openid email offline_access Files.Read.All` (delegated) |
 
 After consent, XO checks the grant before storing anything. Nothing is stored if either of these is true:
 
@@ -102,6 +103,10 @@ Re-checked on 2026-11-16:
 - **Gmail send-only scope.** `gmail.send` allows sending messages only, with no read or modify of the mailbox. Google classifies it
   as _sensitive_: an app using it needs Google's verification, but not a security assessment. Source: Google, "Choose Gmail API
   scopes" (developers.google.com/workspace/gmail/api/auth/scopes).
+- **Drive read-only scope (`files.read`, UW-12a part 2).** `drive.readonly` reads file metadata and content, with no write. Google
+  classifies it as _restricted_: an app using it in production needs Google's verification and a yearly third-party security
+  assessment. On Microsoft, `Files.Read.All` (delegated) is used rather than `Files.Read` because source folders are often shared
+  with the person, not owned by them. Checked 2026-11-17; sources in docs/SOURCE_CONNECTIONS.md.
 - **Google authorization and PKCE.** The authorization endpoint is `accounts.google.com/o/oauth2/v2/auth`. PKCE S256 is supported
   and recommended. `access_type=offline` is needed for a refresh token. Source: Google, "OAuth 2.0 for Desktop/Web apps". The token
   endpoint (`oauth2.googleapis.com/token`) is the one XO's Google sign-in already uses. The revocation endpoint
