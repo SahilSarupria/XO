@@ -5,6 +5,7 @@ import { compileCommand } from './compile.js';
 import { capabilitiesCommand } from './capabilities.js';
 import { createCommand } from './create.js';
 import { promptPreviewCommand } from './prompt.js';
+import { GENERATE_WORKFLOW_USAGE, generateWorkflowCommand } from './generate-workflow.js';
 
 const SUBSYSTEM = 'compiler';
 
@@ -52,6 +53,33 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(requireFlag(args.flags, 'artifact') !== undefined ? { artifactPath: requireFlag(args.flags, 'artifact')! } : {}),
           ...(requireFlag(args.flags, 'rulings') !== undefined ? { rulingsPath: requireFlag(args.flags, 'rulings')! } : {}),
           ...(requireFlag(args.flags, 'inventory') !== undefined ? { inventoryPath: requireFlag(args.flags, 'inventory')! } : {}),
+        }),
+      );
+    },
+  });
+
+  registry.register({
+    name: 'generate-workflow',
+    subsystem: SUBSYSTEM,
+    usage: `${GENERATE_WORKFLOW_USAGE}\n                                         Choose the workflow a goal is about (or ask which) and lower it to Workflow IR`,
+    run: async (args) => {
+      const goal = requireFlag(args.flags, 'goal');
+      if (args.positionals.length === 0 || goal === undefined) {
+        process.stdout.write(`${GENERATE_WORKFLOW_USAGE}\n`);
+        return 1;
+      }
+      const section = requireFlag(args.flags, 'section');
+      const workflowId = requireFlag(args.flags, 'workflow-id');
+      const out = requireFlag(args.flags, 'out');
+      return printResult(
+        await generateWorkflowCommand({
+          sources: args.positionals,
+          goal,
+          ...((args.flagLists['need'] ?? []).length > 0 ? { needs: args.flagLists['need'] } : {}),
+          ...(section !== undefined ? { section } : {}),
+          ...(workflowId !== undefined ? { workflowId } : {}),
+          ...(out !== undefined ? { out } : {}),
+          json: args.flags['json'] === true,
         }),
       );
     },

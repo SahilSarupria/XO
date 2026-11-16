@@ -110,7 +110,7 @@ export function registerCommands(registry: CommandRegistry): void {
     name: 'workflow',
     subsystem: SUBSYSTEM,
     usage:
-      'xo workflow <source> [--domain-hint <text>] [--workflow-id <id>] [--workflow-index <n>] [--input <json>] [--json]\n' +
+      'xo workflow <source> [--domain-hint <text>] [--goal <text> [--need <step>]...] [--workflow-id <id>] [--workflow-index <n>] [--input <json>] [--json]\n' +
       '                                         Compile a source, compose a real multi-step workflow, and execute it through\n' +
       '                                         the real runtime (composeWorkflows -> prepareCandidateWorkflowForExecution ->\n' +
       '                                         WorkflowExecutor) — never a mock, never a second execution engine.\n' +
@@ -145,6 +145,8 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(domainHint !== undefined ? { domainHint } : {}),
           ...(workflowId !== undefined ? { workflowId } : {}),
           ...(workflowIndexFlag !== undefined ? { workflowIndex: Number(workflowIndexFlag) } : {}),
+          ...(requireFlag(args.flags, 'goal') !== undefined ? { goal: requireFlag(args.flags, 'goal')! } : {}),
+          ...((args.flagLists['need'] ?? []).length > 0 ? { needs: args.flagLists['need'] } : {}),
           ...(input !== undefined ? { input } : {}),
           json: args.flags['json'] === true,
         }),
