@@ -82,29 +82,25 @@ frozen roadmaps (`specs/`, `docs/ROADMAP.md`) were not edited.
 
 ## Decisions that are the owner's
 
-ADR 0029 decision 17 lists these. Until the owner ratifies them, the conservative behaviour applies.
+Settled under owner delegation in [ADR 0030](../adr/0030-pre-execution-launch-completion.md):
 
-1. **Allowed READY_WITH_CONDITIONS conditions.** Today there is exactly one: an unstated step order the owner accepts.
-   Everything else needs review or blocks.
-2. **`trust.requireReadinessCertificate` default.** It is off, so existing starts are unchanged. Turn it on per
-   workspace to make the certificate mandatory. A future default of on is a one-line change.
-3. **Scope-selection ambiguity margin.** It is 15% (`SCOPE_AMBIGUITY_MARGIN`).
-4. **Benchmark thresholds as a gate** (PX-G28). These stay proposals in `evaluation/thresholds.json`.
+1. **Allowed READY_WITH_CONDITIONS conditions:** exactly two, both bounded: an unstated step order the owner accepts,
+   and a waived source-quality finding.
+2. **Certificate default:** required in production (`XO_READINESS_CERTIFICATE=required`); Studio obtains it.
+3. **Scope ambiguity margin:** 15%, kept, and validated against labelled goal-selection cases.
+4. **Benchmark thresholds:** each real-document threshold has a ratified non-regression floor at the measured value
+   that gates every evaluation run; the 90 / 90 / 0 targets stay proposals until a fresh blind set meets them.
 
 ## Known limits, stated plainly
 
-- **Workflow generation emits `approve` and `decide` only.** It does not emit `act`, `branch`, `wait`, `compensate`,
-  `for_each` or `extract`. Those need facts the sources do not state, such as connector operations, side effects, waits
-  and undo steps. `GENERATION_CONSTRUCTS` records why for each one. Such steps are reported as blocking and never
-  invented.
-- **A local certificate (CLI) is never READY.** Approval is a workspace decision, and the CLI has no workspace.
+- **The real-document targets are not met yet** (blind 114/143 read right, 114/168 output precise, 7 silent losses).
+  Regressions are gated; reaching the targets is measurement work on a fresh blind set.
+- **A local certificate (CLI) is never READY.** Approval is a workspace decision, and the CLI has no workspace. With
+  `--connectors`, the CLI takes the adapters the file names as present; a workspace checks they are installed.
 - **Workspace-dependent digests legitimately differ by surface.** The inventory digest and the authorization gate
   depend on the workspace's approvals. The conformance suite compares every digest that does not depend on them.
-- **Generated workflows run through the existing workflow runner, which executes the composed candidate.** The Workflow
-  IR is the canonical definition the certificate binds. Running the IR itself through `@xo/workflow-runtime` is outside
-  this scope, because decision 12 keeps the existing runtime bridge as the execution adapter.
-- **The knowledge base stores plain files** (decision 16). A database adapter can implement `KnowledgeStore` behind the
-  same interface.
+- **Connector side effects come from the operator, not the sources.** An operation with no binding is reported and
+  blocks; generation never guesses a destination or an effect.
 
 ## Where to read more
 

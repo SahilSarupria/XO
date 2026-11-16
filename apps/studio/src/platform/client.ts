@@ -807,9 +807,16 @@ export class XoClient {
    * (same workflow, analysis and key) returns the original run; reusing the key for a different request is a 409.
    * Callers still check for an active run first, and only reuse a key for a retry of the same intent.
    */
-  startWorkflow(ws: string, workflowId: string, compilationId: string, idempotencyKey?: string): Promise<Result<WorkflowRun>> {
+  startWorkflow(
+    ws: string,
+    workflowId: string,
+    compilationId: string,
+    idempotencyKey?: string,
+    certificateId?: string,
+  ): Promise<Result<WorkflowRun>> {
     return this.call('POST', `/workspaces/${enc(ws)}/workflows/${enc(workflowId)}/executions`, (b) => parseWorkflowRun(b), {
-      ...this.json({ compilationId }),
+      // A certificate, when given, is verified by the platform before the start, whether or not the workspace requires one.
+      ...this.json({ compilationId, ...(certificateId !== undefined ? { certificateId } : {}) }),
       // With a key, the platform returns the ORIGINAL run for a retry of the same request instead of creating another.
       ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
     });

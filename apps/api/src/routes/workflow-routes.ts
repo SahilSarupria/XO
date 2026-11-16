@@ -369,7 +369,7 @@ export function registerWorkflowRoutes(
     correlationId: string,
   ): Promise<void> {
     const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
-    const required = settings.trust.requireReadinessCertificate === true;
+    const required = dataConfig.preExecution?.certificatePolicy === 'required' || settings.trust.requireReadinessCertificate === true;
     if (certificateId === undefined) {
       if (!required) return;
       await refuse(req, workspace, workflowId, correlationId, 'certificate_required');

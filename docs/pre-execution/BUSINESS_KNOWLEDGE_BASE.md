@@ -62,11 +62,20 @@ recompiling idempotent.
 
 ## Storage
 
-Plain files under the workspace data directory, like every other XO store (so backup, verify and restore already cover
-it): `<data>/<workspaceId>/knowledge/<workspaceId>/` with `records/`, `change-sets/`, `decisions/`, `states/`, `packs/`
-and `events.jsonl`. Nothing is overwritten or deleted. The head state is derived from the event log, never stored as a
-mutable flag. The search index is derived from a state on demand (BM25, k1 = 1.2, b = 0.75), so it can always be rebuilt.
-A database adapter can implement `KnowledgeStore` behind the same interface later.
+`KnowledgeStore` has three implementations behind one interface (ADR 0030). Every write runs inside
+`store.exclusive()`, so concurrent proposals and approvals across processes are serialised and a stale base is refused
+(`stale_base`), never merged. Rows are write-once and checked against their digest on read; the event log is
+hash-chained; the head state is derived from it, never stored as a mutable flag. The search index is derived from a
+state on demand (BM25, k1 = 1.2, b = 0.75), so it can always be rebuilt.
+
+| `XO_KNOWLEDGE_STORE` | Where                                                                        | For                                             | Backup and restore                                                      |
+| -------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `sqlite` (default)   | `<data>/knowledge.sqlite`, WAL, one database for every workspace (by tenant) | one API instance                                | `backupSqliteKnowledge(driver, file)` (online `VACUUM INTO`); copy back |
+| `postgres`           | `XO_KNOWLEDGE_DATABASE_URL` (`@xo/knowledge-store-postgres`)                 | several API instances; advisory lock per tenant | the database's own (`pg_dump`, point-in-time recovery)                  |
+| `file`               | `<data>/<ws>/knowledge/<ws>/`, a lock file per tenant                        | development; refused in production              | the workspace data backup                                               |
+
+The SQL schema is versioned (`kb_schema`); a database written by a newer version is refused rather than read wrong, and
+migrations run under the schema lock.
 
 ## XOIR mapping (`xoir-bkb.v1`)
 

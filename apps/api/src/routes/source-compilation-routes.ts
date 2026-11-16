@@ -34,6 +34,7 @@ import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
 import { FsWaiverStore } from '../waivers/waiver-store.js';
 import { FsRulingStore } from '../waivers/ruling-store.js';
 import { loadPreExecutionContext } from '../pre-execution/context.js';
+import { readConnectorBindings } from '../pre-execution/connector-bindings.js';
 import {
   assessCompleteness,
   buildSourceSet,
@@ -482,7 +483,13 @@ export function registerCompilationRoutes(
     // non-resolved binding is refused with the same code execution would report for it. This
     // is an eligibility filter, not authorization; execution re-derives the binding and
     // re-checks approval independently (see approvals/approval-eligibility.ts).
-    const blockedCode = approvalBlockedCode(capability.status);
+    // ADR 0030: a declared operation the workspace bound to a connector, with its adapter installed, can be carried out too.
+    const connectorBound = await (async () => {
+      if (capability.status === 'resolved') return false;
+      const b = (await readConnectorBindings(workspace, dataConfig)).bindings.find((x) => x.capability === capability.name);
+      return b !== undefined && (dataConfig.preExecution?.connectorAdapters.has(b.adapter) ?? false);
+    })();
+    const blockedCode = connectorBound ? undefined : approvalBlockedCode(capability.status);
     if (blockedCode !== undefined) {
       throw new XoError(
         blockedCode,

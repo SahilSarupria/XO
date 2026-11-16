@@ -1,3 +1,4 @@
+import type { ExternalToolAdapter } from '@xo/adapters';
 import { DEVELOPMENT_TRUST_WARNING, assertTrustPolicyAllowedHere, loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
 import { join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
@@ -90,6 +91,10 @@ export interface ServerDeps {
   readonly testBeforeStepExecute?: () => Promise<void>;
   /** P1.1 M4: explicit host-owned external_tool adapter wiring (programmatic only: no env var, HTTP or manifest path sets it). Absent => external_tool steps cannot execute. */
   readonly externalTools?: ExternalToolWiring;
+  /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
+  readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
+  /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */
+  readonly readinessCertificate?: 'required' | 'workspace';
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
   /** UW-1 — path of the persisted operator policy. Default `<workspaceDataDir>/_instance/policy.json`. */
@@ -270,6 +275,11 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     // UW-3: local OCR for scans and photos by default; throws on invalid configuration so startup fails visibly.
     // UW-14: a hosted vision tier is refused unless residency allows sending page images.
     extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env, undefined, residency),
+    preExecution: {
+      connectorAdapters: deps.connectorAdapters ?? new Map(),
+      certificatePolicy: deps.readinessCertificate ?? readinessCertificatePolicy(deps.env ?? process.env),
+    },
+    knowledgeStore: knowledgeStoreConfig(deps.env ?? process.env),
   };
   const oidc = deps.oidc ?? buildOidcFromEnv(deps);
   const router = new Router();
@@ -426,6 +436,33 @@ async function runHandler(handler: (req: ApiRequest) => Promise<ApiResponse>, re
 /** Reachable at the root even when Studio is served there: liveness, readiness, metrics, the API description. */
 const ROOT_API_PATHS: ReadonlySet<string> = new Set(['/health', '/ready', '/readyz', '/metrics', '/openapi.json']);
 const QUIET_ROUTES: ReadonlySet<string> = new Set(['/health', '/readyz', '/metrics']);
+
+/** `XO_READINESS_CERTIFICATE`: `required` (the production default) or `workspace` (each workspace decides; the development default). */
+export function readinessCertificatePolicy(env: Readonly<Record<string, string | undefined>>): 'required' | 'workspace' {
+  const v = env['XO_READINESS_CERTIFICATE'];
+  if (v === 'required' || v === 'workspace') return v;
+  if (v !== undefined && v.trim() !== '') throw new Error(`XO_READINESS_CERTIFICATE must be "required" or "workspace" (got "${v}")`);
+  return env['NODE_ENV'] === 'production' || env['XO_ENV'] === 'production' ? 'required' : 'workspace';
+}
+
+/** `XO_KNOWLEDGE_STORE` (+ `XO_KNOWLEDGE_DATABASE_URL`): where the knowledge base lives. Invalid configuration fails start-up. */
+export function knowledgeStoreConfig(env: Readonly<Record<string, string | undefined>>): {
+  kind: 'sqlite' | 'postgres' | 'file';
+  url?: string;
+} {
+  const v = (env['XO_KNOWLEDGE_STORE'] ?? '').trim();
+  const kind = v === '' ? 'sqlite' : v;
+  if (kind !== 'sqlite' && kind !== 'postgres' && kind !== 'file')
+    throw new Error(`XO_KNOWLEDGE_STORE must be sqlite, postgres or file (got "${v}")`);
+  if (kind === 'postgres') {
+    const url = (env['XO_KNOWLEDGE_DATABASE_URL'] ?? '').trim();
+    if (url === '') throw new Error('XO_KNOWLEDGE_DATABASE_URL is required with XO_KNOWLEDGE_STORE=postgres');
+    return { kind, url };
+  }
+  if (kind === 'file' && (env['NODE_ENV'] === 'production' || env['XO_ENV'] === 'production'))
+    throw new Error('XO_KNOWLEDGE_STORE=file is for development; use sqlite or postgres in production');
+  return { kind };
+}
 
 export function createHttpServer(deps: ServerDeps = {}): Server {
   const router = buildRouter(deps);

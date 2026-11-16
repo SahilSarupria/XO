@@ -36,6 +36,8 @@ state. A storage setting for a feature that is off stays unset.
 | `XO_API_PASSWORD_SESSIONS_DIR` | path |  | `sessions` | Password sign-in sessions (shared with Google sign-in, which requires the same folder). |
 | `XO_API_OIDC_BINDINGS_DIR` | path |  | `oidc-bindings` | Which organisation identity maps to which XO identity. |
 | `XO_EXTERNAL_EFFECTS_DIR` | path |  | `external-effects` | Durable evidence of every external effect dispatched (one filesystem, shared by every worker). |
+| `XO_KNOWLEDGE_STORE` | sqlite \| postgres \| file | sqlite |  | Where the Business Knowledge Base lives. sqlite: one database file in the data directory (knowledge.sqlite), for a single instance. postgres: XO_KNOWLEDGE_DATABASE_URL, for a hosted service with several API processes or machines. file: tenant folders of JSON files (development). |
+| `XO_KNOWLEDGE_DATABASE_URL` (secret) | string |  |  | PostgreSQL connection string for XO_KNOWLEDGE_STORE=postgres (backups and replication are the database's own). |
 | `XO_INFERENCE_CACHE_DIR` | path |  | `inference-cache` | Cached model answers. |
 | `XO_SECRETS_FILE` | path |  | `secrets.enc` | Encrypted secrets file (xo secrets set). Its key is kept outside the data directory. |
 | `XO_SECRETS_KEY_FILE` | path |  |  | Where the key for the secrets file lives. Keep it out of the data directory and out of its backups. |
@@ -125,6 +127,8 @@ state. A storage setting for a feature that is off stays unset.
 | Setting | Accepts | Default | In data dir | What it does |
 | --- | --- | --- | --- | --- |
 | `XO_SCHEDULER` | on \| off | on |  | Fire schedule triggers from this instance. One instance per data directory runs them. |
+| `XO_READINESS_CERTIFICATE` | required \| workspace | required in production, otherwise workspace |  | required: every workflow start must present a current readiness certificate (READY, or READY with declared conditions); Studio obtains one automatically. workspace: each workspace decides (trust.requireReadinessCertificate). Refused as workspace in production unless XO_ALLOW_UNCERTIFIED_STARTS=1. |
+| `XO_ALLOW_UNCERTIFIED_STARTS` | 1 \| true \| 0 \| false |  |  | Allows XO_READINESS_CERTIFICATE=workspace in production (an explicit operator exception, recorded at start-up). |
 | `XO_PROCEDURE_STEP_TIMEOUT_MS` | integer 1–9999999999 |  |  | Per-step timeout for procedures. Unset: none. |
 | `XO_API_RUNTIME_LOCATIONS` | string |  |  | Where workflows may run, as shown in settings. |
 | `XO_SANDBOX_NET_GUARD` | 1 \| true \| 0 \| false |  |  | Set by the sandbox for its own workers. |

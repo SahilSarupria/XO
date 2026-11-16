@@ -206,6 +206,35 @@ export const SETTINGS: readonly SettingSpec[] = [
     inDataDir: 'external-effects',
     description: 'Durable evidence of every external effect dispatched (one filesystem, shared by every worker).',
   },
+  {
+    name: 'XO_READINESS_CERTIFICATE',
+    group: 'workflows',
+    kind: { type: 'enum', values: ['required', 'workspace'] },
+    defaultText: 'required in production, otherwise workspace',
+    description:
+      'required: every workflow start must present a current readiness certificate (READY, or READY with declared conditions); Studio obtains one automatically. workspace: each workspace decides (trust.requireReadinessCertificate). Refused as workspace in production unless XO_ALLOW_UNCERTIFIED_STARTS=1.',
+  },
+  {
+    name: 'XO_ALLOW_UNCERTIFIED_STARTS',
+    group: 'workflows',
+    kind: FLAG_1,
+    description: 'Allows XO_READINESS_CERTIFICATE=workspace in production (an explicit operator exception, recorded at start-up).',
+  },
+  {
+    name: 'XO_KNOWLEDGE_STORE',
+    group: 'storage',
+    kind: { type: 'enum', values: ['sqlite', 'postgres', 'file'] },
+    defaultText: 'sqlite',
+    description:
+      'Where the Business Knowledge Base lives. sqlite: one database file in the data directory (knowledge.sqlite), for a single instance. postgres: XO_KNOWLEDGE_DATABASE_URL, for a hosted service with several API processes or machines. file: tenant folders of JSON files (development).',
+  },
+  {
+    name: 'XO_KNOWLEDGE_DATABASE_URL',
+    group: 'storage',
+    kind: STR,
+    secret: true,
+    description: "PostgreSQL connection string for XO_KNOWLEDGE_STORE=postgres (backups and replication are the database's own).",
+  },
   { name: 'XO_INFERENCE_CACHE_DIR', group: 'storage', kind: PATH, inDataDir: 'inference-cache', description: 'Cached model answers.' },
   {
     name: 'XO_SECRETS_FILE',
@@ -682,6 +711,24 @@ export function resolveSettings(processEnv: Env, options: ResolveSettingsOptions
     });
   if ((env['XO_HOSTED_MODEL_PROVIDERS'] ?? '').trim() !== '' && env['XO_RESIDENCY'] !== 'masked_hosted')
     warnings.push({ name: 'XO_HOSTED_MODEL_PROVIDERS', message: 'is ignored unless XO_RESIDENCY=masked_hosted' });
+  if (
+    (env['XO_ENV'] === 'production' || env['NODE_ENV'] === 'production') &&
+    env['XO_READINESS_CERTIFICATE'] === 'workspace' &&
+    env['XO_ALLOW_UNCERTIFIED_STARTS'] !== '1' &&
+    env['XO_ALLOW_UNCERTIFIED_STARTS'] !== 'true'
+  )
+    errors.push({
+      name: 'XO_READINESS_CERTIFICATE',
+      message:
+        'workspace is refused in production: every start needs a readiness certificate (set XO_ALLOW_UNCERTIFIED_STARTS=1 to make an explicit exception)',
+    });
+  if (env['XO_KNOWLEDGE_STORE'] === 'postgres' && (env['XO_KNOWLEDGE_DATABASE_URL'] ?? '').trim() === '')
+    errors.push({ name: 'XO_KNOWLEDGE_DATABASE_URL', message: 'is required with XO_KNOWLEDGE_STORE=postgres' });
+  if ((env['XO_ENV'] === 'production' || env['NODE_ENV'] === 'production') && env['XO_KNOWLEDGE_STORE'] === 'file')
+    errors.push({
+      name: 'XO_KNOWLEDGE_STORE',
+      message: 'file is for development only; use sqlite (one instance) or postgres (a hosted service) in production',
+    });
   if (env['XO_ENV'] === 'production' && env['XO_TRUST_MODE'] === 'development')
     errors.push({ name: 'XO_TRUST_MODE', message: 'development package trust is refused when XO_ENV=production' });
 

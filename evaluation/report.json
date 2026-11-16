@@ -752,35 +752,55 @@
       "status": "proposed",
       "bound": "≥ 0.9",
       "value": 0.7972027972027972,
-      "outcome": "proposal"
+      "outcome": "proposal",
+      "floor": {
+        "bound": "≥ 0.797",
+        "outcome": "pass"
+      }
     },
     {
       "measure": "real-documents/blind/output-precision",
       "status": "proposed",
       "bound": "≥ 0.9",
       "value": 0.6785714285714286,
-      "outcome": "proposal"
+      "outcome": "proposal",
+      "floor": {
+        "bound": "≥ 0.678",
+        "outcome": "pass"
+      }
     },
     {
       "measure": "real-documents/blind/missed-silently",
       "status": "proposed",
       "bound": "≤ 0",
       "value": 7,
-      "outcome": "proposal"
+      "outcome": "proposal",
+      "floor": {
+        "bound": "≤ 7",
+        "outcome": "pass"
+      }
     },
     {
       "measure": "real-documents/held-out/items-read-right",
       "status": "proposed",
       "bound": "≥ 0.9",
       "value": 0.820627802690583,
-      "outcome": "proposal"
+      "outcome": "proposal",
+      "floor": {
+        "bound": "≥ 0.82",
+        "outcome": "pass"
+      }
     },
     {
       "measure": "real-documents/dev/items-read-right",
       "status": "proposed",
       "bound": "≥ 0.95",
       "value": 0.9875776397515528,
-      "outcome": "proposal"
+      "outcome": "proposal",
+      "floor": {
+        "bound": "≥ 0.98",
+        "outcome": "pass"
+      }
     }
   ],
   "register": {
@@ -799,8 +819,8 @@
       "R17"
     ],
     "byStatus": {
-      "open": 11,
-      "in_progress": 6,
+      "open": 10,
+      "in_progress": 7,
       "closed": 1,
       "accepted": 0
     },
@@ -934,12 +954,13 @@
         "title": "Accuracy pass criteria",
         "pilotBlocking": true,
         "owner": "owner",
-        "status": "open",
+        "status": "in_progress",
         "evidence": [
           "evaluation/thresholds.json",
-          "evaluation/REPORT.md"
+          "evaluation/REPORT.md",
+          "docs/adr/0030-pre-execution-launch-completion.md"
         ],
-        "next": "Ratify thresholds before measuring; real labelled sets for the first vertical (UW-13)."
+        "next": "Regression floors on the real-document measures are ratified and gate every run (ADR 0030). Launch criterion: a fresh blind set, never used for tuning, meets the 90 / 90 / 0 targets; then ratify the targets themselves."
       },
       {
         "id": "R13",

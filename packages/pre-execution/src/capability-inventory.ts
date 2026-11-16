@@ -28,6 +28,7 @@ import {
 } from '@xo/capability-contract';
 import type { XoirGraph } from '@xo/xoir';
 import { digestOf, type Digest } from './canonical.js';
+import type { ConnectorBinding } from './lower-workflow.js';
 
 export const CAPABILITY_INVENTORY_SCHEMA = 'xo.capability-inventory.v1';
 
@@ -129,8 +130,10 @@ export interface InventoryContext {
   readonly decisions?: ReadonlyMap<string, 'accepted' | 'rejected'>;
   /** Capability names a goal needs; each one no usable capability provides is a gap. */
   readonly needs?: readonly string[];
-  /** Connector-bound declared operations (capability name → connector id): the binding for `external_tool`. */
-  readonly externalBindings?: ReadonlyMap<string, string>;
+  /** The workspace's connector bindings by capability name: the binding for `external_tool` (ADR 0030). */
+  readonly externalBindings?: ReadonlyMap<string, ConnectorBinding>;
+  /** Host adapters that can carry out a binding; a binding whose adapter is absent is bound but not runtime-supported. */
+  readonly availableAdapters?: ReadonlySet<string>;
   readonly resolvers?: readonly BindingResolver[];
 }
 
@@ -250,14 +253,22 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
         bindingId: outcome.binding.id,
       };
     } else if (connector !== undefined) {
-      bound = { value: 'yes', reason: `bound to connector ${connector}`, strategy: 'external_tool', bindingId: `connector:${connector}` };
+      bound = {
+        value: 'yes',
+        reason: `bound by the workspace to ${connector.connector}.${connector.operation} (${connector.sideEffect})`,
+        strategy: 'external_tool',
+        bindingId: `connector:${connector.connector}.${connector.operation}`,
+      };
     } else {
       bound = { value: 'no', reason: `binding ${outcome.status}: ${outcome.reason}` };
     }
 
     // runtime-supported: the runtime has an executor for the bound strategy
-    const runtimeSupported: ReadinessAnswer =
-      bound.strategy === undefined
+    const adapterMissing =
+      connector !== undefined && bound.strategy === 'external_tool' && !(ctx.availableAdapters?.has(connector.adapter) ?? false);
+    const runtimeSupported: ReadinessAnswer = adapterMissing
+      ? { value: 'no', reason: `the host has no adapter "${connector!.adapter}" for ${connector!.connector}` }
+      : bound.strategy === undefined
         ? {
             value: bound.value === 'yes' ? 'no' : 'unknown',
             reason:
@@ -265,7 +276,7 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
                 ? 'the binding names no execution strategy the runtime knows'
                 : 'nothing is bound, so there is nothing to execute',
           }
-        : runtimeSupport.has(bound.strategy)
+        : runtimeSupport.has(bound.strategy) || (bound.strategy === 'external_tool' && connector !== undefined)
           ? { value: 'yes', reason: `the runtime executes ${bound.strategy}` }
           : { value: 'no', reason: `the runtime has no executor for ${bound.strategy}` };
 

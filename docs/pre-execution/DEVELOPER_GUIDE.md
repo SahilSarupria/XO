@@ -62,11 +62,13 @@ The guarantees every change must keep:
 1. Check that the construct exists in `@xo/workflow-ir` and is validated by `validateWorkflowComponent`. Generation never
    weakens a construct to make it valid.
 2. Add the lowering to `lowerCandidateWorkflow` (`packages/pre-execution/src/lower-workflow.ts`). Emit it only when the
-   capability report states everything it needs. For example, an `act` step needs a declared connector operation and its
-   side effect. Add a rationale entry, and update `GENERATION_CONSTRUCTS`.
+   capability report states everything it needs. For example, an `act` step needs a declared operation and a workspace
+   connector binding (`ConnectorBinding`) that states its connector, side effect and adapter. Add a rationale entry, and
+   update the evidence rule in `GENERATION_CONSTRUCTS`.
 3. If the construct needs a runtime feature, add it to `requiresFeatures`.
 4. **Tests.**
-   - a conformance vector in `pre-execution/test/goal-and-lowering.test.ts`
+   - a conformance vector in `pre-execution/test/lowering-constructs.test.ts`
+   - a run of the generated IR through `@xo/workflow-runtime` (`api/test/generated-workflow-runs.test.ts`)
    - a stable `definitionDigest`
    - the API/CLI conformance suite still identical
 
@@ -99,3 +101,10 @@ The guarantees every change must keep:
 4. A package that relies on the pack pins it in `XoManifest.domainPacks` (`ManifestBuilder.setDomainPacks`).
 5. **Tests.** Records valid and invalid against the pack, an unknown namespace kept as unsupported, and a pack holding no
    tenant data (see `knowledge-base/test/knowledge-base.test.ts`).
+
+## Adding a knowledge store
+
+Implement `KnowledgeStore` (`packages/knowledge-base/src/store.ts`), or a `SqlDriver` for `SqlKnowledgeStore` when the
+backend speaks SQL (`?` placeholders, a transaction-scoped lock keyed by a string). `exclusive()` must exclude writers
+in other processes, not only in this one. Run the shared suite in `knowledge-base/test/knowledge-base.test.ts` against
+it (add it to `STORES`), plus a two-writer `stale_base` test and a tamper test.

@@ -1,6 +1,6 @@
 {
   "format": "xo-evaluation-thresholds/1",
-  "note": "Every threshold is PROPOSED until the owner ratifies it (status 'ratified', with ratifiedBy and ratifiedAt). A proposal is shown beside its measure and never gates anything (UAC-19). Ratify before looking at new numbers, not after.",
+  "note": "Every threshold is PROPOSED until the owner ratifies it (status 'ratified', with ratifiedBy and ratifiedAt). A proposal is shown beside its measure and never gates anything (UAC-19). Ratify before looking at new numbers, not after. A threshold may carry a ratified `floor`: a non-regression bound that gates now while the target stays a proposal (ADR 0030).",
   "thresholds": [
     {
       "measure": "tabular-reading/header-accuracy",
@@ -132,31 +132,61 @@
       "measure": "real-documents/blind/items-read-right",
       "min": 0.9,
       "status": "proposed",
-      "rationale": "Engineering proposal for the pilot bar: at least 90% of labelled items in documents never used for tuning are read as the right kind. UW-3c measured 79.7%; this proposal is not met yet."
+      "rationale": "Engineering proposal for the pilot bar: at least 90% of labelled items in documents never used for tuning are read as the right kind. UW-3c measured 79.7%; this proposal is not met yet.",
+      "floor": {
+        "min": 0.797,
+        "rationale": "ADR 0030: non-regression floor at the value 114/143 (79.7%) measured at UW-3c. It gates every run; the target above stays a proposal until a fresh blind set (documents nobody has seen) meets it.",
+        "ratifiedBy": "owner delegation (ADR 0030)",
+        "ratifiedAt": "2026-11-16"
+      }
     },
     {
       "measure": "real-documents/blind/output-precision",
       "min": 0.9,
       "status": "proposed",
-      "rationale": "Engineering proposal: at least 90% of judged output is a right reading of something in the document. UW-3c measured 67.9%; not met yet."
+      "rationale": "Engineering proposal: at least 90% of judged output is a right reading of something in the document. UW-3c measured 67.9%; not met yet.",
+      "floor": {
+        "min": 0.678,
+        "rationale": "ADR 0030: non-regression floor at the value 114/168 (67.9%) measured at UW-3c. It gates every run; the target above stays a proposal until a fresh blind set (documents nobody has seen) meets it.",
+        "ratifiedBy": "owner delegation (ADR 0030)",
+        "ratifiedAt": "2026-11-16"
+      }
     },
     {
       "measure": "real-documents/blind/missed-silently",
       "max": 0,
       "status": "proposed",
-      "rationale": "Engineering proposal: nothing expected is lost without a report (fail closed). UW-3c measured 7; not met yet."
+      "rationale": "Engineering proposal: nothing expected is lost without a report (fail closed). UW-3c measured 7; not met yet.",
+      "floor": {
+        "max": 7,
+        "rationale": "ADR 0030: non-regression floor at the value 7 measured at UW-3c. It gates every run; the target above stays a proposal until a fresh blind set (documents nobody has seen) meets it.",
+        "ratifiedBy": "owner delegation (ADR 0030)",
+        "ratifiedAt": "2026-11-16"
+      }
     },
     {
       "measure": "real-documents/held-out/items-read-right",
       "min": 0.9,
       "status": "proposed",
-      "rationale": "Engineering proposal: at least 90% on the held-out documents. UW-3c measured 82.1%; not met yet."
+      "rationale": "Engineering proposal: at least 90% on the held-out documents. UW-3c measured 82.1%; not met yet.",
+      "floor": {
+        "min": 0.82,
+        "rationale": "ADR 0030: non-regression floor at the value 82.1% measured at UW-3c. It gates every run; the target above stays a proposal until a fresh blind set (documents nobody has seen) meets it.",
+        "ratifiedBy": "owner delegation (ADR 0030)",
+        "ratifiedAt": "2026-11-16"
+      }
     },
     {
       "measure": "real-documents/dev/items-read-right",
       "min": 0.95,
       "status": "proposed",
-      "rationale": "Regression guard on the documents the compiler was tuned on: at least 95%."
+      "rationale": "Regression guard on the documents the compiler was tuned on: at least 95%.",
+      "floor": {
+        "min": 0.98,
+        "rationale": "ADR 0030: non-regression floor at the value 98.8% measured at UW-3c. It gates every run; the target above stays a proposal until a fresh blind set (documents nobody has seen) meets it.",
+        "ratifiedBy": "owner delegation (ADR 0030)",
+        "ratifiedAt": "2026-11-16"
+      }
     }
   ]
 }

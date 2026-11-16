@@ -64,6 +64,19 @@ export interface Threshold {
   readonly rationale: string;
   readonly ratifiedBy?: string;
   readonly ratifiedAt?: string;
+  /**
+   * ADR 0030 — a ratified non-regression floor under a target that is still a proposal. The target says where the product
+   * must get to; the floor says it must not get worse than what was measured when the floor was set, and it gates now.
+   */
+  readonly floor?: ThresholdFloor;
+}
+
+export interface ThresholdFloor {
+  readonly min?: number;
+  readonly max?: number;
+  readonly rationale: string;
+  readonly ratifiedBy: string;
+  readonly ratifiedAt: string;
 }
 
 /** One entry of the R1-R18 commercial readiness register (UAC-20). */

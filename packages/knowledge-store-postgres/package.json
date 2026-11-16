@@ -1,0 +1,30 @@
+{
+  "name": "@xo/knowledge-store-postgres",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PostgreSQL driver for the Business Knowledge Base SQL store (ADR 0030): a hosted, multi-node XO keeps every tenant's knowledge in one PostgreSQL database, with writers serialised per tenant by transaction-scoped advisory locks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
+  },
+  "dependencies": {
+    "@xo/knowledge-base": "0.1.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.16.0"
+  }
+}

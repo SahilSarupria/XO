@@ -20,6 +20,8 @@ import { fallbackWorkspaceManager, isWorkspaceAllowed } from './authorizer.js';
  * size/access pattern than a handful of small JSON ownership records,
  * even though both are, today, plain `LocalFsBlobStore` directories.
  */
+import type { ExternalToolAdapter } from '@xo/adapters';
+
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
   /**
@@ -30,6 +32,19 @@ export interface WorkspaceDataConfig {
   readonly auditAnchor?: AuditAnchorSink;
   /** UW-3 — how compiles read pages and photos with no text layer (`compilations/extraction-tiers.ts`). Absent = no recovery. */
   readonly extraction?: CompileExtraction;
+  /**
+   * ADR 0030 — the pre-execution host: adapters that carry out connector bindings (act steps of generated workflows), and
+   * whether every workflow start needs a readiness certificate (`XO_READINESS_CERTIFICATE`; `required` in production).
+   */
+  readonly preExecution?: {
+    readonly connectorAdapters: ReadonlyMap<string, ExternalToolAdapter>;
+    readonly certificatePolicy: 'required' | 'workspace';
+  };
+  /**
+   * ADR 0030 — where the Business Knowledge Base lives (`XO_KNOWLEDGE_STORE`): `sqlite` (default, `<dataRootDir>/knowledge.sqlite`),
+   * `postgres` (`XO_KNOWLEDGE_DATABASE_URL`, several API instances) or `file` (development).
+   */
+  readonly knowledgeStore?: { readonly kind: 'sqlite' | 'postgres' | 'file'; readonly url?: string };
 }
 
 /** Validator carrying the effective trust policy — the only way API routes verify packages. A config without a policy (possible only from untyped callers) yields an unconfigured validator, which fails closed. */

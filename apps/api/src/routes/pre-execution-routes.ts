@@ -84,6 +84,8 @@ export function parseGoal(v: unknown, statedBy: string): GoalSpecification {
       text: g['text'],
       ...(g['needs'] !== undefined ? { needs: g['needs'] as string[] } : {}),
       ...(g['section'] !== undefined ? { section: g['section'] as string } : {}),
+      ...(g['intake'] === 'text' ? { intake: 'text' as const } : {}),
+      ...(typeof g['forEach'] === 'string' ? { forEach: g['forEach'] } : {}),
       statedBy,
     });
   } catch (cause) {
@@ -123,7 +125,12 @@ export function registerPreExecutionRoutes(
     }
     const candidate = ctx.workflows.find((w) => w.id === candidateId);
     if (candidate === undefined) throw new NotFoundError(`workflow "${candidateId}" in compilation "${compilationId}"`);
-    const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, { sourceNames: sourceNamesOf(ctx.artifact) });
+    const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, {
+      sourceNames: sourceNamesOf(ctx.artifact),
+      connectorBindings: ctx.connectorBindings,
+      ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
+      ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
+    });
     const gd = goalDigest(goal);
     const id = digestOf({ compilationId, candidateId, goal: gd, definition: lowered.definitionDigest });
     const record: WorkflowDefinitionRecord = {
