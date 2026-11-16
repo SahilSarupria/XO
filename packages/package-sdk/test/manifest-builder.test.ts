@@ -115,3 +115,22 @@ test('setDependencies() replaces the entire set on each call rather than accumul
   assert.ok(result.ok);
   assert.deepEqual(result.value.manifest.dependencies, [{ name: 'xo_b', versionRange: '2.0.0', kind: 'required' }]);
 });
+
+test('PX-4: setDomainPacks() pins knowledge packs by digest on the manifest; absent means the core vocabulary only', () => {
+  assert.equal(buildSampleBundle().manifest.domainPacks, undefined);
+  const digest = `sha256:${'ab'.repeat(32)}`;
+  const built = ManifestBuilder.create()
+    .setIdentity({ formatVersion: '1.0', name: 'xo_packs', version: '1.0.0', creatorDid: 'did:xo:test-creator' })
+    .setCompatibility(sampleCompatibility)
+    .setMetadata(sampleMetadata)
+    .setDomainPacks([{ packId: 'pack.alpha', namespace: 'alpha', version: '1.0.0', digest }])
+    .addComponent({ kind: 'safety_rules', path: 'safety/rules.json', data: new TextEncoder().encode('{"rules":[]}'), required: true })
+    .build();
+  assert.ok(built.ok);
+  if (built.ok)
+    assert.deepEqual(built.value.manifest.domainPacks, [{ packId: 'pack.alpha', namespace: 'alpha', version: '1.0.0', digest }]);
+  assert.throws(
+    () => ManifestBuilder.create().setDomainPacks([{ packId: 'p', namespace: 'p', version: '1.0.0', digest: '1.0.0' }]),
+    /digest/,
+  );
+});

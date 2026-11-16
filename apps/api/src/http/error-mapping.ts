@@ -152,6 +152,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // 422, same reasoning as BINDING_UNRESOLVED/CONTRACT_MALFORMED above.
   [ErrorCode.WORKFLOW_NOT_EXECUTABLE]: 422,
   [ErrorCode.SOURCE_QUALITY_WAIVER_REQUIRED]: 409,
+  [ErrorCode.KNOWLEDGE_CHANGE_SET_REFUSED]: 409,
+  [ErrorCode.KNOWLEDGE_PACK_REFUSED]: 409,
+  [ErrorCode.KNOWLEDGE_INTEGRITY_FAILED]: 500,
 
   // Capability contract (@xo/capability-contract) — semantic discovery
   // and binding resolution, first reachable over HTTP via P0.5.

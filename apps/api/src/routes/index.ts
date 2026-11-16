@@ -10,6 +10,7 @@ import { registerCompilerRoutes } from './compiler/compiler-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerSourceRoutes, type SourceRouteOptions } from './source-routes.js';
 import { registerCompilationRoutes } from './source-compilation-routes.js';
+import { registerKnowledgeRoutes } from './knowledge-routes.js';
 import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
@@ -140,6 +141,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {},
   );
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);

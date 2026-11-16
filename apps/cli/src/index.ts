@@ -12,6 +12,7 @@ import { registerCommands as registerRegistryCommands } from './commands/registr
 import { registerCommands as registerBenchmarkCommands } from './commands/benchmark/index.js';
 import { registerCommands as registerAiCommands } from './commands/ai/index.js';
 import { registerCommands as registerInstanceCommands } from './commands/instance/index.js';
+import { registerCommands as registerKnowledgeCommands } from './commands/knowledge/index.js';
 import { versionCommand } from './commands/system/version.js';
 import { SUPPORTED_PROVIDER_IDS } from './commands/runtime/provider-factory.js';
 import { createPainter, detectColorLevel, type ColorLevel } from './tui/ansi.js';
@@ -45,6 +46,7 @@ export function buildRegistry(): CommandRegistry {
   registerBenchmarkCommands(registry);
   registerAiCommands(registry);
   registerInstanceCommands(registry);
+  registerKnowledgeCommands(registry);
   return registry;
 }
 

@@ -306,6 +306,11 @@ export const ErrorCode = {
   // capabilities cannot be approved, and nothing built on it is ready, until a reviewer records a waiver bound to that
   // exact source version and those exact findings (a blocked source cannot be waived).
   SOURCE_QUALITY_WAIVER_REQUIRED: 'XO_SOURCE_QUALITY_WAIVER_REQUIRED',
+  // PX-4 — Business Knowledge Base. CHANGE_SET_REFUSED: already decided, proposed against an older head, or has error
+  // findings (context.knowledgeError says which). INTEGRITY_FAILED: a stored record, state or event no longer matches its digest.
+  KNOWLEDGE_CHANGE_SET_REFUSED: 'XO_KNOWLEDGE_CHANGE_SET_REFUSED',
+  KNOWLEDGE_PACK_REFUSED: 'XO_KNOWLEDGE_PACK_REFUSED',
+  KNOWLEDGE_INTEGRITY_FAILED: 'XO_KNOWLEDGE_INTEGRITY_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

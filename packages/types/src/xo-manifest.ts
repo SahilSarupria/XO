@@ -25,6 +25,20 @@ export interface DependencyDeclaration {
 }
 
 /**
+ * PX-4 (ADR 0029, spec §4.6.1): a Domain Knowledge Pack the package's knowledge was interpreted with. Pinned by exact
+ * content digest — a version alone never resolves — so the package reproduces only against the very pack it was built
+ * with. `optional` packs may be missing (their records are then kept as unsupported, never reinterpreted).
+ */
+export interface DomainPackDeclaration {
+  readonly packId: string;
+  readonly namespace: string;
+  readonly version: string;
+  /** `sha256:` digest of the pack manifest (`@xo/knowledge-base` `packDigest`). */
+  readonly digest: string;
+  readonly optional?: boolean;
+}
+
+/**
  * A single permission a package declares it may need at runtime (e.g.
  * `"filesystem.read"`, scoped to `"/workspace"`). Deliberately typed with
  * plain strings, not `@xo/permissions`' branded `PermissionId`/
@@ -78,6 +92,8 @@ export interface XoManifest {
    */
   readonly capabilities?: readonly CapabilityDeclaration[];
   readonly dependencies?: readonly DependencyDeclaration[];
+  /** PX-4: Domain Knowledge Packs this package depends on, pinned by digest. Absent: the package uses the core vocabulary only. */
+  readonly domainPacks?: readonly DomainPackDeclaration[];
   /**
    * Permissions this package may request at runtime, evaluated by
    * `@xo/permissions` against the host's configured policy before any

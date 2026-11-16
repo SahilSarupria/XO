@@ -37,6 +37,12 @@ export const AUDIT_EVENT_TYPES = [
   // PX-3: a reviewer's ruling on a review item (a conflict, an unparsed sentence, a decision the compiler could not make).
   'ruling.recorded',
   'ruling.denied',
+  // PX-4: governed changes to a workspace's Business Knowledge Base (proposed from a compilation, approved, rejected, or refused).
+  'knowledge.change-set.proposed',
+  'knowledge.change-set.approved',
+  'knowledge.change-set.rejected',
+  'knowledge.change-set.denied',
+  'knowledge.pack.installed',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.
@@ -92,6 +98,9 @@ export const AUDIT_TARGET_KINDS = [
   'procedure',
   'procedure-execution',
   'procedure-step',
+  // PX-4: a proposed change to a workspace's Business Knowledge Base, or an installed Domain Knowledge Pack.
+  'knowledge-change-set',
+  'knowledge-pack',
 ] as const;
 
 export const AUDIT_LIFECYCLE_PHASES = ['attempt', 'terminal', 'standalone'] as const;
