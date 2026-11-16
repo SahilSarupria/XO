@@ -962,6 +962,34 @@ export class XoClient {
       this.json({ action, ...(comment !== undefined ? { comment } : {}) }),
     );
   }
+  /** UW-7: cancels a run (or a whole batch); the platform records it first and stops every later call. */
+  cancelWorkflowEntityRun(ws: string, workflowId: string, runId: string, reason?: string): Promise<Result<GeneratedRunView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/runs/${enc(runId)}/cancel`,
+      (b) => parseGeneratedRun(b),
+      this.json(reason !== undefined ? { reason } : {}),
+    );
+  }
+  /** UW-7: a reviewer records what happened to a call whose outcome is unknown. Nothing is sent again. */
+  reconcileWorkflowEntityEffect(
+    ws: string,
+    workflowId: string,
+    runId: string,
+    step: string,
+    input: {
+      readonly decision: 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved';
+      readonly reason: string;
+      readonly evidenceExamined?: string;
+    },
+  ): Promise<Result<{ readonly runId: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/runs/${enc(runId)}/effects/${enc(step)}/reconciliation`,
+      (b) => ({ runId: String((b as { runId?: unknown }).runId ?? runId) }),
+      this.json(input),
+    );
+  }
   setWorkflowEntityFlag(
     ws: string,
     workflowId: string,

@@ -4,6 +4,7 @@ import { ConnectorError, ConnectorHost, MapVault, type Connector, type Json } fr
 import {
   LeaseAuthority,
   LeasedRunStore,
+  effectsOf,
   LeaseError,
   RunStore,
   StaticReviewerRegistry,
@@ -255,7 +256,8 @@ export async function view(runner: WorkflowRunner, runId: string, dir: string, d
   const pending = (await runner.listApprovals()).filter((a) => a.runId === runId);
   // Every journaled decision is re-verified against the keyring: which key signed it, or that none does.
   const keys = await currentPublicKeys(dataRootDir);
-  const decisions = (await new RunStore(dir).read(runId))
+  const entries = await new RunStore(dir).read(runId);
+  const decisions = entries
     .filter((e) => e.type === 'approval_decided')
     .map((e) => {
       const d = e.data as { step: string; reviewerId: string; action: string; payload: Record<string, unknown>; signature: string };
@@ -274,6 +276,8 @@ export async function view(runner: WorkflowRunner, runId: string, dir: string, d
     ...status,
     pendingApprovals: pending,
     decisions,
+    // UW-7 (ADR 0033, UAC-9): every external call of this run in the one effect vocabulary.
+    effects: effectsOf(entries),
     ...(meta !== undefined ? { startedBy: meta.initiator.id, startedAt: meta.startedAt } : {}),
     ...(meta?.workflow !== undefined ? { workflow: meta.workflow } : {}),
   };
@@ -397,6 +401,144 @@ export async function startGeneratedRun(
   };
 }
 
+const RUN_REF = /^(run|fe)_[0-9a-f]{32,40}$/;
+
+/**
+ * How an audit event names a run. An item of a batch (`fe_` + 40 hex) is named by its batch's run id and its index: the audit
+ * refuses long opaque values in metadata, and the pair is what a person needs to find it.
+ */
+async function auditRunRef(store: RunStore, runId: string): Promise<Record<string, string | number>> {
+  if (!runId.startsWith('fe_')) return { runId };
+  const first = (await store.read(runId).catch(() => []))[0];
+  const d = (first?.data ?? {}) as { parent?: unknown; index?: unknown };
+  return typeof d.parent === 'string' && typeof d.index === 'number' ? { runId: d.parent, item: d.index } : {};
+}
+
+export interface CancelGeneratedRun {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly runId: string;
+  readonly reason: unknown;
+  readonly correlationId: string;
+  /** For the entity route: the run must belong to this workflow. */
+  readonly workflowId?: string;
+}
+
+/**
+ * ADR 0024 — cancels a run or a whole batch (or one item of a batch). The request is recorded durably before anything else; no
+ * dispatch starts after it; work already settled stands; a call in flight becomes an unknown outcome for a person; a repeat changes
+ * nothing. When another instance is driving the run, it applies the request before its next step or call (`applied: false` here).
+ * Audited every time, a repeat included.
+ */
+export async function cancelGeneratedRun(deps: RunnerDeps, c: CancelGeneratedRun): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition, runId } = c;
+  const { dataConfig } = deps;
+  if (!RUN_REF.test(runId)) throw new NotFoundError(`run "${runId}"`);
+  if (c.reason !== undefined && (typeof c.reason !== 'string' || c.reason.length > 500))
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'reason must be a string of at most 500 characters');
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  const store = new RunStore(dir);
+  const root = await rootRunId(store, runId);
+  const meta = await readMeta(dir, root);
+  if ((await store.read(runId).catch(() => [])).length === 0) throw new NotFoundError(`run "${runId}"`);
+  if (c.workflowId !== undefined && meta?.workflow?.workflowId !== c.workflowId)
+    throw new NotFoundError(`run "${runId}" of workflow "${c.workflowId}"`);
+  const runner = await runnerFor(deps, workspace, definition);
+  const result = await runner.cancel(runId, {
+    by: actor.id,
+    ...(typeof c.reason === 'string' && c.reason.trim() !== '' ? { reason: c.reason.trim() } : {}),
+  });
+  await deps.audit?.tryRecord({
+    action: 'generated-workflow.cancel',
+    actor: actorFromPrincipal(actor),
+    correlationId: c.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+    type: 'generated-workflow.run.cancelled',
+    outcome: 'completed',
+    metadata: {
+      ...(await auditRunRef(store, runId)),
+      state: result.state,
+      recorded: result.recorded,
+      applied: result.cancellation?.applied === true,
+      ...(meta?.workflow !== undefined ? { workflowEntityId: meta.workflow.workflowId } : {}),
+    },
+  });
+  await publishRunChange(dataConfig, workspace.workspaceId, meta, runId, result.state);
+  return { ...(await view(runner, runId, dir, dataConfig.dataRootDir)), cancelRecorded: result.recorded };
+}
+
+export interface ReconcileGeneratedEffect {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly runId: string;
+  readonly step: string;
+  readonly decision: unknown;
+  readonly reason: unknown;
+  readonly evidenceExamined: unknown;
+  readonly correlationId: string;
+  readonly workflowId?: string;
+}
+
+/**
+ * A person records what happened to a call whose outcome is unknown (UAC-8). Nothing is sent, re-sent or undone. Callers check
+ * the review role and a recent sign-in first.
+ */
+export async function reconcileGeneratedEffect(deps: RunnerDeps, r: ReconcileGeneratedEffect): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition, runId, step } = r;
+  const { dataConfig } = deps;
+  if (!RUN_REF.test(runId)) throw new NotFoundError(`run "${runId}"`);
+  const decision = r.decision;
+  if (decision !== 'confirmed_success' && decision !== 'confirmed_failure_no_effect' && decision !== 'unresolved')
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'decision must be confirmed_success, confirmed_failure_no_effect or unresolved');
+  if (typeof r.reason !== 'string' || r.reason.trim().length === 0 || r.reason.length > 1000)
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'reason (what you checked and found) is required, at most 1000 characters');
+  if (r.evidenceExamined !== undefined && (typeof r.evidenceExamined !== 'string' || r.evidenceExamined.length > 1000))
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'evidenceExamined must be a string of at most 1000 characters');
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  const store = new RunStore(dir);
+  const entries = await store.read(runId).catch(() => []);
+  if (entries.length === 0) throw new NotFoundError(`run "${runId}"`);
+  const meta = await readMeta(dir, await rootRunId(store, runId));
+  if (r.workflowId !== undefined && meta?.workflow?.workflowId !== r.workflowId)
+    throw new NotFoundError(`run "${runId}" of workflow "${r.workflowId}"`);
+  const current = effectsOf(entries).find((e) => e.step === step);
+  if (current === undefined) throw new NotFoundError(`an external call of step "${step}" on run "${runId}"`);
+  if (current.state !== 'outcome_unknown' && current.state !== 'reconciliation_required')
+    throw new XoError(
+      ErrorCode.PRECONDITION_FAILED,
+      `the call of step "${step}" is ${current.state}; only an unknown outcome is reconciled`,
+      {
+        context: { state: current.state },
+      },
+    );
+  const runner = await runnerFor(deps, workspace, definition);
+  const effect = await runner.recordReconciliation(runId, step, {
+    decision,
+    by: actor.id,
+    reason: r.reason.trim(),
+    ...(typeof r.evidenceExamined === 'string' ? { evidenceExamined: r.evidenceExamined } : {}),
+  });
+  await deps.audit?.tryRecord({
+    action: 'generated-workflow.reconcile',
+    actor: actorFromPrincipal(actor),
+    correlationId: r.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+    type: 'generated-workflow.effect.reconciled',
+    outcome: 'completed',
+    metadata: {
+      ...(await auditRunRef(store, runId)),
+      step,
+      decision,
+      state: effect.state,
+      ...(meta?.workflow !== undefined ? { workflowEntityId: meta.workflow.workflowId } : {}),
+    },
+  });
+  await publishRunChange(dataConfig, workspace.workspaceId, meta, runId, effect.state);
+  return { runId, effect };
+}
+
 export interface DecideGeneratedApproval {
   readonly workspace: WorkspaceRecord;
   readonly actor: AuthenticatedPrincipal;
@@ -455,7 +597,8 @@ export async function decideGeneratedApproval(deps: RunnerDeps, d: DecideGenerat
     type: 'generated-workflow.approval.decided',
     outcome: 'completed',
     metadata: {
-      runId,
+      // An item of a batch is named by its batch and index (the audit refuses long opaque values).
+      ...(await auditRunRef(new RunStore(dir), runId)),
       step: request.step,
       action,
       state: result.state,
@@ -597,6 +740,56 @@ export function registerGeneratedRunRoutes(
     );
   }
 
+  async function cancel(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.cancel', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'cancel a workflow run' });
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const unknown = Object.keys(b).filter((k) => k !== 'reason');
+    if (unknown.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${unknown.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      200,
+      await cancelGeneratedRun(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        reason: b['reason'],
+        correlationId,
+      }),
+    );
+  }
+
+  async function reconcileEffect(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.reconcile', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'record the outcome of an external call' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'record the outcome of an external call');
+    const body = await req.json<Record<string, unknown>>();
+    if (!body.ok) throw body.error;
+    const b = body.value ?? {};
+    const unknown = Object.keys(b).filter((k) => !['decision', 'reason', 'evidenceExamined'].includes(k));
+    if (unknown.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${unknown.join(', ')}`);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(
+      200,
+      await reconcileGeneratedEffect(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        step: req.params['step'] ?? '',
+        decision: b['decision'],
+        reason: b['reason'],
+        evidenceExamined: b['evidenceExamined'],
+        correlationId,
+      }),
+    );
+  }
+
   // Due timers and approval deadlines advance even when nobody reads the run: every minute, each generated workflow with
   // runs is ticked (the interval never keeps the process alive).
   const tickAll = async (): Promise<void> => {
@@ -648,4 +841,9 @@ export function registerGeneratedRunRoutes(
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(list));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId', guarded(status));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/approvals/:approvalId', guarded(decide));
+  router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/cancel', guarded(cancel));
+  router.post(
+    '/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/effects/:step/reconciliation',
+    guarded(reconcileEffect),
+  );
 }

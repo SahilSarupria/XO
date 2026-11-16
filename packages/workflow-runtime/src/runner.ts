@@ -34,7 +34,8 @@ import {
   type ReviewerRegistry,
   type SignedDecision,
 } from './approvals.js';
-import type { JournalEntry, RunStoreLike } from './journal.js';
+import type { CancelRequest, JournalEntry, RunStoreLike } from './journal.js';
+import { BLOCKING_EFFECT_STATES, effectsOf, type EffectView } from './effects.js';
 import { LeaseError, type LeaseClient } from './lease.js';
 import { ExtractionMemo, type UsageCaps } from './limits.js';
 import { evaluateExpression, type Scope } from '@xo/capability-layer';
@@ -133,7 +134,17 @@ export interface RunResult {
   readonly state: RunState;
   readonly outputs?: Readonly<Record<string, unknown>>;
   readonly escalation?: Escalation;
+  /** ADR 0024: a cancel was requested. `applied` once the run has acted on it (its journal holds `cancel_recorded`). */
+  readonly cancellation?: CancelRequest & { readonly applied: boolean };
   readonly accepted: boolean;
+}
+
+/** Thrown by `cancel` when this runner's store cannot record a cancel request. */
+export class CancelUnsupportedError extends Error {
+  constructor() {
+    super('this run store cannot record a cancel request');
+    this.name = 'CancelUnsupportedError';
+  }
 }
 
 export class RunInputError extends Error {
@@ -174,6 +185,8 @@ interface RunRec {
   parent?: string;
   /** forEach parent runs only. */
   fanout?: { over: string; count: number };
+  /** The cancel this run has acted on (journal `cancel_recorded`). */
+  cancel?: CancelRequest;
 }
 
 /** Identity of a forEach item run. Deterministic, so a parent that crashed mid-fan-out finds the same children again; long enough that two parents never collide. */
@@ -300,6 +313,13 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
       case 'escalation':
         rec.escalation = d as unknown as Escalation;
         break;
+      case 'cancel_recorded':
+        rec.cancel = {
+          requestedAt: d['requestedAt'],
+          by: d['by'],
+          ...(typeof d['reason'] === 'string' ? { reason: d['reason'] } : {}),
+        };
+        break;
       case 'run_state':
         rec.state = d['state'];
         break;
@@ -387,8 +407,12 @@ export class WorkflowRunner {
         ? `run_${sha256Hex(canonicalJson({ w: this.wf.id, d: req.dedupeKey })).slice(0, 32)}`
         : `run_${sha256Hex(`${this.wf.id}:${this.now()}:${this.random()}`).slice(0, 32)}`);
     const created = await this.o.store.create(runId);
-    if (!created) return { ...(await this.status(runId)), accepted: false };
+    // ADR 0011 (spike defect): a run directory with no durable first entry (a crash between acceptance and `run_started`) is not
+    // a run yet. A start with the same id recovers it instead of reporting an unknown run forever.
+    if (!created && (await this.o.store.read(runId)).length > 0) return { ...(await this.status(runId)), accepted: false };
     return this.withLease(runId, async () => {
+      // Inside the lease: if another start won the race and wrote the first entry, this is that run, not a new one.
+      if (!created && (await this.o.store.read(runId)).length > 0) return { ...(await this.status(runId)), accepted: false };
       await this.o.store.append(runId, 'run_started', {
         workflow: this.wf.id,
         version: this.wf.version,
@@ -462,12 +486,188 @@ export class WorkflowRunner {
   async status(runId: string): Promise<Omit<RunResult, 'accepted'>> {
     const rec = replayRun(await this.o.store.read(runId), this.wf, runId);
     if (rec === undefined) throw new Error(`unknown run ${runId}`);
+    const requested = rec.cancel ?? (await this.requestedCancel(runId, rec));
     return {
       runId,
       state: rec.state,
       ...(rec.result !== undefined ? { outputs: rec.result } : {}),
       ...(rec.escalation !== undefined ? { escalation: rec.escalation } : {}),
+      ...(requested !== undefined ? { cancellation: { ...requested, applied: rec.cancel !== undefined } } : {}),
     };
+  }
+
+  /**
+   * ADR 0024 — cancels a run (or a whole forEach batch). The request is recorded durably first (`RunStoreLike.requestCancel`, first
+   * writer wins, so a repeat is harmless and returns the same record). From that moment no dispatch starts: the runner driving the run
+   * checks before every step and every external call, and an item run also obeys its batch's request. Then, unless another runner is
+   * driving it (that runner applies it at its next checkpoint), this runner applies it now:
+   *  - steps not yet run, and waits (timers, approvals, events), are cancelled;
+   *  - completed steps stand;
+   *  - a call that was journalled as sent but has no recorded outcome becomes `outcome_unknown` (`effect_unknown`) and the run
+   *    escalates to a person: it is never reported as cancelled, never repeated and never undone automatically;
+   *  - otherwise `cancellation.onCancel` decides: `abandon` ends the run `cancelled`; `compensate` undoes completed reversible writes
+   *    (the only calls made after a cancel) and ends `compensated`, or escalates when something cannot be undone.
+   * A batch keeps every settled item as it is, cancels the rest, and never starts an item after the request.
+   */
+  async cancel(
+    runId: string,
+    req: { readonly by: string; readonly reason?: string },
+  ): Promise<Omit<RunResult, 'accepted'> & { readonly recorded: boolean }> {
+    const store = this.o.store;
+    if (store.requestCancel === undefined) throw new CancelUnsupportedError();
+    const rec = replayRun(await store.read(runId), this.wf, runId);
+    if (rec === undefined) throw new Error(`unknown run ${runId}`);
+    const { request, recorded } = await store.requestCancel(runId, {
+      requestedAt: new Date(this.now()).toISOString(),
+      by: req.by,
+      ...(req.reason !== undefined ? { reason: req.reason } : {}),
+    });
+    if (isTerminal(rec.state)) return { ...(await this.status(runId)), recorded };
+    // This runner is driving it right now: that drive applies the request at its next checkpoint.
+    if (this.active.has(runId)) return { ...(await this.status(runId)), recorded };
+    try {
+      await this.withLease(runId, () => this.drive(runId));
+    } catch (e) {
+      if (!(e instanceof LeaseError && e.code === 'HELD')) throw e;
+      // Another runner owns the run: the request is on record and it will act on it before its next step or call.
+    }
+    const after = await this.status(runId);
+    return after.cancellation !== undefined ? { ...after, recorded } : { ...after, cancellation: { ...request, applied: false }, recorded };
+  }
+
+  /** The run's external calls, one row per step, in the one effect vocabulary (ADR 0033). */
+  async effects(runId: string): Promise<EffectView[]> {
+    return effectsOf(await this.o.store.read(runId));
+  }
+
+  /**
+   * A person records what happened to a call whose outcome is unknown (UW-7, UAC-8). The decision is journalled; NOTHING is sent,
+   * re-sent or undone, whatever the decision. `unresolved` records that someone looked and could not tell; the call stays blocking.
+   * The host decides who may reconcile (review role, recent sign-in) before calling this, and mints `by` from the principal.
+   */
+  async recordReconciliation(
+    runId: string,
+    step: string,
+    r: {
+      readonly decision: 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved';
+      readonly by: string;
+      readonly reason: string;
+      readonly evidenceExamined?: string;
+    },
+  ): Promise<EffectView> {
+    if (!['confirmed_success', 'confirmed_failure_no_effect', 'unresolved'].includes(r.decision))
+      throw new Error('decision must be confirmed_success, confirmed_failure_no_effect or unresolved');
+    if (r.reason.trim().length === 0) throw new Error('a reconciliation needs a reason');
+    return this.withLease(runId, async () => {
+      const current = effectsOf(await this.o.store.read(runId)).find((e) => e.step === step);
+      if (current === undefined) throw new Error(`step "${step}" of run ${runId} made no external call`);
+      if (!BLOCKING_EFFECT_STATES.includes(current.state))
+        throw new Error(`the call of step "${step}" is ${current.state}; only an unknown outcome can be reconciled`);
+      await this.o.store.append(runId, 'effect_reconciled', {
+        step,
+        decision: r.decision,
+        by: r.by,
+        reason: r.reason.slice(0, 1000),
+        ...(r.evidenceExamined !== undefined ? { evidenceExamined: r.evidenceExamined.slice(0, 1000) } : {}),
+        ...(current.key !== undefined ? { key: current.key } : {}),
+      });
+      return effectsOf(await this.o.store.read(runId)).find((e) => e.step === step) as EffectView;
+    });
+  }
+
+  /** The cancel request this run must obey: its own, or its batch's. Read fresh: another process may have written it a moment ago. */
+  private async requestedCancel(runId: string, rec: Pick<RunRec, 'parent'>): Promise<CancelRequest | undefined> {
+    const read = this.o.store.cancelRequest;
+    if (read === undefined) return undefined;
+    return (await read.call(this.o.store, runId)) ?? (rec.parent !== undefined ? await read.call(this.o.store, rec.parent) : undefined);
+  }
+
+  private hasOpenWork(rec: RunRec): boolean {
+    return [...rec.steps].some(
+      ([id, sr]) => this.wf.steps.find((x) => x.id === id)?.type !== 'compensate' && !['succeeded', 'skipped'].includes(sr.state),
+    );
+  }
+
+  /** Acts on a cancel request (see `cancel`). Idempotent: a crash part-way through is finished by the next drive. */
+  private async applyCancel(runId: string, request: CancelRequest): Promise<Omit<RunResult, 'accepted'>> {
+    const { store } = this.o;
+    let rec = replayRun(await store.read(runId), this.wf, runId) as RunRec;
+    if (isTerminal(rec.state)) return this.status(runId);
+    if (rec.cancel === undefined)
+      await store.append(runId, 'cancel_recorded', {
+        requestedAt: request.requestedAt,
+        by: request.by,
+        ...(request.reason !== undefined ? { reason: request.reason } : {}),
+      });
+    rec = replayRun(await store.read(runId), this.wf, runId) as RunRec;
+    const unknown: string[] = [];
+    for (const [id, sr] of rec.steps) {
+      if (sr.callIntent !== undefined && sr.callOutcome === undefined && sr.state !== 'succeeded') {
+        const step = this.wf.steps.find((x) => x.id === id) as ActStep | CompensateStep | undefined;
+        if (step === undefined || !hasSideEffects(step)) continue;
+        unknown.push(id);
+        const already = (await store.read(runId)).some((e) => e.type === 'effect_unknown' && e.data['step'] === id);
+        if (!already)
+          await store.append(runId, 'effect_unknown', {
+            step: id,
+            connector: step?.connector ?? null,
+            operation: step?.operation ?? null,
+            intentAt: sr.callIntent.ts,
+            ...(sr.callIntent.key !== undefined ? { key: sr.callIntent.key } : {}),
+            ...(sr.callIntent.requestHash !== undefined ? { requestHash: sr.callIntent.requestHash } : {}),
+            reason: 'the run was cancelled after this call was sent and before its outcome was recorded',
+          });
+      }
+    }
+    for (const [id, sr] of rec.steps)
+      if (
+        ['pending', 'ready', 'running', 'waiting'].includes(sr.state) &&
+        !unknown.includes(id) &&
+        this.wf.steps.find((x) => x.id === id)?.type !== 'compensate'
+      )
+        await store.append(runId, 'step_cancelled', { step: id, reason: 'run cancelled' });
+    const by = request.reason !== undefined ? ` (${request.reason})` : '';
+    if (unknown.length > 0)
+      return this.escalate(
+        runId,
+        null,
+        'CANCELLED_OUTCOME_UNKNOWN',
+        `the run was cancelled by ${request.by}${by} while ${unknown.join(', ')} had been sent with no recorded outcome. It may have taken effect, so it is neither repeated nor undone: a person must check the destination and record what happened`,
+      );
+    const settled = [...rec.order];
+    if (this.wf.cancellation.onCancel === 'compensate') {
+      const plan = compensationPlan(this.wf, rec.order);
+      if (plan.compensate.length > 0 || plan.uncompensatable.length > 0) {
+        await store.append(runId, 'run_state', { state: 'compensating' });
+        for (const cid of plan.compensate) {
+          const c = this.wf.steps.find((x) => x.id === cid) as CompensateStep;
+          const r = await this.callConnector(runId, c, rec, true);
+          await store.append(runId, 'compensation_step', { step: cid, ok: r.ok, ...(r.ok ? {} : { message: r.message }) });
+          if (!r.ok)
+            return this.escalate(runId, cid, 'COMPENSATION_FAILED', `undoing ${cid} after the cancel failed: ${r.message}`, {
+              uncompensated: plan.uncompensatable,
+            });
+        }
+        if (plan.uncompensatable.length > 0)
+          return this.escalate(
+            runId,
+            null,
+            'UNCOMPENSATABLE',
+            `the run was cancelled and these completed steps cannot be undone: ${plan.uncompensatable.join(', ')}`,
+            { uncompensated: plan.uncompensatable },
+          );
+        await store.append(runId, 'run_finished', {
+          state: 'compensated',
+          result: { cancelled: true, by: request.by, requestedAt: request.requestedAt, settled, compensated: plan.compensate },
+        });
+        return this.status(runId);
+      }
+    }
+    await store.append(runId, 'run_finished', {
+      state: 'cancelled',
+      result: { cancelled: true, by: request.by, requestedAt: request.requestedAt, settled },
+    });
+    return this.status(runId);
   }
 
   /** Resumes every run that is waiting on a timer. Call periodically. */
@@ -556,8 +756,12 @@ export class WorkflowRunner {
     const pending: number[] = [];
     for (let i = 0; i < fanout.count; i++) pending.push(i);
     let killed = false;
+    // ADR 0024: once the batch is asked to cancel, no further item is started (each running item obeys the same request itself).
+    let cancel = rec.cancel ?? (await this.requestedCancel(runId, rec));
     const worker = async (): Promise<void> => {
       for (;;) {
+        if (cancel === undefined) cancel = await this.requestedCancel(runId, rec);
+        if (cancel !== undefined) return;
         const i = pending.shift();
         if (i === undefined) return;
         if (this.o.killSwitch?.() === true) {
@@ -592,35 +796,23 @@ export class WorkflowRunner {
       Array.from({ length: Math.max(1, Math.min(fe.concurrency, this.o.maxItemConcurrency ?? Infinity, fanout.count)) }, () => worker()),
     );
     if (killed) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged; remaining items were not started');
+    if (cancel === undefined) cancel = await this.requestedCancel(runId, rec);
+    if (cancel !== undefined) return this.cancelBatch(runId, rec, cancel);
 
-    const outcomes: {
-      index: number;
-      runId: string;
-      state: RunState;
-      outputs?: unknown;
-      escalation?: { code: string; step: string | null };
-    }[] = [];
-    for (let i = 0; i < fanout.count; i++) {
-      const id = itemRunId(runId, i);
-      const r = replayRun(await store.read(id), this.wf, id) as RunRec;
-      outcomes.push({
-        index: i,
-        runId: id,
-        state: r.state,
-        ...(r.result !== undefined ? { outputs: r.result } : {}),
-        ...(r.escalation !== undefined ? { escalation: { code: r.escalation.code, step: r.escalation.step } } : {}),
-      });
-    }
-    if (outcomes.some((o) => !isTerminal(o.state))) {
+    const outcomes = await this.itemOutcomes(runId, fanout.count);
+    if (outcomes.some((o) => o.state === 'not_started' || !isTerminal(o.state as RunState))) {
       if (rec.state !== 'waiting') await store.append(runId, 'run_state', { state: 'waiting' });
       return { runId, state: 'waiting' };
     }
     const count = (s: RunState): number => outcomes.filter((o) => o.state === s).length;
+    const completed = count('completed');
     const summary = {
       items: outcomes,
-      completed: count('completed'),
+      completed,
       escalated: count('escalated'),
-      failed: outcomes.length - count('completed') - count('escalated'),
+      failed: outcomes.length - completed - count('escalated'),
+      // ADR 0033 (spike defect): a batch where some items completed is reported as partial, not as a plain failure.
+      outcome: completed === outcomes.length ? 'all_completed' : completed > 0 ? 'partially_completed' : 'none_completed',
     };
     if (summary.escalated > 0) {
       const e: Escalation = {
@@ -638,6 +830,95 @@ export class WorkflowRunner {
     const state: RunState = summary.failed > 0 ? 'failed' : 'completed';
     await store.append(runId, 'run_finished', { state, result: summary });
     return { runId, state, outputs: summary };
+  }
+
+  private async itemOutcomes(runId: string, count: number) {
+    const outcomes: {
+      index: number;
+      runId: string;
+      state: RunState | 'not_started';
+      outputs?: unknown;
+      escalation?: { code: string; step: string | null };
+    }[] = [];
+    for (let i = 0; i < count; i++) {
+      const id = itemRunId(runId, i);
+      const r = replayRun(await this.o.store.read(id).catch(() => [] as JournalEntry[]), this.wf, id);
+      if (r === undefined) {
+        outcomes.push({ index: i, runId: id, state: 'not_started' });
+        continue;
+      }
+      outcomes.push({
+        index: i,
+        runId: id,
+        state: r.state,
+        ...(r.result !== undefined ? { outputs: r.result } : {}),
+        ...(r.escalation !== undefined ? { escalation: { code: r.escalation.code, step: r.escalation.step } } : {}),
+      });
+    }
+    return outcomes;
+  }
+
+  /**
+   * A batch asked to cancel (ADR 0024): items already settled stand; every item still open applies the same request itself (it is
+   * driven here once, under its own lease, so a parked item is cancelled too); items never started stay unstarted. An item whose
+   * call was in flight escalates with its outcome unknown, so the batch then needs a person; otherwise the batch ends `cancelled`.
+   */
+  private async cancelBatch(runId: string, rec: RunRec, request: CancelRequest): Promise<Omit<RunResult, 'accepted'>> {
+    const { store } = this.o;
+    const fanout = rec.fanout as { over: string; count: number };
+    if (rec.cancel === undefined)
+      await store.append(runId, 'cancel_recorded', {
+        requestedAt: request.requestedAt,
+        by: request.by,
+        ...(request.reason !== undefined ? { reason: request.reason } : {}),
+      });
+    for (let i = 0; i < fanout.count; i++) {
+      const id = itemRunId(runId, i);
+      const child = replayRun(await store.read(id).catch(() => [] as JournalEntry[]), this.wf, id);
+      if (child === undefined || isTerminal(child.state)) continue;
+      try {
+        await this.withLease(id, () => this.drive(id));
+      } catch (e) {
+        if (e instanceof LeaseError && e.code === 'HELD') continue; // its driver applies the batch's request at its next checkpoint
+        if (e instanceof Error && /already being driven/.test(e.message)) continue;
+        throw e;
+      }
+    }
+    const outcomes = await this.itemOutcomes(runId, fanout.count);
+    const open = outcomes.filter((o) => o.state !== 'not_started' && !isTerminal(o.state as RunState));
+    if (open.length > 0) {
+      // Some item is still being driven elsewhere; it will stop at its next checkpoint, and the next resume finishes the batch.
+      if (rec.state !== 'waiting') await store.append(runId, 'run_state', { state: 'waiting' });
+      return this.status(runId);
+    }
+    const count = (s: string): number => outcomes.filter((o) => o.state === s).length;
+    const summary = {
+      cancelled: true,
+      by: request.by,
+      requestedAt: request.requestedAt,
+      items: outcomes,
+      completed: count('completed'),
+      cancelledItems: count('cancelled'),
+      notStarted: count('not_started'),
+      escalated: count('escalated'),
+      failed: count('failed') + count('compensated'),
+      outcomeUnknown: outcomes.filter((o) => o.escalation?.code === 'CANCELLED_OUTCOME_UNKNOWN').length,
+    };
+    if (summary.escalated > 0) {
+      const e: Escalation = {
+        runId,
+        workflow: this.wf.id,
+        step: null,
+        code: 'ITEMS_NEED_ATTENTION',
+        reason: `the batch was cancelled by ${request.by}: ${summary.completed} completed and stand, ${summary.cancelledItems + summary.notStarted} were stopped, and ${summary.escalated} need a person (${summary.outcomeUnknown} with an outcome that is unknown)`,
+      };
+      await store.append(runId, 'escalation', e as unknown as Record<string, unknown>);
+      await store.append(runId, 'run_finished', { state: 'escalated', result: summary });
+      await this.o.onEscalate?.(e);
+      return this.status(runId);
+    }
+    await store.append(runId, 'run_finished', { state: 'cancelled', result: summary });
+    return this.status(runId);
   }
 
   /** After an item changes outside a parent's own drive (an approval decision), bring the parent's state up to date. */
@@ -668,6 +949,10 @@ export class WorkflowRunner {
       for (let guard = 0; guard < 10_000; guard++) {
         rec = await reload();
         if (terminal(rec.state)) break;
+        // ADR 0024: a recorded cancel request (this run's, or its batch's) is acted on before anything else happens.
+        // A run whose every step has already succeeded is finished, not cancelled: its work stands and it completes.
+        const cancel = rec.cancel ?? (await this.requestedCancel(runId, rec));
+        if (cancel !== undefined && this.hasOpenWork(rec)) return await this.applyCancel(runId, cancel);
         if (this.o.killSwitch?.() === true) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged');
         if (this.now() - rec.startedAt > this.wf.runTimeoutMs)
           return this.escalate(runId, null, 'RUN_TIMEOUT', `run exceeded ${this.wf.runTimeoutMs}ms`);
@@ -909,6 +1194,11 @@ export class WorkflowRunner {
     const pending = [...rec.steps.entries()].find(([, s]) => s.approval?.request.approvalId === d.payload.approvalId);
     if (pending === undefined) throw new ApprovalError('UNKNOWN_APPROVAL', 'no such approval request on this run');
     const [stepId, sr] = pending;
+    const cancel = rec.cancel ?? (await this.requestedCancel(runId, rec));
+    if (cancel !== undefined) {
+      if (!this.active.has(runId)) await this.drive(runId); // act on the request now
+      throw new ApprovalError('ALREADY_DECIDED', `the run was cancelled by ${cancel.by} at ${cancel.requestedAt}; nothing is pending`);
+    }
     const reviewers = this.o.approvals?.reviewers;
     if (reviewers === undefined) throw new Error('this runner has no approvals configuration');
     if (sr.state !== 'waiting') throw new ApprovalError('ALREADY_DECIDED', 'this approval was already decided or is no longer pending');
@@ -940,7 +1230,12 @@ export class WorkflowRunner {
     await this.o.store.append(runId, 'escalation', e as unknown as Record<string, unknown>);
     const rec0 = replayRun(await this.o.store.read(runId), this.wf, runId) as RunRec;
     for (const [id, s] of rec0.steps)
-      if (['pending', 'ready', 'waiting'].includes(s.state) && this.wf.steps.find((x) => x.id === id)?.type !== 'compensate')
+      if (
+        ['pending', 'ready', 'waiting'].includes(s.state) &&
+        this.wf.steps.find((x) => x.id === id)?.type !== 'compensate' &&
+        // a call sent with no recorded outcome is not "cancelled": its outcome is unknown until a person records it (ADR 0024)
+        !(s.callIntent !== undefined && s.callOutcome === undefined)
+      )
         await this.o.store.append(runId, 'step_cancelled', { step: id });
     await this.o.store.append(runId, 'run_state', { state: 'escalated' });
     await this.o.onEscalate?.(e);
@@ -1104,6 +1399,7 @@ export class WorkflowRunner {
         await store.append(runId, 'step_failed', { step: step.id, code: r.code, message: r.message });
         return this.escalate(runId, step.id, r.code, r.message, r.extra);
       }
+      if (r.kind === 'cancelled') return this.applyCancel(runId, r.request);
       lastCode = r.code;
       lastMessage = r.message;
       await store.append(runId, 'attempt_failed', { step: step.id, attempt, code: r.code, message: r.message });
@@ -1182,6 +1478,7 @@ export class WorkflowRunner {
       case 'act':
       case 'compensate': {
         const r = await this.callConnector(runId, step, rec, false, sr);
+        if (!r.ok && r.code === 'CANCELLED' && r.cancel !== undefined) return { kind: 'cancelled', request: r.cancel };
         // an unknown outcome on a destination that cannot dedupe is for a person: never retried, never failed quietly
         if (!r.ok && r.code === 'AMBIGUOUS_EFFECT') return { kind: 'escalate', code: r.code, message: r.message };
         if (!r.ok) return { kind: 'fail', code: r.code, message: r.message };
@@ -1359,14 +1656,19 @@ export class WorkflowRunner {
     runId: string,
     step: ActStep | CompensateStep,
     rec: RunRec,
-    _isCompensation: boolean,
+    isCompensation: boolean,
     sr?: StepRec,
-  ): Promise<{ ok: true; data: Json } | { ok: false; code: string; message: string }> {
+  ): Promise<{ ok: true; data: Json } | { ok: false; code: string; message: string; cancel?: CancelRequest }> {
     const { store } = this.o;
     if (sr?.callOutcome !== undefined)
       return sr.callOutcome.ok
         ? { ok: true, data: sr.callOutcome.data ?? null }
         : { ok: false, code: sr.callOutcome.code ?? 'FAILED', message: 'recorded failure' };
+    // ADR 0024: no dispatch starts after a cancel is recorded (an undo the workflow declares for cancellation is the one exception).
+    if (!isCompensation) {
+      const cancel = await this.requestedCancel(runId, rec);
+      if (cancel !== undefined) return { ok: false, code: 'CANCELLED', message: 'the run was cancelled before this call', cancel };
+    }
     const { values } = this.resolveInputs(step, rec);
     let key: string | undefined;
     if (step.idempotencyKey !== undefined) {
@@ -1423,6 +1725,16 @@ export class WorkflowRunner {
     let sem = this.sems.get(step.connector);
     if (sem === undefined) this.sems.set(step.connector, (sem = new Semaphore(this.o.connectorConcurrency ?? 4)));
     const release = await sem.acquire();
+    // The last moment before sending: a cancel recorded while this call waited for its slot stops it, and the journal says it
+    // was provably not sent (so it is not an unknown outcome).
+    if (!isCompensation) {
+      const cancel = await this.requestedCancel(runId, rec);
+      if (cancel !== undefined) {
+        release();
+        await store.append(runId, 'call_not_sent', { step: step.id, code: 'CANCELLED' });
+        return { ok: false, code: 'CANCELLED', message: 'the run was cancelled before this call was sent', cancel };
+      }
+    }
     let callResult: { data: Json; dryRun: boolean } | undefined;
     try {
       const res = await this.o.connectors.call({
@@ -1468,6 +1780,7 @@ type StepOutcome =
   | { kind: 'event_wait'; name: string; correlation: string; deadline: number }
   | { kind: 'approval'; request: ApprovalRequest }
   | { kind: 'fail'; code: string; message: string }
+  | { kind: 'cancelled'; request: CancelRequest }
   | { kind: 'escalate'; code: string; message: string; extra?: Partial<Escalation> };
 
 export { replayRun as _replayRun };

@@ -98,7 +98,9 @@ export interface WorkflowEntity {
  *  - running: a run is in progress (including one waiting on a timer);
  *  - paused: new starts are held (the workflow or the whole workspace is paused) and nothing is in progress;
  *  - needs_attention: the latest run escalated to a person (for example an unknown connector outcome);
- *  - completed / failed / cancelled: the latest run of the current version ended so;
+ *  - completed / failed / cancelled: the latest run of the current version ended so (a run cancelled and undone under
+ *    `onCancel: compensate` is cancelled; a failure that was undone is failed);
+ *  - partially_completed (UW-7, ADR 0033): the latest run was a batch in which some items completed and the others failed;
  *  - archived: put away by a person; history and runs are kept.
  */
 export const WORKFLOW_LIFECYCLE = [
@@ -109,6 +111,7 @@ export const WORKFLOW_LIFECYCLE = [
   'paused',
   'needs_attention',
   'completed',
+  'partially_completed',
   'failed',
   'cancelled',
   'archived',
@@ -123,6 +126,10 @@ export interface RunFacts {
   readonly state: string;
   readonly pendingApprovals: number;
   readonly startedAt: string;
+  /** UW-7: the run ended because a person cancelled it (its result says so). */
+  readonly cancelled?: boolean;
+  /** UW-7: a batch's outcome (`all_completed`, `partially_completed`, `none_completed`). */
+  readonly batchOutcome?: string;
 }
 
 const ACTIVE = new Set(['created', 'running', 'waiting', 'compensating']);
@@ -144,9 +151,12 @@ export function deriveLifecycle(input: {
   const current = currentVersion(entity).version;
   const latest = newestFirst.find((r) => r.version === current);
   if (latest !== undefined) {
-    if (latest.state === 'completed' || latest.state === 'compensated') return 'completed';
+    if (latest.state === 'completed') return 'completed';
     if (latest.state === 'escalated') return 'needs_attention';
     if (latest.state === 'cancelled') return 'cancelled';
+    // Compensated means undone: after a cancel it is a cancel, after a failure it is a failure (never "completed").
+    if (latest.state === 'compensated') return latest.cancelled === true ? 'cancelled' : 'failed';
+    if (latest.batchOutcome === 'partially_completed') return 'partially_completed';
     return 'failed';
   }
   const s = input.currentCertificateStatus;

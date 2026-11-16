@@ -119,7 +119,8 @@ test('every construct from its evidence: decide → branch → wait → approve 
   const wf = low.component!.workflows[0]!;
   assert.deepEqual(
     wf.steps.map((s) => s.type),
-    ['decide', 'branch', 'wait', 'approve', 'act', 'compensate'],
+    // UW-7 (ADR 0033): the person's task is followed by its not-done escalation.
+    ['decide', 'branch', 'wait', 'approve', 'escalate', 'act', 'compensate'],
   );
   const branch = byId(wf.steps, 's1_assess_claim_route');
   assert.ok(branch.type === 'branch');

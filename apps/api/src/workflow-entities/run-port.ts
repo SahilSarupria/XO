@@ -27,6 +27,8 @@ export interface WorkflowRunView extends RunFacts {
   readonly approvals: readonly PendingApprovalView[];
   readonly outputs?: unknown;
   readonly escalation?: unknown;
+  /** UW-7: a cancel was requested (and whether the run has acted on it yet). */
+  readonly cancellation?: { readonly requestedAt: string; readonly by: string; readonly reason?: string; readonly applied: boolean };
 }
 
 export interface WorkflowRunPort {
@@ -37,6 +39,7 @@ export interface WorkflowRunPort {
 }
 
 const RUN_ID = /^run_[0-9a-f]{32}$/;
+const ITEM_RUN_ID = /^fe_[0-9a-f]{40}$/;
 
 export function generatedRunPort(deps: RunnerDeps, workspace: WorkspaceRecord): WorkflowRunPort {
   const definitions = workspaceDefinitionsStore(workspace, deps.dataConfig);
@@ -79,6 +82,11 @@ export function generatedRunPort(deps: RunnerDeps, workspace: WorkspaceRecord): 
             certificateId: meta.certificateId,
             ...(status?.outputs !== undefined ? { outputs: status.outputs } : {}),
             ...(status?.escalation !== undefined ? { escalation: status.escalation } : {}),
+            ...((status?.outputs as { cancelled?: unknown } | undefined)?.cancelled === true ? { cancelled: true } : {}),
+            ...(typeof (status?.outputs as { outcome?: unknown } | undefined)?.outcome === 'string'
+              ? { batchOutcome: (status!.outputs as { outcome: string }).outcome }
+              : {}),
+            ...(status?.cancellation !== undefined ? { cancellation: status.cancellation } : {}),
           });
         }
       }
@@ -86,10 +94,18 @@ export function generatedRunPort(deps: RunnerDeps, workspace: WorkspaceRecord): 
     },
 
     async run(entity, runId) {
-      if (!RUN_ID.test(runId)) throw new NotFoundError(`run "${runId}"`);
+      if (!RUN_ID.test(runId) && !ITEM_RUN_ID.test(runId)) throw new NotFoundError(`run "${runId}"`);
       for (const definitionId of new Set(entity.versions.map((v) => v.definition.definitionId))) {
         const dir = runsDir(deps.dataConfig, workspace.workspaceId, definitionId);
-        const meta = await readMeta(dir, runId);
+        // An item of a batch is this workflow's when its batch is.
+        let root = runId;
+        if (ITEM_RUN_ID.test(runId)) {
+          const first = (await new RunStore(dir).read(runId).catch(() => []))[0];
+          const parent = first?.type === 'run_started' ? (first.data as { parent?: unknown }).parent : undefined;
+          if (typeof parent !== 'string') continue;
+          root = parent;
+        }
+        const meta = await readMeta(dir, root);
         if (meta?.workflow?.workflowId !== entity.workflowId) continue;
         if ((await new RunStore(dir).read(runId).catch(() => [])).length === 0) break;
         const runner = await runnerFor(deps, workspace, await definitionOf(entity, definitionId));

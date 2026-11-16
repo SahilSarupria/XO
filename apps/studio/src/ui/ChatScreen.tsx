@@ -538,6 +538,7 @@ const LIFECYCLE_WORDS: Readonly<Record<WorkflowLifecycle, string>> = {
   paused: 'Paused',
   needs_attention: 'Needs attention',
   completed: 'Done',
+  partially_completed: 'Partly done',
   failed: 'Failed',
   cancelled: 'Cancelled',
   archived: 'Archived',

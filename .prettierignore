@@ -38,3 +38,5 @@ examples/insurance-dev-corpus/proposal-labels.json
 docs/CONFIGURATION.md
 evaluation/REPORT.md
 evaluation/report.json
+# Generated from packages/workflow-runtime/src/effects.ts (UW-7); a test compares it byte for byte
+docs/EFFECTS.md

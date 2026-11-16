@@ -17,6 +17,10 @@
 import {
   buildAllSemanticCapabilityContracts,
   computeContractContentHash,
+  contractEffectOf,
+  contractOutputSchema,
+  type ContractEffect,
+  type TypedOutputSchema,
   humanTaskContractOf,
   resolveCapabilityBinding,
   STANDARD_BINDING_RESOLVERS,
@@ -91,6 +95,10 @@ export interface CapabilityReport {
   readonly humanTask?: HumanTaskContract;
   readonly contractHash: string;
   readonly parameters: readonly ParameterReport[];
+  /** UW-7 (ADR 0033): what it does to the world (from the contract and, for an external capability, the binding). */
+  readonly effect: ContractEffect;
+  /** UW-7: the typed shape of its outputs; `typed: false` names the outputs whose type is not established. */
+  readonly outputSchema: TypedOutputSchema;
   readonly readiness: CapabilityReadiness;
   readonly confidence: number;
   readonly evidence: readonly ContractSourceRef[];
@@ -293,6 +301,8 @@ export function buildCapabilityInventory(graph: XoirGraph, ctx: InventoryContext
       ...(humanTask !== undefined ? { humanTask } : {}),
       contractHash: computeContractContentHash(c),
       parameters,
+      effect: contractEffectOf(c, connector),
+      outputSchema: contractOutputSchema(c),
       confidence: c.confidence,
       evidence: c.sourceRefs,
     };

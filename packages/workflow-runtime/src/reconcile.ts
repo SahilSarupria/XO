@@ -88,6 +88,28 @@ export async function reconcile(store: Pick<RunStoreLike, 'list' | 'read'>): Pro
             });
           break;
         }
+        case 'effect_unknown': {
+          // ADR 0024: cancelled while the call was in flight.
+          const o = open.get(step);
+          if (o !== undefined) open.set(step, { ...o, status: 'ambiguous', detail: String(d['reason']) });
+          break;
+        }
+        case 'effect_reconciled': {
+          // A person's decision (UW-7). `unresolved` settles nothing; anything else settles the call without re-sending it.
+          const o = open.get(step);
+          if (o === undefined) break;
+          if (d['decision'] === 'unresolved') {
+            open.set(step, { ...o, status: 'ambiguous', detail: `a person could not establish the outcome: ${String(d['reason'])}` });
+            break;
+          }
+          open.delete(step);
+          done.push({
+            ...o,
+            status: 'resolved',
+            detail: `recorded by ${String(d['by'])} as ${String(d['decision'])}: ${String(d['reason'])}`,
+          });
+          break;
+        }
         case 'call_outcome': {
           const o = open.get(step);
           open.delete(step);

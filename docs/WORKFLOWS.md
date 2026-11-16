@@ -6,16 +6,17 @@ installed when you create one) and not a conversation (deleting the conversation
 
 ## The lifecycle a client shows
 
-| Lifecycle                            | Meaning                                                                                            |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `draft`                              | The current version has not been checked (no READY certificate yet).                               |
-| `ready`                              | The current version has a READY or READY_WITH_CONDITIONS certificate. Every start checks it again. |
-| `awaiting_approval`                  | A run is waiting for a person's decision.                                                          |
-| `running`                            | A run is in progress, including one waiting on a timer.                                            |
-| `paused`                             | New starts are held: the workflow, or the whole workspace, is paused.                              |
-| `needs_attention`                    | The latest run escalated to a person (for example, a connector outcome XO could not confirm).      |
-| `completed` / `failed` / `cancelled` | How the latest run of the current version ended.                                                   |
-| `archived`                           | Put away. Hidden from lists and cannot start; history and runs are kept.                           |
+| Lifecycle                            | Meaning                                                                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `draft`                              | The current version has not been checked (no READY certificate yet).                                                                              |
+| `ready`                              | The current version has a READY or READY_WITH_CONDITIONS certificate. Every start checks it again.                                                |
+| `awaiting_approval`                  | A run is waiting for a person's decision.                                                                                                         |
+| `running`                            | A run is in progress, including one waiting on a timer.                                                                                           |
+| `paused`                             | New starts are held: the workflow, or the whole workspace, is paused.                                                                             |
+| `needs_attention`                    | The latest run escalated to a person (for example, a connector outcome XO could not confirm).                                                     |
+| `completed` / `failed` / `cancelled` | How the latest run of the current version ended. A run that was undone (compensated) counts as `cancelled` after a cancel and `failed` otherwise. |
+| `partially_completed`                | The latest run was a batch in which some items completed and the others failed (UW-7).                                                            |
+| `archived`                           | Put away. Hidden from lists and cannot start; history and runs are kept.                                                                          |
 
 The lifecycle is worked out from the stored facts every time it is read. No second copy of it is stored.
 
@@ -36,6 +37,8 @@ All paths are under `/workspaces/{workspaceId}`. The API document (`GET /openapi
 | `POST …/{id}/runs`                                           | Start the current version. XO presents the latest certificate for it.                                                                                                        | author                             |
 | `GET …/{id}/runs`, `GET …/{id}/runs/{runId}`                 | Runs of every version, and one run with its verified decisions.                                                                                                              | read                               |
 | `POST …/{id}/runs/{runId}/approvals/{approvalId}`            | Approve or reject a waiting step.                                                                                                                                            | review, and a recent sign-in       |
+| `POST …/{id}/runs/{runId}/cancel`                            | Cancel a run, a batch or one item of a batch (`docs/EFFECTS.md`).                                                                                                            | author                             |
+| `POST …/{id}/runs/{runId}/effects/{step}/reconciliation`     | Record what happened to a call whose outcome is unknown. Never re-sends.                                                                                                     | review, and a recent sign-in       |
 | `GET /intelligence/conversations/{conversationId}/workflows` | The workflows started from one of your conversations.                                                                                                                        | read, and you own the conversation |
 
 A typical thin client does the following:
@@ -63,6 +66,6 @@ engine's journal (`generated-runs/`). Each run records which workflow and versio
 
 - **Definitions.** Only generated, certified Workflow IR definitions can be a version today. Authored Studio graphs and
   composed-workflow runs join once UW-7 unifies the engines.
-- **Pausing.** Pausing holds new starts only. Holding or cancelling a run that is already in progress comes with UW-7.
+- **Pausing.** Pausing a workflow holds new starts only. To stop a run that is already in progress, cancel it (UW-7, ADR 0033).
 - **Sizes.** A workspace can hold up to 2,000 workflows, and each workflow up to 100 versions.
 - **Change feed.** The feed is not compacted yet.

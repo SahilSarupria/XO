@@ -52,7 +52,8 @@ export const GENERATION_CONSTRUCTS = {
   for_each: 'a goal that says the work is done for each item ("for each invoice"): one run per item, keys include the item index',
   extract:
     'a goal that says cases arrive as text: one quoted, model-assisted reading of the facts the rules need; structured input bypasses the model',
-  escalate: 'emitted by the runtime on a decide step with no matching rule, a timeout, or an unknown outcome',
+  escalate:
+    'after a human task, when the person reports it was not done (the workflow stops and goes back to a person); and by the runtime on a decide step with no matching rule, a timeout, or an unknown outcome',
 } as const;
 
 /** The operator's statement of how a declared operation is carried out (ADR 0030): which connector, which effect, which undo. */
@@ -568,7 +569,34 @@ export function lowerCandidateWorkflow(
         construct: 'approve',
         reason: `bound human_in_the_loop under its ${t.origin} human task contract: a person does it and confirms${deadline !== undefined ? '; the deadline is the one the source states' : ''}`,
       });
-      previous = p.id;
+      // UW-7 (ADR 0033, found by the engine-parity test): a person reporting that the task was NOT done stops the workflow and
+      // hands it back to a person. Without this the rest is skipped and the run would end "completed" although the work was not done.
+      const notDoneId = `${p.id}_not_done`.slice(0, 64);
+      steps.push({
+        id: notDoneId,
+        type: 'escalate',
+        determinism: 'human',
+        needs: [p.id],
+        inputs: { decision: { from: `steps.${p.id}.decision`, optional: true } },
+        runIf: "decision == 'rejected'",
+        target: t.actorRole.derivation === 'stated' ? sanitizeSummary(t.actorRole.value) : 'reviewer',
+        reason: sanitizeSummary(
+          `A person reported that "${p.cs.capabilityName}" was not done as instructed, so the rest of the workflow did not run`,
+        ),
+        timeoutMs: STEP_TIMEOUT_DECIDE_MS,
+        description: sanitizeSummary(`${p.cs.capabilityName}: not done`),
+        ...prov,
+      });
+      rationale.push({
+        stepId: notDoneId,
+        capabilityId: p.cs.capabilityId,
+        capabilityName: p.cs.capabilityName,
+        construct: 'escalate',
+        reason: 'a person reported the task was not done: the workflow stops and goes back to a person instead of ending as completed',
+      });
+      // What follows needs the escalation (which is skipped when the task was done): a refused task therefore stops the run before
+      // anything after it is even considered, and no later step ever reads the decision of a task that was skipped.
+      previous = notDoneId;
       lastHuman = p.id;
       continue;
     }

@@ -54,6 +54,10 @@ export const AUDIT_EVENT_TYPES = [
   'generated-workflow.effect.denied',
   // UW-2 (ADR 0032): the Workflow entity — created (from a conversation or the API), a new version, and every other change
   // (rename, pause, resume, archive, restore; the change is in metadata.event).
+  // UW-7 (ADR 0024, ADR 0033): a run (or batch) cancel request, applied now or by the run's driver; a person's record of what
+  // happened to a call whose outcome was unknown.
+  'generated-workflow.run.cancelled',
+  'generated-workflow.effect.reconciled',
   'workflow-entity.created',
   'workflow-entity.version.added',
   'workflow-entity.updated',

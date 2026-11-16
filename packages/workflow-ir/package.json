@@ -12,7 +12,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./schema/workflow-1.0.schema.json": "./schema/workflow-1.0.schema.json"
+    "./schema/workflow-1.0.schema.json": "./schema/workflow-1.0.schema.json",
+    "./conformance/foreach-vectors-1.0.json": "./conformance/foreach-vectors-1.0.json",
+    "./conformance/semantics-vectors-1.0.json": "./conformance/semantics-vectors-1.0.json"
   },
   "files": [
     "dist",

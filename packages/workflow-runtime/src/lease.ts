@@ -1,6 +1,6 @@
 import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { RUN_ID, type JournalEntry, type RunStore, type RunStoreLike } from './journal.js';
+import { RUN_ID, type CancelRequest, type JournalEntry, type RunStore, type RunStoreLike } from './journal.js';
 
 /**
  * Run ownership with fencing tokens.
@@ -209,5 +209,12 @@ export class LeasedRunStore implements RunStoreLike {
   }
   list(): Promise<string[]> {
     return this.store.list();
+  }
+  /** Not fenced: recording a cancel request is how someone without the lease asks the holder to stop (ADR 0024). */
+  requestCancel(runId: string, request: CancelRequest): Promise<{ readonly recorded: boolean; readonly request: CancelRequest }> {
+    return this.store.requestCancel(runId, request);
+  }
+  cancelRequest(runId: string): Promise<CancelRequest | undefined> {
+    return this.store.cancelRequest(runId);
   }
 }

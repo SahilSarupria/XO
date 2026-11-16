@@ -13,6 +13,8 @@ export * from './structured-comparison-resolver.js';
 export * from './action-escalation-resolver.js';
 // PX-5: the one human-task contract rule (ADR 0029 decision 11).
 export * from './human-task.js';
+// UW-7 (ADR 0033): derived effect class and typed outputs.
+export * from './effect-class.js';
 export * from './resolve-binding.js';
 export * from './standard-resolvers.js';
 export * from './contract-extract.js';
