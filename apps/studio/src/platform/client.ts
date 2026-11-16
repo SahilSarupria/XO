@@ -1,4 +1,19 @@
 import {
+  parseConnectionAnswer,
+  parseConnectionList,
+  parseConnectionOptions,
+  parseConsent,
+  parseDriveAccounts,
+  parseDriveFolders,
+  type DriveAccount,
+  type DriveFolder,
+  type DriveProvider,
+  type Pairing,
+  type SourceConnectionDetail,
+  type SourceConnectionOptions,
+  type SourceConnectionSummary,
+} from './wire-sources';
+import {
   parseWorkflowChanges,
   parseWorkflowDetail,
   parseWorkflowPage,
@@ -921,6 +936,79 @@ export class XoClient {
       `/workspaces/${enc(ws)}/source-connections/${enc(connectionId)}/proposals/${enc(proposalId)}/decision`,
       () => true as const,
       { body: JSON.stringify({ decision }), contentType: 'application/json' },
+    );
+  }
+  // ---- UW-12a: the workspace's source connections (docs/SOURCE_CONNECTIONS.md). The server decides every action again.
+  sourceConnectionOptions(ws: string): Promise<Result<SourceConnectionOptions>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/source-connections/options`, parseConnectionOptions);
+  }
+  listSourceConnections(ws: string): Promise<Result<SourceConnectionSummary[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/source-connections`, parseConnectionList);
+  }
+  getSourceConnection(ws: string, id: string): Promise<Result<SourceConnectionDetail>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/source-connections/${enc(id)}`, (b) => parseConnectionAnswer(b).connection);
+  }
+  /** Connects a folder, a drive folder, or (agent_folder) a folder on another computer, which answers a one-time pairing code. */
+  createSourceConnection(
+    ws: string,
+    body:
+      | { readonly kind: 'local_folder'; readonly root: string }
+      | { readonly kind: 'microsoft_drive' | 'google_drive'; readonly credentialId: string; readonly folder: string }
+      | { readonly kind: 'agent_folder' },
+  ): Promise<Result<{ readonly connection: SourceConnectionDetail; readonly pairing?: Pairing }>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/source-connections`, parseConnectionAnswer, this.json(body));
+  }
+  /** Sync now. For a folder on another computer this asks its agent, which syncs within about a minute. */
+  syncSourceConnection(ws: string, id: string): Promise<Result<SourceConnectionDetail>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/source-connections/${enc(id)}/sync`,
+      (b) => parseConnectionAnswer(b).connection,
+      this.json({}),
+    );
+  }
+  changeSourceConnection(ws: string, id: string, action: 'pause' | 'resume' | 'retire'): Promise<Result<SourceConnectionDetail>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/source-connections/${enc(id)}/${action}`,
+      (b) => parseConnectionAnswer(b).connection,
+      this.json({}),
+    );
+  }
+  scheduleSourceConnection(
+    ws: string,
+    id: string,
+    sync: { readonly mode: 'manual' } | { readonly mode: 'interval'; readonly everyMinutes: number },
+  ): Promise<Result<SourceConnectionDetail>> {
+    return this.call(
+      'PUT',
+      `/workspaces/${enc(ws)}/source-connections/${enc(id)}/schedule`,
+      (b) => parseConnectionAnswer(b).connection,
+      this.json({ sync }),
+    );
+  }
+  /** A new pairing code for a folder on another computer; the agent paired before stops working at once. */
+  pairSourceAgent(ws: string, id: string): Promise<Result<{ readonly connection: SourceConnectionDetail; readonly pairing?: Pairing }>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/source-connections/${enc(id)}/agent/pair`, parseConnectionAnswer, this.json({}));
+  }
+  driveFolders(ws: string, provider: DriveProvider, credentialId: string, parent?: string): Promise<Result<DriveFolder[]>> {
+    const q = new URLSearchParams({ provider, credentialId, ...(parent !== undefined ? { parent } : {}) });
+    return this.call('GET', `/workspaces/${enc(ws)}/source-connections/drive-folders?${q.toString()}`, parseDriveFolders);
+  }
+  /** The workspace's accounts that can read files. */
+  driveAccounts(ws: string): Promise<Result<DriveAccount[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/credentials`, parseDriveAccounts);
+  }
+  /** Starts consent for read-only file access; the person finishes it at the provider, in their browser. */
+  startDriveConsent(
+    ws: string,
+    provider: DriveProvider,
+  ): Promise<Result<{ readonly authorizationUrl: string; readonly expiresAt: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/credentials/oauth`,
+      parseConsent,
+      this.json({ provider, capabilities: ['files.read'] }),
     );
   }
   /** The workflows created from one of the caller's own conversations. */

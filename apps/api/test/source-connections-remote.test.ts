@@ -19,6 +19,7 @@ import type { WorkspaceDataConfig } from '../src/workspace/workspace-context.js'
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
 import { runDueSchedules } from '../src/workflow-controls/scheduler.js';
 import { pairCommand, runOnce } from '../../cli/src/commands/agent/index.js';
+import { agentLoop } from '../../cli/src/commands/agent/loop.js';
 import { TestServer, withTempDir } from './test-helpers.js';
 
 const DRIVE = 'https://www.googleapis.com/auth/drive.readonly';
@@ -164,6 +165,23 @@ async function withDrive(
 
 test('Google Drive: choose a folder, sync it through the broker, discover roles; the token never leaves the request header', async () => {
   await withDrive(async ({ server, base, seen, drive, credentialId }) => {
+    // What a client may offer here: Google is set up, Microsoft is not, no local folders, and no public address for an agent.
+    const options = await server.request('GET', `${base}/source-connections/options`);
+    assert.equal(options.status, 200, options.bodyText);
+    assert.deepEqual(options.json(), {
+      localFolder: { available: false },
+      drives: [
+        {
+          provider: 'microsoft',
+          kind: 'microsoft_drive',
+          displayName: 'OneDrive or SharePoint',
+          available: false,
+          reason: 'provider_not_configured',
+        },
+        { provider: 'google', kind: 'google_drive', displayName: 'Google Drive', available: true },
+      ],
+      agent: { available: true },
+    });
     const browse = await server.request('GET', `${base}/source-connections/drive-folders?provider=google&credentialId=${credentialId}`);
     assert.equal(browse.status, 200, browse.bodyText);
     assert.equal(browse.json<{ folders: { ref: string }[] }>().folders[0]?.ref, 'root');
@@ -302,6 +320,12 @@ async function withAgent(
 
 test('agent: a one-time pairing code, then the agent syncs the folder from its own computer; nothing hidden is sent', async () => {
   await withAgent(async ({ server, base, home, folder }) => {
+    const opts = (await server.request('GET', `${base}/source-connections/options`)).json<{
+      agent: { serverAddress?: string };
+      drives: { reason?: string }[];
+    }>();
+    assert.equal(opts.agent.serverAddress, 'https://xo.acme.example');
+    assert.ok(opts.drives.every((d) => d.reason === 'connections_not_configured' || d.reason === 'provider_not_configured'));
     const made = await server.request('POST', `${base}/source-connections`, { kind: 'agent_folder' });
     assert.equal(made.status, 201, made.bodyText);
     const { connection, pairing } = made.json<{
@@ -429,6 +453,67 @@ test('agent protocol refusals: wrong token, forged digest, paths outside the fol
     await server.request('POST', `${base}/source-connections/${made.connection.connectionId}/retire`, {});
     assert.equal((await call('/agent/v1/manifest', { method: 'GET' }, cfg2.token)).status, 410);
     await assert.rejects(runOnce(config, agentHttp), /retired/);
+  });
+});
+
+async function until(what: string, check: () => boolean | Promise<boolean>, ms = 15_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > end) throw new Error(`timed out waiting for: ${what}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+test('agent loop: a change is sent within seconds, XO being unreachable is waited out, "Sync now" is picked up, retiring stops it', async () => {
+  await withAgent(async ({ server, base, home, folder }) => {
+    const made = (await server.request('POST', `${base}/source-connections`, { kind: 'agent_folder' })).json<{
+      connection: { connectionId: string };
+      pairing: { code: string };
+    }>();
+    const config = join(home, 'agent.json');
+    await pairCommand({ server: server.baseUrl, code: made.pairing.code, folder, config }, agentHttp);
+    const keys = async () =>
+      (await server.request('GET', `${base}/source-connections/${made.connection.connectionId}`))
+        .json<{ connection: { items: { key: string }[] } }>()
+        .connection.items.map((i) => i.key);
+    const logs: string[] = [];
+    let down = false;
+    const flaky: AgentHttp = (url, init) => (down ? Promise.reject(new Error('connect ECONNREFUSED')) : agentHttp(url, init));
+    const stop = new AbortController();
+    const running = agentLoop(
+      config,
+      { http: flaky, log: (l) => logs.push(l) },
+      { signal: stop.signal, checkMs: 200, debounceMs: 100, minGapMs: 100, firstBackoffMs: 100, maxBackoffMs: 400 },
+    );
+    running.catch(() => undefined);
+    try {
+      await until('the first sync', () => logs.some((l) => l.includes('synced (start)')));
+      assert.ok(logs.some((l) => l.startsWith('watching Renewals')));
+      // A new file is sent soon after it appears, without waiting for the 15-minute schedule.
+      await writeFile(join(folder, 'Certificates', 'Venky Iyengar.pdf'), PDF('venky'));
+      await until('the new file', async () => (await keys()).includes('Certificates/Venky Iyengar.pdf'));
+      assert.ok(logs.some((l) => l.includes('synced (change)')));
+      // A hidden file changing does not cause a sync.
+      const before = logs.length;
+      await writeFile(join(folder, '.DS_Store'), 'x');
+      await new Promise((r) => setTimeout(r, 400));
+      assert.equal(logs.slice(before).filter((l) => l.includes('synced')).length, 0);
+      // XO unreachable: the agent waits and tries again, and the change arrives once XO is back.
+      down = true;
+      await writeFile(join(folder, 'renewals.csv'), 'Client name,Email\nZoya Khan,zoya@clientmail.in\n');
+      await until('a failed attempt', () => logs.some((l) => l.includes('could not sync')));
+      down = false;
+      await until('the change after XO is back', async () => (await keys()).includes('renewals.csv'));
+      // "Sync now" in XO reaches the agent at its next check.
+      assert.equal((await server.request('POST', `${base}/source-connections/${made.connection.connectionId}/sync`, {})).status, 202);
+      await until('the asked-for sync', () => logs.some((l) => l.includes('synced (asked in XO)')));
+      // Retiring the connection stops the agent for good.
+      await server.request('POST', `${base}/source-connections/${made.connection.connectionId}/retire`, {});
+      await assert.rejects(running, /retired/);
+    } finally {
+      stop.abort();
+      await running.catch(() => undefined);
+    }
   });
 });
 

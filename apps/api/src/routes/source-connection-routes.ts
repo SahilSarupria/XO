@@ -2,6 +2,7 @@
  * UW-12a (ADR 0038) — workspace source connections over HTTP.
  *
  *   GET  /workspaces/:ws/source-connections                       list (read role)
+ *   GET  /workspaces/:ws/source-connections/options               what this instance can connect: folders, drives, the agent (read)
  *   POST /workspaces/:ws/source-connections                       connect a folder (manage role, recent sign-in); syncs it at once
  *   GET  /workspaces/:ws/source-connections/:id                   detail: files, freshness, last sync, proposed roles (read role)
  *   POST /workspaces/:ws/source-connections/:id/sync              sync now (author role)
@@ -270,6 +271,35 @@ export function registerSourceConnectionRoutes(
     }
     const synced = await syncConnection(deps(req, w), created.connectionId, now);
     return json(201, { connection: detailView(synced) });
+  });
+
+  // What this instance can connect, so a client offers only that. Registered before `/:id` (as is drive-folders).
+  router.get(`${BASE}/options`, async (req) => {
+    const w = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, w, 'read', dataConfig);
+    let creds: Awaited<ReturnType<NonNullable<WorkspaceDataConfig['credentials']>>>;
+    try {
+      creds = await dataConfig.credentials?.();
+    } catch {
+      creds = undefined;
+    }
+    const drive = (provider: 'microsoft' | 'google', displayName: string) => ({
+      provider,
+      kind: provider === 'microsoft' ? 'microsoft_drive' : 'google_drive',
+      displayName,
+      available: creds !== undefined && creds.clients[provider] !== undefined,
+      ...(creds === undefined
+        ? { reason: 'connections_not_configured' }
+        : creds.clients[provider] === undefined
+          ? { reason: 'provider_not_configured' }
+          : {}),
+    });
+    const server = env['XO_PUBLIC_BASE_URL']?.replace(/\/+$/, '');
+    return json(200, {
+      localFolder: { available: sourceFolderRoots(env).length > 0 },
+      drives: [drive('microsoft', 'OneDrive or SharePoint'), drive('google', 'Google Drive')],
+      agent: { available: true, ...(server !== undefined && server !== '' ? { serverAddress: server } : {}) },
+    });
   });
 
   // Registered before `/:id`, so `drive-folders` is never read as a connection id.

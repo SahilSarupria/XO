@@ -525,7 +525,9 @@ export function WorkspaceView(props: {
           onChanged={refreshAll}
         />
       ) : null}
-      {view === 'connect' ? <ConnectSection /> : null}
+      {view === 'connect' ? (
+        <ConnectSection workspaceId={ws} {...(props.workspace.role !== undefined ? { role: props.workspace.role } : {})} />
+      ) : null}
       {view === 'knowledge' ? <KnowledgeSection /> : null}
       {view === 'activity' ? (
         executions.state.phase === 'loading' ? (

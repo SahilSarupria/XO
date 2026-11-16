@@ -89,13 +89,32 @@ the folder to XO. It only ever calls out to XO, so nothing needs to be opened on
 
    ```bash
    xo agent pair --server https://xo.example.com --code ABCD-EFGH-JKMN-PQRS --folder ~/Documents/Renewals
-   xo agent run
+   xo agent install
    ```
+
+   The address is `XO_PUBLIC_BASE_URL`; set it on the instance so Studio and the API fill it in.
 
 2. **The code works once and for 15 minutes.** Pairing exchanges it for a token that belongs to this one connection. The agent saves
    it in `~/.xo/agent.json`, readable by its owner only, and refuses to start if anyone else can read it.
-3. **The agent keeps it current.** It checks in every minute and sends the folder every 15 minutes, or at once when someone presses
-   "Sync now" (which answers 202: the agent does the sync). `xo agent status` shows what it last did.
+3. **It starts by itself.** `xo agent install` starts the agent now and at every sign-in, without administrator rights:
+
+   | Computer | How                                                                                                        | Its log                         |
+   | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- |
+   | macOS    | A LaunchAgent (`~/Library/LaunchAgents/com.xo.agent.plist`), loaded with `launchctl bootstrap gui/<uid>`   | `~/.xo/agent.log`               |
+   | Linux    | A systemd user unit (`~/.config/systemd/user/xo-agent.service`), `systemctl --user enable --now`           | `journalctl --user -u xo-agent` |
+   | Windows  | A hidden script in the person's Startup folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) | `~/.xo/agent.log`               |
+
+   macOS and Linux restart it if it crashes; Windows starts it again at the next sign-in. `xo agent uninstall` removes it, and
+   `xo agent run` runs it in a terminal instead.
+
+4. **It sends changes as they happen.** The agent watches the folder and syncs a few seconds after something changes (once the
+   folder has been quiet for 5 seconds, at most every 15 seconds). It also syncs every 15 minutes, which covers anything a watch can
+   miss (a network drive, changes made while the computer slept), and within a minute when someone presses "Sync now" in XO (which
+   answers 202: the agent does the sync). Changes to hidden files and Office lock files do not wake it.
+5. **It rides out a lost connection.** When XO cannot be reached, the agent waits and tries again, longer each time, up to 15
+   minutes. It stops only when the connection is retired, the agent is paired again elsewhere, or the folder is gone; run as a
+   service, that is a clean stop, so it is not restarted. `xo agent status` shows what it last did, and one agent runs per
+   configuration.
 
 **What the agent sends:** it lists the folder on the computer with the same rules as a local folder, so hidden files, links and
 credential-looking names are counted there and never leave the computer. It works out each file's SHA-256, uploads only the files XO
@@ -196,7 +215,20 @@ knowledge base.
 
 The message names files and folders you connected, never a cell value.
 
-**In Studio:**
+**In Studio**, Connect lists the workspace's folders and drives with their freshness, and connects new ones:
+
+- **A folder on a computer.** "Connect a computer's folder" shows the pairing code and the two commands to run on that computer,
+  with the address filled in, and carries on by itself once the agent pairs.
+- **A drive.** "Connect Google Drive" (or OneDrive or SharePoint) connects an account with read-only access, in the person's browser,
+  then lets them browse the drive and connect one folder.
+- **A folder on the XO server**, where the instance allows one.
+- **For each connection:** sync now, pause or resume, how often it syncs, a new pairing code, retire (asked first), the last sync in
+  counts, the files, and what XO thinks they are, with "Yes, that's right" and "No".
+
+Only what the instance can do is offered: `GET …/source-connections/options` says whether local folders, each drive, and the agent
+are available, and the address an agent uses.
+
+**In Chat:**
 
 - **Starting it.** "What did XO find?" in Chat opens this conversation.
 - **Deciding.** Each proposal has "Yes, that's right" and "No".
@@ -213,7 +245,7 @@ can be connected again.
 
 - **Discovery is rule-based.** Lists without an email column are "tables". Name matching knows a fixed list of common short forms
   (mostly English and Indian names); a nickname it does not know matches only if it is the start of the name.
-- **The agent syncs every 15 minutes.** Changes are not watched on the computer, and the agent must be running to sync.
+- **The agent runs while the computer is on and signed in.** A computer that is off sends its changes when it next starts.
 - **Native Google formats other than Docs and Sheets** are not read, and Docs or Sheets over the 10 MB export limit fail.
 
 ## Provider facts and where they come from
