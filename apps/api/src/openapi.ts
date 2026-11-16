@@ -1189,6 +1189,88 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/credentials': {
+      get: {
+        summary: 'List the connection credentials of a workspace (UW-9; author role)',
+        'x-xo-permission': 'author',
+        description:
+          'Never returns a secret. Each entry: credentialId, kind (oauth2 | basic), provider, capabilities, the scopes the provider granted, the account label, state (active | revoked | expired), dates and why it ended. Tokens and passwords are sealed per workspace (AES-256-GCM under a key derived for the workspace) and only ever released, per call, to a connector the workspace bound to the credential.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: '{ credentials }' },
+          '503': { description: 'XO_CREDENTIALS_NOT_CONFIGURED: the instance has no credentials key' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/credentials/providers': {
+      get: {
+        summary: 'What can be connected here, and exactly which scopes each capability asks for (UW-9)',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': {
+            description:
+              '{ redirectUri, oauth: { provider, configured, capabilities: { capability, scopes }[], providerRevocation }[], basic }',
+          },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/credentials/oauth': {
+      post: {
+        summary: 'Start connecting an account with OAuth (authorization code + PKCE S256) (UW-9; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'Body { provider: google | microsoft, capabilities: ["message.send"], loginHint? }. XO asks for capabilities, never scope names: each maps to the narrowest scope (gmail.send; Mail.Send) plus identity. Returns the provider URL to open; the consent expires in 10 minutes and is completed by the provider redirecting the browser to GET /oauth/callback. A grant that lacks a needed scope or exceeds what was asked is refused and nothing is stored. Audited as credential.oauth.started, then credential.created or credential.oauth.failed.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: '{ authorizationUrl, provider, scopes, expiresAt }' },
+          '400': { description: 'Unknown provider or capability' },
+          '503': { description: 'No credentials key, or no OAuth client for that provider' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/credentials/basic': {
+      post: {
+        summary: 'Add a user name and app password for a server without OAuth (SMTP/IMAP) (UW-9; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'Body { provider: smtp | imap, capabilities, username, host, password, label? }. The password is sealed and never returned. Audited as credential.created.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '201': { description: '{ credential }' }, '400': { description: 'Invalid field' } },
+      },
+    },
+    '/workspaces/{workspaceId}/credentials/{credentialId}/rotate': {
+      post: {
+        summary: 'Replace the password of a basic credential (UW-9; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description: 'Body { password }. The old password is deleted from disk once the new one is written. Audited as credential.rotated.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'credentialId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ credential }' },
+          '404': { description: 'Not a credential of this workspace' },
+          '409': { description: 'Not active, or an OAuth credential (reconnect it instead)' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/credentials/{credentialId}/revoke': {
+      post: {
+        summary: 'Revoke a connection: at the provider when it can be, and always here (UW-9; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'Google grants are revoked at Google; Microsoft has no revocation endpoint for an app, so providerRevocation is not_available and consent must also be withdrawn in the account. Every stored version that held a secret is deleted either way, and nothing can use the credential again. Audited as credential.revoked.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'credentialId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ credential, providerRevocation: performed | not_available | failed | not_applicable }' },
+          '404': { description: 'Not a credential of this workspace' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/knowledge/states/{stateId}/executable': {
       get: {
         summary: 'Which records of a knowledge state may feed execution, and why the others may not (UW-4a, UAC-12)',
@@ -1402,7 +1484,7 @@ export const openApiDocument = {
       put: {
         summary: 'Replace the workspace connector bindings (ADR 0030)',
         description:
-          'Body `{ bindings, expectedRevision? }`. Needs the manage role and a recent sign-in. Every entry is validated field by field (at most 500; connector id `^[a-z][a-z0-9_]{0,63}$`; kind http | webhook_out | file | smtp | slack_webhook | database | mcp; sideEffect read | write | irreversible; database connectors read-only; a read has no compensation); unknown fields are a 400. A stale `expectedRevision` is a 412 XO_PRECONDITION_FAILED. Audited as connector-bindings.updated. Changing a binding makes every certificate that bound it stale.',
+          'Body `{ bindings, expectedRevision? }`. Needs the manage role and a recent sign-in. UW-9: a binding may name `credentialId`, an active connection credential of this workspace; the adapter is lent it per call through the credential broker (never the secret itself). Every entry is validated field by field (at most 500; connector id `^[a-z][a-z0-9_]{0,63}$`; kind http | webhook_out | file | smtp | slack_webhook | database | mcp; sideEffect read | write | irreversible; database connectors read-only; a read has no compensation); unknown fields are a 400. A stale `expectedRevision` is a 412 XO_PRECONDITION_FAILED. Audited as connector-bindings.updated. Changing a binding makes every certificate that bound it stale.',
         'x-xo-permission': 'manage',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {

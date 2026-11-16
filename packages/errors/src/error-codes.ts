@@ -318,6 +318,12 @@ export const ErrorCode = {
   // ADR 0031 — the certified definition uses constructs (act, wait, branch, compensate, for_each, extract) only the Workflow IR
   // runtime executes; it starts through POST …/generated-workflows/{definitionId}/runs, never through the composed-workflow runner.
   WORKFLOW_REQUIRES_IR_RUNTIME: 'XO_WORKFLOW_REQUIRES_IR_RUNTIME',
+  // UW-9 — connection credentials and OAuth.
+  CREDENTIALS_NOT_CONFIGURED: 'XO_CREDENTIALS_NOT_CONFIGURED',
+  CREDENTIAL_NOT_ACTIVE: 'XO_CREDENTIAL_NOT_ACTIVE',
+  CREDENTIAL_SCOPE_REFUSED: 'XO_CREDENTIAL_SCOPE_REFUSED',
+  OAUTH_STATE_INVALID: 'XO_OAUTH_STATE_INVALID',
+  OAUTH_PROVIDER_REFUSED: 'XO_OAUTH_PROVIDER_REFUSED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

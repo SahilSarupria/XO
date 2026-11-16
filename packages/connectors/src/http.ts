@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { isPrivateAddress } from './net.js';
+import { egress, type EgressDeps } from './egress.js';
 import { ConnectorError, type Connector, type Json } from './types.js';
 
 export interface HttpConfig {
@@ -20,6 +21,8 @@ export interface HttpConfig {
 export interface HttpDeps {
   readonly fetch?: typeof fetch;
   readonly resolve?: (host: string) => Promise<readonly string[]>;
+  /** The pinned egress transport (tests): handed the vetted address, it must connect there. */
+  readonly transport?: EgressDeps['transport'];
 }
 
 const defaultResolve = async (host: string): Promise<string[]> => (await lookup(host, { all: true })).map((r) => r.address);
@@ -56,7 +59,7 @@ export function httpConnector(cfg: HttpConfig, deps: HttpDeps = {}): Connector {
   const base = new URL(cfg.baseUrl);
   if (base.protocol !== 'https:' && !(cfg.allowPrivateNetwork === true && base.protocol === 'http:'))
     throw new Error('http connector: baseUrl must be https');
-  const doFetch = deps.fetch ?? fetch;
+  const doFetch = deps.fetch ?? fetch; // used only when a transport is injected
   const resolve = deps.resolve ?? defaultResolve;
 
   async function run(
@@ -84,11 +87,6 @@ export function httpConnector(cfg: HttpConfig, deps: HttpDeps = {}): Connector {
         url.searchParams.set(k, String(v));
       }
     }
-    if (cfg.allowPrivateNetwork !== true) {
-      const addrs = isIP(base.hostname) !== 0 ? [base.hostname.replace(/^\[|\]$/g, '')] : await resolve(base.hostname);
-      if (addrs.length === 0 || addrs.some(isPrivateAddress))
-        throw new ConnectorError('DENIED', `host ${base.hostname} resolves to a private or unresolvable address`);
-    }
     const headers: Record<string, string> = { accept: 'application/json, text/plain;q=0.5' };
     let body: string | undefined;
     if (write && args['body'] !== undefined) {
@@ -98,6 +96,36 @@ export function httpConnector(cfg: HttpConfig, deps: HttpDeps = {}): Connector {
     }
     if (write && ctx.idempotencyKey !== undefined) headers['idempotency-key'] = ctx.idempotencyKey;
     if (cfg.bearerSecret !== undefined) headers['authorization'] = `Bearer ${ctx.secret(cfg.bearerSecret)}`;
+    if (deps.fetch === undefined) {
+      // UW-9: the default transport is `egress`: the address is vetted and then PINNED for the connection, so a DNS answer that
+      // changes between the check and the connect (rebinding) cannot send the request somewhere else.
+      const r = await egress(
+        { url: url.toString(), method: method as 'GET', headers, ...(body !== undefined ? { body } : {}), signal: ctx.signal },
+        {
+          allowedHosts: [base.hostname],
+          ...(base.port !== '' ? { allowedPorts: [Number(base.port)] } : {}),
+          ...(cfg.allowPrivateNetwork === true ? { allowPrivateNetwork: true } : {}),
+          maxRequestBytes: cfg.maxRequestBytes ?? 1_048_576,
+          maxResponseBytes: cfg.maxResponseBytes,
+        },
+        { resolve, ...(deps.transport !== undefined ? { transport: deps.transport } : {}) },
+      );
+      let parsedBody: Json = r.body;
+      if ((r.headers['content-type'] ?? '').includes('json'))
+        try {
+          parsedBody = JSON.parse(r.body) as Json;
+        } catch {
+          parsedBody = r.body;
+        }
+      if (r.status >= 500) throw new ConnectorError('FAILED', `upstream status ${r.status}`);
+      return { status: r.status, ok: r.status < 400, body: parsedBody };
+    }
+    // An injected `fetch` (tests, a host with its own transport) keeps the resolve-then-check guard.
+    if (cfg.allowPrivateNetwork !== true) {
+      const addrs = isIP(base.hostname) !== 0 ? [base.hostname.replace(/^\[|\]$/g, '')] : await resolve(base.hostname);
+      if (addrs.length === 0 || addrs.some(isPrivateAddress))
+        throw new ConnectorError('DENIED', `host ${base.hostname} resolves to a private or unresolvable address`);
+    }
     const res = await doFetch(url, { method, headers, ...(body !== undefined ? { body } : {}), redirect: 'manual', signal: ctx.signal });
     if (res.status >= 300 && res.status < 400)
       throw new ConnectorError('DENIED', `redirect (${res.status}) refused; redirects could leave the allowed origin`);

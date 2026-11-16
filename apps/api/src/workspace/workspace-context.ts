@@ -1,3 +1,4 @@
+import type { CredentialsConfig } from '../credentials/credentials.js';
 import { PackageValidator, type PackageTrustPolicy } from '@xo/package-sdk';
 import type { AuditAnchorSink } from '../audit/anchor.js';
 import type { CompileExtraction } from '../compilations/extraction-tiers.js';
@@ -24,6 +25,11 @@ import type { ExternalToolAdapter } from '@xo/adapters';
 
 export interface WorkspaceDataConfig {
   readonly dataRootDir: string;
+  /**
+   * UW-9 — connection credentials (master key, OAuth clients, callback address), resolved once on first use. Absent: loaded from
+   * the environment by whoever needs it (`loadCredentialsConfig`).
+   */
+  readonly credentials?: () => Promise<CredentialsConfig | undefined>;
   /**
    * P1.0 M5 — the effective package trust policy, resolved once at startup from operator configuration (`XO_PACKAGE_TRUST_POLICY`, or the explicit `XO_TRUST_MODE=development`). REQUIRED: there is no default, so a route can never run with trust silently off. Never derived from request data.
    */

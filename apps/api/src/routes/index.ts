@@ -10,6 +10,8 @@ import { registerCompilerRoutes } from './compiler/compiler-routes.js';
 import { registerWorkspaceRoutes } from './workspace-routes.js';
 import { registerSourceRoutes, type SourceRouteOptions } from './source-routes.js';
 import { registerCompilationRoutes } from './source-compilation-routes.js';
+import { registerCredentialRoutes } from './credential-routes.js';
+import { loadCredentialsConfig, type CredentialsConfig } from '../credentials/credentials.js';
 import { registerKnowledgeRoutes } from './knowledge-routes.js';
 import { registerPreExecutionRoutes } from './pre-execution-routes.js';
 import { registerReadinessRoutes } from './readiness-routes.js';
@@ -147,6 +149,14 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {},
   );
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  {
+    // UW-9: connection credentials. Loaded once (the key file in development, the instance key in production).
+    let loaded: Promise<CredentialsConfig | undefined> | undefined;
+    const credentials =
+      deps.workspaceDataConfig.credentials ??
+      (() => (loaded ??= loadCredentialsConfig(deps.workspaceDataConfig.dataRootDir, deps.env ?? process.env)));
+    registerCredentialRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, credentials);
+  }
   registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, {
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
     ...(deps.residency !== undefined ? { residency: deps.residency } : {}),

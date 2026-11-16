@@ -28,7 +28,7 @@ export function parseConnectorBindings(v: unknown): ConnectorBinding[] {
     if (typeof x !== 'object' || x === null) return bad(`bindings[${i}] must be an object`);
     const o = x as Record<string, unknown>;
     const extra = Object.keys(o).filter(
-      (k) => !['capability', 'connector', 'kind', 'operation', 'sideEffect', 'compensation', 'adapter'].includes(k),
+      (k) => !['capability', 'connector', 'kind', 'operation', 'sideEffect', 'compensation', 'adapter', 'credentialId'].includes(k),
     );
     if (extra.length > 0) bad(`bindings[${i}] has unknown field(s): ${extra.join(', ')}`);
     const str = (k: string, re?: RegExp, max = 200): string => {
@@ -67,6 +67,7 @@ export function parseConnectorBindings(v: unknown): ConnectorBinding[] {
       sideEffect: sideEffect as ConnectorBinding['sideEffect'],
       ...(compensation !== undefined ? { compensation } : {}),
       adapter: str('adapter', /^[A-Za-z0-9_.:-]{1,128}$/, 128),
+      ...(o['credentialId'] !== undefined ? { credentialId: str('credentialId', /^crd_[0-9a-f]{24}$/, 28) } : {}),
     };
   });
 }
