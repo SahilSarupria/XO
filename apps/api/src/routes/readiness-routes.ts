@@ -1,5 +1,6 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { actorFromPrincipal } from '@xo/audit';
+import type { AuthenticatedPrincipal } from '@xo/permissions';
 import {
   assessReadiness,
   lowerCandidateWorkflow,
@@ -105,6 +106,56 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
   };
 }
 
+/**
+ * Issues a readiness certificate for a generated workflow, as it is now. Callers check the author role (and, when an unstated
+ * step order is accepted, the review role and a recent sign-in) first. Shared with the Workflow entity route (UW-2).
+ */
+export async function issueCertificate(
+  deps: { readonly workspace: WorkspaceRecord; readonly dataConfig: WorkspaceDataConfig; readonly audit: AuditService },
+  actor: AuthenticatedPrincipal,
+  definition: WorkflowDefinitionRecord,
+  accept: boolean,
+  correlationId: string,
+): Promise<WorkflowReadinessCertificate> {
+  const { workspace, dataConfig, audit } = deps;
+  const now = await currentReadiness(workspace, dataConfig, definition);
+  const candidate = now.ctx.workflows.find((w) => w.id === definition.candidateWorkflowId)!;
+  const certificate = assessReadiness({
+    artifact: now.ctx.artifact,
+    sourceQuality: now.ctx.sourceQuality,
+    completeness: now.ctx.completeness,
+    inventory: now.ctx.inventory,
+    candidate,
+    lowered: now.lowered,
+    goal: definition.goal,
+    ...(now.scope !== undefined ? { scope: now.scope } : {}),
+    ...(now.ctx.knowledge !== undefined ? { knowledge: now.ctx.knowledge } : {}),
+    ...(accept ? { accepted: { ambiguousStepOrder: true } } : {}),
+    decisionDigests: now.ctx.decisionDigests,
+    connectorBindings: [...now.ctx.connectorBindings.values()],
+    compilationId: definition.compilationId,
+    definitionId: definition.definitionId,
+    issuedBy: { id: actor.id, kind: actor.kind },
+    issuedAt: new Date().toISOString(),
+  });
+  if (now.lowered.definitionDigest !== definition.lowered.definitionDigest)
+    throw new XoError(
+      ErrorCode.READINESS_CERTIFICATE_REFUSED,
+      `generated workflow ${definition.definitionId} no longer matches what its compilation lowers to today; generate it again`,
+    );
+  await workspaceCertificatesStore(workspace, dataConfig).put(certificate.certificateId, certificate);
+  await audit.tryRecord({
+    action: 'readiness.certify',
+    actor: actorFromPrincipal(actor),
+    correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+    type: 'readiness.certificate.issued',
+    outcome: 'completed',
+    metadata: { certificateId: certificate.certificateId, status: certificate.status, definitionId: definition.definitionId },
+  });
+  return certificate;
+}
+
 export function registerReadinessRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -131,42 +182,13 @@ export function registerReadinessRoutes(
       await requireRecentAuthentication(req, workspace, dataConfig, 'accept an unstated step order');
     }
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
-    const now = await currentReadiness(workspace, dataConfig, definition);
-    const candidate = now.ctx.workflows.find((w) => w.id === definition.candidateWorkflowId)!;
-    const actor = requirePrincipal(req);
-    const certificate = assessReadiness({
-      artifact: now.ctx.artifact,
-      sourceQuality: now.ctx.sourceQuality,
-      completeness: now.ctx.completeness,
-      inventory: now.ctx.inventory,
-      candidate,
-      lowered: now.lowered,
-      goal: definition.goal,
-      ...(now.scope !== undefined ? { scope: now.scope } : {}),
-      ...(now.ctx.knowledge !== undefined ? { knowledge: now.ctx.knowledge } : {}),
-      ...(accept === true ? { accepted: { ambiguousStepOrder: true } } : {}),
-      decisionDigests: now.ctx.decisionDigests,
-      connectorBindings: [...now.ctx.connectorBindings.values()],
-      compilationId: definition.compilationId,
-      definitionId: definition.definitionId,
-      issuedBy: { id: actor.id, kind: actor.kind },
-      issuedAt: new Date().toISOString(),
-    });
-    if (now.lowered.definitionDigest !== definition.lowered.definitionDigest)
-      throw new XoError(
-        ErrorCode.READINESS_CERTIFICATE_REFUSED,
-        `generated workflow ${definition.definitionId} no longer matches what its compilation lowers to today; generate it again`,
-      );
-    await workspaceCertificatesStore(workspace, dataConfig).put(certificate.certificateId, certificate);
-    await audit.tryRecord({
-      action: 'readiness.certify',
-      actor: actorFromPrincipal(actor),
+    const certificate = await issueCertificate(
+      { workspace, dataConfig, audit },
+      requirePrincipal(req),
+      definition,
+      accept === true,
       correlationId,
-      target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
-      type: 'readiness.certificate.issued',
-      outcome: 'completed',
-      metadata: { certificateId: certificate.certificateId, status: certificate.status, definitionId: definition.definitionId },
-    });
+    );
     return json(201, certificate);
   }
 

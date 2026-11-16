@@ -180,6 +180,37 @@ describe('Ask XO is backed by the platform', () => {
     expect(screen.getAllByText(/private to you|visible only to you/).length).toBeGreaterThan(0);
   });
 
+  it('UW-2: reopening a conversation on the full Chat screen shows the workflows it started, in plain words', async () => {
+    const api = new FakeXo();
+    const user = await home(api);
+    await user.type(await screen.findByLabelText('Ask XO'), 'ship a release{enter}');
+    await screen.findByText('Here is an answer.');
+    const conversationId = api.studio.chats[0]!.threadId;
+    api.studio.conversationWorkflows[conversationId] = [
+      {
+        workflowId: `wfl_${'a'.repeat(32)}`,
+        name: 'Release for Monday',
+        lifecycle: 'awaiting_approval',
+        revision: 1,
+        currentVersion: 1,
+        pendingApprovals: 1,
+        conversationId,
+        paused: false,
+        archived: false,
+        updatedAt: '2026-11-16T00:00:00Z',
+      },
+    ];
+    await user.keyboard('{Escape}');
+    await user.keyboard('{Control>}k{/Control}');
+    await user.type(await screen.findByRole('combobox', { name: 'Type a command' }), 'full chat{Enter}');
+    const nav = await screen.findByRole('navigation', { name: 'Conversations' });
+    await user.click(await within(nav).findByRole('button', { name: 'ship a release' }));
+    const list = await screen.findByRole('list', { name: 'Workflows from this conversation' });
+    expect(within(list).getByText(/Release for Monday/)).toBeInTheDocument();
+    expect(within(list).getByText('Waiting for approval')).toBeInTheDocument();
+    expect(within(list).getByText(/1 to approve/)).toBeInTheDocument();
+  });
+
   it('Ctrl+J, Escape and the palette still reach the bar from other pages', async () => {
     const api = new FakeXo();
     const user = await home(api);

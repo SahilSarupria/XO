@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Attachable } from '../domain/chat';
 import type { ApiProblem } from '../platform/client';
 import type { ChatSummary, ChatThreadFull } from '../platform/wire-studio';
+import type { WorkflowSummaryView } from '../platform/wire-workflows';
 import { useSession } from './session';
 
 export interface ChatController {
@@ -14,6 +15,8 @@ export interface ChatController {
   readonly activeId: string | undefined;
   readonly thread: ChatThreadFull | undefined;
   readonly loadingThread: boolean;
+  /** UW-2: the workflows created from the open conversation (empty when none, or when they cannot be read). */
+  readonly workflows: readonly WorkflowSummaryView[];
   readonly sending: boolean;
   /** Why the last send / open / delete did not happen. Cleared by the next action. */
   readonly problem: ApiProblem | undefined;
@@ -39,6 +42,7 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [attachable, setAttachable] = useState<readonly Attachable[]>([]);
+  const [workflows, setWorkflows] = useState<readonly WorkflowSummaryView[]>([]);
   const requested = useRef(0);
 
   const reload = useCallback(async () => {
@@ -67,8 +71,13 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
       const mine = ++requested.current;
       setActiveId(id);
       setThread(undefined);
+      setWorkflows([]);
       setProblem(undefined);
       setLoadingThread(true);
+      // Reopening a conversation shows the work it started. A failure here never hides the conversation itself.
+      void client.listConversationWorkflows(workspaceId, id).then((w) => {
+        if (mine === requested.current && w.ok) setWorkflows(w.value.workflows);
+      });
       void client.getChat(workspaceId, id).then((r) => {
         if (mine !== requested.current) return;
         setLoadingThread(false);
@@ -89,6 +98,7 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
     requested.current++;
     setActiveId(undefined);
     setThread(undefined);
+    setWorkflows([]);
     setProblem(undefined);
     setLoadingThread(false);
   }, []);
@@ -160,5 +170,5 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
     [client, workspaceId, activeId],
   );
 
-  return { list, attachable, activeId, thread, loadingThread, sending, problem, select, startNew, send, remove, rate };
+  return { list, attachable, activeId, thread, loadingThread, workflows, sending, problem, select, startNew, send, remove, rate };
 }

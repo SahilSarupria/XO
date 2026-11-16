@@ -13,7 +13,7 @@ import {
   signDecision,
   type RunResult,
 } from '@xo/workflow-runtime';
-import type { PermissionManager } from '@xo/permissions';
+import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
@@ -37,6 +37,7 @@ import { effectAuthorizer, type EffectCall } from '../pre-execution/effect-autho
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { enforceNotPaused } from '../workflow-controls/service.js';
 import { workspaceStateStore } from '../workspace/workspace-context.js';
+import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
 
 /**
  * ADR 0030 — generated workflows run as Workflow IR, interpreted by `@xo/workflow-runtime`: the definition the readiness
@@ -61,16 +62,18 @@ const INSTANCE = `api-${hostname()
   .slice(0, 40)}-${process.pid}-${randomBytes(3).toString('hex')}`;
 const LEASE_TTL_MS = 60_000;
 
-const runsDir = (dataConfig: WorkspaceDataConfig, workspaceId: string, definitionId: string): string =>
+export const runsDir = (dataConfig: WorkspaceDataConfig, workspaceId: string, definitionId: string): string =>
   join(dataConfig.dataRootDir, workspaceId, 'generated-runs', definitionId);
 
-interface RunMeta {
+export interface RunMeta {
   readonly initiator: EffectCall['initiator'];
   readonly certificateId: string;
   readonly startedAt: string;
+  /** UW-2 (ADR 0032): the Workflow entity and version this run belongs to, recorded before the run's first entry. */
+  readonly workflow?: { readonly workflowId: string; readonly version: number };
 }
 
-async function readMeta(dir: string, runId: string): Promise<RunMeta | undefined> {
+export async function readMeta(dir: string, runId: string): Promise<RunMeta | undefined> {
   try {
     return JSON.parse(await readFile(join(dir, 'meta', `${runId}.json`), 'utf8')) as RunMeta;
   } catch {
@@ -243,7 +246,7 @@ export async function runnerFor(
   });
 }
 
-async function view(runner: WorkflowRunner, runId: string, dir: string, dataRootDir: string): Promise<Record<string, unknown>> {
+export async function view(runner: WorkflowRunner, runId: string, dir: string, dataRootDir: string): Promise<Record<string, unknown>> {
   // A due timer or an expired approval on THIS run advances now (under its lease); another instance holding it is fine.
   const before = await runner.status(runId);
   if (before.state === 'waiting')
@@ -267,7 +270,200 @@ async function view(runner: WorkflowRunner, runId: string, dir: string, dataRoot
       };
     });
   const meta = await readMeta(dir, runId);
-  return { ...status, pendingApprovals: pending, decisions, ...(meta !== undefined ? { startedBy: meta.initiator.id } : {}) };
+  return {
+    ...status,
+    pendingApprovals: pending,
+    decisions,
+    ...(meta !== undefined ? { startedBy: meta.initiator.id, startedAt: meta.startedAt } : {}),
+    ...(meta?.workflow !== undefined ? { workflow: meta.workflow } : {}),
+  };
+}
+
+/** UW-2: a run that belongs to a Workflow entity tells the workspace change feed that it moved. */
+async function publishRunChange(
+  dataConfig: WorkspaceDataConfig,
+  workspaceId: string,
+  meta: RunMeta | undefined,
+  runId: string,
+  state: string,
+): Promise<void> {
+  if (meta?.workflow === undefined) return;
+  await workspaceWorkflowEntitiesStore(dataConfig.dataRootDir, workspaceId).publish({
+    at: new Date().toISOString(),
+    workflowId: meta.workflow.workflowId,
+    kind: 'run',
+    runId,
+    state,
+  });
+}
+
+export interface StartGeneratedRun {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly input: Record<string, unknown>;
+  readonly certificateId: unknown;
+  readonly idempotencyKey?: unknown;
+  readonly correlationId: string;
+  readonly workflow?: { readonly workflowId: string; readonly version: number };
+}
+
+/**
+ * Starts a generated workflow as Workflow IR: the certificate gate, the workspace pause, the run id, the durable record of who
+ * started it (and, for a Workflow entity, which workflow and version) before the first journal entry, then the run. Shared by
+ * the generated-workflow route and the Workflow entity route, so both enforce exactly the same gates.
+ */
+export async function startGeneratedRun(
+  deps: RunnerDeps,
+  s: StartGeneratedRun,
+): Promise<{ readonly status: number; readonly body: Record<string, unknown> }> {
+  const { workspace, actor, definition, audit } = { ...s, audit: deps.audit };
+  const { dataConfig } = deps;
+  const draft = {
+    action: 'generated-workflow.run',
+    actor: actorFromPrincipal(actor),
+    correlationId: s.correlationId,
+    target: { kind: 'workflow' as const, id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+  };
+  const certificateId = s.certificateId;
+  if (typeof certificateId !== 'string') {
+    await audit?.tryRecord({ ...draft, type: 'readiness.start.refused', outcome: 'denied', reasonCode: 'certificate_required' });
+    throw new XoError(
+      ErrorCode.READINESS_CERTIFICATE_REQUIRED,
+      'a generated workflow runs only with a current readiness certificate: request one and pass its certificateId',
+    );
+  }
+  const cert = await workspaceCertificatesStore(workspace, dataConfig).get(certificateId);
+  const reasons: string[] = [];
+  if (cert.scope.definitionId !== definition.definitionId) reasons.push(`certificate ${certificateId} is for another generated workflow`);
+  else {
+    const v = await verifyCertificateNow(workspace, dataConfig, cert);
+    if (!v.ok) reasons.push(...v.reasons);
+  }
+  if (reasons.length > 0) {
+    await audit?.tryRecord({
+      ...draft,
+      type: 'readiness.start.refused',
+      outcome: 'denied',
+      reasonCode: 'certificate_refused',
+      metadata: { certificateId },
+    });
+    throw new XoError(
+      ErrorCode.READINESS_CERTIFICATE_REFUSED,
+      `the readiness certificate does not allow this start: ${reasons.join('; ')}`,
+      { context: { certificateId, reasons } },
+    );
+  }
+  await enforceNotPaused(new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId));
+  const idem = s.idempotencyKey;
+  // The run id is fixed before the run starts, so who started it is on record before its first effect. A run started for a
+  // Workflow entity also binds the entity into the id, so one key on two workflows that share a definition are two runs.
+  const scope = s.workflow !== undefined ? `\u0000${s.workflow.workflowId}` : '';
+  const runId =
+    typeof idem === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(idem)
+      ? `run_${createHash('sha256').update(`${definition.definitionId}\u0000${actor.id}\u0000${idem}${scope}`).digest('hex').slice(0, 32)}`
+      : `run_${randomBytes(16).toString('hex')}`;
+  const meta: RunMeta = {
+    initiator: { kind: actor.kind, id: actor.id },
+    certificateId,
+    startedAt: new Date().toISOString(),
+    ...(s.workflow !== undefined ? { workflow: { workflowId: s.workflow.workflowId, version: s.workflow.version } } : {}),
+  };
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  await mkdir(join(dir, 'meta'), { recursive: true });
+  await writeFile(join(dir, 'meta', `${runId}.json`), JSON.stringify(meta), { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== 'EEXIST') throw e; // a retry of the same request: the first record stands
+  });
+  const stored = (await readMeta(dir, runId)) ?? meta;
+  if (s.workflow !== undefined && stored.workflow?.workflowId !== s.workflow.workflowId)
+    throw new XoError(ErrorCode.ALREADY_EXISTS, `run ${runId} already exists for another workflow; use another Idempotency-Key`);
+  const runner = await runnerFor(deps, workspace, definition, { starting: { runId, meta: stored } });
+  const result: RunResult = await runner.start({ inputs: s.input, runId });
+  await audit?.tryRecord({
+    ...draft,
+    type: 'generated-workflow.run.started',
+    outcome: 'completed',
+    metadata: {
+      runId: result.runId,
+      certificateId,
+      state: result.state,
+      ...(stored.workflow !== undefined ? { workflowEntityId: stored.workflow.workflowId, workflowVersion: stored.workflow.version } : {}),
+    },
+  });
+  await publishRunChange(dataConfig, workspace.workspaceId, stored, result.runId, result.state);
+  return {
+    status: result.accepted ? 201 : 200,
+    body: { ...(await view(runner, result.runId, dir, dataConfig.dataRootDir)), certificateId },
+  };
+}
+
+export interface DecideGeneratedApproval {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly runId: string;
+  readonly approvalId: string;
+  readonly action: unknown;
+  readonly comment: unknown;
+  readonly correlationId: string;
+  /** For the entity route: the decision must be on a run of this workflow. */
+  readonly workflowId?: string;
+}
+
+/** A person decides a human step; the platform signs the decision as theirs. Callers check role and recent sign-in first. */
+export async function decideGeneratedApproval(deps: RunnerDeps, d: DecideGeneratedApproval): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition, runId, approvalId } = d;
+  const { dataConfig } = deps;
+  const action = d.action;
+  if (action !== 'approve' && action !== 'reject')
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'action must be "approve" (done as instructed) or "reject"');
+  const comment = typeof d.comment === 'string' ? d.comment.slice(0, 2000) : undefined;
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  const meta = await readMeta(dir, runId);
+  if (d.workflowId !== undefined && meta?.workflow?.workflowId !== d.workflowId)
+    throw new NotFoundError(`run "${runId}" of workflow "${d.workflowId}"`);
+  const runner = await runnerFor(deps, workspace, definition, { reviewer: { id: actor.id } });
+  const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
+  const request = (await runner.listApprovals()).find((a) => a.runId === runId && a.approvalId === approvalId);
+  if (request === undefined) throw new NotFoundError(`pending approval "${approvalId}" on run "${runId}"`);
+  const signed = signDecision(keys.active.privateKeyPem, {
+    v: 1,
+    approvalId,
+    runId,
+    step: request.step,
+    action,
+    edits: {},
+    reviewerId: actor.id,
+    at: new Date().toISOString(),
+    ...(comment !== undefined ? { comment } : {}),
+  });
+  // The run may be busy for a moment (a timer firing, another decision): wait for its lease rather than fail.
+  let result: RunResult | undefined;
+  for (let attempt = 0; result === undefined; attempt++) {
+    try {
+      result = await runner.decideApproval(runId, signed);
+    } catch (e) {
+      if (!(e instanceof LeaseError && e.code === 'HELD') || attempt >= 50) throw e;
+      await new Promise((res) => setTimeout(res, 100));
+    }
+  }
+  await deps.audit?.tryRecord({
+    action: 'generated-workflow.decide',
+    actor: actorFromPrincipal(actor),
+    correlationId: d.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+    type: 'generated-workflow.approval.decided',
+    outcome: 'completed',
+    metadata: {
+      runId,
+      step: request.step,
+      action,
+      state: result.state,
+      ...(meta?.workflow !== undefined ? { workflowEntityId: meta.workflow.workflowId } : {}),
+    },
+  });
+  await publishRunChange(dataConfig, workspace.workspaceId, meta, runId, result.state);
+  return view(runner, runId, dir, dataConfig.dataRootDir);
 }
 
 export function registerGeneratedRunRoutes(
@@ -330,63 +526,16 @@ export function registerGeneratedRunRoutes(
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'input must be an object');
     if (JSON.stringify(input).length > 1_048_576) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'input must be at most 1 MiB');
     const actor = requirePrincipal(req);
-    const draft = {
-      action: 'generated-workflow.run',
-      actor: actorFromPrincipal(actor),
+    const started = await startGeneratedRun(deps, {
+      workspace,
+      actor,
+      definition,
+      input: input as Record<string, unknown>,
+      certificateId: body.value.certificateId,
+      idempotencyKey: req.headers['idempotency-key'],
       correlationId,
-      target: { kind: 'workflow' as const, id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
-    };
-    const certificateId = body.value.certificateId;
-    if (typeof certificateId !== 'string') {
-      await audit.tryRecord({ ...draft, type: 'readiness.start.refused', outcome: 'denied', reasonCode: 'certificate_required' });
-      throw new XoError(
-        ErrorCode.READINESS_CERTIFICATE_REQUIRED,
-        'a generated workflow runs only with a current readiness certificate: request one and pass its certificateId',
-      );
-    }
-    const cert = await workspaceCertificatesStore(workspace, dataConfig).get(certificateId);
-    const reasons: string[] = [];
-    if (cert.scope.definitionId !== definition.definitionId) reasons.push(`certificate ${certificateId} is for another generated workflow`);
-    else {
-      const v = await verifyCertificateNow(workspace, dataConfig, cert);
-      if (!v.ok) reasons.push(...v.reasons);
-    }
-    if (reasons.length > 0) {
-      await audit.tryRecord({
-        ...draft,
-        type: 'readiness.start.refused',
-        outcome: 'denied',
-        reasonCode: 'certificate_refused',
-        metadata: { certificateId },
-      });
-      throw new XoError(
-        ErrorCode.READINESS_CERTIFICATE_REFUSED,
-        `the readiness certificate does not allow this start: ${reasons.join('; ')}`,
-        { context: { certificateId, reasons } },
-      );
-    }
-    await enforceNotPaused(new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId));
-    const idem = req.headers['idempotency-key'];
-    // The run id is fixed before the run starts, so who started it is on record before its first effect.
-    const runId =
-      typeof idem === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(idem)
-        ? `run_${createHash('sha256').update(`${definition.definitionId}\u0000${actor.id}\u0000${idem}`).digest('hex').slice(0, 32)}`
-        : `run_${randomBytes(16).toString('hex')}`;
-    const meta: RunMeta = { initiator: { kind: actor.kind, id: actor.id }, certificateId, startedAt: new Date().toISOString() };
-    const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
-    await mkdir(join(dir, 'meta'), { recursive: true });
-    await writeFile(join(dir, 'meta', `${runId}.json`), JSON.stringify(meta), { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
-      if (e.code !== 'EEXIST') throw e; // a retry of the same request: the first record stands
     });
-    const runner = await runnerFor(deps, workspace, definition, { starting: { runId, meta } });
-    const result: RunResult = await runner.start({ inputs: input as Record<string, unknown>, runId });
-    await audit.tryRecord({
-      ...draft,
-      type: 'generated-workflow.run.started',
-      outcome: 'completed',
-      metadata: { runId: result.runId, certificateId, state: result.state },
-    });
-    return json(result.accepted ? 201 : 200, { ...(await view(runner, result.runId, dir, dataConfig.dataRootDir)), certificateId });
+    return json(started.status, started.body);
   }
 
   async function status(req: ApiRequest): Promise<ApiResponse> {
@@ -433,50 +582,18 @@ export function registerGeneratedRunRoutes(
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
     const body = await req.json<{ action?: unknown; comment?: unknown }>();
     if (!body.ok) throw body.error;
-    const action = body.value.action;
-    if (action !== 'approve' && action !== 'reject')
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'action must be "approve" (done as instructed) or "reject"');
-    const comment = typeof body.value.comment === 'string' ? body.value.comment.slice(0, 2000) : undefined;
-    const actor = requirePrincipal(req);
-    const runner = await runnerFor(deps, workspace, definition, { reviewer: { id: actor.id } });
-    const keys = await approvalKeyring(dataConfig.dataRootDir, env);
-    const runId = req.params['runId'] ?? '';
-    const approvalId = req.params['approvalId'] ?? '';
-    const request = (await runner.listApprovals()).find((a) => a.runId === runId && a.approvalId === approvalId);
-    if (request === undefined) throw new NotFoundError(`pending approval "${approvalId}" on run "${runId}"`);
-    const signed = signDecision(keys.active.privateKeyPem, {
-      v: 1,
-      approvalId,
-      runId,
-      step: request.step,
-      action,
-      edits: {},
-      reviewerId: actor.id,
-      at: new Date().toISOString(),
-      ...(comment !== undefined ? { comment } : {}),
-    });
-    // The run may be busy for a moment (a timer firing, another decision): wait for its lease rather than fail.
-    let result: RunResult | undefined;
-    for (let attempt = 0; result === undefined; attempt++) {
-      try {
-        result = await runner.decideApproval(runId, signed);
-      } catch (e) {
-        if (!(e instanceof LeaseError && e.code === 'HELD') || attempt >= 50) throw e;
-        await new Promise((res) => setTimeout(res, 100));
-      }
-    }
-    await audit.tryRecord({
-      action: 'generated-workflow.decide',
-      actor: actorFromPrincipal(actor),
-      correlationId,
-      target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
-      type: 'generated-workflow.approval.decided',
-      outcome: 'completed',
-      metadata: { runId, step: request.step, action, state: result.state },
-    });
     return json(
       200,
-      await view(runner, runId, runsDir(dataConfig, workspace.workspaceId, definition.definitionId), dataConfig.dataRootDir),
+      await decideGeneratedApproval(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        runId: req.params['runId'] ?? '',
+        approvalId: req.params['approvalId'] ?? '',
+        action: body.value.action,
+        comment: body.value.comment,
+        correlationId,
+      }),
     );
   }
 
@@ -491,7 +608,32 @@ export function registerGeneratedRunRoutes(
           const workspace = await workspaceStore.get(ws);
           if (!workspace.ok) continue;
           const definition = await workspaceDefinitionsStore(workspace.value, dataConfig).get(definitionId);
-          await (await runnerFor(deps, workspace.value, definition)).tick();
+          const runner = await runnerFor(deps, workspace.value, definition);
+          // UW-2: runs that belong to a Workflow entity report a timer- or deadline-driven move to the change feed.
+          const dir = join(runsDir, definitionId);
+          const linked = new Map<string, RunMeta>();
+          for (const f of await readdir(join(dir, 'meta')).catch(() => [] as string[])) {
+            const id = f.replace(/\.json$/, '');
+            const meta = await readMeta(dir, id);
+            if (meta?.workflow !== undefined) linked.set(id, meta);
+          }
+          const fingerprint = async (id: string): Promise<string> => {
+            const st = await runner.status(id).catch(() => undefined);
+            const pending = (await runner.listApprovals().catch(() => [])).filter((a) => a.runId === id).map((a) => a.approvalId);
+            return `${st?.state ?? '?'}|${pending.sort().join(',')}`;
+          };
+          const before = new Map<string, string>();
+          for (const id of [...linked.keys()]) {
+            const f = await fingerprint(id);
+            // Only runs still in progress can move on a tick.
+            if (/^(created|running|waiting|compensating)\|/.test(f)) before.set(id, f);
+            else linked.delete(id);
+          }
+          await runner.tick();
+          for (const [id, meta] of linked) {
+            const after = await fingerprint(id);
+            if (after !== before.get(id)) await publishRunChange(dataConfig, ws, meta, id, after.split('|')[0] as string);
+          }
         } catch {
           // one unreadable workflow never stops the others; its own status read reports the problem
         }

@@ -140,6 +140,8 @@ export class StudioFake {
   library: FakeLibraryItem[] = [];
   installs: Array<{ name: string; version: string }> = [];
   chats: FakeChat[] = [];
+  /** UW-2: workflow summaries keyed by the conversation they were created from. */
+  conversationWorkflows: Record<string, unknown[]> = {};
   /** What the platform's model returns, or an error status to simulate a failure. */
   chatReply: string | { fail: number; code: string; message: string } = 'Here is an answer.';
   /** The structured result attached to the assistant message; default is a cited, high-confidence ASK. */
@@ -601,6 +603,10 @@ export class StudioFake {
         this.chats = this.chats.filter((x) => x !== c);
         return reply(200, { deleted: c.threadId });
       }
+    }
+    if (method === 'GET' && (m = rest.match(/^\/intelligence\/conversations\/([^/]+)\/workflows$/))) {
+      if (this.chats.find((x) => x.threadId === m![1]) === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');
+      return reply(200, { workflows: this.conversationWorkflows[m[1] as string] ?? [], changesCursor: '0' });
     }
     if (method === 'POST' && (m = rest.match(/^\/intelligence\/conversations\/([^/]+)\/messages\/([^/]+)\/feedback$/))) {
       if (this.chats.find((x) => x.threadId === m![1]) === undefined) return err(404, 'XO_NOT_FOUND', 'conversation not found');

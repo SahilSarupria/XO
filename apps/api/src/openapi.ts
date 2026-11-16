@@ -1407,6 +1407,292 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/workflow-entities': {
+      post: {
+        summary: 'Create a Workflow (UW-2, ADR 0032)',
+        description:
+          "Body `{ compilationId, goal?, workflowId?, name?, note?, conversationId?, messageId? }` or `{ definitionId, name?, note?, conversationId?, messageId? }`. Creates one durable Workflow entity (`wfl_…`), version 1, from the Workflow IR generated for the goal by the same function as POST …/compilations/{compilationId}/generated-workflows (or from an existing generated definition). `conversationId` links it to the caller's own `cnv_` conversation (ADR 0013; a `cht_` thread is a 400) and `messageId` to the message it was asked in; without `goal`, that message is the goal. A goal that fits no workflow or two equally is `200 { workflow: null, selection }` and creates nothing. Nothing is installed: the XO environment is unchanged. Unknown fields are a 400. Audited as workflow-entity.created.",
+        'x-xo-permission': 'author',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '201': { description: '{ workflow: WorkflowDetail }' },
+          '200': { description: '{ workflow: null, selection }: the goal asks a question instead' },
+          '400': { description: 'Invalid body' },
+          '403': { description: 'Not an author' },
+        },
+      },
+      get: {
+        summary: 'List Workflows: compact summaries, newest first, paginated (UW-2)',
+        description:
+          "Query `limit` (1-200, default 50), `cursor` (the `nextCursor` of the previous page), `lifecycle` (draft | ready | awaiting_approval | running | paused | needs_attention | completed | failed | cancelled | archived), `archived=true` (archived workflows are hidden otherwise), `conversationId` (the caller's own conversation only; 404 otherwise). Each summary: `{ workflowId, name, lifecycle, revision, currentVersion, pendingApprovals, latestRun?, conversationId? (only to the conversation's owner), paused, archived, updatedAt }`. `changesCursor` is where to start following GET …/workflow-entities/changes.",
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflows: WorkflowSummary[], nextCursor?, changesCursor }' },
+          '400': { description: 'Invalid query' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/changes': {
+      get: {
+        summary: "Follow changes to the workspace's Workflows (UW-2)",
+        description:
+          'Query `cursor` (from a list or an earlier page; absent = now) and `wait` (0-25 seconds: return as soon as something changes). `{ changes: [{ at, workflowId, kind: "entity" | "run", revision?, event?, runId?, state? }], cursor }`, in order, across restarts and API instances. A change is a hint to re-read the workflow; it carries no content.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ changes, cursor }' },
+          '400': { description: 'Invalid cursor or wait' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}': {
+      get: {
+        summary: 'One Workflow: lifecycle, versions, runs, pending approvals and history (UW-2)',
+        description:
+          'The lifecycle is derived, never stored twice: an archived workflow is archived; a run in progress (of any version) makes it awaiting_approval or running; then paused (the workflow or the workspace); then the latest run of the current version (completed, failed, needs_attention for an escalation, cancelled); otherwise ready when the current version has a READY or READY_WITH_CONDITIONS certificate, else draft. `origin.conversation` names the conversation and message only to the conversation\'s owner (with `available: false` once it is deleted); others see `{ store: "cnv", linked: true }`. Runs are read from the engine\'s journal (most recent 50; `runsTotal`); `history` is every revision.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: 'WorkflowDetail' },
+        },
+      },
+      patch: {
+        summary: 'Rename a Workflow (UW-2)',
+        description:
+          'Body `{ name, expectedRevision? }`. A stale `expectedRevision` is a 412 (stale_revision). Audited as workflow-entity.updated.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflow: WorkflowDetail }' },
+          '400': { description: 'Invalid name' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/versions': {
+      post: {
+        summary: 'Add a version to a Workflow (UW-2)',
+        description:
+          'Body `{ compilationId?, goal?, workflowId?, note?, expectedRevision? }` or `{ definitionId, note?, expectedRevision? }`. Unstated parts carry over from the current version (the same compilation and the same goal), so a version differs only in what is asked; one identical to the current version is a 412. Earlier versions and their runs are kept. Audited as workflow-entity.version.added.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '201': { description: '{ workflow: WorkflowDetail }' },
+          '200': { description: '{ workflow: null, selection }' },
+          '400': { description: 'Invalid body' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Nothing changed, archived, too many versions, or a stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/pause': {
+      post: {
+        summary: 'Pause a Workflow: new starts are refused (412 workflow_paused); runs already started continue (UW-2)',
+        description: 'Body `{ expectedRevision? }`. Already in that state is a 412. Audited as workflow-entity.updated.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflow: WorkflowDetail }' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Already so, or a stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/resume': {
+      post: {
+        summary: 'Resume a paused Workflow (UW-2)',
+        description: 'Body `{ expectedRevision? }`. Already in that state is a 412. Audited as workflow-entity.updated.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflow: WorkflowDetail }' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Already so, or a stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/archive': {
+      post: {
+        summary: 'Archive a Workflow: hidden from lists, cannot start; history and runs are kept (UW-2)',
+        description: 'Body `{ expectedRevision? }`. Already in that state is a 412. Audited as workflow-entity.updated.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflow: WorkflowDetail }' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Already so, or a stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/restore': {
+      post: {
+        summary: 'Restore an archived Workflow (UW-2)',
+        description: 'Body `{ expectedRevision? }`. Already in that state is a 412. Audited as workflow-entity.updated.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflow: WorkflowDetail }' },
+          '403': { description: 'Not an author' },
+          '412': { description: 'Already so, or a stale expectedRevision' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/readiness': {
+      post: {
+        summary: 'Issue a readiness certificate for the current version (UW-2)',
+        description:
+          "Body `{ acceptUnstatedStepOrder? }`. Exactly POST …/generated-workflows/{definitionId}/readiness for the current version's definition (accepting an unstated step order needs the review role and a recent sign-in). Audited as readiness.certificate.issued.",
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '201': { description: '{ certificate, version }' },
+          '400': { description: 'Invalid body' },
+          '403': { description: 'Not an author (or not a reviewer when accepting)' },
+          '409': { description: 'The definition no longer matches its compilation' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs': {
+      post: {
+        summary: 'Start the current version (UW-2)',
+        description:
+          'Body `{ input?, certificateId? }`; an `Idempotency-Key` header returns the original run for a retry. Without `certificateId`, the latest certificate issued for the current version is presented. Then exactly the start of POST …/generated-workflows/{definitionId}/runs (ADR 0030, ADR 0031): the certificate is verified from scratch, a paused workspace refuses, every connector call is authorized again when it is made. A paused or archived workflow is a 412. The run records, before its first journal entry, which workflow and version it belongs to. Audited as generated-workflow.run.started with workflowEntityId.',
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'Idempotency-Key', in: 'header', required: false, schema: { type: 'string' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '201': { description: 'GeneratedWorkflowRun & { workflowId, version }' },
+          '400': { description: 'Invalid input' },
+          '403': { description: 'Not an author' },
+          '409': { description: 'No certificate, or it does not allow this start' },
+          '412': { description: 'Paused or archived (workflow or workspace)' },
+        },
+      },
+      get: {
+        summary: 'The runs of a Workflow, all versions, newest first (UW-2)',
+        description:
+          'Each run: `{ runId, version, definitionId, state, pendingApprovals, approvals, startedAt, startedBy, certificateId, outputs?, escalation? }`.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ runs }' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}': {
+      get: {
+        summary: 'One run of a Workflow, with its verified decisions (UW-2)',
+        description:
+          'The generated-workflow run view (`decisions` re-verified against the approval keyring) plus `definitionId` and `version`. 404 for a run of another workflow.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: 'GeneratedWorkflowRun' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/approvals/{approvalId}': {
+      post: {
+        summary: 'Decide a pending approval of a Workflow run (UW-2)',
+        description:
+          'Body `{ action: "approve" | "reject", comment? }`. Needs the review role and a recent sign-in; exactly POST …/generated-workflows/{definitionId}/runs/{runId}/approvals/{approvalId}, and only for a run of this workflow. Audited as generated-workflow.approval.decided.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'approvalId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: 'GeneratedWorkflowRun & { workflowId }' },
+          '400': { description: 'Invalid decision' },
+          '403': { description: 'Not a reviewer, or no recent sign-in' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/intelligence/conversations/{conversationId}/workflows': {
+      get: {
+        summary: "The Workflows created from one of the caller's conversations (UW-2)",
+        description:
+          "Same page shape and query as GET …/workflow-entities. Conversations are private: anyone else's, and a deleted one, is a 404. Deleting a conversation never deletes its workflows.",
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'conversationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
+          '200': { description: '{ workflows: WorkflowSummary[], nextCursor?, changesCursor }' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/approvals/{approvalId}': {
       post: {
         summary: 'Decide a pending approval of a generated-workflow run (ADR 0030)',

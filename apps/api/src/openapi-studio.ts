@@ -556,12 +556,18 @@ export const studioPaths = {
 
   '/workspaces/{workspaceId}/chats': {
     get: {
+      deprecated: true,
+      'x-xo-deprecation':
+        'ADR 0013: cnv_ conversations (…/intelligence/conversations) are canonical; cht_ threads get no new features and no workflow may link to one.',
       summary: "List the caller's chats (chats are private to their creator)",
       'x-xo-permission': 'read',
       parameters: [WS],
       responses: { '200': ok('{ threads }'), ...standard() },
     },
     post: {
+      deprecated: true,
+      'x-xo-deprecation':
+        'ADR 0013: cnv_ conversations (…/intelligence/conversations) are canonical; cht_ threads get no new features and no workflow may link to one.',
       summary: 'Create a chat',
       'x-xo-permission': 'read',
       parameters: [WS],
@@ -571,6 +577,9 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/chats/{threadId}': {
     get: {
+      deprecated: true,
+      'x-xo-deprecation':
+        'ADR 0013: cnv_ conversations (…/intelligence/conversations) are canonical; cht_ threads get no new features and no workflow may link to one.',
       summary: 'Get a chat with its messages',
       'x-xo-permission': 'read',
       parameters: [WS, pathParam('threadId')],
@@ -580,6 +589,9 @@ export const studioPaths = {
       },
     },
     delete: {
+      deprecated: true,
+      'x-xo-deprecation':
+        'ADR 0013: cnv_ conversations (…/intelligence/conversations) are canonical; cht_ threads get no new features and no workflow may link to one.',
       summary: 'Delete a chat',
       'x-xo-permission': 'read',
       parameters: [WS, pathParam('threadId')],
@@ -588,6 +600,9 @@ export const studioPaths = {
   },
   '/workspaces/{workspaceId}/chats/{threadId}/messages': {
     post: {
+      deprecated: true,
+      'x-xo-deprecation':
+        'ADR 0013: cnv_ conversations (…/intelligence/conversations) are canonical; cht_ threads get no new features and no workflow may link to one.',
       summary: 'Send a message and receive the model reply',
       description:
         'The reply comes from the workspace model (Settings), falling back to the fallback model; credentials are server-side only and never accepted from the client. Chat is a conversation, not an agent: it cannot compile, run or approve anything. Attached installed XOs are given to the model as reference data. Nothing is saved if the model call fails. The audit entry records sizes and provider, never text.',

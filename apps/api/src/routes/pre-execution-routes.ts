@@ -93,6 +93,64 @@ export function parseGoal(v: unknown, statedBy: string): GoalSpecification {
   }
 }
 
+/**
+ * Generates (or finds) the Workflow IR for a goal over one compilation: the goal selects the candidate (or `workflowId` names
+ * it), the one lowering function produces the definition, and it is persisted under its content-derived id. Shared by the
+ * generated-workflow route and the Workflow entity route (UW-2), so a workflow created from a conversation is generated
+ * exactly as one created here.
+ */
+export async function generateDefinition(
+  workspace: WorkspaceRecord,
+  dataConfig: WorkspaceDataConfig,
+  actor: { readonly id: string; readonly kind: string },
+  compilationId: string,
+  goal: GoalSpecification,
+  workflowId: string | undefined,
+): Promise<{
+  readonly definition: WorkflowDefinitionRecord | null;
+  readonly selection: WorkflowDefinitionRecord['selection'] | ScopeSelection;
+}> {
+  const ctx = await loadPreExecutionContext(workspace, dataConfig, compilationId, goal.needs ?? []);
+
+  let selection: WorkflowDefinitionRecord['selection'];
+  let candidateId: string;
+  if (workflowId !== undefined) {
+    candidateId = workflowId;
+    selection = { status: 'explicit', workflowId: candidateId };
+  } else {
+    const scope = selectWorkflowScope(ctx.workflows, goal);
+    if (scope.status !== 'selected') return { definition: null, selection: scope };
+    candidateId = scope.workflowId;
+    selection = scope;
+  }
+  const candidate = ctx.workflows.find((w) => w.id === candidateId);
+  if (candidate === undefined) throw new NotFoundError(`workflow "${candidateId}" in compilation "${compilationId}"`);
+  const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, {
+    sourceNames: sourceNamesOf(ctx.artifact),
+    connectorBindings: ctx.connectorBindings,
+    ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
+    ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
+  });
+  const gd = goalDigest(goal);
+  const id = digestOf({ compilationId, candidateId, goal: gd, definition: lowered.definitionDigest });
+  const record: WorkflowDefinitionRecord = {
+    schema: WORKFLOW_DEFINITION_RECORD_SCHEMA,
+    definitionId: `gwf_${id.slice(7, 31)}`,
+    compilationId,
+    candidateWorkflowId: candidate.id,
+    workflowName: candidate.name,
+    goal,
+    goalDigest: gd,
+    selection,
+    lowered,
+    createdAt: new Date().toISOString(),
+    createdBy: { id: actor.id, kind: actor.kind },
+  };
+  const store = workspaceDefinitionsStore(workspace, dataConfig);
+  await store.put(record.definitionId, record);
+  return { definition: await store.get(record.definitionId), selection };
+}
+
 export function registerPreExecutionRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -110,45 +168,15 @@ export function registerPreExecutionRoutes(
     const goal = parseGoal(body.value.goal, actor.id);
     if (body.value.workflowId !== undefined && typeof body.value.workflowId !== 'string')
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'workflowId must be a string');
-    const ctx = await loadPreExecutionContext(workspace, dataConfig, compilationId, goal.needs ?? []);
-
-    let selection: WorkflowDefinitionRecord['selection'];
-    let candidateId: string;
-    if (typeof body.value.workflowId === 'string') {
-      candidateId = body.value.workflowId;
-      selection = { status: 'explicit', workflowId: candidateId };
-    } else {
-      const scope = selectWorkflowScope(ctx.workflows, goal);
-      if (scope.status !== 'selected') return json(200, { definition: null, selection: scope });
-      candidateId = scope.workflowId;
-      selection = scope;
-    }
-    const candidate = ctx.workflows.find((w) => w.id === candidateId);
-    if (candidate === undefined) throw new NotFoundError(`workflow "${candidateId}" in compilation "${compilationId}"`);
-    const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, {
-      sourceNames: sourceNamesOf(ctx.artifact),
-      connectorBindings: ctx.connectorBindings,
-      ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
-      ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
-    });
-    const gd = goalDigest(goal);
-    const id = digestOf({ compilationId, candidateId, goal: gd, definition: lowered.definitionDigest });
-    const record: WorkflowDefinitionRecord = {
-      schema: WORKFLOW_DEFINITION_RECORD_SCHEMA,
-      definitionId: `gwf_${id.slice(7, 31)}`,
+    const generated = await generateDefinition(
+      workspace,
+      dataConfig,
+      actor,
       compilationId,
-      candidateWorkflowId: candidate.id,
-      workflowName: candidate.name,
       goal,
-      goalDigest: gd,
-      selection,
-      lowered,
-      createdAt: new Date().toISOString(),
-      createdBy: { id: actor.id, kind: actor.kind },
-    };
-    const store = workspaceDefinitionsStore(workspace, dataConfig);
-    await store.put(record.definitionId, record);
-    return json(201, { definition: await store.get(record.definitionId), selection });
+      typeof body.value.workflowId === 'string' ? body.value.workflowId : undefined,
+    );
+    return json(generated.definition === null ? 200 : 201, generated);
   }
 
   async function listDefinitions(req: ApiRequest): Promise<ApiResponse> {

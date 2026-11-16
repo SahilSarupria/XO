@@ -1,3 +1,13 @@
+import {
+  parseWorkflowChanges,
+  parseWorkflowDetail,
+  parseWorkflowPage,
+  parseWorkflowReply,
+  type WorkflowChangeView,
+  type WorkflowDetailView,
+  type WorkflowLifecycle,
+  type WorkflowPage,
+} from './wire-workflows';
 import type { AuthResult } from '../auth/oidc';
 import {
   parseCertificateCheck,
@@ -882,6 +892,93 @@ export class XoClient {
       `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/approvals/${enc(approvalId)}`,
       (b) => parseGeneratedRun(b),
       this.json({ action, ...(comment !== undefined ? { comment } : {}) }),
+    );
+  }
+  // ---- UW-2: Workflow entities (durable work items, linked to the conversation they were asked in) ----
+  listWorkflowEntities(
+    ws: string,
+    q: { readonly cursor?: string; readonly limit?: number; readonly lifecycle?: WorkflowLifecycle; readonly archived?: boolean } = {},
+  ): Promise<Result<WorkflowPage>> {
+    const params = new URLSearchParams();
+    if (q.cursor !== undefined) params.set('cursor', q.cursor);
+    if (q.limit !== undefined) params.set('limit', String(q.limit));
+    if (q.lifecycle !== undefined) params.set('lifecycle', q.lifecycle);
+    if (q.archived === true) params.set('archived', 'true');
+    const qs = params.toString();
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-entities${qs.length > 0 ? `?${qs}` : ''}`, parseWorkflowPage);
+  }
+  /** The workflows created from one of the caller's own conversations. */
+  listConversationWorkflows(ws: string, conversationId: string): Promise<Result<WorkflowPage>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/intelligence/conversations/${enc(conversationId)}/workflows`, parseWorkflowPage);
+  }
+  getWorkflowEntity(ws: string, workflowId: string): Promise<Result<WorkflowDetailView>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}`, (b) => parseWorkflowDetail(b));
+  }
+  /** Creates a workflow from a message the person wrote in a conversation; `null` when the platform asks a question instead. */
+  createWorkflowFromConversation(
+    ws: string,
+    input: {
+      readonly conversationId: string;
+      readonly messageId: string;
+      readonly compilationId: string;
+      readonly goal?: { readonly text: string; readonly needs?: readonly string[] };
+      readonly name?: string;
+    },
+  ): Promise<Result<WorkflowDetailView | null>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-entities`, parseWorkflowReply, this.json(input));
+  }
+  certifyWorkflowEntity(ws: string, workflowId: string): Promise<Result<ReadinessCertificateView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/readiness`,
+      (b) => parseReadinessCertificate((b as { certificate?: unknown }).certificate),
+      this.json({}),
+    );
+  }
+  /** Starts the current version; the platform presents the latest certificate for it and verifies it from scratch. */
+  startWorkflowEntityRun(
+    ws: string,
+    workflowId: string,
+    input: Readonly<Record<string, unknown>> = {},
+    idempotencyKey?: string,
+  ): Promise<Result<GeneratedRunView>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/runs`, (b) => parseGeneratedRun(b), {
+      ...this.json({ input }),
+      ...(idempotencyKey !== undefined ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    });
+  }
+  decideWorkflowEntityApproval(
+    ws: string,
+    workflowId: string,
+    runId: string,
+    approvalId: string,
+    action: 'approve' | 'reject',
+    comment?: string,
+  ): Promise<Result<GeneratedRunView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/runs/${enc(runId)}/approvals/${enc(approvalId)}`,
+      (b) => parseGeneratedRun(b),
+      this.json({ action, ...(comment !== undefined ? { comment } : {}) }),
+    );
+  }
+  setWorkflowEntityFlag(
+    ws: string,
+    workflowId: string,
+    action: 'pause' | 'resume' | 'archive' | 'restore',
+  ): Promise<Result<WorkflowDetailView | null>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/workflow-entities/${enc(workflowId)}/${action}`, parseWorkflowReply, this.json({}));
+  }
+  /** Changes after `cursor`; with `waitSeconds` the platform holds the call until something changes (at most 25 s). */
+  workflowChanges(
+    ws: string,
+    cursor: string,
+    waitSeconds = 0,
+  ): Promise<Result<{ readonly changes: readonly WorkflowChangeView[]; readonly cursor: string }>> {
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/workflow-entities/changes?cursor=${enc(cursor)}&wait=${Math.max(0, Math.min(25, Math.floor(waitSeconds)))}`,
+      parseWorkflowChanges,
     );
   }
   /** Whether a certificate still allows a start: the same check the start gate makes. */
