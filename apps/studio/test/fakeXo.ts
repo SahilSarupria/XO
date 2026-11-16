@@ -110,6 +110,15 @@ export class FakeXo {
   certificateStatus: 'READY' | 'NEEDS_REVIEW' | 'BLOCKED' = 'NEEDS_REVIEW';
   certificateCurrent = true;
   certifyCalls = 0;
+  /** ADR 0031: the workspace requires a certificate to start; the certified definition needs the workflow runtime. */
+  requireCertificate = false;
+  irOnly = false;
+  generatedRuns: Array<{
+    runId: string;
+    state: string;
+    pendingApprovals: { approvalId: string; step: string; summary: string; expiresAt: string }[];
+    decisions: unknown[];
+  }> = [];
   /** Workflow controls (mode, triggers, limit, sign-off, practice reviews, pause). `false` simulates a platform that predates them (404). */
   supportsControls = true;
   controls: {
@@ -469,6 +478,19 @@ export class FakeXo {
       return run ? reply(200, run) : err(404, 'XO_NOT_FOUND', `workflow execution "${m[1]}" was not found`);
     }
     if (method === 'POST' && (m = path.match(/^\/workspaces\/([^/]+)\/workflows\/([^/]+)\/executions$/))) {
+      const certificateId = (body as unknown as { certificateId?: string }).certificateId;
+      if (this.requireCertificate && certificateId === undefined)
+        return reply(409, {
+          error: { code: 'XO_READINESS_CERTIFICATE_REQUIRED', message: 'this workspace requires a readiness certificate' },
+        });
+      if (this.irOnly && certificateId !== undefined)
+        return reply(409, {
+          error: {
+            code: 'XO_WORKFLOW_REQUIRES_IR_RUNTIME',
+            message: 'only the workflow runtime executes this definition',
+            context: { definitionId: `gwf_${'0'.repeat(23)}1`, constructs: ['act'] },
+          },
+        });
       if (this.startBehavior === 'network_before') {
         // a retry (same key) may succeed once the failure clears; the test flips startBehavior back
         throw new TypeError('Failed to fetch');
@@ -771,6 +793,40 @@ export class FakeXo {
         issuedAt: new Date().toISOString(),
         digest: `sha256:${'a'.repeat(64)}`,
       });
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/runs$/))) {
+      if ((body as unknown as { certificateId?: string }).certificateId === undefined)
+        return reply(409, { error: { code: 'XO_READINESS_CERTIFICATE_REQUIRED', message: 'a certificate is required' } });
+      const run = {
+        runId: `run_${this.generatedRuns.length + 1}`,
+        state: 'waiting',
+        pendingApprovals: [
+          {
+            approvalId: `apr_${this.generatedRuns.length + 1}`,
+            step: 's1',
+            summary: 'Record the settlement amount',
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          },
+        ],
+        decisions: [],
+      };
+      this.generatedRuns.push(run);
+      return reply(201, { ...run, certificateId: (body as unknown as { certificateId: string }).certificateId });
+    }
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/runs$/)))
+      return reply(200, { runs: this.generatedRuns });
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/approvals\/([^/]+)$/))) {
+      const run = this.generatedRuns.find((x) => x.runId === m![1]);
+      if (run === undefined) return err(404, 'XO_NOT_FOUND', 'no run');
+      run.pendingApprovals = run.pendingApprovals.filter((a) => a.approvalId !== m![2]);
+      run.state = (body as unknown as { action: string }).action === 'approve' ? 'completed' : 'escalated';
+      run.decisions.push({
+        step: 's1',
+        reviewerId: 'sally',
+        action: (body as unknown as { action: string }).action,
+        signatureVerified: true,
+      });
+      return reply(200, run);
     }
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/readiness-certificates\/([^/]+)\/verify$/))) {
       return reply(200, {

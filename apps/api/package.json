@@ -41,6 +41,7 @@
     "@xo/storage": "0.1.0",
     "@xo/types": "0.1.0",
     "@xo/workflow-composer": "0.1.0",
+    "@xo/workflow-ir": "0.1.0",
     "@xo/workflow-runtime": "0.1.0",
     "@xo/xoir": "0.1.0",
     "jose": "^6.2.12"

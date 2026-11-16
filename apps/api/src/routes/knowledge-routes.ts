@@ -9,6 +9,8 @@ import {
   type SqlDriver,
   KnowledgeError,
   IntegrityError,
+  copyKnowledge,
+  isKnowledgeStoreEmpty,
   reconcileXoirGraph,
   validatePackArtifact,
   type PackArtifact,
@@ -16,7 +18,7 @@ import {
   type XoirGraphView,
 } from '@xo/knowledge-base';
 import { dirname, join } from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { pg, postgresDriver } from '@xo/knowledge-store-postgres';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import type { Router } from '../http/router.js';
@@ -83,6 +85,29 @@ function driverFor(kind: 'sqlite' | 'postgres', target: string): Promise<SqlDriv
   return d;
 }
 
+/**
+ * ADR 0031 — the deployment transition from the file store. Knowledge a workspace kept in files (before SQL became the
+ * default) is copied into the SQL store the first time the workspace's knowledge is opened: every row through both stores'
+ * integrity checks, the event chain replayed digest for digest (`copyKnowledge`). The files are left in place, marked with
+ * where they went, and never read again. A SQL store that already holds knowledge for the workspace is never merged
+ * into: that is an operator decision, reported as an error until it is made.
+ */
+async function importLegacyFileKnowledge(root: string, target: KnowledgeStore, kind: string): Promise<void> {
+  const tenantDir = join(root, target.tenantId);
+  const marker = join(tenantDir, 'MIGRATED.json');
+  const legacyEvents = await stat(join(tenantDir, 'events.jsonl')).catch(() => undefined);
+  if (legacyEvents === undefined || (await stat(marker).catch(() => undefined)) !== undefined) return;
+  const legacy = await FsKnowledgeStore.open(root, target.tenantId);
+  if ((await legacy.events()).length === 0) return;
+  if (!(await isKnowledgeStoreEmpty(target)))
+    throw new XoError(
+      ErrorCode.KNOWLEDGE_INTEGRITY_FAILED,
+      `workspace ${target.tenantId} has knowledge both in files (${tenantDir}) and in the ${kind} store; they are never merged. Keep one: move the files aside, or set XO_KNOWLEDGE_STORE=file`,
+    );
+  const report = await copyKnowledge(legacy, target);
+  await writeFile(marker, JSON.stringify({ migratedTo: kind, at: new Date().toISOString(), ...report }, null, 2), { flag: 'wx' });
+}
+
 /** ADR 0030 — the workspace's knowledge store, from `dataConfig.knowledgeStore` (SQLite by default). */
 export async function workspaceKnowledgeStore(workspace: WorkspaceRecord, config: WorkspaceDataConfig): Promise<KnowledgeStore> {
   const kind = config.knowledgeStore?.kind ?? 'sqlite';
@@ -91,7 +116,12 @@ export async function workspaceKnowledgeStore(workspace: WorkspaceRecord, config
   const key = `${kind}:${target}:${workspace.workspaceId}`;
   let s = stores.get(key);
   if (s === undefined) {
-    s = driverFor(kind, target).then((driver) => SqlKnowledgeStore.open(driver, workspace.workspaceId));
+    s = driverFor(kind, target)
+      .then((driver) => SqlKnowledgeStore.open(driver, workspace.workspaceId))
+      .then(async (store) => {
+        await importLegacyFileKnowledge(join(config.dataRootDir, workspace.workspaceId, 'knowledge'), store, kind);
+        return store;
+      });
     s.catch(() => stores.delete(key));
     stores.set(key, s);
   }

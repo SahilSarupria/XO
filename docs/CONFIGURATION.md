@@ -128,6 +128,7 @@ state. A storage setting for a feature that is off stays unset.
 | --- | --- | --- | --- | --- |
 | `XO_SCHEDULER` | on \| off | on |  | Fire schedule triggers from this instance. One instance per data directory runs them. |
 | `XO_READINESS_CERTIFICATE` | required \| workspace | required in production, otherwise workspace |  | required: every workflow start must present a current readiness certificate (READY, or READY with declared conditions); Studio obtains one automatically. workspace: each workspace decides (trust.requireReadinessCertificate). Refused as workspace in production unless XO_ALLOW_UNCERTIFIED_STARTS=1. |
+| `XO_APPROVAL_SIGNING_KEY` (secret) | string |  |  | The Ed25519 private key (PKCS#8 DER, base64, one line) the platform signs approval decisions with on behalf of the reviewer. Required in production; in development a key is generated once and kept in the data directory. Rotate by setting a new key and restarting: every earlier public key stays in the keyring (<data>/approval-keys/), so earlier decisions keep verifying. |
 | `XO_ALLOW_UNCERTIFIED_STARTS` | 1 \| true \| 0 \| false |  |  | Allows XO_READINESS_CERTIFICATE=workspace in production (an explicit operator exception, recorded at start-up). |
 | `XO_PROCEDURE_STEP_TIMEOUT_MS` | integer 1–9999999999 |  |  | Per-step timeout for procedures. Unset: none. |
 | `XO_API_RUNTIME_LOCATIONS` | string |  |  | Where workflows may run, as shown in settings. |

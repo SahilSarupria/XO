@@ -8,6 +8,10 @@ closes the four limits the PX-8 hardening report stated (generation emitted `app
 not what ran; the knowledge base was plain files; the real-document benchmark is below its proposed bar) and settles
 the four decisions ADR 0029 left to the owner. It amends ADR 0029 decisions 12, 14, 16 and 17 as written below.
 
+Amended 2026-11-16 by [ADR 0031](0031-generated-workflow-execution-boundary.md): connector calls are authorized again at
+the moment they are made, approval signing uses a durable governed key, runs are leased across instances, and file-store
+knowledge moves into SQL on first use.
+
 ## Decisions
 
 1. **Generation emits every Workflow IR construct, each only on its own evidence** (amends 0029 decision 12).

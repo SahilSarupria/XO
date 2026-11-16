@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RUN_ID, type JournalEntry, type RunStore, type RunStoreLike } from './journal.js';
 
@@ -47,17 +47,55 @@ interface Stored {
   expiresAt: number;
 }
 
+export interface LeaseAuthorityOptions {
+  /**
+   * Several processes (API instances sharing one data volume) arbitrate the same runs. Every critical section then also holds
+   * a per-run lock file created with O_EXCL, so the read-check-write of a lease, and a fenced append, are atomic across
+   * processes, not only within this one. A lock file older than `staleLockMs` (default 30 s) belongs to a dead process and
+   * is broken; critical sections are short (a read, a check, one append), far below that.
+   */
+  readonly crossProcess?: { readonly staleLockMs?: number; readonly waitMs?: number };
+}
+
 export class LeaseAuthority implements LeaseClient {
   private readonly chains = new Map<string, Promise<unknown>>();
   constructor(
     private readonly dir: string,
     private readonly store: RunStore,
     private readonly now: () => number = Date.now,
+    private readonly options: LeaseAuthorityOptions = {},
   ) {}
+
+  private async locked<T>(runId: string, fn: () => Promise<T>): Promise<T> {
+    const cp = this.options.crossProcess;
+    if (cp === undefined) return fn();
+    await mkdir(this.dir, { recursive: true });
+    const lockPath = join(this.dir, `${runId}.lock`);
+    const deadline = Date.now() + (cp.waitMs ?? 10_000);
+    for (;;) {
+      try {
+        const h = await open(lockPath, 'wx');
+        await h.writeFile(`${process.pid}\n`);
+        await h.close();
+        break;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        const st = await stat(lockPath).catch(() => undefined);
+        if (st !== undefined && Date.now() - st.mtimeMs > (cp.staleLockMs ?? 30_000)) await unlink(lockPath).catch(() => undefined);
+        if (Date.now() > deadline) throw new LeaseError('HELD', `run ${runId} is being arbitrated by another process`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+    try {
+      return await fn();
+    } finally {
+      await unlink(lockPath).catch(() => undefined);
+    }
+  }
 
   private serial<T>(runId: string, fn: () => Promise<T>): Promise<T> {
     if (!RUN_ID.test(runId)) return Promise.reject(new LeaseError('UNKNOWN', 'invalid run id'));
-    const next = (this.chains.get(runId) ?? Promise.resolve()).then(fn);
+    const next = (this.chains.get(runId) ?? Promise.resolve()).then(() => this.locked(runId, fn));
     this.chains.set(
       runId,
       next.catch(() => undefined),

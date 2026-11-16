@@ -91,6 +91,16 @@ Settled under owner delegation in [ADR 0030](../adr/0030-pre-execution-launch-co
 4. **Benchmark thresholds:** each real-document threshold has a ratified non-regression floor at the measured value
    that gates every evaluation run; the 90 / 90 / 0 targets stay proposals until a fresh blind set meets them.
 
+## The execution boundary (ADR 0031)
+
+- Connector calls of a running generated workflow are authorized at the moment they are made; a lost role, a pause, a
+  changed binding or a withdrawn approval stops the effect and nothing is sent (`api/test/generated-run-boundary.test.ts`).
+- Approval decisions are signed with `XO_APPROVAL_SIGNING_KEY` (required in production); every public key is kept, so
+  decisions verify after restarts and rotations.
+- Runs are leased across API instances sharing the data volume; one decision lands when two instances race.
+- An unknown connector outcome escalates; it is never retried or compensated blindly.
+- File-store knowledge moves into SQL on first use; SQLite backups are verified before they are restored.
+
 ## Known limits, stated plainly
 
 - **The real-document targets are not met yet** (blind 114/143 read right, 114/168 output precise, 7 silent losses).

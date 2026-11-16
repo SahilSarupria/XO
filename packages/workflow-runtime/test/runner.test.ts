@@ -262,7 +262,8 @@ describe('retries, backoff, breakers', () => {
     const h = await harness(comp([decide(), step]), external({ failFirst: 99 }), { breakers: new CircuitBreakers(2, 60_000) });
     const m = h.mk();
     const r = await m.runner.start({ inputs: { amount: 5, claim: 'c6' } });
-    assert.equal(r.state, 'failed');
+    // The attempts that reached the connector have unknown outcomes, so the run escalates instead of reporting failure.
+    assert.equal(r.state, 'escalated');
     assert.equal(h.ext.calls.length, 2, 'third attempt short-circuited by the breaker');
   });
 });

@@ -157,6 +157,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.KNOWLEDGE_INTEGRITY_FAILED]: 500,
   [ErrorCode.READINESS_CERTIFICATE_REQUIRED]: 409,
   [ErrorCode.READINESS_CERTIFICATE_REFUSED]: 409,
+  [ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME]: 409,
 
   // Capability contract (@xo/capability-contract) — semantic discovery
   // and binding resolution, first reachable over HTTP via P0.5.

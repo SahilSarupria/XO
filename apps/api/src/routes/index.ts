@@ -57,6 +57,8 @@ export interface RegisterRoutesDeps {
   readonly externalTools?: ExternalToolWiring;
   /** Test seam / explicit injection for `GET /ready`. Defaults to `process.env`. */
   readonly inferenceEnv?: Readonly<Record<string, string | undefined>>;
+  /** The instance environment (approval signing key). Defaults to `process.env`. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   /** C7 — optional. When absent the `/connect/*` routes are not registered (404), never half-working. */
   readonly connect?: ConnectService;
   /** Injection seam for the URL importer (tests only) — see `SourceRouteOptions`. */
@@ -147,7 +149,14 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerPreExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerReadinessRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
-  registerGeneratedRunRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerGeneratedRunRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.audit,
+    deps.permissionManager,
+    deps.env ?? process.env,
+  );
   registerExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerHumanTaskRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);
   registerWorkflowRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.permissionManager, deps.audit);

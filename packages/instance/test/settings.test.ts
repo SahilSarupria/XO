@@ -63,7 +63,13 @@ test('cross-setting rules: half-set audit, anchors or the secrets key inside the
     XO_ENV: 'production',
     XO_TRUST_MODE: 'development',
   });
-  assert.deepEqual(r.errors.map((e) => e.name).sort(), ['XO_AUDIT_ANCHOR_DIR', 'XO_AUDIT_DIR', 'XO_SECRETS_KEY_FILE', 'XO_TRUST_MODE']);
+  assert.deepEqual(r.errors.map((e) => e.name).sort(), [
+    'XO_APPROVAL_SIGNING_KEY',
+    'XO_AUDIT_ANCHOR_DIR',
+    'XO_AUDIT_DIR',
+    'XO_SECRETS_KEY_FILE',
+    'XO_TRUST_MODE',
+  ]);
 });
 
 test('the environment wins over the config file, which wins over secrets; secrets in plain text are flagged; values are never echoed for secrets', () => {
@@ -151,7 +157,11 @@ test('a value that may carry a credential (a URL, a string) is never echoed in a
 
 test('production and package trust are checked before anything is written: durable audit and a trust decision are required', () => {
   const prod = resolveSettings({ NODE_ENV: 'production', XO_DATA_DIR: '/srv/xo' }, { joinPath: (...p) => p.join('/') });
-  assert.deepEqual(prod.errors.map((e) => e.name).sort(), ['XO_AUDIT_RETENTION_DAYS', 'XO_PACKAGE_TRUST_POLICY']);
+  assert.deepEqual(prod.errors.map((e) => e.name).sort(), [
+    'XO_APPROVAL_SIGNING_KEY',
+    'XO_AUDIT_RETENTION_DAYS',
+    'XO_PACKAGE_TRUST_POLICY',
+  ]);
   const ok = resolveSettings(
     {
       NODE_ENV: 'production',
@@ -159,6 +169,7 @@ test('production and package trust are checked before anything is written: durab
       XO_AUDIT_RETENTION_DAYS: '400',
       XO_AUDIT_MIN_RETENTION_DAYS: '365',
       XO_PACKAGE_TRUST_POLICY: '/etc/xo/trust.json',
+      XO_APPROVAL_SIGNING_KEY: 'MC4CAQAwBQYDK2VwBCIEIA==',
     },
     { joinPath: (...p) => p.join('/') },
   );

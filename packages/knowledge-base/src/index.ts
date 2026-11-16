@@ -6,3 +6,4 @@ export * from './store.js';
 export * from './knowledge-base.js';
 export * from './xoir-adapter.js';
 export * from './sql-store.js';
+export * from './transfer.js';

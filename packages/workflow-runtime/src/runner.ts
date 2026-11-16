@@ -413,10 +413,25 @@ export class WorkflowRunner {
    * Holds the run's lease around `fn`. Losing it (heartbeat refused, or a fenced write refused) stops the runner: it throws LeaseError('LOST')
    * and must not retry; reconcile by reading status from the authoritative journal.
    */
+  /** Leases this runner holds, with how many of its own operations are inside them (a lease is released by the last). */
+  private readonly held = new Map<string, { token: number; holders: number }>();
+
   private async withLease<T>(runId: string, fn: () => Promise<T>): Promise<T> {
     const l = this.o.lease;
     if (l === undefined) return fn();
+    const mine = this.held.get(runId);
+    if (mine !== undefined) {
+      // Another operation of this runner already holds the run: share it, never release it from under that operation.
+      mine.holders++;
+      try {
+        return await fn();
+      } finally {
+        mine.holders--;
+      }
+    }
     const lease = await l.client.acquire(runId, l.owner, l.ttlMs);
+    const entry = { token: lease.token, holders: 1 };
+    this.held.set(runId, entry);
     l.attach(runId, lease.token);
     let lost: LeaseError | undefined;
     const every = l.heartbeatEveryMs ?? Math.floor(l.ttlMs / 3);
@@ -434,6 +449,10 @@ export class WorkflowRunner {
       if (lost !== undefined) throw lost;
       return r;
     } finally {
+      entry.holders--;
+      // Operations that joined this lease finish before it is given up.
+      while (entry.holders > 0) await new Promise((res) => setTimeout(res, 5));
+      this.held.delete(runId);
       if (timer !== undefined) clearInterval(timer);
       l.detach(runId);
       await l.client.release(runId, l.owner, lease.token).catch(() => undefined);
@@ -955,6 +974,21 @@ export class WorkflowRunner {
   }
 
   private async failStep(runId: string, step: Step, code: string, message: string): Promise<Omit<RunResult, 'accepted'>> {
+    // A connector call whose outcome is unknown (sent, no answer) may have taken effect. Compensating would undo the
+    // steps before it and leave this one possibly done; failing would report nothing happened. Neither is true, so the
+    // run escalates to a person, whatever the step's onError says.
+    if (step.type === 'act' || step.type === 'compensate') {
+      const sr = replayRun(await this.o.store.read(runId), this.wf, runId)?.steps.get(step.id);
+      if (sr?.callIntent !== undefined && sr.callOutcome === undefined) {
+        await this.o.store.append(runId, 'step_failed', { step: step.id, code, message });
+        return this.escalate(
+          runId,
+          step.id,
+          'EFFECT_UNKNOWN',
+          `${message}. The call to ${step.connector}.${step.operation} may have taken effect, so it is neither repeated nor undone automatically: a person must check the destination${sr.callIntent.key !== undefined ? ` (idempotency key ${sr.callIntent.key})` : ''} and decide`,
+        );
+      }
+    }
     await this.o.store.append(runId, 'step_failed', { step: step.id, code, message });
     await this.deadLetter(
       runId,

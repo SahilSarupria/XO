@@ -79,6 +79,9 @@ construct without its evidence is reported, never invented.
   covers the compilation, the candidate, the goal and the definition. These are separate from the Studio's authored
   `workflow-definitions`. A certified definition runs through `@xo/workflow-runtime` with
   `POST /workspaces/{ws}/generated-workflows/{id}/runs` (`{ input, certificateId }`; the certificate is always
-  required), and its approvals are decided with `POST …/runs/{runId}/approvals/{approvalId}`.
+  required), and its approvals are decided with `POST …/runs/{runId}/approvals/{approvalId}`. ADR 0031: every connector
+  call is authorized again when it is made (starter's role, pause, binding, approval), decisions are signed with the
+  instance's durable key, runs are leased so one instance drives each, and the composed-workflow start refuses such a
+  definition (`XO_WORKFLOW_REQUIRES_IR_RUNTIME`); Studio then starts it on the workflow runtime and shows its approvals.
 - CLI: `xo generate-workflow <sources> --goal "<text>" [--need <step>]... [--section <heading>] [--intake text] [--for-each <item>] [--connectors bindings.json] [--out workflows.json]`,
   and `xo workflow <source> --goal "<text>"`.

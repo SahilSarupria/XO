@@ -66,7 +66,7 @@ describe('runner: rate limiting', () => {
 });
 
 describe('dead letters', () => {
-  it('stores an exhausted step AND fails the run; the record carries no arguments', async () => {
+  it('stores an exhausted step AND stops the run; the record carries no arguments', async () => {
     const ext = external({ failFirst: 99 });
     const h = await harness(
       comp([decide(), pay({ retry: { maxAttempts: 2, backoff: { kind: 'fixed', baseMs: 1, maxMs: 1, jitter: 'none' } } })]),
@@ -75,11 +75,12 @@ describe('dead letters', () => {
     const dl = new MemoryDeadLetterStore();
     const { runner } = h.mk({ deadLetters: dl });
     const r = await runner.start({ inputs: { amount: 10, claim: 'secret-claim-77' } });
-    assert.equal(r.state, 'failed');
+    // The last attempt's outcome is unknown (it may have paid), so the run escalates to a person rather than reporting failure.
+    assert.equal(r.state, 'escalated');
     const items = await dl.list();
     assert.equal(items.length, 1);
     assert.equal(items[0]?.step, 'pay');
-    assert.equal(items[0]?.disposition, 'failed');
+    assert.equal(items[0]?.disposition, 'escalated');
     assert.equal(items[0]?.attempts, 2);
     assert.doesNotMatch(JSON.stringify(items), /secret-claim-77/);
   });
