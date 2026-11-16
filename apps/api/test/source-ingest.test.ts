@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { crc32, deflateRawSync } from 'node:zlib';
 import { TestServer, withTempDir } from './test-helpers.js';
 import { DocxError, extractDocxText } from '../src/sources/docx-text.js';
+import { buildCompilerSourceInput } from '../src/compilations/source-input-adapter.js';
 import {
   isPublicAddress,
   safeFetch,
@@ -97,6 +98,23 @@ test('docx: headings, paragraphs, lists, tables and entities become plain text; 
     'list numbering loss is disclosed',
   );
   assert.ok(out.notes.some((n) => /footers/i.test(n)));
+});
+
+test('docx: list numbering, nesting and check boxes are read (UW-3c), and the compiler is given the Word file itself', () => {
+  const numbering = `<w:numbering ${W}><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl><w:lvl w:ilvl="1"><w:numFmt w:val="lowerLetter"/></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
+  const item = (t: string, level: number) =>
+    `<w:p><w:pPr><w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const bytes = docx(item('Open the claim', 0) + item('Check the policy number', 1) + item('Assign an adjuster', 0), {
+    'word/numbering.xml': numbering,
+  });
+  const out = extractDocxText(bytes);
+  assert.equal(out.text, '1. Open the claim\n  a. Check the policy number\n2. Assign an adjuster');
+  assert.equal(
+    out.notes.some((n) => /numbering/i.test(n)),
+    false,
+    'numbering that is read is not reported as lost',
+  );
+  assert.deepEqual(buildCompilerSourceInput('.docx', bytes, 'claims.docx'), { kind: 'docx', bytes, sourcePath: 'claims.docx' });
 });
 
 test('docx: stored (uncompressed) entries work too', () => {

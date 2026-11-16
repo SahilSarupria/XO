@@ -1,4 +1,3 @@
-import { extractDocxText } from '../sources/docx-text.js';
 /**
  * Mirrors `apps/cli/src/commands/compiler/source-input.ts#loadSourceInput`'s
  * extension -> `SourceInput` tagging exactly, adapted to work from bytes
@@ -22,8 +21,9 @@ export function buildCompilerSourceInput(extension: string, bytes: Uint8Array, s
     case '.pdf':
       return { kind: 'pdf', bytes, sourcePath };
     case '.docx':
-      // Converted to text here (never inside the compiler); a document that passed the upload-time check converts again deterministically.
-      return { kind: 'document', text: extractDocxText(bytes).text, sourcePath };
+      // UW-3c: the compiler reads Word itself, keeping list numbering, nesting, check boxes and bold run-in titles that a
+      // text conversion loses. The upload-time check (`sources/docx-text.ts`) ran the same reader on these bytes.
+      return { kind: 'docx', bytes, sourcePath };
     case '.xlsx':
       return { kind: 'xlsx', bytes, sourcePath };
     case '.eml':

@@ -188,7 +188,7 @@ export function createTesseractTier(options: TesseractOptions = {}): PageTier {
   return {
     name: 'tesseract-ocr',
     // Output depends on the engine, language data and settings; bump any of them and old cache entries stop matching.
-    version: `1|${tesseractVersion()}|${lang}|${dpi}`,
+    version: `2|${tesseractVersion()}|${lang}|${dpi}`, // 2: UW-3c type-size and bullet normalisation
     costClass: 'local',
     acceptsImages: true,
     handles: needsEngineHelp,
@@ -220,14 +220,16 @@ export function createTesseractTier(options: TesseractOptions = {}): PageTier {
       // and mapped top-to-bottom into the page's point space.
       const pt = (v: number): number => v / rendered.scale;
       const [, , , top] = page.mediaBox;
-      const out: RecoveredLine[] = best.lines
-        .filter((l) => l.text.trim().length > 0)
-        .map((l) => ({
-          text: l.text.trim(),
-          x: pt(l.bbox.x0),
-          y: top - pt(l.bbox.y1),
-          fontSizePt: Math.max(6, pt(l.bbox.y1 - l.bbox.y0) * 0.8),
-        }));
+      const out: RecoveredLine[] = normalizeRecoveredLines(
+        best.lines
+          .filter((l) => l.text.trim().length > 0)
+          .map((l) => ({
+            text: l.text.trim(),
+            x: pt(l.bbox.x0),
+            y: top - pt(l.bbox.y1),
+            fontSizePt: Math.max(6, pt(l.bbox.y1 - l.bbox.y0) * 0.8),
+          })),
+      );
       if (out.length === 0) return undefined;
       return { lines: out, confidence: Number(Math.max(0, Math.min(1, best.confidence)).toFixed(3)) };
     },
@@ -253,9 +255,40 @@ async function recoverImage(
   }
   if (res.text.trim().length === 0) return undefined;
   const [, , , top] = mediaBox;
-  const lines: RecoveredLine[] = res.lines
-    .filter((l) => l.text.trim().length > 0)
-    .map((l) => ({ text: l.text.trim(), x: l.bbox.x0, y: top - l.bbox.y1, fontSizePt: Math.max(6, (l.bbox.y1 - l.bbox.y0) * 0.8) }));
+  const lines: RecoveredLine[] = normalizeRecoveredLines(
+    res.lines
+      .filter((l) => l.text.trim().length > 0)
+      .map((l) => ({ text: l.text.trim(), x: l.bbox.x0, y: top - l.bbox.y1, fontSizePt: Math.max(6, (l.bbox.y1 - l.bbox.y0) * 0.8) })),
+  );
   if (lines.length === 0) return undefined;
   return { lines, confidence: Number(Math.max(0, Math.min(1, res.confidence)).toFixed(3)) };
+}
+
+/**
+ * UW-3c — two corrections every OCR'd page needs before layout reading.
+ *
+ * Type size: a line's box height depends on which letters it holds (capitals, descenders), so raw estimates scatter around
+ * the body size and every slightly tall line would read as a heading. Sizes within a band of the page's median are the body
+ * size; only clearly larger lines keep their own size.
+ *
+ * Bullets: the recogniser reads a bullet glyph as whatever it resembles ("e", "@", "®", "©", "°", "*", "+", "»"). A short run
+ * of such characters at the start of a line, followed by the start of a word, is a bullet, and is written as one.
+ */
+const BODY_BAND_LOW = 0.75;
+const BODY_BAND_HIGH = 1.3;
+const OCR_BULLET = /^(?:[•·∙●○◦▪■□►▸*+»«@®©°º¢%~]{1,3}|[eo][®©°]?|\(?[e@]\)?)\s+(?=["“'‘(\[]?[\p{Lu}\d])/u;
+
+export function normalizeRecoveredLines(lines: readonly RecoveredLine[]): RecoveredLine[] {
+  if (lines.length === 0) return [];
+  const sizes = lines
+    .map((l) => l.fontSizePt ?? 0)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  const median = sizes[Math.floor(sizes.length / 2)];
+  return lines.map((l) => {
+    const text = l.text.replace(OCR_BULLET, '• ');
+    if (median === undefined || l.fontSizePt === undefined) return { ...l, text };
+    const ratio = l.fontSizePt / median;
+    return { ...l, text, fontSizePt: ratio >= BODY_BAND_LOW && ratio <= BODY_BAND_HIGH ? median : l.fontSizePt };
+  });
 }

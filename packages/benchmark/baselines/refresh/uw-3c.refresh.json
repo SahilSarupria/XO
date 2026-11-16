@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "refreshedAt": "2026-11-15T00:00:00Z",
+  "scope": "UW-3c real-document hardening",
+  "suites": [
+    {
+      "suiteId": "vertical-fixtures",
+      "fromReportSha256": "f63630f394044fbe0af912eb840a5c9635616bcfd7a9a294fe770a51004feaeb",
+      "toReportSha256": "ec91b4bb317116a597f7fdfa47ee3b4d2fe5b17cc68a37a7a5f0bf2c97ba5c38",
+      "evaluationVersion": {
+        "from": "p0.9c-1",
+        "to": "p0.9c-1"
+      },
+      "reason": "UW-3c real-document hardening: per-glyph list markers rejoined to their text, list levels across page breaks, labelled tasks in guideline sections read as actions, title-case labels not read as instructions. Capability recall and precision are unchanged (42/47, 21/22); the receipts workflow is now ordered by tie-break (its source uses unordered bullets) and two descriptive capabilities lose their human_in_the_loop binding. Both are conservative changes, recorded as acknowledged regressions. Evaluation version unchanged.",
+      "dispositions": [
+        {
+          "differenceId": "metric|aastha-operations|crossPathConsistency",
+          "disposition": "acknowledged_regression",
+          "reason": "The metric value is unchanged (100%); four fewer units are compared because the two capabilities above are no longer human_in_the_loop. \"Generate a Policy Booking Report\" and \"Create Sales invoices in Tally Prime\" come from descriptive sentences (\"The CRM generates a 'Policy Booking Report'\", \"Sales invoices are created in Tally Prime\"). With the items cut at their own boundaries, these units no longer carry the action knowledge that used to sit in the glued run, so the action-escalation resolver has no linked action node and they are not_executable instead of human_in_the_loop. Conservative (no false-ready). The manual/HITL policy is owed by the pre-execution program (W4), not tuned here."
+        },
+        {
+          "differenceId": "metric|aastha-operations|executionClassAccuracy",
+          "disposition": "acknowledged_regression",
+          "reason": "\"Generate a Policy Booking Report\" and \"Create Sales invoices in Tally Prime\" come from descriptive sentences (\"The CRM generates a 'Policy Booking Report'\", \"Sales invoices are created in Tally Prime\"). With the items cut at their own boundaries, these units no longer carry the action knowledge that used to sit in the glued run, so the action-escalation resolver has no linked action node and they are not_executable instead of human_in_the_loop. Conservative (no false-ready). The manual/HITL policy is owed by the pre-execution program (W4), not tuned here."
+        },
+        {
+          "differenceId": "metric|aastha-operations|executionCorrectness",
+          "disposition": "accepted",
+          "reason": "The receipts workflow request now ends as expected (3/3). UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did."
+        },
+        {
+          "differenceId": "metric|aastha-operations|executionProvenanceAgreement",
+          "disposition": "accepted",
+          "reason": "Population change only: more units are measured because items are cut at their own boundaries; no metric value moved."
+        },
+        {
+          "differenceId": "metric|aastha-operations|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "Population change only: more units are measured because items are cut at their own boundaries; no metric value moved."
+        },
+        {
+          "differenceId": "metric|aastha-operations|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "Population change only: more units are measured because items are cut at their own boundaries; no metric value moved."
+        },
+        {
+          "differenceId": "metric|aastha-operations|resolutionAccuracy",
+          "disposition": "acknowledged_regression",
+          "reason": "\"Generate a Policy Booking Report\" and \"Create Sales invoices in Tally Prime\" come from descriptive sentences (\"The CRM generates a 'Policy Booking Report'\", \"Sales invoices are created in Tally Prime\"). With the items cut at their own boundaries, these units no longer carry the action knowledge that used to sit in the glued run, so the action-escalation resolver has no linked action node and they are not_executable instead of human_in_the_loop. Conservative (no false-ready). The manual/HITL policy is owed by the pre-execution program (W4), not tuned here."
+        },
+        {
+          "differenceId": "metric|aastha-operations|workflowExecutabilityAccuracy",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. The Receipts & Bookkeeping items are ○ bullets. Read as bullets, they assert no order: two adjacent unordered siblings get no custom:sequence edge (P0.9A area E; the pre-execution specification forbids turning document order into execution dependency). The workflow is still found with the same three steps; its order is now a deterministic tie-break, reported as ambiguous_precedence, so it is not_executable_yet instead of executable_candidate. A conservative outcome (a false-blocked, never a false-ready)."
+        },
+        {
+          "differenceId": "metric|aastha-operations|workflowStructureAccuracy",
+          "disposition": "acknowledged_regression",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. The Receipts & Bookkeeping items are ○ bullets. Read as bullets, they assert no order: two adjacent unordered siblings get no custom:sequence edge (P0.9A area E; the pre-execution specification forbids turning document order into execution dependency). The workflow is still found with the same three steps; its order is now a deterministic tie-break, reported as ambiguous_precedence, so it is not_executable_yet instead of executable_candidate. A conservative outcome (a false-blocked, never a false-ready)."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|observedSourceRefCoverage",
+          "disposition": "accepted",
+          "reason": "Burglary policy schedule: the Important Notice block's four numbered items are four list items (one used to swallow the next), so compile output changes and more units are measured; no metric value moved."
+        },
+        {
+          "differenceId": "metric|burglary-policy-schedule|producerAttributionCoverage",
+          "disposition": "accepted",
+          "reason": "Burglary policy schedule: the Important Notice block's four numbered items are four list items (one used to swallow the next), so compile output changes and more units are measured; no metric value moved."
+        },
+        {
+          "differenceId": "output|aastha-operations|capabilities",
+          "disposition": "accepted",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. Capabilities, rules and workflows of the reconciliation section are the same names; units are cut at item boundaries."
+        },
+        {
+          "differenceId": "output|aastha-operations|compile",
+          "disposition": "accepted",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. Capabilities, rules and workflows of the reconciliation section are the same names; units are cut at item boundaries."
+        },
+        {
+          "differenceId": "output|aastha-operations|execution",
+          "disposition": "accepted",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. Capabilities, rules and workflows of the reconciliation section are the same names; units are cut at item boundaries."
+        },
+        {
+          "differenceId": "output|aastha-operations|workflows",
+          "disposition": "accepted",
+          "reason": "UW-3c per-glyph bullets: Aastha.pdf draws each list marker (○, ●, \"2.\") as a glyph of its own, a point off its text's baseline, so the reader used to leave the markers on lines of their own and read the items as prose. The reader now puts each marker back in front of its text (block-classifier.ts joinBaselineMarkers) and carries list levels across a page break when the markers sit where they did. Capabilities, rules and workflows of the reconciliation section are the same names; units are cut at item boundaries."
+        },
+        {
+          "differenceId": "output|burglary-policy-schedule|compile",
+          "disposition": "accepted",
+          "reason": "Burglary policy schedule: the Important Notice block's four numbered items are four list items (one used to swallow the next), so compile output changes and more units are measured; no metric value moved."
+        }
+      ],
+      "declaredGoldenChanges": [],
+      "acceptedAt": "packages/benchmark/CHANGELOG.md — UW-3c real-document hardening",
+      "predecessorRetainedAs": "baselines/archive/vertical-fixtures.p0.9c-1.f63630f39404.report.json",
+      "counts": {
+        "semantic_regression": 10,
+        "semantic_improvement": 1,
+        "expected_metric_addition": 0,
+        "golden_expectation_change": 0,
+        "configuration_change": 0,
+        "population_change": 5,
+        "evaluation_version_change": 0,
+        "representation_only": 0,
+        "known_historical_drift": 0,
+        "not_comparable": 0
+      },
+      "decision": "regression"
+    }
+  ]
+}

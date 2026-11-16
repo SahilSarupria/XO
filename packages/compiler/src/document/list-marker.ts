@@ -1,3 +1,4 @@
+import { precedingWordIsAbbreviation } from '../capabilities/sentence-split.js';
 export interface DetectedListMarker {
   readonly marker: string;
   readonly remainder: string;
@@ -103,6 +104,8 @@ export function splitTitleBody(text: string, maxTitleWords = 6): { readonly titl
   for (let i = 0; i < trimmed.length; i += 1) {
     const ch = trimmed[i]!;
     if ((ch === '.' || ch === ':' || ch === '!' || ch === '?') && (trimmed[i + 1] === ' ' || trimmed[i + 1] === undefined)) {
+      // UW-3c: "Match CRM records vs. insurer statements" — an abbreviation's period ends no title.
+      if (ch === '.' && precedingWordIsAbbreviation(trimmed, i)) continue;
       const title = trimmed.slice(0, i).trim();
       const body = trimmed.slice(i + 1).trim();
       const words = title.split(/\s+/).filter((w) => w.length > 0);
@@ -113,7 +116,7 @@ export function splitTitleBody(text: string, maxTitleWords = 6): { readonly titl
   return undefined;
 }
 
-const BULLET_CHARS = ['•', '◦', '‣', '·', '-', '*', '○'];
+const BULLET_CHARS = ['•', '◦', '‣', '·', '-', '*', '○', '●', '▪', '■', '►', '▸', '➢', '➤', '❖', '◆', '◇', '♦', '⁃', '∙', '–'];
 
 function isDigit(ch: string): boolean {
   return ch >= '0' && ch <= '9';

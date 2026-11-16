@@ -148,7 +148,7 @@ test('PLUMBING ONLY (scripted provider): replay uses the cache with ZERO provide
       .split('\r\n');
     assert.equal(goldLines[0], GOLD_HEADER.join(','));
     assert.equal(a.stats.goldTerms.dev, 46, 'gold totals unchanged: labels must not be edited');
-    assert.equal(a.stats.goldTerms.held, 33);
+    assert.equal(a.stats.goldTerms.held, 27); // UW-3c: was 33 (see escalation-eval-set.ts, re-keying)
     assert.ok(
       goldLines.slice(1).every((l) => /,(yes|no),$/.test(l)),
       'rule_covers is filled automatically, model_covers is blank',

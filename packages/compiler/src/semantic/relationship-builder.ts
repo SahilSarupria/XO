@@ -108,6 +108,7 @@ export function buildRelationships(draftUnits: readonly DraftExperienceUnit[]): 
     ...(draft.listItem !== undefined ? { listItem: draft.listItem } : {}),
     ...(draft.formFields !== undefined ? { formFields: draft.formFields } : {}),
     ...(draft.layoutSuspect !== undefined ? { layoutSuspect: draft.layoutSuspect } : {}),
+    ...(draft.preformatted !== undefined ? { preformatted: draft.preformatted } : {}),
   }));
 
   return { units, relationshipGraph: { relationships } };

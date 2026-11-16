@@ -4,6 +4,35 @@ Dated record of every change to committed ground truth (`suites/*.suite.json`) a
 (`baselines/*.report.json`), with the reasoning — per the README's "known gaps are recorded, not tuned away"
 rule, a metric change against a suite/baseline edit here must always be traceable to one of these entries.
 
+## UW-3c real-document hardening — vertical-fixtures baseline refresh
+
+**Context.** UW-3c hardens reading of documents XO was not written against (`packages/evaluation/suites/real-documents.ts`,
+ADR 0028). Changes that reach these fixtures:
+
+- per-glyph list markers: a marker drawn as its own glyph a point off its text's baseline (Aastha.pdf's ○ and "2.") is put
+  back in front of its text, so the items are list items, not prose (`block-classifier.ts` `joinBaselineMarkers`);
+- list levels carry across a page break when the markers sit where they did (`block-builder.ts` `withListDepth`);
+- in a guideline section, a task (a plain instruction under a label item, or after a colon label) is read by the action
+  extractors, with the constraint kept as the fallback when no action is found;
+- a title-case label ("Total Sum Insured") is not an instruction; a title never ends at an abbreviation ("vs.").
+- the workflow composer no longer joins two capabilities through a shared process concept when they sit in different
+  multi-capability sections (the same rule source-order edges already followed): Aastha's Brokerage Reconciliation section is
+  its own workflow again instead of being merged with section 2's "Generate Business".
+
+**What moved.** Refreshed `f63630f39404` → `ec91b4bb3171`; predecessor archived; every difference dispositioned in
+`baselines/refresh/uw-3c.refresh.json` (validated). Evaluation version unchanged.
+
+- Capability recall and precision unchanged (42/47, 21/22 across the suite); burglary, commercial property, TaskTest and the
+  structured cases keep their capabilities, rules and workflows. Burglary's Important Notice block is four list items.
+- aastha `wf-receipts-and-bookkeeping`: same three steps; the source marks them with ○ bullets, which assert no order
+  (P0.9A area E), so the order is a deterministic tie-break, reported as `ambiguous_precedence` and `not_executable_yet`
+  (was `executable_candidate`). Acknowledged regression; conservative.
+- aastha "Generate a Policy Booking Report" and "Create Sales invoices in Tally Prime" (descriptive sentences) lose the
+  action knowledge that used to sit in the glued run, so they are `not_executable` (were `human_in_the_loop`).
+  Acknowledged regression; conservative. A generic manual/HITL policy is owed by the pre-execution program (W4).
+- `executionCorrectness` 2/3 → 3/3 on aastha. Pinned counts re-measured: HITL scope differences 18 → 16, lowered
+  contracts 39 → 37; four declared drift records appended to the historical entry (23 → 27 classified as known drift).
+
 ## UW-3b document structure — vertical-fixtures baseline refresh, new `document-structure` suite
 
 **Context.** UW-3b (ADR 0027) makes the compiler read a document's structure before reading it as policy:

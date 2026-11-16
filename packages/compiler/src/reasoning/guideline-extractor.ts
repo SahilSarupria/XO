@@ -22,6 +22,7 @@
 import type { CandidateReasoningNode } from './extractor-types.js';
 import { splitSentences } from '../capabilities/sentence-split.js';
 import { directiveOf } from '../semantic/directive.js';
+import { namesAnAction } from '../capabilities/rule-based-extractor.js';
 import type { ExperienceUnit } from '../semantic/types.js';
 import type { KnowledgeProvenance } from '../knowledge/types.js';
 
@@ -53,9 +54,12 @@ function clean(text: string): string {
 export function structuralReasoningNodes(unit: ExperienceUnit): readonly CandidateReasoningNode[] | undefined {
   const structure = unit.structure;
   if (structure?.role === undefined) return undefined;
+  if (structure.role === 'context') return [];
   const confidence = unit.layoutSuspect === true ? Math.min(unit.confidence, 0.4) : STRUCTURAL_CONFIDENCE;
   if (structure.role === 'guideline' && structure.guideline !== undefined) {
     const g = structure.guideline;
+    // UW-3c: a task is an action the capability stage reads; it is a constraint only when no action is found in it.
+    if (g.task === true && namesAnAction(unit.content, unit.listKind !== undefined)) return [];
     const directive = clean(g.directive);
     const rationale = [g.title !== undefined && clean(g.title) !== directive ? clean(g.title) : undefined, g.rationale?.trim()]
       .filter((t): t is string => t !== undefined && t.length > 0)

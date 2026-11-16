@@ -71,12 +71,14 @@ export interface DraftExperienceUnit {
   readonly formFields?: readonly FormFieldContext[];
   /** UW-3b: see `ExperienceUnit.layoutSuspect`. */
   readonly layoutSuspect?: true;
+  readonly preformatted?: true;
 }
 
 /** Header = first row of the contiguous run of `table_row` blocks that ends at `index`; the header row itself has none. */
 function tableRowContext(blocks: readonly DocumentBlock[], index: number, row: DocumentBlock & { kind: 'table_row' }): TableRowContext {
   let start = index;
-  while (start > 0 && blocks[start - 1]?.kind === 'table_row') start -= 1;
+  // UW-3c: a row the source marks as a table's first row starts a new table, even right after another table.
+  while (start > 0 && blocks[start - 1]?.kind === 'table_row' && (blocks[start] as { tableStart?: true }).tableStart !== true) start -= 1;
   const first = blocks[start];
   const reconstruction = row.reconstruction !== undefined ? { reconstruction: row.reconstruction } : {};
   return start < index && first?.kind === 'table_row'
@@ -85,9 +87,11 @@ function tableRowContext(blocks: readonly DocumentBlock[], index: number, row: D
 }
 
 function listItemContext(block: DocumentBlock & { kind: 'list_item' }): ListItemContext | undefined {
-  if (block.ordinal === undefined && block.checkbox === undefined && block.title === undefined) return undefined;
+  if (block.ordinal === undefined && block.checkbox === undefined && block.title === undefined && block.depth === undefined)
+    return undefined;
   return {
     marker: block.marker,
+    ...(block.depth !== undefined ? { depth: block.depth } : {}),
     ...(block.ordinal !== undefined ? { ordinal: block.ordinal } : {}),
     ...(block.checkbox !== undefined ? { checkbox: block.checkbox } : {}),
     ...(block.title !== undefined && block.body !== undefined ? { title: block.title, body: block.body } : {}),
@@ -96,6 +100,10 @@ function listItemContext(block: DocumentBlock & { kind: 'list_item' }): ListItem
 
 function isFormField(block: DocumentBlock | undefined): boolean {
   return block !== undefined && block.kind === 'paragraph' && block.formField !== undefined;
+}
+
+function isPreformatted(block: DocumentBlock | undefined): boolean {
+  return block !== undefined && block.kind === 'paragraph' && block.preformatted === true;
 }
 
 function textOf(block: DocumentBlock): string {
@@ -173,6 +181,9 @@ async function groupBlocks(blocks: readonly DocumentBlock[], resolver: BoundaryA
       previousBlock.kind !== 'table_row' &&
       // UW-3b: fill-in form fields group with each other and never with prose.
       isFormField(previousBlock) === isFormField(block) &&
+      // UW-3c: preformatted text (code) never groups with prose, and one code block is one unit.
+      !isPreformatted(previousBlock) &&
+      !isPreformatted(block) &&
       (isFormField(block) || current.semanticType === classification.semanticType);
 
     if (canExtend && current) {
@@ -276,6 +287,7 @@ export async function buildExperienceUnitsForSection(
           }
         : {}),
       ...(group.blocks.some((b) => b.kind === 'paragraph' && b.layoutSuspect === true) ? { layoutSuspect: true as const } : {}),
+      ...(group.blocks.length > 0 && group.blocks.every(isPreformatted) ? { preformatted: true as const } : {}),
     };
   });
 

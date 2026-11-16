@@ -351,3 +351,40 @@ test('custom:sequence edges join steps within one section but never merge differ
   const sets = result.value.map((w) => [...w.sourceCapabilityIds].sort().join(','));
   assert.deepEqual(sets.sort(), ['a1,a2,a3', 'b1,b2,b3']);
 });
+
+test('UW-3c: a shared process concept joins capabilities within one section, never across two multi-capability sections', () => {
+  const graph = XoirGraph.create(XoirGraphId('shared-concept'));
+  const now = () => '2026-08-23T00:00:00.000Z';
+  const add = (id: string, kind: 'capability' | 'concept', section: string, extra: Record<string, unknown> = {}): void => {
+    const r = graph.createAndAddNode({
+      id: XoirNodeId(id),
+      kind,
+      properties: kind === 'capability' ? { name: id, description: id } : { label: id, description: id },
+      confidence: 0.9,
+      sourceRefs: [{ documentPath: 'm.md', locator: id, sectionPath: [section] }],
+      now,
+      ...extra,
+    } as never);
+    assert.equal(r.ok, true, JSON.stringify(r));
+  };
+  for (const id of ['a1', 'a2']) add(id, 'capability', 'Sales');
+  for (const id of ['b1', 'b2']) add(id, 'capability', 'Reconciliation');
+  add('crm', 'concept', 'Systems', { subtype: 'process' });
+  for (const id of ['a1', 'a2', 'b1', 'b2']) {
+    const r = graph.createAndAddEdge({
+      id: XoirEdgeId(`uses_${id}`),
+      kind: 'REQUIRES',
+      fromId: XoirNodeId(id),
+      toId: XoirNodeId('crm'),
+      confidence: 0.8,
+      sourceRefs: [],
+      now,
+    } as never);
+    assert.equal(r.ok, true);
+  }
+  const result = composeWorkflows(graph, { now });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const sets = result.value.map((w) => [...w.sourceCapabilityIds].sort().join(','));
+  assert.deepEqual(sets.sort(), ['a1,a2', 'b1,b2']);
+});

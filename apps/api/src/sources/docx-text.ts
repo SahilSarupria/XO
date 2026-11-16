@@ -1,16 +1,13 @@
 import { inflateRawSync } from 'node:zlib';
+import { readDocx, type DocxDocument } from '@xo/compiler';
 
 /**
- * Plain-text extraction from a `.docx` file, done in this API so `@xo/compiler` is untouched: the compiler receives
- * the result as an ordinary `document` source (the same path `.txt`/`.md` take).
- *
- * This is deliberately a TEXT extractor, not a faithful converter, and it reports what it does not carry over
- * (`notes`) instead of pretending. It never guesses structure: a paragraph is a paragraph, a heading style becomes a
- * `#` heading, a table row becomes a `| cell | cell |` line, and anything else it cannot read confidently is omitted.
- *
- * Hostile-input posture: a .docx is a ZIP from an untrusted user. Entry names are only ever compared to fixed
- * strings (never used as paths), ZIP64 / encrypted / oddly-compressed entries are refused, and inflation is capped, so
- * a zip bomb fails with an error rather than exhausting memory.
+ * Reading an uploaded `.docx` at the door. The file is a ZIP from an untrusted user, so this API first holds it to its own
+ * limits — entry names are only ever compared to fixed strings (never used as paths), ZIP64 / encrypted / oddly-compressed
+ * entries are refused, and every part the reader will open is inflated under a cap, so a zip bomb fails with an error
+ * rather than exhausting memory. The content is then read by `@xo/compiler`'s Word reader (UW-3c), the one the compile
+ * step uses: list numbering and nesting from `numbering.xml`, check boxes, bold run-in titles, tables, footnotes. What it
+ * does not read is reported (`notes`) instead of pretended.
  */
 
 const MAX_COMPRESSED_BYTES = 40 * 1024 * 1024;
@@ -91,196 +88,44 @@ function readEntry(zip: Buffer, entry: ZipEntry): Buffer {
   }
 }
 
-const ENTITIES: Readonly<Record<string, string>> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-
-function decodeXml(text: string): string {
-  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/g, (whole, body: string) => {
-    if (body.startsWith('#x')) return safeCodePoint(parseInt(body.slice(2), 16)) ?? whole;
-    if (body.startsWith('#')) return safeCodePoint(parseInt(body.slice(1), 10)) ?? whole;
-    return ENTITIES[body] ?? whole;
-  });
-}
-
-function safeCodePoint(cp: number): string | undefined {
-  return Number.isInteger(cp) && cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff) ? String.fromCodePoint(cp) : undefined;
-}
-
-type XmlToken =
-  | { readonly kind: 'text'; readonly text: string }
-  | { readonly kind: 'tag'; readonly name: string; readonly closing: boolean; readonly selfClosing: boolean; readonly attrs: string };
-
-const TAG_NAME = /^[A-Za-z0-9]+:[A-Za-z0-9]+/;
+/** The Word parts the compiler reads; each is held to this API's inflation cap before the compiler sees the file. */
+const READ_PARTS = /^word\/(?:document|numbering|styles|footnotes|endnotes)\.xml$/;
 
 /**
- * A LINEAR tokenizer: every character is examined a bounded number of times (`indexOf` for '<' and '>', then one
- * anchored match on the tag's own text). The earlier version was a single lazy regex, which backtracks quadratically
- * on malformed input such as a long run of `<w:t ` with no closing `>` — 512 KB took ~19 s and the 30 MB inflate cap
- * would have allowed hours, blocking the API's event loop for everyone. Do not reintroduce a regex over the whole document.
- * Anything that is not a `prefix:name` element (comments, processing instructions, doctype) is skipped; an unterminated
- * tag ends the scan.
+ * Checks the file against this API's limits, then reads it with the compiler's Word reader — the same reader the compile
+ * step uses on these bytes, so what the uploader is told here (notes, counts, a refusal) is what compiling will do.
  */
-function* xmlTokens(xml: string): Generator<XmlToken> {
-  let i = 0;
-  const n = xml.length;
-  while (i < n) {
-    const lt = xml.indexOf('<', i);
-    if (lt === -1) {
-      yield { kind: 'text', text: xml.slice(i) };
-      return;
-    }
-    if (lt > i) yield { kind: 'text', text: xml.slice(i, lt) };
-    const gt = xml.indexOf('>', lt + 1);
-    if (gt === -1) return;
-    let inner = xml.slice(lt + 1, gt);
-    i = gt + 1;
-    const closing = inner.startsWith('/');
-    if (closing) inner = inner.slice(1);
-    const match = TAG_NAME.exec(inner);
-    if (match === null) continue;
-    const rest = inner.slice(match[0].length);
-    const selfClosing = !closing && rest.endsWith('/');
-    yield { kind: 'tag', name: match[0], closing, selfClosing, attrs: selfClosing ? rest.slice(0, -1) : rest };
-  }
-}
-
 export function extractDocxText(bytes: Uint8Array): DocxExtraction {
   const zip = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const entries = readEntries(zip);
-  const doc = entries.find((e) => e.name === 'word/document.xml');
-  if (doc === undefined) throw new DocxError('not a Word document: word/document.xml is missing');
-  const xml = readEntry(zip, doc).toString('utf8');
+  if (!entries.some((e) => e.name === 'word/document.xml')) throw new DocxError('not a Word document: word/document.xml is missing');
+  for (const e of entries) if (READ_PARTS.test(e.name)) readEntry(zip, e);
 
-  const notes: string[] = [];
-  const hasPart = (re: RegExp) => entries.some((e) => re.test(e.name));
-  if (hasPart(/^word\/(header|footer)\d*\.xml$/)) notes.push('Headers and footers are not extracted.');
-  if (hasPart(/^word\/(footnotes|endnotes)\.xml$/)) notes.push('Footnotes and endnotes are not extracted.');
-  if (hasPart(/^word\/comments\.xml$/)) notes.push('Comments are not extracted.');
-
-  const lines: string[] = [];
-  let paragraphs = 0;
-  let tableRows = 0;
-  let sawNumbering = false;
-  let sawTextBox = false;
-
-  // Per-paragraph state
-  let inParagraph = false;
-  let paraText = '';
-  let headingLevel = 0;
-  let isListItem = false;
-  // Table state (nesting depth is tracked; nested tables are flattened into their parent cell)
-  let tableDepth = 0;
-  let rowCells: string[] | undefined;
-  let cellParas: string[] | undefined;
-  let inText = false;
-  let inDeleted = 0;
-
-  const flushParagraph = () => {
-    const raw = paraText.replace(/[ \t]+$/g, '');
-    let line = raw;
-    if (line.trim().length > 0) {
-      if (headingLevel > 0) line = `${'#'.repeat(Math.min(headingLevel, 6))} ${line.trim()}`;
-      else if (isListItem) line = `- ${line.trim()}`;
-    }
-    paragraphs++;
-    if (cellParas !== undefined) {
-      if (raw.trim().length > 0) cellParas.push(raw.trim());
-    } else {
-      lines.push(line);
-    }
-    paraText = '';
-    headingLevel = 0;
-    isListItem = false;
-    inParagraph = false;
-  };
-
-  for (const token of xmlTokens(xml)) {
-    if (token.kind === 'text') {
-      if (inText && inDeleted === 0) paraText += decodeXml(token.text);
-      continue;
-    }
-    const closing = token.closing;
-    const tag = token.name;
-    const attrs = token.attrs;
-    const selfClosing = token.selfClosing;
-    switch (tag) {
-      case 'w:p':
-        if (!closing) {
-          if (inParagraph) flushParagraph();
-          inParagraph = true;
-          paraText = '';
-          if (selfClosing) flushParagraph();
-        } else if (inParagraph) flushParagraph();
-        break;
-      case 'w:pStyle': {
-        const v = /w:val="([^"]*)"/.exec(attrs)?.[1] ?? '';
-        const h = /^Heading([1-9])$/i.exec(v);
-        if (h !== null) headingLevel = Number(h[1]);
-        else if (/^Title$/i.test(v)) headingLevel = 1;
-        break;
-      }
-      case 'w:numPr':
-        if (!closing) {
-          isListItem = true;
-          sawNumbering = true;
-        }
-        break;
-      case 'w:t':
-        inText = !closing && !selfClosing;
-        break;
-      case 'w:delText':
-        break;
-      case 'w:del':
-        if (!selfClosing) inDeleted += closing ? -1 : 1;
-        break;
-      case 'w:tab':
-        if (!closing && inParagraph) paraText += '\t';
-        break;
-      case 'w:br':
-      case 'w:cr':
-        if (!closing && inParagraph) paraText += ' ';
-        break;
-      case 'w:tbl':
-        if (!closing) tableDepth++;
-        else tableDepth = Math.max(0, tableDepth - 1);
-        break;
-      case 'w:tr':
-        if (!closing) rowCells = [];
-        else if (rowCells !== undefined) {
-          tableRows++;
-          lines.push(`| ${rowCells.join(' | ')} |`);
-          rowCells = undefined;
-        }
-        break;
-      case 'w:tc':
-        if (!closing) cellParas = [];
-        else if (cellParas !== undefined) {
-          rowCells?.push(cellParas.join(' ').replace(/\|/g, '\\|'));
-          cellParas = undefined;
-        }
-        break;
-      case 'w:txbxContent':
-        sawTextBox = true;
-        break;
-      default:
-        break;
-    }
-  }
-  if (inParagraph) flushParagraph();
-  void tableDepth;
-
-  if (sawNumbering)
-    notes.push(
-      'Automatic list numbering and bullets are not reproduced: numbered items appear as plain "- " lines, so references like "step 6" may not match the visible numbers.',
-    );
-  if (sawTextBox) notes.push('Text boxes were read in document order; their position on the page is not preserved.');
-  if (/<w:del[ >]/.test(xml)) notes.push('Tracked deletions are excluded; tracked insertions are included as final text.');
-
-  // Collapse runs of blank lines but keep paragraph separation.
-  const text = lines
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  const read = readDocx(bytes);
+  if (!read.ok) throw new DocxError(read.error.message.replace(/^could not read DOCX: /, '').replace(/^the Word document/, 'the document'));
+  const doc = read.value;
+  const text = renderText(doc);
   if (text.length === 0) throw new DocxError('the document contains no extractable text');
   const words = text.split(/\s+/).filter(Boolean).length;
-  return { text, notes, stats: { paragraphs, tableRows, words } };
+  return { text, notes: doc.notes, stats: { paragraphs: doc.stats.paragraphs, tableRows: doc.stats.tableRows, words } };
+}
+
+/** A plain-text view for people: `#` headings, `- ` / `N. ` items (indented by level, with check boxes), `| a | b |` rows. */
+function renderText(doc: DocxDocument): string {
+  const lines: string[] = [];
+  for (const b of doc.blocks) {
+    if (b.kind === 'heading') lines.push(`${'#'.repeat(Math.min(b.level, 6))} ${b.text}`);
+    else if (b.kind === 'list_item') {
+      const box = b.checkbox === 'checked' ? '[x] ' : b.checkbox === 'unchecked' ? '[ ] ' : '';
+      lines.push(`${'  '.repeat(b.depth ?? 0)}${b.listKind === 'ordered' ? (b.marker ?? `${b.ordinal ?? 1}.`) : '-'} ${box}${b.text}`);
+    } else if (b.kind === 'table_row') lines.push(`| ${b.cells.map((c) => c.replace(/\|/g, '\\|')).join(' | ')} |`);
+    else if (b.kind === 'paragraph') lines.push(b.text);
+  }
+  const parts = [lines.join('\n')];
+  if (doc.footnotes.length > 0) parts.push(`Footnotes:\n${doc.footnotes.map((n) => `- ${n}`).join('\n')}`);
+  if (doc.endnotes.length > 0) parts.push(`Endnotes:\n${doc.endnotes.map((n) => `- ${n}`).join('\n')}`);
+  return parts
+    .filter((x) => x.trim().length > 0)
+    .join('\n\n')
+    .trim();
 }

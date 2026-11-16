@@ -58,7 +58,7 @@
     {
       "suiteId": "vertical-fixtures",
       "reportFile": "baselines/vertical-fixtures.report.json",
-      "reportSha256": "f63630f394044fbe0af912eb840a5c9635616bcfd7a9a294fe770a51004feaeb",
+      "reportSha256": "ec91b4bb317116a597f7fdfa47ee3b4d2fe5b17cc68a37a7a5f0bf2c97ba5c38",
       "evaluationVersion": "p0.9c-1",
       "status": "accepted",
       "metricIds": [
@@ -185,8 +185,8 @@
       "knownDrift": [],
       "declaredGoldenChanges": [],
       "declaredPopulationChanges": [],
-      "refreshRecord": "baselines/refresh/uw-3b.refresh.json",
-      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json",
+      "refreshRecord": "baselines/refresh/uw-3c.refresh.json",
+      "predecessor": "baselines/archive/vertical-fixtures.p0.9c-1.f63630f39404.report.json",
       "history": [
         {
           "step": "P0.9C final closure",
@@ -203,6 +203,10 @@
         {
           "step": "UW-3b document structure refresh",
           "note": "accepted baseline refreshed from b44e692ba7d6 to f63630f39404; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.b44e692ba7d6.report.json; every difference dispositioned in baselines/refresh/uw-3b.refresh.json; one declared golden change (commercial-property-policy, two name matchers) (CHANGELOG.md)."
+        },
+        {
+          "step": "UW-3c real-document hardening",
+          "note": "accepted baseline refreshed from f63630f39404 to ec91b4bb3171; evaluation version unchanged (p0.9c-1); predecessor retained at baselines/archive/vertical-fixtures.p0.9c-1.f63630f39404.report.json; every difference dispositioned in baselines/refresh/uw-3c.refresh.json; five acknowledged regressions on aastha-operations, all conservative (CHANGELOG.md)."
         }
       ]
     },
@@ -492,37 +496,37 @@
         {
           "caseId": "aastha-operations",
           "stage": "capabilities",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
           "caseId": "aastha-operations",
           "stage": "compile",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
           "caseId": "aastha-operations",
           "stage": "execution",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
           "caseId": "burglary-policy-schedule",
           "stage": "capabilities",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
           "caseId": "burglary-policy-schedule",
           "stage": "workflows",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
           "caseId": "multidoc-burglary-claims",
           "stage": "workflows",
-          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark \u2014 UW-3b document structure)",
+          "reason": "UW-3b document structure: clause-bounded capability naming (verb + object of one clause, passive subjects, stated deadlines kept) and no longer minting benchmark-forbidden or garbled capabilities (\"<verb> Action\" placeholders, determiner-led nouns read as verbs, passives inside a condition, cross-column names) change this stage output; rules, constraints, decision trees and table rows are unchanged (CHANGELOG.md, packages/benchmark — UW-3b document structure)",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
         },
         {
@@ -530,6 +534,30 @@
           "metricId": "capabilityPrecision",
           "reason": "UW-3b: the ratio is unchanged (15/16). The one unexpected capability (from the descriptive sentence \"Business is generated via direct sales, ...\") is the same source sentence, now named by its passive subject (\"Generate Business\") instead of a cut prepositional phrase; a renamed unexpected item compares as one newly failing and one resolved item (\"mixed\"), so it is recorded, not tuned away",
           "evidence": "baselines/refresh/uw-3b.refresh.json; docs/adr/0027-structural-reading-of-documents.md"
+        },
+        {
+          "caseId": "aastha-operations",
+          "metricId": "executionClassAccuracy",
+          "reason": "UW-3c: \"Generate a Policy Booking Report\" and \"Create Sales invoices in Tally Prime\" come from descriptive sentences (\"The CRM generates a 'Policy Booking Report'\", \"Sales invoices are created in Tally Prime\"). With the items cut at their own boundaries, these units no longer carry the action knowledge that used to sit in the glued run, so the action-escalation resolver has no linked action node and they are not_executable instead of human_in_the_loop. Conservative (no false-ready). The manual/HITL policy is owed by the pre-execution program (W4), not tuned here.",
+          "evidence": "baselines/refresh/uw-3c.refresh.json; packages/benchmark/CHANGELOG.md (UW-3c)"
+        },
+        {
+          "caseId": "aastha-operations",
+          "metricId": "resolutionAccuracy",
+          "reason": "UW-3c: \"Generate a Policy Booking Report\" and \"Create Sales invoices in Tally Prime\" come from descriptive sentences (\"The CRM generates a 'Policy Booking Report'\", \"Sales invoices are created in Tally Prime\"). With the items cut at their own boundaries, these units no longer carry the action knowledge that used to sit in the glued run, so the action-escalation resolver has no linked action node and they are not_executable instead of human_in_the_loop. Conservative (no false-ready). The manual/HITL policy is owed by the pre-execution program (W4), not tuned here.",
+          "evidence": "baselines/refresh/uw-3c.refresh.json; packages/benchmark/CHANGELOG.md (UW-3c)"
+        },
+        {
+          "caseId": "aastha-operations",
+          "metricId": "workflowExecutabilityAccuracy",
+          "reason": "UW-3c: The Receipts & Bookkeeping items are ○ bullets. Read as bullets, they assert no order: two adjacent unordered siblings get no custom:sequence edge (P0.9A area E; the pre-execution specification forbids turning document order into execution dependency). The workflow is still found with the same three steps; its order is now a deterministic tie-break, reported as ambiguous_precedence, so it is not_executable_yet instead of executable_candidate. A conservative outcome (a false-blocked, never a false-ready).",
+          "evidence": "baselines/refresh/uw-3c.refresh.json; packages/benchmark/CHANGELOG.md (UW-3c)"
+        },
+        {
+          "caseId": "aastha-operations",
+          "metricId": "workflowStructureAccuracy",
+          "reason": "UW-3c: The Receipts & Bookkeeping items are ○ bullets. Read as bullets, they assert no order: two adjacent unordered siblings get no custom:sequence edge (P0.9A area E; the pre-execution specification forbids turning document order into execution dependency). The workflow is still found with the same three steps; its order is now a deterministic tie-break, reported as ambiguous_precedence, so it is not_executable_yet instead of executable_candidate. A conservative outcome (a false-blocked, never a false-ready).",
+          "evidence": "baselines/refresh/uw-3c.refresh.json; packages/benchmark/CHANGELOG.md (UW-3c)"
         }
       ],
       "declaredGoldenChanges": [

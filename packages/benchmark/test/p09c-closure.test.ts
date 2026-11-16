@@ -56,13 +56,13 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
   const vh = hist.find((e) => e.suiteId === 'vertical-fixtures')!;
   // The six P0.9C-closure records are never rewritten; later controlled refreshes only APPEND declared drift
   // (CR WS1 recall refresh: three compile/capabilities output differences, see CHANGELOG.md). UW-3b document structure
-  // appended seven: six stage outputs and the aastha capabilityPrecision rename.
+  // appended seven: six stage outputs and the aastha capabilityPrecision rename. UW-3c appended four aastha metrics.
   assert.equal(
     vh.knownDrift.length,
-    24,
-    'the six closure drift records are kept; eight WS1 recall, three semantic-hardening and seven UW-3b records were appended',
+    28,
+    'the six closure drift records are kept; eight WS1 recall, three semantic-hardening, seven UW-3b and four UW-3c records were appended',
   );
-  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall|Semantic hardening consolidation|UW-3b/.test(d.reason)));
+  assert.ok(vh.knownDrift.slice(6).every((d) => /WS1 recall|Semantic hardening consolidation|UW-3b|UW-3c/.test(d.reason)));
   assert.equal(vh.declaredGoldenChanges.length, 5);
   assert.equal(hist.find((e) => e.suiteId === 'runtime-mechanics')!.knownDrift.length, 0);
   for (const e of entries.filter((x) => x.status === 'accepted')) {
@@ -72,8 +72,8 @@ test('the historical predecessors are retained, byte-unchanged, with their decla
     assert.ok(retained || laterRefresh, `${e.suiteId}: predecessor is retained`);
   }
   // the two P0.9C predecessors plus the accepted vertical-fixtures reports superseded by the CR WS1 recall, the semantic
-  // hardening and the UW-3b document structure refreshes
-  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 5);
+  // hardening, the UW-3b document structure and the UW-3c real-document hardening refreshes
+  assert.equal((await readdir(join(PKG, 'baselines', 'archive'))).length, 6);
 });
 
 test('the refresh record is auditable: both suites refreshed together, every difference accounted for, no regression, evaluation version unchanged', async () => {

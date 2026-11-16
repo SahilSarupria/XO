@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+	<title>Use data to drive decisions</title>
+	<meta name="generator" content="LibreOffice 24.2.7.2 (Linux)"/>
+	<meta name="created" content="2026-11-13T17:11:49"/>
+	<meta name="changed" content="2026-11-13T17:11:49"/>
+	<meta name="AppVersion" content="12.0000"/>
+	<meta name="play_number" content="12"/>
+	<style type="text/css">
+		@page { size: 8.5in 11in; margin: 1in }
+		p { text-align: left; orphans: 2; widows: 2; margin-top: 0.13in; margin-bottom: 0.13in; direction: ltr; background: transparent }
+		p.compact { margin-top: 0.03in; margin-bottom: 0.03in }
+		h3 { color: #4f81bd; text-align: left; page-break-inside: avoid; orphans: 2; widows: 2; margin-top: 0.14in; margin-bottom: 0in; direction: ltr; background: transparent; page-break-after: avoid }
+		h3.western { font-family: "Calibri", serif; font-size: 12pt; font-weight: bold }
+		h3.cjk { font-family: ; font-size: 12pt; font-weight: bold }
+		h3.ctl { font-family: ; font-size: 12pt; font-weight: bold }
+		a:link { color: #4f81bd }
+	</style>
+</head>
+<body lang="en-US" link="#4f81bd" vlink="#800000" dir="ltr"><p align="center" style="page-break-inside: avoid; margin-top: 0.33in; margin-bottom: 0.17in; page-break-after: avoid">
+<font color="#345a8a"><font face="Calibri, serif"><font size="5" style="font-size: 18pt"><b>Use
+data to drive decisions</b></font></font></font></p>
+<p class="first-paragraph">At every stage of a project, we should
+measure how well our service is working for our users. This includes
+measuring how well a system performs and how people are interacting
+with it in real-time. Our teams and agency leadership should
+carefully watch these metrics to find issues and identify which bug
+fixes and improvements should be prioritized. Along with monitoring
+tools, a feedback mechanism should be in place for people to report
+issues directly.</p>
+<h3 class="western"><a name="checklist"></a>Checklist</h3>
+<ol>
+	<li value="1"><p class="compact">Monitor system-level resource
+	utilization in real time</p></li>
+	<li><p class="compact">Monitor system performance in real-time (e.g.
+	response time, latency, throughput, and error rates)</p></li>
+	<li><p class="compact">Ensure monitoring can measure median, 95th
+	percentile, and 98th percentile performance</p></li>
+	<li><p class="compact">Create automated alerts based on this
+	monitoring</p></li>
+	<li><p class="compact">Track concurrent users in real-time, and
+	monitor user behaviors in the aggregate to determine how well the
+	service meets user needs</p></li>
+	<li><p class="compact">Publish metrics internally</p></li>
+	<li><p class="compact">Publish metrics externally</p></li>
+	<li><p class="compact">Use an experimentation tool that supports
+	multivariate testing in production</p></li>
+</ol>
+<h3 class="western"><a name="key-questions"></a>Key Questions</h3>
+<ul>
+	<li><p class="compact">What are the key metrics for the service?</p></li>
+	<li><p class="compact">How have these metrics performed over the
+	life of the service?</p></li>
+	<li><p class="compact">Which system monitoring tools are in place?</p></li>
+	<li><p class="compact">What is the targeted average response time
+	for your service? What percent of requests take more than 1 second,
+	2 seconds, 4 seconds, and 8 seconds?</p></li>
+	<li><p class="compact">What is the average response time and
+	percentile breakdown (percent of requests taking more than 1s, 2s,
+	4s, and 8s) for the top 10 transactions?</p></li>
+	<li><p class="compact">What is the volume of each of your service’s
+	top 10 transactions? What is the percentage of transactions started
+	vs. completed?</p></li>
+	<li><p class="compact">What is your service’s monthly uptime
+	target?</p></li>
+	<li><p class="compact">What is your service’s monthly uptime
+	percentage, including scheduled maintenance? Excluding scheduled
+	maintenance?</p></li>
+	<li><p class="compact">How does your team receive automated alerts
+	when incidents occur?</p></li>
+	<li><p class="compact">How does your team respond to incidents? What
+	is your post-mortem process?</p></li>
+	<li><p class="compact">Which tools are in place to measure user
+	behavior?</p></li>
+	<li><p class="compact">What tools or technologies are used for A/B
+	testing?</p></li>
+	<li><p class="compact">How do you measure customer satisfaction?</p></li>
+</ul>
+</body>
+</html>

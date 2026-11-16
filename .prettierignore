@@ -19,6 +19,8 @@ packages/benchmark/ground-truth/
 packages/benchmark/suites/
 # UW-3b document-structure corpus: the ground truth pins character offsets into these files
 examples/structure-corpus/*.md
+# UW-3c real-document corpus: third-party originals and their format variants, pinned by sha256 in packages/evaluation/sets/real-documents.json
+examples/real-corpus/
 
 # One archived record preserved byte-for-byte (verbatim copy of the externally authored M7 assessment; reformatting would alter it).
 # Deliberately a single exact path, not a directory: nothing else is exempted from the format check.

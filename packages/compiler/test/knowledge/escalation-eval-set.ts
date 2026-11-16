@@ -12,6 +12,11 @@
  *    agreement; 43 units (21 dev, 22 held-out), so results are far too small for significance claims; many units are form fragments;
  *    the annotation rules are judgement calls, e.g. field labels are excluded while named categories/clauses/cover items are included.
  *
+ * UW-3c re-keying (4 entries, all Aastha.pdf): the PDF reader now puts each list marker back on its own item, so four units that
+ * were runs of several items glued together are cut at the item boundaries. Each entry points at the unit that starts with the same
+ * text, or, when no unit of four words or more does, at the unit that now holds its text; `entities` keeps only the annotated forms
+ * that are in that unit's text, plus (one entry) the item label the same rules include. Splits are unchanged (`annotatedAs`).
+ *
  * Annotation rules: `entities` are surface forms a domain reader would keep as knowledge terms: named parties, organizations, people,
  * places, defined terms, and named documents/clauses/categories/cover items. Excluded: sentence-initial common words, field labels,
  * currency codes, dates, numbers, ids, URLs.
@@ -21,6 +26,11 @@ export interface EvalUnit {
   readonly textStart: string;
   readonly split: 'dev' | 'held';
   readonly entities: readonly string[];
+  /**
+   * UW-3c: the unit's first 50 characters when the entry was annotated, kept where the reader now cuts the unit differently.
+   * The split rule hashes this original key, so no entry changed split.
+   */
+  readonly annotatedAs?: string;
 }
 
 export const EVAL_SET: readonly EvalUnit[] = [
@@ -106,18 +116,31 @@ export const EVAL_SET: readonly EvalUnit[] = [
   },
   {
     file: 'Aastha',
-    textStart: 'Note: Actual brokerage data is not stored here. CR',
+    textStart: 'Note: Actual brokerage data is not stored here.',
+    annotatedAs: 'Note: Actual brokerage data is not stored here. CR',
     split: 'held',
-    entities: ['CRM', 'Reconciliation Tool', 'Tally Prime', 'TDS', 'GST'],
+    entities: [],
   },
-  { file: 'Aastha', textStart: 'nil/non-financial) are logged into the CRM. detail', split: 'dev', entities: ['CRM', 'Policy Entry'] },
+  {
+    file: 'Aastha',
+    textStart: 'Sales Sourcing: Business is generated via direct s',
+    annotatedAs: 'nil/non-financial) are logged into the CRM. detail',
+    split: 'dev',
+    entities: ['CRM', 'Sales Sourcing'],
+  },
   {
     file: 'Aastha',
     textStart: 'This is the core operational step where data from ',
     split: 'dev',
     entities: ['CRM', 'Policy Booked', 'Statement Collection'],
   },
-  { file: 'Aastha', textStart: 'Identify "Actual" brokerage (Basic + Incentives). ', split: 'held', entities: ['Actual brokerage', 'CRM'] },
+  {
+    file: 'Aastha',
+    textStart: 'Identify "Actual" brokerage (Basic + Incentives).',
+    annotatedAs: 'Identify "Actual" brokerage (Basic + Incentives). ',
+    split: 'held',
+    entities: ['Actual brokerage'],
+  },
   { file: 'Aastha', textStart: 'Identify discrepancies: Policies missing from stat', split: 'dev', entities: [] },
   { file: 'Aastha', textStart: 'Match CRM records vs. Insurer statements.', split: 'dev', entities: ['CRM'] },
   {
@@ -145,7 +168,8 @@ export const EVAL_SET: readonly EvalUnit[] = [
   { file: 'Aastha', textStart: 'Top 10 client-wise business.', split: 'held', entities: [] },
   {
     file: 'Aastha',
-    textStart: 'validated reconciliation data. Channel-wise revenu',
+    textStart: 'Channel-wise revenue generation (Referral/Digital/',
+    annotatedAs: 'validated reconciliation data. Channel-wise revenu',
     split: 'held',
     entities: ['Referral', 'Digital', 'Sales', 'Associate', 'POSP'],
   },

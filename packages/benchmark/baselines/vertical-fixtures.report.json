@@ -20,7 +20,7 @@
         "unexpected": [
           {
             "id": "capability|generate business",
-            "reason": "discovered \"Generate Business\" (resolved/human_in_the_loop) matches no expected capability",
+            "reason": "discovered \"Generate Business\" (unresolved/not_executable) matches no expected capability",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
           }
@@ -86,8 +86,8 @@
         "id": "crossPathConsistency",
         "stage": "capabilities",
         "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-        "numerator": 306,
-        "denominator": 306,
+        "numerator": 302,
+        "denominator": 302,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -95,13 +95,13 @@
         "mismatched": [],
         "breakdown": {
           "live_vs_package.binding.match": 21,
-          "live_vs_package.binding.not_comparable": 18,
-          "live_vs_package.contract_embedded.match": 39,
-          "live_vs_package.contract_embedded.not_comparable": 17,
-          "live_vs_package.contract_hash.match": 39,
+          "live_vs_package.binding.not_comparable": 16,
+          "live_vs_package.contract_embedded.match": 37,
+          "live_vs_package.contract_embedded.not_comparable": 19,
+          "live_vs_package.contract_hash.match": 37,
           "live_vs_package.execution_outcome.match": 16,
-          "live_vs_package.execution_outcome.not_comparable": 2,
-          "live_vs_package.execution_outcome.not_exercised": 7,
+          "live_vs_package.execution_outcome.not_comparable": 3,
+          "live_vs_package.execution_outcome.not_exercised": 6,
           "live_vs_package.execution_provenance.match": 16,
           "live_vs_package.graph_hash.not_comparable": 7,
           "live_vs_serialized.binding.match": 56,
@@ -126,15 +126,21 @@
         "id": "executionClassAccuracy",
         "stage": "capabilities",
         "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
-        "numerator": 34,
+        "numerator": 33,
         "denominator": 38,
-        "ratio": 0.894737,
+        "ratio": 0.868421,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [
           {
-            "id": "t3.1-request-insurer-statements",
+            "id": "t2.3-generate-policy-booking-report",
+            "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          },
+          {
+            "id": "t4.1-create-invoices-in-tally",
             "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
@@ -160,8 +166,8 @@
         ],
         "breakdown": {
           "deterministic_rule->deterministic_rule": 12,
-          "human_in_the_loop->human_in_the_loop": 16,
-          "human_in_the_loop->not_executable": 4,
+          "human_in_the_loop->human_in_the_loop": 15,
+          "human_in_the_loop->not_executable": 5,
           "not_executable->not_executable": 6
         }
       },
@@ -169,43 +175,36 @@
         "id": "executionCorrectness",
         "stage": "execution",
         "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-        "numerator": 30,
+        "numerator": 31,
         "denominator": 31,
-        "ratio": 0.967742,
+        "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
-        "mismatched": [
-          {
-            "id": "request-statements-is-a-human-task",
-            "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
-            "attributedStage": "capabilities",
-            "caseId": "aastha-operations"
-          }
-        ]
+        "mismatched": []
       },
       {
         "id": "executionProvenanceAgreement",
         "stage": "execution",
         "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-        "numerator": 20,
-        "denominator": 20,
+        "numerator": 21,
+        "denominator": 21,
         "ratio": 1,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "state.match": 20,
-          "state.not_exercised": 7
+          "state.match": 21,
+          "state.not_exercised": 6
         }
       },
       {
         "id": "observedSourceRefCoverage",
         "stage": "compile",
         "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-        "numerator": 488,
-        "denominator": 488,
+        "numerator": 498,
+        "denominator": 498,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -231,8 +230,8 @@
         "id": "producerAttributionCoverage",
         "stage": "compile",
         "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-        "numerator": 400,
-        "denominator": 400,
+        "numerator": 409,
+        "denominator": 409,
         "ratio": 1,
         "measured": true,
         "missing": [],
@@ -240,8 +239,8 @@
         "mismatched": [],
         "breakdown": {
           "in_population.capability_extractor.attributed": 39,
-          "in_population.knowledge_extractor.attributed": 361,
-          "not_judged.reasoning_extractor.unattributed": 71,
+          "in_population.knowledge_extractor.attributed": 370,
+          "not_judged.reasoning_extractor.unattributed": 72,
           "not_judged.rule_minted_capability.unattributed": 17
         }
       },
@@ -257,8 +256,8 @@
         "unexpected": [],
         "mismatched": [],
         "breakdown": {
-          "binding.resolved": 39,
-          "binding.unresolved": 17,
+          "binding.resolved": 37,
+          "binding.unresolved": 19,
           "link.hash_deterministic.ok": 56,
           "link.nodes_resolve.ok": 56,
           "link.refs_carried.ok": 56,
@@ -281,16 +280,22 @@
         "id": "resolutionAccuracy",
         "stage": "capabilities",
         "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
-        "numerator": 34,
+        "numerator": 33,
         "denominator": 35,
-        "ratio": 0.971429,
+        "ratio": 0.942857,
         "measured": true,
         "missing": [],
         "unexpected": [],
         "mismatched": [
           {
-            "id": "t3.1-request-insurer-statements",
-            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+            "id": "t2.3-generate-policy-booking-report",
+            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_f8582d92317e2012cb86f350b50d7956\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+            "attributedStage": "capabilities",
+            "caseId": "aastha-operations"
+          },
+          {
+            "id": "t4.1-create-invoices-in-tally",
+            "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ababdc809874daea5aeaaeb7ecc29e7e\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
             "attributedStage": "capabilities",
             "caseId": "aastha-operations"
           }
@@ -393,13 +398,20 @@
         "id": "workflowExecutabilityAccuracy",
         "stage": "workflows",
         "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
-        "numerator": 7,
+        "numerator": 6,
         "denominator": 7,
-        "ratio": 1,
+        "ratio": 0.857143,
         "measured": true,
         "missing": [],
         "unexpected": [],
-        "mismatched": []
+        "mismatched": [
+          {
+            "id": "wf-receipts-and-bookkeeping",
+            "reason": "expected executability \"executable_candidate\", got \"not_executable_yet\" (blockers: ambiguous_precedence)",
+            "attributedStage": "workflows",
+            "caseId": "aastha-operations"
+          }
+        ]
       },
       {
         "id": "workflowPrecision",
@@ -436,50 +448,57 @@
         "id": "workflowStructureAccuracy",
         "stage": "workflows",
         "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
-        "numerator": 10,
+        "numerator": 9,
         "denominator": 10,
-        "ratio": 1,
+        "ratio": 0.9,
         "measured": true,
         "missing": [],
         "unexpected": [],
-        "mismatched": []
+        "mismatched": [
+          {
+            "id": "wf-receipts-and-bookkeeping.order",
+            "reason": "step order differs: expected [name contains \"Record incoming payments\" -> name contains \"Calculate and book TDS\" -> name contains \"Reconcile the invoice balance against actual receipts\"], got [Record incoming payments -> Reconcile the invoice balance against actual receipts -> Calculate and book TDS]",
+            "attributedStage": "workflows",
+            "caseId": "aastha-operations"
+          }
+        ]
       }
     ],
     "observed": {
       "nodeCountsByKind": {
         "capability": 56,
-        "concept": 339,
-        "constraint": 67,
+        "concept": 348,
+        "constraint": 68,
         "decision_node": 1,
         "heuristic": 25
       },
       "capabilities": {
         "total": 56,
         "byResolution": {
-          "resolved": 39,
-          "unresolved": 17
+          "resolved": 37,
+          "unresolved": 19
         },
         "byExecutionClass": {
           "deterministic_rule": 21,
-          "human_in_the_loop": 18,
-          "not_executable": 17
+          "human_in_the_loop": 16,
+          "not_executable": 19
         }
       },
       "workflows": {
-        "total": 24,
+        "total": 25,
         "totalSteps": 56,
         "byExecutability": {
-          "executable_candidate": 8,
-          "not_executable_yet": 16
+          "executable_candidate": 7,
+          "not_executable_yet": 18
         }
       },
       "executions": {
         "total": 31,
         "byOutcome": {
           "invalid_input": 4,
-          "not_executable": 3,
+          "not_executable": 2,
           "succeeded": 16,
-          "waiting_for_human": 2,
+          "waiting_for_human": 3,
           "workflow:not_executable_yet": 4,
           "workflow:waiting_for_human": 2
         }
@@ -524,12 +543,12 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 83,
+            "nodeCount": 92,
             "total": {
               "producers": {
-                "rule-based": 83
+                "rule-based": 91
               },
-              "unattributed": 0
+              "unattributed": 1
             },
             "byKind": {
               "capability": {
@@ -540,9 +559,13 @@
               },
               "concept": {
                 "producers": {
-                  "rule-based": 67
+                  "rule-based": 75
                 },
                 "unattributed": 0
+              },
+              "constraint": {
+                "producers": {},
+                "unattributed": 1
               }
             }
           }
@@ -567,40 +590,40 @@
         }
       },
       "fingerprints": {
-        "compile": "95397e9045aa7f4a",
-        "capabilities": "76cb64a103dba33f",
-        "workflows": "e7fecfd90005ff95",
-        "execution": "01ec4dfd6918d314"
+        "compile": "f318d92f6423954b",
+        "capabilities": "073eadcd7bcab66f",
+        "workflows": "29311290bd7d4aa6",
+        "execution": "ab4f97119af40274"
       },
       "observed": {
         "nodeCountsByKind": {
           "capability": 16,
-          "concept": 67
+          "concept": 75,
+          "constraint": 1
         },
         "capabilities": {
           "total": 16,
           "byResolution": {
-            "resolved": 15,
-            "unresolved": 1
+            "resolved": 13,
+            "unresolved": 3
           },
           "byExecutionClass": {
-            "human_in_the_loop": 15,
-            "not_executable": 1
+            "human_in_the_loop": 13,
+            "not_executable": 3
           }
         },
         "workflows": {
-          "total": 6,
+          "total": 7,
           "totalSteps": 16,
           "byExecutability": {
-            "executable_candidate": 3,
-            "not_executable_yet": 3
+            "executable_candidate": 2,
+            "not_executable_yet": 5
           }
         },
         "executions": {
           "total": 3,
           "byOutcome": {
-            "not_executable": 1,
-            "waiting_for_human": 1,
+            "waiting_for_human": 2,
             "workflow:waiting_for_human": 1
           }
         }
@@ -618,7 +641,7 @@
           "unexpected": [
             {
               "id": "capability|generate business",
-              "reason": "discovered \"Generate Business\" (resolved/human_in_the_loop) matches no expected capability",
+              "reason": "discovered \"Generate Business\" (unresolved/not_executable) matches no expected capability",
               "attributedStage": "capabilities"
             }
           ],
@@ -652,20 +675,19 @@
           "id": "crossPathConsistency",
           "stage": "capabilities",
           "definition": "cross-path units (pair x dimension x subject) on which the compared paths agree / units where both paths were observed and comparable (match or mismatch); unknown, not_comparable, not_exercised and not_observable are reported in the breakdown (P0.9C Step 6; descriptive)",
-          "numerator": 79,
-          "denominator": 79,
+          "numerator": 75,
+          "denominator": 75,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "live_vs_package.binding.not_comparable": 15,
-            "live_vs_package.contract_embedded.match": 15,
-            "live_vs_package.contract_embedded.not_comparable": 1,
-            "live_vs_package.contract_hash.match": 15,
-            "live_vs_package.execution_outcome.not_comparable": 1,
-            "live_vs_package.execution_outcome.not_exercised": 1,
+            "live_vs_package.binding.not_comparable": 13,
+            "live_vs_package.contract_embedded.match": 13,
+            "live_vs_package.contract_embedded.not_comparable": 3,
+            "live_vs_package.contract_hash.match": 13,
+            "live_vs_package.execution_outcome.not_comparable": 2,
             "live_vs_package.graph_hash.not_comparable": 1,
             "live_vs_serialized.binding.match": 16,
             "live_vs_serialized.capability_present.match": 16,
@@ -677,64 +699,62 @@
           "id": "executionClassAccuracy",
           "stage": "capabilities",
           "definition": "discovered capabilities whose execution class equals the expected one / discovered capabilities with an expected class (deterministic_rule | human_in_the_loop | not_executable)",
-          "numerator": 14,
+          "numerator": 13,
           "denominator": 15,
-          "ratio": 0.933333,
+          "ratio": 0.866667,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [
             {
-              "id": "t3.1-request-insurer-statements",
+              "id": "t2.3-generate-policy-booking-report",
+              "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "t4.1-create-invoices-in-tally",
               "reason": "expected execution class \"human_in_the_loop\", got \"not_executable\"",
               "attributedStage": "capabilities"
             }
           ],
           "breakdown": {
-            "human_in_the_loop->human_in_the_loop": 14,
-            "human_in_the_loop->not_executable": 1
+            "human_in_the_loop->human_in_the_loop": 13,
+            "human_in_the_loop->not_executable": 2
           }
         },
         {
           "id": "executionCorrectness",
           "stage": "execution",
           "definition": "execution requests whose observed outcome (status/output/steps) equals the expected one / execution requests",
-          "numerator": 2,
+          "numerator": 3,
           "denominator": 3,
-          "ratio": 0.666667,
+          "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
-          "mismatched": [
-            {
-              "id": "request-statements-is-a-human-task",
-              "reason": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
-              "attributedStage": "capabilities"
-            }
-          ]
+          "mismatched": []
         },
         {
           "id": "executionProvenanceAgreement",
           "stage": "execution",
           "definition": "executed capabilities whose recorded graphHash / contractContentHash / bindingId / contractId all match the live-graph projection / executed capabilities where agreement is determinable (match or mismatch); unknown, not_exercised and not_observable are reported in the breakdown (P0.9C Step 5; descriptive)",
-          "numerator": 2,
-          "denominator": 2,
+          "numerator": 3,
+          "denominator": 3,
           "ratio": 1,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "state.match": 2,
-            "state.not_exercised": 1
+            "state.match": 3
           }
         },
         {
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 83,
-          "denominator": 83,
+          "numerator": 92,
+          "denominator": 92,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -745,8 +765,8 @@
           "id": "producerAttributionCoverage",
           "stage": "compile",
           "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-          "numerator": 83,
-          "denominator": 83,
+          "numerator": 91,
+          "denominator": 91,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -754,7 +774,8 @@
           "mismatched": [],
           "breakdown": {
             "in_population.capability_extractor.attributed": 16,
-            "in_population.knowledge_extractor.attributed": 67
+            "in_population.knowledge_extractor.attributed": 75,
+            "not_judged.reasoning_extractor.unattributed": 1
           }
         },
         {
@@ -769,8 +790,8 @@
           "unexpected": [],
           "mismatched": [],
           "breakdown": {
-            "binding.resolved": 15,
-            "binding.unresolved": 1,
+            "binding.resolved": 13,
+            "binding.unresolved": 3,
             "link.hash_deterministic.ok": 16,
             "link.nodes_resolve.ok": 16,
             "link.refs_carried.ok": 16,
@@ -793,16 +814,21 @@
           "id": "resolutionAccuracy",
           "stage": "capabilities",
           "definition": "discovered capabilities whose binding resolution equals the expected one / discovered capabilities with an expected resolution",
-          "numerator": 14,
+          "numerator": 13,
           "denominator": 15,
-          "ratio": 0.933333,
+          "ratio": 0.866667,
           "measured": true,
           "missing": [],
           "unexpected": [],
           "mismatched": [
             {
-              "id": "t3.1-request-insurer-statements",
-              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+              "id": "t2.3-generate-policy-booking-report",
+              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_f8582d92317e2012cb86f350b50d7956\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
+              "attributedStage": "capabilities"
+            },
+            {
+              "id": "t4.1-create-invoices-in-tally",
+              "reason": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ababdc809874daea5aeaaeb7ecc29e7e\" has no linked decision_node/heuristic/constraint rules — nothing for a determini)",
               "attributedStage": "capabilities"
             }
           ]
@@ -811,13 +837,19 @@
           "id": "workflowExecutabilityAccuracy",
           "stage": "workflows",
           "definition": "found workflows whose audit status equals the expected executability / found workflows with an expected executability",
-          "numerator": 2,
+          "numerator": 1,
           "denominator": 2,
-          "ratio": 1,
+          "ratio": 0.5,
           "measured": true,
           "missing": [],
           "unexpected": [],
-          "mismatched": []
+          "mismatched": [
+            {
+              "id": "wf-receipts-and-bookkeeping",
+              "reason": "expected executability \"executable_candidate\", got \"not_executable_yet\" (blockers: ambiguous_precedence)",
+              "attributedStage": "workflows"
+            }
+          ]
         },
         {
           "id": "workflowRecall",
@@ -841,13 +873,19 @@
           "id": "workflowStructureAccuracy",
           "stage": "workflows",
           "definition": "found workflows whose step order / per-step execution classes equal the expected ones / such assertions",
-          "numerator": 4,
+          "numerator": 3,
           "denominator": 4,
-          "ratio": 1,
+          "ratio": 0.75,
           "measured": true,
           "missing": [],
           "unexpected": [],
-          "mismatched": []
+          "mismatched": [
+            {
+              "id": "wf-receipts-and-bookkeeping.order",
+              "reason": "step order differs: expected [name contains \"Record incoming payments\" -> name contains \"Calculate and book TDS\" -> name contains \"Reconcile the invoice balance against actual receipts\"], got [Record incoming payments -> Reconcile the invoice balance against actual receipts -> Calculate and book TDS]",
+              "attributedStage": "workflows"
+            }
+          ]
         }
       ],
       "items": [
@@ -862,16 +900,16 @@
         {
           "id": "t2.3-generate-policy-booking-report",
           "dimension": "capability",
-          "outcome": "found",
-          "ref": "cap_f8582d92317e2012cb86f350b50d7956"
+          "outcome": "incorrect",
+          "ref": "cap_f8582d92317e2012cb86f350b50d7956",
+          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_f8582d92317e2012cb86f350b50d7956\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
         },
         {
           "id": "t3.1-request-insurer-statements",
           "dimension": "capability",
-          "outcome": "incorrect",
-          "ref": "cap_9c105575ef6fa09bbe93857087b54622",
-          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
-          "attributedStage": "capabilities"
+          "outcome": "found",
+          "ref": "cap_9c105575ef6fa09bbe93857087b54622"
         },
         {
           "id": "t3.2-map-crm-to-insurer-data",
@@ -918,8 +956,10 @@
         {
           "id": "t4.1-create-invoices-in-tally",
           "dimension": "capability",
-          "outcome": "found",
-          "ref": "cap_ababdc809874daea5aeaaeb7ecc29e7e"
+          "outcome": "incorrect",
+          "ref": "cap_ababdc809874daea5aeaaeb7ecc29e7e",
+          "detail": "expected resolution \"resolved\", got \"unresolved\" (structured-comparison-resolver: Contract \"cap_ababdc809874daea5aeaaeb7ecc29e7e\" has no linked decision_node/heuristic/constraint rules — nothing for a determini) | expected execution class \"human_in_the_loop\", got \"not_executable\"",
+          "attributedStage": "capabilities"
         },
         {
           "id": "t4.2-calculate-and-book-tds",
@@ -964,9 +1004,7 @@
         {
           "id": "request-statements-is-a-human-task",
           "dimension": "execution",
-          "outcome": "failed",
-          "detail": "expected outcome \"waiting_for_human\", got \"not_executable\" (unresolved: structured-comparison-resolver: Contract \"cap_9c105575ef6fa09bbe93857087b54622\" has no linked decision_node/heuristic/constraint rules — nothing for)",
-          "attributedStage": "capabilities"
+          "outcome": "passed"
         },
         {
           "id": "wf-partner-payouts-escalates",
@@ -982,8 +1020,10 @@
         {
           "id": "wf-receipts-and-bookkeeping",
           "dimension": "workflow",
-          "outcome": "found",
-          "ref": "wf_6d9c67692286fbab"
+          "outcome": "incorrect",
+          "ref": "wf_6d9c67692286fbab",
+          "detail": "expected executability \"executable_candidate\", got \"not_executable_yet\" (blockers: ambiguous_precedence) | step order differs: expected [name contains \"Record incoming payments\" -> name contains \"Calculate and book TDS\" -> name contains \"Reconcile the invoice balance against actual receipts\"], got [Record incoming payments -> Reconcile the invoice balance against actual receipts -> Calculate and book TDS]",
+          "attributedStage": "workflows"
         },
         {
           "id": "wf-reconciliation-tasks",
@@ -1028,10 +1068,10 @@
             }
           ],
           "producerDistribution": {
-            "nodeCount": 215,
+            "nodeCount": 216,
             "total": {
               "producers": {
-                "rule-based": 205
+                "rule-based": 206
               },
               "unattributed": 10
             },
@@ -1044,7 +1084,7 @@
               },
               "concept": {
                 "producers": {
-                  "rule-based": 200
+                  "rule-based": 201
                 },
                 "unattributed": 0
               },
@@ -1081,7 +1121,7 @@
         }
       },
       "fingerprints": {
-        "compile": "23d09ac3423b857a",
+        "compile": "4eae2d753533c825",
         "capabilities": "b2b608643fb541c3",
         "workflows": "2ffc157b03b8d9e1",
         "execution": "4f53cda18c2baa0c"
@@ -1089,7 +1129,7 @@
       "observed": {
         "nodeCountsByKind": {
           "capability": 4,
-          "concept": 200,
+          "concept": 201,
           "constraint": 10,
           "heuristic": 1
         },
@@ -1186,8 +1226,8 @@
           "id": "observedSourceRefCoverage",
           "stage": "compile",
           "definition": "observed XOIR nodes carrying at least one source reference / observed XOIR nodes (descriptive; no expectation involved)",
-          "numerator": 215,
-          "denominator": 215,
+          "numerator": 216,
+          "denominator": 216,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1198,8 +1238,8 @@
           "id": "producerAttributionCoverage",
           "stage": "compile",
           "definition": "nodes created through a producer-stamping path (knowledge / capability extractor) that carry producedBy / such nodes (P0.9C Step 4; reasoning-derived and rule-minted nodes have no stamping site and are not judged)",
-          "numerator": 205,
-          "denominator": 205,
+          "numerator": 206,
+          "denominator": 206,
           "ratio": 1,
           "measured": true,
           "missing": [],
@@ -1207,7 +1247,7 @@
           "mismatched": [],
           "breakdown": {
             "in_population.capability_extractor.attributed": 3,
-            "in_population.knowledge_extractor.attributed": 202,
+            "in_population.knowledge_extractor.attributed": 203,
             "not_judged.reasoning_extractor.unattributed": 9,
             "not_judged.rule_minted_capability.unattributed": 1
           }

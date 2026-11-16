@@ -560,7 +560,9 @@ test('AUDIT (historical): every difference between each historical baseline and 
     // drift 13 -> 16: three outputs (semantic hardening consolidation) are declared as known drift on the historical entry.
     // drift 16 -> 23: UW-3b document structure declares six stage outputs and aastha capabilityPrecision ("mixed" at an
     // unchanged 15/16, one unexpected capability renamed) as known drift on the historical entry (CHANGELOG.md).
-    { added: 26, golden: 12, drift: 23, version: 1, repr: 7 },
+    // drift 23 -> 27: UW-3c declares four aastha metrics (two conservative HITL losses, receipts workflow ordered by
+    // tie-break because its source uses unordered bullets) as known drift on the historical entry (CHANGELOG.md).
+    { added: 26, golden: 12, drift: 27, version: 1, repr: 7 },
   );
 });
 
