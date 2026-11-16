@@ -14,6 +14,7 @@
  * `@xo/knowledge-store-postgres` (a hosted, multi-node service). Both run the same conformance suite.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequire } from 'node:module';
 import { digestOf, type Digest } from './canonical.js';
 import type { PackArtifact } from './packs.js';
 import { IntegrityError, type ChangeSetDecision, type KnowledgeStore } from './store.js';
@@ -242,10 +243,11 @@ interface SqliteDatabase {
 }
 
 export async function sqliteDriver(path: string, options: { readonly busyTimeoutMs?: number } = {}): Promise<SqlDriver> {
-  // `node:sqlite` is built into Node >= 22.5 (this repository requires >= 22.15). Imported by a computed name so the type
-  // checker does not need declarations that the pinned @types/node predates.
+  // `node:sqlite` is built into Node >= 22.5 (this repository requires >= 22.15). Loaded through Node's own `require`, by a
+  // computed name: the type checker needs no declarations the pinned @types/node predates, and bundlers or test transformers
+  // (which rewrite `node:` imports) never see it.
   const moduleName = 'node:sqlite';
-  const { DatabaseSync } = (await import(moduleName)) as { DatabaseSync: new (path: string) => SqliteDatabase };
+  const { DatabaseSync } = createRequire(import.meta.url)(moduleName) as { DatabaseSync: new (path: string) => SqliteDatabase };
   const db = new DatabaseSync(path);
   // busy_timeout 0: a synchronous busy-wait would block this process's event loop (and deadlock two connections in one process);
   // the write lock is instead acquired below by retrying `BEGIN IMMEDIATE` asynchronously until `busyTimeoutMs`.
