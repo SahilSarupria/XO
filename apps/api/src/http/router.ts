@@ -79,7 +79,12 @@ export class Router {
    * route at all" (404) from "this path exists, wrong method" (405) —
    * `server.ts` uses it to pick between them.
    */
-  resolve(method: string, path: string): { handler: RouteHandler; params: Readonly<Record<string, string>> } | undefined {
+  resolve(
+    method: string,
+    path: string,
+  ):
+    | { handler: RouteHandler; params: Readonly<Record<string, string>>; /** The route template, e.g. `/workspaces/:id`. */ route: string }
+    | undefined {
     const requestSegments = path.split('/').filter((segment) => segment.length > 0);
     const upperMethod = method.toUpperCase();
 
@@ -87,7 +92,8 @@ export class Router {
       if (route.method !== upperMethod) continue;
       const params = matchSegments(route.segments, requestSegments);
       if (params === undefined) continue;
-      return { handler: this.composeMiddleware(route.handler), params };
+      const template = `/${route.segments.map((seg) => (seg.kind === 'param' ? `:${seg.name}` : seg.value)).join('/')}`;
+      return { handler: this.composeMiddleware(route.handler), params, route: template };
     }
     return undefined;
   }

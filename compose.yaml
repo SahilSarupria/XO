@@ -1,0 +1,86 @@
+# UW-17 — one XO instance with Docker Compose. `docker compose up` builds the production image and starts it on 127.0.0.1:4000.
+#
+# The defaults below are for running it on your own machine. For a real deployment, put your values in a `.env` file next to this one
+# (see deploy/instance.env.example): an https XO_PUBLIC_BASE_URL, XO_TRUST_MODE=enforce with XO_PACKAGE_TRUST_POLICY, and real
+# sign-in. Nothing else changes between local and cloud.
+#
+#   docker compose up -d
+#   docker compose exec xo xo instance access-key --data /data          # a sign-in key, shown once
+#   docker compose exec -T xo xo secrets set ANTHROPIC_API_KEY < key.txt # secrets go to the encrypted file, never to this file
+#   docker compose exec xo xo instance backup --data /data --live --out /tmp/xo.tar.gz && docker compose cp xo:/tmp/xo.tar.gz ./
+#   node scripts/smoke-instance.mjs --url http://127.0.0.1:4000 --key <key>
+#
+# The backing services ADR 0006 plans for (Postgres, Redis, Neo4j) are not used by the instance yet; they start only with
+# `--profile backing` (and Neo4j with `--profile graph`).
+
+services:
+  xo:
+    build: .
+    image: xo-instance:local
+    ports:
+      - '127.0.0.1:${XO_PORT:-4000}:4000'
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      XO_ENV: ${XO_ENV:-development}
+      XO_TRUST_MODE: ${XO_TRUST_MODE:-development}
+      XO_PACKAGE_TRUST_POLICY: ${XO_PACKAGE_TRUST_POLICY:-}
+      XO_PUBLIC_BASE_URL: ${XO_PUBLIC_BASE_URL:-http://127.0.0.1:4000}
+      XO_AUDIT_RETENTION_DAYS: ${XO_AUDIT_RETENTION_DAYS:-400}
+      XO_AUDIT_MIN_RETENTION_DAYS: ${XO_AUDIT_MIN_RETENTION_DAYS:-365}
+      XO_API_AUDIT_RETENTION_DAYS: ${XO_API_AUDIT_RETENTION_DAYS:-400}
+      XO_AUDIT_ANCHOR_DIR: /anchors
+      XO_SECRETS_KEY_FILE: /keys/secrets.key
+      XO_METRICS_TOKEN: ${XO_METRICS_TOKEN:-}
+      XO_LOG_LEVEL: ${XO_LOG_LEVEL:-info}
+      XO_OCR: ${XO_OCR:-local}
+    volumes:
+      - xo_data:/data
+      - xo_anchors:/anchors
+      - xo_keys:/keys
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ['backing']
+    environment:
+      POSTGRES_USER: xo
+      POSTGRES_PASSWORD: xo_dev_only
+      POSTGRES_DB: xo_registry
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - xo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U xo -d xo_registry']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    profiles: ['backing']
+    ports:
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5-community
+    profiles: ['graph']
+    environment:
+      NEO4J_AUTH: neo4j/xo_dev_only
+    ports:
+      - '127.0.0.1:7474:7474'
+      - '127.0.0.1:7687:7687'
+    volumes:
+      - xo_neo4j_data:/data
+
+volumes:
+  xo_data:
+  xo_anchors:
+  xo_keys:
+  xo_postgres_data:
+  xo_neo4j_data:

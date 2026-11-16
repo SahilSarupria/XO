@@ -2,6 +2,7 @@ import type { CommandRegistry } from '../../command-registry.js';
 import { versionCommand } from './version.js';
 import { doctorCommand } from './doctor.js';
 import { configShowCommand } from './config-show.js';
+import { configCheck } from '../instance/index.js';
 
 /** Registers the CLI's own environment/meta commands — not backed by any `@xo/*` subsystem package, just facts about the CLI itself and its environment. */
 export function registerCommands(registry: CommandRegistry): void {
@@ -29,12 +30,15 @@ export function registerCommands(registry: CommandRegistry): void {
   registry.register({
     name: 'config',
     subsystem: 'system',
-    usage: 'xo config show                          Print resolved configuration (secrets masked)',
+    usage:
+      'xo config show                          Print resolved configuration (secrets masked)\n' +
+      'xo config check [--data <dir>] [--json]   Check the instance settings as start-up would: every problem at once (secrets hidden)',
     run: (args, ctx) => {
       if (args.positionals[0] === 'show') {
         process.stdout.write(`${configShowCommand()}\n`);
         return 0;
       }
+      if (args.positionals[0] === 'check') return configCheck(args);
       ctx.logger.error('Unknown config subcommand', { positionals: args.positionals });
       process.stdout.write('xo config show\n');
       return 1;

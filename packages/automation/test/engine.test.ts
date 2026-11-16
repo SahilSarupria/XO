@@ -130,7 +130,11 @@ describe('AutomationEngine', () => {
     assert.equal(attempts['flaky'], 3);
     assert.equal(attempts['always'], 3);
     assert.equal(attempts['bad'], 1);
-    assert.deepEqual(delays.slice(0, 2).sort(), [100, 200]);
+    // Two items retry concurrently, so their delays interleave: each waits 100 then 200 (exponential), and the permanent error none.
+    assert.deepEqual(
+      [...delays].sort((a, b) => a - b),
+      [100, 100, 200, 200],
+    );
     assert.equal((await readdir(join(dir, 'outbox/dead-letter'))).length, 2);
     assert.equal((await readdir(join(dir, 'outbox/decisions'))).length, 1);
     assert.equal(e.counters.failed, 2);

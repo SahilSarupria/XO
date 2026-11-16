@@ -106,16 +106,15 @@ That integration is out of scope for this module.
 ## Containerization: Docker + Docker Compose
 
 Standard, well-understood, and what most target deployment environments
-(Kubernetes, ECS, Fly.io, etc.) consume directly. `docker-compose.yml`
-provisions local Postgres/Redis (and optionally Neo4j) so every future
-module has the same backing services from day one.
+(Kubernetes, ECS, Fly.io, etc.) consume directly. Since UW-17 the root
+`Dockerfile` is the one production image of an instance and `compose.yaml`
+runs one instance (docs/INSTANCE.md); the Postgres/Redis/Neo4j backing
+services ADR 0006 plans for are still provisioned there, behind the
+`backing` and `graph` profiles, until something uses them.
 
-> **Sandbox note:** Docker itself was not exercised in the environment
-> this module was built in (no Docker daemon / no network to pull
-> images). The Dockerfile and compose file are written the same as they
-> would be in a networked environment; a networked run of
-> `docker compose up` / `docker build` is the actual verification step
-> still owed before this file is trusted blindly in CI.
+> **Verification:** the `image` job in `.github/workflows/ci.yml` builds the
+> image, checks that production defaults refuse to start, starts it with
+> compose and runs the instance smoke test against it.
 
 ## CI: GitHub Actions
 

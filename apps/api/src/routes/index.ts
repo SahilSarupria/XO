@@ -1,4 +1,7 @@
 import type { Router } from '../http/router.js';
+import { ErrorCode, XoError } from '@xo/errors';
+import { metricsTokenMatches, type InstanceMetrics } from '../instance/metrics.js';
+import type { ReadinessProbe } from '../instance/readiness.js';
 import { json } from '../http/types.js';
 import { registerRegistryRoutes } from './registry-routes.js';
 import { registerPackageRoutes } from './package-routes.js';
@@ -59,13 +62,47 @@ export interface RegisterRoutesDeps {
   /** Customer intelligence chat: the C6 knowledge boundary and DO capability boundary, per workspace. */
   readonly intelligenceKnowledge?: IntelligenceRouteOptions['knowledge'];
   readonly intelligenceCapabilities?: IntelligenceRouteOptions['capabilities'];
+  readonly readiness?: ReadinessProbe;
+  readonly metrics?: InstanceMetrics;
+  readonly metricsToken?: string;
 }
 
 export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   router.get('/health', async () => json(200, { status: 'ok' }));
   // Authenticated (NOT in auth's EXEMPT_PATHS). Liveness is `/health`; this reports inference *configuration* status only.
   // It never calls the provider (no billable inference from a probe) and never includes a credential.
-  router.get('/ready', async () => json(200, { status: 'ok', inference: describeInferenceReadiness(deps.inferenceEnv ?? process.env) }));
+  router.get('/ready', async () => {
+    const checks = deps.readiness !== undefined ? await deps.readiness() : [];
+    const ok = checks.every((c) => c.ok);
+    return json(ok ? 200 : 503, {
+      status: ok ? 'ok' : 'not-ready',
+      checks,
+      inference: describeInferenceReadiness(deps.inferenceEnv ?? process.env),
+    });
+  });
+  // UW-17: for load balancers and orchestrators, without a credential: which checks pass, never why (that is /ready, authenticated).
+  router.get('/readyz', async () => {
+    const checks = deps.readiness !== undefined ? await deps.readiness() : [];
+    const ok = checks.every((c) => c.ok);
+    return json(ok ? 200 : 503, { status: ok ? 'ready' : 'not-ready', checks: checks.map((c) => ({ name: c.name, ok: c.ok })) });
+  });
+  // UW-17: Prometheus metrics for a scraper holding XO_METRICS_TOKEN. Without a token configured the route does not exist.
+  router.get('/metrics', async (req) => {
+    if (deps.metrics === undefined || deps.metricsToken === undefined)
+      throw new XoError(ErrorCode.NOT_FOUND, 'no route for "GET /metrics"');
+    const header = req.headers['authorization'];
+    if (!metricsTokenMatches(Array.isArray(header) ? header[0] : header, deps.metricsToken))
+      return json(
+        401,
+        { error: { code: ErrorCode.AUTH_KEY_INVALID, message: 'a valid metrics token is required' } },
+        { 'www-authenticate': 'Bearer' },
+      );
+    return {
+      status: 200,
+      body: Buffer.from(deps.metrics.render()),
+      headers: { 'content-type': 'text/plain; version=0.0.4; charset=utf-8', 'cache-control': 'no-store' },
+    };
+  });
   router.get('/openapi.json', async () => json(200, openApiDocument));
 
   registerRegistryRoutes(router, deps.workspaceStore, deps.workspaceDataConfig);

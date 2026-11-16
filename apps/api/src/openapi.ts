@@ -39,15 +39,45 @@ export const openApiDocument = {
     },
     '/ready': {
       get: {
-        summary: 'Readiness: process status plus inference-provider CONFIGURATION status (never calls the provider)',
+        summary: 'Readiness with reasons: instance checks plus inference-provider CONFIGURATION status (never calls the provider)',
         responses: {
           '200': {
             description:
-              'status is always "ok" when the process serves requests. inference.state is unconfigured|configured|invalid; "configured" does NOT mean the provider is reachable (providerReachable is always "not_checked") or that inference works (inferenceVerified is always false). Never includes credentials.',
+              'Every check passed (status "ok"). checks lists storage, schema, instance-lock and scheduler with a reason each. inference.state is unconfigured|configured|invalid; "configured" does NOT mean the provider is reachable (providerReachable is always "not_checked") or that inference works (inferenceVerified is always false). Never includes credentials.',
             content: {
-              'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, inference: { type: 'object' } } } },
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { status: { type: 'string' }, checks: { type: 'array' }, inference: { type: 'object' } },
+                },
+              },
             },
           },
+          '503': { description: 'A check failed (status "not-ready"); the failing check says why.' },
+        },
+      },
+    },
+    '/readyz': {
+      get: {
+        summary: 'Readiness for load balancers and orchestrators (UW-17): check names and results only, no credential needed',
+        security: [],
+        responses: {
+          '200': { description: 'Ready: { status: "ready", checks: [{ name, ok }] }' },
+          '503': { description: 'Not ready: { status: "not-ready", checks: [{ name, ok }] }; the reasons are on the authenticated /ready' },
+        },
+      },
+    },
+    '/metrics': {
+      get: {
+        summary: 'Prometheus metrics (UW-17), for a scraper sending Authorization: Bearer <XO_METRICS_TOKEN>',
+        security: [],
+        responses: {
+          '200': {
+            description:
+              'text/plain; version=0.0.4. Requests by method, route template and status class; durations; build and process gauges.',
+          },
+          '401': { description: 'Missing or wrong metrics token (an API key is not one)' },
+          '404': { description: 'XO_METRICS_TOKEN is not configured, so metrics are off' },
         },
       },
     },
