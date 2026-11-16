@@ -3,14 +3,70 @@
   "suiteId": "xdomain-prompts-candidate-v0",
   "status": "candidate (not an accepted baseline); synthetic prompts, single annotator",
   "prompts": [
-    { "id": "p1", "domain": "finance", "text": "Build an expense approval system that checks receipts, applies spending limits and requests manager approval.", "statements": 0, "intents": 1, "reasons": ["missing-approver", "missing-criterion", "missing-threshold"] },
-    { "id": "p2", "domain": "inventory", "text": "If the stock level is below 10, reorder the item. The buyer must record each order.", "statements": 2, "intents": 0, "reasons": [] },
-    { "id": "p3", "domain": "support", "text": "Create a ticket routing workflow that assigns each ticket to the right team and notifies the requester.", "statements": 0, "intents": 1, "reasons": ["missing-target"] },
-    { "id": "p4", "domain": "retail", "text": "Approve every refund.", "statements": 1, "intents": 0, "reasons": ["unconditional-approval"] },
-    { "id": "p5", "domain": "retail", "text": "Refunds above 100 require manager approval. Staff must not issue cash refunds.", "statements": 2, "intents": 0, "reasons": [] },
-    { "id": "p6", "domain": "operations", "text": "I want a system that escalates urgent items.", "statements": 0, "intents": 1, "reasons": ["missing-condition"] },
+    {
+      "id": "p1",
+      "domain": "finance",
+      "text": "Build an expense approval system that checks receipts, applies spending limits and requests manager approval.",
+      "statements": 0,
+      "intents": 1,
+      "reasons": ["missing-approver", "missing-criterion", "missing-threshold"]
+    },
+    {
+      "id": "p2",
+      "domain": "inventory",
+      "text": "If the stock level is below 10, reorder the item. The buyer must record each order.",
+      "statements": 2,
+      "intents": 0,
+      "reasons": []
+    },
+    {
+      "id": "p3",
+      "domain": "support",
+      "text": "Create a ticket routing workflow that assigns each ticket to the right team and notifies the requester.",
+      "statements": 0,
+      "intents": 1,
+      "reasons": ["missing-target"]
+    },
+    {
+      "id": "p4",
+      "domain": "retail",
+      "text": "Approve every refund.",
+      "statements": 1,
+      "intents": 0,
+      "reasons": ["unconditional-approval"]
+    },
+    {
+      "id": "p5",
+      "domain": "retail",
+      "text": "Refunds above 100 require manager approval. Staff must not issue cash refunds.",
+      "statements": 2,
+      "intents": 0,
+      "reasons": []
+    },
+    {
+      "id": "p6",
+      "domain": "operations",
+      "text": "I want a system that escalates urgent items.",
+      "statements": 0,
+      "intents": 1,
+      "reasons": ["missing-condition"]
+    },
     { "id": "p7", "domain": "none", "text": "Thanks, that is all for now.", "statements": 0, "intents": 0, "reasons": [] },
-    { "id": "p8", "domain": "quality", "text": "If the gadget behaves oddly, the request must be rejected.", "statements": 1, "intents": 0, "reasons": ["unformalized-condition"] },
-    { "id": "p9", "domain": "it-ops", "text": "Build a monitoring tool that checks that the disk usage is under 80 percent.", "statements": 0, "intents": 1, "reasons": [] }
+    {
+      "id": "p8",
+      "domain": "quality",
+      "text": "If the gadget behaves oddly, the request must be rejected.",
+      "statements": 1,
+      "intents": 0,
+      "reasons": ["unformalized-condition"]
+    },
+    {
+      "id": "p9",
+      "domain": "it-ops",
+      "text": "Build a monitoring tool that checks that the disk usage is under 80 percent.",
+      "statements": 0,
+      "intents": 1,
+      "reasons": []
+    }
   ]
 }

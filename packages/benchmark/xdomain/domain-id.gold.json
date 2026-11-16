@@ -4,25 +4,88 @@
   "status": "candidate (not an accepted baseline). Labels were fixed BEFORE running. Packs and this set were authored by the same person: a sanity check, not independent evidence.",
   "items": [
     { "id": "corpus-leave", "file": "corpus/leave.md", "expected": "unknown" },
-    { "id": "corpus-loan", "file": "corpus/loan.md", "expected": "unknown", "note": "equipment lending, not finance: shares 'loan'/'borrower'" },
+    {
+      "id": "corpus-loan",
+      "file": "corpus/loan.md",
+      "expected": "unknown",
+      "note": "equipment lending, not finance: shares 'loan'/'borrower'"
+    },
     { "id": "corpus-sop", "file": "corpus/sop.md", "expected": "unknown" },
-    { "id": "corpus-contract", "file": "corpus/contract.md", "expected": "unknown", "note": "software services; 'interest' and 'payment' overlap finance" },
+    {
+      "id": "corpus-contract",
+      "file": "corpus/contract.md",
+      "expected": "unknown",
+      "note": "software services; 'interest' and 'payment' overlap finance"
+    },
     { "id": "corpus-warranty", "file": "corpus/warranty.md", "expected": "unknown", "note": "insurance-adjacent but not insurance" },
-    { "id": "corpus-procurement", "file": "corpus/procurement.md", "expected": "supply-chain", "note": "hard: procurement approval limits; pack has no approval vocabulary" },
+    {
+      "id": "corpus-procurement",
+      "file": "corpus/procurement.md",
+      "expected": "supply-chain",
+      "note": "hard: procurement approval limits; pack has no approval vocabulary"
+    },
     { "id": "corpus-travel", "file": "corpus/travel.md", "expected": "unknown" },
     { "id": "corpus-facility", "file": "corpus/facility.md", "expected": "unknown" },
     { "id": "corpus-research", "file": "corpus/research.md", "expected": "unknown" },
-    { "id": "real-property-policy", "pdf": "../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf", "expected": "insurance-claims" },
-    { "id": "ins-1", "expected": "insurance-claims", "text": "The policyholder shall bear the first excess on each loss. The insurer's liability is limited to the sum insured shown in the schedule, and cover for flood is excluded unless a rider is attached. A surveyor may be appointed to assess the loss." },
-    { "id": "ins-2", "expected": "insurance-claims", "text": "Subject to the waiting period of 30 days, the underwriter will indemnify the assured for damage caused by an insured peril. Any no claims discount is forfeited after a claim, and a proposal form containing a material misstatement voids cover." },
-    { "id": "fin-1", "expected": "finance-lending", "text": "The obligor shall repay the principal in equal instalments until the maturity date. Interest accrues at the agreed rate. The creditor may call an event of default if a covenant is breached and enforce its security interest over the pledged assets." },
-    { "id": "fin-2", "expected": "finance-lending", "text": "Each drawdown under the credit facility is subject to the borrower maintaining its credit rating. Prepayment of any part of the loan is permitted on 30 days notice, and the guarantor remains liable until final repayment." },
-    { "id": "sc-1", "expected": "supply-chain", "text": "The vendor shall deliver each consignment within the lead time stated on the PO. Orders below the MOQ may be rejected, and the buyer holds safety stock for each SKU in its distribution centre. Freight is allocated under the agreed Incoterms." },
-    { "id": "sc-2", "expected": "supply-chain", "text": "A replenishment order is raised when inventory falls below the reorder point. Any shortfall becomes a backorder, fulfilment is tracked against the bill of lading, and the supplier's quantity tolerance is plus or minus five percent." },
-    { "id": "mix-1", "expected": "mixed", "text": "The insurer shall indemnify the insured up to the sum insured subject to the deductible and exclusions. Separately, the borrower shall repay the principal and interest by the maturity date, and the lender may enforce the collateral on an event of default." },
-    { "id": "adv-1", "expected": "unknown", "text": "Our privacy policy applies to all users. Users may claim a reward if they show interest in the program. The default setting is on, and delivery of notifications can be limited in settings." },
-    { "id": "adv-2", "expected": "unknown", "text": "The council will consider each claim for a parking permit. Interest in the scheme is high and the policy will be reviewed. Delivery of permits takes 10 days and the schedule is published online." },
-    { "id": "adv-3", "expected": "unknown", "text": "Take the chicken out of the oven and let it rest for ten minutes. Combine the flour, butter and a pinch of salt, then bake until golden. Serve warm." },
-    { "id": "adv-4", "expected": "unknown", "text": "The player must not leave the field without the referee's permission. A match is forfeited if a team has fewer than seven players, and a yellow card may be shown for dissent." }
+    {
+      "id": "real-property-policy",
+      "pdf": "../../../examples/vertical-test/XO_Commercial_Property_Test_Policy_Compatible.pdf",
+      "expected": "insurance-claims"
+    },
+    {
+      "id": "ins-1",
+      "expected": "insurance-claims",
+      "text": "The policyholder shall bear the first excess on each loss. The insurer's liability is limited to the sum insured shown in the schedule, and cover for flood is excluded unless a rider is attached. A surveyor may be appointed to assess the loss."
+    },
+    {
+      "id": "ins-2",
+      "expected": "insurance-claims",
+      "text": "Subject to the waiting period of 30 days, the underwriter will indemnify the assured for damage caused by an insured peril. Any no claims discount is forfeited after a claim, and a proposal form containing a material misstatement voids cover."
+    },
+    {
+      "id": "fin-1",
+      "expected": "finance-lending",
+      "text": "The obligor shall repay the principal in equal instalments until the maturity date. Interest accrues at the agreed rate. The creditor may call an event of default if a covenant is breached and enforce its security interest over the pledged assets."
+    },
+    {
+      "id": "fin-2",
+      "expected": "finance-lending",
+      "text": "Each drawdown under the credit facility is subject to the borrower maintaining its credit rating. Prepayment of any part of the loan is permitted on 30 days notice, and the guarantor remains liable until final repayment."
+    },
+    {
+      "id": "sc-1",
+      "expected": "supply-chain",
+      "text": "The vendor shall deliver each consignment within the lead time stated on the PO. Orders below the MOQ may be rejected, and the buyer holds safety stock for each SKU in its distribution centre. Freight is allocated under the agreed Incoterms."
+    },
+    {
+      "id": "sc-2",
+      "expected": "supply-chain",
+      "text": "A replenishment order is raised when inventory falls below the reorder point. Any shortfall becomes a backorder, fulfilment is tracked against the bill of lading, and the supplier's quantity tolerance is plus or minus five percent."
+    },
+    {
+      "id": "mix-1",
+      "expected": "mixed",
+      "text": "The insurer shall indemnify the insured up to the sum insured subject to the deductible and exclusions. Separately, the borrower shall repay the principal and interest by the maturity date, and the lender may enforce the collateral on an event of default."
+    },
+    {
+      "id": "adv-1",
+      "expected": "unknown",
+      "text": "Our privacy policy applies to all users. Users may claim a reward if they show interest in the program. The default setting is on, and delivery of notifications can be limited in settings."
+    },
+    {
+      "id": "adv-2",
+      "expected": "unknown",
+      "text": "The council will consider each claim for a parking permit. Interest in the scheme is high and the policy will be reviewed. Delivery of permits takes 10 days and the schedule is published online."
+    },
+    {
+      "id": "adv-3",
+      "expected": "unknown",
+      "text": "Take the chicken out of the oven and let it rest for ten minutes. Combine the flour, butter and a pinch of salt, then bake until golden. Serve warm."
+    },
+    {
+      "id": "adv-4",
+      "expected": "unknown",
+      "text": "The player must not leave the field without the referee's permission. A match is forfeited if a team has fewer than seven players, and a yellow card may be shown for dissent."
+    }
   ]
 }

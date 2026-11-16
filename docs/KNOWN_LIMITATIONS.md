@@ -29,6 +29,23 @@ This is the single list of what is **not** true or **not** verified. Detail live
 - `LayerCache` reuses a loaded package by object identity; mutating a bundle after load is not detected.
 - An abandoned model call at the wall-clock cap is not cancelled and may still be billed. A running tool is not interrupted.
 
-## Known test failures not caused by this work
+## Found in UW-0 (main `26f0052`; see `docs/baseline/UW0_BASELINE.md`)
 
-- `packages/benchmark` `p09c-closure` (#147) and `baseline.test` (#35) fail at the branch's starting commit; `apps/api` tests exceed the 40 s cap.
+Each item names the workstream that owns the fix. None is fixed by UW-0 except where stated.
+
+- **XOIR node hashes include `createdAt`** (`packages/xoir/src/hashing.ts`), so two nodes with identical content created a millisecond apart hash differently. This made a `@xo/xoir` test fail intermittently in CI; the test now uses a fixed clock. Whether `createdAt` belongs in the content hash is UW-1 (deterministic hashing, verify-on-load). `fromJson` does not re-verify node hashes (by design; `validateGraph` does).
+- **Orphaned workflow runs** (`@xo/workflow-runtime`): a crash after a run's directory is created and before its first journal entry is durable leaves the run id unusable; `resume` and a second `start` both fail with `unknown run`. No effect has happened in that window. UW-7.
+- **Batch status**: a `forEach` run with one failed item reports the parent as `failed` even when the other items completed. UW-7 (partial completion).
+- **No cancel operation**: Workflow IR declares `cancellation.onCancel`, but the runner cannot cancel a run. UW-7 (ADR 0024).
+- **`workflow-runtime` approvals are not bound to the action's content**: a signed decision covers run, step and approval id only. Inside an instance only the digest-bound primitive grants authority (ADR 0014). UW-8.
+- **Two authorization systems in `apps/api`** (workspace roles and `PermissionManager`); the permission store is in-memory; API keys are revocable but never expire. UW-1 (ADR 0010).
+- **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
+- **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
+- **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
+- **`@xo/intelligence-c6` is merged but not wired**; the API chat uses its own knowledge port. UW-4c.
+- **Capability contracts have no typed outputs or effect class**: extractors emit `outputs: []`. UW-7.
+
+## Known test failures
+
+- None on `26f0052` locally (7,145 tests, 0 failures, 4 opt-in skips; by-name list in `docs/baseline/tests-26f0052.tsv`). The earlier `packages/benchmark` `p09c-closure` (#147) and `baseline.test` (#35) failures and the `apps/api` 40 s cap no longer reproduce.
+- GitHub CI on `26f0052` failed on formatting, one flaky `@xo/xoir` test and the Studio visual path filters; all three are fixed on the UW-0 branch.

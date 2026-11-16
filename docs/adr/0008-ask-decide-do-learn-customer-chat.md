@@ -4,6 +4,10 @@
 
 Accepted
 
+> **Amended (2026-11-13, UW-0)** by [ADR 0013](0013-canonical-conversation-store.md): point 7's separation is moot because Studio's
+> chat now uses Customer Chat; `cnv_` is the canonical store and `cht_` is deprecated. Point 5 (DO proposes, never executes) stands:
+> execution goes through the workflow service and the authorization point (ADRs 0010, 0011). The text below is unchanged.
+
 ## Context
 
 XO's customer-facing chat must let employees interact with their organization's intelligence in plain language without knowing about connectors, graphs or capabilities. The product thesis is a single loop — **ASK → DECIDE → DO → LEARN** — and the existing Studio chat (`chat-routes.ts`) is a different thing: a conversation-only assistant for Studio users with no knowledge access, no actions and no feedback path.

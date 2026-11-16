@@ -4,6 +4,12 @@
 
 Accepted (owner delegated the decision, consolidation of all branches into `main`).
 
+> **Superseded in part (2026-11-13, UW-0).** "Workflows": the single execution authority stands; the rule that `@xo/workflow-ir` and
+> `@xo/workflow-runtime` stay CLI-only is replaced by [ADR 0011](0011-canonical-workflow-engine.md). "Approvals": extended into one
+> primitive by [ADR 0014](0014-one-approval-primitive.md). "Conversations" is superseded by
+> [ADR 0013](0013-canonical-conversation-store.md) (`cnv_` canonical, `cht_` deprecated). The text below is kept unchanged as the
+> historical record.
+
 ## Context
 
 Merging every active line of work exposed three overlaps:

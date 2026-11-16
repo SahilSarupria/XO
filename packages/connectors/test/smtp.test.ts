@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:net';
 import { after, describe, it } from 'node:test';
-import type {
-  ConnectorError} from '../src/index.js';
+import type { ConnectorError } from '../src/index.js';
 import {
   ConnectorHost,
   MapVault,
@@ -116,12 +115,10 @@ describe('SMTP wire protocol (fake server on loopback)', () => {
           else if (line === 'DATA') {
             inData = true;
             sock.write('354 go\r\n');
-          }
-          else if (line === 'QUIT') {
+          } else if (line === 'QUIT') {
             sock.write('221 bye\r\n');
             sock.end();
-          }
-          else sock.write('500 unknown\r\n');
+          } else sock.write('500 unknown\r\n');
         }
       });
     });

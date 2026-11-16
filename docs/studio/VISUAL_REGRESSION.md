@@ -2,8 +2,13 @@
 
 Every push or pull request that can change what XO Studio looks like runs the real Studio and API in headless Chromium,
 takes the established screenshots, and compares them with **approved reference images** stored in the repository. A
-difference beyond the threshold fails the check and produces an image you can look at. Nothing is ever updated
+difference beyond the threshold is reported and produces an image you can look at. Nothing is ever updated
 automatically.
+
+> **Informational, not a gate.** The job's product is the uploaded artifact (screenshots, side-by-side diffs, report).
+> The path check, tooling tests and capture steps use `continue-on-error`, so a visual difference or an infrastructure
+> failure appears as a warning annotation and in the job summary while the job itself succeeds. It never blocks a pull
+> request; review the artifact whenever a change touches the UI.
 
 Workflow: `.github/workflows/studio-visual.yml` · Suite: `apps/studio/visual/`
 
@@ -64,7 +69,8 @@ are pinned to one fixed string by a test-side shim (`lib/browser.mjs`). The prod
 | **regression** | 10        | The suite ran and the UI is not what was approved: pixels changed, size changed, a screen has no reference, or a behaviour check failed.      |
 | **infra**      | 20        | The suite could not do its job (build, API or Studio did not start, seeding or sign-in failed, browser version wrong). The UI was not judged. |
 
-The job summary and an error annotation state which one it was. Infrastructure failures always win over anything found.
+The job summary and an annotation state which one it was (the job still succeeds; see the note at the top). Infrastructure
+failures always win over anything found.
 
 **Threshold** (`apps/studio/visual/visual.config.mjs`): a pixel differs when any channel is more than 8 away; a screen fails
 when more than 50 pixels differ, or its dimensions changed. That absorbs anti-aliasing noise and fails on a single changed
@@ -98,7 +104,7 @@ References must come from the CI image, not a laptop, because fonts and renderin
 
 References change only through a reviewed commit, never automatically.
 
-1. A run fails with differences. Download the artifact and review each `side-by-side.png`.
+1. A run reports differences. Download the artifact and review each `side-by-side.png`.
 2. If the change is **unintended**, fix the code. If it is **intended**, take the new images from the failed run's
    artifact (`actual/<viewport>/<screen>.png`, rendered on the pinned CI image), or run the workflow manually in
    `update-candidates` mode once it is on `main`, or run the local Docker command below.

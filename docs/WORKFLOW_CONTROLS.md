@@ -5,14 +5,14 @@ Everything here is enforced by the API server. The Studio only asks and shows th
 
 ## What you can do
 
-| Control | What it does | Who may (role permission) |
-|---|---|---|
-| **Mode** | `draft`, `shadow` (practising), `live`, `paused`. | Move to/from draft, shadow, paused: `author`. Take **live**: `publish`. |
-| **Pause everything** | One switch for the whole workspace. Nothing can start by any route until resumed. | `manage` (admin) |
-| **Daily limit** | At most N runs started per UTC day, practice runs included. | `author` |
-| **Triggers** | A **webhook** and/or an **every-N-minutes schedule**, per workflow. | `author` |
-| **Sign-off** | A named reviewer records that they reviewed this exact version. | `review` |
-| **Practice review** | A reviewer judges each practice run: could it be done without a person? | `review` |
+| Control              | What it does                                                                      | Who may (role permission)                                               |
+| -------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Mode**             | `draft`, `shadow` (practising), `live`, `paused`.                                 | Move to/from draft, shadow, paused: `author`. Take **live**: `publish`. |
+| **Pause everything** | One switch for the whole workspace. Nothing can start by any route until resumed. | `manage` (admin)                                                        |
+| **Daily limit**      | At most N runs started per UTC day, practice runs included.                       | `author`                                                                |
+| **Triggers**         | A **webhook** and/or an **every-N-minutes schedule**, per workflow.               | `author`                                                                |
+| **Sign-off**         | A named reviewer records that they reviewed this exact version.                   | `review`                                                                |
+| **Practice review**  | A reviewer judges each practice run: could it be done without a person?           | `review`                                                                |
 
 Every change is written to the audit log (`workflow.mode_changed`, `workflow.limits_changed`, `workflow.triggers_changed`,
 `workflow.signed_off`, `workflow.shadow_reviewed`, `workflow.triggered`, `workflows.paused`, `workflows.resumed`).

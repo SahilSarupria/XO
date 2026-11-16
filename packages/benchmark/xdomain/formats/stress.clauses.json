@@ -1,1 +1,68 @@
-[{"id": "leave-1.1", "text": "Full-time employees may take up to 20 days of annual leave per year."}, {"id": "leave-1.2", "text": "Leave requests longer than 5 days require line manager approval."}, {"id": "leave-1.3", "text": "If an employee has less than 90 days of service, annual leave is not permitted unless the HR director approves."}, {"id": "leave-1.4", "text": "Leave must be requested at least 14 days in advance."}, {"id": "leave-1.5", "text": "If the leave balance is insufficient or the request overlaps a blackout period, the request must be rejected."}, {"id": "leave-2.1", "text": "Employees must provide a medical certificate when absent for more than 3 consecutive days."}, {"id": "leave-2.2", "text": "Sick leave is never deducted from annual leave."}, {"id": "loan-1.1", "text": "Staff may borrow equipment for up to 30 days."}, {"id": "loan-1.2", "text": "If the equipment value exceeds 2000 USD, department head approval is required."}, {"id": "loan-1.3", "text": "Loans are not permitted for contractors, except when a sponsor employee signs the loan form."}, {"id": "loan-2.1", "text": "If equipment is returned more than 7 days late, the borrower is suspended from borrowing for 90 days."}, {"id": "loan-2.2", "text": "When equipment is returned damaged and the damage is not caused by normal use, the borrower must pay the repair cost."}, {"id": "sop-1.1", "text": "The on-call engineer must acknowledge the alert within 15 minutes."}, {"id": "sop-1.2", "text": "The on-call engineer must open an incident ticket and assign a severity."}, {"id": "sop-2.1", "text": "If severity is 1 or the outage lasts more than 60 minutes, notify the engineering director."}, {"id": "sop-2.2", "text": "After resolution, the incident owner must write a post-incident report within 5 business days."}, {"id": "sop-3.1", "text": "Severity 1 means a complete outage of a customer-facing service."}, {"id": "contract-1.1", "text": "The Customer shall pay each invoice within 30 days of receipt."}, {"id": "contract-1.2", "text": "If payment is late by more than 15 days, the Supplier may suspend the service."}, {"id": "contract-1.3", "text": "Late payments accrue interest at 1.5% per month."}, {"id": "contract-2.1", "text": "Either party may terminate this Agreement with 60 days written notice."}, {"id": "contract-2.2", "text": "The Supplier shall not terminate for convenience during the first 12 months unless the Customer is in material breach."}, {"id": "contract-3.1", "text": "Each party must keep the other party's confidential information secret and must not disclose it to third parties."}, {"id": "warranty-1.1", "text": "The warranty period is 24 months from the date of purchase."}, {"id": "warranty-1.2", "text": "A claim within the warranty period is approved if the defect is a manufacturing defect and proof of purchase is provided."}, {"id": "warranty-1.3", "text": "Damage caused by misuse is not covered."}, {"id": "warranty-1.4", "text": "If the product has been repaired by an unauthorised party, the warranty is void unless the repair was approved in writing by the manufacturer."}, {"id": "warranty-1.5", "text": "Replacement is offered only when repair is not possible within 30 days."}, {"id": "warranty-1.6", "text": "Claims over 5,000 USD must be referred to the warranty committee."}, {"id": "procurement-1.1", "text": "Purchases up to 1,000 USD may be approved by the department manager."}, {"id": "procurement-1.2", "text": "Purchases above 1,000 USD and up to 10,000 USD require approval from the finance director."}, {"id": "procurement-1.3", "text": "Purchases above 10,000 USD require approval from the board."}, {"id": "procurement-1.4", "text": "A purchase must not be split into smaller orders to avoid an approval threshold."}, {"id": "procurement-1.5", "text": "Purchases from a vendor that is not on the approved vendor list must be approved by the procurement head regardless of value."}, {"id": "procurement-1.6", "text": "Purchases up to 1,500 USD may be approved by the department manager."}, {"id": "facility-1.1", "text": "If the badge is missing or the visitor is unregistered, entry must be denied."}, {"id": "facility-1.2", "text": "If the badge is valid and the visitor is escorted by a staff member, entry is permitted."}, {"id": "facility-1.3", "text": "If the badge is valid, the visitor is registered, the area is open, and the escort is present, entry may proceed."}, {"id": "facility-1.4", "text": "If the badge is valid, the visitor is registered, approve the entry."}]
+[
+  { "id": "leave-1.1", "text": "Full-time employees may take up to 20 days of annual leave per year." },
+  { "id": "leave-1.2", "text": "Leave requests longer than 5 days require line manager approval." },
+  {
+    "id": "leave-1.3",
+    "text": "If an employee has less than 90 days of service, annual leave is not permitted unless the HR director approves."
+  },
+  { "id": "leave-1.4", "text": "Leave must be requested at least 14 days in advance." },
+  {
+    "id": "leave-1.5",
+    "text": "If the leave balance is insufficient or the request overlaps a blackout period, the request must be rejected."
+  },
+  { "id": "leave-2.1", "text": "Employees must provide a medical certificate when absent for more than 3 consecutive days." },
+  { "id": "leave-2.2", "text": "Sick leave is never deducted from annual leave." },
+  { "id": "loan-1.1", "text": "Staff may borrow equipment for up to 30 days." },
+  { "id": "loan-1.2", "text": "If the equipment value exceeds 2000 USD, department head approval is required." },
+  { "id": "loan-1.3", "text": "Loans are not permitted for contractors, except when a sponsor employee signs the loan form." },
+  { "id": "loan-2.1", "text": "If equipment is returned more than 7 days late, the borrower is suspended from borrowing for 90 days." },
+  {
+    "id": "loan-2.2",
+    "text": "When equipment is returned damaged and the damage is not caused by normal use, the borrower must pay the repair cost."
+  },
+  { "id": "sop-1.1", "text": "The on-call engineer must acknowledge the alert within 15 minutes." },
+  { "id": "sop-1.2", "text": "The on-call engineer must open an incident ticket and assign a severity." },
+  { "id": "sop-2.1", "text": "If severity is 1 or the outage lasts more than 60 minutes, notify the engineering director." },
+  { "id": "sop-2.2", "text": "After resolution, the incident owner must write a post-incident report within 5 business days." },
+  { "id": "sop-3.1", "text": "Severity 1 means a complete outage of a customer-facing service." },
+  { "id": "contract-1.1", "text": "The Customer shall pay each invoice within 30 days of receipt." },
+  { "id": "contract-1.2", "text": "If payment is late by more than 15 days, the Supplier may suspend the service." },
+  { "id": "contract-1.3", "text": "Late payments accrue interest at 1.5% per month." },
+  { "id": "contract-2.1", "text": "Either party may terminate this Agreement with 60 days written notice." },
+  {
+    "id": "contract-2.2",
+    "text": "The Supplier shall not terminate for convenience during the first 12 months unless the Customer is in material breach."
+  },
+  {
+    "id": "contract-3.1",
+    "text": "Each party must keep the other party's confidential information secret and must not disclose it to third parties."
+  },
+  { "id": "warranty-1.1", "text": "The warranty period is 24 months from the date of purchase." },
+  {
+    "id": "warranty-1.2",
+    "text": "A claim within the warranty period is approved if the defect is a manufacturing defect and proof of purchase is provided."
+  },
+  { "id": "warranty-1.3", "text": "Damage caused by misuse is not covered." },
+  {
+    "id": "warranty-1.4",
+    "text": "If the product has been repaired by an unauthorised party, the warranty is void unless the repair was approved in writing by the manufacturer."
+  },
+  { "id": "warranty-1.5", "text": "Replacement is offered only when repair is not possible within 30 days." },
+  { "id": "warranty-1.6", "text": "Claims over 5,000 USD must be referred to the warranty committee." },
+  { "id": "procurement-1.1", "text": "Purchases up to 1,000 USD may be approved by the department manager." },
+  { "id": "procurement-1.2", "text": "Purchases above 1,000 USD and up to 10,000 USD require approval from the finance director." },
+  { "id": "procurement-1.3", "text": "Purchases above 10,000 USD require approval from the board." },
+  { "id": "procurement-1.4", "text": "A purchase must not be split into smaller orders to avoid an approval threshold." },
+  {
+    "id": "procurement-1.5",
+    "text": "Purchases from a vendor that is not on the approved vendor list must be approved by the procurement head regardless of value."
+  },
+  { "id": "procurement-1.6", "text": "Purchases up to 1,500 USD may be approved by the department manager." },
+  { "id": "facility-1.1", "text": "If the badge is missing or the visitor is unregistered, entry must be denied." },
+  { "id": "facility-1.2", "text": "If the badge is valid and the visitor is escorted by a staff member, entry is permitted." },
+  {
+    "id": "facility-1.3",
+    "text": "If the badge is valid, the visitor is registered, the area is open, and the escort is present, entry may proceed."
+  },
+  { "id": "facility-1.4", "text": "If the badge is valid, the visitor is registered, approve the entry." }
+]
