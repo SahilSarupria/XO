@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { compileSources, discoverAndResolveCapabilities, type CompileSourcesOptions } from '@xo/compiler';
+import { discoverAndResolveCapabilities, type CompileSourcesOptions } from '@xo/compiler';
+import { compileSourceSet, defaultCompileConfiguration } from '@xo/pre-execution';
 import { nodesOfKind } from '@xo/xoir';
 import { unpackArchive } from '@xo/package-sdk';
 import type { CommandResult } from '../../command-result.js';
@@ -124,7 +125,12 @@ async function capabilitiesFromSource(
   }
 
   try {
-    const result = await compileSources(collected.inputs, options);
+    // PX-8 (gap PX-G07): the same entry point and configuration type as `xo compile` and the API.
+    const set = await compileSourceSet(
+      collected.inputs.map((input, i) => ({ entry: collected.entries[i]!, input })),
+      defaultCompileConfiguration(options.domainHint !== undefined ? { domainHint: options.domainHint } : {}),
+    );
+    const result = set.ok ? { ok: true as const, value: set.value.result } : set;
     if (!result.ok) return failWith(`[${result.error.code}] ${result.error.message}`);
 
     const capabilityNodes = nodesOfKind(result.value.graph, 'capability');

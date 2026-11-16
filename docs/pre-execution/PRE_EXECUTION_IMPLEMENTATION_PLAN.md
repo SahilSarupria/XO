@@ -16,6 +16,20 @@ One integration owner (Claude) edits the shared contracts. Read-only agents may 
 | PX-7 | `px-7/readiness-certificate-and-start-gate` | G24–G25: `WorkflowReadinessCertificate`, its verifier, `ReadinessService`, and the start gate in the API that verifies the certificate and rechecks permission. Sign-off binds to the certificate digest.                                                                                                                             | pre-execution, api                                    | False-ready corpus, stale-certificate and waiver tests, permission recheck.                               |
 | PX-8 | `px-8/cross-surface-and-report`             | G26–G27: Studio certificate view, an API/CLI conformance suite, security tests, `PRE_EXECUTION_HARDENING_REPORT.md`, and developer docs (adding a parser, an extractor, a resolver, or an IR construct).                                                                                                                              | api, cli, studio, docs                                | The same certificate digest from the API and the CLI. Full verification.                                  |
 
+## Status
+
+| Stage | PR                                      | Status                                                                    |
+| ----- | --------------------------------------- | ------------------------------------------------------------------------- |
+| PX-0  | #21                                     | done                                                                      |
+| PX-1  | #22                                     | done                                                                      |
+| PX-2  | #23                                     | done                                                                      |
+| PX-3  | #24                                     | done                                                                      |
+| PX-4  | #25                                     | done                                                                      |
+| PX-5  | #26                                     | done (one controlled benchmark change, `packages/benchmark/CHANGELOG.md`) |
+| PX-6  | #27                                     | done                                                                      |
+| PX-7  | #28                                     | done                                                                      |
+| PX-8  | see `PRE_EXECUTION_HARDENING_REPORT.md` | done                                                                      |
+
 ## Rules for every PR
 
 - **Before opening a PR:**

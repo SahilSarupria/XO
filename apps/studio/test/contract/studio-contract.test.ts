@@ -432,6 +432,30 @@ describe('workflow drafts', () => {
   });
 });
 
+describe('pre-start certificate (real platform, PX-8)', () => {
+  it('the platform issues and re-checks a readiness certificate, and Studio parses both', async () => {
+    const wf = must(await owner.listWorkflows(ws)).find((w) => w.steps.length > 0);
+    expect(wf).toBeDefined();
+    const cert = must(await owner.certifyWorkflow(ws, wf!.compilationId, wf!.workflowId, wf!.name));
+    expect(['READY', 'READY_WITH_CONDITIONS', 'NEEDS_REVIEW', 'BLOCKED']).toContain(cert.status);
+    expect(cert.gates.map((g) => g.id)).toEqual([
+      'source-quality',
+      'completeness',
+      'knowledge',
+      'goal',
+      'capabilities',
+      'authorization',
+      'workflow-definition',
+    ]);
+    expect(cert.scope.candidateWorkflowId).toBe(wf!.workflowId);
+    const check = must(await owner.checkReadinessCertificate(ws, cert.certificateId));
+    expect(check.certificateId).toBe(cert.certificateId);
+    expect(check.startAllowed).toBe(cert.status === 'READY' || cert.status === 'READY_WITH_CONDITIONS');
+    const denied = await viewer.certifyWorkflow(ws, wf!.compilationId, wf!.workflowId, wf!.name);
+    expect(denied.ok).toBe(false);
+  });
+});
+
 describe('workflow controls (real platform)', () => {
   it('modes, sign-off, limits, triggers, practice runs and the pause behave as the platform decides, through the real client and parsers', async () => {
     const workflows = must(await owner.listWorkflows(ws));

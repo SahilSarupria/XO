@@ -14,6 +14,7 @@ import {
   goalSpecification,
   lowerCandidateWorkflow,
   selectWorkflowScope,
+  sourceNamesOf,
   type SourceSetMember,
 } from '@xo/pre-execution';
 import type { CommandResult } from '../../command-result.js';
@@ -80,7 +81,7 @@ export async function generateWorkflowCommand(o: GenerateWorkflowOptions): Promi
     }
     const candidate = composed.value.find((w) => w.id === candidateId);
     if (candidate === undefined) return failWith(`no workflow "${candidateId}" in these sources`);
-    const lowered = lowerCandidateWorkflow(result.graph, candidate, inventory);
+    const lowered = lowerCandidateWorkflow(result.graph, candidate, inventory, { sourceNames: sourceNamesOf(artifact) });
     if (o.out !== undefined && lowered.component !== undefined) await writeFile(o.out, `${JSON.stringify(lowered.component, null, 2)}\n`);
     const certificate =
       o.certify === true || o.certificateOut !== undefined

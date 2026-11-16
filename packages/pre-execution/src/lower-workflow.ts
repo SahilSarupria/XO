@@ -150,6 +150,20 @@ function sanitizeSummary(s: string): string {
 export interface LowerOptions {
   /** Workflow version written into the definition. Default `1.0.0`. */
   readonly version?: string;
+  /**
+   * Compiler source id → the source's name, so step provenance names the document a person knows ("release.md § Release
+   * steps") instead of an internal id. `sourceNamesOf(artifact)` builds it.
+   */
+  readonly sourceNames?: ReadonlyMap<string, string>;
+}
+
+/** Compiler source id → source name, from a compilation artifact's per-source reports. */
+export function sourceNamesOf(artifact: { readonly sources: unknown }): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  if (!Array.isArray(artifact.sources)) return out;
+  for (const s of artifact.sources as readonly { readonly sourceId?: unknown; readonly sourcePath?: unknown }[])
+    if (typeof s.sourceId === 'string' && typeof s.sourcePath === 'string') out.set(s.sourceId, s.sourcePath);
+  return out;
 }
 
 export function lowerCandidateWorkflow(
@@ -180,9 +194,14 @@ export function lowerCandidateWorkflow(
             runIf: "previous_decision == 'approved'",
           }
         : {};
-    const provenance = (report?.evidence ?? [])
-      .map((e) => `${e.documentPath}${e.sectionPath !== undefined ? ` § ${e.sectionPath.join(' > ')}` : ''}`)
-      .slice(0, 8);
+    const provenance = [
+      ...new Set(
+        (report?.evidence ?? []).map(
+          (e) =>
+            `${options.sourceNames?.get(e.documentPath) ?? e.documentPath}${e.sectionPath !== undefined ? ` § ${e.sectionPath.join(' > ')}` : ''}`,
+        ),
+      ),
+    ].slice(0, 8);
     if (report === undefined || report.readiness.bound.value !== 'yes') {
       issues.push({
         stepId,

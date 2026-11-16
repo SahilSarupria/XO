@@ -7,6 +7,7 @@ import { Icon } from './icons';
 import { Button, formatWhen } from './primitives';
 import { useSession } from './session';
 import { useStartWorkflow } from './useStartWorkflow';
+import { ReadinessCertificatePanel } from './ReadinessCertificatePanel';
 import { WorkflowModeControls } from './WorkflowModeControls';
 
 /**
@@ -198,6 +199,14 @@ export function WorkflowPanel(props: {
             role={props.role}
             allPaused={props.allPaused === true}
             onChanged={props.onChanged}
+          />
+
+          <ReadinessCertificatePanel
+            workspaceId={props.workspaceId}
+            compilationId={w.compilationId}
+            workflowId={w.workflowId}
+            workflowName={s.title}
+            role={props.role}
           />
 
           <details className="wp-how">

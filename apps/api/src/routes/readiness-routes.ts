@@ -5,6 +5,7 @@ import {
   lowerCandidateWorkflow,
   readinessBindings,
   selectWorkflowScope,
+  sourceNamesOf,
   verifyReadinessCertificate,
   type CertificateBindings,
   type CertificateVerification,
@@ -61,7 +62,7 @@ export async function currentReadiness(
   const candidate = ctx.workflows.find((w) => w.id === definition.candidateWorkflowId);
   if (candidate === undefined)
     throw new NotFoundError(`workflow "${definition.candidateWorkflowId}" no longer exists in compilation "${definition.compilationId}"`);
-  const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory);
+  const lowered = lowerCandidateWorkflow(ctx.graph, candidate, ctx.inventory, { sourceNames: sourceNamesOf(ctx.artifact) });
   const scope = definition.selection.status === 'explicit' ? undefined : selectWorkflowScope(ctx.workflows, definition.goal);
   const bindings = readinessBindings({
     artifact: ctx.artifact,
