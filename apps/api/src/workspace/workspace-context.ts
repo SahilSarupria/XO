@@ -171,6 +171,11 @@ export function workspaceCompilationsStore(record: WorkspaceRecord, config: Work
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'compilations'));
 }
 
+/** PX-2 — source-quality waivers, `<dataRootDir>/<workspaceId>/waivers`. Append-only: a waiver is never edited or deleted. */
+export function workspaceWaiversStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'waivers'));
+}
+
 /** Fifth sibling — capability approval records (P0.5), `<dataRootDir>/<workspaceId>/approvals`. */
 export function workspaceApprovalsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'approvals'));

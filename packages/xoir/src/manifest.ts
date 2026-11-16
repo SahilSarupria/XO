@@ -1,4 +1,5 @@
 import type { ContentHash } from '@xo/types';
+import type { SourceQualityState } from '@xo/types';
 
 /**
  * The XOIR manifest/header — package/compilation-level bookkeeping that is
@@ -62,7 +63,7 @@ export interface SourceQualityInfo {
    * for a recorded reason. The pages that were read still compile, but the source must not
    * yield approvable capabilities without a recorded human waiver.
    */
-  readonly state: 'trusted' | 'degraded' | 'partial' | 'blocked';
+  readonly state: SourceQualityState;
   /** Same metric `document-quality.ts#DocumentQualityReport.suspiciousTokenRatio` reports — the fraction of tokens that looked like layout-reconstruction artifacts rather than real words. */
   readonly suspiciousTokenRatio: number;
   /** Per-page accounting counts for paginated sources. Absent for sources with no page structure and for graphs compiled before WS1-01. Per-page detail lives in the compile result, not the manifest. */

@@ -302,6 +302,10 @@ export const ErrorCode = {
   // authentication, ownership, request-validation, or storage failures —
   // those keep their existing codes.
   WORKFLOW_NOT_EXECUTABLE: 'XO_WORKFLOW_NOT_EXECUTABLE',
+  // PX-2 (ADR 0029): a partial or degraded source has findings no current waiver covers, or a source is blocked. Its
+  // capabilities cannot be approved, and nothing built on it is ready, until a reviewer records a waiver bound to that
+  // exact source version and those exact findings (a blocked source cannot be waived).
+  SOURCE_QUALITY_WAIVER_REQUIRED: 'XO_SOURCE_QUALITY_WAIVER_REQUIRED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

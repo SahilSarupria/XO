@@ -151,6 +151,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // resource that cannot be processed in its current evidence state —
   // 422, same reasoning as BINDING_UNRESOLVED/CONTRACT_MALFORMED above.
   [ErrorCode.WORKFLOW_NOT_EXECUTABLE]: 422,
+  [ErrorCode.SOURCE_QUALITY_WAIVER_REQUIRED]: 409,
 
   // Capability contract (@xo/capability-contract) — semantic discovery
   // and binding resolution, first reachable over HTTP via P0.5.

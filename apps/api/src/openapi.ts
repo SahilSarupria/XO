@@ -1023,6 +1023,41 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/source-quality': {
+      get: {
+        summary: 'Source quality gate for a compilation (PX-2)',
+        description:
+          'Per source: quality state (trusted | degraded | partial | blocked), findings (unread pages, pages read only by a hosted model, degraded or blocked text), which waivers cover them, and the gate status for `purpose` (approval | readiness): pass, pass-with-waivers, or blocked with the reasons. Degraded and partial sources need a waiver covering every finding; blocked sources cannot be waived.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'purpose', in: 'query', required: false, schema: { type: 'string', enum: ['approval', 'readiness'] } },
+        ],
+        responses: { '200': { description: '{ purpose, status, blockers, assessment? }' }, '404': { description: 'Unknown compilation' } },
+      },
+    },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/waivers': {
+      post: {
+        summary: 'Record a source-quality waiver (PX-2)',
+        description:
+          "Body `{ digestSha256, reason, findings?, scope? }`. Needs the review role and a recent sign-in. The findings are the server's reading of the compilation (a subset may be named, never new ones); the waiver binds to that source version and quality state, is attributed to the authenticated principal, audited (waiver.granted / waiver.denied), append-only, and content-addressed.",
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'SourceWaiver' },
+          '400': { description: 'Nothing to waive, blocked source, unknown finding, or no reason' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/waivers': {
+      get: {
+        summary: "List the workspace's source-quality waivers (PX-2)",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ waivers: SourceWaiver[] }' } },
+      },
+    },
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
       get: {
         summary: 'Get the capabilities discovered/resolved by a succeeded compilation',

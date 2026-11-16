@@ -4,3 +4,4 @@ export * from './source-set.js';
 export * from './compile-configuration.js';
 export * from './compilation-artifact.js';
 export * from './compile-source-set.js';
+export * from './source-quality.js';

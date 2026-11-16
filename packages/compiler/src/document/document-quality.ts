@@ -1,3 +1,4 @@
+import type { SourceQualityState } from '@xo/types';
 import type { Diagnostic } from '@xo/xoir';
 import type { DocumentBlock, DocumentSection, ParsedDocument } from './types.js';
 import { findSuspiciousTokens } from './text-legibility.js';
@@ -24,7 +25,7 @@ import {
  *               approvable without a recorded human waiver.
  * - `blocked`   nothing trustworthy to extract from; semantic extraction does not run.
  */
-export type SourceQualityState = 'trusted' | 'degraded' | 'partial' | 'blocked';
+export type { SourceQualityState };
 
 export interface DocumentQualityReport {
   readonly state: SourceQualityState;

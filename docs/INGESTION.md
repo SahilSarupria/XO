@@ -186,6 +186,24 @@ versions with their records.
 (`GET /workspaces/:id/compilations/:cid/artifact`, verified against its digest before it is served; `xo compile
 --artifact <file>` on the CLI). The same bytes, names and configuration give the same artifact digest on both surfaces.
 
+## Source quality policy and waivers (PX-2)
+
+Every source in a compilation has a quality state (`@xo/types` `SourceQualityState`, the one vocabulary) and findings:
+
+| State      | Findings                                                            | Compile       | Review | Approve / ready                          |
+| ---------- | ------------------------------------------------------------------- | ------------- | ------ | ---------------------------------------- |
+| `trusted`  | none                                                                | yes           | yes    | yes                                      |
+| `degraded` | `page:<n>:model-transcribed`, or `text:degraded`                    | yes           | yes    | only with a waiver for every finding     |
+| `partial`  | `page:<n>:unread` for each page not read (and any model-only pages) | yes           | yes    | only with a waiver for every finding     |
+| `blocked`  | `text:blocked`                                                      | no extraction | yes    | never; a blocked source cannot be waived |
+
+- **Enforcement point.** The approval route checks the policy itself (`XO_SOURCE_QUALITY_WAIVER_REQUIRED`, HTTP 409). It is not left to a UI warning. The readiness certificate (PX-7) checks it again before start.
+- **Recording a waiver.** A reviewer records one with `POST …/compilations/:id/waivers`. This needs the review role and a recent sign-in.
+- **What a waiver binds to.** It is bound to one source version (its SHA-256) and to the quality state the reviewer saw. It names the exact findings it accepts, and its scope is `approval`, `readiness` or both.
+- **What it does not cover.** A new version of the file, a change in quality state, or a finding the waiver does not name is not waived.
+- **Integrity.** Waivers are append-only, audited (`waiver.granted` / `waiver.denied`) and content-addressed. A stored waiver whose digest fails is reported and not applied.
+- **Thresholds.** The numeric thresholds behind `degraded` and `blocked` are the compiler's existing ones. They are not owner-ratified (ADR 0029 decision 17), so the conservative policy above applies.
+
 ## Refused loudly
 
 - Anything the hardened ZIP reader refuses:

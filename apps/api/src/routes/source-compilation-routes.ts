@@ -12,6 +12,7 @@ import {
   workspaceSourcesStore,
   workspaceCompilationsStore,
   workspaceApprovalsStore,
+  workspaceWaiversStore,
   requirePrincipal,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -29,6 +30,14 @@ import type { AuditService } from '../audit/audit-service.js';
 import { auditedOwnedWorkspace, finalizationNotice, newCorrelationId, safeId } from '../audit/audit-service.js';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
+import { FsWaiverStore } from '../waivers/waiver-store.js';
+import {
+  assessSourceQuality,
+  createSourceWaiver,
+  sourceQualityOf,
+  type SourceQualityAssessment,
+  type SourceWaiver,
+} from '@xo/pre-execution';
 
 /**
  * Source -> compilation -> capability, over the exact same
@@ -151,6 +160,126 @@ export function registerCompilationRoutes(
     return json(200, found.value);
   }
 
+  /**
+   * PX-2: the source-quality gate for one compilation and purpose, from its artifact and the workspace's waivers.
+   * A compilation made before PX-1 has no artifact: a non-trusted source then blocks, with the instruction to recompile so
+   * its findings can be seen and waived.
+   */
+  async function qualityGate(
+    workspace: Parameters<typeof workspaceCompilationsStore>[0],
+    compilationId: string,
+    record: CompilationRecord,
+    purpose: 'approval' | 'readiness',
+  ): Promise<{
+    readonly status: 'pass' | 'pass-with-waivers' | 'blocked';
+    readonly blockers: readonly string[];
+    readonly assessment?: SourceQualityAssessment;
+  }> {
+    const store = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    if (record.artifactDigest === undefined) {
+      const state = record.sourceReport?.qualityState;
+      if (state === undefined || state === 'trusted') return { status: 'pass', blockers: [] };
+      return {
+        status: 'blocked',
+        blockers: [
+          `the source was compiled before quality findings were recorded and is ${state}: recompile it to see its findings and record a waiver`,
+        ],
+      };
+    }
+    const artifact = await store.getArtifact(compilationId);
+    if (!artifact.ok) return { status: 'blocked', blockers: [`the compilation artifact is unavailable: ${artifact.error.message}`] };
+    const digests = new Set(artifact.value.sourceSet.entries.map((e) => e.digestSha256));
+    const waivers = await new FsWaiverStore(workspaceWaiversStore(workspace, dataConfig)).forDigests(digests);
+    const assessment = assessSourceQuality(artifact.value, waivers, purpose);
+    return { status: assessment.status, blockers: assessment.blockers, assessment };
+  }
+
+  /** PX-2: the quality of each source of a compilation, its findings, and which waivers cover them. */
+  async function getSourceQuality(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const purposeRaw = req.query.get('purpose') ?? 'approval';
+    if (purposeRaw !== 'approval' && purposeRaw !== 'readiness')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'purpose must be "approval" or "readiness"');
+    const found = await new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)).get(compilationId);
+    if (!found.ok) throw found.error;
+    const gate = await qualityGate(workspace, compilationId, found.value, purposeRaw);
+    return json(200, {
+      purpose: purposeRaw,
+      status: gate.status,
+      blockers: gate.blockers,
+      ...(gate.assessment !== undefined ? { assessment: gate.assessment } : {}),
+    });
+  }
+
+  /**
+   * PX-2: record a waiver. The reviewer names the source version and gives a reason; the findings are the server's own
+   * reading of the compilation (a client cannot widen or invent them), optionally narrowed to a subset. Needs the review
+   * role and a recent sign-in, like an approval; the decision is audited.
+   */
+  async function createWaiver(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'waive.source-quality', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'waive source quality findings' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'waive source quality findings');
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const body = await req.json<{ digestSha256?: unknown; reason?: unknown; findings?: unknown; scope?: unknown }>();
+    if (!body.ok) throw body.error;
+    const { digestSha256, reason, findings, scope } = body.value;
+    if (typeof digestSha256 !== 'string' || typeof reason !== 'string')
+      throw new XoError(
+        ErrorCode.INVALID_ARGUMENT,
+        'body must be { digestSha256: string, reason: string, findings?: string[], scope?: ("approval"|"readiness")[] }',
+      );
+    if (findings !== undefined && (!Array.isArray(findings) || findings.some((f) => typeof f !== 'string')))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"findings" must be an array of finding keys');
+    if (scope !== undefined && (!Array.isArray(scope) || scope.some((x) => x !== 'approval' && x !== 'readiness')))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"scope" must list "approval" and/or "readiness"');
+    const actor = requirePrincipal(req);
+    const draft = {
+      action: 'waive.source-quality',
+      actor: actorFromPrincipal(actor),
+      correlationId,
+      target: { kind: 'compilation' as const, id: safeId(compilationId) ?? 'unknown', workspaceId: workspace.workspaceId },
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+
+    const store = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    const artifact = await store.getArtifact(compilationId);
+    if (!artifact.ok) throw artifact.error;
+    const entry = sourceQualityOf(artifact.value).find((e) => e.digestSha256 === digestSha256);
+    if (entry === undefined) throw new NotFoundError(`source version "${digestSha256}" in compilation "${compilationId}"`);
+    let waiver: SourceWaiver;
+    try {
+      waiver = createSourceWaiver({
+        entry,
+        reason,
+        actor: { id: actor.id, kind: actor.kind },
+        createdAt: new Date().toISOString(),
+        decidedOnArtifact: artifact.value.digest,
+        ...(findings !== undefined ? { findings: findings as string[] } : {}),
+        ...(scope !== undefined ? { scope: scope as ('approval' | 'readiness')[] } : {}),
+      });
+    } catch (cause) {
+      await audit.tryRecord({ ...draft, type: 'waiver.denied', outcome: 'denied', reasonCode: ErrorCode.INVALID_ARGUMENT });
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, cause instanceof Error ? cause.message : String(cause));
+    }
+    await new FsWaiverStore(workspaceWaiversStore(workspace, dataConfig)).add(waiver);
+    await audit.tryRecord({
+      ...draft,
+      type: 'waiver.granted',
+      outcome: 'completed',
+      metadata: { waiverId: waiver.waiverId, findingCount: waiver.findings.length },
+    });
+    return json(201, waiver);
+  }
+
+  async function listWaivers(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    return json(200, { waivers: await new FsWaiverStore(workspaceWaiversStore(workspace, dataConfig)).list() });
+  }
+
   async function getCapabilities(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const compilationId = req.params['compilationId'];
@@ -228,6 +357,18 @@ export function registerCompilationRoutes(
     if (!capsFound.ok) throw capsFound.error;
     const capability = capsFound.value.find((c) => c.capabilityId === capabilityId);
     if (capability === undefined) throw new NotFoundError(`capability "${capabilityId}" in compilation "${compilationId}"`);
+
+    // PX-2 (spec §4.3): a capability read from a partial, degraded or blocked source is approvable only when a waiver bound
+    // to that source version covers every finding. Enforced here, at the approval itself — a warning in a UI is not enough.
+    const quality = await qualityGate(workspace, compilationId, compilationFound.value, 'approval');
+    if (quality.status === 'blocked') {
+      await deny(ErrorCode.SOURCE_QUALITY_WAIVER_REQUIRED);
+      throw new XoError(
+        ErrorCode.SOURCE_QUALITY_WAIVER_REQUIRED,
+        `capability "${capabilityId}" cannot be approved: ${quality.blockers.join(' ')}`,
+        { context: { blockers: [...quality.blockers] } },
+      );
+    }
 
     // WP2-A: an approval is only recordable for a capability the platform can carry out. A
     // non-resolved binding is refused with the same code execution would report for it. This
@@ -307,6 +448,9 @@ export function registerCompilationRoutes(
   router.get('/workspaces/:workspaceId/compilations', guarded(listCompilations));
   router.get('/workspaces/:workspaceId/compilations/:compilationId', guarded(getCompilation));
   router.get('/workspaces/:workspaceId/compilations/:compilationId/artifact', guarded(getArtifact));
+  router.get('/workspaces/:workspaceId/compilations/:compilationId/source-quality', guarded(getSourceQuality));
+  router.post('/workspaces/:workspaceId/compilations/:compilationId/waivers', guarded(createWaiver));
+  router.get('/workspaces/:workspaceId/waivers', guarded(listWaivers));
   router.get('/workspaces/:workspaceId/compilations/:compilationId/capabilities', guarded(getCapabilities));
   router.post('/workspaces/:workspaceId/compilations/:compilationId/capabilities/:capabilityId/approve', guarded(approveCapability));
 }
