@@ -540,6 +540,38 @@ export interface ChatMessage {
   readonly model?: { readonly provider: string; readonly model: string };
   readonly attachedXos?: readonly string[];
   readonly result?: TurnView;
+  /** UW-12a: XO opening a conversation with what it found in the workspace's connected folders. */
+  readonly discovery?: { readonly proposals: readonly DiscoveryProposalView[] };
+}
+/** A proposed role (what a file or folder looks like), as the discovery message carried it. Decided through the source-connection API. */
+export interface DiscoveryProposalView {
+  readonly connectionId: string;
+  readonly proposalId: string;
+  readonly role: string;
+  readonly label: string;
+  readonly basis: readonly string[];
+  readonly strength: 'strong' | 'weak';
+  readonly status: 'proposed' | 'confirmed' | 'rejected';
+}
+const PROPOSAL_STATUSES: readonly string[] = ['proposed', 'confirmed', 'rejected'];
+function parseDiscovery(v: unknown, path: string): { readonly proposals: readonly DiscoveryProposalView[] } {
+  const o = obj(v, path);
+  return {
+    proposals: list(o['proposals'], `${path}.proposals`, (x, p) => {
+      const po = obj(x, p);
+      const status = str(po['status'], `${p}.status`);
+      if (!PROPOSAL_STATUSES.includes(status)) throw new WireParseError(`${p}.status`, PROPOSAL_STATUSES.join(' | '));
+      return {
+        connectionId: str(po['connectionId'], `${p}.connectionId`),
+        proposalId: str(po['proposalId'], `${p}.proposalId`),
+        role: str(po['role'], `${p}.role`),
+        label: str(po['label'], `${p}.label`),
+        basis: strArr(po['basis'], `${p}.basis`),
+        strength: po['strength'] === 'strong' ? 'strong' : 'weak',
+        status: status as DiscoveryProposalView['status'],
+      };
+    }),
+  };
 }
 export interface ChatThreadFull extends ChatSummary {
   readonly messages: readonly ChatMessage[];
@@ -616,6 +648,7 @@ export function parseChatMessage(v: unknown, path = 'message'): ChatMessage {
       ? { model: { provider: lastCall['provider'], model: lastCall['model'] } }
       : {}),
     ...(result !== undefined ? { result } : {}),
+    ...(o['discovery'] !== undefined ? { discovery: parseDiscovery(o['discovery'], `${path}.discovery`) } : {}),
   };
 }
 export const parseChatList = (v: unknown): ChatSummary[] => list(obj(v, 'body')['conversations'], 'conversations', parseChatSummary);

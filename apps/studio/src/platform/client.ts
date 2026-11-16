@@ -907,6 +907,22 @@ export class XoClient {
     const qs = params.toString();
     return this.call('GET', `/workspaces/${enc(ws)}/workflow-entities${qs.length > 0 ? `?${qs}` : ''}`, parseWorkflowPage);
   }
+  /** UW-12a: start a conversation with what XO found in the workspace's connected folders (the conversation is the caller's). */
+  startDiscoveryConversation(ws: string): Promise<Result<ChatThreadFull>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/discovery/conversation`, parseChatThread, {
+      body: JSON.stringify({}),
+      contentType: 'application/json',
+    });
+  }
+  /** UW-12a: confirm or reject what XO thinks a file or folder is. Goes through the source-connection API, never the conversation. */
+  decideSourceRole(ws: string, connectionId: string, proposalId: string, decision: 'confirmed' | 'rejected'): Promise<Result<true>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/source-connections/${enc(connectionId)}/proposals/${enc(proposalId)}/decision`,
+      () => true as const,
+      { body: JSON.stringify({ decision }), contentType: 'application/json' },
+    );
+  }
   /** The workflows created from one of the caller's own conversations. */
   listConversationWorkflows(ws: string, conversationId: string): Promise<Result<WorkflowPage>> {
     return this.call('GET', `/workspaces/${enc(ws)}/intelligence/conversations/${enc(conversationId)}/workflows`, parseWorkflowPage);

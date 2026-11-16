@@ -129,6 +129,19 @@ describe('UW-4a evidence resolver', () => {
     }
   });
 
+  it('UW-12a: a retired version (replaced, or gone from its connected folder) no longer stands, and says which', async () => {
+    const p = port({
+      [sha('v1')]: { name: 'rates.xlsx', digestVerified: true, retired: { at: '2026-11-16T10:00:00.000Z', reason: 'changed' } },
+      [sha('gone')]: { name: 'old.pdf', digestVerified: true, retired: { at: '2026-11-16T10:00:00.000Z', reason: 'removed' } },
+    });
+    const replaced = await resolveRecordEvidence(claim('rate', [ev({ sourceDigestSha256: sha('v1'), sourceName: 'rates.xlsx' })]), p);
+    assert.equal(replaced.resolved, false);
+    assert.equal(replaced.evidence[0]!.status, 'source_retired');
+    assert.match(replaced.evidence[0]!.detail, /replaced on 2026-11-16: review it against the current file/);
+    const removed = await resolveRecordEvidence(claim('rate', [ev({ sourceDigestSha256: sha('gone'), sourceName: 'old.pdf' })]), p);
+    assert.match(removed.evidence[0]!.detail, /no longer in its connected folder/);
+  });
+
   it('checks workbook sheets and rows', async () => {
     const book = sha('book');
     const p = port({ [book]: { name: 'rates.xlsx', digestVerified: true, sheets: { Rates: { rows: 10 } } } });

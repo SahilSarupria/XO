@@ -71,8 +71,8 @@ encrypted at rest per tenant, refresh and revocation that work, and cross-tenant
 7. **Basic credentials** (a user name and app password for SMTP or IMAP, email tiers 2 and 3) use the same store and broker. They are
    rotated with `rotate`.
 8. **Not in UW-9:**
-   - **EI's device-code cloud manager stays in memory.** Persisting it through this store is part of UW-12a (the source-connection
-     entity).
+   - **EI's device-code cloud manager stays in memory.** (Amended by [ADR 0038](0038-source-connections.md): it is not persisted.
+     Cloud source connections will use this broker and store, with read scopes added as capabilities, so there is one OAuth path.)
    - **Readiness does not check the state of a bound credential.** The call is refused at use time; a readiness gate for it belongs
      to UW-10.
 

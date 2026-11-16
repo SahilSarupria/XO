@@ -45,7 +45,19 @@ export interface SourceRecord {
         readonly emailDigestSha256: string;
         readonly emailFilename: string;
         readonly part: string;
-      };
+      }
+    /** UW-12a: read from a workspace source connection (a connected folder): which connection, and the file's path in it. */
+    | { readonly kind: 'connection'; readonly connectionId: string; readonly itemKey: string };
+  /**
+   * UW-12a: this version is no longer current. The file changed (`replacedBy` holds the newer version), left the connected folder,
+   * or its connection was retired. The record and its bytes are kept, so what was learned from it can still be checked, but
+   * knowledge resting on it no longer feeds execution (its evidence resolves as `source_retired`).
+   */
+  readonly retired?: {
+    readonly at: string;
+    readonly reason: 'changed' | 'removed' | 'connection_retired';
+    readonly replacedBy?: string;
+  };
   /** Things the server could not carry over when it read this file (e.g. .docx list numbering). Shown to the user; never silently dropped. */
   readonly ingestNotes?: readonly string[];
   /** Cheap, deterministic counts computed at ingest. Only fields that were actually measured are present. */
@@ -178,6 +190,8 @@ export interface SourceStore {
   getContent(sourceId: string): Promise<Result<Uint8Array, NotFoundError>>;
   list(): Promise<Result<readonly SourceRecord[], XoError>>;
   delete(sourceId: string): Promise<Result<void, NotFoundError>>;
+  /** UW-12a: marks a version as no longer current (idempotent: an already-retired record keeps its first retirement). */
+  retire(sourceId: string, retired: NonNullable<SourceRecord['retired']>): Promise<Result<SourceRecord, NotFoundError | XoError>>;
 }
 
 /** The extension a declared media type stands for, among the formats this server reads (link imports, unnamed email attachments). */

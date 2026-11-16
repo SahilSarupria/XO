@@ -21,6 +21,14 @@ export const AUDIT_EVENTS = [
   // UW-3: an attachment opened from an uploaded email and stored as its own source.
   'source.extracted',
   'source.deleted',
+  // UW-12a: a file read from a source connection was stored as a source; a source version stopped being current.
+  'source.synced',
+  'source.retired',
+  'source_connection.created',
+  'source_connection.synced',
+  'source_connection.changed',
+  'source_connection.retired',
+  'source_connection.role_decided',
   'compilation.started',
   'capability.approved',
   'execution.created',

@@ -26,6 +26,8 @@ export * from './opportunity.js';
 export * from './explain.js';
 export * from './filesystem/config.js';
 export * from './filesystem/connector.js';
+// UW-12a: the scope guard, reused by workspace source connections (`@xo/connect` source-connections/folder-reader.ts).
+export * from './filesystem/scope-guard.js';
 export * from './agent/protocol.js';
 export * from './agent/socket-guard.js';
 export * from './agent/server.js';

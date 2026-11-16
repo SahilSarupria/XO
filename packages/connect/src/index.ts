@@ -14,3 +14,7 @@ export * from './knowledge.js';
 export { stagingConnector } from './staging.js';
 export { FileRecordsDeriver } from './deriver.js';
 export { FileDecisionStore, InMemoryDecisionStore, DecisionStoreError, type DecisionStore } from './decisions.js';
+// UW-12a: workspace source connections (folder reader, discovery with proposed roles, the entity and its freshness).
+export * from './source-connections/folder-reader.js';
+export * from './source-connections/discovery.js';
+export * from './source-connections/entity.js';

@@ -133,6 +133,16 @@ export class FsSourceStore implements SourceStore {
     return ok(records);
   }
 
+  async retire(sourceId: string, retired: NonNullable<SourceRecord['retired']>): Promise<Result<SourceRecord, NotFoundError | XoError>> {
+    const found = await this.get(sourceId);
+    if (!found.ok) return err(found.error);
+    if (found.value.retired !== undefined) return ok(found.value);
+    const next: SourceRecord = { ...found.value, retired };
+    const put = await this.store.put(metadataKey(sourceId), JSON.stringify(next), { contentType: 'application/json' });
+    if (!put.ok) return err(put.error);
+    return ok(next);
+  }
+
   async delete(sourceId: string): Promise<Result<void, NotFoundError>> {
     const found = await this.get(sourceId);
     if (!found.ok) return err(found.error);

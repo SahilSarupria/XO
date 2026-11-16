@@ -81,12 +81,16 @@ export class WorkspaceEvidenceSources implements EvidenceSourcePort {
     const store = new FsSourceStore(this.sources);
     const list = await store.list();
     if (!list.ok) throw list.error;
-    const record = [...list.value].reverse().find((r) => r.digestSha256 === digestSha256);
+    // A current record of these bytes wins over a retired one (the same file can be both uploaded and once synced).
+    const all = [...list.value].reverse().filter((r) => r.digestSha256 === digestSha256);
+    const record = all.find((r) => r.retired === undefined) ?? all[0];
     if (record === undefined) return undefined;
+    const retired = record.retired !== undefined ? { retired: { at: record.retired.at, reason: record.retired.reason } } : {};
     const bytes = await store.getContent(record.sourceId);
     if (!bytes.ok) return undefined;
     const digestVerified = sha256(bytes.value) === digestSha256;
     if (!digestVerified) return { name: record.originalFilename, digestVerified };
+    if (record.retired !== undefined) return { name: record.originalFilename, digestVerified, ...retired };
     const ingested = this.registry.ingest(buildCompilerSourceInput(record.extension, bytes.value, record.originalFilename));
     // A source the readers cannot open still stands as bytes: its locators and quotes are unverifiable, not wrong.
     if (!ingested.ok) return { name: record.originalFilename, digestVerified };
