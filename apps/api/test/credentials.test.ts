@@ -9,6 +9,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { EgressDeps, VettedRequest } from '@xo/connectors';
 import type { CredentialsConfig } from '../src/credentials/credentials.js';
+import { NonProductionAuditSink } from '@xo/audit';
 import { TestServer, withTempDir } from './test-helpers.js';
 
 const GMAIL_SEND = 'https://www.googleapis.com/auth/gmail.send';
@@ -46,7 +47,7 @@ function fakeGoogle(): Fake {
   return f;
 }
 
-async function withCreds(fn: (s: TestServer, fake: Fake, dataDir: string) => Promise<void>): Promise<void> {
+async function withCreds(fn: (s: TestServer, fake: Fake, dataDir: string, sink: NonProductionAuditSink) => Promise<void>): Promise<void> {
   await withTempDir('xo-api-cred-', async (dataDir) => {
     const fake = fakeGoogle();
     const credentials: CredentialsConfig = {
@@ -55,9 +56,10 @@ async function withCreds(fn: (s: TestServer, fake: Fake, dataDir: string) => Pro
       redirectUri: 'https://xo.acme.example/oauth/callback',
       oauth: fake.deps,
     };
-    const server = await TestServer.start({ workspaceDataDir: dataDir, credentials });
+    const sink = new NonProductionAuditSink();
+    const server = await TestServer.start({ workspaceDataDir: dataDir, credentials, auditSink: sink });
     try {
-      await fn(server, fake, dataDir);
+      await fn(server, fake, dataDir, sink);
     } finally {
       await server.stop();
     }
@@ -75,7 +77,7 @@ async function startConsent(s: TestServer, ws: string, headers?: Readonly<Record
 const NO_AUTH = { authorization: '' };
 
 test('connect with OAuth: PKCE, least-privilege scopes, tokens sealed, nothing secret ever returned', async () => {
-  await withCreds(async (s, fake, dataDir) => {
+  await withCreds(async (s, fake, dataDir, sink) => {
     const ws = (await s.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
     const providers = (await s.request('GET', `/workspaces/${ws}/credentials/providers`)).json<{
       oauth: { provider: string; configured: boolean; capabilities: { capability: string; scopes: string[] }[] }[];
@@ -112,6 +114,11 @@ test('connect with OAuth: PKCE, least-privilege scopes, tokens sealed, nothing s
     for (const e of await readdir(dataDir, { recursive: true, withFileTypes: true }))
       if (e.isFile()) files.push(join(e.parentPath, e.name));
     for (const f of files) assert.ok(!(await readFile(f, 'utf8')).includes('SECRET'), `no token in ${f}`);
+    // (Corrected: the audit trail was asserted only in prose here, and person-caused credential events used prose action names that
+    // the audit validator refuses, so they were never recorded.)
+    const types = sink.events().map((e) => e.type);
+    assert.ok(types.includes('credential.oauth.started') && types.includes('credential.created'), types.join(', '));
+    assert.ok(!JSON.stringify(sink.events()).includes('SECRET'));
 
     // A replayed callback (the same state) gets nothing.
     const again = await s.request('GET', `/oauth/callback?state=${state}&code=4%2Fabc`, undefined, NO_AUTH);
@@ -130,6 +137,10 @@ test('connect with OAuth: PKCE, least-privilege scopes, tokens sealed, nothing s
     assert.equal(
       (await s.request('GET', `/workspaces/${ws}/credentials`)).json<{ credentials: { state: string }[] }>().credentials[0]!.state,
       'revoked',
+    );
+    assert.ok(
+      sink.events().some((e) => e.type === 'credential.revoked' && e.outcome === 'completed'),
+      'the revocation is in the audit trail',
     );
   });
 });

@@ -168,7 +168,7 @@ export function registerCredentialRoutes(
   router.post(
     '/workspaces/:workspaceId/credentials/oauth',
     guarded(async (req) => {
-      const { workspace, correlationId, principal } = await manage(req, 'connect an account');
+      const { workspace, correlationId, principal } = await manage(req, 'credential.connect');
       const c = await config();
       const b = await bodyOf(req, ['provider', 'capabilities', 'loginHint']);
       const provider = typeof b['provider'] === 'string' ? OAUTH_PROVIDERS[b['provider'] as 'google' | 'microsoft'] : undefined;
@@ -196,7 +196,7 @@ export function registerCredentialRoutes(
         codeVerifier: pkce.verifier,
       });
       await audit.tryRecord({
-        action: 'connect an account',
+        action: 'credential.connect',
         actor: actorFromPrincipal(principal),
         correlationId,
         target: { kind: 'workspace', id: workspace.workspaceId },
@@ -245,7 +245,7 @@ export function registerCredentialRoutes(
     const fail = async (reason: string, status: number, text: string): Promise<ApiResponse> => {
       if (workspace !== undefined && who.ok)
         await audit.tryRecord({
-          action: 'connect an account',
+          action: 'credential.connect',
           actor: actorFromPrincipal(who.value),
           correlationId: newCorrelationId(),
           target: { kind: 'workspace', id: workspace.workspaceId },
@@ -322,7 +322,7 @@ export function registerCredentialRoutes(
       );
     }
     await audit.tryRecord({
-      action: 'connect an account',
+      action: 'credential.connect',
       actor: actorFromPrincipal(who.value),
       correlationId: newCorrelationId(),
       target: { kind: 'credential', id: stored.credentialId, workspaceId: workspace.workspaceId },
@@ -332,7 +332,8 @@ export function registerCredentialRoutes(
         provider: provider.id,
         capabilities: pending.capabilities.join(','),
         scopes: verdict.granted.join(' '),
-        ...(stored.accountRef !== undefined ? { accountRef: stored.accountRef } : {}),
+        // The audit validator refuses long opaque strings (a full digest reads as a secret): 16 hex characters identify the account.
+        ...(stored.accountRef !== undefined ? { accountRef: stored.accountRef.slice(0, 'sha256:'.length + 16) } : {}),
       },
     });
     return page(
@@ -345,7 +346,7 @@ export function registerCredentialRoutes(
   router.post(
     '/workspaces/:workspaceId/credentials/basic',
     guarded(async (req) => {
-      const { workspace, correlationId, principal } = await manage(req, 'add a password connection');
+      const { workspace, correlationId, principal } = await manage(req, 'credential.add_password');
       const b = await bodyOf(req, ['provider', 'capabilities', 'username', 'host', 'password', 'label']);
       if (!(BASIC_PROVIDERS as readonly unknown[]).includes(b['provider']))
         throw new XoError(ErrorCode.INVALID_ARGUMENT, `"provider" must be ${BASIC_PROVIDERS.join(' or ')}`);
@@ -371,7 +372,7 @@ export function registerCredentialRoutes(
         by: { kind: principal.kind, id: principal.id },
       });
       await audit.tryRecord({
-        action: 'add a password connection',
+        action: 'credential.add_password',
         actor: actorFromPrincipal(principal),
         correlationId,
         target: { kind: 'credential', id: stored.credentialId, workspaceId: workspace.workspaceId },
@@ -386,7 +387,7 @@ export function registerCredentialRoutes(
   router.post(
     '/workspaces/:workspaceId/credentials/:credentialId/rotate',
     guarded(async (req) => {
-      const { workspace, correlationId, principal } = await manage(req, 'rotate a connection password');
+      const { workspace, correlationId, principal } = await manage(req, 'credential.rotate');
       const b = await bodyOf(req, ['password']);
       if (typeof b['password'] !== 'string' || b['password'] === '' || b['password'].length > 1024)
         throw new XoError(ErrorCode.INVALID_ARGUMENT, '"password" must be a non-empty string');
@@ -396,7 +397,7 @@ export function registerCredentialRoutes(
         id: principal.id,
       });
       await audit.tryRecord({
-        action: 'rotate a connection password',
+        action: 'credential.rotate',
         actor: actorFromPrincipal(principal),
         correlationId,
         target: { kind: 'credential', id, workspaceId: workspace.workspaceId },
@@ -411,14 +412,14 @@ export function registerCredentialRoutes(
   router.post(
     '/workspaces/:workspaceId/credentials/:credentialId/revoke',
     guarded(async (req) => {
-      const { workspace, correlationId, principal } = await manage(req, 'revoke a connection');
+      const { workspace, correlationId, principal } = await manage(req, 'credential.revoke');
       const id = req.params['credentialId'] ?? '';
       const r = await workspaceBroker(workspace, dataConfig.dataRootDir, await config(), audit).revoke(id, {
         kind: principal.kind,
         id: principal.id,
       });
       await audit.tryRecord({
-        action: 'revoke a connection',
+        action: 'credential.revoke',
         actor: actorFromPrincipal(principal),
         correlationId,
         target: { kind: 'credential', id, workspaceId: workspace.workspaceId },
