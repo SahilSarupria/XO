@@ -16,3 +16,4 @@ export * from './profiles/index.js';
 export * from './knowledge-layer/index.js';
 export * from './learning/proposals.js';
 export * from './ai-assist/candidates.js';
+export * from './ai-assist/structure-assist.js';

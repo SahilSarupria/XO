@@ -1,0 +1,785 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "document-structure",
+  "cases": [
+    {
+      "caseId": "tasktest-software-guide",
+      "expectationsFingerprint": "fa32c554c45d55b2",
+      "authoring": "Authored by reading TaskTest.pdf (pdftotext -layout and the rendered pages), independently of XO's output: the 8 numbered ground rules, the 4 'When You Get Stuck' bullets, the 9 definition-of-done checkboxes and the 8 workflow-table rows.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "Every normative statement of the guide is one of the 8 ground rules, the 4 troubleshooting instructions or the 9 checklist items; the brief's prompts and the empty log are not rules."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "The guide's actions are exactly the 8 numbered workflow steps; instructions inside a rule or a checklist item are not separate tasks."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "One ordered procedure is stated (the numbered table); other orders are not claimed."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "gr1-one-task",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 1 \"One task, one purpose.\" body",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr2-understand",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 2 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr3-small-steps",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 3 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr4-secrets",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 4 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr5-test",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 5 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr6-readable",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 6 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr7-no-break",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 7 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "gr8-review",
+          "identity": "explicit",
+          "source": "page 1, Ground Rule 8 title",
+          "note": "modality from the wording: a negative imperative is a prohibition, a positive imperative an obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "stuck1-reproduce",
+          "identity": "explicit",
+          "source": "page 2, section 6 bullet: \"Reproduce the problem with the smallest possible example...\"",
+          "note": "a positive imperative: obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "stuck2-read",
+          "identity": "explicit",
+          "source": "page 2, section 6 bullet: \"Read the error message fully...\"",
+          "note": "a positive imperative: obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "stuck3-change",
+          "identity": "explicit",
+          "source": "page 2, section 6 bullet: \"Change one thing at a time...\"",
+          "note": "a positive imperative: obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "stuck4-timebox",
+          "identity": "explicit",
+          "source": "page 2, section 6 bullet: \"Timebox it...\"",
+          "note": "a positive imperative: obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "dod1",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Requirement understood and goal written\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod2",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Branch created from latest code\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod3",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Code runs locally without errors\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod4",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] New tests added; all tests pass\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod5",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Edge cases and error handling checked\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod6",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] No secrets, debug logs, or dead code left\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod7",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Documentation / README updated if needed\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod8",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Peer review completed\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod9",
+          "identity": "explicit",
+          "source": "page 2, section 4 checkbox \"[ ] Merged / deployed and stakeholders informed\"",
+          "note": "a definition-of-done item: a condition that must hold (obligation)",
+          "assertions": "derived"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-form-prompt-out-of-scope",
+          "identity": "explicit",
+          "source": "page 1, section 1 \"Out of scope | What will NOT be done in this task?\"",
+          "note": "the baseline compiled it as a constraint"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-form-prompt-goal",
+          "identity": "explicit",
+          "source": "page 1, section 1 \"Goal (1-2 lines) | What should be true when this is done?\"",
+          "note": "the baseline compiled it as a constraint"
+        },
+        {
+          "category": "capability",
+          "id": "step1-understand",
+          "identity": "explicit",
+          "source": "section 3 table row 1, Step column \"Understand\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step2-plan",
+          "identity": "explicit",
+          "source": "section 3 table row 2, Step column \"Plan\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step3-set-up",
+          "identity": "explicit",
+          "source": "section 3 table row 3, Step column \"Set up\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step4-build",
+          "identity": "explicit",
+          "source": "section 3 table row 4, Step column \"Build\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step5-test",
+          "identity": "explicit",
+          "source": "section 3 table row 5, Step column \"Test\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step6-review",
+          "identity": "explicit",
+          "source": "section 3 table row 6, Step column \"Review\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step7-deliver",
+          "identity": "explicit",
+          "source": "section 3 table row 7, Step column \"Deliver\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step8-reflect",
+          "identity": "explicit",
+          "source": "section 3 table row 8, Step column \"Reflect\"",
+          "note": "the author's own step name; unresolved: a manual step with no declared operation",
+          "assertions": "derived"
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-stitched-review",
+          "identity": "explicit",
+          "source": "baseline output (UW-3b brief)",
+          "note": "a garbled name the baseline minted"
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-stitched-check",
+          "identity": "explicit",
+          "source": "baseline output (UW-3b brief)",
+          "note": "a garbled name the baseline minted"
+        },
+        {
+          "category": "forbidden_capability",
+          "id": "x-stitched-run",
+          "identity": "explicit",
+          "source": "baseline output (UW-3b brief)",
+          "note": "a garbled name the baseline minted"
+        },
+        {
+          "category": "workflow",
+          "id": "wf-step-by-step",
+          "identity": "explicit",
+          "source": "section 3 table, rows 1-8",
+          "note": "numbered order; not executable: every step is manual"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "sop-wrapped-table",
+      "expectationsFingerprint": "221fc941184d0433",
+      "authoring": "Authored from build.py's source text for this document (the generator is the document's specification).",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "The only rule of conduct in the SOP is step 4's 'Never reuse an old gasket.'; every other sentence is a step action."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "Exactly 5 numbered steps."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "One numbered procedure."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "step4-never-reuse-gasket",
+          "identity": "explicit",
+          "source": "table row 4, Instructions: \"Never reuse an old gasket.\"",
+          "note": "a negative imperative inside a step: a prohibition scoped to the step",
+          "assertions": "explicit"
+        },
+        {
+          "category": "capability",
+          "id": "step1-isolate",
+          "identity": "explicit",
+          "source": "table row 1, Step column \"Isolate\"",
+          "note": "the author's step name; a manual step",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step2-drain",
+          "identity": "explicit",
+          "source": "table row 2, Step column \"Drain\"",
+          "note": "the author's step name; a manual step",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step3-inspect",
+          "identity": "explicit",
+          "source": "table row 3, Step column \"Inspect\"",
+          "note": "the author's step name; a manual step",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step4-replace",
+          "identity": "explicit",
+          "source": "table row 4, Step column \"Replace\"",
+          "note": "the author's step name; a manual step",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step5-restore",
+          "identity": "explicit",
+          "source": "table row 5, Step column \"Restore\"",
+          "note": "the author's step name; a manual step",
+          "assertions": "derived"
+        },
+        {
+          "category": "workflow",
+          "id": "wf-seal-replacement",
+          "identity": "explicit",
+          "source": "table rows 1-5",
+          "note": "numbered order"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "checklist-venue",
+      "expectationsFingerprint": "618cec703583e8e9",
+      "authoring": "Authored from build.py's source text.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "Six checkbox items, nothing else normative."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "A checklist states conditions to verify, not tasks: no capability is expected."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No procedure is stated, so no workflow is asserted."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "item1",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] Fire exits are unlocked and clearly signed\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "item2",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] First aid kit is stocked\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "item3",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] Emergency contact list is posted at the entrance\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "item4",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] Chairs arranged for 120 guests\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "item5",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] Microphones tested\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "item6",
+          "identity": "explicit",
+          "source": "checkbox \"[ ] No cables left across walkways\"",
+          "note": "acceptance criterion: obligation; \"No ...\" negative",
+          "assertions": "derived"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "form-incident-report",
+      "expectationsFingerprint": "6cc7965d61a4c6aa",
+      "authoring": "Authored from build.py's source text.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "Three numbered rules; the form's labels and hints are fields."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "No procedure is stated."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No procedure is stated, so no workflow is asserted."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "rule1-report-24h",
+          "identity": "explicit",
+          "source": "rule 1 title",
+          "note": "positive imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "rule2-never-name",
+          "identity": "explicit",
+          "source": "rule 2 title",
+          "note": "negative imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "rule3-keep-evidence",
+          "identity": "explicit",
+          "source": "rule 3 title",
+          "note": "positive imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-hint-what-happened",
+          "identity": "explicit",
+          "source": "Description field hint",
+          "note": "a value hint"
+        },
+        {
+          "category": "forbidden_fact",
+          "id": "x-hint-building",
+          "identity": "explicit",
+          "source": "Location field hint",
+          "note": "a value hint"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "guidelines-data-handling",
+      "expectationsFingerprint": "a8511e26fd032a9d",
+      "authoring": "Authored from build.py's source text.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "Four principles, nothing else normative."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "Principles are rules, not tasks."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "No procedure is stated, so no workflow is asserted."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "p1-collect",
+          "identity": "explicit",
+          "source": "principle 1",
+          "note": "imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "p2-no-email",
+          "identity": "explicit",
+          "source": "principle 2",
+          "note": "\"Do not\" imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "p3-encrypt",
+          "identity": "explicit",
+          "source": "principle 3",
+          "note": "imperative",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "p4-review-access",
+          "identity": "explicit",
+          "source": "principle 4",
+          "note": "\"should\": advisory",
+          "assertions": "explicit"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "onboarding-markdown",
+      "expectationsFingerprint": "32d4be93c84aed98",
+      "authoring": "Authored from the markdown source.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "closed",
+          "kinds": [
+            "constraint"
+          ],
+          "support": "supported",
+          "justification": "Three house rules and three checklist items."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "Three numbered steps."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "One numbered list."
+        }
+      ],
+      "entries": [
+        {
+          "category": "fact",
+          "id": "rule-password",
+          "identity": "explicit",
+          "source": "House rules item 1",
+          "note": "prohibition",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "rule-lock",
+          "identity": "explicit",
+          "source": "House rules item 2",
+          "note": "obligation",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "rule-expenses",
+          "identity": "explicit",
+          "source": "House rules item 3",
+          "note": "advisory",
+          "assertions": "explicit"
+        },
+        {
+          "category": "fact",
+          "id": "dod-laptop",
+          "identity": "explicit",
+          "source": "task list item 1",
+          "note": "criterion",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod-badge",
+          "identity": "explicit",
+          "source": "task list item 2",
+          "note": "criterion",
+          "assertions": "derived"
+        },
+        {
+          "category": "fact",
+          "id": "dod-lunch",
+          "identity": "explicit",
+          "source": "task list item 3 (ticked)",
+          "note": "criterion",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step1",
+          "identity": "explicit",
+          "source": "Before day one item 1",
+          "note": "verb + object of the first clause",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step2",
+          "identity": "explicit",
+          "source": "Before day one item 2",
+          "note": "verb + object of the first clause",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step3",
+          "identity": "explicit",
+          "source": "Before day one item 3",
+          "note": "verb + object of the first clause",
+          "assertions": "derived"
+        },
+        {
+          "category": "workflow",
+          "id": "wf-before-day-one",
+          "identity": "explicit",
+          "source": "Before day one, items 1-3",
+          "note": "numbered order"
+        }
+      ],
+      "unestablished": []
+    },
+    {
+      "caseId": "release-markdown-table",
+      "expectationsFingerprint": "5c39b6b9a8d1e227",
+      "authoring": "Authored from the markdown source.",
+      "world": [
+        {
+          "scope": "facts",
+          "declared": "open",
+          "support": "not_declared",
+          "justification": "Facts are not measured here; the conditional rule is covered by the policy suites."
+        },
+        {
+          "scope": "capabilities",
+          "declared": "closed",
+          "support": "supported",
+          "justification": "Four numbered steps; the conditional rule is not a task."
+        },
+        {
+          "scope": "workflows",
+          "declared": "open",
+          "support": "supported",
+          "justification": "One numbered table."
+        }
+      ],
+      "entries": [
+        {
+          "category": "capability",
+          "id": "step1-freeze",
+          "identity": "explicit",
+          "source": "table row 1",
+          "note": "the author's step name",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step2-build",
+          "identity": "explicit",
+          "source": "table row 2",
+          "note": "the author's step name",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step3-verify",
+          "identity": "explicit",
+          "source": "table row 3",
+          "note": "the author's step name",
+          "assertions": "derived"
+        },
+        {
+          "category": "capability",
+          "id": "step4-ship",
+          "identity": "explicit",
+          "source": "table row 4",
+          "note": "the author's step name",
+          "assertions": "derived"
+        },
+        {
+          "category": "workflow",
+          "id": "wf-release",
+          "identity": "explicit",
+          "source": "table rows 1-4",
+          "note": "numbered order"
+        }
+      ],
+      "unestablished": []
+    }
+  ]
+}

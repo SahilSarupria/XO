@@ -9,6 +9,8 @@ import {
   describeProblem,
   latestExecutionByCapability,
   nextStep,
+  possibleExtractionError,
+  REVIEW_STATE_LABEL,
   reviewStateOf,
   suggestedFieldsFromFailure,
   summarize,
@@ -42,7 +44,29 @@ describe('reviewStateOf', () => {
 describe('summarize', () => {
   it('counts each state', () => {
     const s = summarize([cap(), cap({ approved: true }), cap({ status: 'unresolved' }), cap({ status: 'ambiguous' })]);
-    expect(s).toEqual({ total: 4, needsAttention: 2, readyForReview: 1, approved: 1 });
+    expect(s).toEqual({ total: 4, needsAttention: 2, manualSteps: 0, readyForReview: 1, approved: 1 });
+  });
+
+  it('counts understood manual steps apart from rules that need more information (UW-3b)', () => {
+    const s = summarize([cap({ status: 'unresolved', understanding: 'manual_step' }), cap({ status: 'unresolved' })]);
+    expect(s).toEqual({ total: 2, needsAttention: 1, manualSteps: 1, readyForReview: 0, approved: 0 });
+  });
+});
+
+describe('understood manual steps (UW-3b)', () => {
+  it('an unresolved step XO understood is "Understood, manual step", never approvable or runnable', () => {
+    const c = cap({ status: 'unresolved', understanding: 'manual_step', approved: true });
+    expect(reviewStateOf(c)).toBe('manual_step');
+    expect(REVIEW_STATE_LABEL[reviewStateOf(c)]).toBe('Understood, manual step');
+    expect(canApprove(c)).toBe(false);
+    expect(canRun(c)).toBe(false);
+  });
+
+  it('understanding never upgrades a resolved capability, and a possible extraction error stays "Needs more information"', () => {
+    expect(reviewStateOf(cap({ status: 'resolved', understanding: 'manual_step' }))).toBe('ready_for_review');
+    const suspect = cap({ status: 'unresolved', understanding: 'possible_extraction_error' });
+    expect(reviewStateOf(suspect)).toBe('needs_attention');
+    expect(possibleExtractionError(suspect)).toBe(true);
   });
 });
 
@@ -146,7 +170,7 @@ describe('nextStep', () => {
       nextStep({
         sources: 1,
         succeededCompilations: 1,
-        summary: { total: 3, needsAttention: 1, readyForReview: 2, approved: 0 },
+        summary: { total: 3, needsAttention: 1, manualSteps: 0, readyForReview: 2, approved: 0 },
         executions: 0,
       }).step,
     ).toBe('review');
@@ -154,7 +178,7 @@ describe('nextStep', () => {
       nextStep({
         sources: 1,
         succeededCompilations: 1,
-        summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 },
+        summary: { total: 3, needsAttention: 1, manualSteps: 0, readyForReview: 1, approved: 1 },
         executions: 0,
       }).step,
     ).toBe('run');
@@ -162,7 +186,7 @@ describe('nextStep', () => {
       nextStep({
         sources: 1,
         succeededCompilations: 1,
-        summary: { total: 3, needsAttention: 1, readyForReview: 1, approved: 1 },
+        summary: { total: 3, needsAttention: 1, manualSteps: 0, readyForReview: 1, approved: 1 },
         executions: 2,
       }).step,
     ).toBe('done');

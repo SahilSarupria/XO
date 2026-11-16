@@ -109,13 +109,24 @@ test('demo commercial-property: real deterministic rule evaluation with the defa
   const parsed = JSON.parse(result.lines[0]!);
 
   assert.ok(parsed.summary.deterministic > 0, 'expected at least one deterministic_rule capability');
-  assert.ok(parsed.summary.unresolved > 0, 'expected at least one unresolved capability in this fixture');
   assert.ok(parsed.execution.usedDefaultDemoInput, 'expected the default demo trigger payload to be used when no --input is supplied');
 
-  const unresolvedCapabilities = parsed.capabilities.filter((c: { executionClass: string }) => c.executionClass === 'unresolved');
+  // UW-3b: the default (largest) workflow of this fixture used to mix deterministic and unresolved steps only because
+  // benchmark-forbidden placeholder capabilities ("Record Action", "Schedule ...") tied unrelated groups together. They
+  // are no longer minted, so the largest workflow is now fully deterministic. The "unresolved stays unexecuted" half of
+  // this test is therefore checked on the first discovered workflow that does contain an unresolved capability.
+  let withUnresolved: typeof parsed | undefined = parsed.summary.unresolved > 0 ? parsed : undefined;
+  for (let index = 0; withUnresolved === undefined && index < 20; index += 1) {
+    const r = await demoCommand({ scenario: 'commercial-property', source: COMMERCIAL_PROPERTY_PDF, json: true, workflowIndex: index });
+    if (r.exitCode !== 0) break;
+    const p = JSON.parse(r.lines[0]!);
+    if (p.summary.unresolved > 0) withUnresolved = p;
+  }
+  assert.ok(withUnresolved !== undefined, 'expected at least one unresolved capability in this fixture');
+  const unresolvedCapabilities = withUnresolved.capabilities.filter((c: { executionClass: string }) => c.executionClass === 'unresolved');
   const unresolvedIds = new Set(unresolvedCapabilities.map((c: { capabilityId: string }) => c.capabilityId));
   // Unresolved capabilities must not appear among executed step results.
-  for (const step of parsed.execution.steps) {
+  for (const step of withUnresolved.execution.steps) {
     assert.ok(!unresolvedIds.has(String(step.nodeId)), `unresolved capability ${step.nodeId} must not have executed`);
   }
 

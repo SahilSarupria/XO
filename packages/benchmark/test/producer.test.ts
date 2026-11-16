@@ -63,12 +63,13 @@ const expecting = (producedBy: string | undefined) =>
 // ---- 1. taxonomy --------------------------------------------------------------------------------
 
 test('taxonomy: exactly the values the repository can stamp (rule-based, structured-operation, ai); hybrid is a wrapper name that is never stamped; unknown values are reported verbatim, never normalised', () => {
-  assert.deepEqual(PRODUCER_TAXONOMY.map((p) => p.value).sort(), ['ai', 'hybrid', 'rule-based', 'structured-operation']);
+  // UW-3b adds `procedure-step`: the extractor for the steps of a section routed as a procedure (semantic/structure.ts).
+  assert.deepEqual(PRODUCER_TAXONOMY.map((p) => p.value).sort(), ['ai', 'hybrid', 'procedure-step', 'rule-based', 'structured-operation']);
   assert.deepEqual(
     PRODUCER_TAXONOMY.filter((p) => p.stamped)
       .map((p) => p.value)
       .sort(),
-    ['ai', 'rule-based', 'structured-operation'],
+    ['ai', 'procedure-step', 'rule-based', 'structured-operation'],
   );
   assert.equal(producerValueStatus('rule-based'), 'known');
   for (const unknown of ['hybrid', 'Rule-Based', 'rule_based', 'concept', 'heuristic', 'decision_node', ''])

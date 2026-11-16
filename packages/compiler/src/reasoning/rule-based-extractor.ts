@@ -16,6 +16,7 @@ import { buildStructuredSemantics } from './structured-semantics.js';
 import { findDecisionCues, tableRowStatement } from './decision-cues.js';
 import type { UnclassifiedSentence } from './types.js';
 import { sourceKey, type ConfirmedRule } from './rule-proposals.js';
+import { structuralReasoningNodes } from './guideline-extractor.js';
 
 interface Paragraph {
   readonly text: string;
@@ -141,6 +142,11 @@ export class RuleBasedReasoningExtractor implements ReasoningExtractor {
     const nodes: CandidateReasoningNode[] = [];
     const edges: CandidateReasoningEdgeRef[] = [];
     const unclassified: UnclassifiedSentence[] = [];
+
+    // UW-3b: a unit routed by `semantic/structure.ts` (a guideline, a checklist item, a procedure step, a form field) is
+    // read by its structural extractor, not by the conditional-rule patterns.
+    const structural = structuralReasoningNodes(unit);
+    if (structural !== undefined) return ok({ nodes: structural, edges, unclassified });
 
     // WS1-03: a table row is read as header-bound facts ("Coverage: Buildings; Limit: 1000000; Excess: 1000"). When a
     // decision-bearing column has a value, the row becomes a `policy` (constraint) node: a recorded term of the

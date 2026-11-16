@@ -1,6 +1,8 @@
 import { err, ok, type Result } from '@xo/types';
 import { ErrorCode, SourceError } from '@xo/errors';
-import type { DocumentBlock } from '../document/types.js';
+import type { DocumentBlock, ListItemBlock } from '../document/types.js';
+import { detectCheckbox, markerOrdinal, splitTitleBody } from '../document/list-marker.js';
+import { leadingRunInHeading } from '../semantic/title.js';
 import type { SourceFrontend, SourceIngestContext } from './frontend.js';
 import type { CanonicalSource } from './types.js';
 import { computeSourceId } from './source-id.js';
@@ -40,6 +42,36 @@ function alignedCells(line: string): string[] | undefined {
   return cells.length >= 2 ? cells : undefined;
 }
 const LIST_ITEM_RE = /^(\d+[.)]|[-*+])\s+(.*)$/;
+
+/**
+ * UW-3b: a list item with the facts the PDF reader also recovers — a task-list checkbox ("- [ ] Peer review done"), the
+ * position a numbered marker claims, and a bold run-in or short first-sentence title ("**Never commit secrets.** API
+ * keys stay in environment variables."). `text` stays the whole item, without the checkbox.
+ */
+function listItemBlock(marker: string, rawText: string): Omit<ListItemBlock, 'provenance'> {
+  const box = detectCheckbox(rawText);
+  const text = box !== undefined ? box.remainder : rawText;
+  const ordered = /^\d/.test(marker);
+  const ordinal = ordered ? markerOrdinal(marker) : undefined;
+  let titled: { title: string; body: string } | undefined;
+  if (box === undefined) {
+    const runIn = leadingRunInHeading(text);
+    if (runIn !== undefined) {
+      const body = text.replace(/^\s*(\*\*|__)(.*?)\1\s*/, '').trim();
+      if (body.length > 0) titled = { title: runIn, body };
+    }
+    titled ??= splitTitleBody(text);
+  }
+  return {
+    kind: 'list_item',
+    marker: box !== undefined ? box.token : marker,
+    listKind: ordered && box === undefined ? 'ordered' : 'unordered',
+    text,
+    ...(box !== undefined ? { checkbox: box.state } : {}),
+    ...(ordinal !== undefined && box === undefined ? { ordinal } : {}),
+    ...(titled !== undefined ? { title: titled.title, body: titled.body } : {}),
+  };
+}
 
 /**
  * The "Document" family (Stage 8 §7): plain-text and lightly-marked-up
@@ -148,8 +180,7 @@ function classifyLines(text: string): UnplacedBlock[] {
     const listMatch = LIST_ITEM_RE.exec(line);
     if (listMatch) {
       flushParagraph();
-      const marker = listMatch[1]!;
-      blocks.push({ kind: 'list_item', marker, listKind: /^\d/.test(marker) ? 'ordered' : 'unordered', text: listMatch[2]!.trim() });
+      blocks.push(listItemBlock(listMatch[1]!, listMatch[2]!.trim()));
       continue;
     }
 

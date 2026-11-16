@@ -3,7 +3,15 @@ import { AMBIGUITY_CONFIDENCE_THRESHOLD, type BoundaryAmbiguityResolver } from '
 import { classifyBlock } from './semantic-type-classifier.js';
 import { synthesizeTitle } from './title.js';
 import { computeExperienceUnitId } from './unit-id.js';
-import type { ExperienceUnitHierarchy, ExperienceUnitId, ExperienceUnitProvenance, SemanticType, TableRowContext } from './types.js';
+import type {
+  ExperienceUnitHierarchy,
+  ExperienceUnitId,
+  ExperienceUnitProvenance,
+  FormFieldContext,
+  ListItemContext,
+  SemanticType,
+  TableRowContext,
+} from './types.js';
 
 /** A unit as built by this module — everything except `relationships`/`documentReferences`, which need the *whole document's* units and section headings and so are computed afterward, in relationship-builder.ts. */
 export interface DraftExperienceUnit {
@@ -57,6 +65,12 @@ export interface DraftExperienceUnit {
    * same treatment `isTableQuarantined` already gets.
    */
   readonly listKind: 'ordered' | 'unordered' | undefined;
+  /** UW-3b: see `ExperienceUnit.listItem`. */
+  readonly listItem?: ListItemContext;
+  /** UW-3b: see `ExperienceUnit.formFields`. */
+  readonly formFields?: readonly FormFieldContext[];
+  /** UW-3b: see `ExperienceUnit.layoutSuspect`. */
+  readonly layoutSuspect?: true;
 }
 
 /** Header = first row of the contiguous run of `table_row` blocks that ends at `index`; the header row itself has none. */
@@ -64,7 +78,24 @@ function tableRowContext(blocks: readonly DocumentBlock[], index: number, row: D
   let start = index;
   while (start > 0 && blocks[start - 1]?.kind === 'table_row') start -= 1;
   const first = blocks[start];
-  return start < index && first?.kind === 'table_row' ? { cells: row.cells, header: first.cells } : { cells: row.cells };
+  const reconstruction = row.reconstruction !== undefined ? { reconstruction: row.reconstruction } : {};
+  return start < index && first?.kind === 'table_row'
+    ? { cells: row.cells, header: first.cells, ...reconstruction }
+    : { cells: row.cells, ...reconstruction };
+}
+
+function listItemContext(block: DocumentBlock & { kind: 'list_item' }): ListItemContext | undefined {
+  if (block.ordinal === undefined && block.checkbox === undefined && block.title === undefined) return undefined;
+  return {
+    marker: block.marker,
+    ...(block.ordinal !== undefined ? { ordinal: block.ordinal } : {}),
+    ...(block.checkbox !== undefined ? { checkbox: block.checkbox } : {}),
+    ...(block.title !== undefined && block.body !== undefined ? { title: block.title, body: block.body } : {}),
+  };
+}
+
+function isFormField(block: DocumentBlock | undefined): boolean {
+  return block !== undefined && block.kind === 'paragraph' && block.formField !== undefined;
 }
 
 function textOf(block: DocumentBlock): string {
@@ -140,7 +171,9 @@ async function groupBlocks(blocks: readonly DocumentBlock[], resolver: BoundaryA
       previousBlock.kind !== 'list_item' &&
       previousBlock.kind !== 'footnote' &&
       previousBlock.kind !== 'table_row' &&
-      current.semanticType === classification.semanticType;
+      // UW-3b: fill-in form fields group with each other and never with prose.
+      isFormField(previousBlock) === isFormField(block) &&
+      (isFormField(block) || current.semanticType === classification.semanticType);
 
     if (canExtend && current) {
       current.blocks.push(block);
@@ -236,6 +269,13 @@ export async function buildExperienceUnitsForSection(
       isTableQuarantined: group.blocks.every((b) => b.kind === 'table_row'),
       ...(soleBlock?.kind === 'table_row' ? { tableRow: tableRowContext(section.blocks, group.startIndex, soleBlock) } : {}),
       listKind,
+      ...(soleBlock?.kind === 'list_item' && listItemContext(soleBlock) !== undefined ? { listItem: listItemContext(soleBlock)! } : {}),
+      ...(group.blocks.length > 0 && group.blocks.every(isFormField)
+        ? {
+            formFields: group.blocks.map((b) => (b as DocumentBlock & { kind: 'paragraph' }).formField!),
+          }
+        : {}),
+      ...(group.blocks.some((b) => b.kind === 'paragraph' && b.layoutSuspect === true) ? { layoutSuspect: true as const } : {}),
     };
   });
 

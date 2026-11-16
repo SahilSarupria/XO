@@ -499,7 +499,7 @@ export async function compileSources(
         code: id.domain === 'unknown' ? 'domain/unknown' : 'domain/identified',
         message:
           id.domain === 'unknown'
-            ? `Source "${source.sourceId}": no known domain vocabulary was recognised, so this was compiled with the neutral core grammar alone. Domain-specific terms may be unstructured or mis-structured; review the unresolved rules, or supply a domain profile.`
+            ? `Source "${source.sourceId}": no known domain vocabulary was recognised, so this was compiled with the neutral core grammar alone. Domain-specific terms may be unstructured or mis-structured; review the unresolved rules, or supply a domain profile.${routedSummary(experienceDocument)}`
             : `Source "${source.sourceId}": reads as ${
                 id.domain === 'mixed'
                   ? `a mix of ${id.candidates
@@ -508,6 +508,26 @@ export async function compileSources(
                       .join(' and ')}`
                   : id.domain
               } (confidence ${id.confidence.toFixed(2)}; evidence: ${evidence}). This is advisory: no vocabulary was applied and extraction is unchanged.`,
+      });
+    }
+    // UW-3b: the structural reading of the document (structure.ts) — reported per routed section, and as a routing signal
+    // when no domain vocabulary was recognised.
+    if (experienceDocument.structure !== undefined) {
+      const st = experienceDocument.structure;
+      const routed = st.sections.filter((x) => x.routed);
+      qualityDiagnostics.push({
+        severity: 'info',
+        passName: 'document-structure',
+        code: routed.length > 0 ? 'document-structure/routed' : 'document-structure/not-routed',
+        message:
+          routed.length > 0
+            ? `Source "${source.sourceId}" reads as ${st.kind === 'mixed' ? 'a mix of content kinds' : `a ${st.kind.replace('_', ' ')}`} (proposed, confidence ${st.confidence.toFixed(2)}). ${routed.length} section(s) were read by structure: ${routed
+                .map(
+                  (x) =>
+                    `"${x.sectionPath[x.sectionPath.length - 1] ?? '(document)'}" as ${x.kind.replace('_', ' ')} (${x.confidence.toFixed(2)})`,
+                )
+                .join('; ')}. Every other section was read by the rule and capability extractors as before.`
+            : `Source "${source.sourceId}": no section had clear procedure, guideline, checklist or form structure, so every section was read by the rule and capability extractors.`,
       });
     }
     const profile = classifyContent(experienceDocument.units.map((u) => u.content));
@@ -593,8 +613,11 @@ export async function compileSources(
   // unchanged, so this can never regress or remove any capability the
   // pipeline already produced.
   // Silent-loss guard: normative sentences with no extracted node are surfaced, never quietly absent.
+  // UW-3b: a unit routed to a structural extractor is accounted for as a whole by what that extractor made of it (a step
+  // capability, a guideline or acceptance-criterion constraint, a form input, a step-table header), so its sentences are
+  // not re-checked one by one against rule nodes. Every other unit is checked exactly as before.
   const uncovered = uncoveredNormativeSentences(
-    merged.units.map((u) => u.content),
+    merged.units.filter((u) => u.structure?.role === undefined).map((u) => u.content),
     reasoning.nodes.map((n) => ({ texts: [n.canonicalLabel, n.condition ?? '', n.action ?? '', n.outcome ?? ''] })),
   );
   for (const u of uncovered.slice(0, 50)) {
@@ -834,4 +857,15 @@ export async function compileSources(
 /** Single-source convenience wrapper over `compileSources` — the common case (one PDF, one HTML page, ...) without the caller needing to think about the array/merge machinery at all. */
 export async function compileSource(input: unknown, options: CompileSourcesOptions = {}): Promise<Result<CompileSourcesResult, XoError>> {
   return compileSources([input], options);
+}
+
+/**
+ * UW-3b: with no domain vocabulary, document STRUCTURE is the routing signal. Appended to the unknown-domain notice so a
+ * reviewer sees which sections were still read with confidence (as procedures, guidelines, checklists or forms).
+ */
+function routedSummary(doc: ExperienceDocument): string {
+  const routed = doc.structure?.sections.filter((s) => s.routed) ?? [];
+  if (routed.length === 0) return '';
+  const parts = routed.map((s) => `"${s.sectionPath[s.sectionPath.length - 1] ?? '(document)'}" as ${s.kind.replace('_', ' ')}`);
+  return ` Its structure was still read: ${parts.join('; ')}.`;
 }

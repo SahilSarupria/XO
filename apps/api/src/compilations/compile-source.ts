@@ -96,6 +96,7 @@ export async function compileSourceRecord(
           ...(ref.locator !== undefined ? { locator: ref.locator } : {}),
           ...(ref.pages !== undefined ? { pages: ref.pages } : {}),
         })),
+        ...understandingOf(nodeProps, outcome.status),
       };
     });
 
@@ -163,3 +164,17 @@ export async function compileSourceRecord(
 /** Re-exported so route code can construct a well-typed failure without importing `@xo/errors` directly for this one case. */
 export const COMPILER_ERROR_UNKNOWN = ErrorCode.UNKNOWN;
 export { XoError };
+
+/**
+ * UW-3b: the compiler's own reading of a discovered capability, from its node metadata (`understanding`, `quality.review`).
+ * A suspected extraction error wins over "manual step"; neither changes `status`, approval or execution.
+ */
+function understandingOf(
+  props: CapabilityNodeProps | undefined,
+  status: CapabilityProjection['status'],
+): { readonly understanding?: 'manual_step' | 'possible_extraction_error' } {
+  const meta = (props as { readonly metadata?: Readonly<Record<string, unknown>> } | undefined)?.metadata ?? {};
+  if (meta['quality.review'] === 'possible-extraction-error') return { understanding: 'possible_extraction_error' };
+  if (status !== 'resolved' && meta['understanding'] === 'manual-step') return { understanding: 'manual_step' };
+  return {};
+}

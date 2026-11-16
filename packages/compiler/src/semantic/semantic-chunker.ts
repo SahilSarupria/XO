@@ -3,6 +3,7 @@ import { createDefaultBoundaryResolver, type BoundaryAmbiguityResolver } from '.
 import { buildRelationships } from './relationship-builder.js';
 import { buildExperienceUnitsForSection } from './unit-builder.js';
 import type { ExperienceDocument } from './types.js';
+import { analyzeDocumentStructure } from './structure.js';
 
 export interface SemanticChunkerOptions {
   /** Defaults to `RuleBasedOnlyResolver` (via `createDefaultBoundaryResolver()`) — see boundary-resolver.ts. */
@@ -32,5 +33,7 @@ export async function chunkDocument(
   const resolver = options.resolver ?? createDefaultBoundaryResolver();
   const { units: draftUnits } = await buildExperienceUnitsForSection(parsed.root, documentPath, [], undefined, resolver);
   const { units, relationshipGraph } = buildRelationships(draftUnits);
-  return { documentPath, documentTitle, units, relationshipGraph };
+  // UW-3b: what kind of content each section carries, and each routed unit's role (structure.ts). Units of sections that
+  // are not routed are returned untouched.
+  return analyzeDocumentStructure({ documentPath, documentTitle, units, relationshipGraph });
 }

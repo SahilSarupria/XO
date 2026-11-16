@@ -142,7 +142,6 @@ function buildWinAnsiTable(): string[] {
   const table = new Array<string>(256);
   for (let i = 0x20; i <= 0x7e; i += 1) table[i] = String.fromCharCode(i);
   for (let i = 0; i < 0x20; i += 1) table[i] = '';
-  table[0x7f] = '';
   const upper: Record<number, number> = {
     0x80: 0x20ac,
     0x82: 0x201a,
@@ -176,6 +175,10 @@ function buildWinAnsiTable(): string[] {
     const cp = upper[i];
     table[i] = cp !== undefined ? String.fromCodePoint(cp) : '';
   }
+  // ISO 32000-1 Annex D.2, note 3: in WinAnsiEncoding every otherwise-unused code above octal 40 maps to the bullet
+  // character. Writers rely on it (ReportLab draws list bullets as 0x7F), so dropping these codes silently deleted the
+  // bullet that marks a list item.
+  for (const unused of [0x7f, 0x81, 0x8d, 0x8f, 0x90, 0x9d]) table[unused] = '\u2022';
   for (let i = 0xa0; i <= 0xff; i += 1) table[i] = String.fromCharCode(i); // WinAnsi matches Latin-1 from 0xA0 up
   return table;
 }

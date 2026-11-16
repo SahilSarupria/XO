@@ -64,6 +64,31 @@ function modalityProperties(outcomeText: string): { readonly modality: string; r
   return { modality, polarity, outcomeType: classifyOutcomeType(outcomeText) };
 }
 
+const MODALITIES = new Set(['obligation', 'permission', 'prohibition', 'advisory', 'declarative', 'mixed']);
+const POLARITIES = new Set(['positive', 'negative', 'mixed']);
+
+function explicitModality(node: ReasoningNode): {
+  readonly modality?: string;
+  readonly polarity?: string;
+  readonly rationale?: string;
+  readonly appliesTo?: string;
+  readonly checkbox?: string;
+} {
+  const pattern = node.metadata['matchedPattern'] ?? '';
+  // Only nodes from the structural extractors (guideline-extractor.ts) are read this way, so no other constraint changes.
+  if (!pattern.startsWith('guideline:') && !pattern.startsWith('checklist:')) return {};
+  const modality = node.metadata['modality'];
+  const polarity = node.metadata['polarity'];
+  return {
+    ...(modality !== undefined && MODALITIES.has(modality) ? { modality } : {}),
+    ...(polarity !== undefined && POLARITIES.has(polarity) ? { polarity } : {}),
+    ...(node.rationale !== undefined ? { rationale: node.rationale } : {}),
+    // A definition-of-done criterion names the procedure it applies to, and keeps the author's tick state.
+    ...(node.metadata['appliesToTitle'] !== undefined ? { appliesTo: node.metadata['appliesToTitle'] } : {}),
+    ...(node.metadata['checkbox'] !== undefined ? { checkbox: node.metadata['checkbox'] } : {}),
+  };
+}
+
 function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): XoirPropertyBag {
   const fallback = node.canonicalLabel;
   const structuredCondition = toXoirStructuredValue(node.structuredCondition) as Readonly<Record<string, XoirValue>> | undefined;
@@ -87,6 +112,9 @@ function buildProperties(kind: CanonicalXoirNodeKind, node: ReasoningNode): Xoir
       return {
         rule: node.action ?? node.condition ?? fallback,
         ...modalityProperties(node.action ?? node.condition ?? fallback),
+        // UW-3b: a structural extractor that decided the modality from the item's structure (a guideline's directive, a
+        // checklist's must-hold criterion) states it explicitly; it wins over re-classifying the bare text.
+        ...explicitModality(node),
         severity:
           (node.metadata.severity as 'info' | 'warning' | 'blocking' | undefined) ??
           (node.nodeType === 'prohibition' ? 'blocking' : 'warning'),

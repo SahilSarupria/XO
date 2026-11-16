@@ -192,6 +192,12 @@ export interface Capability {
   readonly provenance: readonly Provenance[];
   readonly inputContract?: InputContract;
   readonly approved: boolean;
+  /**
+   * UW-3b: what XO understood beyond "found in prose". Informational only — it never changes `status`, approval or running.
+   * `manual_step`: a step of a procedure the document lays out, done by a person. `possible_extraction_error`: the name may
+   * mix text from different places on the page.
+   */
+  readonly understanding?: 'manual_step' | 'possible_extraction_error';
 }
 
 function parseInputContract(v: unknown, path: string): InputContract {
@@ -250,7 +256,15 @@ export function parseCapability(v: unknown, path = 'capability'): Capability {
     provenance,
     ...(o['inputContract'] !== undefined ? { inputContract: parseInputContract(o['inputContract'], `${path}.inputContract`) } : {}),
     approved: bool(o['approved'], `${path}.approved`),
+    ...parseUnderstanding(o['understanding'], `${path}.understanding`),
   };
+}
+
+function parseUnderstanding(v: unknown, path: string): { readonly understanding?: 'manual_step' | 'possible_extraction_error' } {
+  if (v === undefined) return {};
+  // An unknown value from a newer server is ignored, never shown as something it is not.
+  const s = str(v, path);
+  return s === 'manual_step' || s === 'possible_extraction_error' ? { understanding: s } : {};
 }
 export function parseCapabilityList(v: unknown): Capability[] {
   return arr(obj(v, 'body')['capabilities'], 'capabilities').map((c, i) => parseCapability(c, `capabilities[${i}]`));

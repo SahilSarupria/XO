@@ -86,6 +86,14 @@ export interface ExperienceUnit {
   readonly tableRow?: TableRowContext;
   /** P0.9A area E (Specification Recovery): see `unit-builder.ts`'s `DraftExperienceUnit.listKind` doc comment. Present only when this unit's sole constituent block is a `ListItemBlock`; absent otherwise (a unit spanning multiple merged blocks, or a non-list unit, makes no single ordered/unordered claim). */
   readonly listKind?: 'ordered' | 'unordered';
+  /** UW-3b: the list marker's facts for a single-list-item unit. */
+  readonly listItem?: ListItemContext;
+  /** UW-3b: present when every block of this unit is a fill-in form field. */
+  readonly formFields?: readonly FormFieldContext[];
+  /** UW-3b: some of this unit's text was joined across layout columns, so its wording may be garbled. */
+  readonly layoutSuspect?: true;
+  /** UW-3b: the unit's role in a section routed to a structural extractor (`structure.ts`). */
+  readonly structure?: UnitStructure;
 }
 
 /** WS1-03: a table row with the header row of its table, when the table has one. */
@@ -93,6 +101,90 @@ export interface TableRowContext {
   readonly cells: readonly string[];
   /** The first row of the contiguous run of table rows; undefined when this row IS that first row. */
   readonly header?: readonly string[];
+  /** UW-3b: the row was rebuilt from cells that wrap over several lines (see `document/block-builder.ts`). */
+  readonly reconstruction?: 'wrapped';
+}
+
+/** UW-3b: what the source's list marker says about a unit whose only block is a list item. */
+export interface ListItemContext {
+  readonly marker: string;
+  readonly ordinal?: number;
+  readonly checkbox?: 'unchecked' | 'checked';
+  /** A short title set apart from the item's body ("Never commit secrets." / "API keys stay in ..."). */
+  readonly title?: string;
+  readonly body?: string;
+}
+
+/** UW-3b: one field of a fill-in form: its label and the hint or options printed beside it. */
+export interface FormFieldContext {
+  readonly label: string;
+  readonly hint?: string;
+}
+
+/** UW-3b: the kind of content a section carries, decided from its structure and language (`structure.ts`). */
+export type SectionKind = 'procedure' | 'guideline' | 'checklist' | 'form' | 'data_table' | 'policy' | 'reference';
+
+/** UW-3b: the role a unit plays in its section, when the section was routed to a structural extractor. */
+export type UnitRole = 'procedure_step' | 'procedure_header' | 'guideline' | 'acceptance_criterion' | 'form_field';
+
+export interface ProcedureStepFacts {
+  /** Stable key of the procedure the step belongs to (its section path); steps of one procedure share it. */
+  readonly procedureKey: string;
+  readonly procedureTitle: string;
+  readonly ordinal: number;
+  /** The author's short name for the step (a "Step" column), when there is one. */
+  readonly label?: string;
+  /** What to do, exactly as written. */
+  readonly action: string;
+  readonly doneWhen?: string;
+  readonly inputs?: string;
+  readonly outputs?: string;
+  readonly owner?: string;
+  /** The fields of the fill-in form the procedure starts from (first step only; see structure.ts). */
+  readonly entryInputs?: readonly FormFieldContext[];
+}
+
+export interface GuidelineFacts {
+  /** The operative instruction ("Do not mix unrelated changes in the same piece of work."). */
+  readonly directive: string;
+  readonly title?: string;
+  /** The rest of the item: why, or how. */
+  readonly rationale?: string;
+  readonly modality: 'obligation' | 'prohibition' | 'advisory';
+  readonly polarity: 'positive' | 'negative';
+}
+
+export interface UnitStructure {
+  readonly sectionKind: SectionKind;
+  readonly role?: UnitRole;
+  readonly step?: ProcedureStepFacts;
+  readonly guideline?: GuidelineFacts;
+  /** For an acceptance criterion: the procedure it applies to, when the document has exactly one. */
+  readonly appliesTo?: { readonly procedureKey: string; readonly procedureTitle: string };
+}
+
+export interface StructureEvidence {
+  readonly signal: string;
+  readonly detail: string;
+}
+
+export interface SectionStructure {
+  readonly sectionPath: readonly string[];
+  readonly kind: SectionKind;
+  /** 0..1, how dominant the winning kind's evidence is in the section. A ranking aid, not a probability. */
+  readonly confidence: number;
+  /** True when the section's units were handed to the structural extractor for `kind`. */
+  readonly routed: boolean;
+  readonly evidence: readonly StructureEvidence[];
+}
+
+/** UW-3b: a proposal of what kind of document this is, with the evidence; never a confirmed fact. */
+export interface DocumentStructure {
+  readonly kind: SectionKind | 'mixed';
+  readonly confidence: number;
+  readonly sections: readonly SectionStructure[];
+  readonly evidence: readonly StructureEvidence[];
+  readonly status: 'proposed';
 }
 
 export interface RelationshipGraph {
@@ -105,4 +197,6 @@ export interface ExperienceDocument {
   readonly documentTitle: string | undefined;
   readonly units: readonly ExperienceUnit[];
   readonly relationshipGraph: RelationshipGraph;
+  /** UW-3b: what kind of document this is, per section, with evidence (`structure.ts`). Absent for a merged multi-source document. */
+  readonly structure?: DocumentStructure;
 }

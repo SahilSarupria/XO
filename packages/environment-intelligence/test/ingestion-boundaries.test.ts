@@ -538,7 +538,12 @@ test('TIMEOUT: a batch that overruns its budget is discarded, the late result is
       assert.equal(r.error.code, DiscoveryErrorCode.LIMIT_EXCEEDED);
       assert.equal(r.error.context?.['limit'], 'batch_timeout');
     }
-    await new Promise((resolve) => setTimeout(resolve, 500)); // let the abandoned read finish
+    // Let the abandoned read finish: wait for its evidence to be contained (bounded), not for a fixed delay, so a slow runner
+    // cannot observe the state before the late completion has been processed.
+    for (let waited = 0; env.ledger.counts().quarantined < 1 && waited < 10_000; waited += 25) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100)); // and give any (wrong) late checkpoint a chance to appear
     assert.equal(await noC4Records(env), true, 'the late completion never produced a checkpoint');
     assert.equal(env.store.ingestedResources(env.sourceId).size, 0);
     // The abandoned read DID finish and the connector released its evidence; it is contained, not left eligible.

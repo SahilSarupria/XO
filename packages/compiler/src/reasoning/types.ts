@@ -55,7 +55,9 @@ export type KnownReasoningNodeType =
   | 'justification'
   | 'exception'
   | 'escalation'
-  | 'risk_threshold';
+  | 'risk_threshold'
+  /** UW-3b: a checklist item ("[ ] Peer review completed") — a condition that must hold when the work is done. */
+  | 'acceptance_criterion';
 export type ReasoningNodeType = KnownReasoningNodeType | `custom:${string}`;
 
 /**

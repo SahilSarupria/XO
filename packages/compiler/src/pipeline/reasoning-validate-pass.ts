@@ -14,6 +14,7 @@ const KNOWN_REASONING_NODE_TYPES = new Set<KnownReasoningNodeType>([
   'exception',
   'escalation',
   'risk_threshold',
+  'acceptance_criterion',
 ]);
 
 function isReasoningSourced(node: XoirNode): boolean {

@@ -51,6 +51,13 @@ export interface CapabilityReadinessEntry {
   readonly executionState: CapabilityExecutionState;
   readonly connectorId?: string;
   readonly blockers: readonly string[];
+  /**
+   * UW-3b: what XO understood the capability to be, when it understood more than "an action found in prose".
+   * `manual_step`: a step of a procedure the document lays out, done by a person. Understood, but still NOT executable:
+   * there is no operation contract, so it is not bound or run (the blockers say so).
+   * `possible_extraction_error`: the name may mix text that does not belong together; check it against the source.
+   */
+  readonly understanding?: 'manual_step' | 'possible_extraction_error';
 }
 
 export interface CapabilityReadiness {
@@ -95,13 +102,21 @@ function analyzeCapabilities(graph: XoirGraph, connectors: readonly ConnectorDec
       ? (p['inputs'] as unknown[]).filter((i): i is string => typeof i === 'string').map((i) => i.split(':')[0]!.trim())
       : [];
     if (!declared) {
+      const meta = (p['metadata'] as Record<string, unknown> | undefined) ?? {};
+      const suspect = meta['quality.review'] === 'possible-extraction-error';
+      const manual = !suspect && meta['understanding'] === 'manual-step';
       entries.push({
         nodeId: node.id,
         name,
         origin: 'discovered',
         requiredInputs,
         executionState: 'not_executable',
-        blockers: ['discovered from prose: no declared operation contract, so it cannot be bound to a connector'],
+        blockers: manual
+          ? [
+              `manual step${typeof meta['step.ordinal'] === 'string' ? ` ${meta['step.ordinal']}` : ''}: the document describes what a person does, with no declared operation, so it is not bound to a connector or run`,
+            ]
+          : ['discovered from prose: no declared operation contract, so it cannot be bound to a connector'],
+        ...(manual ? { understanding: 'manual_step' as const } : suspect ? { understanding: 'possible_extraction_error' as const } : {}),
       });
       continue;
     }

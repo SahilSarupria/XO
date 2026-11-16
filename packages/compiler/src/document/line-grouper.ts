@@ -8,6 +8,8 @@ export interface Line {
   readonly maxFontSizePt: number;
   readonly text: string;
   readonly runs: readonly TextRun[];
+  /** UW-3b: each run's decoded text, aligned with `runs` (decoded through the page's font encodings). Absent for lines built by hand. */
+  readonly runTexts?: readonly string[];
 }
 
 /** How close two runs' y-coordinates must be to be considered "the same line" — small enough to not merge genuinely different lines, large enough to absorb the sub-point rounding differences a real content stream's Td/TJ arithmetic can produce. */
@@ -164,7 +166,8 @@ const GAP_SPACE_THRESHOLD_RATIO = 0.25;
 /** Absolute floor for the gap threshold, in points, so a pathologically small `fontSizePt` (e.g. a malformed/degenerate content stream) can't make the threshold collapse to ~0 and start inserting a space between every kerned glyph pair. */
 const MIN_GAP_SPACE_THRESHOLD_PT = 1;
 
-function estimateRunAdvanceWidth(text: string, fontSizePt: number): number {
+/** Estimated advance width of a run's text, in points (standard Helvetica metrics; see the table above). */
+export function estimateRunAdvanceWidth(text: string, fontSizePt: number): number {
   let totalUnitsPer1000 = 0;
   for (const ch of text) {
     totalUnitsPer1000 += HELVETICA_CHAR_WIDTHS_PER_1000[ch] ?? DEFAULT_CHAR_WIDTH_PER_1000;
@@ -286,6 +289,7 @@ function groupRunsIntoLinesSingleFlow(
       maxFontSizePt: Math.max(...sortedRuns.map((r) => r.fontSizePt)),
       text: joinSameLineRuns(sortedRuns, resolveFontEncoding),
       runs: sortedRuns,
+      runTexts: sortedRuns.map((r) => decodeRunText(r, resolveFontEncoding)),
     };
   });
 }

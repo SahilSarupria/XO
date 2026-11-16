@@ -558,7 +558,9 @@ test('AUDIT (historical): every difference between each historical baseline and 
       repr: out['vertical-fixtures']!.counts['representation_only'],
     },
     // drift 13 -> 16: three outputs (semantic hardening consolidation) are declared as known drift on the historical entry.
-    { added: 26, golden: 12, drift: 16, version: 1, repr: 7 },
+    // drift 16 -> 23: UW-3b document structure declares six stage outputs and aastha capabilityPrecision ("mixed" at an
+    // unchanged 15/16, one unexpected capability renamed) as known drift on the historical entry (CHANGELOG.md).
+    { added: 26, golden: 12, drift: 23, version: 1, repr: 7 },
   );
 });
 

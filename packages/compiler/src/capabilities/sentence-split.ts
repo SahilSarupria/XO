@@ -17,6 +17,50 @@ export interface Sentence {
  */
 const SENTENCE_ABBREVIATIONS = new Set(['vs']);
 
+/**
+ * UW-3b (ADR 0027), additive: abbreviations that never end a sentence ("e.g. feature/short-name", "Mr. Shah", "approx.
+ * 30 minutes") and abbreviations that end one only when a capitalised word follows ("etc. Then ..." ends, "No. 5" and
+ * "Acme Ltd. offices" do not). Before this, "create a branch (e.g." was a sentence of its own and "feature/short-name),
+ * ..." the start of the next. Checked case-insensitively against the word before the period, without its final period.
+ */
+export const NON_TERMINAL_ABBREVIATIONS: ReadonlySet<string> = new Set([
+  'e.g',
+  'i.e',
+  'cf',
+  'viz',
+  'approx',
+  'appx',
+  'fig',
+  'figs',
+  'mr',
+  'mrs',
+  'ms',
+  'dr',
+  'prof',
+  'incl',
+  'excl',
+  'esp',
+  'resp',
+  'ref',
+  'ca',
+]);
+export const CONDITIONAL_ABBREVIATIONS: ReadonlySet<string> = new Set([
+  'etc',
+  'no',
+  'nos',
+  'inc',
+  'ltd',
+  'co',
+  'corp',
+  'dept',
+  'est',
+  'jr',
+  'sr',
+  'al',
+  'pp',
+  'vol',
+]);
+
 const SENTENCE_END_CHARS = new Set(['.', '!', '?']);
 
 /**
@@ -35,8 +79,18 @@ function precedingWordIsAbbreviation(text: string, periodIndex: number): boolean
   ) {
     wordStart -= 1;
   }
-  const word = text.slice(wordStart, periodIndex).toLowerCase();
-  return SENTENCE_ABBREVIATIONS.has(word);
+  const raw = text.slice(wordStart, periodIndex).toLowerCase();
+  if (SENTENCE_ABBREVIATIONS.has(raw)) return true;
+  // UW-3b: the word as written may carry an opening bracket or quote ("(e.g.").
+  const word = raw.replace(/^[("'[{]+/, '');
+  if (NON_TERMINAL_ABBREVIATIONS.has(word)) return true;
+  if (CONDITIONAL_ABBREVIATIONS.has(word)) {
+    let k = periodIndex + 1;
+    while (k < text.length && (text[k] === ' ' || text[k] === '\t')) k += 1;
+    const next = text[k];
+    return next !== undefined && !(next >= 'A' && next <= 'Z') && next !== '\n';
+  }
+  return false;
 }
 
 /**

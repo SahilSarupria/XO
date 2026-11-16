@@ -69,7 +69,11 @@ test('capabilities on a source with real decision-rule content (the vertical-tes
   // numbers, this assertion is expected to need updating alongside it,
   // not a sign the CLI is wrong.
   // Semantic hardening + WS1 recall merged: values re-measured on the combined compiler.
-  assert.equal(parsed.discovered.length, 31);
+  // UW-3b: 31 -> 25 discovered. The 6 no longer minted: "Record Action", "Review Action", "Schedule Action" (the
+  // "<verb> Action" placeholder) and "Schedule specifies a higher deductible", "Schedule and the loss is not excluded",
+  // "Schedule that the Insured must bear" (the noun "the Schedule" read as a verb) — all benchmark-forbidden or of that
+  // class. Six more were renamed to clause-bounded names; the resolved count (19) is unchanged.
+  assert.equal(parsed.discovered.length, 25);
   assert.equal(parsed.resolvedCount, 19);
   assert.ok(parsed.resolvedCount > 0, 'this fixture must prove the positive case, not just 0-resolved');
   assert.ok(
