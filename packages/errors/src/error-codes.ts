@@ -311,6 +311,10 @@ export const ErrorCode = {
   KNOWLEDGE_CHANGE_SET_REFUSED: 'XO_KNOWLEDGE_CHANGE_SET_REFUSED',
   KNOWLEDGE_PACK_REFUSED: 'XO_KNOWLEDGE_PACK_REFUSED',
   KNOWLEDGE_INTEGRITY_FAILED: 'XO_KNOWLEDGE_INTEGRITY_FAILED',
+  // PX-7 — readiness certificates. REQUIRED: the workspace requires one to start and none was presented. REFUSED: the
+  // certificate is stale (a bound digest changed), tampered, for another workflow, or its status does not allow a start.
+  READINESS_CERTIFICATE_REQUIRED: 'XO_READINESS_CERTIFICATE_REQUIRED',
+  READINESS_CERTIFICATE_REFUSED: 'XO_READINESS_CERTIFICATE_REFUSED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -9,3 +9,4 @@ export * from './completeness.js';
 export * from './capability-inventory.js';
 export * from './goal.js';
 export * from './lower-workflow.js';
+export * from './readiness.js';

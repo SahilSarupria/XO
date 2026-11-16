@@ -30,6 +30,8 @@ export interface WorkspaceSettings {
   readonly trust: {
     /** Registry publish and XO install refuse packages that carry no signatures. */
     readonly requireSignedPackages: boolean;
+    /** PX-7: a workflow starts only with a current readiness certificate (READY or READY with declared conditions). */
+    readonly requireReadinessCertificate?: boolean;
   };
   readonly notifications: {
     readonly onEscalation: boolean;
@@ -90,7 +92,7 @@ export interface SettingsPatch {
   readonly model?: { readonly primary?: ModelChoice | null; readonly fallback?: ModelChoice | null };
   readonly airGapped?: boolean;
   readonly region?: string;
-  readonly trust?: { readonly requireSignedPackages?: boolean };
+  readonly trust?: { readonly requireSignedPackages?: boolean; readonly requireReadinessCertificate?: boolean };
   readonly notifications?: { readonly onEscalation?: boolean; readonly onRunFailure?: boolean; readonly onWorkflowComplete?: boolean };
 }
 
@@ -137,9 +139,13 @@ export function parseSettingsPatch(body: unknown, availableLocations: readonly R
   }
   if (o['trust'] !== undefined) {
     const t = obj(o['trust'], 'trust');
-    rejectUnknown(t, ['requireSignedPackages'], 'trust');
+    rejectUnknown(t, ['requireSignedPackages', 'requireReadinessCertificate'], 'trust');
     const req = bool(t, 'requireSignedPackages', 'trust');
-    patch.trust = req !== undefined ? { requireSignedPackages: req } : {};
+    const cert = bool(t, 'requireReadinessCertificate', 'trust');
+    patch.trust = {
+      ...(req !== undefined ? { requireSignedPackages: req } : {}),
+      ...(cert !== undefined ? { requireReadinessCertificate: cert } : {}),
+    };
   }
   if (o['notifications'] !== undefined) {
     const n = obj(o['notifications'], 'notifications');
@@ -167,7 +173,12 @@ export function applySettingsPatch(current: WorkspaceSettings, patch: SettingsPa
       fallback: patch.model?.fallback !== undefined ? patch.model.fallback : current.model.fallback,
     },
     airGapped: patch.airGapped ?? current.airGapped,
-    trust: { requireSignedPackages: patch.trust?.requireSignedPackages ?? current.trust.requireSignedPackages },
+    trust: {
+      requireSignedPackages: patch.trust?.requireSignedPackages ?? current.trust.requireSignedPackages,
+      ...((patch.trust?.requireReadinessCertificate ?? current.trust.requireReadinessCertificate) === true
+        ? { requireReadinessCertificate: true }
+        : {}),
+    },
     notifications: {
       onEscalation: patch.notifications?.onEscalation ?? current.notifications.onEscalation,
       onRunFailure: patch.notifications?.onRunFailure ?? current.notifications.onRunFailure,

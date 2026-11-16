@@ -79,6 +79,8 @@ export function registerCommands(registry: CommandRegistry): void {
           ...(section !== undefined ? { section } : {}),
           ...(workflowId !== undefined ? { workflowId } : {}),
           ...(out !== undefined ? { out } : {}),
+          ...(args.flags['certify'] === true ? { certify: true } : {}),
+          ...(requireFlag(args.flags, 'certificate') !== undefined ? { certificateOut: requireFlag(args.flags, 'certificate')! } : {}),
           json: args.flags['json'] === true,
         }),
       );

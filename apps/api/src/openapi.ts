@@ -743,7 +743,7 @@ export const openApiDocument = {
       post: {
         summary: 'Start a persistent workflow execution',
         description:
-          'Body: { compilationId (required), workflowId? (must equal the path if present), input? }. ANY other field is rejected with 400 (XO_INVALID_ARGUMENT, `context.unknownFields`): workflow steps, capability ids, execution classes, bindings, runtime declarations, identity ids, filesystem paths and storage keys can never be supplied by a client — the plan is always re-derived from the stored compilation. ' +
+          'Body: { compilationId (required), workflowId? (must equal the path if present), input?, certificateId? }. PX-7: a presented `certificateId` must name a readiness certificate for this exact workflow that is intact, READY (or READY_WITH_CONDITIONS) and current — every digest it binds (source set, artifact, graph, knowledge state, inventory, step contracts, workflow definition, goal, applied waivers and rulings) is recomputed now; otherwise 409 XO_READINESS_CERTIFICATE_REFUSED with `context.reasons`. When the workspace setting trust.requireReadinessCertificate is on, a start without one is 409 XO_READINESS_CERTIFICATE_REQUIRED. Permission is still rechecked live for every step. ANY other field is rejected with 400 (XO_INVALID_ARGUMENT, `context.unknownFields`): workflow steps, capability ids, execution classes, bindings, runtime declarations, identity ids, filesystem paths and storage keys can never be supplied by a client — the plan is always re-derived from the stored compilation. ' +
           'Server steps: authenticate -> workspace ownership -> load the stored compilation/graph -> resolve the workflow -> require audit status executable_candidate with every step bound (else 422 XO_WORKFLOW_NOT_EXECUTABLE, `context` carries executabilityStatus/reasons/blockers) -> authorization preflight for EVERY step (capability approved in this workspace, and every non-optional contract permission granted under the fail-closed empty policy; else 403 XO_RUNTIME_PERMISSION_DENIED) -> validate `input` -> persist the record -> execute. Nothing is persisted for a request refused before that point. ' +
           '`input` is a bounded (64 KiB) plain JSON object: each field is delivered to every step whose declared input schema names it (steps with no declared schema, today every human_in_the_loop step, receive the whole object); no mapping is inferred from names or prose. It is validated with the same validateCapabilityInput P0.5 uses, at start (for what the client must supply) and again immediately before each step (client-supplied fields only — values injected by a proven upstream binding are authoritative producer output). A field no step can receive is a 400. Proven upstream values cannot be supplied or overridden by the client. ' +
           'Execution is synchronous and strictly sequential through the existing WorkflowExecutor/RuntimeCapabilityExecutor: it runs until the workflow succeeds, fails, or reaches a human_in_the_loop step, where it STOPS (status waiting_for_human) and returns; later steps do not run. Each step is recorded as a normal P0.5 ExecutionRecord (visible under /executions and, for HITL, /human-tasks). ' +
@@ -1308,6 +1308,46 @@ export const openApiDocument = {
           { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: { '200': { description: 'GeneratedWorkflow' }, '404': { description: 'Unknown id' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/readiness': {
+      post: {
+        summary: 'Issue a Workflow Readiness Certificate for a generated workflow (PX-7)',
+        description:
+          'Body `{ acceptUnstatedStepOrder? }`. The server recomputes source quality, completeness, the knowledge state, the capability inventory, the goal scope and the lowering, and issues READY | READY_WITH_CONDITIONS | NEEDS_REVIEW | BLOCKED with one gate per concern and the digest of every input it depends on. Mandatory gates never degrade to conditions; the only declared condition is an unstated step order the owner accepts (`acceptUnstatedStepOrder: true` needs the review role and a recent sign-in). Audited as readiness.certificate.issued. 409 XO_READINESS_CERTIFICATE_REFUSED when the generated workflow no longer matches what its compilation lowers to.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '201': { description: 'WorkflowReadinessCertificate' }, '404': { description: 'Unknown generated workflow' } },
+      },
+    },
+    '/workspaces/{workspaceId}/readiness-certificates': {
+      get: {
+        summary: 'List readiness certificates (PX-7)',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ certificates: WorkflowReadinessCertificate[] }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/readiness-certificates/{certificateId}': {
+      get: {
+        summary: 'One readiness certificate (PX-7)',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'certificateId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'WorkflowReadinessCertificate' }, '404': { description: 'Unknown certificate' } },
+      },
+    },
+    '/workspaces/{workspaceId}/readiness-certificates/{certificateId}/verify': {
+      get: {
+        summary: 'Verify a readiness certificate against the current state (PX-7)',
+        description: 'The same check the start gate makes: intact, a status that allows a start, and every bound digest current.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'certificateId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ certificateId, status, startAllowed, reasons? }' } },
       },
     },
     '/workspaces/{workspaceId}/compilations/{compilationId}/capabilities': {
