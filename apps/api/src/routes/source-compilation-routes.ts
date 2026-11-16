@@ -1,6 +1,7 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import { err } from '@xo/types';
+import { fromJson as xoirFromJson, type XoirGraphJson } from '@xo/xoir';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
@@ -35,6 +36,7 @@ import { FsWaiverStore } from '../waivers/waiver-store.js';
 import { FsRulingStore } from '../waivers/ruling-store.js';
 import {
   assessCompleteness,
+  buildCapabilityInventory,
   buildSourceSet,
   confirmedRulesFrom,
   createHumanRuling,
@@ -374,6 +376,47 @@ export function registerCompilationRoutes(
     return json(200, { waivers: await new FsWaiverStore(workspaceWaiversStore(workspace, dataConfig)).list() });
   }
 
+  /**
+   * PX-5: the capability inventory of a compilation — status, the four independent readiness answers (eligible, bound,
+   * runtime-supported, authorized), the human task contract, parameter derivation, duplicates and gaps (`?need=` repeated).
+   * "Authorized" is the same approval verdict the execution boundary reaches; permission is rechecked again at start.
+   */
+  async function getCapabilityInventory(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const store = new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig));
+    const record = await store.get(compilationId);
+    if (!record.ok) throw record.error;
+    const graphJson = await store.getCompiledGraph(compilationId);
+    if (!graphJson.ok) throw graphJson.error;
+    const graph = xoirFromJson(graphJson.value as XoirGraphJson);
+    if (!graph.ok) throw new XoError(ErrorCode.INVALID_ARGUMENT, `compilation "${compilationId}" graph: ${graph.error.message}`);
+    const artifact = await store.getArtifact(compilationId);
+    const approvalStore = new FsApprovalStore(workspaceApprovalsStore(workspace, dataConfig));
+    const approved = new Map<string, boolean>();
+    for (const node of graph.value.allNodes()) {
+      if (node.kind !== 'capability') continue;
+      const current = deriveCapabilityApprovalStateFromJson(graphJson.value, node.id, record.value.sourceDigestSha256);
+      const verdict = await verifyApproval(
+        approvalStore,
+        { workspaceId: workspace.workspaceId, compilationId, capabilityId: node.id },
+        current,
+      );
+      approved.set(node.id, verdict.ok && verdict.value.approved);
+    }
+    const inventory = buildCapabilityInventory(graph.value, {
+      ...(artifact.ok ? { artifactDigest: artifact.value.digest } : {}),
+      decisions: new Map([...approved].filter(([, a]) => a).map(([id]) => [id, 'accepted' as const])),
+      authorize: (c) =>
+        approved.get(c.capabilityId) === true
+          ? { value: 'yes', reason: 'approved for its current contract; permission is rechecked when a workflow starts' }
+          : { value: 'no', reason: 'not approved for its current contract' },
+      needs: req.query.getAll('need'),
+    });
+    return json(200, { compilationId, inventory });
+  }
+
   async function getCapabilities(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const compilationId = req.params['compilationId'];
@@ -549,6 +592,7 @@ export function registerCompilationRoutes(
   router.post('/workspaces/:workspaceId/compilations/:compilationId/rulings', guarded(createRuling));
   router.get('/workspaces/:workspaceId/rulings', guarded(listRulings));
   router.get('/workspaces/:workspaceId/compilations/:compilationId/capabilities', guarded(getCapabilities));
+  router.get('/workspaces/:workspaceId/compilations/:compilationId/capability-inventory', guarded(getCapabilityInventory));
   router.post('/workspaces/:workspaceId/compilations/:compilationId/capabilities/:capabilityId/approve', guarded(approveCapability));
 }
 

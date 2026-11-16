@@ -11,6 +11,8 @@ export * from './structured-comparison-resolver.js';
 // of structured-comparison-resolver.js — see that module and this one's
 // own doc comments for how the two partition contracts disjointly.
 export * from './action-escalation-resolver.js';
+// PX-5: the one human-task contract rule (ADR 0029 decision 11).
+export * from './human-task.js';
 export * from './resolve-binding.js';
 export * from './standard-resolvers.js';
 export * from './contract-extract.js';

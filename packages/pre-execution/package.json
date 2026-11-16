@@ -20,6 +20,7 @@
     "test:coverage": "node ../../scripts/run-tests.mjs --coverage test"
   },
   "dependencies": {
+    "@xo/capability-contract": "0.1.0",
     "@xo/compiler": "0.1.0",
     "@xo/crypto": "0.1.0",
     "@xo/errors": "0.1.0",
