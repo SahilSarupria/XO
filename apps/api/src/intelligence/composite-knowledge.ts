@@ -6,15 +6,19 @@ import type { Evidence, KnowledgeCatalog, KnowledgePort, KnowledgeQuery, Knowled
  * failed ones are named in `unsearchedSources`, so the answer says it may be incomplete instead of silently dropping them.
  */
 export class CompositeKnowledgePort implements KnowledgePort {
-  constructor(private readonly parts: readonly { readonly name: string; readonly port: KnowledgePort }[]) {}
+  /**
+   * `tier` (default 0): evidence from a lower tier ranks before any from a higher one, whatever the scores (UW-4c: approved
+   * knowledge, tier -1, before raw compiled output). Within a tier, by score, then by part order.
+   */
+  constructor(private readonly parts: readonly { readonly name: string; readonly port: KnowledgePort; readonly tier?: number }[]) {}
 
   async retrieve(q: KnowledgeQuery): Promise<KnowledgeResult> {
     const settled = await Promise.all(
       this.parts.map(async (p) => {
         try {
-          return { name: p.name, result: await p.port.retrieve(q) };
+          return { name: p.name, tier: p.tier ?? 0, result: await p.port.retrieve(q) };
         } catch {
-          return { name: p.name, result: { status: 'unavailable', reason: 'error' } as KnowledgeResult };
+          return { name: p.name, tier: p.tier ?? 0, result: { status: 'unavailable', reason: 'error' } as KnowledgeResult };
         }
       }),
     );
@@ -27,9 +31,9 @@ export class CompositeKnowledgePort implements KnowledgePort {
       };
     }
     const evidence: Evidence[] = ok
-      .flatMap((s) => (s.result.status === 'ok' ? s.result.evidence : []))
-      .map((e, order) => ({ e, order }))
-      .sort((a, b) => (b.e.score ?? 0) - (a.e.score ?? 0) || a.order - b.order)
+      .flatMap((s) => (s.result.status === 'ok' ? s.result.evidence.map((e) => ({ e, tier: s.tier })) : []))
+      .map((x, order) => ({ ...x, order }))
+      .sort((a, b) => a.tier - b.tier || (b.e.score ?? 0) - (a.e.score ?? 0) || a.order - b.order)
       .slice(0, q.limit)
       .map((x) => x.e);
     const methods = new Set(ok.map((s) => (s.result.status === 'ok' ? s.result.method : undefined)));

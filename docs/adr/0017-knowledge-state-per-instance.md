@@ -4,6 +4,8 @@
 
 Accepted under owner delegation, 2026-11-13 (UW-0), **conditional on the UW-4 spike** below. Signed off 2026-11-13 by Claude under the owner's explicit delegation of sign-off authority (owner instruction of 2026-11-13); this is a delegated sign-off, not an independent review.
 
+**Spike passed; refined by ADR 0034 (UW-4, 2026-11-16):** `node:sqlite`, crash-injection atomicity and deterministic state ids all hold (results in ADR 0034). The Merkle root of decision 2 is the state's _content root_, kept beside the history-bound `stateId`; compare-and-swap on the active state is the schema-2 `kb_heads` pointer.
+
 **Supersedes in part ADR 0006**: for per-instance state, the relational store is SQLite with a Postgres adapter for high
 availability, instead of a shared Postgres. Blob storage behind `BlobStore` is unchanged. Redis and Neo4j stay unprovisioned by
 default; a graph database stays deferred (ADR 0012).

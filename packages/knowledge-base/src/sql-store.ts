@@ -17,6 +17,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createRequire } from 'node:module';
 import { digestOf, type Digest } from './canonical.js';
 import type { PackArtifact } from './packs.js';
+import { stateContentRoot, StaleHeadError, type HeadPointer } from './state-root.js';
 import { IntegrityError, type ChangeSetDecision, type KnowledgeStore } from './store.js';
 import type { ChangeSet, KnowledgeEvent, KnowledgeRecord, KnowledgeState } from './types.js';
 
@@ -35,9 +36,17 @@ export interface SqlDriver {
   close(): Promise<void>;
 }
 
-export const KNOWLEDGE_SCHEMA_VERSION = 1;
+/**
+ * Schema history (each step runs once, in order, under the schema lock, in one transaction with the version bump):
+ *   1  write-once tables keyed by (tenant, id) and the hash-chained event log (ADR 0029/0030).
+ *   2  UW-4b (ADR 0034): `kb_heads`, the compare-and-swap head pointer with the state's content root, backfilled from each
+ *      tenant's event log; `kb_indexes`, persisted retrieval indexes keyed by state id (derived data, rebuildable).
+ */
+export const KNOWLEDGE_SCHEMA_VERSION = 2;
 
-const TABLES = ['kb_records', 'kb_change_sets', 'kb_decisions', 'kb_states', 'kb_packs'] as const;
+const V1_TABLES = ['kb_records', 'kb_change_sets', 'kb_decisions', 'kb_states', 'kb_packs'] as const;
+/** Every write-once (tenant, id) table: the schema-1 ones and schema 2's `kb_indexes`. */
+type Table = (typeof V1_TABLES)[number] | 'kb_indexes';
 
 /** Creates the schema (idempotent) and refuses a database written by a newer schema. */
 export async function migrateKnowledgeSchema(driver: SqlDriver): Promise<void> {
@@ -55,14 +64,64 @@ async function migrateLocked(driver: SqlDriver): Promise<void> {
     throw new IntegrityError(
       `the knowledge database was written by a newer XO (schema ${current}; this build knows ${KNOWLEDGE_SCHEMA_VERSION})`,
     );
-  for (const t of TABLES)
+  if (current < 1) {
+    for (const t of V1_TABLES)
+      await driver.run(
+        `CREATE TABLE IF NOT EXISTS ${t} (tenant ${text} NOT NULL, id ${text} NOT NULL, body ${text} NOT NULL, digest ${text} NOT NULL, PRIMARY KEY (tenant, id))`,
+      );
     await driver.run(
-      `CREATE TABLE IF NOT EXISTS ${t} (tenant ${text} NOT NULL, id ${text} NOT NULL, body ${text} NOT NULL, digest ${text} NOT NULL, PRIMARY KEY (tenant, id))`,
+      `CREATE TABLE IF NOT EXISTS kb_events (tenant ${text} NOT NULL, seq ${int} NOT NULL, body ${text} NOT NULL, digest ${text} NOT NULL, PRIMARY KEY (tenant, seq))`,
     );
-  await driver.run(
-    `CREATE TABLE IF NOT EXISTS kb_events (tenant ${text} NOT NULL, seq ${int} NOT NULL, body ${text} NOT NULL, digest ${text} NOT NULL, PRIMARY KEY (tenant, seq))`,
-  );
+  }
+  if (current < 2) {
+    await driver.run(
+      `CREATE TABLE IF NOT EXISTS kb_heads (tenant ${text} NOT NULL PRIMARY KEY, state_id ${text} NOT NULL, content_root ${text} NOT NULL, event_seq ${int} NOT NULL)`,
+    );
+    await driver.run(
+      `CREATE TABLE IF NOT EXISTS kb_indexes (tenant ${text} NOT NULL, id ${text} NOT NULL, body ${text} NOT NULL, digest ${text} NOT NULL, PRIMARY KEY (tenant, id))`,
+    );
+    if (current === 1) await backfillHeads(driver);
+  }
   if (current === 0) await driver.run('INSERT INTO kb_schema (version) VALUES (?)', [KNOWLEDGE_SCHEMA_VERSION]);
+  else if (current < KNOWLEDGE_SCHEMA_VERSION) await driver.run('UPDATE kb_schema SET version = ?', [KNOWLEDGE_SCHEMA_VERSION]);
+}
+
+/**
+ * Schema 1 → 2: every tenant's head pointer, from the last `state.created` event of its (verified) log. The state it names must
+ * exist and match the event's digest; anything else stops the migration (the transaction rolls back and schema 1 stays).
+ */
+async function backfillHeads(driver: SqlDriver): Promise<void> {
+  const tenants = await driver.query<{ tenant: string }>('SELECT DISTINCT tenant FROM kb_events ORDER BY tenant');
+  for (const { tenant } of tenants) {
+    const rows = await driver.query<{ seq: number | string; body: string; digest: string }>(
+      'SELECT seq, body, digest FROM kb_events WHERE tenant = ? ORDER BY seq',
+      [tenant],
+    );
+    let prev: string | null = null;
+    let head: { seq: number; stateId: string; stateDigest: string } | undefined;
+    for (const row of rows) {
+      const ev = JSON.parse(row.body) as KnowledgeEvent;
+      const { digest, ...body } = ev;
+      if (digestOf(body) !== digest || digest !== row.digest || ev.prevDigest !== prev)
+        throw new IntegrityError(`migration to schema 2: tenant "${tenant}" event ${row.seq} does not verify`);
+      prev = digest;
+      if (ev.type === 'state.created') head = { seq: Number(row.seq), stateId: ev.subjectId, stateDigest: ev.subjectDigest };
+    }
+    if (head === undefined) continue;
+    const st = await driver.query<{ body: string; digest: string }>('SELECT body, digest FROM kb_states WHERE tenant = ? AND id = ?', [
+      tenant,
+      head.stateId,
+    ]);
+    const state = st[0] === undefined ? undefined : (JSON.parse(st[0].body) as KnowledgeState);
+    if (state === undefined || digestOf(state) !== st[0]!.digest || state.digest !== head.stateDigest)
+      throw new IntegrityError(`migration to schema 2: tenant "${tenant}" head state ${head.stateId} is missing or altered`);
+    await driver.run('INSERT INTO kb_heads (tenant, state_id, content_root, event_seq) VALUES (?, ?, ?, ?)', [
+      tenant,
+      head.stateId,
+      stateContentRoot(state),
+      head.seq,
+    ]);
+  }
 }
 
 const TENANT = /^[A-Za-z0-9_-]{1,64}$/;
@@ -91,7 +150,7 @@ export class SqlKnowledgeStore implements KnowledgeStore {
     if (tenantId !== this.tenantId) throw new IntegrityError(`${what} belongs to tenant "${tenantId}", not "${this.tenantId}"`);
   }
 
-  private async putOnce(table: (typeof TABLES)[number], id: string, value: unknown, what: string): Promise<void> {
+  private async putOnce(table: Table, id: string, value: unknown, what: string): Promise<void> {
     const body = JSON.stringify(value);
     const digest = digestOf(value);
     await this.db.run(`INSERT INTO ${table} (tenant, id, body, digest) VALUES (?, ?, ?, ?) ON CONFLICT (tenant, id) DO NOTHING`, [
@@ -104,7 +163,7 @@ export class SqlKnowledgeStore implements KnowledgeStore {
     if (rows[0]?.digest !== digest) throw new IntegrityError(`${what} ${id} already exists with different content`);
   }
 
-  private async getOne<T>(table: (typeof TABLES)[number], id: string, what: string): Promise<T | undefined> {
+  private async getOne<T>(table: Table, id: string, what: string): Promise<T | undefined> {
     const rows = await this.db.query<{ body: string; digest: string }>(`SELECT body, digest FROM ${table} WHERE tenant = ? AND id = ?`, [
       this.tenantId,
       id,
@@ -121,7 +180,7 @@ export class SqlKnowledgeStore implements KnowledgeStore {
     return value;
   }
 
-  private async listAll<T>(table: (typeof TABLES)[number], what: string): Promise<readonly T[]> {
+  private async listAll<T>(table: Table, what: string): Promise<readonly T[]> {
     const rows = await this.db.query<{ id: string; body: string; digest: string }>(
       `SELECT id, body, digest FROM ${table} WHERE tenant = ? ORDER BY id`,
       [this.tenantId],
@@ -222,6 +281,42 @@ export class SqlKnowledgeStore implements KnowledgeStore {
       out.push(ev);
     }
     return out;
+  }
+
+  async getHead(): Promise<HeadPointer | undefined> {
+    const rows = await this.db.query<{ state_id: string; content_root: string; event_seq: number | string }>(
+      'SELECT state_id, content_root, event_seq FROM kb_heads WHERE tenant = ?',
+      [this.tenantId],
+    );
+    const r = rows[0];
+    return r === undefined ? undefined : { stateId: r.state_id, contentRoot: r.content_root, eventSeq: Number(r.event_seq) };
+  }
+
+  async casHead(expected: string | null, next: HeadPointer): Promise<void> {
+    if (this.tx.getStore() === undefined) throw new IntegrityError('the head moves only inside an exclusive transaction');
+    if (expected === null)
+      await this.db.run(
+        'INSERT INTO kb_heads (tenant, state_id, content_root, event_seq) VALUES (?, ?, ?, ?) ON CONFLICT (tenant) DO NOTHING',
+        [this.tenantId, next.stateId, next.contentRoot, next.eventSeq],
+      );
+    else
+      await this.db.run('UPDATE kb_heads SET state_id = ?, content_root = ?, event_seq = ? WHERE tenant = ? AND state_id = ?', [
+        next.stateId,
+        next.contentRoot,
+        next.eventSeq,
+        this.tenantId,
+        expected,
+      ]);
+    // States are immutable and chained, so the next state id is never the expected one: reading it back proves the swap.
+    const now = await this.getHead();
+    if (now?.stateId !== next.stateId || now.eventSeq !== next.eventSeq) throw new StaleHeadError(expected, now?.stateId ?? null);
+  }
+
+  async putIndex(stateId: string, index: unknown): Promise<void> {
+    await this.putOnce('kb_indexes', stateId, index, 'index');
+  }
+  getIndex<T>(stateId: string): Promise<T | undefined> {
+    return this.getOne<T>('kb_indexes', stateId, 'index');
   }
 
   exclusive<T>(fn: () => Promise<T>): Promise<T> {

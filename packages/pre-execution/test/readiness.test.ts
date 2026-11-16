@@ -112,6 +112,23 @@ test('false-ready corpus: each of these is never READY', async () => {
   // an unresolved knowledge conflict
   const knowledge = assessReadiness({ ...base, knowledge: { stateId: 'ks_1', digest: 'sha256:x', unresolvedConflicts: ['cfl_1'] } });
   assert.equal(knowledge.status, 'NEEDS_REVIEW');
+  // UW-4a (UAC-12): approved knowledge from these sources that the executable-use gate refused
+  const refused = assessReadiness({
+    ...base,
+    knowledge: {
+      stateId: 'ks_1',
+      digest: 'sha256:x',
+      unresolvedConflicts: [],
+      refused: [
+        { recordId: 'clm_1', reasons: ['its evidence does not resolve: ops.md: the stored bytes no longer match the cited digest'] },
+      ],
+    },
+  });
+  assert.equal(refused.status, 'NEEDS_REVIEW');
+  const gate = refused.gates.find((g) => g.id === 'knowledge')!;
+  assert.match(JSON.stringify(gate), /clm_1 may not feed execution: its evidence does not resolve/);
+  const clean = assessReadiness({ ...base, knowledge: { stateId: 'ks_1', digest: 'sha256:x', unresolvedConflicts: [], refused: [] } });
+  assert.match(JSON.stringify(clean.gates.find((g) => g.id === 'knowledge')), /every record from these sources may feed execution/);
   // the goal asks a question instead of selecting
   const asked = assessReadiness({ ...base, scope: { status: 'needs_clarification', question: 'Which one?', options: [], ranking: [] } });
   assert.equal(asked.status, 'NEEDS_REVIEW');

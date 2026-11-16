@@ -10,6 +10,9 @@ import {
   KnowledgeError,
   IntegrityError,
   copyKnowledge,
+  DerivationRefused,
+  deriveClaimsFromText,
+  executableKnowledge,
   isKnowledgeStoreEmpty,
   reconcileXoirGraph,
   validatePackArtifact,
@@ -30,8 +33,16 @@ import {
   requireOwnedWorkspace,
   requirePrincipal,
   workspaceCompilationsStore,
+  workspaceSourcesStore,
+  workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
+import { WorkspaceEvidenceSources } from '../knowledge/evidence-sources.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
+import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { usableModelChoices } from '../chat/usable-models.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { FsSourceStore } from '../sources/fs-source-store.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import type { AuditService } from '../audit/audit-service.js';
@@ -142,13 +153,23 @@ function parsePolicy(v: unknown): PrecedencePolicy | undefined {
   return { version, order: order as string[] };
 }
 
+export interface KnowledgeRouteOptions {
+  /** The model providers (tests inject one); every one passes the residency guard. */
+  readonly providerFactory?: ProviderFactory;
+  readonly residency?: ResidencyPolicy;
+}
+
 export function registerKnowledgeRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
   audit: AuditService,
+  options: KnowledgeRouteOptions = {},
 ): void {
   const auditCtx = { audit, workspaceStore };
+  // UW-4c: the K4 deriver reaches a model only through the residency-guarded factory (UW-14), like chat.
+  const residency = options.residency ?? resolveResidency(process.env);
+  const providerFor = guardedFactory(options.providerFactory ?? envProviderFactory(process.env, residency), residency);
 
   async function stateIdOf(req: ApiRequest, kb: KnowledgeBase): Promise<string> {
     return req.query.get('state') ?? (await kb.head()).stateId;
@@ -197,6 +218,71 @@ export function registerKnowledgeRoutes(
         metadata: { compilationId: safeId(compilationId) ?? 'unknown', operations: changeSet.operations.length },
       });
     return json(changeSet === undefined ? 200 : 201, { changeSet: changeSet ?? null, report });
+  }
+
+  /**
+   * UW-4c (K4): a model reads a stored source's text and proposes claims (author role). Each claim must quote the page it names;
+   * the rest are refused and reported by position and reason. The result is a change set for a reviewer, never a state.
+   */
+  async function deriveFromSource(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'knowledge.derive', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'derive knowledge from a source' });
+    const sourceId = req.params['sourceId'] ?? '';
+    const record = await new FsSourceStore(workspaceSourcesStore(workspace, dataConfig)).get(sourceId);
+    if (!record.ok) throw record.error;
+    const view = await new WorkspaceEvidenceSources(workspaceSourcesStore(workspace, dataConfig)).source(record.value.digestSha256);
+    if (view === undefined || !view.digestVerified)
+      throw new XoError(ErrorCode.PRECONDITION_FAILED, `the stored bytes of ${record.value.originalFilename} no longer match its digest`);
+    const pages = view.pageTexts ?? (view.text !== undefined ? [view.text] : undefined);
+    if (pages === undefined || pages.every((p) => p.trim() === ''))
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        `${record.value.originalFilename} has no text to read (compile it to recover scanned pages)`,
+      );
+    const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+    const choice = usableModelChoices(settings, providerFor)[0]!;
+    const provider = providerFor(choice.provider)!;
+    let derived;
+    try {
+      derived = await deriveClaimsFromText({
+        model: provider,
+        modelName: choice.model,
+        tenantId: workspace.workspaceId,
+        source: { digestSha256: record.value.digestSha256, name: record.value.originalFilename },
+        pages,
+        recordedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      if (e instanceof DerivationRefused) throw new XoError(ErrorCode.PRECONDITION_FAILED, `${e.code}: ${e.message}`);
+      throw e;
+    }
+    const actor = requirePrincipal(req);
+    const kb = await workspaceKnowledgeBase(workspace, dataConfig);
+    const changeSet =
+      derived.claims.length === 0
+        ? undefined
+        : await kb.propose({
+            operations: derived.claims.map((r) => ({ op: 'add' as const, record: r })),
+            origin: { kind: 'model-derivation', ref: sourceId },
+            proposedBy: { id: actor.id, kind: actor.kind },
+          });
+    if (changeSet !== undefined)
+      await audit.tryRecord({
+        action: 'knowledge.derive',
+        actor: actorFromPrincipal(actor),
+        correlationId,
+        target: { kind: 'knowledge-change-set', id: changeSet.changeSetId, workspaceId: workspace.workspaceId },
+        type: 'knowledge.change-set.proposed',
+        outcome: 'completed',
+        metadata: { sourceId: safeId(sourceId) ?? 'unknown', operations: changeSet.operations.length, refused: derived.refused.length },
+      });
+    return json(changeSet === undefined ? 200 : 201, {
+      changeSet: changeSet ?? null,
+      proposed: derived.claims.length,
+      refused: derived.refused,
+      model: { provider: choice.provider, model: choice.model },
+    });
   }
 
   async function decide(req: ApiRequest, kind: 'approve' | 'reject'): Promise<ApiResponse> {
@@ -267,7 +353,37 @@ export function registerKnowledgeRoutes(
     const kb = await workspaceKnowledgeBase(workspace, dataConfig);
     const id = req.params['stateId'] ?? '';
     const findings = await kb.verifyState(id);
-    return json(200, { stateId: id, verified: findings.length === 0, findings });
+    // UW-4b: when the state is the head, the head pointer must agree with the event log and the state's content.
+    const isHead = (await kb.head()).stateId === id;
+    const head = isHead ? await kb.verifyHead() : [];
+    return json(200, {
+      stateId: id,
+      verified: findings.length === 0 && head.length === 0,
+      findings: [...findings, ...head],
+      contentRoot: await kb.contentRoot(id),
+    });
+  }
+
+  /**
+   * UW-4a (UAC-12): which records of a state may feed execution, and why the others may not. `records` (comma-separated) names
+   * the records to check; without it, every record of the state is checked.
+   */
+  async function executable(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const kb = await workspaceKnowledgeBase(workspace, dataConfig);
+    const stateId = req.params['stateId'] ?? '';
+    const ids = req.query.get('records');
+    const result = await executableKnowledge(kb, stateId, new WorkspaceEvidenceSources(workspaceSourcesStore(workspace, dataConfig)), {
+      ...(ids !== null && ids.trim() !== ''
+        ? {
+            recordIds: ids
+              .split(',')
+              .map((x) => x.trim())
+              .filter((x) => x !== ''),
+          }
+        : {}),
+    });
+    return json(200, result);
   }
 
   async function listRecords(req: ApiRequest): Promise<ApiResponse> {
@@ -294,7 +410,18 @@ export function registerKnowledgeRoutes(
     if (q === null || q.trim() === '') throw new XoError(ErrorCode.INVALID_ARGUMENT, 'q is required');
     const limit = Math.min(100, Math.max(1, Number(req.query.get('limit') ?? '10') || 10));
     const stateId = await stateIdOf(req, kb);
-    return json(200, { stateId, hits: await kb.search(stateId, q, limit) });
+    // UW-4c: approved knowledge only, unless the caller names lifecycles (`lifecycle=active,needs_review` or `any`).
+    const lc = req.query.get('lifecycle');
+    const LIFECYCLES = ['proposed', 'needs_review', 'active', 'rejected', 'superseded', 'expired'] as const;
+    let lifecycle: readonly (typeof LIFECYCLES)[number][] | 'any' | undefined;
+    if (lc === 'any') lifecycle = 'any';
+    else if (lc !== null) {
+      const parts = lc.split(',').map((x) => x.trim());
+      const bad = parts.filter((x) => !(LIFECYCLES as readonly string[]).includes(x));
+      if (bad.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `lifecycle must be any, or a list of ${LIFECYCLES.join(', ')}`);
+      lifecycle = parts as (typeof LIFECYCLES)[number][];
+    }
+    return json(200, { stateId, hits: await kb.search(stateId, q, limit, lifecycle !== undefined ? { lifecycle } : {}) });
   }
 
   async function resolveEntity(req: ApiRequest): Promise<ApiResponse> {
@@ -354,6 +481,7 @@ export function registerKnowledgeRoutes(
   }
 
   router.post('/workspaces/:workspaceId/compilations/:compilationId/knowledge-change-sets', guarded(proposeFromCompilation));
+  router.post('/workspaces/:workspaceId/sources/:sourceId/knowledge-derivations', guarded(deriveFromSource));
   router.get('/workspaces/:workspaceId/knowledge/change-sets', guarded(listChangeSets));
   router.get('/workspaces/:workspaceId/knowledge/change-sets/:changeSetId', guarded(getChangeSet));
   router.post(
@@ -367,6 +495,7 @@ export function registerKnowledgeRoutes(
   router.get('/workspaces/:workspaceId/knowledge/state', guarded(getState));
   router.get('/workspaces/:workspaceId/knowledge/states/:stateId', guarded(getState));
   router.get('/workspaces/:workspaceId/knowledge/states/:stateId/verify', guarded(verifyState));
+  router.get('/workspaces/:workspaceId/knowledge/states/:stateId/executable', guarded(executable));
   router.get('/workspaces/:workspaceId/knowledge/records', guarded(listRecords));
   router.get('/workspaces/:workspaceId/knowledge/search', guarded(search));
   router.get('/workspaces/:workspaceId/knowledge/resolve-entity', guarded(resolveEntity));

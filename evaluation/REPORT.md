@@ -50,7 +50,7 @@ Evidence for UAC-17. Mode: deterministic.
 
 | Measure | Value | Threshold |
 | --- | --- | --- |
-| Structural checks passing across compiler, intelligence and workflow runtime | 100.0% (6/6) | ≥ 1 (proposed) |
+| Structural checks passing across compiler, intelligence, workflow runtime and knowledge derivation | 100.0% (12/12) | ≥ 1 (proposed) |
 
 **Limits:**
 - Structural checks: where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a person. How often a live model is misled is not measured here.

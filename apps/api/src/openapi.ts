@@ -1179,7 +1179,53 @@ export const openApiDocument = {
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'stateId', in: 'path', required: true, schema: { type: 'string' } },
         ],
-        responses: { '200': { description: '{ stateId, verified, findings }' } },
+        responses: {
+          '200': {
+            description:
+              '{ stateId, verified, findings, contentRoot }. For the head state, the findings include the head-pointer checks (UW-4b): the pointer names the state of the last state.created event and matches its content root.',
+          },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/knowledge/states/{stateId}/executable': {
+      get: {
+        summary: 'Which records of a knowledge state may feed execution, and why the others may not (UW-4a, UAC-12)',
+        description:
+          'The executable-use gate. A record may feed execution only when it is approved (active) in the state, interpreted by an installed pack, has authority (claims), is in no unresolved conflict and lost no resolved one, and every evidence entry resolves against the stored source: the source version still exists, its bytes re-hash to the cited digest, the cited pages, sheet and row are inside it, and a cited quote is found on the cited pages.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'stateId', in: 'path', required: true, schema: { type: 'string' } },
+          {
+            name: 'records',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description: 'Comma-separated record ids; every record of the state when absent',
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              '{ stateId, verdicts: { recordId, executable, reasons, lifecycle?, resolution? }[], executable: string[], refused }',
+          },
+          '404': { description: 'Unknown state' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/sources/{sourceId}/knowledge-derivations': {
+      post: {
+        summary: "A model reads a stored source's text and proposes claims as a knowledge change set (UW-4c, K4)",
+        description:
+          "Uses the workspace's selected model through the residency guard. The page text reaches the model only as JSON data under a fixed system message (trust rule T2). Each claim must quote, verbatim, the page it names, and the quote must contain the claim's value; anything else is refused and reported by position and reason, never echoed. The surviving claims are proposed as a change set (origin model-derivation) for a reviewer: nothing is applied (T1). Needs the author role; audited as knowledge.change-set.proposed.",
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'sourceId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: '{ changeSet, proposed, refused: { index, reason }[], model }' },
+          '200': { description: '{ changeSet: null, proposed: 0, refused, model }: no claim survived' },
+          '412': { description: 'No model is usable, the source has no text, its bytes changed, or the answer was refused as a whole' },
+        },
       },
     },
     '/workspaces/{workspaceId}/knowledge/records': {
@@ -1209,8 +1255,19 @@ export const openApiDocument = {
           { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
           { name: 'state', in: 'query', required: false, schema: { type: 'string' }, description: 'Pinned state id; the head when absent' },
           { name: 'limit', in: 'query', required: false, schema: { type: 'string' }, description: '1-100, default 10' },
+          {
+            name: 'lifecycle',
+            in: 'query',
+            required: false,
+            schema: { type: 'string' },
+            description:
+              'Comma-separated lifecycles to search, or any. Default: approved (active) records only (UW-4c). Statistics are computed over the filtered records.',
+          },
         ],
-        responses: { '200': { description: '{ stateId, hits: SearchHit[] }' }, '400': { description: 'q missing' } },
+        responses: {
+          '200': { description: '{ stateId, hits: SearchHit[] }, through the state-keyed persisted index (UW-4c)' },
+          '400': { description: 'q missing or an unknown lifecycle' },
+        },
       },
     },
     '/workspaces/{workspaceId}/knowledge/resolve-entity': {

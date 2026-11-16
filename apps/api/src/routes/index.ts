@@ -147,7 +147,10 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     deps.importFetch !== undefined ? { fetchDeps: deps.importFetch } : {},
   );
   registerCompilationRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
-  registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, {
+    ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
+    ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
+  });
   registerPreExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerReadinessRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerGeneratedRunRoutes(

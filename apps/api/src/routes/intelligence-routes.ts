@@ -26,6 +26,8 @@ import { FsConversationStore, MAX_CONVERSATIONS_PER_IDENTITY, type Conversation 
 import { FsLearningPort } from '../intelligence/learning-store.js';
 import { InstalledXoKnowledgePort } from '../intelligence/installed-xo-knowledge.js';
 import { WorkspaceSourcesKnowledgePort } from '../intelligence/workspace-sources-knowledge.js';
+import { ApprovedKnowledgePort } from '../intelligence/approved-knowledge.js';
+import { workspaceKnowledgeBase } from './knowledge-routes.js';
 import { CompositeKnowledgePort } from '../intelligence/composite-knowledge.js';
 
 /**
@@ -182,6 +184,8 @@ export function registerIntelligenceRoutes(
       knowledge:
         options.knowledge?.(workspace) ??
         new CompositeKnowledgePort([
+          // UW-4c: what a reviewer approved ranks first; unreviewed compiled output after it.
+          { name: 'approved knowledge', port: new ApprovedKnowledgePort(() => workspaceKnowledgeBase(workspace, dataConfig)), tier: -1 },
           { name: 'installed XOs', port: new InstalledXoKnowledgePort(workspacePackagesStore(workspace, dataConfig)) },
           {
             name: 'uploaded files',
