@@ -176,7 +176,9 @@ async function main() {
 
     const api = start('api', process.execPath, ['run-api.mjs'], {
       cwd: join(root, 'apps/api'),
-      env: { ...childEnv, ...dataEnv, PORT: String(apiPort), HOST: '127.0.0.1' },
+      // Synthetic data only: package trust is turned off explicitly (the API refuses to start without a trust decision, and refuses
+      // this one in production), exactly as for local development.
+      env: { ...childEnv, ...dataEnv, PORT: String(apiPort), HOST: '127.0.0.1', XO_TRUST_MODE: 'development' },
     });
     await waitUntilUp(api, `${apiUrl}/health`, 'The API');
     say(`API up on port ${apiPort}`);

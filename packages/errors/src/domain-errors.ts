@@ -31,7 +31,10 @@ export class ConfigError extends XoError {
 
 export class SerializationError extends XoError {
   constructor(
-    code: typeof ErrorCode.SERIALIZATION_SCHEMA_MISMATCH | typeof ErrorCode.SERIALIZATION_PARSE_FAILED,
+    code:
+      | typeof ErrorCode.SERIALIZATION_SCHEMA_MISMATCH
+      | typeof ErrorCode.SERIALIZATION_PARSE_FAILED
+      | typeof ErrorCode.SERIALIZATION_INTEGRITY_FAILED,
     message: string,
     options?: XoErrorOptions,
   ) {
@@ -285,6 +288,8 @@ export class AuthError extends XoError {
       | typeof ErrorCode.AUTH_KEY_MISSING
       | typeof ErrorCode.AUTH_KEY_INVALID
       | typeof ErrorCode.AUTH_KEY_REVOKED
+      | typeof ErrorCode.AUTH_KEY_EXPIRED
+      | typeof ErrorCode.AUTH_STEP_UP_REQUIRED
       | typeof ErrorCode.AUTH_TOKEN_INVALID
       | typeof ErrorCode.AUTH_TOKEN_EXPIRED
       | typeof ErrorCode.AUTH_IDENTITY_UNBOUND

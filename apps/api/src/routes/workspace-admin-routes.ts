@@ -1,15 +1,11 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { requireRecentAuthentication } from '../auth/step-up.js';
+import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import {
-  callerRole,
-  requireOwnedWorkspace,
-  requirePermission,
-  workspaceAuditStore,
-  type WorkspaceDataConfig,
-} from '../workspace/workspace-context.js';
+import { callerRole, requireOwnedWorkspace, requirePermission, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import {
   isWorkspaceRole,
   WORKSPACE_ROLES,
@@ -20,7 +16,7 @@ import {
 } from '../workspace/workspace.js';
 import { permissionsOf } from '../workspace/permissions.js';
 import { REGIONS } from '../workspace/regions.js';
-import { FsAuditLog } from '../audit/fs-audit-log.js';
+import type { FsAuditLog } from '../audit/fs-audit-log.js';
 import { isAuditEventType, isAuditResult } from '../audit/audit-entry.js';
 import { recordAudit } from '../audit/record.js';
 import { declaredRetentionDays } from '../audit/retention.js';
@@ -114,6 +110,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
   async function addMember(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'manage', dataConfig, { action: 'add member' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'add a member');
     const bodyResult = await req.json();
     if (!bodyResult.ok) throw bodyResult.error;
     const body = objectBody(bodyResult.value);
@@ -155,6 +152,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
   async function changeMemberRole(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'manage', dataConfig, { action: 'change member role' });
+    await requireRecentAuthentication(req, workspace, dataConfig, "change a member's role");
     const identityId = req.params['identityId'];
     if (identityId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing member id');
     if (identityId === workspace.identityId) {
@@ -182,6 +180,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
   async function removeMember(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'manage', dataConfig, { action: 'remove member' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'remove a member');
     const identityId = req.params['identityId'];
     if (identityId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing member id');
     if (identityId === workspace.identityId) {
@@ -209,7 +208,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
 
   // ---- audit log
   function auditLog(workspace: WorkspaceRecord): FsAuditLog {
-    return new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId);
+    return openWorkspaceAuditLog(workspace, dataConfig);
   }
 
   async function listAudit(req: ApiRequest): Promise<ApiResponse> {
@@ -253,7 +252,7 @@ export function registerWorkspaceAdminRoutes(router: Router, workspaceStore: Wor
       ...verification,
       appendOnly: true,
       tamperEvident: true,
-      retention: { minimumDays: declaredRetentionDays(), deletionSupported: false },
+      retention: { minimumDays: declaredRetentionDays(), deletionSupported: declaredRetentionDays() !== null },
     });
   }
 

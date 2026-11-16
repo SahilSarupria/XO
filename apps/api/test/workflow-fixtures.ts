@@ -3,6 +3,7 @@ import { FsCompilationStore } from '../src/compilations/fs-compilation-store.js'
 import type { CapabilityProjection } from '../src/compilations/compilation.js';
 import { workspaceCompilationsStore } from '../src/workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../src/workspace/workspace.js';
+import { rehashXoirJson } from './test-helpers.js';
 
 /**
  * TEST-ONLY hand-built XOIR fixture for P0.8's multi-step mechanics.
@@ -191,7 +192,11 @@ export function buildFixtureGraph(): XoirGraph {
 export async function storeFixtureCompilation(
   workspace: WorkspaceRecord,
   dataRootDir: string,
-  /** M2 remediation: optionally persist a hand-mutated graph JSON (e.g. malformed `requiredPermissions`) instead of the pristine fixture. */
+  /**
+   * M2 remediation: optionally persist a hand-mutated graph JSON (e.g. malformed `requiredPermissions`) instead of the pristine fixture.
+   * UW-1: it is stored as a compile would store it, re-hashed, so a test reaches the check it is about rather than the load-time
+   * integrity check. Tests about tampering edit the stored file afterwards.
+   */
   graphJsonOverride?: ReturnType<typeof toJson>,
 ): Promise<{ readonly compilationId: string }> {
   const store = new FsCompilationStore(workspaceCompilationsStore(workspace, { dataRootDir }));
@@ -214,7 +219,10 @@ export async function storeFixtureCompilation(
     capabilities,
     discoveredCount: capabilities.length,
     resolvedCount: capabilities.length,
-    graph: graphJsonOverride ?? toJson(graph),
+    graph:
+      graphJsonOverride !== undefined
+        ? rehashXoirJson(JSON.parse(JSON.stringify(graphJsonOverride)) as typeof graphJsonOverride)
+        : toJson(graph),
   });
   if (!done.ok) throw done.error;
   return { compilationId: created.value.compilationId };

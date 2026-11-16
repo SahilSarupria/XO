@@ -45,6 +45,8 @@ export const AUDIT_EVENTS = [
   'intelligence.feedback',
   'access.denied',
   'audit.exported',
+  /** UW-1: entries older than the declared retention were removed by an operator. The record states exactly what was removed. */
+  'audit.purged',
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
@@ -132,5 +134,29 @@ export interface AuditVerification {
   readonly entries: number;
   readonly headHash: string;
   /** First problem found, if any. */
-  readonly brokenAt?: { readonly seq: number; readonly reason: 'missing_entry' | 'bad_hash' | 'bad_link' | 'bad_sequence' | 'unreadable' };
+  readonly brokenAt?: {
+    readonly seq: number;
+    readonly reason:
+      | 'missing_entry'
+      | 'bad_hash'
+      | 'bad_link'
+      | 'bad_sequence'
+      | 'unreadable'
+      /** UW-1: the chain is shorter than an external anchor (its tail was removed). */
+      | 'anchor_truncated'
+      /** UW-1: the entry at an anchored seq differs from the anchored hash (the chain was rewritten). */
+      | 'anchor_mismatch'
+      /** UW-1: the external anchors could not be read, so a rewrite cannot be ruled out. */
+      | 'anchor_unreadable'
+      /** UW-1: an anchor shows a purge removed an entry that was not older than the purge's cutoff. */
+      | 'anchor_purge_too_recent'
+      /** UW-1: anchors exist, but none covers the purge record, so the purge cannot be told apart from a forged one. */
+      | 'anchor_unattested_purge'
+      /** UW-1: the purge pointer and the purge record disagree, or the record breaks the retention it states. */
+      | 'bad_purge';
+  };
+  /** UW-1: entries up to and including this seq were removed by a recorded purge (`audit.purged`). */
+  readonly purgedThroughSeq?: number;
+  /** UW-1: comparison against external anchors. Absent when anchoring is not configured (`XO_AUDIT_ANCHOR_DIR`). */
+  readonly anchoring?: { readonly checked: number; readonly highestAnchoredSeq: number };
 }

@@ -425,9 +425,9 @@ test('cross-path views are observation data only: excluded from every stage fing
   const a = await observeCase(def, { sourceRoot: l.sourceRoot });
   const b = await observeCase(def, { sourceRoot: l.sourceRoot });
   assert.deepEqual(a.fingerprints, b.fingerprints);
-  // FINDING (Step 6): a freshly compiled graph's `graphHash` is RUN-SPECIFIC — node / edge `metadata.createdAt` is hashed deliberately as provenance (`updatedAt` is not; see xoir `hashing.ts`).
-  // It is stable only for one graph instance and its serialized copies, which is the only scope in which this benchmark compares it. Everything
-  // else (capability ids, contract hashes, bindings, executions) is identical across independent compilations.
+  // FINDING (Step 6), superseded by UW-1: a compiled graph's `graphHash` used to be RUN-SPECIFIC because `metadata.createdAt` was hashed. UW-1
+  // removed it from content hashes, so independent compilations now agree on the graph hash too (asserted below). The comparison that strips
+  // `graphHash` is kept because benchmark reports still treat it as run-specific (RUN_SPECIFIC_KEYS) until a baseline refresh pins it.
   const withoutGraphHash = (v: unknown): unknown => JSON.parse(JSON.stringify(v, (k, x) => (k === 'graphHash' ? undefined : x)));
   assert.equal(
     canonicalJson(withoutGraphHash(a.paths)),
@@ -436,6 +436,8 @@ test('cross-path views are observation data only: excluded from every stage fing
   );
   // within ONE observation the live and serialized hashes are the same object's hash
   assert.equal(a.paths![0]!.graphHash, a.paths![1]!.graphHash);
+  // UW-1: and across two independent observations of the same case
+  assert.equal(a.paths![0]!.graphHash, b.paths![0]!.graphHash);
 });
 
 // silence unused import in strict test configs

@@ -144,6 +144,19 @@ export const Permissions = {
      */
     payloadApprove: PermissionId('effect.payload-approve'),
   },
+  /**
+   * UW-1 (ADR 0010) — workspace operations. These six mirror the workspace role table exactly (`read`, `author`, `publish`, `review`,
+   * `audit`, `manage`), so routing every route through `PermissionManager` changes no answer. Finer-grained ids are added additively by
+   * the workstreams that own those surfaces; a role's default bundle must keep reproducing the coarse answer.
+   */
+  workspace: {
+    read: PermissionId('workspace.read'),
+    author: PermissionId('workspace.author'),
+    publish: PermissionId('workspace.publish'),
+    review: PermissionId('workspace.review'),
+    audit: PermissionId('workspace.audit'),
+    manage: PermissionId('workspace.manage'),
+  },
   audit: {
     read: PermissionId('audit.read'),
     purge: PermissionId('audit.purge'),

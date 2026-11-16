@@ -20,6 +20,18 @@ import type { PolicyProgram, Step } from './program.js';
 
 const CONFIDENCE = 0.9;
 
+/**
+ * UW-1 (no fabricated provenance): when a rule's sentence cannot be located in any source unit, the provenance says so instead of
+ * pointing at the first unit of the first document, page 1, at full confidence (which claimed evidence nobody had checked). An
+ * unresolved reference names no unit and no page, carries source confidence 0, and its unit id has the reserved `unresolved:` prefix so
+ * no unit-matching logic can ever treat it as a real location. Nodes built on it are marked `evidenceResolution: unresolved` for review (the existing `evidence` key keeps the sentence text).
+ */
+export const UNRESOLVED_PROVENANCE_PREFIX = 'unresolved:';
+
+export function isUnresolvedProvenance(p: KnowledgeProvenance): boolean {
+  return p.experienceUnitId.startsWith(UNRESOLVED_PROVENANCE_PREFIX);
+}
+
 function provenanceFor(docs: readonly ExperienceDocument[], sentence: string, rule: string): KnowledgeProvenance {
   const needle = sentence.slice(0, 60);
   for (const d of docs)
@@ -33,14 +45,15 @@ function provenanceFor(docs: readonly ExperienceDocument[], sentence: string, ru
           charOffsetRange: undefined,
           confidence: CONFIDENCE,
         };
-  const d = docs[0];
+  // With exactly one source document the rule can only have come from it; with several, which one is unknown.
+  const only = docs.length === 1 ? docs[0] : undefined;
   return {
-    experienceUnitId: d?.units[0]?.id ?? `policy:${rule}`,
-    documentPath: d?.documentPath ?? 'policy',
-    pages: [1],
+    experienceUnitId: `${UNRESOLVED_PROVENANCE_PREFIX}policy:${rule}`,
+    documentPath: only?.documentPath ?? 'unresolved',
+    pages: [],
     sectionPath: [],
     charOffsetRange: undefined,
-    confidence: CONFIDENCE,
+    confidence: 0,
   };
 }
 
@@ -62,7 +75,7 @@ function node(
     exceptionConditions: [],
     confidence: CONFIDENCE,
     provenance: [provenance],
-    metadata: { origin: 'policy-program', ...meta },
+    metadata: { origin: 'policy-program', ...meta, ...(isUnresolvedProvenance(provenance) ? { evidenceResolution: 'unresolved' } : {}) },
   };
 }
 
@@ -179,6 +192,10 @@ export function policyCapability(program: PolicyProgram, tree: DecisionTree, doc
       executionMode: 'sync',
       estimatedCost: 'low',
     },
-    metadata: { policy_derived: 'true', tree_id: tree.id },
+    metadata: {
+      policy_derived: 'true',
+      tree_id: tree.id,
+      ...(isUnresolvedProvenance(provenance) ? { evidenceResolution: 'unresolved' } : {}),
+    },
   };
 }

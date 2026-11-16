@@ -24,6 +24,8 @@ import type { OidcConfig } from './config.js';
 export interface VerifiedIdentity {
   readonly issuer: string;
   readonly subject: string;
+  /** UW-1 (step-up): the token's `auth_time` (when the user authenticated at the provider), if it carries a sane one. */
+  readonly authenticatedAt?: string;
 }
 
 export interface AccessTokenVerifier {
@@ -101,7 +103,12 @@ export function createOidcVerifier(config: OidcConfig, tuning: VerifierTuning = 
       // A token issued "in the future" (beyond skew) is not trustworthy.
       if (typeof payload.iat === 'number' && payload.iat > now() / 1000 + config.clockSkewSeconds) throw invalid();
 
-      return { issuer: config.issuer, subject };
+      const authTime = payload['auth_time'];
+      const authenticatedAt =
+        typeof authTime === 'number' && Number.isFinite(authTime) && authTime > 0 && authTime <= now() / 1000 + config.clockSkewSeconds
+          ? new Date(authTime * 1000).toISOString()
+          : undefined;
+      return { issuer: config.issuer, subject, ...(authenticatedAt !== undefined ? { authenticatedAt } : {}) };
     },
   };
 }

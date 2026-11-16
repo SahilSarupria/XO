@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { requireRecentAuthentication } from '../auth/step-up.js';
 import { toPrincipalSnapshot, Permissions, type PermissionManager, type PermissionId } from '@xo/permissions';
 import { PackageId } from '@xo/types';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
@@ -432,6 +433,7 @@ export function registerProcedureRoutes(
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'approve.procedure', correlationId });
     await requirePermission(req, workspace, Permissions.procedure.approve, { action: 'approve.procedure', correlationId });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'approve a procedure');
     // ATTRIBUTION: the approver is the authenticated principal. No body field, header or query parameter can name one.
     const approver = requirePrincipal(req);
     const procedureId = req.params['procedureId'];
@@ -999,6 +1001,7 @@ export function registerProcedureRoutes(
     const action = 'approve.external-payload';
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action, correlationId });
     const principal = await requirePayloadApprover(req, workspace, correlationId, action);
+    await requireRecentAuthentication(req, workspace, dataConfig, 'approve an external payload');
     const body = await readClosedBody(req, ['inputDigest', 'actionSummary'], false);
     const findings: ProcedureFinding[] = [];
     if (typeof body['inputDigest'] !== 'string' || body['inputDigest'].length === 0)

@@ -90,7 +90,7 @@ export function deriveCapabilityApprovalStateFromJson(
   capabilityId: string,
   sourceDigestSha256: string,
 ): Result<CurrentApprovalState, XoError> {
-  const graph = fromJson(compiledGraphJson as XoirGraphJson);
+  const graph = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graph.ok) return err(graph.error);
   return deriveCapabilityApprovalState(graph.value, capabilityId, sourceDigestSha256);
 }

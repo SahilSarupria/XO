@@ -34,6 +34,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   // Serialization — the caller sent something structurally unreadable
   [ErrorCode.SERIALIZATION_SCHEMA_MISMATCH]: 400,
   [ErrorCode.SERIALIZATION_PARSE_FAILED]: 400,
+  [ErrorCode.SERIALIZATION_INTEGRITY_FAILED]: 422,
 
   // Crypto — a hash/signature mismatch means the content itself is bad
   // (tampered or wrong), which is a 400-class problem from the API's
@@ -220,6 +221,8 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.AUTH_KEY_MISSING]: 401,
   [ErrorCode.AUTH_KEY_INVALID]: 401,
   [ErrorCode.AUTH_KEY_REVOKED]: 401,
+  [ErrorCode.AUTH_KEY_EXPIRED]: 401,
+  [ErrorCode.AUTH_STEP_UP_REQUIRED]: 401,
   // OIDC bearer tokens: credential problems are 401. A provider outage is
   // 503, not 401 — the request is still refused (fail closed), but a client
   // must not conclude its session is invalid and discard its credentials.

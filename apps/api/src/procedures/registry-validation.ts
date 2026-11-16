@@ -42,7 +42,7 @@ export function compilationLoaderFromStore(store: CompilationStore): Compilation
       const caps = await store.getCapabilities(compilationId);
       const graphJson = await store.getCompiledGraph(compilationId);
       if (!caps.ok || !graphJson.ok) return undefined;
-      const graph = fromJson(graphJson.value as XoirGraphJson);
+      const graph = fromJson(graphJson.value as XoirGraphJson, { verify: true });
       if (!graph.ok) return undefined;
       return {
         compilationId,

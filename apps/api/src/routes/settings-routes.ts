@@ -1,4 +1,5 @@
 import type { Router } from '../http/router.js';
+import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
@@ -6,7 +7,6 @@ import {
   callerIdentityId,
   requireOwnedWorkspace,
   requirePermission,
-  workspaceAuditStore,
   workspacePackagesStore,
   workspaceStateStore,
   type WorkspaceDataConfig,
@@ -14,7 +14,6 @@ import {
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import { regionLabel } from '../workspace/regions.js';
 import { recordAudit } from '../audit/record.js';
-import { FsAuditLog } from '../audit/fs-audit-log.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import {
   applySettingsPatch,
@@ -183,7 +182,7 @@ export function registerSettingsRoutes(router: Router, workspaceStore: Workspace
       warnings = [cause instanceof Error ? cause.message : String(cause)];
     }
     const providers = configuredProviders();
-    const audit = new FsAuditLog(workspaceAuditStore(workspace, dataConfig), workspace.workspaceId);
+    const audit = openWorkspaceAuditLog(workspace, dataConfig);
     const head = await audit.head().catch(() => undefined);
     return json(200, {
       status: bootstrapOk ? (warnings.length > 0 ? 'degraded' : 'online') : 'offline',

@@ -37,7 +37,7 @@ export function composeCompilationWorkflows(
   compiledGraphJson: unknown,
   fixedTimestamp: string,
 ): { readonly ok: true; readonly value: ComposedCompilation } | { readonly ok: false; readonly error: XoError } {
-  const graphResult = fromJson(compiledGraphJson as XoirGraphJson);
+  const graphResult = fromJson(compiledGraphJson as XoirGraphJson, { verify: true });
   if (!graphResult.ok) return { ok: false, error: new XoError(graphResult.error.code, graphResult.error.message) };
   const graph = graphResult.value;
   // A fixed `now` keeps `CandidateWorkflow.generatedAt` deterministic (it is never exposed by this API, but a deterministic composition is easier to reason about and test).

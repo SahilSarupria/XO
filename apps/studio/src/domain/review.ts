@@ -187,6 +187,13 @@ export function describeProblem(p: ApiProblem): ProblemView {
       next: 'Add a clearer or more complete document and analyse it again.',
     };
   }
+  if (p.code === 'XO_AUTH_STEP_UP_REQUIRED') {
+    return {
+      title: 'Sign in again to do this',
+      body: 'Approvals and changes to who can do what need a recent sign-in, so nothing was done.',
+      next: 'Sign out, sign in again, and repeat the action.',
+    };
+  }
   switch (p.kind) {
     case 'unauthenticated':
       return {

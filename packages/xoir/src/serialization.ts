@@ -2,6 +2,7 @@ import { err, ok, type Result } from '@xo/types';
 import { SerializationError, ErrorCode } from '@xo/errors';
 import { jsonCodec, type Codec } from '@xo/serialization';
 import type { XoirEdge } from './edge-kinds.js';
+import { verifyEdgeHash, verifyNodeHash } from './hashing.js';
 import { XoirGraph } from './graph.js';
 import { XoirGraphId } from './ids.js';
 import type { XoirManifest } from './manifest.js';
@@ -53,12 +54,15 @@ export function toJson(graph: XoirGraph): XoirGraphJson {
  * `versioning.ts#isSchemaVersionSupported`) is rejected explicitly rather
  * than silently misinterpreted — "forward compatibility" here means "fail
  * clearly on an unknown future version", not "guess at its shape".
- * Individual nodes/edges are trusted as already-valid (their own `hash`
- * fields are not re-verified here) — see validation.ts's `validateGraph`
- * for that (its hash-mismatch check), which is a deliberately separate
- * concern from "does this parse into the right shape".
+ * By default individual nodes/edges are trusted as already-valid (their
+ * own `hash` fields are not re-verified) — appropriate for an in-memory
+ * round trip. UW-1: pass `{ verify: true }` whenever the JSON crossed a
+ * trust boundary (read from disk, received from a client): every node and
+ * edge hash is then recomputed and any mismatch fails the load with
+ * `XO_SERIALIZATION_INTEGRITY_FAILED` (fail closed). Graphs stored before
+ * UW-1 verify under the legacy hash scheme (hashing.ts).
  */
-export function fromJson(raw: XoirGraphJson): Result<XoirGraph, SerializationError> {
+export function fromJson(raw: XoirGraphJson, options: { readonly verify?: boolean } = {}): Result<XoirGraph, SerializationError> {
   if (!isSchemaVersionSupported(raw.schemaVersion)) {
     return err(new SerializationError(ErrorCode.SERIALIZATION_SCHEMA_MISMATCH, `Unsupported XOIR schemaVersion ${raw.schemaVersion}`));
   }
@@ -79,7 +83,29 @@ export function fromJson(raw: XoirGraphJson): Result<XoirGraph, SerializationErr
       );
     }
   }
+  // Integrity after structure: a structurally broken graph reports what is broken; a well-formed one must also match its hashes.
+  if (options.verify === true) {
+    for (const node of raw.nodes) {
+      if (!safely(() => verifyNodeHash(node))) {
+        return err(new SerializationError(ErrorCode.SERIALIZATION_INTEGRITY_FAILED, `XOIR node "${node.id}" does not match its hash`));
+      }
+    }
+    for (const edge of raw.edges) {
+      if (!safely(() => verifyEdgeHash(edge))) {
+        return err(new SerializationError(ErrorCode.SERIALIZATION_INTEGRITY_FAILED, `XOIR edge "${edge.id}" does not match its hash`));
+      }
+    }
+  }
   return ok(graph);
+}
+
+/** A value that cannot even be hashed does not match its hash. */
+function safely(check: () => boolean): boolean {
+  try {
+    return check();
+  } catch {
+    return false;
+  }
 }
 
 /** A `@xo/serialization` `Codec<XoirGraph>` for callers that want the standard encode/decode-to-string boundary (e.g. `BlobStore.put(key, xoirGraphCodec.encode(graph))`). */
@@ -90,6 +116,6 @@ export const xoirGraphCodec: Codec<XoirGraph> = {
   decode(rawText: string): Result<XoirGraph, SerializationError> {
     const parsed = jsonCodec<XoirGraphJson>({ validate: isXoirGraphJson }).decode(rawText);
     if (!parsed.ok) return err(parsed.error);
-    return fromJson(parsed.value);
+    return fromJson(parsed.value, { verify: true });
   },
 };

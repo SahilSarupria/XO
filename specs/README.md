@@ -26,3 +26,5 @@ Specifications of record (ADR 0026):
   `EXPERIENCE_COMPILER.md`, `docs/RUNTIME_ARCHITECTURE.md`, `PACKAGE_README.md`) → package READMEs.
 - XOIR: `packages/xoir/README.md`, as amended by ADR 0012.
 - Workflow IR: `docs/WORKFLOW_IR.md` and the JSON Schema published by `@xo/workflow-ir` (ADR 0011).
+- Trust boundary: `security/TRUST_BOUNDARY.md` (rules T1–T6, every path on which content reaches a model) and its injection corpus
+  `security/injection-corpus.json` (UW-1). Unlike the four frozen documents above, these are maintained: a new model path updates them.

@@ -68,7 +68,7 @@ function parseInput(body: HttpCompileRequest): Result<PipelineInput, XoError> {
     return err(new XoError(ErrorCode.INVALID_ARGUMENT, '"graph" (a XoirGraphJson object) is required for kind "xoir"'));
   }
 
-  const parsedGraph = fromJson(body.graph as XoirGraphJson);
+  const parsedGraph = fromJson(body.graph as XoirGraphJson, { verify: true });
   if (!parsedGraph.ok) return err(parsedGraph.error);
 
   return ok({ kind: 'xoir', graph: parsedGraph.value });

@@ -1,7 +1,7 @@
 import { AuthError, ErrorCode } from '@xo/errors';
 import { establishAuthenticatedPrincipal } from '@xo/permissions';
 import { Sha256Hasher } from '@xo/crypto';
-import type { ApiKeyStore } from '../auth/api-key-store.interface.js';
+import type { ApiKeyRecord, ApiKeyStore } from '../auth/api-key-store.interface.js';
 import { hashApiKey } from '../auth/api-key.js';
 import { looksLikeJwt, type AccessTokenVerifier } from '../auth/oidc/verifier.js';
 import type { IdentityBindingStore } from '../auth/oidc/binding-store.interface.js';
@@ -49,6 +49,23 @@ const EXEMPT_PATHS: ReadonlySet<string> = new Set(['/health', '/openapi.json', .
 
 const API_KEY_PREFIX = 'xoak_';
 
+/** UW-1 — the bound applied to keys issued before expiry existed. Configurable with `XO_API_KEY_MAX_AGE_DAYS`. */
+export const DEFAULT_API_KEY_MAX_AGE_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * UW-1 — whether an API key record is past its expiry. A key with `expiresAt` expires then; a key without one (issued before UW-1)
+ * expires `maxAgeDays` after `createdAt`. An unparseable timestamp is treated as expired (fail closed).
+ */
+export function apiKeyExpired(record: ApiKeyRecord, nowMs: number, maxAgeDays: number = DEFAULT_API_KEY_MAX_AGE_DAYS): boolean {
+  if (record.expiresAt !== undefined) {
+    const at = Date.parse(record.expiresAt);
+    return !Number.isFinite(at) || at <= nowMs;
+  }
+  const created = Date.parse(record.createdAt);
+  return !Number.isFinite(created) || created + maxAgeDays * DAY_MS <= nowMs;
+}
+
 function extractBearerToken(req: ApiRequest): string | undefined {
   const header = req.headers['authorization'];
   const value = Array.isArray(header) ? header[0] : header;
@@ -71,6 +88,10 @@ export interface SessionAuthDeps {
 
 export interface AuthDeps {
   readonly apiKeyStore: ApiKeyStore;
+  /** UW-1 — the maximum age of an API key issued without `expiresAt` (pre-UW-1 keys). Default {@link DEFAULT_API_KEY_MAX_AGE_DAYS}. */
+  readonly apiKeyMaxAgeDays?: number;
+  /** Test seam: current time in ms. */
+  readonly now?: () => number;
   /** Absent => `xoas_` credentials are not recognised (they fall to the API-key path and are refused as unknown keys). */
   readonly sessions?: SessionAuthDeps;
   /** Absent => OIDC acceptance is off (the fail-closed default). */
@@ -79,13 +100,22 @@ export interface AuthDeps {
   readonly extraPublicPaths?: readonly string[];
 }
 
-async function authenticateApiKey(req: ApiRequest, token: string, store: ApiKeyStore, hasher: Sha256Hasher): Promise<void> {
+async function authenticateApiKey(
+  req: ApiRequest,
+  token: string,
+  store: ApiKeyStore,
+  hasher: Sha256Hasher,
+  expiry: { readonly now: () => number; readonly maxAgeDays: number },
+): Promise<void> {
   const found = await store.findByHash(hashApiKey(token, hasher));
   if (!found.ok) {
     throw new AuthError(ErrorCode.AUTH_KEY_INVALID, 'API key is not recognized');
   }
   if (found.value.revokedAt !== undefined) {
     throw new AuthError(ErrorCode.AUTH_KEY_REVOKED, 'API key has been revoked');
+  }
+  if (apiKeyExpired(found.value, expiry.now(), expiry.maxAgeDays)) {
+    throw new AuthError(ErrorCode.AUTH_KEY_EXPIRED, 'API key has expired; rotate it (manage-keys.ts rotate)');
   }
 
   // P1.0 M1: the principal is derived ONLY from the server-side key
@@ -133,7 +163,11 @@ async function authenticateOidc(req: ApiRequest, token: string, oidc: OidcAuthDe
 
   req.principal = principal.value;
   req.identity = { identityId: binding.identityId };
-  req.authentication = { credential: 'oidc', issuer: verified.issuer };
+  req.authentication = {
+    credential: 'oidc',
+    issuer: verified.issuer,
+    ...(verified.authenticatedAt !== undefined ? { authenticatedAt: verified.authenticatedAt } : {}),
+  };
 }
 
 async function authenticateSession(req: ApiRequest, token: string, sessions: SessionAuthDeps): Promise<void> {
@@ -172,7 +206,7 @@ async function authenticateSession(req: ApiRequest, token: string, sessions: Ses
 
   req.principal = principal.value;
   req.identity = { identityId: binding.identityId };
-  req.authentication = { credential: 'session', issuer: result.session.issuer };
+  req.authentication = { credential: 'session', issuer: result.session.issuer, authenticatedAt: result.session.authenticatedAt };
   req.session = { familyId: result.session.familyId };
 }
 
@@ -180,6 +214,9 @@ async function authenticateSession(req: ApiRequest, token: string, sessions: Ses
 export function createAuthMiddleware(deps: AuthDeps): Middleware {
   const hasher = new Sha256Hasher();
   const exempt = deps.extraPublicPaths === undefined ? EXEMPT_PATHS : new Set([...EXEMPT_PATHS, ...deps.extraPublicPaths]);
+  const maxAgeDays = deps.apiKeyMaxAgeDays ?? DEFAULT_API_KEY_MAX_AGE_DAYS;
+  if (!Number.isFinite(maxAgeDays) || maxAgeDays <= 0) throw new Error('apiKeyMaxAgeDays must be a positive number of days');
+  const expiry = { now: deps.now ?? (() => Date.now()), maxAgeDays };
 
   return async (req, next) => {
     if (exempt.has(req.path)) return next();
@@ -194,7 +231,7 @@ export function createAuthMiddleware(deps: AuthDeps): Middleware {
     } else if (deps.oidc !== undefined && !token.startsWith(API_KEY_PREFIX) && looksLikeJwt(token)) {
       await authenticateOidc(req, token, deps.oidc);
     } else {
-      await authenticateApiKey(req, token, deps.apiKeyStore, hasher);
+      await authenticateApiKey(req, token, deps.apiKeyStore, hasher, expiry);
     }
     return next();
   };

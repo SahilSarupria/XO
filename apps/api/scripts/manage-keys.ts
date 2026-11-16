@@ -22,8 +22,12 @@
  * through the HTTP layer.
  *
  * Usage:
- *   node --import tsx scripts/manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--dir <dir>]
+ *   node --import tsx scripts/manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--expires-in-days <n>] [--dir <dir>]
+ *   node --import tsx scripts/manage-keys.ts rotate <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--expires-in-days <n>] [--dir <dir>]
  *   node --import tsx scripts/manage-keys.ts revoke <identityId> [--dir <dir>]
+ *
+ * UW-1: every issued key expires (default 90 days, `--expires-in-days` 1-3650). `rotate` issues a new key and then revokes the
+ * identity's other active keys, in that order, so a failure never locks the identity out.
  *
  * `--dir` defaults to `API_KEYS_DIR` if set, else `.xo-data/api-keys`
  * (same default `config.ts#loadConfig` uses) — pass the same directory
@@ -32,8 +36,7 @@
  */
 import { LocalFsBlobStore } from '@xo/storage';
 import { FsApiKeyStore } from '../src/auth/fs-api-key-store.js';
-import { generateApiKey, hashApiKey } from '../src/auth/api-key.js';
-import { parsePrincipal } from '@xo/permissions';
+import { issueApiKey, rotateApiKeys, type IssueKeyInput } from '../src/auth/key-lifecycle.js';
 
 function parseFlags(args: readonly string[]): { readonly positionals: string[]; readonly flags: Record<string, string> } {
   const positionals: string[] = [];
@@ -60,38 +63,46 @@ function resolveDir(flags: Record<string, string>): string {
   return flags['dir'] ?? process.env['API_KEYS_DIR'] ?? '.xo-data/api-keys';
 }
 
-async function issue(identityId: string, flags: Record<string, string>): Promise<void> {
-  // P1.0 M1: a key is bound to a principal at issuance, by the operator.
-  // There is no default kind — omitting --kind is an error, not "service".
-  const principal = parsePrincipal({ kind: flags['kind'], id: identityId, ...(flags['org'] !== undefined ? { orgId: flags['org'] } : {}) });
-  if (!principal.ok) {
-    console.error(`failed to issue key: ${principal.error.message} (pass --kind human|service)`);
-    process.exitCode = 1;
-    return;
-  }
-  const store = new FsApiKeyStore(new LocalFsBlobStore(resolveDir(flags)));
-  const rawKey = generateApiKey();
-  const creatorDid = flags['creator-did'];
-  const result = await store.create({
-    keyHash: hashApiKey(rawKey),
+function keyInput(identityId: string, flags: Record<string, string>): IssueKeyInput {
+  // P1.0 M1: a key is bound to a principal at issuance, by the operator. There is no default kind.
+  const days = flags['expires-in-days'];
+  return {
     identityId,
-    principalKind: principal.value.kind,
-    ...(principal.value.orgId !== undefined ? { orgId: principal.value.orgId } : {}),
-    createdAt: new Date().toISOString(),
-    ...(creatorDid !== undefined ? { creatorDid } : {}),
-  });
+    kind: flags['kind'],
+    ...(flags['org'] !== undefined ? { orgId: flags['org'] } : {}),
+    ...(flags['creator-did'] !== undefined ? { creatorDid: flags['creator-did'] } : {}),
+    ...(days !== undefined ? { expiresInDays: Number(days) } : {}),
+  };
+}
+
+function printKey(identityId: string, rawKey: string, expiresAt: string | undefined): void {
+  // Printed exactly once, here, and never again — only the hash is ever persisted.
+  console.log(`Issued API key for identity "${identityId}" (expires ${expiresAt ?? 'never'}):`);
+  console.log(rawKey);
+  console.log('\nStore this now — it will not be shown again.');
+}
+
+async function issue(identityId: string, flags: Record<string, string>): Promise<void> {
+  const store = new FsApiKeyStore(new LocalFsBlobStore(resolveDir(flags)));
+  const result = await issueApiKey(store, keyInput(identityId, flags));
   if (!result.ok) {
     console.error(`failed to issue key: ${result.error.message}`);
     process.exitCode = 1;
     return;
   }
-  // Printed exactly once, here, and never again — the raw key is not
-  // retrievable after this point (see api-key-store.interface.ts's doc
-  // comment: only the hash is ever persisted). Same practice as
-  // GitHub/Stripe token issuance.
-  console.log(`Issued API key for identity "${identityId}":`);
-  console.log(rawKey);
-  console.log('\nStore this now — it will not be shown again.');
+  printKey(identityId, result.value.rawKey, result.value.record.expiresAt);
+}
+
+async function rotate(identityId: string, flags: Record<string, string>): Promise<void> {
+  const store = new FsApiKeyStore(new LocalFsBlobStore(resolveDir(flags)));
+  const result = await rotateApiKeys(store, keyInput(identityId, flags));
+  if (!result.ok) {
+    console.error(`failed to rotate keys for "${identityId}": ${result.error.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  printKey(identityId, result.value.rawKey, result.value.record.expiresAt);
+  console.log(`Revoked ${result.value.revokedKeyHashes.length} previous key(s): ${result.value.revokedKeyHashes.join(', ') || 'none'}`);
 }
 
 async function revoke(identityId: string, flags: Record<string, string>): Promise<void> {
@@ -114,13 +125,22 @@ async function main(): Promise<void> {
     await issue(identityId, flags);
     return;
   }
+  if (command === 'rotate' && identityId !== undefined) {
+    await rotate(identityId, flags);
+    return;
+  }
   if (command === 'revoke' && identityId !== undefined) {
     await revoke(identityId, flags);
     return;
   }
 
   console.error('Usage:');
-  console.error('  manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--dir <dir>]');
+  console.error(
+    '  manage-keys.ts issue <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--expires-in-days <n>] [--dir <dir>]',
+  );
+  console.error(
+    '  manage-keys.ts rotate <identityId> --kind <human|service> [--org <orgId>] [--creator-did <did>] [--expires-in-days <n>] [--dir <dir>]',
+  );
   console.error('  manage-keys.ts revoke <identityId> [--dir <dir>]');
   process.exitCode = 1;
 }

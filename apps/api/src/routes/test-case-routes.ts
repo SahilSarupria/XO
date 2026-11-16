@@ -9,13 +9,13 @@ import {
   callerIdentityId,
   requireOwnedWorkspace,
   requirePermission,
+  hasPermission,
   requirePrincipal,
   workspaceCompilationsStore,
   workspaceStateStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
-import { roleOf, type WorkspaceRecord, type WorkspaceStore } from '../workspace/workspace.js';
-import { roleAllows } from '../workspace/permissions.js';
+import { type WorkspaceRecord, type WorkspaceStore } from '../workspace/workspace.js';
 import { recordAudit } from '../audit/record.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
 import type { PermissionManager } from '@xo/permissions';
@@ -140,8 +140,8 @@ export function registerTestCaseRoutes(
 
   /** Author or reviewer may run (the existing role model: reviewers verify, authors build); anyone else is refused and audited as usual. */
   async function requireRunPermission(req: ApiRequest, workspace: WorkspaceRecord, target: { kind: string; id: string }): Promise<void> {
-    const role = roleOf(workspace, callerIdentityId(req));
-    if (role !== undefined && (roleAllows(role, 'author') || roleAllows(role, 'review'))) return;
+    // Asked of the single authorization point (ADR 0010), like every other workspace check.
+    if ((await hasPermission(req, workspace, 'author')) || (await hasPermission(req, workspace, 'review'))) return;
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'run test case', target });
   }
 

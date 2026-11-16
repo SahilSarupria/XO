@@ -160,9 +160,39 @@ list as **corrupt**. No type is renamed or removed in P1.0; removal would make a
 Types with no emitter are listed there explicitly as not emitted, and `authorization.denied` / `workflow.resumed` are listed
 as emitted but without a direct test; reaching them was not forced.
 
+## Workspace audit logs: anchoring and retention purge (UW-1)
+
+Each workspace keeps its own hash-chained log (`apps/api/src/audit/fs-audit-log.ts`, shown in Studio's Audit screen). UW-1 adds:
+
+**Anchoring.** With `XO_AUDIT_ANCHOR_DIR` set (absolute path), every append also writes the new chain head
+(`{scope, seq, hash, entryAt, anchoredAt}`) as one fsynced JSON line to `<dir>/workspace__<id>.anchors.jsonl`. The chain alone
+detects an edited, removed or reordered entry; the anchors also detect what the chain cannot: a log rewritten consistently from some
+entry onwards (`anchor_mismatch`) and a removed tail (`anchor_truncated`). Anchors are cumulative (each entry links to the one before),
+so a failed anchor write is reported on stderr and does not fail the append; the next anchor covers it. Unreadable anchors fail
+verification (`anchor_unreadable`). The anchors are only as strong as the storage they are on: put the directory where this host
+cannot rewrite it (separate volume, backup target, object storage with a retention lock). Without it, production startup warns.
+
+**Retention purge.** Nothing is deleted on its own. With `XO_API_AUDIT_RETENTION_DAYS` declared, a principal holding the instance
+`audit.purge` grant (operator policy, `scripts/manage-policy.ts allow <principal> audit.purge`; service principals by default) may call
+`POST /audit/workspaces/:workspaceId/purge` (body `{"dryRun": true}` to preview). A purge:
+
+1. refuses a log that does not verify (purging would destroy the evidence);
+2. selects the oldest entries whose own time is before `now - retention` (a prefix of the chain, never anything newer);
+3. appends an `audit.purged` entry stating exactly what goes (`fromSeq`, `throughSeq`, `throughHash`, `throughAt`, `removed`,
+   `cutoff`, `retentionDays`) and, when anchoring is configured, anchors it (failure stops the purge before anything is removed);
+4. moves the purge pointer (`base.json`) to the last removed entry, then deletes the entries (an interrupted deletion is finished by the
+   next purge; leftovers at or below the pointer are ignored by verify).
+
+It is also recorded in the instance audit trail (`audit.purged`, action `purge.workspace-audit-log`); a refused attempt is
+`access.denied`. `GET /workspaces/:id/audit/verify` then checks the chain from the pointer, checks the pointer against its
+`audit.purged` record (`bad_purge`), and uses the anchors' entry times to prove every removed entry predated the cutoff
+(`anchor_purge_too_recent`) and that the purge record itself was anchored (`anchor_unattested_purge`). Someone with write access to
+the log's storage but not the anchors can therefore at most remove what a legitimate purge could have removed anyway, and even that is
+reported when no anchor covers the forged record. `retention.deletionSupported` is `true` exactly when a retention is declared.
+
 ## Known limits / unresolved decisions
 
-- The platform's `FileAuditStore` (API/CLI/runtime) has no tamper evidence (hash chain/signing): **accepted as a P1.0 limitation by the owner**; stronger protection needs a separate design decision (see "P1.0 owner dispositions"). Tamper evidence exists in `ChainedAuditStore`, used for EI audit events since C0.3; see `docs/audit-canonical-contract.md` for the contract, failure semantics and the limits of a local hash chain.
+- The platform's instance-level `FileAuditStore` (API/CLI/runtime) has no tamper evidence (hash chain/signing): **accepted as a P1.0 limitation by the owner** and still open after UW-1, which chained, anchored and made purgeable the per-workspace logs only (see the section above and `docs/KNOWN_LIMITATIONS.md`); stronger protection needs a separate design decision (see "P1.0 owner dispositions"). Tamper evidence exists in `ChainedAuditStore`, used for EI audit events since C0.3; see `docs/audit-canonical-contract.md` for the contract, failure semantics and the limits of a local hash chain.
 - Local CLI runs are unaudited unless `XO_AUDIT_*` is set (the operator is a trusted local context, not a principal): accepted by the owner for P1.0.
 - Legal retention periods are an operator/legal decision; none is supplied (ratified by the owner: explicit operator-configured retention, no invented default).
 - `execution.started` precedes record creation, so it carries no `executionId`; join via `correlationId`.

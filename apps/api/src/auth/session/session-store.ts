@@ -76,6 +76,8 @@ export interface SessionIdentity {
   readonly familyId: string;
   readonly issuer: string;
   readonly subject: string;
+  /** UW-1 (step-up): when the user actually signed in. A session family survives refresh rotations, so this is not reset by them. */
+  readonly authenticatedAt: string;
   readonly credentialEpoch?: number;
   readonly methods?: readonly string[];
 }
@@ -91,6 +93,7 @@ function identityOf(f: FamilyRecord): SessionIdentity {
     familyId: f.familyId,
     issuer: f.issuer,
     subject: f.subject,
+    authenticatedAt: f.createdAt,
     ...(f.credentialEpoch !== undefined ? { credentialEpoch: f.credentialEpoch } : {}),
     ...(f.methods !== undefined ? { methods: f.methods } : {}),
   };

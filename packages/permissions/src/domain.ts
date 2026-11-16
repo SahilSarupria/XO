@@ -26,6 +26,8 @@ export const PERMISSION_DOMAINS = [
   'audit',
   'procedure',
   'effect',
+  /** UW-1 (ADR 0010) — operations inside a workspace (read, author, publish, review, audit, manage), decided under the role ceiling of `DomainCeilingPolicy`. */
+  'workspace',
 ] as const;
 
 export type PermissionDomain = (typeof PERMISSION_DOMAINS)[number];

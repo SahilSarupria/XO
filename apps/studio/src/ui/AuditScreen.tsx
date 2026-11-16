@@ -266,14 +266,17 @@ function IntegrityCard(props: { workspaceId: string }) {
               : ` The chain breaks at entry ${v.brokenAt?.seq ?? '?'} (${(v.brokenAt?.reason ?? 'unknown').replace(/_/g, ' ')}). Treat this log as tampered with and tell an administrator.`}
           </p>
           <p className="muted small">
-            The log is append-only and each entry is chained to the one before, so an edit, removal or reordering is detectable. It cannot
-            detect someone with access to the server&apos;s storage rewriting the whole chain consistently, so it is tamper-evident, not
-            tamper-proof.
+            {v.anchorsChecked === undefined
+              ? "The log is append-only and each entry is chained to the one before, so an edit, removal or reordering is detectable. It cannot detect someone with access to the server's storage rewriting the whole chain consistently, so it is tamper-evident, not tamper-proof."
+              : `The log is append-only and each entry is chained to the one before, so an edit, removal or reordering is detectable. The chain was also compared with ${v.anchorsChecked} ${v.anchorsChecked === 1 ? 'copy' : 'copies'} of its head kept outside this server, which reveals a complete rewrite or a removed tail.`}
+            {v.purgedThroughSeq !== undefined ? ` Entries up to ${v.purgedThroughSeq} were removed by a recorded retention purge.` : ''}
           </p>
           <p className="muted small">
             {v.retentionMinimumDays === null
               ? 'Retention: no policy has been declared by the operator, so none is stated here.'
-              : `Retention: the operator declares at least ${v.retentionMinimumDays} days. The platform does not delete entries, but cannot guarantee its own storage.`}
+              : v.deletionSupported
+                ? `Retention: the operator declares at least ${v.retentionMinimumDays} days. Older entries may be purged by the operator, and every purge is recorded in this log. The platform cannot guarantee its own storage.`
+                : `Retention: the operator declares at least ${v.retentionMinimumDays} days. The platform does not delete entries, but cannot guarantee its own storage.`}
           </p>
         </>
       ) : null}

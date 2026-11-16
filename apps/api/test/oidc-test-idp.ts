@@ -102,7 +102,8 @@ export class TestIdp {
     const kid = opts.kid ?? 'k1';
     const key = this.keys.get(kid);
     if (key === undefined) throw new Error('unknown test key');
-    const jwt = new SignJWT({ ...(opts.claims ?? {}) })
+    // Real providers state when the person signed in; UW-1 step-up relies on it. A test omits it with `claims: { auth_time: undefined }`.
+    const jwt = new SignJWT({ auth_time: Math.floor(Date.now() / 1000), ...(opts.claims ?? {}) })
       .setProtectedHeader({ alg: key.alg, kid: opts.headerKid ?? kid, ...(opts.typ !== undefined ? { typ: opts.typ } : {}) })
       .setIssuer(opts.iss ?? this.issuer)
       .setAudience(opts.aud ?? AUDIENCE)

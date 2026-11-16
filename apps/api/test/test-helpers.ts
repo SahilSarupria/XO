@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http, { type Server } from 'node:http';
 import { LocalFsBlobStore } from '@xo/storage';
+import { hashEdge, hashNode, type XoirEdge, type XoirNode } from '@xo/xoir';
 import { PackageInstaller, PackageTrustPolicy, PackageValidator } from '@xo/package-sdk';
 import type { BlobStore } from '@xo/storage';
 import { createHttpServer, type ServerDeps } from '../src/server.js';
@@ -163,4 +164,16 @@ export class TestServer {
 /** An installer whose validator is in explicit development mode — for tests that seed packages directly into a workspace store. */
 export function devInstaller(store: BlobStore): PackageInstaller {
   return new PackageInstaller(store, { validator: new PackageValidator({ trustPolicy: PackageTrustPolicy.development() }) });
+}
+
+/**
+ * UW-1 (verify-on-load): recompute every node and edge hash of a serialized XOIR graph in place, as a real recompile would. Tests that
+ * simulate a LEGITIMATE change to a stored graph (a rule edited and recompiled) call this after editing; tests about tampering do not,
+ * and then the load fails with `XO_SERIALIZATION_INTEGRITY_FAILED`.
+ */
+export function rehashXoirJson<T>(graphJson: T): T {
+  const g = graphJson as unknown as { nodes: XoirNode[]; edges: XoirEdge[] };
+  for (const n of g.nodes) (n as { hash: string }).hash = hashNode(n);
+  for (const e of g.edges) (e as { hash: string }).hash = hashEdge(e);
+  return graphJson;
 }

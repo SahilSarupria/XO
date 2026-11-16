@@ -34,7 +34,8 @@ export interface AuditExportPack {
     }[];
   };
   /** `minimumDays` is `null` unless the operator declared a policy (`XO_API_AUDIT_RETENTION_DAYS`); the server never invents one. */
-  readonly retention: { readonly minimumDays: number | null; readonly deletionSupported: false; readonly enforcedByServer: false };
+  /** `deletionSupported` is true only when a retention is declared: then an operator may purge older entries, and every purge is recorded. */
+  readonly retention: { readonly minimumDays: number | null; readonly deletionSupported: boolean; readonly enforcedByServer: false };
   readonly integrity: AuditVerification;
   readonly entries: readonly AuditEntry[];
   readonly notices: readonly string[];
@@ -73,13 +74,15 @@ export async function buildAuditExport(workspace: WorkspaceRecord, log: FsAuditL
         })),
       ],
     },
-    retention: { minimumDays: declaredRetentionDays(), deletionSupported: false, enforcedByServer: false },
+    retention: { minimumDays: declaredRetentionDays(), deletionSupported: declaredRetentionDays() !== null, enforcedByServer: false },
     integrity,
     entries,
     notices: [
       'This is evidence, not a certification: it does not assert SOC 2 or ISO 27001 compliance.',
-      'The hash chain makes partial edits detectable; it cannot detect a complete, internally consistent rewrite unless headHash was recorded elsewhere.',
-      'Retention is whatever the operator declared (null = none declared); the server does not delete entries but cannot guarantee the durability of its own storage.',
+      integrity.anchoring !== undefined
+        ? `The hash chain makes partial edits detectable, and it was compared with ${integrity.anchoring.checked} externally held anchors, which detect a complete rewrite or a cut tail up to the newest anchored entry.`
+        : 'The hash chain makes partial edits detectable; it cannot detect a complete, internally consistent rewrite because no external anchors are configured (XO_AUDIT_ANCHOR_DIR).',
+      'Retention is whatever the operator declared (null = none declared). Entries are removed only by an operator purge of entries older than that retention, and each purge is itself an audit.purged entry. The server cannot guarantee the durability of its own storage.',
       'Residency is declarative; the server does not prove where bytes are physically stored.',
     ],
   };
