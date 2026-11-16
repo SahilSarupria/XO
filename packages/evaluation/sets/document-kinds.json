@@ -1,0 +1,193 @@
+{
+  "id": "document-kinds",
+  "version": "1",
+  "provenance": "synthetic",
+  "description": "Short synthetic documents, four or five per kind in the default cue pack plus four that should get no kind. Labelled by hand when the set was written (UW-13); file names carry no cue, so only the content decides.",
+  "cases": [
+    {
+      "id": "cert-01",
+      "text": "# Certificate of Insurance\n\nThis is to certify that Asha Rao holds policy P-9 with Example Mutual.\n\nValid until 31 March 2027.",
+      "expected": "certificate"
+    },
+    {
+      "id": "cert-02",
+      "text": "# Certificate of Incorporation\n\nI hereby certify that Example Traders Private Limited is incorporated under the Companies Act.\n\nDate of issue: 4 June 2019.",
+      "expected": "certificate"
+    },
+    {
+      "id": "cert-03",
+      "text": "# Fitness Certificate\n\nThis is to certify that the vehicle MH01AB1234 was inspected and found fit.\n\nCertificate number FC-2231. Valid from 1 April 2026.",
+      "expected": "certificate"
+    },
+    {
+      "id": "cert-04",
+      "text": "# To whom it may concern\n\nThis is to certify that Mr Vikram Mehta has been employed with us since 2021 as an analyst.\n\nIssued on 12 May 2026.",
+      "expected": "certificate"
+    },
+    {
+      "id": "cert-05",
+      "text": "# Insurance Policy Certificate\n\nThis is to certify that the policy below is in force.\n\nPolicy number P-7781. Expiry date 30 September 2027.",
+      "expected": "certificate"
+    },
+    {
+      "id": "inv-01",
+      "text": "# Tax Invoice\n\nInvoice No: INV-2026-0042\nInvoice date: 3 November 2026\nGSTIN: 27ABCDE1234F1Z5\n\nSubtotal 10,000. Total payable 11,800.",
+      "expected": "invoice"
+    },
+    {
+      "id": "inv-02",
+      "text": "# Invoice\n\nBilled to Example Retail. Amount due: 4,500. Due date: 30 November 2026.",
+      "expected": "invoice"
+    },
+    {
+      "id": "inv-03",
+      "text": "# Bill of Supply\n\nSupplier: Green Farms. Invoice number BOS-19. Total payable 2,300.",
+      "expected": "invoice"
+    },
+    {
+      "id": "inv-04",
+      "text": "# Invoice for consulting services\n\nInvoice number 118. Subtotal 50,000. Amount due within 30 days.",
+      "expected": "invoice"
+    },
+    {
+      "id": "pol-01",
+      "text": "# Leave Policy\n\nEmployees must apply for leave five days in advance. Managers shall approve requests within two days.",
+      "expected": "policy"
+    },
+    {
+      "id": "pol-02",
+      "text": "# Standard Operating Procedure: claims intake\n\nThe handler is required to verify policy status before processing. Claims may not be closed without a review.",
+      "expected": "policy"
+    },
+    {
+      "id": "pol-03",
+      "text": "# Travel Guidelines\n\nStaff must book economy class. Expenses above 10,000 are not permitted without approval.",
+      "expected": "policy"
+    },
+    {
+      "id": "pol-04",
+      "text": "# Terms and Conditions\n\nThe customer shall pay within 30 days. Refunds are not permitted after delivery.",
+      "expected": "policy"
+    },
+    {
+      "id": "con-01",
+      "text": "# Service Agreement\n\nThis agreement is made between Example Ltd (hereinafter the Provider) and Acme Corp. The parties agree as follows.\n\nEffective date: 1 January 2026.",
+      "expected": "contract"
+    },
+    {
+      "id": "con-02",
+      "text": "# Memorandum of Understanding\n\nThe parties wish to collaborate on research. In witness whereof the parties have signed below.",
+      "expected": "contract"
+    },
+    {
+      "id": "con-03",
+      "text": "# Employment Contract\n\nThis contract sets out the terms between the Company and the Employee, hereinafter the Employee.",
+      "expected": "contract"
+    },
+    {
+      "id": "con-04",
+      "text": "# Non-Disclosure Agreement\n\nThe parties agree to keep confidential information secret. Effective date: 5 March 2026.",
+      "expected": "contract"
+    },
+    {
+      "id": "stm-01",
+      "text": "# Statement of Account\n\nAccount number 001234567. Opening balance 12,000. Closing balance 9,500.",
+      "expected": "statement"
+    },
+    {
+      "id": "stm-02",
+      "text": "# Bank Statement\n\nAccount no: 778899. Transaction date, description and amount are listed below. Closing balance 45,210.",
+      "expected": "statement"
+    },
+    {
+      "id": "stm-03",
+      "text": "# Monthly Statement\n\nOpening balance 3,000. Closing balance 3,450.",
+      "expected": "statement"
+    },
+    {
+      "id": "stm-04",
+      "text": "# Statement\n\nAccount number 5544. Transaction date 2 October 2026.",
+      "expected": "statement"
+    },
+    {
+      "id": "frm-01",
+      "text": "# Claim Form\n\nPlease fill in every section. Signature of the claimant is required.",
+      "expected": "form"
+    },
+    {
+      "id": "frm-02",
+      "text": "# Application for a new connection\n\nApplicant name, address and phone. Tick the appropriate box.",
+      "expected": "form"
+    },
+    {
+      "id": "frm-03",
+      "text": "# Request Form: address change\n\nPlease fill in the new address. Signature of the account holder.",
+      "expected": "form"
+    },
+    {
+      "id": "frm-04",
+      "text": "# Leave Application Form\n\nApplicant: name and department. Signature of the applicant.",
+      "expected": "form"
+    },
+    {
+      "id": "cor-01",
+      "text": "Dear Sir,\n\nWe write to confirm receipt of your documents. We will reply within a week.\n\nYours faithfully,\nThe Claims Team",
+      "expected": "correspondence"
+    },
+    {
+      "id": "cor-02",
+      "text": "Dear Ms Rao,\n\nThank you for your call today. As discussed, your renewal is due in March.\n\nKind regards,\nPriya",
+      "expected": "correspondence"
+    },
+    {
+      "id": "cor-03",
+      "text": "Dear Madam,\n\nPlease find the revised quotation enclosed.\n\nYours sincerely,\nSales",
+      "expected": "correspondence"
+    },
+    {
+      "id": "cor-04",
+      "text": "Dear Mr Mehta,\n\nYour account has been updated as requested.\n\nKind regards,\nSupport",
+      "expected": "correspondence"
+    },
+    {
+      "id": "reg-01",
+      "text": "# Client Register\n\nName, email and phone for every active client are kept here.",
+      "expected": "register"
+    },
+    {
+      "id": "reg-02",
+      "text": "# Employee Directory\n\nThe directory lists every employee by department.",
+      "expected": "register"
+    },
+    {
+      "id": "reg-03",
+      "text": "# Vendor Master List\n\nApproved vendors and their codes.",
+      "expected": "register"
+    },
+    {
+      "id": "reg-04",
+      "text": "# Asset Register\n\nEach laptop and its assigned owner.",
+      "expected": "register"
+    },
+    {
+      "id": "none-01",
+      "text": "# Team lunch\n\nWe meet at noon on Friday near the station. Bring an umbrella.",
+      "expected": null
+    },
+    {
+      "id": "none-02",
+      "text": "# Recipe: lemon rice\n\nCook the rice, add lemon juice, curry leaves and peanuts.",
+      "expected": null
+    },
+    {
+      "id": "none-03",
+      "text": "# Notes from the weekly call\n\nDiscussed the roadmap and next steps for the launch.",
+      "expected": null
+    },
+    {
+      "id": "none-04",
+      "text": "# Product brochure\n\nOur new kettle boils water in two minutes and switches off by itself.",
+      "expected": null
+    }
+  ]
+}

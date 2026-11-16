@@ -114,6 +114,8 @@ test('every environment variable the instance code reads is in the registry (no 
       '--exclude-dir=node_modules',
       '--exclude-dir=dist',
       '--exclude-dir=scripts',
+      // Evaluation suites are development tooling (packages/evaluation/suites), not instance code.
+      '--exclude-dir=suites',
     ],
     {
       cwd: root,

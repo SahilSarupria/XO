@@ -1,0 +1,31 @@
+{
+  "name": "@xo/evaluation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UW-13 — the one evaluation harness: labelled sets with provenance, suites, owner-ratified thresholds (proposals until ratified), the R1-R18 commercial readiness register, and a reproducible report.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck:suites": "tsc -p tsconfig.suites.json",
+    "test": "node ../../scripts/run-tests.mjs test",
+    "eval": "node --import tsx suites/cli.ts"
+  },
+  "dependencies": {
+    "@xo/ai-core": "0.1.0",
+    "@xo/compiler": "0.1.0",
+    "@xo/intelligence-eval": "0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

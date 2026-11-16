@@ -42,6 +42,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Audit (UW-1):** per-workspace logs are hash-chained, externally anchored when `XO_AUDIT_ANCHOR_DIR` is set, and purgeable only by a recorded operator purge. The instance-level platform log (`FileAuditStore`, API/CLI/runtime events) is still unchained: it was accepted as a P1.0 limitation by the owner and UW-1 did not change it. Moving it onto the chained store needs segment-based retention there first (the chained store has no purge); until then its tamper evidence is filesystem permissions only.
 - **Step-up (UW-1):** an OIDC access token without `auth_time` can never satisfy step-up, so API clients that approve must request tokens that carry it. API keys are exempt from step-up by design (not interactive).
 - **Trust boundary (UW-1):** the injection corpus checks are structural (where a payload sits, that it cannot escape its frame, that an obeying answer is refused or needs a human); they do not measure how often a live model is misled (UW-13). A document can state a harmful rule in plain words and the rule validator will accept the proposal; a named reviewer is the control (`specs/security/TRUST_BOUNDARY.md`).
+- **Evaluation (UW-13, wave W1 skeleton):**
+  - **Every labelled set in the harness is synthetic.** The document-kind set was written with the cue pack in view. The numbers show
+    that the mechanisms work, not how XO does on real customer documents.
+  - **No threshold is ratified.** Every threshold is a proposal until the owner ratifies it, so nothing gates on accuracy yet.
+  - **Live-model evaluation is not in the harness report.** It exists separately for customer intelligence.
+  - **Not yet suites:** the benchmark package's cross-domain corpus, the vertical runs and the agent baseline (wave W5).
+  - **Four register titles are unconfirmed.** R8, R9, R15 and R16 are not titled in the plan text available.
 - **Residency and egress (UW-14, wave W1):**
   - **Chat behaviour changed.** Chat with a hosted model (Anthropic, OpenAI, Gemini, Azure) is refused by default, because
     `strict_local` is the default residency. Use a local model (Ollama), or `XO_RESIDENCY=open` for development with test data.
