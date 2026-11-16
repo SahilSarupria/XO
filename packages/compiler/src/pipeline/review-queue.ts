@@ -69,8 +69,13 @@ export function buildReviewQueue(
   options: ReviewQueueOptions = {},
 ): ReviewQueue {
   const items: ReviewQueueItem[] = [];
-  const add = (kind: ReviewQueueKind, priority: 1 | 2 | 3, summary: string, detail: string, hints?: readonly DomainHint[]): void =>
-    void items.push({
+  // PX-3: one item per id (kind + text). The same finding reported twice (one diagnostic per source, say) is one thing to
+  // review, and a human ruling names it by id.
+  const seen = new Set<string>();
+  const add = (kind: ReviewQueueKind, priority: 1 | 2 | 3, summary: string, detail: string, hints?: readonly DomainHint[]): void => {
+    if (seen.has(idOf(kind, summary))) return;
+    seen.add(idOf(kind, summary));
+    items.push({
       id: idOf(kind, summary),
       kind,
       priority,
@@ -78,6 +83,7 @@ export function buildReviewQueue(
       detail,
       ...(hints !== undefined && hints.length > 0 ? { hints } : {}),
     });
+  };
   const hintsFor = (text: string): DomainHint[] | undefined =>
     options.retriever?.retrieve(text, 3).map((h) => ({
       packId: h.packId,

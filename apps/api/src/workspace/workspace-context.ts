@@ -176,6 +176,11 @@ export function workspaceWaiversStore(record: WorkspaceRecord, config: Workspace
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'waivers'));
 }
 
+/** PX-3 — human rulings on review items, `<dataRootDir>/<workspaceId>/rulings`. Append-only. */
+export function workspaceRulingsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
+  return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'rulings'));
+}
+
 /** Fifth sibling — capability approval records (P0.5), `<dataRootDir>/<workspaceId>/approvals`. */
 export function workspaceApprovalsStore(record: WorkspaceRecord, config: WorkspaceDataConfig): LocalFsBlobStore {
   return new LocalFsBlobStore(join(config.dataRootDir, record.workspaceId, 'approvals'));

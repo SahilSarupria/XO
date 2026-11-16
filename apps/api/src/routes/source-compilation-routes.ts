@@ -13,6 +13,7 @@ import {
   workspaceCompilationsStore,
   workspaceApprovalsStore,
   workspaceWaiversStore,
+  workspaceRulingsStore,
   requirePrincipal,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -20,7 +21,7 @@ import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { FsCompilationStore } from '../compilations/fs-compilation-store.js';
-import { compileSourceRecord } from '../compilations/compile-source.js';
+import { compileSourceRecord, sourceSetEntryOf } from '../compilations/compile-source.js';
 import type { CompilationRecord, CapabilityProjection } from '../compilations/compilation.js';
 import { FsApprovalStore } from '../approvals/fs-approval-store.js';
 import { APPROVAL_REASON_CODES } from '../approvals/approval.js';
@@ -31,7 +32,14 @@ import { auditedOwnedWorkspace, finalizationNotice, newCorrelationId, safeId } f
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import { approvalBlockedCode } from '../approvals/approval-eligibility.js';
 import { FsWaiverStore } from '../waivers/waiver-store.js';
+import { FsRulingStore } from '../waivers/ruling-store.js';
 import {
+  assessCompleteness,
+  buildSourceSet,
+  confirmedRulesFrom,
+  createHumanRuling,
+  type HumanRuling,
+  type RulingDecision,
   assessSourceQuality,
   createSourceWaiver,
   sourceQualityOf,
@@ -114,7 +122,21 @@ export function registerCompilationRoutes(
     // has already called `markSucceeded`/`markFailed` — see that
     // function's own doc comment. The HTTP response always reports the
     // finished (`succeeded`/`failed`) status, never `running`.
-    await compileSourceRecord(compilationStore, created.value.compilationId, source, contentFound.value, dataConfig.extraction);
+    // PX-3: rulings that confirmed a rule for this exact source set are part of its next compilation, so a reviewer's
+    // decision is reproduced by the compiler, not just remembered next to the result.
+    const setId = buildSourceSet([sourceSetEntryOf(source)]).sourceSetId;
+    const confirmedRules = confirmedRulesFrom(
+      await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).forSourceSet(setId),
+      setId,
+    );
+    await compileSourceRecord(
+      compilationStore,
+      created.value.compilationId,
+      source,
+      contentFound.value,
+      dataConfig.extraction,
+      confirmedRules,
+    );
 
     const finished = await compilationStore.get(created.value.compilationId);
     if (!finished.ok) throw finished.error;
@@ -273,6 +295,78 @@ export function registerCompilationRoutes(
       metadata: { waiverId: waiver.waiverId, findingCount: waiver.findings.length },
     });
     return json(201, waiver);
+  }
+
+  /**
+   * PX-3: completeness, reported separately from validity — unread pages (net of readiness waivers), unparsed sentences,
+   * conflicts and decision-needing review items, each open until a ruling or waiver closes it.
+   */
+  async function getCompleteness(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const artifact = await new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)).getArtifact(compilationId);
+    if (!artifact.ok) throw artifact.error;
+    const setId = artifact.value.sourceSet.sourceSetId;
+    const rulings = await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).forSourceSet(setId);
+    const waivers = await new FsWaiverStore(workspaceWaiversStore(workspace, dataConfig)).forDigests(
+      new Set(artifact.value.sourceSet.entries.map((e) => e.digestSha256)),
+    );
+    return json(200, assessCompleteness(artifact.value, rulings, waivers));
+  }
+
+  /**
+   * PX-3: record a ruling on one review item of a compilation. The item and its text come from the server's artifact; the
+   * ruling is bound to that source set, attributed to the authenticated principal, audited, and append-only. Needs the
+   * review role and a recent sign-in.
+   */
+  async function createRuling(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'rule.review-item', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'rule on a review item' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'rule on a review item');
+    const compilationId = req.params['compilationId'];
+    if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+    const body = await req.json<{ reviewItemId?: unknown; decision?: unknown }>();
+    if (!body.ok) throw body.error;
+    const { reviewItemId, decision } = body.value;
+    if (typeof reviewItemId !== 'string' || typeof decision !== 'object' || decision === null)
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'body must be { reviewItemId: string, decision: { kind, ... } }');
+    const actor = requirePrincipal(req);
+    const draft = {
+      action: 'rule.review-item',
+      actor: actorFromPrincipal(actor),
+      correlationId,
+      target: { kind: 'compilation' as const, id: safeId(compilationId) ?? 'unknown', workspaceId: workspace.workspaceId },
+    } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+    const artifact = await new FsCompilationStore(workspaceCompilationsStore(workspace, dataConfig)).getArtifact(compilationId);
+    if (!artifact.ok) throw artifact.error;
+    let ruling: HumanRuling;
+    try {
+      ruling = createHumanRuling({
+        artifact: artifact.value,
+        reviewItemId,
+        decision: parseDecision(decision as Record<string, unknown>),
+        actor: { id: actor.id, kind: actor.kind },
+        createdAt: new Date().toISOString(),
+      });
+    } catch (cause) {
+      await audit.tryRecord({ ...draft, type: 'ruling.denied', outcome: 'denied', reasonCode: ErrorCode.INVALID_ARGUMENT });
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, cause instanceof Error ? cause.message : String(cause));
+    }
+    await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).add(ruling);
+    await audit.tryRecord({
+      ...draft,
+      type: 'ruling.recorded',
+      outcome: 'completed',
+      metadata: { rulingId: ruling.rulingId, decision: ruling.decision.kind },
+    });
+    return json(201, ruling);
+  }
+
+  async function listRulings(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    return json(200, { rulings: await new FsRulingStore(workspaceRulingsStore(workspace, dataConfig)).list() });
   }
 
   async function listWaivers(req: ApiRequest): Promise<ApiResponse> {
@@ -451,6 +545,33 @@ export function registerCompilationRoutes(
   router.get('/workspaces/:workspaceId/compilations/:compilationId/source-quality', guarded(getSourceQuality));
   router.post('/workspaces/:workspaceId/compilations/:compilationId/waivers', guarded(createWaiver));
   router.get('/workspaces/:workspaceId/waivers', guarded(listWaivers));
+  router.get('/workspaces/:workspaceId/compilations/:compilationId/completeness', guarded(getCompleteness));
+  router.post('/workspaces/:workspaceId/compilations/:compilationId/rulings', guarded(createRuling));
+  router.get('/workspaces/:workspaceId/rulings', guarded(listRulings));
   router.get('/workspaces/:workspaceId/compilations/:compilationId/capabilities', guarded(getCapabilities));
   router.post('/workspaces/:workspaceId/compilations/:compilationId/capabilities/:capabilityId/approve', guarded(approveCapability));
+}
+
+/** A ruling decision from a request body, checked field by field (no extra fields carried into the record). */
+function parseDecision(d: Record<string, unknown>): RulingDecision {
+  const str = (k: string): string => {
+    const v = d[k];
+    if (typeof v !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, `decision.${k} must be a string`);
+    return v;
+  };
+  switch (d['kind']) {
+    case 'not-operational':
+      return typeof d['note'] === 'string' ? { kind: 'not-operational', note: d['note'] } : { kind: 'not-operational' };
+    case 'confirm-rule':
+      return { kind: 'confirm-rule', condition: str('condition'), outcome: str('outcome') };
+    case 'resolve-conflict': {
+      const prevails = d['prevails'];
+      if (prevails !== 'a' && prevails !== 'b') throw new XoError(ErrorCode.INVALID_ARGUMENT, 'decision.prevails must be "a" or "b"');
+      return { kind: 'resolve-conflict', prevails, rationale: str('rationale') };
+    }
+    case 'acknowledge':
+      return { kind: 'acknowledge', note: str('note') };
+    default:
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'decision.kind must be not-operational, confirm-rule, resolve-conflict or acknowledge');
+  }
 }
