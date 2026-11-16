@@ -7,7 +7,7 @@ Format xo-evaluation/1; Node 22.
 ## Verdict
 
 - Ratified thresholds failed: none.
-- Thresholds awaiting the owner's ratification: 25. A proposal is shown beside its measure and is never a gate (UAC-19).
+- Thresholds awaiting the owner's ratification: 29. A proposal is shown beside its measure and is never a gate (UAC-19).
 - First pilot with real data: **blocked** by R1, R2, R3, R4, R6, R10, R11, R12, R13, R17 (UAC-20).
 
 ## Proposing what kind of document a source is (`document-kinds`)
@@ -81,6 +81,30 @@ Evidence for UAC-17, UAC-19. Mode: deterministic.
 **Limits:**
 - Oracle mode: the answers come from a deterministic stand-in. Live-model evaluation (Q1) runs through `npm run eval -w @xo/intelligence-eval -- --mode live` and is not part of this report.
 - A synthetic organisation; no real customer corpus.
+
+## Finding protected values before a model request leaves (`pii-detection`)
+
+Evidence for UAC-27. Mode: deterministic.
+
+- Labelled set `pii-india-synthetic` v1: 66 cases, synthetic, sha256 `cffe0a4707987cc5…`. An invented client register (16 values) and 66 labelled texts: known values exact and varied (misspelt, transliterated, initials, reordered, in file names, look-alike letters, base64 and percent-encoding), Indian identifiers with valid check digits, and 20 texts that must not be blocked.
+
+| Measure | Value | Threshold |
+| --- | --- | --- |
+| Exact known values blocked | 100.0% (10/10) | ≥ 1 (proposed) |
+| Texts carrying a protected value that were caught | 95.7% (44/46) | ≥ 0.9 (proposed) |
+| Entities found that were really there | 100.0% (45/45) | ≥ 0.95 (proposed) |
+| Clean texts that would have been blocked | 0.0% (0/20) | ≤ 0.05 (proposed) |
+
+**Notes:**
+- By form: exact 11/11, case 2/2, misspelt 4/4, transliterated 3/3, initials 2/2, reordered 1/1, file-name 3/3, look-alike 2/2, encoded 3/3, nickname 0/1, spelt-out 0/1, identifier 13/13.
+- Missed: v21 (nickname), v22 (spelt-out).
+- Entity-level: 45 found correctly, 0 extra, 2 not found.
+
+**Limits:**
+- Synthetic and small: it shows which forms the detectors handle, not their rate on real customer text. Measuring on real (consented, local) data is an owner decision.
+- Written by the engineer who wrote the detectors, so it is not blind (compare ADR 0030): a held-out set written by someone else is needed before a threshold is ratified.
+- Names that are in no spreadsheet and no setting are not detected: that needs the NER sidecar (14c-3), deferred until a vertical must send free text.
+- Transliteration coverage is a fixed spelling key (ksh/x, aspirates, sh/s, w/v, z/j, doubled letters, vowel runs), not a learned model.
 
 ## Reading real documents XO was not written against (`real-documents`)
 

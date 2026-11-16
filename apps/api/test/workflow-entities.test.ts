@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ScriptableTestProvider, jsonResponse } from '@xo/ai-core';
 import { TestServer, withTempDir } from './test-helpers.js';
@@ -292,10 +292,10 @@ test('two workflows in one conversation; only the conversation owner sees the li
 });
 
 test('refusals: Studio chat threads, unknown fields, a reply as the prompt, paused and archived workflows', async () => {
-  await withServers(async ({ start }) => {
+  await withServers(async ({ start, dataDir }) => {
     const server = await start();
     try {
-      const { base, cid } = await prepare(server);
+      const { ws, base, cid } = await prepare(server);
       const conv = await conversationWithPrompt(server, base, 'Ship a release');
       const post = (body: object) => server.request('POST', `${base}/workflow-entities`, body);
       const cht = await post({ conversationId: `cht_${'0'.repeat(32)}`, compilationId: cid, goal: GOAL });
@@ -318,7 +318,13 @@ test('refusals: Studio chat threads, unknown fields, a reply as the prompt, paus
       assert.equal(paused.status, 412);
       assert.match(paused.bodyText, /workflow_paused/);
       await server.request('POST', `${at}/resume`, {});
+      // UW-14d: archiving erases the workflow's token vault (and only that one).
+      const vaults = join(dataDir, ws, 'token-vaults');
+      await mkdir(vaults, { recursive: true });
+      await writeFile(join(vaults, `${wf.workflowId}.vault`), '{}');
+      await writeFile(join(vaults, 'wfl_other.vault'), '{}');
       await server.request('POST', `${at}/archive`, {});
+      assert.deepEqual(await readdir(vaults), ['wfl_other.vault']);
       assert.equal((await server.request('POST', `${at}/runs`, { input: {} })).status, 412);
       assert.equal(
         (await server.request('GET', `${base}/workflow-entities`)).json<{ workflows: Summary[] }>().workflows.length,

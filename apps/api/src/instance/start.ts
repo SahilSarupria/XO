@@ -131,7 +131,7 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
       logger.warn('XO_RESIDENCY=open: any provider may receive any data (development only; refused in production)');
     else if (residency.mode === 'masked_hosted')
       logger.warn(
-        `XO_RESIDENCY=masked_hosted: ${residency.contractedProviders.join(', ')} may receive typed requests (schemas, synthetic records, filtered intent). The known-value dictionary and full-request leak guard (UW-14c to 14e) are not in place yet.`,
+        `XO_RESIDENCY=masked_hosted: ${residency.contractedProviders.join(', ')} may receive typed requests (schemas, synthetic records, filtered intent), each checked by the leak guard against the workspace's own values and the identifier patterns before it leaves.`,
       );
     const port = opts.listen?.port ?? config.port;
     const host = opts.listen?.host ?? config.host;

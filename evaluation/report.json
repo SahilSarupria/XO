@@ -7,6 +7,7 @@
       "egress-boundary",
       "injection-corpus",
       "intelligence-oracle",
+      "pii-detection",
       "real-documents",
       "tabular-reading"
     ]
@@ -265,6 +266,73 @@
       "limits": [
         "Oracle mode: the answers come from a deterministic stand-in. Live-model evaluation (Q1) runs through `npm run eval -w @xo/intelligence-eval -- --mode live` and is not part of this report.",
         "A synthetic organisation; no real customer corpus."
+      ]
+    },
+    {
+      "suite": "pii-detection",
+      "title": "Finding protected values before a model request leaves",
+      "uac": [
+        "UAC-27"
+      ],
+      "mode": "deterministic",
+      "sets": [
+        {
+          "id": "pii-india-synthetic",
+          "version": "1",
+          "provenance": "synthetic",
+          "cases": 66,
+          "contentHash": "cffe0a4707987cc5a6fee04e0c1646442fd6afe138af4a479d0dfc3c1df79281",
+          "description": "An invented client register (16 values) and 66 labelled texts: known values exact and varied (misspelt, transliterated, initials, reordered, in file names, look-alike letters, base64 and percent-encoding), Indian identifiers with valid check digits, and 20 texts that must not be blocked."
+        }
+      ],
+      "measures": [
+        {
+          "id": "pii-detection/known-value-block-rate",
+          "title": "Exact known values blocked",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 10,
+          "denominator": 10
+        },
+        {
+          "id": "pii-detection/recall",
+          "title": "Texts carrying a protected value that were caught",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 0.9565217391304348,
+          "numerator": 44,
+          "denominator": 46
+        },
+        {
+          "id": "pii-detection/precision",
+          "title": "Entities found that were really there",
+          "unit": "ratio",
+          "better": "higher",
+          "value": 1,
+          "numerator": 45,
+          "denominator": 45
+        },
+        {
+          "id": "pii-detection/false-block-rate",
+          "title": "Clean texts that would have been blocked",
+          "unit": "ratio",
+          "better": "lower",
+          "value": 0,
+          "numerator": 0,
+          "denominator": 20
+        }
+      ],
+      "notes": [
+        "By form: exact 11/11, case 2/2, misspelt 4/4, transliterated 3/3, initials 2/2, reordered 1/1, file-name 3/3, look-alike 2/2, encoded 3/3, nickname 0/1, spelt-out 0/1, identifier 13/13.",
+        "Missed: v21 (nickname), v22 (spelt-out).",
+        "Entity-level: 45 found correctly, 0 extra, 2 not found."
+      ],
+      "limits": [
+        "Synthetic and small: it shows which forms the detectors handle, not their rate on real customer text. Measuring on real (consented, local) data is an owner decision.",
+        "Written by the engineer who wrote the detectors, so it is not blind (compare ADR 0030): a held-out set written by someone else is needed before a threshold is ratified.",
+        "Names that are in no spreadsheet and no setting are not detected: that needs the NER sidecar (14c-3), deferred until a vertical must send free text.",
+        "Transliteration coverage is a fixed spelling key (ksh/x, aspirates, sh/s, w/v, z/j, doubled letters, vowel runs), not a learned model."
       ]
     },
     {
@@ -672,6 +740,34 @@
       "outcome": "proposal"
     },
     {
+      "measure": "pii-detection/known-value-block-rate",
+      "status": "proposed",
+      "bound": "≥ 1",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "pii-detection/recall",
+      "status": "proposed",
+      "bound": "≥ 0.9",
+      "value": 0.9565217391304348,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "pii-detection/precision",
+      "status": "proposed",
+      "bound": "≥ 0.95",
+      "value": 1,
+      "outcome": "proposal"
+    },
+    {
+      "measure": "pii-detection/false-block-rate",
+      "status": "proposed",
+      "bound": "≤ 0.05",
+      "value": 0,
+      "outcome": "proposal"
+    },
+    {
       "measure": "intelligence-oracle/security",
       "status": "proposed",
       "bound": "≥ 1",
@@ -1022,7 +1118,7 @@
   },
   "verdict": {
     "failedRatified": [],
-    "proposals": 25,
+    "proposals": 29,
     "pilotGate": "blocked",
     "problems": []
   }

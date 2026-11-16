@@ -1189,6 +1189,34 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/data-protection': {
+      get: {
+        summary: 'What this workspace protects from hosted models (UW-14c; manage role)',
+        'x-xo-permission': 'manage',
+        description:
+          "The data-protection settings (values an administrator added, columns always protected, columns never protected) and the known-value dictionary built from the workspace's own spreadsheets: which columns feed it (source, record set, header, kind, how many values) — never the values themselves. Every model request made while serving a /workspaces/{id}/… request is checked against this dictionary and the locale pattern packs before it can leave for a hosted provider; any hit refuses it (403 XO_AI_INFERENCE_DENIED, reason leak_guard_blocked) and audits model.egress.blocked with hashes only. See docs/RESIDENCY.md.",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ settings, dictionary: { knownValues, truncated, columns, unreadableSources } }' } },
+      },
+      put: {
+        summary: "Change this workspace's data-protection settings (UW-14c; manage role, recent sign-in)",
+        'x-xo-permission': 'manage',
+        description:
+          'Body `{ values?: { value, kind }[], protectColumns?: string[], ignoreColumns?: string[], expectedRevision? }`; kind is name | organization | email | phone | identifier | address | other. At most 5000 values (200 characters each) and 200 columns per list; unknown fields are a 400. A stale expectedRevision is a 412 XO_PRECONDITION_FAILED. Audited as data-protection.updated with counts only.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ settings }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/data-protection/scan': {
+      post: {
+        summary: 'What the leak guard would find in a text (UW-14e; read role)',
+        'x-xo-permission': 'read',
+        description:
+          'Body `{ text }` (at most 100,000 characters). Returns `{ blocked, hits: { entity, detector, start, end, hash, encoded? }[], masked }`: where in the given text each protected value is and of what kind, and the text with each one replaced by its kind ([PERSON], [PAN]). Never says which dictionary entry matched. Nothing is sent anywhere.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ blocked, hits, masked }' } },
+      },
+    },
     '/workspaces/{workspaceId}/credentials': {
       get: {
         summary: 'List the connection credentials of a workspace (UW-9; author role)',

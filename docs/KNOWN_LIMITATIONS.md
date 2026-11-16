@@ -62,12 +62,21 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - **Live-model evaluation is not in the harness report.** It exists separately for customer intelligence.
   - **Not yet suites:** the benchmark package's cross-domain corpus, the vertical runs and the agent baseline (wave W5).
   - **Four register titles are unconfirmed.** R8, R9, R15 and R16 are not titled in the plan text available.
-- **Residency and egress (UW-14, wave W1):**
+- **Residency and egress (UW-14):**
   - **Chat behaviour changed.** Chat with a hosted model (Anthropic, OpenAI, Gemini, Azure) is refused by default, because
     `strict_local` is the default residency. Use a local model (Ollama), or `XO_RESIDENCY=open` for development with test data.
-  - **`masked_hosted` relies on the typed boundary alone** until wave W2 adds the known-value dictionary, locale patterns, reversible
-    tokens and the full-request leak guard (UW-14c to 14e). Intent text is filtered by patterns only (emails, links, digit runs,
-    credentials), so a name typed into a goal would pass.
+  - **The leak guard knows only the values it was given (UW-14c to 14e, ADR 0037).** It knows the workspace's spreadsheet columns
+    that identify someone, the values in its data-protection settings, and Indian identifier patterns. A name XO was never given (in
+    free text, a PDF, a chat) is not detected; that needs the deferred NER sidecar (14c-3). A nickname or a spelt-out address
+    ("dot", "at") is not detected either.
+  - **Hosted chat in `open` mode refuses messages that name the workspace's own clients.** This is deliberate: use test data or a
+    local model.
+  - **Model work outside an HTTP request has no workspace context.** In `masked_hosted` it is refused; in `open` it is checked
+    against the pattern packs only. No scheduled path calls a model today.
+  - **Token vaults have no consumer yet.** There is no model step on a data path (R-DET). The vault, its sealed store, its erasure on
+    archive and its retention sweep wait for an owner-enabled `needs_model` step (UW-6).
+  - **Detection thresholds are proposals.** The `pii-detection` set was written alongside the detectors, so it is not blind.
+  - **The dictionary is bounded at 250,000 values per workspace.** The bound is reported, and workbooks are re-read when they change.
   - **Column names are disclosed in schema descriptors.** Exceptions: a header that looks like a value, and any column the caller
     withholds. A schema can be sensitive in itself, and combinations of fields can re-identify people.
   - **Locality is decided by address.** Local means Ollama at a private address or an internal name. An internal name that resolves

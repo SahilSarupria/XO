@@ -1,4 +1,6 @@
 import type { Router } from '../http/router.js';
+import { registerDataProtectionRoutes } from './data-protection-routes.js';
+import { DataProtection } from '../protection/data-protection.js';
 import { ErrorCode, XoError } from '@xo/errors';
 import { metricsTokenMatches, type InstanceMetrics } from '../instance/metrics.js';
 import type { ReadinessProbe } from '../instance/readiness.js';
@@ -51,6 +53,8 @@ export interface RegisterRoutesDeps {
   readonly permissionManager: PermissionManager;
   /** P1.0 M4 — required: protected reads and lifecycle transitions cannot be registered without an audit service. */
   readonly audit: AuditService;
+  /** UW-14 (ADR 0037): the workspace data protection the server's protection middleware uses (built here when absent). */
+  readonly dataProtection?: DataProtection;
   /** The concrete sink; `GET /audit/events` and `POST /audit/purge` need its read/purge capability. */
   readonly auditSink: AuditSink;
   readonly auditAccess: AuditAccessController;
@@ -157,6 +161,13 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
       (() => (loaded ??= loadCredentialsConfig(deps.workspaceDataConfig.dataRootDir, deps.env ?? process.env)));
     registerCredentialRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, credentials);
   }
+  registerDataProtectionRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.audit,
+    deps.dataProtection ?? new DataProtection(deps.workspaceStore, deps.workspaceDataConfig, deps.audit),
+  );
   registerKnowledgeRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, {
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
     ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
