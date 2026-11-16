@@ -74,7 +74,7 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
           // ADR 0035: a certified schedule runs on the workflow runtime, as the person who set it (re-authorized at every
           // effect). The slot is the idempotency key, so two instances firing the same slot start one run.
           const as = establishAuthenticatedPrincipal({
-            kind: sched.startsAs.kind === 'service' ? 'service' : 'user',
+            kind: sched.startsAs.kind === 'service' ? 'service' : 'human',
             id: sched.startsAs.id,
           });
           if (!as.ok) throw as.error;

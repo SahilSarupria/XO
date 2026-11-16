@@ -131,13 +131,22 @@ test('a certificate-requiring workspace: no trigger reaches the composed runner;
           runs: { runId: string }[];
         }>().runs;
         assert.equal(runs.length, 2, 'the webhook run and the scheduled run');
+        // The test server's caller is an API key (a service principal). A schedule set by a person starts as that person.
+        await controls.mutate(cid, wf, 'test', new Date().toISOString(), (d) => ({
+          ...d,
+          triggers: { ...d.triggers, schedule: { ...d.triggers.schedule!, startsAs: { id: server.identityId, kind: 'human' } } },
+        }));
+        assert.deepEqual(await runDueSchedules(deps, new Date(due.getTime() + 5 * 60_000)), { started: 0, skipped: 0 }, 'not due yet');
+        const human = new Date(due.getTime() + 22 * 60_000);
+        assert.deepEqual(await runDueSchedules(deps, human), { started: 1, skipped: 0 });
+        assert.equal((await controls.getDeployment(cid, wf))?.triggers.schedule?.lastOutcome, 'started on the workflow runtime');
 
         // The certificate is verified again at every slot: once the knowledge it pinned changes, the slot is skipped, with why.
         const proposal = (await server.request('POST', `/workspaces/${ws}/compilations/${cid}/knowledge-change-sets`)).json<{
           changeSet: { changeSetId: string };
         }>();
         await server.request('POST', `/workspaces/${ws}/knowledge/change-sets/${proposal.changeSet.changeSetId}/approve`, { reason: 'ok' });
-        assert.deepEqual(await runDueSchedules(deps, new Date(due.getTime() + 11 * 60_000)), { started: 0, skipped: 1 });
+        assert.deepEqual(await runDueSchedules(deps, new Date(human.getTime() + 11 * 60_000)), { started: 0, skipped: 1 });
         assert.match((await controls.getDeployment(cid, wf))?.triggers.schedule?.lastOutcome ?? '', /^skipped: .*knowledge state changed/);
       } finally {
         await server.stop();
