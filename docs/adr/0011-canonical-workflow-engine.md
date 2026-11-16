@@ -55,7 +55,7 @@ changes.
      per instance.
 4. **Migration without a flag day.** The P0.8 runner and P1.1 procedures stay as built behind a port, and their tests are preserved
    by name (`docs/baseline/tests-26f0052.tsv`). Capability workflows (`CandidateWorkflow`) and procedures gain a lowering to Workflow
-   IR; each path moves once parity tests pass. Retiring the segmented runner is a separate owner-approved step, not part of UW-7.
+   IR; each path moves once parity tests pass. Retiring the segmented runner is a separate owner-approved step, not part of UW-7. **Settled by ADR 0035 (2026-11-16):** retired wherever certificates are required; drained elsewhere until UW-12b.
 5. **UW-7 fixes the spike's defects first:** orphaned run ids (a run directory with no durable first entry must be recoverable by a
    start with the same id); a partial-completion state for batches; cancellation (ADR 0024). Content-bound approval is UW-8.
 

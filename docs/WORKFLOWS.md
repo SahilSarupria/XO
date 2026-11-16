@@ -64,8 +64,9 @@ engine's journal (`generated-runs/`). Each run records which workflow and versio
 
 ## Limits
 
-- **Definitions.** Only generated, certified Workflow IR definitions can be a version today. Authored Studio graphs and
-  composed-workflow runs join once UW-7 unifies the engines.
+- **Definitions.** Only generated, certified Workflow IR definitions can be a version today. Authored Studio graphs are not yet
+  versions. The composed-workflow runner is retired wherever certificates are required (ADR 0035). It remains only for uncertified
+  starts in development workspaces, and it is removed once the Studio execution screens move to the Workflow entity (UW-12b).
 - **Pausing.** Pausing a workflow holds new starts only. To stop a run that is already in progress, cancel it (UW-7, ADR 0033).
 - **Sizes.** A workspace can hold up to 2,000 workflows, and each workflow up to 100 versions.
 - **Change feed.** The feed is not compacted yet.

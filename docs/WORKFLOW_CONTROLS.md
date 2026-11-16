@@ -52,10 +52,28 @@ The gate **fails closed**: if the controls cannot be read (a damaged file), noth
 - **Schedule**: `{ "schedule": { "everyMinutes": 5..10080, "input": { ... } } }` (input up to 8 KB, the same input for every
   run). Marked `trigger: "schedule"`.
 
+### Certified workflows (ADR 0035)
+
+Where readiness certificates are required (the production default, or the workspace's `trust.requireReadinessCertificate`), the
+composed-workflow runner is retired: no start reaches it, by any route or trigger. Triggers name a certificate instead:
+
+- **Webhook** with `"certificateId": "wrc_…"`: the certified definition runs on the workflow runtime. The certificate is verified
+  again at that moment, and the response is the run view (`runId`). The same `Idempotency-Key` returns the same run.
+- **Schedule** with `{ "everyMinutes": …, "certificateId": "wrc_…" }`: the certificate must allow a start when you set the schedule.
+  It is verified again at every slot. A slot whose certificate has gone stale is skipped, and the reason is recorded. Each run starts
+  as **the person who set the schedule**, and that person's role is checked again at every connector call. Each slot is its own
+  idempotency key, so one slot starts one run, even with two instances on the same data directory.
+- Practice mode is refused for certified triggers. A certified workflow is triggered only in live mode.
+- An uncertified webhook or schedule in such a workspace is refused with `409 XO_WORKFLOW_REQUIRES_IR_RUNTIME`
+  (`context.reason: composed_runner_retired`). A schedule is refused when you set it.
+
+The daily limit counts composed runs only. Workflow-runtime runs are not counted yet.
+
 ### What the schedule does and does not promise
 
-- It runs **inside one API process while that process is up**. Two API processes on the same data directory would start the
-  same run twice. Run one, or set `XO_SCHEDULER=off` on the others.
+- It runs **inside one API process while that process is up**. For an uncertified (composed) schedule, two API processes on the same
+  data directory would start the same run twice. Run one, or set `XO_SCHEDULER=off` on the others. A certified schedule is keyed by
+  its slot, so it does not have this problem.
 - It does **not catch up**. If the server was off for a day, the next tick starts **one** run, not a day's worth.
 - Timing is "at least N minutes since the last slot", checked every 30 seconds. It is not wall-clock cron.
 - A workflow whose required fields are not in the stored input cannot start; that is recorded (`lastOutcome`:
