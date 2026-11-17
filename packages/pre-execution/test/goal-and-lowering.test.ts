@@ -59,12 +59,17 @@ test('a procedure lowers to approve steps in order, valid Workflow IR, with a di
   assert.equal(lowA.complete, true);
   assert.equal(validateWorkflowComponent(lowA.component).valid, true);
   const def = lowA.component!.workflows[0]!;
+  // UW-7 (ADR 0033): each person's task is followed by an escalation that runs only when the person reports it was NOT done,
+  // so a refusal stops the workflow instead of letting it end "completed" (found by apps/api/test/engine-parity.test.ts).
   assert.deepEqual(
     def.steps.map((s) => s.type),
-    ['approve', 'approve', 'approve'],
+    ['approve', 'escalate', 'approve', 'escalate', 'approve', 'escalate'],
   );
-  assert.deepEqual(def.steps[1]!.needs, [def.steps[0]!.id], 'each step needs the one before');
-  assert.equal(def.steps[1]!.runIf, "previous_decision == 'approved'", 'and runs only when the person confirmed the previous task');
+  const tasks = def.steps.filter((s) => s.type === 'approve');
+  assert.deepEqual(def.steps[1]!.needs, [tasks[0]!.id], 'the escalation follows its own task');
+  assert.deepEqual(tasks[1]!.needs, [def.steps[1]!.id], 'each task follows the one before, through its not-done escalation');
+  assert.equal(def.steps[1]!.runIf, "decision == 'rejected'");
+  assert.equal(tasks[1]!.runIf, "previous_decision == 'approved'", 'and runs only when the person confirmed the previous task');
   assert.equal(def.steps[0]!.runIf, undefined);
   const first = def.steps[0]!;
   assert.ok(
@@ -74,7 +79,8 @@ test('a procedure lowers to approve steps in order, valid Workflow IR, with a di
   );
   assert.ok(first.type === 'approve' && first.onTimeout === 'escalate');
   assert.equal(lowA.definitionDigest, lowB.definitionDigest);
-  assert.equal(lowA.rationale.length, 3);
+  // One rationale per task and one per not-done escalation (UW-7).
+  assert.equal(lowA.rationale.length, 6);
 });
 
 test('a rule-bound capability lowers to a decide step whose rule renders the stated condition', async () => {
@@ -99,7 +105,11 @@ test('unbound steps and conditions with no faithful rendering are reported, neve
   const low = lowerCandidateWorkflow(graph, wf, stripped);
   assert.equal(low.complete, false);
   assert.ok(low.issues.some((i) => i.code === 'unbound' && i.severity === 'blocking'));
-  assert.equal(low.component!.workflows[0]!.steps.length, 2);
+  // Two tasks remain, each with its UW-7 not-done escalation (ADR 0033): four steps, nothing invented for the unbound one.
+  assert.deepEqual(
+    low.component!.workflows[0]!.steps.map((s) => s.type),
+    ['approve', 'escalate', 'approve', 'escalate'],
+  );
   assert.equal(renderCondition({ type: 'temporal', relation: 'within', amount: 30, unit: 'days' }, new Map()), undefined);
   assert.equal(
     renderCondition(

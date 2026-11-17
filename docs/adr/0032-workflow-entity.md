@@ -6,6 +6,9 @@ Accepted under owner delegation, 2026-11-16 (UW-2, wave W2). Signed off by Claud
 authority; this is a delegated sign-off, not an independent review. It implements ADR 0013 (one conversation store) for
 workflows and the thin-client state API of ADR 0022, and settles the lifecycle set the plan left to D-B (ADR 0011).
 
+Amended by ADR 0033 (UW-7): the lifecycle adds `partially_completed`, a `compensated` run is `cancelled` after a cancel and
+`failed` otherwise, and runs can be cancelled through the run port.
+
 ## Context
 
 Before UW-2, a "workflow" was four different things, none of them durable work a person could come back to:

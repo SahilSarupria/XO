@@ -12,6 +12,7 @@ export const WORKFLOW_LIFECYCLES = [
   'paused',
   'needs_attention',
   'completed',
+  'partially_completed',
   'failed',
   'cancelled',
   'archived',

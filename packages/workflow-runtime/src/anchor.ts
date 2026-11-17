@@ -1,4 +1,4 @@
-import { JournalCorruptError, type JournalEntry, type RunStoreLike } from './journal.js';
+import { JournalCorruptError, type CancelRequest, type JournalEntry, type RunStoreLike } from './journal.js';
 
 /**
  * Anchoring of run journals. A run's hash chain detects an edited or removed middle entry, but someone who can rewrite a whole run directory can
@@ -57,6 +57,13 @@ export class AnchoredRunStore implements RunStoreLike {
   }
   list(): Promise<string[]> {
     return this.inner.list();
+  }
+  requestCancel(runId: string, request: CancelRequest): Promise<{ readonly recorded: boolean; readonly request: CancelRequest }> {
+    if (this.inner.requestCancel === undefined) return Promise.reject(new Error('this store cannot record a cancel request'));
+    return this.inner.requestCancel(runId, request);
+  }
+  cancelRequest(runId: string): Promise<CancelRequest | undefined> {
+    return this.inner.cancelRequest?.(runId) ?? Promise.resolve(undefined);
   }
 
   async append(runId: string, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry> {

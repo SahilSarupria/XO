@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { ApprovalError, RunInputError, RunStore } from '@xo/workflow-runtime';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
 import type { WorkflowReadinessCertificate } from '@xo/pre-execution';
@@ -23,7 +24,15 @@ import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { StartRefusedError } from '../workflow-controls/service.js';
 import { generateDefinition, parseGoal, workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-execution-routes.js';
 import { issueCertificate, workspaceCertificatesStore } from './readiness-routes.js';
-import { decideGeneratedApproval, readMeta, runsDir, startGeneratedRun, type RunnerDeps } from './generated-run-routes.js';
+import {
+  cancelGeneratedRun,
+  decideGeneratedApproval,
+  readMeta,
+  reconcileGeneratedEffect,
+  runsDir,
+  startGeneratedRun,
+  type RunnerDeps,
+} from './generated-run-routes.js';
 import { workspaceWorkflowEntitiesStore, type FsWorkflowEntityStore } from '../workflow-entities/entity-store.js';
 import { generatedRunPort, type WorkflowRunPort, type WorkflowRunView } from '../workflow-entities/run-port.js';
 import {
@@ -69,6 +78,11 @@ function guarded(handler: (req: ApiRequest) => Promise<ApiResponse>): (req: ApiR
     try {
       return await handler(req);
     } catch (cause) {
+      // The same mapping as the generated-workflow routes: the engine's refusals are the caller's to fix, not server errors.
+      if (cause instanceof RunInputError)
+        return errorToResponse(new XoError(ErrorCode.INVALID_ARGUMENT, cause.message, { context: { problems: [...cause.problems] } }));
+      if (cause instanceof ApprovalError)
+        return errorToResponse(new XoError(ErrorCode.INVALID_ARGUMENT, cause.message, { context: { reason: cause.code } }));
       return errorToResponse(cause);
     }
   };
@@ -567,6 +581,67 @@ export function registerWorkflowEntityRoutes(
     return json(200, await port(workspace).run(e, req.params['runId'] ?? ''));
   }
 
+  /** The definition a run of this workflow belongs to, from the run's own record (an item of a batch names its batch). */
+  async function definitionOfRun(w: WorkspaceRecord, e: WorkflowEntity, runId: string): Promise<WorkflowDefinitionRecord> {
+    for (const v of e.versions) {
+      const dir = runsDir(dataConfig, w.workspaceId, v.definition.definitionId);
+      let id = runId;
+      if (id.startsWith('fe_')) {
+        const first = (await new RunStore(dir).read(id).catch(() => []))[0];
+        const parent = first?.type === 'run_started' ? (first.data as { parent?: unknown }).parent : undefined;
+        if (typeof parent !== 'string') continue;
+        id = parent;
+      }
+      const meta = await readMeta(dir, id);
+      if (meta?.workflow?.workflowId === e.workflowId) return workspaceDefinitionsStore(w, dataConfig).get(v.definition.definitionId);
+    }
+    throw new NotFoundError(`run "${runId}" of workflow "${e.workflowId}"`);
+  }
+
+  async function cancelRun(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.cancel', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'cancel a workflow run' });
+    const body = await readBody(req);
+    onlyFields(body, ['reason']);
+    const e = await entities(workspace).require(req.params['workflowId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    const view = await cancelGeneratedRun(deps, {
+      workspace,
+      actor: requirePrincipal(req),
+      definition: await definitionOfRun(workspace, e, runId),
+      runId,
+      reason: body['reason'],
+      correlationId,
+      workflowId: e.workflowId,
+    });
+    return json(200, { ...view, workflowId: e.workflowId });
+  }
+
+  async function reconcile(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.reconcile', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'record the outcome of an external call' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'record the outcome of an external call');
+    const body = await readBody(req);
+    onlyFields(body, ['decision', 'reason', 'evidenceExamined']);
+    const e = await entities(workspace).require(req.params['workflowId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    const out = await reconcileGeneratedEffect(deps, {
+      workspace,
+      actor: requirePrincipal(req),
+      definition: await definitionOfRun(workspace, e, runId),
+      runId,
+      step: req.params['step'] ?? '',
+      decision: body['decision'],
+      reason: body['reason'],
+      evidenceExamined: body['evidenceExamined'],
+      correlationId,
+      workflowId: e.workflowId,
+    });
+    return json(200, { ...out, workflowId: e.workflowId });
+  }
+
   async function decide(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.decide', correlationId });
@@ -613,6 +688,8 @@ export function registerWorkflowEntityRoutes(
   router.get(`${BASE}/:workflowId/runs`, guarded(runs));
   router.get(`${BASE}/:workflowId/runs/:runId`, guarded(run));
   router.post(`${BASE}/:workflowId/runs/:runId/approvals/:approvalId`, guarded(decide));
+  router.post(`${BASE}/:workflowId/runs/:runId/cancel`, guarded(cancelRun));
+  router.post(`${BASE}/:workflowId/runs/:runId/effects/:step/reconciliation`, guarded(reconcile));
   router.get('/workspaces/:workspaceId/intelligence/conversations/:conversationId/workflows', guarded(listOfConversation));
 }
 

@@ -46,6 +46,15 @@ test('issue → NEEDS_REVIEW until approved → READY → start with it; stale a
           input: {},
           ...(certificateId !== undefined ? { certificateId } : {}),
         });
+      // UW-7 (ADR 0033): a certified procedure now carries a not-done escalation after each person's task, a construct only the
+      // canonical Workflow IR runtime executes. A READY certificate therefore starts the run there; the composed-workflow start
+      // names the route (PX-10, one certificate, one meaning) instead of running it on the other engine.
+      const startWithCertificate = async (certificateId: string) => {
+        const composed = await start(certificateId);
+        assert.equal(composed.status, 409, composed.bodyText);
+        assert.equal(composed.json<{ error: { code: string } }>().error.code, 'XO_WORKFLOW_REQUIRES_IR_RUNTIME');
+        return server.request('POST', `/workspaces/${ws}/generated-workflows/${gen.definitionId}/runs`, { input: {}, certificateId });
+      };
 
       const first = await issue();
       assert.equal(first.status, 'NEEDS_REVIEW');
@@ -72,7 +81,7 @@ test('issue → NEEDS_REVIEW until approved → READY → start with it; stale a
         }>().startAllowed,
         true,
       );
-      const started = await start(ready.certificateId);
+      const started = await startWithCertificate(ready.certificateId);
       assert.ok(started.status === 201 || started.status === 200, started.bodyText);
 
       // Require certificates: a start without one is refused.
@@ -110,7 +119,7 @@ test('issue → NEEDS_REVIEW until approved → READY → start with it; stale a
       // A fresh certificate against the new state allows the start again.
       const fresh = await issue();
       assert.equal(fresh.status, 'READY');
-      const again = await start(fresh.certificateId);
+      const again = await startWithCertificate(fresh.certificateId);
       assert.ok(again.status === 201 || again.status === 200, again.bodyText);
 
       const listed = (await server.request('GET', `/workspaces/${ws}/readiness-certificates`)).json<{ certificates: Cert[] }>()

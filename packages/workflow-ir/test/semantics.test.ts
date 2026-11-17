@@ -244,3 +244,20 @@ describe('conformance vectors (what another runtime must reproduce)', () => {
     for (const c of vec.canonicalJson) assert.equal(canonicalJson(c.value), c.canonical);
   });
 });
+
+describe('forEach conformance vectors (UW-7, UAC-22)', () => {
+  const doc = JSON.parse(readFileSync(new URL('../conformance/foreach-vectors-1.0.json', import.meta.url), 'utf8'));
+  it('are well formed: versioned, uniquely named, each with an expectation another runtime can check', () => {
+    assert.equal(doc.formatVersion, '1.0');
+    assert.equal(doc.semanticsVersion, '1.0');
+    const names = doc.vectors.map((v: { name: string }) => v.name);
+    assert.equal(new Set(names).size, names.length);
+    for (const v of doc.vectors) {
+      assert.ok(Number.isInteger(v.forEach.concurrency) && v.forEach.concurrency >= 1, v.name);
+      assert.ok(Number.isInteger(v.forEach.maxItems) && v.forEach.maxItems >= 1, v.name);
+      assert.ok(Array.isArray(v.items), v.name);
+      assert.ok(Number.isInteger(v.expect.dispatchesPerItem), v.name);
+      for (const it of v.items) assert.ok(['ok', 'refuse', 'unknown'].includes(it.destination), v.name);
+    }
+  });
+});

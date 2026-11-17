@@ -1264,7 +1264,7 @@ export const openApiDocument = {
       get: {
         summary: 'Capability inventory of a compilation (PX-5)',
         description:
-          'One report per discovered capability: status (explicit | inferred | accepted | rejected | duplicate | unresolved | unsupported), four independent readiness answers (eligible, bound, runtimeSupported, authorized — runnable only when all four are yes), the human task contract (one rule for procedure steps and prose actions), parameter derivation (structured | declared | inferred; inferred required inputs need review), duplicate groups (fully equivalent only) and gaps for each `need` query parameter. Authorized is the approval verdict the execution boundary reaches; permission is rechecked at start.',
+          'One report per discovered capability: status (explicit | inferred | accepted | rejected | duplicate | unresolved | unsupported), four independent readiness answers (eligible, bound, runtimeSupported, authorized — runnable only when all four are yes), the human task contract (one rule for procedure steps and prose actions), parameter derivation (structured | declared | inferred; inferred required inputs need review), duplicate groups (fully equivalent only) and gaps for each `need` query parameter. UW-7 (ADR 0033): each report also has `effect` ({ class: none | human | read | write | irreversible | unknown, derivation, reason }; from the workspace binding for an external capability, and `unknown` is treated as a write) and `outputSchema` (the typed outputs; `typed: false` names the untyped ones). Authorized is the approval verdict the execution boundary reaches; permission is rechecked at start.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
@@ -1394,6 +1394,8 @@ export const openApiDocument = {
     '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}': {
       get: {
         summary: 'One run of a generated workflow (ADR 0030)',
+        description:
+          'UW-7 (ADR 0033, UAC-9): `effects` lists every external call of the run in one vocabulary (intent_recorded, dispatch_attempted, confirmed_success, confirmed_failure_no_effect, outcome_unknown, reconciliation_required; docs/EFFECTS.md), one row per step with its key and detail. `cancellation` is present once a cancel was requested (`applied` when the run has acted on it). An item of a batch (`fe_…`, listed in the batch result) is read here too.',
         'x-xo-permission': 'read',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
@@ -1426,7 +1428,7 @@ export const openApiDocument = {
       get: {
         summary: 'List Workflows: compact summaries, newest first, paginated (UW-2)',
         description:
-          "Query `limit` (1-200, default 50), `cursor` (the `nextCursor` of the previous page), `lifecycle` (draft | ready | awaiting_approval | running | paused | needs_attention | completed | failed | cancelled | archived), `archived=true` (archived workflows are hidden otherwise), `conversationId` (the caller's own conversation only; 404 otherwise). Each summary: `{ workflowId, name, lifecycle, revision, currentVersion, pendingApprovals, latestRun?, conversationId? (only to the conversation's owner), paused, archived, updatedAt }`. `changesCursor` is where to start following GET …/workflow-entities/changes.",
+          "Query `limit` (1-200, default 50), `cursor` (the `nextCursor` of the previous page), `lifecycle` (draft | ready | awaiting_approval | running | paused | needs_attention | completed | partially_completed | failed | cancelled | archived), `archived=true` (archived workflows are hidden otherwise), `conversationId` (the caller's own conversation only; 404 otherwise). Each summary: `{ workflowId, name, lifecycle, revision, currentVersion, pendingApprovals, latestRun?, conversationId? (only to the conversation's owner), paused, archived, updatedAt }`. `changesCursor` is where to start following GET …/workflow-entities/changes.",
         'x-xo-permission': 'read',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
@@ -1655,6 +1657,48 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/cancel': {
+      post: {
+        summary: 'Cancel a run of a Workflow (UW-7)',
+        description:
+          "Exactly POST …/generated-workflows/{definitionId}/runs/{runId}/cancel, for a run (or an item of a batch) of this workflow only (404 otherwise). The workflow's lifecycle becomes cancelled, or needs_attention when a call was in flight.",
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'GeneratedWorkflowRun & { cancelRecorded, workflowId }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not an author' },
+          '404': { description: 'Unknown workflow, or not its run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/effects/{step}/reconciliation': {
+      post: {
+        summary: 'Record what happened to an unknown call of a Workflow run (UW-7)',
+        description:
+          'Exactly POST …/generated-workflows/{definitionId}/runs/{runId}/effects/{step}/reconciliation, for a run of this workflow only.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'workflowId', in: 'path', required: true, schema: { type: 'string', pattern: '^wfl_[0-9a-f]{32}$' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'step', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, effect, workflowId }' },
+          '400': { description: 'Invalid decision or missing reason' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not a reviewer, or no recent sign-in' },
+          '404': { description: 'Unknown workflow, not its run, or no call' },
+          '412': { description: 'The call is not in an unknown state' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/workflow-entities/{workflowId}/runs/{runId}/approvals/{approvalId}': {
       post: {
         summary: 'Decide a pending approval of a Workflow run (UW-2)',
@@ -1690,6 +1734,48 @@ export const openApiDocument = {
           '401': { description: 'Not signed in' },
           '404': { description: 'Unknown workspace or workflow (an outsider sees the same)' },
           '200': { description: '{ workflows: WorkflowSummary[], nextCursor?, changesCursor }' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/cancel': {
+      post: {
+        summary: 'Cancel a run, a whole batch, or one item of a batch (UW-7, ADR 0024)',
+        description:
+          "Body `{ reason? }` (at most 500 characters; any other field is a 400). The request is recorded durably BEFORE anything else (first request wins; a repeat changes nothing and returns `cancelRecorded: false`). From then on no dispatch starts: the run checks before every step and immediately before every call. Settled work stands (a run whose steps had all finished completes; batch items already completed stay completed). A call that was in flight becomes `outcome_unknown` and the run escalates for a person (CANCELLED_OUTCOME_UNKNOWN); it is never reported as cancelled, re-sent or undone. Otherwise the workflow's `cancellation.onCancel` decides: `abandon` ends `cancelled`; `compensate` undoes completed reversible writes and ends `compensated` with `outputs.cancelled: true`. When another instance is driving the run, the request is applied there before its next step or call (`cancellation.applied: false` here). A batch result lists completed, cancelledItems, notStarted, escalated and outcomeUnknown. Audited as generated-workflow.run.cancelled every time. The P1.1 procedure routes keep no cancel route (ADR 0024: procedures gain one when they move to this engine).",
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'GeneratedWorkflowRun & { cancelRecorded }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not an author' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/effects/{step}/reconciliation': {
+      post: {
+        summary: 'Record what happened to a call whose outcome is unknown (UW-7, UAC-8)',
+        description:
+          'Body `{ decision: "confirmed_success" | "confirmed_failure_no_effect" | "unresolved", reason, evidenceExamined? }`. Needs the review role and a recent sign-in. Only a call in `outcome_unknown` or `reconciliation_required` can be reconciled (412 otherwise). NOTHING is sent, re-sent or undone, whatever the decision; `unresolved` records that someone looked and could not tell, and the call stays blocking. The decision is journalled with the reviewer and reason and audited as generated-workflow.effect.reconciled.',
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'step', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ runId, effect }' },
+          '400': { description: 'Invalid decision or missing reason' },
+          '401': { description: 'Not signed in' },
+          '403': { description: 'Not a reviewer, or no recent sign-in' },
+          '404': { description: 'Unknown run, or the step made no external call' },
+          '412': { description: 'The call is not in an unknown state' },
         },
       },
     },

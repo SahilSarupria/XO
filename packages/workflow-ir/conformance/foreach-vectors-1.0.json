@@ -1,0 +1,381 @@
+{
+  "formatVersion": "1.0",
+  "semanticsVersion": "1.0",
+  "title": "forEach conformance vectors",
+  "description": "What any runtime executing Workflow IR forEach must reproduce. Each vector runs a workflow with one write step per item (key derived from the item, destination behaviour per item: ok = confirmed, refuse = permanent refusal, unknown = sent with no answer on a destination with no duplicate protection). `itemStates` are the item runs' terminal states in item order; `dispatchesPerItem` is the exact number of sends each item may make; `outcome` is the batch summary's outcome (ADR 0033).",
+  "vectors": [
+    {
+      "name": "all items succeed",
+      "why": "Each item is its own run and is dispatched exactly once.",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "ok"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        },
+        {
+          "ref": "i3",
+          "destination": "ok"
+        },
+        {
+          "ref": "i4",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "completed",
+        "outcome": "all_completed",
+        "itemStates": ["completed", "completed", "completed", "completed", "completed"],
+        "dispatchesPerItem": 1
+      }
+    },
+    {
+      "name": "empty list",
+      "why": "Zero items is a completed batch with nothing done.",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [],
+      "expect": {
+        "parentState": "completed",
+        "outcome": "all_completed",
+        "itemStates": [],
+        "dispatchesPerItem": 0
+      }
+    },
+    {
+      "name": "one item refused: per-item isolation",
+      "why": "A permanent refusal fails that item only; the others complete; the batch is reported as partially completed.",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "refuse"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        },
+        {
+          "ref": "i3",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "failed",
+        "outcome": "partially_completed",
+        "itemStates": ["completed", "failed", "completed", "completed"],
+        "dispatchesPerItem": 1
+      }
+    },
+    {
+      "name": "every item refused",
+      "why": "",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "refuse"
+        },
+        {
+          "ref": "i1",
+          "destination": "refuse"
+        },
+        {
+          "ref": "i2",
+          "destination": "refuse"
+        }
+      ],
+      "expect": {
+        "parentState": "failed",
+        "outcome": "none_completed",
+        "itemStates": ["failed", "failed", "failed"],
+        "dispatchesPerItem": 1
+      }
+    },
+    {
+      "name": "one outcome unknown: no blind resend",
+      "why": "The destination cannot deduplicate; a call with no answer is never sent again and the item goes to a person (UAC-8).",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "unknown"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "escalated",
+        "escalationCode": "ITEMS_NEED_ATTENTION",
+        "itemStates": ["completed", "escalated", "completed"],
+        "itemEscalationCodes": {
+          "1": "EFFECT_UNKNOWN"
+        },
+        "dispatchesPerItem": 1,
+        "effectStates": {
+          "1": "outcome_unknown"
+        }
+      }
+    },
+    {
+      "name": "concurrency is bounded",
+      "why": "",
+      "forEach": {
+        "concurrency": 3,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "ok"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        },
+        {
+          "ref": "i3",
+          "destination": "ok"
+        },
+        {
+          "ref": "i4",
+          "destination": "ok"
+        },
+        {
+          "ref": "i5",
+          "destination": "ok"
+        },
+        {
+          "ref": "i6",
+          "destination": "ok"
+        },
+        {
+          "ref": "i7",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "completed",
+        "outcome": "all_completed",
+        "itemStates": ["completed", "completed", "completed", "completed", "completed", "completed", "completed", "completed"],
+        "dispatchesPerItem": 1,
+        "maxConcurrentDispatches": 3
+      }
+    },
+    {
+      "name": "too many items are refused before anything runs",
+      "why": "",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 3
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "ok"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        },
+        {
+          "ref": "i3",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "inputRefused": true,
+        "dispatchesPerItem": 0
+      }
+    },
+    {
+      "name": "an item that is not a flat object is refused before anything runs",
+      "why": "",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok",
+          "nested": {
+            "x": 1
+          }
+        }
+      ],
+      "expect": {
+        "inputRefused": true,
+        "dispatchesPerItem": 0
+      }
+    },
+    {
+      "name": "starting the same batch again changes nothing",
+      "why": "Acceptance is at most once per run id; a repeat returns the recorded result and dispatches nothing.",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 10
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "ok"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "completed",
+        "outcome": "all_completed",
+        "itemStates": ["completed", "completed", "completed"],
+        "dispatchesPerItem": 1,
+        "secondStartAccepted": false
+      },
+      "startAgainWithSameRunId": true
+    },
+    {
+      "name": "cancel mid-batch",
+      "why": "ADR 0024 / UAC-31: no item starts after the cancel is recorded; settled items stand; at most the calls already under way finish. Here dispatchesPerItem is a maximum: an item that was stopped sent nothing.",
+      "forEach": {
+        "concurrency": 2,
+        "maxItems": 20
+      },
+      "items": [
+        {
+          "ref": "i0",
+          "destination": "ok"
+        },
+        {
+          "ref": "i1",
+          "destination": "ok"
+        },
+        {
+          "ref": "i2",
+          "destination": "ok"
+        },
+        {
+          "ref": "i3",
+          "destination": "ok"
+        },
+        {
+          "ref": "i4",
+          "destination": "ok"
+        },
+        {
+          "ref": "i5",
+          "destination": "ok"
+        },
+        {
+          "ref": "i6",
+          "destination": "ok"
+        },
+        {
+          "ref": "i7",
+          "destination": "ok"
+        },
+        {
+          "ref": "i8",
+          "destination": "ok"
+        },
+        {
+          "ref": "i9",
+          "destination": "ok"
+        },
+        {
+          "ref": "i10",
+          "destination": "ok"
+        },
+        {
+          "ref": "i11",
+          "destination": "ok"
+        },
+        {
+          "ref": "i12",
+          "destination": "ok"
+        },
+        {
+          "ref": "i13",
+          "destination": "ok"
+        },
+        {
+          "ref": "i14",
+          "destination": "ok"
+        },
+        {
+          "ref": "i15",
+          "destination": "ok"
+        },
+        {
+          "ref": "i16",
+          "destination": "ok"
+        },
+        {
+          "ref": "i17",
+          "destination": "ok"
+        },
+        {
+          "ref": "i18",
+          "destination": "ok"
+        },
+        {
+          "ref": "i19",
+          "destination": "ok"
+        }
+      ],
+      "expect": {
+        "parentState": "cancelled",
+        "settledItemsStand": true,
+        "noDispatchAfterCancel": true,
+        "maxDispatchesAfterRequest": 2,
+        "dispatchesPerItem": 1
+      },
+      "cancelAfterDispatches": 6
+    }
+  ]
+}

@@ -21,12 +21,28 @@ export class JournalCorruptError extends Error {
   }
 }
 
+/**
+ * A request to cancel a run (ADR 0024). It is recorded durably BEFORE anything else happens, outside the journal, so whoever asks
+ * can record it even while another process holds the run's lease. The runner that drives the run reads it before every step and
+ * before every dispatch, and applies it. The first request wins; asking again returns it unchanged.
+ */
+export interface CancelRequest {
+  readonly requestedAt: string;
+  /** Who asked (an id the host minted from an authenticated principal; never client-supplied text). */
+  readonly by: string;
+  readonly reason?: string;
+}
+
 /** What the runner needs from a journal. `RunStore` is the local disk implementation; leased and remote stores implement it too. */
 export interface RunStoreLike {
   create(runId: string): Promise<boolean>;
   append(runId: string, type: string, data: Readonly<Record<string, unknown>>): Promise<JournalEntry>;
   read(runId: string): Promise<JournalEntry[]>;
   list(): Promise<string[]>;
+  /** Records a cancel request durably, first writer wins. Absent: this store cannot cancel (the runner refuses `cancel`). */
+  requestCancel?(runId: string, request: CancelRequest): Promise<{ readonly recorded: boolean; readonly request: CancelRequest }>;
+  /** The recorded cancel request, if any. Read fresh every time (another process may have just written it). */
+  cancelRequest?(runId: string): Promise<CancelRequest | undefined>;
 }
 
 export const RUN_ID = /^[A-Za-z0-9_-]{1,96}$/;
@@ -303,6 +319,50 @@ export class RunStore implements RunStoreLike {
       }
       this.setTail(runId, { seq, hash: prev });
     });
+  }
+
+  /**
+   * `<dir>/<runId>/cancel.json`, created exclusively and fsynced before this returns: a second request (from any process) finds the
+   * first and changes nothing. The run must exist (its directory is created at acceptance, before its first entry).
+   */
+  async requestCancel(runId: string, request: CancelRequest): Promise<{ readonly recorded: boolean; readonly request: CancelRequest }> {
+    const file = join(this.path(runId), 'cancel.json');
+    try {
+      await stat(this.path(runId));
+    } catch {
+      throw new Error(`unknown run ${runId}`);
+    }
+    let fh;
+    try {
+      fh = await open(file, 'wx');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      const existing = await this.cancelRequest(runId);
+      if (existing !== undefined) return { recorded: false, request: existing };
+      // A request whose file is still being written by another process: it exists, so this one is not recorded.
+      return { recorded: false, request };
+    }
+    try {
+      const clean: CancelRequest = {
+        requestedAt: request.requestedAt,
+        by: request.by,
+        ...(request.reason !== undefined ? { reason: request.reason.slice(0, 500) } : {}),
+      };
+      await fh.write(JSON.stringify(clean));
+      await fh.sync();
+      return { recorded: true, request: clean };
+    } finally {
+      await fh.close();
+    }
+  }
+
+  async cancelRequest(runId: string): Promise<CancelRequest | undefined> {
+    try {
+      const v = JSON.parse(await readFile(join(this.path(runId), 'cancel.json'), 'utf8')) as CancelRequest;
+      return typeof v.requestedAt === 'string' && typeof v.by === 'string' ? v : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async list(): Promise<string[]> {

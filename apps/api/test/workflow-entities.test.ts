@@ -535,5 +535,10 @@ test('lifecycle derivation: active runs first, then the pause, then the current 
   assert.equal(d({}, [run(2, 'completed', '2'), run(2, 'failed', '1')]), 'completed');
   assert.equal(d({}, [run(2, 'escalated', '2')]), 'needs_attention');
   assert.equal(d({}, [run(2, 'cancelled', '2')]), 'cancelled');
+  // UW-7: undone after a failure is a failure, undone after a cancel is a cancel; a partial batch is said so.
+  assert.equal(d({}, [run(2, 'compensated', '2')]), 'failed');
+  assert.equal(d({}, [{ ...run(2, 'compensated', '2'), cancelled: true }]), 'cancelled');
+  assert.equal(d({}, [{ ...run(2, 'failed', '2'), batchOutcome: 'partially_completed' }]), 'partially_completed');
+  assert.equal(d({}, [{ ...run(2, 'failed', '2'), batchOutcome: 'none_completed' }]), 'failed');
   assert.equal(d({ archived: true }, [run(2, 'running', '2')]), 'archived');
 });
