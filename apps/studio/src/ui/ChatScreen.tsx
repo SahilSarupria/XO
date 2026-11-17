@@ -1,3 +1,4 @@
+import type { WorkflowLifecycle } from '../platform/wire-workflows';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { describeProblem } from '../domain/review';
 import { chatHint, groupByDay, matchXos, mentionQuery, type Attachable } from '../domain/chat';
@@ -528,6 +529,20 @@ export function ThreadList(props: { chat: ChatController; rowClass?: string; gro
   );
 }
 
+/** UW-2: a workflow's lifecycle in plain words. */
+const LIFECYCLE_WORDS: Readonly<Record<WorkflowLifecycle, string>> = {
+  draft: 'Not checked yet',
+  ready: 'Ready to start',
+  awaiting_approval: 'Waiting for approval',
+  running: 'Running',
+  paused: 'Paused',
+  needs_attention: 'Needs attention',
+  completed: 'Done',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  archived: 'Archived',
+};
+
 /** Chat, expanded: saved conversations by day, the conversation, and the installed XOs you can attach. */
 export function ChatScreen(props: { chat: ChatController; xos: readonly Attachable[]; onOpenSettings: () => void }) {
   const { chat } = props;
@@ -569,6 +584,20 @@ export function ChatScreen(props: { chat: ChatController; xos: readonly Attachab
             </li>
           ))}
         </ul>
+        {chat.workflows.length > 0 ? (
+          <>
+            <h3 className="chat-label">Workflows from this conversation</h3>
+            <ul className="bare-list" aria-label="Workflows from this conversation">
+              {chat.workflows.map((w) => (
+                <li key={w.workflowId} className="chat-xoitem" data-lifecycle={w.lifecycle}>
+                  <span className="dot" aria-hidden="true" />
+                  {w.name} · <span className="muted">{LIFECYCLE_WORDS[w.lifecycle]}</span>
+                  {w.pendingApprovals > 0 ? <span className="chat-tag"> {w.pendingApprovals} to approve</span> : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         <p className="muted small">Conversations are saved on the platform and visible only to you.</p>
       </aside>
     </div>

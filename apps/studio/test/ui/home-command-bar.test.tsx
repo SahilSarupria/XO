@@ -25,6 +25,7 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
           activeId: undefined,
           thread: undefined,
           loadingThread: false,
+          workflows: [],
           sending: false,
           problem: undefined,
           select: () => {},

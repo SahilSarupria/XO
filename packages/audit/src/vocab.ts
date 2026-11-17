@@ -52,6 +52,11 @@ export const AUDIT_EVENT_TYPES = [
   'connector-bindings.updated',
   // ADR 0031: a connector call refused at the side-effect boundary (permission, pause, binding or approval changed).
   'generated-workflow.effect.denied',
+  // UW-2 (ADR 0032): the Workflow entity — created (from a conversation or the API), a new version, and every other change
+  // (rename, pause, resume, archive, restore; the change is in metadata.event).
+  'workflow-entity.created',
+  'workflow-entity.version.added',
+  'workflow-entity.updated',
   'audit.read',
   'audit.purged',
   // P1.1 M2 — owner-approved bounded subset (2026-10-18). Execution-detail and step-level procedure events are NOT part of it.
@@ -110,6 +115,8 @@ export const AUDIT_TARGET_KINDS = [
   // PX-4: a proposed change to a workspace's Business Knowledge Base, or an installed Domain Knowledge Pack.
   'knowledge-change-set',
   'knowledge-pack',
+  // UW-2: a durable Workflow entity (`wfl_…`).
+  'workflow-entity',
 ] as const;
 
 export const AUDIT_LIFECYCLE_PHASES = ['attempt', 'terminal', 'standalone'] as const;
