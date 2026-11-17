@@ -26,7 +26,10 @@ import { REPLAY_HEADER } from '../idempotency/idempotency-http.js';
 import { newCorrelationId } from '../audit/audit-service.js';
 import type { AuditService } from '../audit/audit-service.js';
 import type { PermissionManager } from '@xo/permissions';
-import { startWorkflowAudited } from './workflow-routes.js';
+import { certificatesRequired, composedRunnerRetired, startWorkflowAudited } from './workflow-routes.js';
+import type { RunnerDeps } from './generated-run-routes.js';
+import { verifyCertificateNow, workspaceCertificatesStore } from './readiness-routes.js';
+import { certificateForWorkflow, startCertifiedTrigger } from '../workflow-controls/certified-trigger.js';
 import { TERMINAL_WORKFLOW_STATUSES } from '../workflows/workflow-execution.js';
 import { listWorkflowExecutions, toWorkflowExecutionView } from '../workflows/workflow-runner.js';
 import { loadWorkflowViews, makeRunnerContext } from '../workflows/workflow-views.js';
@@ -90,8 +93,10 @@ export function registerWorkflowControlsRoutes(
   dataConfig: WorkspaceDataConfig,
   permissionManager: PermissionManager,
   audit: AuditService,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): void {
   const controlsOf = (w: WorkspaceRecord) => new FsControlsStore(workspaceStateStore(w, dataConfig), w.workspaceId);
+  const runnerDeps: RunnerDeps = { workspaceStore, dataConfig, permissionManager, env, audit };
 
   async function findView(w: WorkspaceRecord, req: ApiRequest, compilationId: string, workflowId: string): Promise<WorkflowView> {
     const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager);
@@ -288,12 +293,17 @@ export function registerWorkflowControlsRoutes(
         throw new XoError(ErrorCode.INVALID_ARGUMENT, '"webhook" must be true or false');
       let every: number | null | undefined;
       let schedInput: Record<string, unknown> | undefined;
+      let schedCertificate: string | undefined;
       if (b['schedule'] !== undefined) {
         if (b['schedule'] === null) every = null;
         else {
           const sc = b['schedule'];
-          if (typeof sc !== 'object' || Array.isArray(sc) || Object.keys(sc as object).some((k) => k !== 'everyMinutes' && k !== 'input'))
-            throw new XoError(ErrorCode.INVALID_ARGUMENT, '"schedule" must be null or { everyMinutes, input? }');
+          if (
+            typeof sc !== 'object' ||
+            Array.isArray(sc) ||
+            Object.keys(sc as object).some((k) => k !== 'everyMinutes' && k !== 'input' && k !== 'certificateId')
+          )
+            throw new XoError(ErrorCode.INVALID_ARGUMENT, '"schedule" must be null or { everyMinutes, input?, certificateId? }');
           const rec = sc as Record<string, unknown>;
           const m = parseEveryMinutes(rec['everyMinutes']);
           if (m === 'invalid')
@@ -305,8 +315,27 @@ export function registerWorkflowControlsRoutes(
               throw new XoError(ErrorCode.INVALID_ARGUMENT, `"input" must be a JSON object of at most ${MAX_SCHEDULE_INPUT_BYTES} bytes`);
             schedInput = inp as Record<string, unknown>;
           }
+          // ADR 0035: a certified schedule runs on the workflow runtime. The certificate must be for this workflow and allow a
+          // start now; it is verified again at every slot.
+          if (rec['certificateId'] !== undefined) {
+            if (typeof rec['certificateId'] !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"certificateId" must be a string');
+            await certificateForWorkflow(w, dataConfig, rec['certificateId'], { compilationId, workflowId });
+            const v = await verifyCertificateNow(w, dataConfig, await workspaceCertificatesStore(w, dataConfig).get(rec['certificateId']));
+            if (!v.ok)
+              throw new XoError(
+                ErrorCode.READINESS_CERTIFICATE_REFUSED,
+                `the readiness certificate does not allow a start: ${v.reasons.join('; ')}`,
+                {
+                  context: { certificateId: rec['certificateId'], reasons: v.reasons },
+                },
+              );
+            schedCertificate = rec['certificateId'];
+          }
         }
       }
+      // ADR 0035: in a workspace that requires certificates, an uncertified schedule could only ever be refused; say so now.
+      if (every !== undefined && every !== null && schedCertificate === undefined && (await certificatesRequired(w, dataConfig)))
+        throw composedRunnerRetired(w.workspaceId);
       const now = new Date().toISOString();
       await store.mutate(compilationId, workflowId, by, now, (d) => ({
         ...d,
@@ -321,6 +350,9 @@ export function registerWorkflowControlsRoutes(
                     lastFiredAt: d.triggers.schedule?.lastFiredAt ?? now,
                     ...(d.triggers.schedule?.lastOutcome !== undefined ? { lastOutcome: d.triggers.schedule.lastOutcome } : {}),
                     ...(schedInput !== undefined ? { input: schedInput } : {}),
+                    ...(schedCertificate !== undefined
+                      ? { certificateId: schedCertificate, startsAs: { id: by, kind: requirePrincipal(req).kind } }
+                      : {}),
                   },
                 }
               : d.triggers.schedule !== undefined
@@ -415,7 +447,7 @@ export function registerWorkflowControlsRoutes(
       action: 'start workflow by webhook',
       target: { kind: 'workflow', id: workflowId },
     });
-    const b = await bodyOf(req, ['compilationId', 'input'], 'POST .../workflows/:workflowId/webhook');
+    const b = await bodyOf(req, ['compilationId', 'input', 'certificateId'], 'POST .../workflows/:workflowId/webhook');
     const compilationId = need(b, 'compilationId');
     let input: Record<string, unknown> = {};
     if (b['input'] !== undefined) {
@@ -424,9 +456,33 @@ export function registerWorkflowControlsRoutes(
         throw new XoError(ErrorCode.INVALID_ARGUMENT, `"input" must be a JSON object of at most ${MAX_INPUT_BYTES} bytes`);
       input = i as Record<string, unknown>;
     }
-    const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager, toRecordedAuthentication(req.authentication));
     const idemKey = readIdempotencyKey(req.headers);
     if (!idemKey.ok) throw idemKey.error;
+    // ADR 0035: a webhook that names a readiness certificate runs the certified workflow on the workflow runtime.
+    if (b['certificateId'] !== undefined) {
+      if (typeof b['certificateId'] !== 'string') throw new XoError(ErrorCode.INVALID_ARGUMENT, '"certificateId" must be a string');
+      // The workflow's controls (webhook on, paused, practice mode, daily limit) apply inside, as for every trigger.
+      const r = await startCertifiedTrigger(runnerDeps, {
+        workspace: w,
+        actor: requirePrincipal(req),
+        compilationId,
+        workflowId,
+        certificateId: b['certificateId'],
+        input,
+        ...(idemKey.value !== undefined ? { idempotencyKey: idemKey.value } : {}),
+        correlationId: newCorrelationId(),
+        trigger: 'webhook',
+        now: new Date(),
+      });
+      await recordAudit(req, w, dataConfig, {
+        event: 'workflow.triggered',
+        result: 'succeeded',
+        target: { kind: 'workflow_run', id: String(r.body['runId'] ?? workflowId) },
+        detail: { compilationId, trigger: 'webhook', engine: 'workflow-runtime', certificateId: b['certificateId'] },
+      });
+      return json(r.status, r.body);
+    }
+    const ctx = makeRunnerContext(w, requirePrincipal(req), dataConfig, permissionManager, toRecordedAuthentication(req.authentication));
     const started = await startGated(controlsOf(w), ctx, { compilationId, workflowId, input }, 'webhook', new Date(), (gated) =>
       startWorkflowAudited(
         { dataConfig, audit },

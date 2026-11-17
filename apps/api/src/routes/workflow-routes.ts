@@ -169,6 +169,26 @@ async function recordWorkflowOutcome(
 }
 
 /**
+ * ADR 0035: whether this workspace requires a readiness certificate to start a workflow (the instance policy, `required` in
+ * production by default, or the workspace's own trust setting). Where it does, the composed-workflow runner is retired: nothing
+ * starts on it, by any route or trigger; certified workflows run only on the Workflow IR runtime.
+ */
+export async function certificatesRequired(workspace: WorkspaceRecord, dataConfig: WorkspaceDataConfig): Promise<boolean> {
+  if (dataConfig.preExecution?.certificatePolicy === 'required') return true;
+  const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+  return settings.trust.requireReadinessCertificate === true;
+}
+
+/** ADR 0035: the refusal every composed start gets in a workspace that requires certificates. */
+export function composedRunnerRetired(workspaceId: string): XoError {
+  return new XoError(
+    ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
+    `this workspace requires readiness certificates, so workflows run only on the workflow runtime: generate the workflow (POST /workspaces/${workspaceId}/compilations/{compilationId}/generated-workflows), request its certificate, and start it with POST /workspaces/${workspaceId}/generated-workflows/{definitionId}/runs`,
+    { context: { reason: 'composed_runner_retired' } },
+  );
+}
+
+/**
  * The ONE audited way to start a workflow (derived or draft): durable attempt evidence, idempotency gate, runner (which re-derives the
  * workflow and re-checks approval + authorization for every step), per-step/workflow audit and the Studio activity-feed entry.
  * Used by `POST .../workflows/:workflowId/executions` and by the draft launcher, so there is no second, weaker start path.
@@ -204,6 +224,13 @@ export async function startWorkflowAudited(
         : { kind: 'workspace' as const, id: workspace.workspaceId },
     ...(safeId(request.compilationId) !== undefined ? { metadata: { compilationId: request.compilationId } } : {}),
   } satisfies Omit<AuditEventDraft, 'type' | 'outcome'>;
+  // ADR 0035: the fence. Every composed start — the HTTP route, the scheduler, webhooks, the draft launcher — passes here, so a
+  // workspace that requires certificates can no longer reach the composed runner through a trigger (it could before: only the
+  // HTTP route checked the certificate).
+  if (await certificatesRequired(workspace, env.dataConfig)) {
+    await env.audit.tryRecord({ ...base, type: 'readiness.start.refused', outcome: 'denied', reasonCode: 'composed_runner_retired' });
+    throw composedRunnerRetired(workspace.workspaceId);
+  }
   // PRECONDITION: durable evidence of the attempt BEFORE the runner authorizes, persists or executes anything.
   await env.audit.requireDurable({ ...base, type: 'workflow.attempted', outcome: 'attempted' });
   // M6 — the gate is consulted INSIDE the runner, after it re-derived the workflow and approved (M3) + authorized (M2) every step
@@ -369,8 +396,7 @@ export function registerWorkflowRoutes(
     certificateId: unknown,
     correlationId: string,
   ): Promise<void> {
-    const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
-    const required = dataConfig.preExecution?.certificatePolicy === 'required' || settings.trust.requireReadinessCertificate === true;
+    const required = await certificatesRequired(workspace, dataConfig);
     if (certificateId === undefined) {
       if (!required) return;
       await refuse(req, workspace, workflowId, correlationId, 'certificate_required');
@@ -391,24 +417,20 @@ export function registerWorkflowRoutes(
       if (!v.ok) reasons.push(...v.reasons);
     }
     if (reasons.length === 0) {
-      // ADR 0031: this runner executes the composed workflow's human tasks and rules. A certified definition that needs
-      // more (connector actions, waits, branches, undo steps, loops, extraction) runs only on the Workflow IR runtime, so
-      // the two paths never give one certificate two different meanings.
+      // ADR 0035 (was ADR 0031, for IR-only constructs): a certificate certifies a generated definition, and a certified
+      // definition runs only on the Workflow IR runtime — every certified start, whatever its constructs. One certificate,
+      // one engine, one meaning. `constructs` still names what only that runtime executes (empty when nothing does).
       const definitionId = certificate.scope.definitionId;
-      if (definitionId !== undefined) {
-        const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(definitionId);
-        const component = definition.lowered.component as { workflows?: { steps?: { type: string }[]; forEach?: unknown }[] } | undefined;
-        const wf = component?.workflows?.[0];
-        const irOnly = [...new Set((wf?.steps ?? []).map((s) => s.type).filter((t) => t !== 'approve' && t !== 'decide'))];
-        if (wf?.forEach !== undefined) irOnly.push('for_each');
-        if (irOnly.length > 0)
-          throw new XoError(
-            ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
-            `this workflow's certified definition uses ${irOnly.join(', ')}, which only the workflow runtime executes: start it with POST /workspaces/${workspace.workspaceId}/generated-workflows/${definitionId}/runs`,
-            { context: { definitionId, certificateId, constructs: irOnly } },
-          );
-      }
-      return;
+      const definition = definitionId !== undefined ? await workspaceDefinitionsStore(workspace, dataConfig).get(definitionId) : undefined;
+      const component = definition?.lowered.component as { workflows?: { steps?: { type: string }[]; forEach?: unknown }[] } | undefined;
+      const wf = component?.workflows?.[0];
+      const irOnly = [...new Set((wf?.steps ?? []).map((s) => s.type).filter((t) => t !== 'approve' && t !== 'decide'))];
+      if (wf?.forEach !== undefined) irOnly.push('for_each');
+      throw new XoError(
+        ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME,
+        `a certified workflow runs on the workflow runtime: start it with POST /workspaces/${workspace.workspaceId}/generated-workflows/${definitionId ?? '{definitionId}'}/runs`,
+        { context: { ...(definitionId !== undefined ? { definitionId } : {}), certificateId, constructs: irOnly } },
+      );
     }
     await refuse(req, workspace, workflowId, correlationId, 'certificate_refused', certificateId);
     throw new XoError(

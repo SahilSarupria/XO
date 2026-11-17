@@ -897,7 +897,7 @@ export const studioPaths = {
     put: {
       summary: "Switch a workflow's webhook and schedule triggers on or off",
       description:
-        'Body: { compilationId, webhook?, schedule? } where schedule is null (off) or { everyMinutes, input? } with everyMinutes from 5 to 10080 and input a JSON object up to 8 KB that every scheduled run starts with (a workflow with required fields can only be scheduled if they are given here). Triggers only fire while the workflow is practising or live. The schedule runs inside one API process, does not catch up after downtime; see docs/WORKFLOW_CONTROLS.md. Audited as workflow.triggers_changed.',
+        'Body: { compilationId, webhook?, schedule? } where schedule is null (off) or { everyMinutes, input? } with everyMinutes from 5 to 10080 and input a JSON object up to 8 KB that every scheduled run starts with (a workflow with required fields can only be scheduled if they are given here). Triggers only fire while the workflow is practising or live. The schedule runs inside one API process, does not catch up after downtime; see docs/WORKFLOW_CONTROLS.md. ADR 0035: schedule.certificateId names a readiness certificate for this workflow (it must allow a start now, and is verified again at every slot); each slot then runs the certified definition on the Workflow IR runtime as the caller, whose role is re-checked at every effect, keyed by the slot so one slot is one run. In a workspace that requires certificates, a schedule without one is refused (409 XO_WORKFLOW_REQUIRES_IR_RUNTIME). Audited as workflow.triggers_changed.',
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('workflowId')],
       requestBody: body(
@@ -905,7 +905,9 @@ export const studioPaths = {
           {
             compilationId: str,
             webhook: bool,
-            schedule: { oneOf: [{ type: 'null' }, obj({ everyMinutes: int, input: { type: 'object' } }, ['everyMinutes'])] },
+            schedule: {
+              oneOf: [{ type: 'null' }, obj({ everyMinutes: int, input: { type: 'object' }, certificateId: str }, ['everyMinutes'])],
+            },
           },
           ['compilationId'],
         ),
@@ -914,7 +916,8 @@ export const studioPaths = {
         '200': ok("The workflow's controls"),
         '400': R_400,
         '403': R_403,
-        ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
+        '409': ok('The certificate does not allow a start now, or the workspace requires one (ADR 0035)'),
+        ...standard(['404', ok('Unknown workflow or certificate, or workspace not accessible')]),
       },
     },
   },
@@ -961,15 +964,16 @@ export const studioPaths = {
     post: {
       summary: 'Start a workflow from outside (webhook)',
       description:
-        "Body: { compilationId, input? } (input is a JSON object up to 64 KB). Authenticated like every other call, with an API key of a workspace member who holds author; there is no second secret. Goes through the same gate as a manual start: refused with 412 when the webhook trigger is off, the workflow is not practising or live, it is paused, everything is paused, or today's limit is reached. In shadow mode the run is practice. Idempotency-Key is honored (replay is 200). Audited as workflow.triggered.",
+        "Body: { compilationId, input? } (input is a JSON object up to 64 KB). Authenticated like every other call, with an API key of a workspace member who holds author; there is no second secret. Goes through the same gate as a manual start: refused with 412 when the webhook trigger is off, the workflow is not practising or live, it is paused, everything is paused, or today's limit is reached. In shadow mode the run is practice. Idempotency-Key is honored (replay is 200). Audited as workflow.triggered. ADR 0035: with certificateId (a readiness certificate for this workflow) the certified definition runs on the Workflow IR runtime: the certificate is verified again now, the response is the generated-workflow run view (runId), the same Idempotency-Key is the same run, and practice mode is refused (a certified workflow is triggered only in live mode). Without one, the composed runner starts it — and a workspace that requires certificates refuses that with 409 XO_WORKFLOW_REQUIRES_IR_RUNTIME (context.reason composed_runner_retired).",
       'x-xo-permission': 'author',
       parameters: [WS, pathParam('workflowId')],
-      requestBody: body(obj({ compilationId: str, input: { type: 'object' } }, ['compilationId'])),
+      requestBody: body(obj({ compilationId: str, input: { type: 'object' }, certificateId: str }, ['compilationId'])),
       responses: {
-        '201': ok('Workflow execution record'),
+        '201': ok('Workflow execution record, or (with certificateId) the workflow-runtime run view'),
         '200': ok('Idempotent replay, or a run that failed its input check'),
         '400': R_400,
         '403': R_403,
+        '409': ok('A certificate was refused, or the workspace requires one and the composed runner is retired (ADR 0035)'),
         '412': R_412,
         ...standard(['404', ok('Unknown workflow, or workspace not accessible')]),
       },

@@ -32,6 +32,14 @@ export interface ScheduleTrigger {
   readonly lastOutcome?: string;
   /** The fixed input every scheduled run starts with. A workflow with required fields can only be scheduled if they are given here. */
   readonly input?: Readonly<Record<string, unknown>>;
+  /**
+   * ADR 0035: the readiness certificate the schedule starts under. With one, each slot runs the certified definition on the
+   * Workflow IR runtime (the certificate re-verified at every slot) as `startsAs`; without one, a slot starts the composed workflow,
+   * which only a workspace that does not require certificates allows.
+   */
+  readonly certificateId?: string;
+  /** Who a certified scheduled run starts as: the person who set the schedule. Their role is re-checked at every effect. */
+  readonly startsAs?: { readonly id: string; readonly kind: string };
 }
 export const MAX_SCHEDULE_INPUT_BYTES = 8 * 1024;
 

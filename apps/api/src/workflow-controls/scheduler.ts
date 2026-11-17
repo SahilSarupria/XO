@@ -13,6 +13,8 @@ import { makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from './fs-controls-store.js';
 import { scheduleDue } from './model.js';
 import { startGated, StartRefusedError } from './service.js';
+import { startCertifiedTrigger } from './certified-trigger.js';
+import { ErrorCode, XoError } from '@xo/errors';
 
 /**
  * Starts runs for workflows that have an "every N minutes" schedule and are practising or live.
@@ -34,6 +36,8 @@ export interface SchedulerDeps {
   readonly permissionManager: PermissionManager;
   /** Audit service for the run's start/step/completion evidence. */
   readonly audit: AuditService;
+  /** Environment for the workflow runtime's connectors and signing (default: the process environment). */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly log?: (line: string) => void;
 }
 
@@ -65,29 +69,76 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
       let result: 'succeeded' | 'failed' | 'denied' = 'succeeded';
       let runId: string | undefined;
       try {
-        const { record } = await startGated(
-          store,
-          ctx,
-          { compilationId: d.compilationId, workflowId: d.workflowId, input: d.triggers.schedule?.input ?? {} },
-          'schedule',
-          now,
-          (gated) =>
-            startWorkflowAudited(
-              { dataConfig: deps.dataConfig, audit: deps.audit },
-              { workspace: ws.value, ctx, correlationId: newCorrelationId(), idempotencyKey: undefined, request: gated },
-            ),
-        );
-        runId = record.workflowExecutionId;
-        outcome = record.status === 'failed' ? 'started, but the run failed (check its input)' : 'started';
-        if (record.status === 'failed') result = 'failed';
+        const sched = d.triggers.schedule;
+        if (sched?.certificateId !== undefined && sched.startsAs !== undefined) {
+          // ADR 0035: a certified schedule runs on the workflow runtime, as the person who set it (re-authorized at every
+          // effect). The slot is the idempotency key, so two instances firing the same slot start one run.
+          const as = establishAuthenticatedPrincipal({
+            kind: sched.startsAs.kind === 'service' ? 'service' : 'human',
+            id: sched.startsAs.id,
+          });
+          if (!as.ok) throw as.error;
+          const r = await startCertifiedTrigger(
+            {
+              workspaceStore: deps.workspaceStore,
+              dataConfig: deps.dataConfig,
+              permissionManager: deps.permissionManager,
+              env: deps.env ?? process.env,
+              audit: deps.audit,
+            },
+            {
+              workspace: ws.value,
+              actor: as.value,
+              compilationId: d.compilationId,
+              workflowId: d.workflowId,
+              certificateId: sched.certificateId,
+              input: { ...(sched.input ?? {}) },
+              idempotencyKey: `schedule:${sched.everyMinutes}:${Math.floor(now.getTime() / (sched.everyMinutes * 60_000))}`,
+              correlationId: newCorrelationId(),
+              trigger: 'schedule',
+              now,
+            },
+          );
+          runId = typeof r.body['runId'] === 'string' ? r.body['runId'] : undefined;
+          const state = String(r.body['state'] ?? '');
+          outcome =
+            state === 'failed'
+              ? 'started on the workflow runtime, but the run failed (check its input)'
+              : 'started on the workflow runtime';
+          if (state === 'failed') result = 'failed';
+        } else {
+          const { record } = await startGated(
+            store,
+            ctx,
+            { compilationId: d.compilationId, workflowId: d.workflowId, input: sched?.input ?? {} },
+            'schedule',
+            now,
+            (gated) =>
+              startWorkflowAudited(
+                { dataConfig: deps.dataConfig, audit: deps.audit },
+                { workspace: ws.value, ctx, correlationId: newCorrelationId(), idempotencyKey: undefined, request: gated },
+              ),
+          );
+          runId = record.workflowExecutionId;
+          outcome = record.status === 'failed' ? 'started, but the run failed (check its input)' : 'started';
+          if (record.status === 'failed') result = 'failed';
+        }
         started += 1;
       } catch (cause) {
         skipped += 1;
-        result = cause instanceof StartRefusedError ? 'denied' : 'failed';
+        const refused =
+          cause instanceof StartRefusedError ||
+          (cause instanceof XoError &&
+            (cause.code === ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME ||
+              cause.code === ErrorCode.READINESS_CERTIFICATE_REFUSED ||
+              cause.code === ErrorCode.READINESS_CERTIFICATE_REQUIRED));
+        result = refused ? 'denied' : 'failed';
         outcome =
           cause instanceof StartRefusedError
             ? `skipped: ${cause.reason}`
-            : `could not start: ${(cause instanceof Error ? cause.message : 'unknown error').slice(0, 120)}`;
+            : refused && cause instanceof XoError
+              ? `skipped: ${cause.code === ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME ? 'this workspace requires a readiness certificate; set one on the schedule' : cause.message.slice(0, 160)}`
+              : `could not start: ${(cause instanceof Error ? cause.message : 'unknown error').slice(0, 120)}`;
       }
       try {
         await store.mutate(d.compilationId, d.workflowId, 'trigger-schedule', now.toISOString(), (cur) =>
