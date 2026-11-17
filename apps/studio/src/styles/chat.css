@@ -598,3 +598,27 @@ button.chat-tag {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* UW-12a: what XO found in the connected folders. */
+.chat-discovery {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.chat-discovery-item {
+  border: 1px solid var(--border, #d9d9de);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.chat-discovery-item[data-status='rejected'] {
+  opacity: 0.6;
+}
+.chat-discovery-item ul {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+}
+.chat-discovery-actions {
+  margin: 0.25rem 0 0;
+}

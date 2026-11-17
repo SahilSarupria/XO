@@ -1,4 +1,5 @@
 import type { Router } from '../http/router.js';
+import { registerSourceConnectionRoutes } from './source-connection-routes.js';
 import { registerDataProtectionRoutes } from './data-protection-routes.js';
 import { DataProtection } from '../protection/data-protection.js';
 import { ErrorCode, XoError } from '@xo/errors';
@@ -161,6 +162,7 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
       (() => (loaded ??= loadCredentialsConfig(deps.workspaceDataConfig.dataRootDir, deps.env ?? process.env)));
     registerCredentialRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, credentials);
   }
+  registerSourceConnectionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.env ?? process.env);
   registerDataProtectionRoutes(
     router,
     deps.workspaceStore,

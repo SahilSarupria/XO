@@ -16,6 +16,23 @@ export interface ConversationMessage {
   readonly at: string;
   /** Assistant messages: the full structured result (route, citations, confidence, proposal, notices, usage). */
   readonly result?: TurnResult;
+  /**
+   * UW-12a: a discovery message (XO opening a conversation with what it found in the workspace's source connections). The proposals
+   * are as they stood when the message was written; confirming or rejecting one goes through the source-connection API, never
+   * through the conversation.
+   */
+  readonly discovery?: {
+    readonly connectionIds: readonly string[];
+    readonly proposals: readonly {
+      readonly connectionId: string;
+      readonly proposalId: string;
+      readonly role: string;
+      readonly label: string;
+      readonly basis: readonly string[];
+      readonly strength: 'strong' | 'weak';
+      readonly status: 'proposed' | 'confirmed' | 'rejected';
+    }[];
+  };
 }
 
 export interface Conversation {

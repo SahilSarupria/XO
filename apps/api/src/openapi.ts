@@ -1189,6 +1189,135 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/source-connections': {
+      get: {
+        summary: 'The workspace source connections (UW-12a; read role)',
+        'x-xo-permission': 'read',
+        description:
+          "Each connection: connectionId, kind (local_folder), displayName (the folder's last segment: the path is never returned), sync (manual or every N minutes), paused, freshness (never_synced | current | stale | needs_attention | paused | retired), files, lastSync (counts only) and how many role proposals it has. `?retired=true` includes retired connections. See docs/SOURCE_CONNECTIONS.md.",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ connections }' } },
+      },
+      post: {
+        summary: 'Connect a folder as a source (UW-12a; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'Body `{ kind: "local_folder", root, sync? }`; sync is `{ mode: "manual" }` (default) or `{ mode: "interval", everyMinutes: 15…10080 }`. The folder\'s real path must be inside one of the instance\'s XO_SOURCE_FOLDER_ROOTS (412 otherwise, and always when none is set); links are judged by where they really go. Synced at once: every supported file is stored as a workspace source (origin `connection`) through the same checks as an upload; links, hidden files, secret-looking names and hard-linked files are counted, never read. One active connection per folder (409). Audited.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: '{ connection } (detail)' },
+          '409': { description: 'the folder is already connected' },
+          '412': { description: 'the folder is not allowed' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}': {
+      get: {
+        summary: 'A source connection: its files, freshness, last sync, retired versions and proposed roles (UW-12a; read role)',
+        'x-xo-permission': 'read',
+        description:
+          'Proposals (contact_list, record_table, document_collection, per_person_documents) carry a label, what they rest on (basis), a strength, and their status: proposed until a person confirms or rejects it; `changedSinceDecision` when the files changed since.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/sync': {
+      post: {
+        summary: 'Sync a source connection now (UW-12a; author role)',
+        'x-xo-permission': 'author',
+        description:
+          'New and changed files become new source versions; the version a changed file replaces, and the version of a file that left the folder, are retired (kept, with `retired`; knowledge citing them resolves as source_retired and no longer feeds execution). A listing stopped at a limit retires nothing. A file the door refuses is counted (refused_at_door) and the version already held stays current. 412 when paused or retired.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/schedule': {
+      put: {
+        summary: 'Sync manually or every N minutes (UW-12a; manage role)',
+        'x-xo-permission': 'manage',
+        description:
+          'Body `{ sync, expectedRevision? }`. The scheduler syncs interval connections when due; one is stale after two missed slots.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/pause': {
+      post: {
+        summary: 'Stop syncing a source connection (UW-12a; manage role)',
+        'x-xo-permission': 'manage',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/resume': {
+      post: {
+        summary: 'Restart syncing a paused source connection (UW-12a; manage role)',
+        'x-xo-permission': 'manage',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/retire': {
+      post: {
+        summary: 'Retire a source connection (UW-12a; manage role, recent sign-in)',
+        'x-xo-permission': 'manage',
+        description:
+          'No more syncs; every version it holds is retired (kept for evidence). Nothing in the folder is touched. The folder can be connected again.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/source-connections/{id}/proposals/{proposalId}/decision': {
+      post: {
+        summary: 'Confirm or reject what XO thinks a file or folder is (UW-12a; author role)',
+        'x-xo-permission': 'author',
+        description:
+          'Body `{ decision: "confirmed" | "rejected", expectedRevision? }`. A confirmed role is an operational binding (this table is the client list), not business knowledge. The decision records the file versions it was made on. Audited as source_connection.role_decided.',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'proposalId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ connection }' }, '404': { description: 'not a current proposal of this connection' } },
+      },
+    },
+    '/workspaces/{workspaceId}/discovery': {
+      get: {
+        summary:
+          'What the active source connections hold, as proposals, and the message XO would open a conversation with (UW-12a; read role)',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ connections, proposals, message }' } },
+      },
+    },
+    '/workspaces/{workspaceId}/discovery/conversation': {
+      post: {
+        summary: "Start a conversation with what XO found (UW-12a; read role; the conversation is the caller's own)",
+        'x-xo-permission': 'read',
+        description:
+          'Body `{ connectionIds? }`. Creates an intelligence conversation whose first message (no model is asked) says what was found, what each thing looks like, and asks "What would you like to do?". The message carries `discovery` (the proposals as they stood); confirming one goes through the source-connection API, never through the conversation. 412 when there is no active connection.',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '201': { description: 'the conversation' } },
+      },
+    },
     '/workspaces/{workspaceId}/data-protection': {
       get: {
         summary: 'What this workspace protects from hosted models (UW-14c; manage role)',

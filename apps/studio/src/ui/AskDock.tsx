@@ -208,6 +208,7 @@ export function AskDock(props: DockProps & { variant: 'home' | 'bar' | 'floating
                   loading={props.chat.loadingThread}
                   sending={props.chat.sending}
                   onRate={props.chat.rate}
+                  onDecideRole={props.chat.decideRole}
                   onFollowUp={(t) => void props.chat.send(t, [])}
                 />
               )}

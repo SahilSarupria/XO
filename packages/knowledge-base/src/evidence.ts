@@ -32,6 +32,11 @@ export interface SourceView {
   readonly unreadablePages?: readonly number[];
   /** Workbook sheets and their row counts, when the source is a workbook. */
   readonly sheets?: Readonly<Record<string, { readonly rows: number }>>;
+  /**
+   * UW-12a: this version is no longer the current one (the file changed, left its connected folder, or its connection was
+   * retired). The bytes still verify, but knowledge resting on them is out of date until it is reviewed against the current file.
+   */
+  readonly retired?: { readonly at: string; readonly reason: string };
 }
 
 export interface EvidenceSourcePort {
@@ -43,6 +48,8 @@ export type EvidenceStatus =
   | 'resolved'
   | 'source_missing'
   | 'source_altered'
+  /** UW-12a: the cited version is retired (superseded or gone from its connected folder). */
+  | 'source_retired'
   | 'locator_out_of_range'
   | 'quote_hash_mismatch'
   | 'quote_not_found'
@@ -102,6 +109,16 @@ export function resolveOne(record: KnowledgeRecord, ev: EvidenceRef, index: numb
     return { ...base, status: 'source_missing', detail: 'no stored source has this exact content any more', words: 'not_checked' };
   if (!view.digestVerified)
     return { ...base, status: 'source_altered', detail: 'the stored bytes no longer match the cited digest', words: 'not_checked' };
+  if (view.retired !== undefined)
+    return {
+      ...base,
+      status: 'source_retired',
+      detail:
+        view.retired.reason === 'changed'
+          ? `this version was replaced on ${view.retired.at.slice(0, 10)}: review it against the current file`
+          : `this version is no longer in its connected folder (since ${view.retired.at.slice(0, 10)})`,
+      words: 'not_checked',
+    };
   const pages = ev.locator.pages;
   if (pages !== undefined && pages.length > 0) {
     const max = view.pageCount ?? view.pageTexts?.length;

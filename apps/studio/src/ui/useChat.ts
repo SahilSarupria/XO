@@ -27,6 +27,10 @@ export interface ChatController {
   readonly remove: (id: string) => Promise<void>;
   /** Rate an answer; filed for review, changes no answer. Resolves true when it was recorded. */
   readonly rate: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
+  /** UW-12a: open a conversation with what XO found in the connected folders. Resolves false (with `problem`) when it could not. */
+  readonly startDiscovery: () => Promise<boolean>;
+  /** UW-12a: confirm or reject a proposed role from a discovery message. */
+  readonly decideRole: (connectionId: string, proposalId: string, decision: 'confirmed' | 'rejected') => Promise<boolean>;
 }
 
 /**
@@ -170,5 +174,45 @@ export function useChat(workspaceId: string, enabled: boolean): ChatController {
     [client, workspaceId, activeId],
   );
 
-  return { list, attachable, activeId, thread, loadingThread, workflows, sending, problem, select, startNew, send, remove, rate };
+  const startDiscovery = useCallback(async (): Promise<boolean> => {
+    setProblem(undefined);
+    const r = await client.startDiscoveryConversation(workspaceId);
+    if (!r.ok) {
+      setProblem(r.problem);
+      return false;
+    }
+    requested.current++;
+    setActiveId(r.value.threadId);
+    setThread(r.value);
+    setWorkflows([]);
+    void reload();
+    return true;
+  }, [client, workspaceId, reload]);
+
+  const decideRole = useCallback(
+    async (connectionId: string, proposalId: string, decision: 'confirmed' | 'rejected'): Promise<boolean> => {
+      const r = await client.decideSourceRole(workspaceId, connectionId, proposalId, decision);
+      if (!r.ok) setProblem(r.problem);
+      return r.ok;
+    },
+    [client, workspaceId],
+  );
+
+  return {
+    list,
+    attachable,
+    activeId,
+    thread,
+    loadingThread,
+    workflows,
+    sending,
+    problem,
+    select,
+    startNew,
+    send,
+    remove,
+    rate,
+    startDiscovery,
+    decideRole,
+  };
 }

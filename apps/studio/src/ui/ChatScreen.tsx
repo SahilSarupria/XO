@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { describeProblem } from '../domain/review';
 import { chatHint, groupByDay, matchXos, mentionQuery, type Attachable } from '../domain/chat';
 import type { ApiProblem } from '../platform/client';
-import type { ChatMessage, ChatSummary, ChatThreadFull, TurnRoute } from '../platform/wire-studio';
+import type { ChatMessage, ChatSummary, ChatThreadFull, DiscoveryProposalView, TurnRoute } from '../platform/wire-studio';
 import { Button, ProblemNotice, Skeleton } from './primitives';
 import type { ChatController } from './useChat';
 import '../styles/chat.css';
@@ -246,10 +246,62 @@ export function AnswerDetails(props: {
 }
 
 /** One assistant reply: the text, with citation markers that open and scroll to the matching source. */
+type DecideRole = (connectionId: string, proposalId: string, decision: 'confirmed' | 'rejected') => Promise<boolean>;
+
+/**
+ * UW-12a: what XO found in the connected folders, each proposal with what it rests on and a choice. The choice is sent to the
+ * source-connection API; nothing here decides anything, and the conversation itself never confirms a role.
+ */
+export function DiscoveryCard(props: { proposals: readonly DiscoveryProposalView[]; onDecide?: DecideRole }) {
+  const [status, setStatus] = useState<Readonly<Record<string, DiscoveryProposalView['status']>>>({});
+  const [busy, setBusy] = useState<string | undefined>();
+  const shown = props.proposals.filter((p) => p.role !== 'record_table');
+  if (shown.length === 0) return null;
+  const decide = async (p: DiscoveryProposalView, d: 'confirmed' | 'rejected') => {
+    if (props.onDecide === undefined) return;
+    setBusy(p.proposalId);
+    if (await props.onDecide(p.connectionId, p.proposalId, d)) setStatus((s) => ({ ...s, [p.proposalId]: d }));
+    setBusy(undefined);
+  };
+  return (
+    <ul className="chat-discovery" aria-label="What XO found">
+      {shown.map((p) => {
+        const now = status[p.proposalId] ?? p.status;
+        return (
+          <li key={p.proposalId} className="chat-discovery-item" data-status={now}>
+            <p>
+              <strong>Looks like {p.label}</strong>
+              {p.strength === 'weak' ? <span className="muted small"> (not sure)</span> : null}
+            </p>
+            <ul className="muted small">
+              {p.basis.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+            {now === 'proposed' && props.onDecide !== undefined ? (
+              <p className="chat-discovery-actions">
+                <Button variant="secondary" disabled={busy === p.proposalId} onClick={() => void decide(p, 'confirmed')}>
+                  Yes, that's right
+                </Button>{' '}
+                <Button variant="quiet" disabled={busy === p.proposalId} onClick={() => void decide(p, 'rejected')}>
+                  No
+                </Button>
+              </p>
+            ) : (
+              <p className="small">{now === 'confirmed' ? 'Confirmed.' : now === 'rejected' ? 'Set aside.' : null}</p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function AssistantMessage(props: {
   message: ChatMessage;
   onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
   onFollowUp?: (text: string) => void;
+  onDecideRole?: DecideRole;
 }) {
   const [open, setOpen] = useState(false);
   const prefix = `src-${props.message.messageId}`;
@@ -265,6 +317,12 @@ function AssistantMessage(props: {
   return (
     <>
       <MessageText text={props.message.content} onCite={cite} />
+      {props.message.discovery !== undefined ? (
+        <DiscoveryCard
+          proposals={props.message.discovery.proposals}
+          {...(props.onDecideRole !== undefined ? { onDecide: props.onDecideRole } : {})}
+        />
+      ) : null}
       <AnswerDetails
         message={props.message}
         sourcesOpen={open}
@@ -284,6 +342,7 @@ export function ChatLog(props: {
   sending?: boolean;
   onRate?: (messageId: string, rating: 'helpful' | 'unhelpful') => Promise<boolean>;
   onFollowUp?: (text: string) => void;
+  onDecideRole?: DecideRole;
 }) {
   const { thread } = props;
   const end = useRef<HTMLDivElement>(null);
@@ -308,6 +367,7 @@ export function ChatLog(props: {
                   <AssistantMessage
                     message={m}
                     {...(props.onRate !== undefined ? { onRate: props.onRate } : {})}
+                    {...(props.onDecideRole !== undefined ? { onDecideRole: props.onDecideRole } : {})}
                     {...(props.onFollowUp !== undefined && i === (thread?.messages.length ?? 0) - 1
                       ? { onFollowUp: props.onFollowUp }
                       : {})}
@@ -553,6 +613,9 @@ export function ChatScreen(props: { chat: ChatController; xos: readonly Attachab
         <Button variant="secondary" className="chat-new" onClick={chat.startNew}>
           + New chat
         </Button>
+        <Button variant="quiet" className="chat-new" onClick={() => void chat.startDiscovery()}>
+          What did XO find?
+        </Button>
         <ThreadList chat={chat} />
       </nav>
 
@@ -567,6 +630,7 @@ export function ChatScreen(props: { chat: ChatController; xos: readonly Attachab
           loading={chat.loadingThread}
           sending={chat.sending}
           onRate={chat.rate}
+          onDecideRole={chat.decideRole}
           onFollowUp={(t) => void chat.send(t, [])}
         />
         <ChatComposer xos={props.xos} onSend={chat.send} disabled={chat.sending} />

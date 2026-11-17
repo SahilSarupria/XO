@@ -1,5 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { sweepTokenVaults } from '../protection/data-protection.js';
+import { FsSourceConnectionStore } from '../source-connections/store.js';
+import { sourceFolderRoots, syncConnection } from '../source-connections/sync.js';
 import type { AuditAnchorSink } from '../audit/anchor.js';
 import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -56,6 +58,26 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
   for (const id of dirs.filter(isValidWorkspaceId)) {
     const ws = await deps.workspaceStore.get(id);
     if (!ws.ok) continue;
+    // UW-12a: source connections that sync on an interval are synced when due (a failure is recorded on the connection).
+    try {
+      for (const c of await new FsSourceConnectionStore(ws.value, deps.dataConfig).list()) {
+        if (c.retiredAt !== undefined || c.paused || c.sync.mode !== 'interval') continue;
+        const last = c.lastSync !== undefined ? Date.parse(c.lastSync.at) : 0;
+        if (now.getTime() - last < c.sync.everyMinutes * 60_000) continue;
+        await syncConnection(
+          {
+            workspace: ws.value,
+            dataConfig: deps.dataConfig,
+            allowedRoots: sourceFolderRoots(deps.env ?? process.env),
+            actor: { identityId: 'source-sync', kind: 'system' },
+          },
+          c.connectionId,
+          now,
+        );
+      }
+    } catch (cause) {
+      deps.log?.(`scheduler: cannot sync source connections in ${id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
     // UW-14d: token vaults past their retention are erased here, whether or not anything opens them again.
     try {
       const erased = await sweepTokenVaults(deps.dataConfig.dataRootDir, id, now);

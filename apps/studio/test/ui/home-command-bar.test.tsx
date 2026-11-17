@@ -36,6 +36,8 @@ function Harness(props: { onSend?: (t: string) => void; onChip?: (t: string) => 
           },
           remove: async () => {},
           rate: async () => true,
+          startDiscovery: async () => false,
+          decideRole: async () => false,
         },
         xos: [],
         onOpenSettings: () => {},

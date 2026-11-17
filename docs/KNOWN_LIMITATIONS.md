@@ -62,6 +62,16 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - **Live-model evaluation is not in the harness report.** It exists separately for customer intelligence.
   - **Not yet suites:** the benchmark package's cross-domain corpus, the vertical runs and the agent baseline (wave W5).
   - **Four register titles are unconfirmed.** R8, R9, R15 and R16 are not titled in the plan text available.
+- **Source connections (UW-12a, ADR 0038):**
+  - **Local folders on the instance's machine only.** The folders must be under `XO_SOURCE_FOLDER_ROOTS`. Cloud drives (through the
+    UW-9 broker) and a folder on a person's own computer (the local agent) are not built.
+  - **Discovery is rule-based.** It recognises a list by its name and email columns, and a document collection by its folder and
+    file-name words. Per-person matching needs every word of a name in the file's path, so nicknames and initials do not match.
+  - **Two instances on one data directory can sync the same connection at once.** The connection's record stays consistent; at worst
+    a changed file is stored twice with the same bytes.
+  - **Large folders sync in part.** Past 2,000 files, depth 8 or 2 GiB, a sync is partial and retires nothing for being absent.
+  - **EI's device-code cloud manager is still in memory.** It is used by no product path; cloud connections will use the UW-9
+    broker instead (ADR 0038 decision 6).
 - **Residency and egress (UW-14):**
   - **Chat behaviour changed.** Chat with a hosted model (Anthropic, OpenAI, Gemini, Azure) is refused by default, because
     `strict_local` is the default residency. Use a local model (Ollama), or `XO_RESIDENCY=open` for development with test data.

@@ -40,6 +40,71 @@ describe('ChatLog and ChatComposer', () => {
     expect(within(log).getByText('anthropic · test-model')).toBeInTheDocument();
   });
 
+  it('UW-12a: a discovery message shows each proposal with what it rests on; a choice goes to the API and shows once it is recorded', async () => {
+    const onDecideRole = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+    const user = userEvent.setup();
+    render(
+      <ChatLog
+        onDecideRole={onDecideRole}
+        thread={{
+          threadId: 'cnv_1',
+          title: 'What I found',
+          updatedAt: '2026-11-16T10:00:00Z',
+          messageCount: 1,
+          messages: [
+            {
+              messageId: 'm1',
+              role: 'assistant',
+              content: 'I found a spreadsheet (clients.csv) and a folder of certificates (3). What would you like to do?',
+              at: '2026-11-16T10:00:00Z',
+              discovery: {
+                proposals: [
+                  {
+                    connectionId: 'scn_1',
+                    proposalId: 'rol_a',
+                    role: 'contact_list',
+                    label: 'a client list',
+                    basis: ['3 rows, each a client', 'column "Email" holds email addresses (100% of 3 filled cells)'],
+                    strength: 'strong',
+                    status: 'proposed',
+                  },
+                  {
+                    connectionId: 'scn_1',
+                    proposalId: 'rol_t',
+                    role: 'record_table',
+                    label: 'a table of 3 records',
+                    basis: [],
+                    strength: 'weak',
+                    status: 'proposed',
+                  },
+                  {
+                    connectionId: 'scn_1',
+                    proposalId: 'rol_b',
+                    role: 'document_collection',
+                    label: 'a folder of certificates',
+                    basis: ['folder "Certificates" holds 3 documents (.pdf)'],
+                    strength: 'strong',
+                    status: 'confirmed',
+                  },
+                ],
+              },
+            },
+          ],
+        }}
+      />,
+    );
+    const found = screen.getByRole('list', { name: 'What XO found' });
+    expect(within(found).getByText('Looks like a client list')).toBeInTheDocument();
+    expect(within(found).getByText('column "Email" holds email addresses (100% of 3 filled cells)')).toBeInTheDocument();
+    expect(within(found).queryByText('Looks like a table of 3 records')).toBeNull();
+    expect(within(found).getByText('Confirmed.')).toBeInTheDocument();
+    await user.click(within(found).getByRole('button', { name: "Yes, that's right" }));
+    expect(onDecideRole).toHaveBeenCalledWith('scn_1', 'rol_a', 'confirmed');
+    expect(within(found).getByRole('button', { name: "Yes, that's right" })).toBeInTheDocument(); // refused: nothing shown as decided
+    await user.click(within(found).getByRole('button', { name: 'No' }));
+    await waitFor(() => expect(within(found).getByText('Set aside.')).toBeInTheDocument());
+  });
+
   it('sends on Enter, keeps Shift+Enter for a new line, ignores empty messages, and clears only after a successful send', async () => {
     const onSend = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
     const user = userEvent.setup();
