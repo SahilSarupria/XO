@@ -1,6 +1,8 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { SYSTEM_ACTOR, actorFromPrincipal } from '@xo/audit';
-import { ConnectorError, ConnectorHost, MapVault, type Connector, type Json } from '@xo/connectors';
+import { ConnectorError, ConnectorHost, CredentialError, MapVault, type Connector, type Json } from '@xo/connectors';
+import type { AdapterCredential } from '@xo/adapters';
+import { loadCredentialsConfig, workspaceBroker } from '../credentials/credentials.js';
 import {
   LeaseAuthority,
   LeasedRunStore,
@@ -121,6 +123,8 @@ export function bridge(
   connectorId: string,
   operations: Readonly<Record<string, 'read' | 'write' | 'irreversible'>>,
   gate: EffectGate,
+  /** UW-9: the binding's connection credential, offered to the adapter per call (never the secret itself). */
+  credential?: (operation: string) => AdapterCredential,
 ): Connector {
   const ops: Record<string, Connector['operations'][string]> = {};
   for (const [name, sideEffect] of Object.entries(operations))
@@ -133,6 +137,7 @@ export function bridge(
           capabilityId: `${connectorId}.${name}`,
           dispatchKey: ctx.idempotencyKey ?? `${ctx.runId}:${ctx.stepId}`,
           input: args,
+          ...(credential !== undefined ? { credential: credential(name) } : {}),
         });
         if (r.kind === 'confirmed_success') return (r.output ?? null) as Json;
         if (r.kind === 'confirmed_failure_no_effect') throw new ConnectorError('FAILED', `${r.code}: ${r.message}`, 'none');
@@ -224,7 +229,31 @@ export async function runnerFor(
         });
       return reason;
     };
-    implementations[decl.id] = { ...bridge(adapter, decl.id, ops, gate), kind: decl.kind };
+    // UW-9: a binding that names a connection credential lends it to the adapter for each call, through the broker: this
+    // workspace's credential, active, with the scopes the adapter asks for, refreshed when due. A refusal stops the call before
+    // anything is sent.
+    const credentialId = b!.credentialId;
+    const lend =
+      credentialId === undefined
+        ? undefined
+        : (operation: string): AdapterCredential => ({
+            use: async (fn, need) => {
+              const config = await (dataConfig.credentials ?? (() => loadCredentialsConfig(dataConfig.dataRootDir, deps.env)))();
+              if (config === undefined)
+                throw new ConnectorError('DENIED', 'connections are not configured on this instance (XO_CREDENTIALS_KEY)', 'none');
+              try {
+                return await workspaceBroker(workspace, dataConfig.dataRootDir, config, deps.audit).use(
+                  credentialId,
+                  { ...(need?.scopes !== undefined ? { scopes: need.scopes } : {}), purpose: `connector:${decl.id}.${operation}` },
+                  fn,
+                );
+              } catch (e) {
+                if (e instanceof CredentialError) throw new ConnectorError('DENIED', `the connection cannot be used: ${e.message}`, 'none');
+                throw e;
+              }
+            },
+          });
+    implementations[decl.id] = { ...bridge(adapter, decl.id, ops, gate, lend), kind: decl.kind };
     grants[decl.id] = { grant: decl.operations.map((o) => o.name) };
   }
   return new WorkflowRunner({
@@ -636,6 +665,19 @@ export function registerGeneratedRunRoutes(
     const body = await req.json<{ bindings?: unknown; expectedRevision?: unknown }>();
     if (!body.ok) throw body.error;
     const bindings = parseConnectorBindings(body.value.bindings);
+    // UW-9: a binding may name only an active connection credential of THIS workspace.
+    const named = [...new Set(bindings.flatMap((b) => (b.credentialId !== undefined ? [b.credentialId] : [])))];
+    if (named.length > 0) {
+      const config = await (dataConfig.credentials ?? (() => loadCredentialsConfig(dataConfig.dataRootDir, env)))();
+      if (config === undefined)
+        throw new XoError(ErrorCode.CREDENTIALS_NOT_CONFIGURED, 'connections are not configured on this instance: set XO_CREDENTIALS_KEY');
+      const broker = workspaceBroker(workspace, dataConfig.dataRootDir, config);
+      for (const id of named) {
+        const c = await broker.describe(id).catch(() => undefined);
+        if (c === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, `credential ${id} is not a connection of this workspace`);
+        if (c.state !== 'active') throw new XoError(ErrorCode.CREDENTIAL_NOT_ACTIVE, `credential ${id} is ${c.state}; reconnect it first`);
+      }
+    }
     const current = await readConnectorBindings(workspace, dataConfig);
     if (body.value.expectedRevision !== undefined && body.value.expectedRevision !== current.revision)
       throw new XoError(ErrorCode.PRECONDITION_FAILED, `the bindings changed (revision ${current.revision}); reload and try again`);

@@ -69,6 +69,11 @@ export interface ConnectorBinding {
   readonly compensation?: { readonly operation: string; readonly sideEffect: 'read' | 'write' | 'irreversible' };
   /** The host adapter that performs the call. */
   readonly adapter: string;
+  /**
+   * UW-9: the workspace connection credential the adapter acts with (`crd_…`), released to it per call by the credential broker
+   * (tenant, state and scopes checked at every use). Absent: the adapter uses whatever the host configured it with.
+   */
+  readonly credentialId?: string;
 }
 
 export interface LoweringIssue {

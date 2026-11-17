@@ -58,6 +58,15 @@ export const AUDIT_EVENT_TYPES = [
   // happened to a call whose outcome was unknown.
   'generated-workflow.run.cancelled',
   'generated-workflow.effect.reconciled',
+  // UW-9: connection credentials (never carries a secret, an account id or an account label; accountRef is a hash).
+  'credential.oauth.started',
+  'credential.oauth.failed',
+  'credential.created',
+  'credential.refreshed',
+  'credential.refresh_failed',
+  'credential.rotated',
+  'credential.revoked',
+  'credential.use_denied',
   'workflow-entity.created',
   'workflow-entity.version.added',
   'workflow-entity.updated',
@@ -121,6 +130,7 @@ export const AUDIT_TARGET_KINDS = [
   'knowledge-pack',
   // UW-2: a durable Workflow entity (`wfl_…`).
   'workflow-entity',
+  'credential',
 ] as const;
 
 export const AUDIT_LIFECYCLE_PHASES = ['attempt', 'terminal', 'standalone'] as const;

@@ -46,6 +46,7 @@ import {
 import { SessionLifecycle } from './auth/session/lifecycle.js';
 import { createRateLimiter } from './auth/session/rate-limiter.js';
 import type { SessionGate } from './auth/session/gate.js';
+import { loadCredentialsConfig, OAUTH_CALLBACK_PATH, type CredentialsConfig } from './credentials/credentials.js';
 import { PASSWORD_PUBLIC_PATHS, registerPasswordAuthRoutes, registerSessionLifecycleRoutes } from './routes/auth-password-routes.js';
 import { registerAuthSessionRoutes } from './routes/auth-session-routes.js';
 import { FsIdentityBindingStore } from './auth/oidc/fs-binding-store.js';
@@ -176,6 +177,8 @@ export interface ServerDeps {
   readonly passwordAuthOptions?: PasswordAuthOptions;
   /** Environment OIDC configuration is read from. Defaults to `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /** UW-9 — connection credentials (tests inject a key, clients and a fake provider transport). `null`: unavailable. */
+  readonly credentials?: CredentialsConfig | null;
 }
 
 function buildApiRequest(
@@ -268,8 +271,15 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   }
   // UW-14: where data may go when a model is asked something. Resolved once; throws on an unsafe value (open in production).
   const residency = deps.residency ?? resolveResidency(deps.env ?? process.env);
+  const dataRootDir = deps.workspaceDataDir ?? loadConfig().workspaceDataDir;
+  let credentialsLoaded: Promise<CredentialsConfig | undefined> | undefined;
   const workspaceDataConfig: WorkspaceDataConfig = {
-    dataRootDir: deps.workspaceDataDir ?? loadConfig().workspaceDataDir,
+    dataRootDir,
+    // UW-9: injected (tests), or loaded once from the instance environment.
+    credentials:
+      deps.credentials !== undefined
+        ? async () => deps.credentials ?? undefined
+        : () => (credentialsLoaded ??= loadCredentialsConfig(dataRootDir, deps.env ?? process.env)),
     packageTrustPolicy,
     ...(auditAnchor !== undefined ? { auditAnchor } : {}),
     // UW-3: local OCR for scans and photos by default; throws on invalid configuration so startup fails visibly.
@@ -326,7 +336,8 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       ...(sessionsForAuth !== undefined
         ? { sessions: { store: sessionsForAuth.sessions, bindings: sessionsForAuth.bindings, ...(gate !== undefined ? { gate } : {}) } }
         : {}),
-      ...(passwordBundle !== undefined ? { extraPublicPaths: PASSWORD_PUBLIC_PATHS } : {}),
+      // UW-9: the OAuth callback carries no API key (the provider's redirect); its state parameter is the binding.
+      extraPublicPaths: [...(passwordBundle !== undefined ? PASSWORD_PUBLIC_PATHS : []), OAUTH_CALLBACK_PATH],
     }),
   );
   // UW-1 (ADR 0010): the instance's single authorization point (see auth/authorization-point.ts). A host that also runs the scheduler

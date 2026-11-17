@@ -158,6 +158,11 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   [ErrorCode.READINESS_CERTIFICATE_REQUIRED]: 409,
   [ErrorCode.READINESS_CERTIFICATE_REFUSED]: 409,
   [ErrorCode.WORKFLOW_REQUIRES_IR_RUNTIME]: 409,
+  [ErrorCode.CREDENTIALS_NOT_CONFIGURED]: 503,
+  [ErrorCode.CREDENTIAL_NOT_ACTIVE]: 409,
+  [ErrorCode.CREDENTIAL_SCOPE_REFUSED]: 422,
+  [ErrorCode.OAUTH_STATE_INVALID]: 400,
+  [ErrorCode.OAUTH_PROVIDER_REFUSED]: 502,
 
   // Capability contract (@xo/capability-contract) — semantic discovery
   // and binding resolution, first reachable over HTTP via P0.5.

@@ -24,6 +24,31 @@ export interface AdapterInvokeRequest {
   /** Server-derived identity of THIS dispatch (never client-supplied). One dispatch per key, ever. */
   readonly dispatchKey: string;
   readonly input: Readonly<Record<string, unknown>>;
+  /**
+   * UW-9: when the binding names a workspace connection credential, the way to use it for THIS call — never the secret itself.
+   * `use` checks the credential (this workspace's, active, granted `scopes`), refreshes it when due and hands `fn` the secret
+   * values wrapped (unwrap with `revealSecret` from @xo/connectors). A refusal throws before anything is sent.
+   */
+  readonly credential?: AdapterCredential;
+}
+
+export interface AdapterCredential {
+  use<T>(fn: (h: AdapterCredentialHandle) => Promise<T>, need?: { readonly scopes?: readonly string[] }): Promise<T>;
+}
+
+export interface AdapterCredentialHandle {
+  readonly record: {
+    readonly provider: string;
+    readonly kind: string;
+    readonly scopes: readonly string[];
+    readonly username?: string;
+    readonly host?: string;
+    readonly accountLabel?: string;
+  };
+  /** Opaque wrapped secrets (`Secret` of @xo/connectors). */
+  readonly accessToken?: object;
+  readonly password?: object;
+  readonly apiKey?: object;
 }
 
 export type AdapterInvokeResult =

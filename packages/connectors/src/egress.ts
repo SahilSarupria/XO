@@ -31,7 +31,7 @@ export interface EgressPolicy {
 
 export interface EgressRequest {
   readonly url: string;
-  readonly method: 'POST' | 'GET';
+  readonly method: 'POST' | 'GET' | 'PUT' | 'PATCH' | 'DELETE';
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: string;
   readonly signal: AbortSignal;
