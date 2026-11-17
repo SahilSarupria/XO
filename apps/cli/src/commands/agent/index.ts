@@ -2,18 +2,23 @@
  * UW-12a part 2 — `xo agent`: keeps a folder on THIS computer connected to an XO instance that runs somewhere else.
  *
  *   xo agent pair --server <url> --code <XXXX-XXXX-XXXX-XXXX> --folder <path> [--label <name>] [--config <file>]
- *   xo agent run [--once] [--config <file>]
+ *   xo agent run [--once] [--config <file>]       sync now, then soon after every change and on the instance's schedule
+ *   xo agent install [--no-start] [--config <file>]   start it at sign-in and keep it running (no administrator rights)
+ *   xo agent uninstall [--config <file>]
  *   xo agent status [--config <file>]
  *
  * It only reads the folder, and only calls out to the instance (https; plain http only to this computer). The configuration file
  * (default `~/.xo/agent.json`) holds the agent token: it is written owner-only (0600) and refused when others can read it.
  */
-import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { homedir, hostname, platform } from 'node:os';
+import { appendFileSync } from 'node:fs';
+import { chmod, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir, hostname, platform, userInfo } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { AgentError, pairAgent, runAgentOnce, type AgentHttp, type DigestCache } from '@xo/connect';
 import { resolveRoot } from '@xo/environment-intelligence';
 import type { CommandRegistry } from '../../command-registry.js';
+import { agentLoop } from './loop.js';
+import { installService, uninstallService, type ServiceContext } from './service.js';
 
 const SUBSYSTEM = 'agent';
 const VERSION = '1';
@@ -102,6 +107,37 @@ export async function runOnce(
   return { config: next, everyMinutes: r.manifest.syncEveryMinutes, requested: r.manifest.syncRequested };
 }
 
+/** One agent per configuration: the pid file beside it names the running one. */
+const pidFile = (config: string): string => join(dirname(config), 'agent.pid');
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+};
+async function claimPid(config: string): Promise<number | undefined> {
+  const f = pidFile(config);
+  const held = Number.parseInt(await readFile(f, 'utf8').catch(() => ''), 10);
+  if (Number.isInteger(held) && held !== process.pid && alive(held)) return held;
+  await writeFile(f, String(process.pid), { mode: 0o600 });
+  return undefined;
+}
+
+export async function serviceContext(config: string): Promise<ServiceContext> {
+  const cli = await realpath(process.argv[1] ?? '').catch(() => resolve(process.argv[1] ?? 'xo'));
+  return {
+    platform: process.platform,
+    home: homedir(),
+    node: process.execPath,
+    cli,
+    config,
+    ...(process.platform !== 'win32' ? { uid: userInfo().uid } : {}),
+    ...(process.env['APPDATA'] !== undefined ? { appData: process.env['APPDATA'] } : {}),
+  };
+}
+
 export function registerCommands(registry: CommandRegistry): void {
   registry.declareSubsystem(SUBSYSTEM, 'The local agent: a folder on this computer, connected to an XO instance elsewhere (read-only)');
   registry.register({
@@ -110,7 +146,10 @@ export function registerCommands(registry: CommandRegistry): void {
     usage:
       'xo agent pair --server <url> --code <pairing code> --folder <path> [--label <name>] [--config <file>]\n' +
       '                        Pairs this folder with the connection the code was made for (the code is shown once, in XO)\n' +
-      'xo agent run [--once] [--config <file>]   Syncs now, then keeps syncing as the instance asks (Ctrl+C to stop)\n' +
+      "xo agent run [--once] [--config <file>]   Syncs now, then a few seconds after each change, on the instance's schedule, and\n" +
+      '                        whenever someone asks in XO (Ctrl+C to stop); it waits and retries while XO cannot be reached\n' +
+      'xo agent install [--no-start] [--config <file>]   Starts the agent at sign-in and keeps it running (no administrator rights)\n' +
+      'xo agent uninstall [--config <file>]       Stops it starting at sign-in, and stops it\n' +
       'xo agent status [--config <file>]          The paired folder and the last sync\n' +
       '                        The configuration (default ~/.xo/agent.json) holds the agent token; it is kept owner-only (0600).',
     run: async (args) => {
@@ -126,7 +165,7 @@ export function registerCommands(registry: CommandRegistry): void {
           const label = str(args.flags, 'label');
           const c = await pairCommand({ server, code, folder, config, ...(label !== undefined ? { label } : {}) });
           out(`paired "${c.folderName}" with ${c.server} (connection ${c.connectionId}); configuration in ${config}`);
-          out('next: xo agent run');
+          out('next: xo agent install   (starts it now, at every sign-in, and keeps it running)');
           return 0;
         }
         if (sub === 'status') {
@@ -140,24 +179,54 @@ export function registerCommands(registry: CommandRegistry): void {
           return 0;
         }
         if (sub === 'run') {
-          const once = args.flags['once'] === true;
-          for (;;) {
+          const service = args.flags['service'] === true;
+          const logFile = str(args.flags, 'log');
+          const log = (line: string): void => {
+            if (logFile !== undefined) appendFileSync(logFile, `${line}\n`);
+            else out(line);
+          };
+          if (args.flags['once'] === true) {
             const r = await runOnce(config);
-            out(`${new Date().toISOString()} synced ${r.config.lastRun?.listed ?? 0} files (${r.config.lastRun?.uploaded ?? 0} uploaded)`);
-            if (once) return 0;
-            // Check in every minute (a person may ask for a sync now); sync on the instance's interval.
-            const due = Date.now() + r.everyMinutes * 60_000;
-            while (Date.now() < due) {
-              await new Promise((ok) => setTimeout(ok, 60_000));
-              const m = await fetch(`${new URL(r.config.server).origin}/agent/v1/manifest`, {
-                headers: { authorization: `Bearer ${r.config.token}` },
-              }).catch(() => undefined);
-              if (m?.status === 410) throw new AgentError('retired', 'this connection was retired on the instance');
-              if (m?.ok === true && ((await m.json()) as { syncRequested?: boolean }).syncRequested === true) break;
+            log(`${new Date().toISOString()} synced ${r.config.lastRun?.listed ?? 0} files (${r.config.lastRun?.uploaded ?? 0} sent)`);
+            return 0;
+          }
+          const other = await claimPid(config);
+          if (other !== undefined) return fail(`an agent for this configuration is already running (process ${other})`);
+          const stop = new AbortController();
+          const quit = (): void => stop.abort();
+          process.once('SIGINT', quit);
+          process.once('SIGTERM', quit);
+          try {
+            await agentLoop(config, { http, log }, { signal: stop.signal });
+            return 0;
+          } catch (e) {
+            // As a service, an ending the person chose (retired, paired elsewhere, folder gone) is a clean stop, so it is not restarted.
+            if (service && e instanceof AgentError) {
+              log(`${new Date().toISOString()} stopped: ${e.message}`);
+              return 0;
             }
+            throw e;
+          } finally {
+            await rm(pidFile(config), { force: true });
           }
         }
-        return fail('usage: xo agent <pair|run|status> ...');
+        if (sub === 'install') {
+          await readAgentConfig(config); // paired first
+          const r = await installService(await serviceContext(config), { start: args.flags['no-start'] !== true });
+          out(`installed ${r.definition.kind === 'windows-startup' ? 'a sign-in script' : 'a service'}: ${r.definition.file}`);
+          if (r.problem !== undefined) return fail(`it will start at the next sign-in, but could not be started now: ${r.problem}`);
+          out(r.started ? `the agent is running; its log: ${r.definition.log}` : 'the agent starts at the next sign-in');
+          return 0;
+        }
+        if (sub === 'uninstall') {
+          const r = await uninstallService(await serviceContext(config));
+          const pid = Number.parseInt(await readFile(pidFile(config), 'utf8').catch(() => ''), 10);
+          if (Number.isInteger(pid) && pid !== process.pid && alive(pid)) process.kill(pid);
+          out(`removed ${r.definition.file}; the agent no longer starts at sign-in`);
+          if (r.problem !== undefined) out(`note: ${r.problem}`);
+          return 0;
+        }
+        return fail('usage: xo agent <pair|run|install|uninstall|status> ...');
       } catch (e) {
         if (e instanceof AgentError) return fail(e.message);
         throw e;

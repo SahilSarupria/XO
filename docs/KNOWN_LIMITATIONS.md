@@ -65,7 +65,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Source connections (UW-12a, ADR 0038):**
   - **Cloud drives and the agent (ADR 0039).** Google Drive in production needs Google's restricted-scope verification and security
     assessment for `drive.readonly`. Google Slides, Forms and other native formats are not read; Docs and Sheets over 10 MB fail to
-    export. The agent syncs every 15 minutes (it does not watch the folder) and only while it runs.
+    export. The agent needs the computer on, and on macOS and Windows someone signed in (Linux starts it at boot).
   - **Discovery is rule-based.** It recognises a list by its name and email columns, and a document collection by its folder and
     file-name words. Name matching knows a fixed list of common short forms; an unknown nickname matches only as the start of the
     first name, and the surname is always needed.

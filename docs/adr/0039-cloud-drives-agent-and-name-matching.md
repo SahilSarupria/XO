@@ -53,6 +53,13 @@ connect package a token.
      token at once; retiring answers 410 and the agent stops. The scheduler never syncs an agent folder itself, and the agent's
      check-ins are recorded outside the connection's revisions, so polling does not make new revisions.
    - **The agent's own file** (`~/.xo/agent.json`) is written owner-only, and the agent refuses to start if anyone else can read it.
+   - **Sync on change, schedule as the fallback.** The agent watches the folder (Node's recursive `fs.watch`: native on macOS and
+     Windows, on Linux since Node 19.1) and syncs once it has been quiet for 5 seconds, at most every 15 seconds. The instance's
+     15-minute schedule still applies, because a watch can miss changes (network drives, sleep). An unreachable XO is retried with
+     a growing wait (30 seconds up to 15 minutes); only a retired connection, a replaced pairing or a missing folder stops it.
+   - **Start at sign-in without administrator rights.** `xo agent install` writes a per-user launchd LaunchAgent (macOS), a systemd
+     user unit (Linux) or a hidden script in the Startup folder (Windows), and starts it. As a service the agent exits 0 on those
+     endings so it is not restarted, and a pid file keeps one agent per configuration.
 4. **Matching files to people in tiers.**
    - **The tiers, in order:** full name; name joined into one word; spelling (one letter off, or the same sound key); a short form (a
      table of common nicknames, or the first four letters or more); initials next to the surname.
@@ -77,9 +84,12 @@ connect package a token.
 
 - **Google production use needs the restricted-scope process** (verification and a yearly security assessment) for
   `drive.readonly`. Microsoft needs the `Files.Read.All` delegated permission on the app registration.
-- **The agent syncs on a timer**, every 15 minutes or on request, and only while it runs. It does not watch the folder.
+- **The agent needs the computer on.** On Linux, lingering starts it at boot without a sign-in; on macOS and Windows that would need
+  administrator rights (a LaunchDaemon or a service with stored credentials), so it starts at sign-in. Every platform restarts it
+  after a crash (the Windows script loops, 30 seconds apart). Changes made while it was not running are sent when it next runs.
 - **Staged bytes are bounded:** 50 MiB a file and 2 GiB waiting per connection, cleared after each snapshot.
 - **Name matching is better but still rule-based.** A nickname not in the table matches only as the start of the first name.
-- **Studio.** The discovery conversation and its proposal card work for every kind, because they show proposals, not folders.
-  Studio has no screen yet to create a cloud or agent connection; that is left to the Studio work in later waves. The API and
-  `xo agent` are complete.
+- **Studio.** Connect lists the workspace's folders and drives and connects all four kinds: the pairing code and commands for a
+  computer (it carries on by itself once the agent pairs), read-only account consent and folder browsing for a drive, and a server
+  folder where allowed. `GET …/source-connections/options` tells it what this instance offers. The personal Connect screens (C7)
+  show only where that service is served, which a standard instance does not do.

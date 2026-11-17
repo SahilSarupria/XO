@@ -150,6 +150,15 @@ export function pairAgent(http: AgentHttp, server: string, req: AgentPairRequest
   );
 }
 
+/** What the instance wants now (also how the agent says it is alive). 401 → unpaired, 410 → retired, as AgentError. */
+export function agentManifest(http: AgentHttp, server: string, token: string): Promise<AgentManifest> {
+  if (!AGENT_TOKEN.test(token)) throw new AgentError('unpaired', 'the saved agent token is not valid; pair again');
+  return call<AgentManifest>(http, serverBase(server), '/agent/v1/manifest', {
+    method: 'GET',
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
 /** Digests the agent already computed, so an unchanged file is not read again: key → size, time, digest. */
 export type DigestCache = Record<string, { readonly sizeBytes: number; readonly modifiedAt: string; readonly digestSha256: string }>;
 

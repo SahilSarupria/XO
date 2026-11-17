@@ -99,3 +99,36 @@
 .connect-add-card .badge {
   margin-top: auto;
 }
+
+/* UW-12a: the workspace's folders and drives. */
+.sc-panel {
+  margin-bottom: var(--s-6);
+}
+.sc-add {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--s-4);
+}
+.sc-pairing {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2);
+}
+.sc-pairing h4,
+.sc-pairing ol {
+  margin: 0;
+}
+.sc-pairing pre {
+  margin: var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.sc-code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+}

@@ -1211,6 +1211,16 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/source-connections/options': {
+      get: {
+        summary: 'What this instance can connect (UW-12a part 2; read role)',
+        'x-xo-permission': 'read',
+        description:
+          "Answers `{ localFolder: { available }, drives: [{ provider, kind, displayName, available, reason? }], agent: { available, serverAddress? } }`. A local folder needs XO_SOURCE_FOLDER_ROOTS; a drive needs XO_CREDENTIALS_KEY and that provider's OAuth client (reason `connections_not_configured` or `provider_not_configured`). `serverAddress` is XO_PUBLIC_BASE_URL, the address an agent on another computer uses. No path or secret is returned.",
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ localFolder, drives, agent }' } },
+      },
+    },
     '/workspaces/{workspaceId}/source-connections/drive-folders': {
       get: {
         summary: 'Browse the folders of a connected drive, to choose one (UW-12a part 2; manage role)',

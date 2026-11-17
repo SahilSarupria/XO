@@ -22,6 +22,8 @@ import {
 } from '../domain/connect';
 import { Badge, Button, EmptyState, formatBytes, formatWhen, ProblemNotice, Section, Skeleton, Spinner, useLoad } from './primitives';
 import { useSession } from './session';
+import { WorkspaceSources } from './SourceConnections';
+import type { WorkspaceRole } from '../platform/wire';
 import '../styles/connect.css';
 
 type Route =
@@ -34,14 +36,25 @@ type Route =
  * Connect (C7). Everything shown comes from the Connect HTTP contract; nothing is invented or mocked in the app. What is OFFERED follows
  * what the server says the caller may do (`/connect/capabilities`); the server decides every action again when it runs.
  */
-export function ConnectSection() {
+export function ConnectSection(props: { readonly workspaceId?: string; readonly role?: WorkspaceRole } = {}) {
   const [route, setRoute] = useState<Route>({ kind: 'list' });
   const { client } = useSession();
   const caps = useLoad(() => client.connectCapabilities(), []);
   const capabilities: ConnectCapabilities | undefined = caps.state.phase === 'ready' ? caps.state.value : undefined;
+  // The personal Connect service (C7) is optional on an instance: where it is not served, only the workspace's folders and drives show.
+  const personal = !(caps.state.phase === 'error' && caps.state.problem.kind === 'not_found');
   return (
     <div className="connect-screen">
-      {route.kind === 'list' ? <ConnectHome capabilities={capabilities} capsFailed={caps.state.phase === 'error'} go={setRoute} /> : null}
+      {route.kind === 'list' ? (
+        <ConnectHome
+          capabilities={capabilities}
+          capsFailed={caps.state.phase === 'error'}
+          personal={personal}
+          go={setRoute}
+          {...(props.workspaceId !== undefined ? { workspaceId: props.workspaceId } : {})}
+          {...(props.role !== undefined ? { role: props.role } : {})}
+        />
+      ) : null}
       {route.kind === 'add' ? (
         <FolderWizard onDone={(id) => setRoute({ kind: 'detail', id })} onCancel={() => setRoute({ kind: 'list' })} />
       ) : null}
@@ -59,14 +72,33 @@ export function ConnectSection() {
 
 // -- home ----------------------------------------------------------------------------------------------------------------------
 
-function ConnectHome(props: { capabilities: ConnectCapabilities | undefined; capsFailed: boolean; go: (r: Route) => void }) {
+function ConnectHome(props: {
+  capabilities: ConnectCapabilities | undefined;
+  capsFailed: boolean;
+  personal: boolean;
+  go: (r: Route) => void;
+  workspaceId?: string;
+  role?: WorkspaceRole;
+}) {
+  return (
+    <Section title="Connect" lede="Bring your organization's data into XO. XO reads only what you choose, and never changes it.">
+      {props.workspaceId !== undefined ? (
+        <WorkspaceSources ws={props.workspaceId} {...(props.role !== undefined ? { role: props.role } : {})} />
+      ) : null}
+      {props.personal ? <PersonalConnect capabilities={props.capabilities} capsFailed={props.capsFailed} go={props.go} /> : null}
+    </Section>
+  );
+}
+
+/** The personal Connect service (C7): sources a person connects for themselves, when the instance serves it. */
+function PersonalConnect(props: { capabilities: ConnectCapabilities | undefined; capsFailed: boolean; go: (r: Route) => void }) {
   const { client } = useSession();
   const dash = useLoad(() => client.connectDashboard(), []);
   const sources = useLoad(() => client.connectSources(), []);
   const catalog = useLoad(() => client.connectCatalog(), []);
   const canManage = props.capabilities?.manageSources === true;
   return (
-    <Section title="Connect" lede="Bring your organization's data into XO. XO reads only what you choose, and never changes it.">
+    <>
       {dash.state.phase === 'ready' ? (
         <div className="connect-stats" aria-label="Summary">
           <div className="card">
@@ -118,7 +150,7 @@ function ConnectHome(props: { capabilities: ConnectCapabilities | undefined; cap
       ) : (
         <Skeleton label="Loading" rows={1} />
       )}
-    </Section>
+    </>
   );
 }
 
