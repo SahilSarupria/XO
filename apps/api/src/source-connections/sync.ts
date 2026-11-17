@@ -12,10 +12,8 @@
  */
 import {
   FolderError,
-  approveRoot,
-  listFolder,
   proposeRoles,
-  readFolderItem,
+  type SourceReader,
   type ConnectionItem,
   type DiscoveryItem,
   type DiscoveryTable,
@@ -30,7 +28,7 @@ import type { AuditActor, AuditEventInput } from '../audit/audit-entry.js';
 import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import { FsSourceStore } from '../sources/fs-source-store.js';
 import { storeSourceBytes } from '../sources/ingest.js';
-import { SUPPORTED_EXTENSIONS, inferMediaType } from '../sources/source.js';
+import { inferMediaType } from '../sources/source.js';
 import { workspaceSourcesStore, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
 import type { WorkspaceRecord } from '../workspace/workspace.js';
 import { FsSourceConnectionStore } from './store.js';
@@ -51,7 +49,8 @@ export function sourceFolderRoots(env: Readonly<Record<string, string | undefine
 export interface SyncDeps {
   readonly workspace: WorkspaceRecord;
   readonly dataConfig: WorkspaceDataConfig;
-  readonly allowedRoots: readonly string[];
+  /** The reader for a connection's kind (local folder, cloud drive); an agent's sync passes its own. */
+  readonly readerFor: (c: SourceConnection) => Promise<SourceReader>;
   /** Who the audit records as acting: the person who asked, or the scheduler. */
   readonly actor: AuditActor;
 }
@@ -115,11 +114,11 @@ export async function discoveryItems(deps: Pick<SyncDeps, 'workspace' | 'dataCon
   return out;
 }
 
-export function syncConnection(deps: SyncDeps, connectionId: string, now = new Date()): Promise<SourceConnection> {
-  return serialized(`${deps.workspace.workspaceId}/${connectionId}`, () => syncOnce(deps, connectionId, now));
+export function syncConnection(deps: SyncDeps, connectionId: string, now = new Date(), reader?: SourceReader): Promise<SourceConnection> {
+  return serialized(`${deps.workspace.workspaceId}/${connectionId}`, () => syncOnce(deps, connectionId, now, reader));
 }
 
-async function syncOnce(deps: SyncDeps, connectionId: string, now: Date): Promise<SourceConnection> {
+async function syncOnce(deps: SyncDeps, connectionId: string, now: Date, given: SourceReader | undefined): Promise<SourceConnection> {
   const store = new FsSourceConnectionStore(deps.workspace, deps.dataConfig);
   const sources = new FsSourceStore(workspaceSourcesStore(deps.workspace, deps.dataConfig));
   const c = await store.require(connectionId);
@@ -148,16 +147,17 @@ async function syncOnce(deps: SyncDeps, connectionId: string, now: Date): Promis
     return next;
   };
 
-  let root: string;
+  let listing;
+  let reader: SourceReader;
   try {
-    // Checked again at every sync: an operator who narrows XO_SOURCE_FOLDER_ROOTS stops connections outside it.
-    root = await approveRoot(c.root, deps.allowedRoots);
-    if (root !== c.root) return await fail('the folder now resolves somewhere else (it was moved or replaced by a link)');
+    // A local folder is approved again at every listing: an operator who narrows XO_SOURCE_FOLDER_ROOTS stops connections outside
+    // it. A cloud drive checks its credential at every request.
+    reader = given ?? (await deps.readerFor(c));
+    listing = await reader.list();
   } catch (e) {
     if (e instanceof FolderError) return await fail(e.message);
     throw e;
   }
-  const listing = await listFolder(root, SUPPORTED_EXTENSIONS);
 
   const ctx = {
     workspace: deps.workspace,
@@ -179,9 +179,15 @@ async function syncOnce(deps: SyncDeps, connectionId: string, now: Date): Promis
       unchanged++;
       continue;
     }
+    // The agent sends each file's digest: the same digest is the same file, and nothing needs reading.
+    if (prev !== undefined && f.digestSha256 !== undefined && prev.digestSha256 === f.digestSha256) {
+      items.push({ ...prev, sizeBytes: f.sizeBytes, modifiedAt: f.modifiedAt });
+      unchanged++;
+      continue;
+    }
     let bytes: Uint8Array;
     try {
-      bytes = await readFolderItem(root, f);
+      bytes = await reader.read(f);
     } catch (e) {
       if (!(e instanceof FolderError)) throw e;
       failed[e.code] = (failed[e.code] ?? 0) + 1;

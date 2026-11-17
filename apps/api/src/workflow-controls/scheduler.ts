@@ -1,7 +1,8 @@
 import { readdir } from 'node:fs/promises';
 import { sweepTokenVaults } from '../protection/data-protection.js';
 import { FsSourceConnectionStore } from '../source-connections/store.js';
-import { sourceFolderRoots, syncConnection } from '../source-connections/sync.js';
+import { readerFor } from '../source-connections/readers.js';
+import { syncConnection } from '../source-connections/sync.js';
 import type { AuditAnchorSink } from '../audit/anchor.js';
 import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -61,14 +62,15 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
     // UW-12a: source connections that sync on an interval are synced when due (a failure is recorded on the connection).
     try {
       for (const c of await new FsSourceConnectionStore(ws.value, deps.dataConfig).list()) {
-        if (c.retiredAt !== undefined || c.paused || c.sync.mode !== 'interval') continue;
+        // An agent's folder is synced by the agent on that computer, never from here.
+        if (c.retiredAt !== undefined || c.paused || c.sync.mode !== 'interval' || c.kind === 'agent_folder') continue;
         const last = c.lastSync !== undefined ? Date.parse(c.lastSync.at) : 0;
         if (now.getTime() - last < c.sync.everyMinutes * 60_000) continue;
         await syncConnection(
           {
             workspace: ws.value,
             dataConfig: deps.dataConfig,
-            allowedRoots: sourceFolderRoots(deps.env ?? process.env),
+            readerFor: (x) => readerFor({ workspace: ws.value, dataConfig: deps.dataConfig, env: deps.env ?? process.env }, x),
             actor: { identityId: 'source-sync', kind: 'system' },
           },
           c.connectionId,

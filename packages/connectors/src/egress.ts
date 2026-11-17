@@ -35,12 +35,16 @@ export interface EgressRequest {
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: string;
   readonly signal: AbortSignal;
+  /** UW-12a: `bytes` keeps the response body as bytes (file downloads) in `bytes`; `body` is then empty. */
+  readonly responseType?: 'text' | 'bytes';
 }
 
 export interface EgressResponse {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
+  /** Set when the request asked for `responseType: 'bytes'`. */
+  readonly bytes?: Uint8Array;
 }
 
 /** The request as the transport sees it: the URL is already parsed and vetted. */
@@ -164,13 +168,16 @@ function nodeTransport(req: VettedRequest, pinned: { readonly address: string },
           }
           chunks.push(c);
         });
-        res.on('end', () =>
+        res.on('end', () => {
+          const all = Buffer.concat(chunks);
           resolve({
             status: res.statusCode ?? 0,
             headers: Object.fromEntries(Object.entries(res.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : (v ?? '')])),
-            body: Buffer.concat(chunks).toString('utf8'),
-          }),
-        );
+            ...(req.responseType === 'bytes'
+              ? { body: '', bytes: new Uint8Array(all.buffer, all.byteOffset, all.length) }
+              : { body: all.toString('utf8') }),
+          });
+        });
         res.on('error', (e) => reject(new ConnectorError('FAILED', e.message)));
       },
     );

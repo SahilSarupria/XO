@@ -2,7 +2,19 @@
 
 A source connection keeps a workspace in step with a folder of files: the client workbook, the folder of certificates. XO reads the
 folder, stores each file as a workspace source, keeps it current, retires what changes or disappears, and says what it thinks
-each thing is. Then it asks what you would like to do. Decided in [ADR 0038](adr/0038-source-connections.md).
+each thing is. Then it asks what you would like to do. Decided in [ADR 0038](adr/0038-source-connections.md); cloud drives, the
+agent and name matching in [ADR 0039](adr/0039-cloud-drives-agent-and-name-matching.md).
+
+**Where the folder can be:**
+
+| Kind              | The folder is                                            | XO reads it through                                         |
+| ----------------- | -------------------------------------------------------- | ----------------------------------------------------------- |
+| `local_folder`    | On the instance's own machine                            | The file system, inside `XO_SOURCE_FOLDER_ROOTS`            |
+| `microsoft_drive` | In OneDrive or SharePoint                                | Microsoft Graph, with a workspace credential (`files.read`) |
+| `google_drive`    | In Google Drive (My Drive or a shared drive)             | The Drive API, with a workspace credential (`files.read`)   |
+| `agent_folder`    | On a person's own computer, while XO runs somewhere else | The XO agent on that computer, which sends it to XO         |
+
+Every kind is synced, retired, discovered and decided the same way. Only how the files are listed and read differs.
 
 ## Set up (operator)
 
@@ -40,6 +52,64 @@ stored as a workspace source:
 - files over 50 MiB.
 
 **Shown, never returned:** the connection shows the folder's last segment ("Renewals"), never its path.
+
+## Connect OneDrive, SharePoint or Google Drive (manage role, recent sign-in)
+
+1. **Connect the account** with the `files.read` capability (docs/CREDENTIALS.md):
+   `POST /workspaces/{ws}/credentials/oauth { "provider": "google", "capabilities": ["files.read"] }`. The person consents to
+   read-only access.
+2. **Choose the folder.** `GET …/source-connections/drive-folders?provider=google&credentialId=crd_…` lists the drives, then
+   `&parent=<ref>` the folders inside one. Folders only.
+3. **Connect it:** `POST …/source-connections { "kind": "google_drive", "credentialId": "crd_…", "folder": "<ref>" }`, or
+   `microsoft_drive`.
+
+**How XO reads a drive:**
+
+- **Through the broker.** Every request is a credential-broker `use`: the token goes into that request's header and nowhere else,
+  through the pinned egress to the provider's own hosts (`graph.microsoft.com`, `www.googleapis.com`). It never appears in a
+  listing, a record, an audit line or a URL.
+- **Microsoft downloads.** Graph gives each file a short-lived, pre-authenticated download address. XO fetches it **without** the
+  token, and only if it is on Microsoft storage (`*.sharepoint.com`, `*.1drv.com`, `*.files.1drv.com`).
+- **Google Docs and Sheets** are exported as Word and Excel files (the export is limited to 10 MB). Slides, Forms and other Google
+  formats are counted as `native_not_exportable`.
+- **Shortcuts are not followed.** Google shortcuts and OneDrive "shared with me" items point at files outside the chosen folder, so
+  they are counted (`shortcut_not_followed`) and never read.
+- **Trash is left out.** Google lists trashed files unless asked not to; XO asks not to.
+- **The same exclusions as a local folder:** hidden files, credential-looking names, files over 50 MiB.
+- **A credential that stops working** (revoked, expired, or refused by the provider) makes the next sync fail with
+  `credential_unusable`, and the connection shows `needs_attention` until someone reconnects the account.
+
+## Connect a folder on someone's own computer (manage role, recent sign-in)
+
+When XO runs on a server or in the cloud, it cannot open a folder on a person's laptop. The XO agent runs on that computer and sends
+the folder to XO. It only ever calls out to XO, so nothing needs to be opened on the computer or its network.
+
+1. **Create the connection:** `POST …/source-connections { "kind": "agent_folder" }`. The answer has a one-time pairing code and
+   the command to run on the computer:
+
+   ```bash
+   xo agent pair --server https://xo.example.com --code ABCD-EFGH-JKMN-PQRS --folder ~/Documents/Renewals
+   xo agent run
+   ```
+
+2. **The code works once and for 15 minutes.** Pairing exchanges it for a token that belongs to this one connection. The agent saves
+   it in `~/.xo/agent.json`, readable by its owner only, and refuses to start if anyone else can read it.
+3. **The agent keeps it current.** It checks in every minute and sends the folder every 15 minutes, or at once when someone presses
+   "Sync now" (which answers 202: the agent does the sync). `xo agent status` shows what it last did.
+
+**What the agent sends:** it lists the folder on the computer with the same rules as a local folder, so hidden files, links and
+credential-looking names are counted there and never leave the computer. It works out each file's SHA-256, uploads only the files XO
+does not already hold, then sends the listing. XO checks every uploaded file against its digest, checks every name in the listing
+(no `..`, no absolute paths, no hidden segments, supported formats only), and syncs exactly as for any other folder.
+
+**Revoking an agent:**
+
+- **Pair again:** `POST …/source-connections/{id}/agent/pair` makes a new code; the old agent's token stops working at once.
+- **Retire** the connection: the agent is told (410) and stops.
+
+**The agent protocol (`xo.agent/1`)** uses four public endpoints, each authenticated by the agent's own token, not an API key:
+`POST /agent/v1/pair`, `GET /agent/v1/manifest`, `PUT /agent/v1/blob` (header `x-xo-digest`) and `POST /agent/v1/snapshot`. The
+agent accepts only an `https` address for XO (plain `http` only to the same computer).
 
 ## Keeping it current
 
@@ -83,6 +153,23 @@ After each sync XO proposes roles. Nothing is decided for you, and no model is a
 | `document_collection`  | A folder of several documents                                  | "a folder of certificates"                  |
 | `per_person_documents` | A contact list whose names appear in a collection's file names | "each client's certificate: 38 of 40 match" |
 
+**How a file is matched to a person.** XO tries these in order and stops at the first that finds anyone:
+
+| Match      | "Venkatesh Iyengar" matches                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| Full name  | `Venkatesh Iyengar.pdf`, `iyengar_venkatesh.pdf`, `VenkateshIyengar.pdf`                        |
+| Joined     | `venkateshiyengar.pdf`                                                                          |
+| Spelling   | `Venkatesh Iyenger.pdf` (one letter off, or sounds the same)                                    |
+| Short form | `Venky Iyengar.pdf`, `Venkat Iyengar.pdf` (a known nickname, or the first four letters or more) |
+| Initials   | `V Iyengar.pdf`, `V.Iyengar.pdf`, `VIyengar.pdf` (initials next to the surname)                 |
+
+- **The surname is always needed.** A first name or initials alone never match.
+- **Never guessed.** A file that fits two people equally ("A Rao" with Asha Rao and Arun Rao) is counted as ambiguous and matched to
+  no one.
+- **Titles are ignored:** Mr, Mrs, Dr, Shri, Smt and the like.
+- **Loose matches are said.** The proposal says how many matched only by spelling, short form or initials ("worth a look"), and
+  such a proposal is not "strong" until someone confirms it.
+
 **What a proposal shows:**
 
 - what it rests on: the columns, counts and matches;
@@ -124,8 +211,23 @@ can be connected again.
 
 ## Not yet
 
-- **Cloud drives.** OneDrive, SharePoint and Google Drive will come through the same reader port, using the UW-9 credential broker
-  with read scopes.
-- **A folder on your own computer when XO runs elsewhere.** This needs the local agent, which is not built.
-- **Discovery is rule-based.** Lists without an email column are "tables". Per-person matching needs every word of the name in the
-  file's path, so nicknames and initials do not match.
+- **Discovery is rule-based.** Lists without an email column are "tables". Name matching knows a fixed list of common short forms
+  (mostly English and Indian names); a nickname it does not know matches only if it is the start of the name.
+- **The agent syncs every 15 minutes.** Changes are not watched on the computer, and the agent must be running to sync.
+- **Native Google formats other than Docs and Sheets** are not read, and Docs or Sheets over the 10 MB export limit fail.
+
+## Provider facts and where they come from
+
+Checked on 2026-11-17:
+
+- **Microsoft Graph, listing:** `GET /drives/{drive-id}/items/{item-id}/children`, paged with `@odata.nextLink`. `Files.Read.All`
+  (delegated) reads every file the signed-in person can open, including files shared with them; `Files.Read` covers only their own.
+  Source: Microsoft Learn, "List the contents of a folder" and "Microsoft Graph permissions reference".
+- **Microsoft Graph, download:** `@microsoft.graph.downloadUrl` is pre-authenticated, needs no Authorization header and is
+  short-lived (about an hour). Source: Microsoft Learn, "driveItem resource type" and "Download the contents of a driveItem".
+- **Google Drive, listing:** `files.list` returns trashed files unless the query says `trashed = false`; shared drives need
+  `supportsAllDrives` and `includeItemsFromAllDrives`. Source: Google, "Search for files and folders".
+- **Google Drive, download:** `alt=media` works only for files stored in Drive; Docs, Sheets and Slides need `files.export`, limited
+  to 10 MB. Source: Google, "Download and export files".
+- **Google Drive, scope:** `drive.readonly` is a _restricted_ scope. An app using it in production needs Google's verification and a
+  yearly security assessment. Source: Google, "Choose Google Drive API scopes".

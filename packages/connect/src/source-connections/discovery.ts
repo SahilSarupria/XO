@@ -13,6 +13,7 @@
  *     certificate), with how many match and how many do not.
  */
 import { createHash } from 'node:crypto';
+import { matchPath, personName, type NameMatchKind, type PersonName } from './names.js';
 
 export interface DiscoveryColumn {
   readonly header: string;
@@ -149,9 +150,6 @@ function listKind(item: DiscoveryItem, t: DiscoveryTable): { label: string; sing
 
 const parentOf = (key: string): string => (key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : '');
 
-/** Name tokens a file name must carry for a person to match: every word of their name (initials and one-letter words aside). */
-const nameTokens = (name: string): string[] => words(name).filter((w) => w.length >= 2);
-
 export function proposeRoles(items: readonly DiscoveryItem[]): RoleProposal[] {
   const out: RoleProposal[] = [];
   const contactLists: { item: DiscoveryItem; table: DiscoveryTable; names: DiscoveryColumn; singular: string; label: string }[] = [];
@@ -239,19 +237,25 @@ export function proposeRoles(items: readonly DiscoveryItem[]): RoleProposal[] {
 
   // Each person's document: file names carrying the names in a contact list.
   for (const list of contactLists) {
-    const people = list.names.values.map((v) => ({ value: v, tokens: nameTokens(v) })).filter((p) => p.tokens.length > 0);
+    const people = list.names.values.map((v, i) => personName(i, v)).filter((p): p is PersonName => p !== undefined);
+    const distinctPeople = new Set(people.map((p) => p.words.join(' '))).size;
     for (const c of collections) {
       let matchedDocs = 0;
-      const matchedPeople = new Set<number>();
       let ambiguous = 0;
+      const perPerson = new Map<string, number>();
+      const byKind: Partial<Record<NameMatchKind, number>> = {};
       for (const d of c.docs) {
-        const have = new Set(words(d.key));
-        const hits = people.map((p, i) => (p.tokens.every((t) => have.has(t)) ? i : -1)).filter((i) => i >= 0);
-        if (hits.length === 1) {
+        const m = matchPath(d.key, people);
+        if (m.outcome === 'matched') {
           matchedDocs++;
-          matchedPeople.add(hits[0]!);
-        } else if (hits.length > 1) ambiguous++;
+          byKind[m.kind] = (byKind[m.kind] ?? 0) + 1;
+          const who = people.find((p) => p.index === m.person)!.words.join(' ');
+          perPerson.set(who, (perPerson.get(who) ?? 0) + 1);
+        } else if (m.outcome === 'ambiguous') ambiguous++;
       }
+      const loose = (byKind.spelling ?? 0) + (byKind.nickname ?? 0) + (byKind.initials ?? 0);
+      const several = [...perPerson.values()].filter((n) => n > 1).length;
+      const without = distinctPeople - perPerson.size;
       if (matchedDocs === 0 || matchedDocs / c.docs.length < 0.5) continue;
       const target: RoleTarget = {
         kind: 'pairing',
@@ -268,19 +272,29 @@ export function proposeRoles(items: readonly DiscoveryItem[]): RoleProposal[] {
         target,
         basis: [
           `${matchedDocs} of ${plural(c.docs.length, docNoun, c.noun === 'documents' ? 'documents' : c.noun)} are named after one ${singular} in ${list.label.replace(/^a /, 'the ')} (column "${list.names.header}")`,
+          ...(loose > 0
+            ? [
+                `${loose} of these only by ${[
+                  ...(byKind.spelling !== undefined ? ['another spelling'] : []),
+                  ...(byKind.nickname !== undefined ? ['a short form of the first name'] : []),
+                  ...(byKind.initials !== undefined ? ['initials'] : []),
+                ].join(', or ')} (worth a look)`,
+              ]
+            : []),
           ...(c.docs.length - matchedDocs - ambiguous > 0 ? [`${c.docs.length - matchedDocs - ambiguous} match no one`] : []),
           ...(ambiguous > 0 ? [`${ambiguous} match more than one ${singular}`] : []),
-          ...(people.length - matchedPeople.size > 0
-            ? [`${people.length - matchedPeople.size} ${singular === 'person on staff' ? 'people' : `${singular}s`} have none`]
-            : []),
+          ...(several > 0 ? [`${several} ${several === 1 ? 'has' : 'have'} more than one`] : []),
+          ...(without > 0 ? [`${without} ${singular === 'person on staff' ? 'people' : `${singular}s`} have none`] : []),
         ],
-        strength: matchedDocs === c.docs.length && ambiguous === 0 ? 'strong' : 'weak',
+        strength: matchedDocs === c.docs.length && ambiguous === 0 && loose === 0 ? 'strong' : 'weak',
         counts: {
           documents: c.docs.length,
           matched: matchedDocs,
           ambiguous,
           unmatchedDocuments: c.docs.length - matchedDocs - ambiguous,
-          peopleWithout: people.length - matchedPeople.size,
+          peopleWithout: without,
+          ...Object.fromEntries(Object.entries(byKind).map(([k, v]) => [`by_${k}`, v])),
+          ...(several > 0 ? { peopleWithSeveral: several } : {}),
         },
       });
     }

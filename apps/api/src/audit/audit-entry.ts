@@ -29,6 +29,7 @@ export const AUDIT_EVENTS = [
   'source_connection.changed',
   'source_connection.retired',
   'source_connection.role_decided',
+  'source_connection.agent_paired',
   'compilation.started',
   'capability.approved',
   'execution.created',

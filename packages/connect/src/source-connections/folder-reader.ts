@@ -41,6 +41,10 @@ export interface FolderItem {
   readonly extension: string;
   readonly sizeBytes: number;
   readonly modifiedAt: string;
+  /** Cloud drives: the provider's id for the file (opaque; never shown). */
+  readonly ref?: string;
+  /** Agent: the digest the agent computed (verified against the bytes when they arrive). */
+  readonly digestSha256?: string;
 }
 
 export type FolderSkipReason =
@@ -53,7 +57,11 @@ export type FolderSkipReason =
   | 'hard_linked_file'
   | 'too_large'
   | 'too_deep'
-  | 'unreadable';
+  | 'unreadable'
+  /** Cloud drives: a shortcut to another place (like a link, never followed). */
+  | 'shortcut_not_followed'
+  /** Cloud drives: a native document with no export XO reads (Slides, Forms, Drawings…). */
+  | 'native_not_exportable';
 
 export interface FolderListing {
   readonly items: readonly FolderItem[];
@@ -63,7 +71,48 @@ export interface FolderListing {
   readonly truncated?: 'max_files' | 'max_total_bytes';
 }
 
-export type FolderErrorCode = 'root_not_allowed' | 'root_invalid' | 'root_unavailable' | 'outside_scope' | 'item_changed' | 'item_missing';
+export type FolderErrorCode =
+  | 'root_not_allowed'
+  | 'root_invalid'
+  | 'root_unavailable'
+  | 'outside_scope'
+  | 'item_changed'
+  | 'item_missing'
+  /** Cloud drives: the provider could not be reached, or answered with an error. */
+  | 'remote_unavailable'
+  /** Cloud drives: the credential is not active or lacks the read capability. */
+  | 'credential_unusable'
+  /** Agent: the bytes for a listed file were not uploaded, or do not match their digest. */
+  | 'not_staged';
+
+/**
+ * UW-12a part 2 — the one port every kind of connection reads through: local folders, cloud drives and the local agent. A sync
+ * never knows which it has.
+ */
+export interface SourceReader {
+  /** What is there now (bounded; says when it stopped early). Throws FolderError when the source itself is unusable. */
+  list(): Promise<FolderListing>;
+  /** One listed file's bytes. Throws FolderError for that file. */
+  read(item: FolderItem): Promise<Uint8Array>;
+}
+
+/** A local folder on the instance's machine, re-approved against the allowed roots at every listing. */
+export function localFolderReader(
+  root: string,
+  allowedRoots: readonly string[],
+  extensions: ReadonlySet<string>,
+  limits: FolderLimits = DEFAULT_FOLDER_LIMITS,
+): SourceReader {
+  return {
+    async list() {
+      const real = await approveRoot(root, allowedRoots);
+      if (real !== root)
+        throw new FolderError('root_invalid', 'the folder now resolves somewhere else (it was moved or replaced by a link)');
+      return listFolder(root, extensions, limits);
+    },
+    read: (item) => readFolderItem(root, item, limits),
+  };
+}
 
 export class FolderError extends Error {
   constructor(
@@ -97,6 +146,28 @@ export async function approveRoot(root: string, allowedRoots: readonly string[])
 }
 
 const SENSITIVE = (name: string): boolean => SENSITIVE_FILE_PATTERNS.some((p) => p.test(name));
+
+/** Why a file by this name and size is not taken (the same rules for every kind of connection), or undefined to take it. */
+export function fileSkipReason(
+  name: string,
+  sizeBytes: number,
+  extensions: ReadonlySet<string>,
+  limits: FolderLimits,
+): FolderSkipReason | undefined {
+  if (name.startsWith('.') || name.startsWith('~$')) return 'hidden';
+  if (SENSITIVE(name)) return 'sensitive_name';
+  if (!extensions.has(extname(name).toLowerCase())) return 'unsupported_format';
+  if (sizeBytes > limits.maxFileBytes) return 'too_large';
+  return undefined;
+}
+
+/** Why a folder by this name is not entered, or undefined to enter it. */
+export function folderSkipReason(name: string, depth: number, limits: FolderLimits): FolderSkipReason | undefined {
+  if (EXCLUDED_DIRECTORY_NAMES.has(name)) return 'excluded_directory';
+  if (name.startsWith('.')) return 'hidden';
+  if (depth > limits.maxDepth) return 'too_deep';
+  return undefined;
+}
 
 /** Lists the folder (bounded; never follows a link). `extensions` are the formats the workspace can read. */
 export async function listFolder(

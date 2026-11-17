@@ -19,6 +19,8 @@ import {
   approveRoot,
   discoveryMessage,
   folderDisplayName,
+  driveFolderName,
+  listDriveFolders,
   freshnessOf,
   proposalDigests,
   proposalViews,
@@ -32,6 +34,9 @@ import type { Router } from '../http/router.js';
 import { json, type ApiRequest } from '../http/types.js';
 import { FsConversationStore, MAX_CONVERSATIONS_PER_IDENTITY } from '../intelligence/conversation-store.js';
 import { discoveryItems, retireConnection, sourceFolderRoots, syncConnection, type SyncDeps } from '../source-connections/sync.js';
+import { driveHttp, readerFor } from '../source-connections/readers.js';
+import { PAIRING_TTL_MS, agentLastSeen, newPairingCode, revokePairings, savePairing } from '../source-connections/agent-pairing.js';
+import type { AuditService } from '../audit/audit-service.js';
 import { FsSourceConnectionStore, newConnectionId } from '../source-connections/store.js';
 import {
   callerIdentityId,
@@ -53,6 +58,19 @@ export function connectionView(c: SourceConnection, now = new Date()): Record<st
     displayName: c.displayName,
     sync: c.sync,
     paused: c.paused,
+    ...(c.remote !== undefined ? { remote: { provider: c.remote.provider, credentialId: c.remote.credentialId } } : {}),
+    ...(c.kind === 'agent_folder'
+      ? {
+          agent: {
+            paired: c.agent?.tokenHash !== undefined,
+            ...(c.agent?.label !== undefined ? { label: c.agent.label } : {}),
+            ...(c.agent?.platform !== undefined ? { platform: c.agent.platform } : {}),
+            ...(c.agent?.pairedAt !== undefined ? { pairedAt: c.agent.pairedAt } : {}),
+            ...(c.agent?.pairingExpiresAt !== undefined ? { pairingExpiresAt: c.agent.pairingExpiresAt } : {}),
+            ...(c.agent?.syncRequestedAt !== undefined ? { syncRequestedAt: c.agent.syncRequestedAt } : {}),
+          },
+        }
+      : {}),
     ...(c.retiredAt !== undefined ? { retiredAt: c.retiredAt } : {}),
     freshness: freshnessOf(c, now),
     createdAt: c.createdAt,
@@ -93,15 +111,30 @@ export function registerSourceConnectionRoutes(
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
   env: Readonly<Record<string, string | undefined>>,
+  audit?: AuditService,
 ): void {
   const BASE = '/workspaces/:workspaceId/source-connections';
   const store = (w: WorkspaceRecord) => new FsSourceConnectionStore(w, dataConfig);
   const deps = (req: ApiRequest, w: WorkspaceRecord): SyncDeps => ({
     workspace: w,
     dataConfig,
-    allowedRoots: sourceFolderRoots(env),
+    readerFor: (c) => readerFor({ workspace: w, dataConfig, env, ...(audit !== undefined ? { audit } : {}) }, c),
     actor: actorFor(req, w),
   });
+  const readerContext = (w: WorkspaceRecord) => ({ workspace: w, dataConfig, env, ...(audit !== undefined ? { audit } : {}) });
+  /** The pairing the person shows the agent: once, now. */
+  const pairing = async (w: WorkspaceRecord, connectionId: string, now: Date) => {
+    const code = newPairingCode();
+    const expiresAt = new Date(now.getTime() + PAIRING_TTL_MS).toISOString();
+    await revokePairings(dataConfig.dataRootDir, connectionId, now);
+    await savePairing(dataConfig.dataRootDir, code, { workspaceId: w.workspaceId, connectionId, expiresAt });
+    const server = env['XO_PUBLIC_BASE_URL'] ?? '<this instance’s address>';
+    return { code, expiresAt, command: `xo agent pair --server ${server} --code ${code} --folder <the folder on your computer>` };
+  };
+  const driveProblem = (e: FolderError): XoError =>
+    new XoError(e.code === 'credential_unusable' ? ErrorCode.PRECONDITION_FAILED : ErrorCode.INVALID_ARGUMENT, e.message, {
+      context: { reason: e.code },
+    });
   const body = async (req: ApiRequest, allowed: readonly string[]): Promise<Record<string, unknown>> => {
     if ((await req.rawBody()).length === 0) return {};
     const b = await req.json<Record<string, unknown>>();
@@ -153,31 +186,61 @@ export function registerSourceConnectionRoutes(
     const action = 'source-connection.create';
     await requirePermission(req, w, 'manage', dataConfig, { action: 'connect a folder' });
     await requireRecentAuthentication(req, w, dataConfig, action);
-    const b = await body(req, ['kind', 'root', 'sync']);
-    if (b['kind'] !== 'local_folder')
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"kind" must be local_folder (cloud drives come later)');
-    if (typeof b['root'] !== 'string' || b['root'].length > 4096)
-      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"root" is the folder’s absolute path');
+    const b = await body(req, ['kind', 'root', 'sync', 'credentialId', 'folder']);
+    const kind = b['kind'];
+    if (kind !== 'local_folder' && kind !== 'agent_folder' && kind !== 'microsoft_drive' && kind !== 'google_drive')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"kind" is local_folder, agent_folder, microsoft_drive or google_drive');
     const sync = syncPolicy(b['sync']);
-    let root: string;
-    try {
-      root = await approveRoot(b['root'], sourceFolderRoots(env));
-    } catch (e) {
-      if (e instanceof FolderError) throw folderProblem(e);
-      throw e;
+    const active = (await store(w).list()).filter((c) => c.retiredAt === undefined);
+    let place: Pick<SourceConnection, 'displayName' | 'root' | 'remote'>;
+    if (kind === 'local_folder') {
+      if (typeof b['root'] !== 'string' || b['root'].length > 4096)
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"root" is the folder’s absolute path');
+      let root: string;
+      try {
+        root = await approveRoot(b['root'], sourceFolderRoots(env));
+      } catch (e) {
+        if (e instanceof FolderError) throw folderProblem(e);
+        throw e;
+      }
+      const existing = active.find((c) => c.root === root);
+      if (existing !== undefined)
+        throw new XoError(ErrorCode.ALREADY_EXISTS, `this folder is already connected (${existing.connectionId})`, {
+          context: { connectionId: existing.connectionId },
+        });
+      place = { displayName: folderDisplayName(root), root };
+    } else if (kind === 'agent_folder') {
+      // The folder is chosen on the computer, when the agent pairs; until then it has no name.
+      place = { displayName: 'Folder on a computer (not paired yet)' };
+    } else {
+      const provider = kind === 'microsoft_drive' ? 'microsoft' : 'google';
+      const credentialId = b['credentialId'];
+      const folder = b['folder'];
+      if (typeof credentialId !== 'string' || !/^crd_[0-9a-f]{24}$/.test(credentialId))
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"credentialId" names a connected account (crd_…) with the files.read capability');
+      if (typeof folder !== 'string' || folder.length > 600)
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, '"folder" is the folder chosen from GET …/source-connections/drive-folders');
+      const existing = active.find((c) => c.remote?.provider === provider && c.remote.folder === folder);
+      if (existing !== undefined)
+        throw new XoError(ErrorCode.ALREADY_EXISTS, `this folder is already connected (${existing.connectionId})`, {
+          context: { connectionId: existing.connectionId },
+        });
+      let name: string;
+      try {
+        name = await driveFolderName(provider, await driveHttp(readerContext(w), credentialId, provider), folder);
+      } catch (e) {
+        if (e instanceof FolderError) throw driveProblem(e);
+        throw e;
+      }
+      place = { displayName: name.slice(0, 120), remote: { provider, credentialId, folder } };
     }
-    const existing = (await store(w).list()).find((c) => c.retiredAt === undefined && c.root === root);
-    if (existing !== undefined)
-      throw new XoError(ErrorCode.ALREADY_EXISTS, `this folder is already connected (${existing.connectionId})`, {
-        context: { connectionId: existing.connectionId },
-      });
     const now = new Date();
     const created = await store(w).create({
       connectionId: newConnectionId(),
-      kind: 'local_folder',
-      displayName: folderDisplayName(root),
-      root,
+      kind,
+      ...place,
       sync,
+      ...(kind === 'agent_folder' ? { agent: { pairingExpiresAt: new Date(Date.now() + PAIRING_TTL_MS).toISOString() } } : {}),
       paused: false,
       createdAt: now.toISOString(),
       createdBy: callerIdentityId(req),
@@ -197,8 +260,35 @@ export function registerSourceConnectionRoutes(
         ...(created.sync.mode === 'interval' ? { everyMinutes: created.sync.everyMinutes } : {}),
       },
     });
+    if (kind === 'agent_folder') {
+      const p = await pairing(w, created.connectionId, now);
+      const withExpiry = await store(w).update(created.connectionId, undefined, now, (cur) => ({
+        ...cur,
+        agent: { ...cur.agent, pairingExpiresAt: p.expiresAt },
+      }));
+      return json(201, { connection: detailView(withExpiry), pairing: p });
+    }
     const synced = await syncConnection(deps(req, w), created.connectionId, now);
     return json(201, { connection: detailView(synced) });
+  });
+
+  // Registered before `/:id`, so `drive-folders` is never read as a connection id.
+  router.get(`${BASE}/drive-folders`, async (req) => {
+    const w = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, w, 'manage', dataConfig, { action: 'browse a drive to choose a folder' });
+    const credentialId = req.query.get('credentialId') ?? '';
+    const provider = req.query.get('provider');
+    if (!/^crd_[0-9a-f]{24}$/.test(credentialId)) throw new XoError(ErrorCode.INVALID_ARGUMENT, '"credentialId" names a connected account');
+    if (provider !== 'microsoft' && provider !== 'google')
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, '"provider" is microsoft or google');
+    const parent = req.query.get('parent') ?? undefined;
+    try {
+      const folders = await listDriveFolders(provider, await driveHttp(readerContext(w), credentialId, provider), parent);
+      return json(200, { folders });
+    } catch (e) {
+      if (e instanceof FolderError) throw driveProblem(e);
+      throw e;
+    }
   });
 
   const one = async (req: ApiRequest, w: WorkspaceRecord) => store(w).require(req.params['id'] ?? '');
@@ -206,7 +296,13 @@ export function registerSourceConnectionRoutes(
   router.get(`${BASE}/:id`, async (req) => {
     const w = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, w, 'read', dataConfig);
-    return json(200, { connection: detailView(await one(req, w)) });
+    const c = await one(req, w);
+    const view = detailView(c);
+    if (c.kind === 'agent_folder') {
+      const seen = await agentLastSeen(dataConfig.dataRootDir, w.workspaceId, c.connectionId);
+      if (seen !== undefined) (view['agent'] as Record<string, unknown>)['lastSeenAt'] = seen;
+    }
+    return json(200, { connection: view });
   });
 
   router.post(`${BASE}/:id/sync`, async (req) => {
@@ -215,6 +311,16 @@ export function registerSourceConnectionRoutes(
     const c = await one(req, w);
     if (c.retiredAt !== undefined) throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this source connection is retired');
     if (c.paused) throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this source connection is paused; resume it first');
+    if (c.kind === 'agent_folder') {
+      // The agent on the computer does the reading: it sees the request at its next check (about a minute).
+      if (c.agent?.tokenHash === undefined) throw new XoError(ErrorCode.PRECONDITION_FAILED, 'the agent on the computer is not paired yet');
+      const now = new Date();
+      const next = await store(w).update(c.connectionId, undefined, now, (cur) => ({
+        ...cur,
+        agent: { ...cur.agent, syncRequestedAt: now.toISOString() },
+      }));
+      return json(202, { connection: detailView(next) });
+    }
     return json(200, { connection: detailView(await syncConnection(deps(req, w), c.connectionId)) });
   });
 
@@ -257,7 +363,30 @@ export function registerSourceConnectionRoutes(
     await requireRecentAuthentication(req, w, dataConfig, action);
     const b = await body(req, ['expectedRevision']);
     const c = await one(req, w);
-    return json(200, { connection: detailView(await retireConnection(deps(req, w), c.connectionId, revisionOf(b))) });
+    const retired = await retireConnection(deps(req, w), c.connectionId, revisionOf(b));
+    await revokePairings(dataConfig.dataRootDir, c.connectionId);
+    return json(200, { connection: detailView(retired) });
+  });
+
+  router.post(`${BASE}/:id/agent/pair`, async (req) => {
+    const w = await requireOwnedWorkspace(req, workspaceStore);
+    const action = 'source-connection.agent-pair';
+    await requirePermission(req, w, 'manage', dataConfig, { action: 'pair the agent on a computer' });
+    await requireRecentAuthentication(req, w, dataConfig, action);
+    const c = await one(req, w);
+    if (c.kind !== 'agent_folder') throw new XoError(ErrorCode.INVALID_ARGUMENT, 'only a folder on a computer has an agent');
+    if (c.retiredAt !== undefined) throw new XoError(ErrorCode.PRECONDITION_FAILED, 'this source connection is retired');
+    const now = new Date();
+    const p = await pairing(w, c.connectionId, now);
+    // A new pairing revokes the agent that was paired before: its token no longer opens the connection.
+    const next = await store(w).update(c.connectionId, undefined, now, (cur) => ({ ...cur, agent: { pairingExpiresAt: p.expiresAt } }));
+    await recordAudit(req, w, dataConfig, {
+      event: 'source_connection.changed',
+      result: 'succeeded',
+      target: target(next),
+      detail: { change: 'agent_pairing' },
+    });
+    return json(200, { connection: detailView(next), pairing: p });
   });
 
   router.post(`${BASE}/:id/proposals/:proposalId/decision`, async (req) => {

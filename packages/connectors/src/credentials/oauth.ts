@@ -13,8 +13,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { egress, type EgressDeps, type EgressPolicy } from '../egress.js';
 import { ConnectorError } from '../types.js';
 
-export type OAuthCapability = 'message.send';
-export const OAUTH_CAPABILITIES: readonly OAuthCapability[] = ['message.send'];
+export type OAuthCapability = 'message.send' | 'files.read';
+export const OAUTH_CAPABILITIES: readonly OAuthCapability[] = ['message.send', 'files.read'];
 
 export interface OAuthClientConfig {
   readonly clientId: string;
@@ -55,7 +55,13 @@ export const GOOGLE: OAuthProvider = {
   revokeUrl: 'https://oauth2.googleapis.com/revoke',
   identityScopes: ['openid', 'email'],
   // gmail.send: send only, no read or modify of the mailbox (a "sensitive" scope: verification, no security assessment).
-  capabilityScopes: { 'message.send': ['https://www.googleapis.com/auth/gmail.send'] },
+  // drive.readonly (UW-12a part 2, source connections): see and download Drive files, no change. Google classes it as RESTRICTED:
+  // an app outside testing needs Google's verification and a security assessment. (drive.file would be narrower, but only reaches
+  // files the person opens through Google's Picker in a browser, not a folder synced in the background.)
+  capabilityScopes: {
+    'message.send': ['https://www.googleapis.com/auth/gmail.send'],
+    'files.read': ['https://www.googleapis.com/auth/drive.readonly'],
+  },
   // offline: a refresh token; consent: Google issues the refresh token only on a consent screen. No include_granted_scopes: a
   // grant never silently picks up scopes from an earlier consent.
   authorizeParams: { access_type: 'offline', prompt: 'consent' },
@@ -78,7 +84,9 @@ export const MICROSOFT: OAuthProvider = {
   tokenUrl: (c) => `https://${MS_LOGIN}/${encodeURIComponent(c.tenant ?? 'common')}/oauth2/v2.0/token`,
   identityScopes: ['openid', 'email', 'offline_access'],
   // Mail.Send (delegated): send mail as the signed-in user; no read of the mailbox. A bare name means Microsoft Graph.
-  capabilityScopes: { 'message.send': ['Mail.Send'] },
+  // Files.Read.All (delegated, UW-12a part 2): read the files the signed-in person can access, including SharePoint libraries and
+  // shared folders; no write. (Files.Read reaches only their own OneDrive.) Delegated: never more than the person can see.
+  capabilityScopes: { 'message.send': ['Mail.Send'], 'files.read': ['Files.Read.All'] },
   authorizeParams: { prompt: 'select_account' },
   implicitScopes: ['openid', 'email', 'profile', 'offline_access'],
   normalizeScope: (s) => (s.toLowerCase().startsWith('https://graph.microsoft.com/') ? s.slice('https://graph.microsoft.com/'.length) : s),

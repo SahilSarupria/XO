@@ -1,4 +1,5 @@
 import type { ExternalToolAdapter } from '@xo/adapters';
+import { AGENT_PATHS } from './routes/agent-routes.js';
 import { runWithProtection } from '@xo/ai-core';
 import { DataProtection, workspaceIdOfPath } from './protection/data-protection.js';
 import { DEVELOPMENT_TRUST_WARNING, assertTrustPolicyAllowedHere, loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
@@ -339,7 +340,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
         ? { sessions: { store: sessionsForAuth.sessions, bindings: sessionsForAuth.bindings, ...(gate !== undefined ? { gate } : {}) } }
         : {}),
       // UW-9: the OAuth callback carries no API key (the provider's redirect); its state parameter is the binding.
-      extraPublicPaths: [...(passwordBundle !== undefined ? PASSWORD_PUBLIC_PATHS : []), OAUTH_CALLBACK_PATH],
+      extraPublicPaths: [...(passwordBundle !== undefined ? PASSWORD_PUBLIC_PATHS : []), OAUTH_CALLBACK_PATH, ...AGENT_PATHS],
     }),
   );
   // UW-1 (ADR 0010): the instance's single authorization point (see auth/authorization-point.ts). A host that also runs the scheduler
