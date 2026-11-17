@@ -1,4 +1,5 @@
 import { readdir } from 'node:fs/promises';
+import { sweepTokenVaults } from '../protection/data-protection.js';
 import type { AuditAnchorSink } from '../audit/anchor.js';
 import { openWorkspaceAuditLog } from '../audit/workspace-audit-log.js';
 import { LocalFsBlobStore } from '@xo/storage';
@@ -55,6 +56,13 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
   for (const id of dirs.filter(isValidWorkspaceId)) {
     const ws = await deps.workspaceStore.get(id);
     if (!ws.ok) continue;
+    // UW-14d: token vaults past their retention are erased here, whether or not anything opens them again.
+    try {
+      const erased = await sweepTokenVaults(deps.dataConfig.dataRootDir, id, now);
+      if (erased > 0) deps.log?.(`scheduler: erased ${erased} expired token vault(s) in ${id}`);
+    } catch (cause) {
+      deps.log?.(`scheduler: cannot sweep token vaults in ${id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
     const store = new FsControlsStore(workspaceStateStore(ws.value, deps.dataConfig), id);
     let due;
     try {

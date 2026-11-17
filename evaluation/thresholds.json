@@ -63,6 +63,30 @@
       "rationale": "ADR 0020 invariant: strict_local makes no hosted call. Also enforced by tests that fail the build."
     },
     {
+      "measure": "pii-detection/known-value-block-rate",
+      "min": 1,
+      "status": "proposed",
+      "rationale": "UAC-27: a value the customer already supplied (a known value) is always blocked. Also enforced by tests that fail the build (apps/api/test/data-protection.test.ts, UAC-24)."
+    },
+    {
+      "measure": "pii-detection/recall",
+      "min": 0.9,
+      "status": "proposed",
+      "rationale": "UW-14 (ADR 0037) proposal: at least 9 in 10 texts carrying a protected value in any listed form are caught. The set is not blind; ratify against a held-out set written by someone else."
+    },
+    {
+      "measure": "pii-detection/precision",
+      "min": 0.95,
+      "status": "proposed",
+      "rationale": "UW-14 (ADR 0037) proposal: a blocked request costs the person a retry, so extra findings stay rare."
+    },
+    {
+      "measure": "pii-detection/false-block-rate",
+      "max": 0.05,
+      "status": "proposed",
+      "rationale": "UW-14 (ADR 0037) proposal: at most 1 in 20 clean business texts blocked."
+    },
+    {
       "measure": "intelligence-oracle/security",
       "min": 1,
       "status": "proposed",

@@ -1,3 +1,4 @@
+import { ProtectionScanner } from './protection/scanner.js';
 import { redactSecrets } from '../redaction.js';
 import type { ProviderMessage, ProviderRequest } from '../provider-types.js';
 
@@ -152,6 +153,8 @@ function prng(seed: string): () => number {
   };
 }
 
+/** The pattern packs alone (a synthetic value is checked against formats, not a workspace's values). */
+const SYNTHETIC_CHECK = new ProtectionScanner();
 const UPPER = 'BCDFGHJKLMNPQRSTVWXZ';
 const LOWER = 'bcdfghjklmnpqrstvwxz';
 const WORDS = ['Sample', 'Example', 'Placeholder', 'Synthetic', 'Fixture', 'Demo'];
@@ -168,6 +171,25 @@ export function synthesizeRecords(
   const pick = (s: string) => s[Math.floor(rand() * s.length)]!;
   const digits = (n: number) =>
     Array.from({ length: n }, (_, i) => (i === 0 ? String(1 + Math.floor(rand() * 9)) : String(Math.floor(rand() * 10)))).join('');
+  const fill = (shape: string) => {
+    const v = [...shape]
+      .map((ch) => (ch === 'A' ? pick(UPPER) : ch === 'a' ? pick(LOWER) : ch === '9' ? String(Math.floor(rand() * 10)) : ch))
+      .join('');
+    // An address keeps its shape before the @; after it, a domain that can hold no mailbox (RFC 2606), so it is visibly not real.
+    const at = v.lastIndexOf('@');
+    return at > 0 ? `${v.slice(0, at)}@example.invalid` : v;
+  };
+  // UW-14e: a synthetic value must never pass for a real identifier. A random value in a PAN- or Aadhaar-shaped column is a valid
+  // PAN or Aadhaar by chance (a PAN's holder letter alone is right about half the time), which the leak guard would rightly block
+  // (it cannot tell), and which nobody reading an egress log could tell from a real one either. So a shaped value the pattern packs
+  // recognise is drawn again; the draws are seeded, so the records stay deterministic.
+  const shaped = (shape: string): string => {
+    for (let i = 0; i < 64; i++) {
+      const v = fill(shape);
+      if (SYNTHETIC_CHECK.scan(v).length === 0) return v;
+    }
+    throw new EgressBoundaryError('a synthetic value for this column shape keeps matching a real identifier format');
+  };
   const records: Record<string, string | number | boolean | null>[] = [];
   for (let r = 0; r < opts.count; r++) {
     const rec: Record<string, string | number | boolean | null> = {};
@@ -194,12 +216,7 @@ export function synthesizeRecords(
           rec[c.name] = null;
           break;
         default:
-          rec[c.name] =
-            c.shape !== undefined
-              ? [...c.shape]
-                  .map((ch) => (ch === 'A' ? pick(UPPER) : ch === 'a' ? pick(LOWER) : ch === '9' ? String(Math.floor(rand() * 10)) : ch))
-                  .join('')
-              : `${WORDS[Math.floor(rand() * WORDS.length)]} ${r + 1}`;
+          rec[c.name] = c.shape !== undefined ? shaped(c.shape) : `${WORDS[Math.floor(rand() * WORDS.length)]} ${r + 1}`;
       }
     }
     records.push(rec);
@@ -222,8 +239,8 @@ const INTENT_PATTERNS: readonly [RegExp, string][] = [
 ];
 
 /**
- * W1 intent filter: credentials, emails, links and digit runs. It cannot know the customer's names; the known-value dictionary and the
- * full-request leak guard (UW-14c to 14e) tighten it. Until they land, prefer schema descriptors and templates over intent text.
+ * W1 intent filter: credentials, emails, links and digit runs. It cannot know the customer's names: use `protectedIntentFilter` with
+ * the workspace's scanner (UW-14c), and every request is checked again, whole, by the leak guard before it leaves (UW-14e).
  */
 export const BASELINE_INTENT_FILTER: IntentFilter = {
   name: 'baseline-patterns/1',
@@ -241,6 +258,22 @@ export const BASELINE_INTENT_FILTER: IntentFilter = {
     return { text: out, replaced };
   },
 };
+
+/**
+ * UW-14c: the intent filter with the workspace's protection — the baseline patterns, then the known-value dictionary and the pattern
+ * packs, each hit replaced by its entity (`[PERSON]`, `[PAN]`). A customer's name typed into a goal no longer passes.
+ */
+export function protectedIntentFilter(scanner: ProtectionScanner): IntentFilter {
+  return {
+    name: `protected/${[...scanner.packIds, ...(scanner.dictionary !== undefined ? ['dictionary'] : [])].join('+')}`,
+    apply(text) {
+      // Dictionary first: the baseline's digit masking would otherwise break an identifier the dictionary knows.
+      const known = scanner.mask(text);
+      const base = BASELINE_INTENT_FILTER.apply(known.text);
+      return { text: base.text, replaced: base.replaced + known.hits.length };
+    },
+  };
+}
 
 export interface IntentText {
   readonly kind: 'intent';

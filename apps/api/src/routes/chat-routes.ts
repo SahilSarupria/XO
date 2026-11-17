@@ -18,7 +18,7 @@ import { recordAudit } from '../audit/record.js';
 import { FsSettingsStore } from '../settings/fs-settings-store.js';
 import { FsChatStore, MAX_THREADS_PER_IDENTITY, type ChatThread } from '../chat/chat-store.js';
 import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
-import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
+import { getInferenceDenial, resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
 import { usableModelChoices } from '../chat/usable-models.js';
 
 /**
@@ -180,6 +180,7 @@ export function registerChatRoutes(
     ];
 
     let reply: { text: string; provider: string; model: string } | undefined;
+    let leak: string | undefined;
     for (const choice of usable) {
       try {
         const response = await (providerFor(choice.provider) as NonNullable<ReturnType<ProviderFactory>>).complete({
@@ -192,9 +193,18 @@ export function registerChatRoutes(
           reply = { text: response.text.trim(), provider: choice.provider, model: response.modelUsed };
           break;
         }
-      } catch {
+      } catch (e) {
         // Fall through to the fallback. The provider's error text is never relayed: it can carry request ids or credentials echoed by a misbehaving proxy.
+        // UW-14e: the leak guard's own refusal is ours (kinds and hashes, never a value), and it is the reason worth telling.
+        const denial = getInferenceDenial(e);
+        if (denial !== undefined && denial.reason.startsWith('leak_guard')) leak = denial.message;
       }
+    }
+    if (reply === undefined && leak !== undefined) {
+      throw new XoError(
+        ErrorCode.PRECONDITION_FAILED,
+        `not sent to the hosted model: ${leak}. Leave the protected values out, or choose a model on this server.`,
+      );
     }
     if (reply === undefined) {
       throw new XoError(

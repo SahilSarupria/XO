@@ -1,4 +1,5 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
+import { eraseTokenVault } from '../protection/data-protection.js';
 import { ApprovalError, RunInputError, RunStore } from '@xo/workflow-runtime';
 import { actorFromPrincipal, type AuditEventDraft } from '@xo/audit';
 import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
@@ -455,7 +456,12 @@ export function registerWorkflowEntityRoutes(
     const id = req.params['workflowId'] ?? '';
     await entities(workspace).require(id);
     const next = await entities(workspace).update(id, expectedRevision(body), actorOf(actor), new Date(), (e) => apply(e, body));
-    await record(actor, workspace, correlationId, 'workflow-entity.updated', next, { event: next.event.kind });
+    // UW-14d: archiving a workflow erases its token vault (placeholders from its runs can no longer be turned back into values).
+    const vaultErased = next.event.kind === 'archived' ? await eraseTokenVault(dataConfig.dataRootDir, workspace.workspaceId, id) : false;
+    await record(actor, workspace, correlationId, 'workflow-entity.updated', next, {
+      event: next.event.kind,
+      ...(vaultErased ? { vaultErased: true } : {}),
+    });
     return json(200, { workflow: await detailOf(req, workspace, next) });
   }
 

@@ -9,6 +9,7 @@ import { AnthropicProvider } from '../src/providers/anthropic-provider.js';
 import { OllamaProvider } from '../src/providers/ollama-provider.js';
 import type { ModelProvider, ProviderRequest } from '../src/provider-types.js';
 import { getInferenceDenial, InferenceGuard } from '../src/inference-policy.js';
+import { ProtectionScanner, runWithProtection } from '../src/egress/protection/index.js';
 import {
   buildEgressRequest,
   checkResidency,
@@ -176,62 +177,66 @@ test('UAC-25: in strict_local a hosted provider makes no connection at all, for 
 });
 
 test('masked_hosted: a contracted provider receives typed requests only; raw text, copies, images and other providers are refused', async () => {
-  const anthropic = recorder('anthropic');
-  const guarded = guardProvider(anthropic, masked);
-  const schema = describeSchema(CLIENTS);
-  const typed = buildEgressRequest({
-    model: 'claude-sonnet',
-    maxOutputTokens: 500,
-    responseSchema: PLAN_SCHEMA,
-    messages: [
-      { role: 'system', parts: [PLAN_SYSTEM] },
-      {
-        role: 'user',
-        parts: [
-          schema,
-          synthesizeRecords(schema, { count: 3, seed: 'plan-1' }),
-          filterIntent('Email each client their renewal certificate a month before Renewal'),
-        ],
-      },
-    ],
+  // UW-14e (corrected): in masked_hosted a hosted request needs the workspace's protection context, or the leak guard refuses it
+  // (fail-closed; see the test below). This test is about the typed boundary, so it runs inside a context with the pattern packs.
+  await runWithProtection({ scope: 'ws_test', scanner: async () => new ProtectionScanner() }, async () => {
+    const anthropic = recorder('anthropic');
+    const guarded = guardProvider(anthropic, masked);
+    const schema = describeSchema(CLIENTS);
+    const typed = buildEgressRequest({
+      model: 'claude-sonnet',
+      maxOutputTokens: 500,
+      responseSchema: PLAN_SCHEMA,
+      messages: [
+        { role: 'system', parts: [PLAN_SYSTEM] },
+        {
+          role: 'user',
+          parts: [
+            schema,
+            synthesizeRecords(schema, { count: 3, seed: 'plan-1' }),
+            filterIntent('Email each client their renewal certificate a month before Renewal'),
+          ],
+        },
+      ],
+    });
+    assert.equal(isTypedEgressRequest(typed), true);
+    await guarded.complete(typed);
+    assert.equal(anthropic.seen.length, 1);
+
+    const raw: ProviderRequest = { model: 'claude-sonnet', messages: [{ role: 'user', content: 'Asha Rao' }], maxOutputTokens: 5 };
+    assert.equal(getInferenceDenial(await guarded.complete(raw).catch((e: unknown) => e))?.reason, 'residency_untyped_egress');
+    const copy = { ...typed, messages: [...typed.messages, { role: 'user' as const, content: 'and Asha Rao, ABCDE1234F' }] };
+    assert.equal(
+      getInferenceDenial(await guarded.complete(copy).catch((e: unknown) => e))?.reason,
+      'residency_untyped_egress',
+      'a modified copy is not typed',
+    );
+    assert.equal(
+      getInferenceDenial(await guarded.complete({ ...typed }).catch((e: unknown) => e))?.reason,
+      'residency_untyped_egress',
+      'even an exact copy',
+    );
+    assert.throws(
+      () => ((typed.messages as unknown as { content: string }[])[0]!.content = 'changed'),
+      TypeError,
+      'a typed request cannot be edited',
+    );
+    const withImage: ProviderRequest = {
+      ...raw,
+      messages: [{ role: 'user', content: 'read this', images: [{ mediaType: 'image/png', dataBase64: 'AAAA' }] }],
+    };
+    assert.equal(
+      getInferenceDenial(await guarded.complete(withImage).catch((e: unknown) => e))?.reason,
+      'residency_untyped_egress',
+      'page images are never masked data',
+    );
+    const other = guardProvider(recorder('openai'), masked);
+    assert.equal(getInferenceDenial(await other.complete(typed).catch((e: unknown) => e))?.reason, 'residency_provider_not_contracted');
+    assert.equal(anthropic.seen.length, 1);
+
+    const dev = guardProvider(recorder('openai'), open);
+    await dev.complete(raw);
   });
-  assert.equal(isTypedEgressRequest(typed), true);
-  await guarded.complete(typed);
-  assert.equal(anthropic.seen.length, 1);
-
-  const raw: ProviderRequest = { model: 'claude-sonnet', messages: [{ role: 'user', content: 'Asha Rao' }], maxOutputTokens: 5 };
-  assert.equal(getInferenceDenial(await guarded.complete(raw).catch((e: unknown) => e))?.reason, 'residency_untyped_egress');
-  const copy = { ...typed, messages: [...typed.messages, { role: 'user' as const, content: 'and Asha Rao, ABCDE1234F' }] };
-  assert.equal(
-    getInferenceDenial(await guarded.complete(copy).catch((e: unknown) => e))?.reason,
-    'residency_untyped_egress',
-    'a modified copy is not typed',
-  );
-  assert.equal(
-    getInferenceDenial(await guarded.complete({ ...typed }).catch((e: unknown) => e))?.reason,
-    'residency_untyped_egress',
-    'even an exact copy',
-  );
-  assert.throws(
-    () => ((typed.messages as unknown as { content: string }[])[0]!.content = 'changed'),
-    TypeError,
-    'a typed request cannot be edited',
-  );
-  const withImage: ProviderRequest = {
-    ...raw,
-    messages: [{ role: 'user', content: 'read this', images: [{ mediaType: 'image/png', dataBase64: 'AAAA' }] }],
-  };
-  assert.equal(
-    getInferenceDenial(await guarded.complete(withImage).catch((e: unknown) => e))?.reason,
-    'residency_untyped_egress',
-    'page images are never masked data',
-  );
-  const other = guardProvider(recorder('openai'), masked);
-  assert.equal(getInferenceDenial(await other.complete(typed).catch((e: unknown) => e))?.reason, 'residency_provider_not_contracted');
-  assert.equal(anthropic.seen.length, 1);
-
-  const dev = guardProvider(recorder('openai'), open);
-  await dev.complete(raw);
 });
 
 test('the boundary: no cell value reaches the request; names that look like values and names asked to be withheld are withheld', () => {

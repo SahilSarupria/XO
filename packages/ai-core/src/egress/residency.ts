@@ -91,7 +91,14 @@ export function providerLocality(providerId: ProviderId, endpoint?: string): Pro
   return 'hosted';
 }
 
-export type ResidencyDenialReason = 'residency_hosted_forbidden' | 'residency_provider_not_contracted' | 'residency_untyped_egress';
+export type ResidencyDenialReason =
+  | 'residency_hosted_forbidden'
+  | 'residency_provider_not_contracted'
+  | 'residency_untyped_egress'
+  /** UW-14e: the leak guard found a protected value in the request. */
+  | 'leak_guard_blocked'
+  /** UW-14e: a hosted request in masked_hosted with no workspace protection context (fail-closed). */
+  | 'leak_guard_unavailable';
 
 export interface ResidencyCheckInput {
   readonly providerId: ProviderId;

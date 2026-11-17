@@ -67,6 +67,10 @@ export const AUDIT_EVENT_TYPES = [
   'credential.rotated',
   'credential.revoked',
   'credential.use_denied',
+  // UW-14e (ADR 0037): the leak guard refused a model request carrying a protected value (metadata: hashes, never a value); a
+  // workspace's data-protection settings changed (counts only).
+  'model.egress.blocked',
+  'data-protection.updated',
   'workflow-entity.created',
   'workflow-entity.version.added',
   'workflow-entity.updated',

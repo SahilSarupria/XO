@@ -31,6 +31,8 @@ const OPEN_TO_ANY_MEMBER: Readonly<Record<string, string>> = {
     'files a feedback claim in the review queue; changes no answer or knowledge',
   'POST /workspaces/{workspaceId}/notifications/read': 'moves the caller’s own read marker',
   'POST /workspaces/{workspaceId}/workflow-definitions/validate': 'pure analysis; stores nothing',
+  'POST /workspaces/{workspaceId}/data-protection/scan':
+    'pure analysis of the caller’s own text against the leak guard; stores nothing, sends nothing, names no dictionary entry',
   'POST /workspaces/{workspaceId}/packages/resolve':
     'pure dependency resolution against the installed set; writes nothing (the sibling /packages/lock, which writes, is gated)',
 };

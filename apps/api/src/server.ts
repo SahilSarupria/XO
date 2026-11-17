@@ -1,4 +1,6 @@
 import type { ExternalToolAdapter } from '@xo/adapters';
+import { runWithProtection } from '@xo/ai-core';
+import { DataProtection, workspaceIdOfPath } from './protection/data-protection.js';
 import { DEVELOPMENT_TRUST_WARNING, assertTrustPolicyAllowedHere, loadOperatorTrustPolicy, type PackageTrustPolicy } from '@xo/package-sdk';
 import { join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
@@ -369,6 +371,13 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     deps.logger?.warn('AUDIT IS RUNNING IN NON-PRODUCTION MODE: audit events are volatile (process memory only) and are NOT durable');
   }
   const audit = new AuditService(auditSink, (info) => deps.logger?.error(`audit write failed (${info.phase}): ${info.code}`));
+  // UW-14e (ADR 0037): every /workspaces/{id}/… request runs inside that workspace's protection context, so any model request it
+  // makes is checked against the workspace's own values before it can leave for a hosted provider (fail-closed in masked_hosted).
+  const dataProtection = new DataProtection(workspaceStore, workspaceDataConfig, audit);
+  router.use(async (req, next) => {
+    const workspaceId = workspaceIdOfPath(req.path);
+    return workspaceId === undefined ? next() : runWithProtection(dataProtection.contextFor(req, workspaceId), next);
+  });
   const auditAccess = new AuditAccessController({
     permissionManager,
     ...(deps.auditAccessKinds !== undefined ? { allowedPrincipalKinds: deps.auditAccessKinds } : {}),
@@ -398,6 +407,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   }
   registerRoutes(router, {
     residency,
+    dataProtection,
     env: deps.env ?? process.env,
     workspaceStore,
     workspaceDataConfig,
