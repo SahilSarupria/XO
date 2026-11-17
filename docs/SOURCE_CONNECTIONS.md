@@ -104,7 +104,8 @@ the folder to XO. It only ever calls out to XO, so nothing needs to be opened on
    | Linux    | A systemd user unit (`~/.config/systemd/user/xo-agent.service`), `systemctl --user enable --now`           | `journalctl --user -u xo-agent` |
    | Windows  | A hidden script in the person's Startup folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) | `~/.xo/agent.log`               |
 
-   macOS and Linux restart it if it crashes; Windows starts it again at the next sign-in. `xo agent uninstall` removes it, and
+   All three restart it after a crash. On Linux it also starts at boot, before anyone signs in (`loginctl enable-linger`, where
+   the system allows it); on macOS and Windows it needs the person signed in. `xo agent uninstall` removes it, and
    `xo agent run` runs it in a terminal instead.
 
 4. **It sends changes as they happen.** The agent watches the folder and syncs a few seconds after something changes (once the
@@ -245,7 +246,8 @@ can be connected again.
 
 - **Discovery is rule-based.** Lists without an email column are "tables". Name matching knows a fixed list of common short forms
   (mostly English and Indian names); a nickname it does not know matches only if it is the start of the name.
-- **The agent runs while the computer is on and signed in.** A computer that is off sends its changes when it next starts.
+- **The agent needs the computer on** (and, on macOS and Windows, someone signed in). Changes made meanwhile are sent when it next
+  runs.
 - **Native Google formats other than Docs and Sheets** are not read, and Docs or Sheets over the 10 MB export limit fail.
 
 ## Provider facts and where they come from

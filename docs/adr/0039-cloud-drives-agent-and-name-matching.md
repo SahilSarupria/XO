@@ -84,8 +84,9 @@ connect package a token.
 
 - **Google production use needs the restricted-scope process** (verification and a yearly security assessment) for
   `drive.readonly`. Microsoft needs the `Files.Read.All` delegated permission on the app registration.
-- **The agent runs while the computer is on and signed in.** A computer that is off sends its changes when it next starts. Windows
-  does not restart a crashed agent until the next sign-in.
+- **The agent needs the computer on.** On Linux, lingering starts it at boot without a sign-in; on macOS and Windows that would need
+  administrator rights (a LaunchDaemon or a service with stored credentials), so it starts at sign-in. Every platform restarts it
+  after a crash (the Windows script loops, 30 seconds apart). Changes made while it was not running are sent when it next runs.
 - **Staged bytes are bounded:** 50 MiB a file and 2 GiB waiting per connection, cleared after each snapshot.
 - **Name matching is better but still rule-based.** A nickname not in the table matches only as the start of the first name.
 - **Studio.** Connect lists the workspace's folders and drives and connects all four kinds: the pairing code and commands for a

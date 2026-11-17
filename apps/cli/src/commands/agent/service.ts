@@ -4,9 +4,9 @@
  *   macOS    a LaunchAgent (~/Library/LaunchAgents/com.xo.agent.plist), loaded with `launchctl bootstrap gui/<uid>`; launchd
  *            starts it at login and restarts it if it crashes.
  *   Linux    a systemd user unit (~/.config/systemd/user/xo-agent.service, WantedBy=default.target), `systemctl --user enable
- *            --now`; systemd starts it at login and restarts it on failure.
+ *            --now`, plus `loginctl enable-linger` (best effort) so it starts at boot without a sign-in; systemd restarts it on failure.
  *   Windows  a script in the person's Startup folder (%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup), which Windows runs
- *            at sign-in, hidden. Windows does not restart it after a crash; it starts again at the next sign-in.
+ *            at sign-in, hidden, and restarts it 30 seconds after a crash.
  *
  * The service runs `xo agent run --service`: it stops cleanly (exit 0, so it is not restarted) when the connection is retired or
  * paired elsewhere, and keeps one agent per configuration through a pid file next to it.
@@ -101,7 +101,16 @@ ${args.map((a) => `    <string>${xml(a)}</string>`).join('\n')}
       kind: 'windows-startup',
       file,
       log,
-      content: `' XO agent: keeps a folder on this computer connected to XO. Remove with: xo agent uninstall\r\nCreateObject("WScript.Shell").Run "${command}", 0, False\r\n`,
+      // Waits for the agent; restarts it 30 s after a crash. A clean stop (exit 0: retired, paired elsewhere) ends the loop.
+      content: [
+        `' XO agent: keeps a folder on this computer connected to XO. Remove with: xo agent uninstall`,
+        `Set sh = CreateObject("WScript.Shell")`,
+        `Do`,
+        `  If sh.Run("${command}", 0, True) = 0 Then Exit Do`,
+        `  WScript.Sleep 30000`,
+        `Loop`,
+        ``,
+      ].join('\r\n'),
       start: [['wscript.exe', file]],
       stop: [],
     };
@@ -127,6 +136,8 @@ WantedBy=default.target
     start: [
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'enable', '--now', SYSTEMD_UNIT],
+      // Lingering starts the person's user services at boot, before (and without) a sign-in. Best effort: some systems forbid it.
+      ['loginctl', 'enable-linger'],
     ],
     stop: [['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT]],
   };
@@ -154,7 +165,8 @@ export async function installService(
   for (const [i, c] of d.start.entries()) {
     const r = await run(c[0]!, c.slice(1));
     // launchd: booting out a job that was never loaded fails, and that is fine.
-    if (!r.ok && !(d.kind === 'launchd' && i === 0))
+    const optional = (d.kind === 'launchd' && i === 0) || c[0] === 'loginctl';
+    if (!r.ok && !optional)
       return { definition: d, started: false, problem: `${c.join(' ')} failed${r.output !== '' ? `: ${r.output}` : ''}` };
   }
   return { definition: d, started: true };

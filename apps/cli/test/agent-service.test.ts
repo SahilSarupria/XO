@@ -42,7 +42,10 @@ test('Linux: a systemd user unit wanted by default.target; paths with spaces and
   );
   assert.match(d.content, /^Restart=on-failure$/m);
   assert.match(d.content, /^WantedBy=default\.target$/m);
-  assert.deepEqual(d.start.at(-1), ['systemctl', '--user', 'enable', '--now', 'xo-agent.service']);
+  assert.deepEqual(d.start.slice(-2), [
+    ['systemctl', '--user', 'enable', '--now', 'xo-agent.service'],
+    ['loginctl', 'enable-linger'],
+  ]);
 });
 
 test('Windows: a hidden script in the per-user Startup folder, with every argument quoted', () => {
@@ -50,10 +53,13 @@ test('Windows: a hidden script in the per-user Startup folder, with every argume
   assert.equal(d.kind, 'windows-startup');
   assert.ok(d.file.endsWith(win32.join('Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'xo-agent.vbs')));
   assert.ok(
-    d.content.includes('Run """C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\Asha Rao\\xo\\cli.js"" ""agent"" ""run"" ""--service""'),
+    d.content.includes(
+      'sh.Run("""C:\\Program Files\\nodejs\\node.exe"" ""C:\\Users\\Asha Rao\\xo\\cli.js"" ""agent"" ""run"" ""--service""',
+    ),
   );
   assert.ok(d.content.includes('""--log"" ""C:\\Users\\Asha Rao\\.xo'), 'Windows has no service log, so the agent writes its own');
-  assert.ok(d.content.trimEnd().endsWith(', 0, False'), 'hidden window, not waited for');
+  assert.ok(d.content.includes('"", 0, True) = 0 Then Exit Do'), 'hidden window, waited for; a clean stop ends it');
+  assert.ok(d.content.includes('WScript.Sleep 30000\r\nLoop'), 'a crash restarts it after 30 seconds');
 });
 
 test('install writes the file and starts it; a failed start is reported; uninstall stops and removes it', async () => {
@@ -67,6 +73,9 @@ test('install writes the file and starts it; a failed start is reported; uninsta
     assert.equal(((await stat(r.definition.file)).mode & 0o777).toString(8), '644');
     assert.deepEqual(calls, [`launchctl bootout gui/501/com.xo.agent`, `launchctl bootstrap gui/501 ${r.definition.file}`]);
 
+    // Lingering may be forbidden; the service still installs and starts.
+    const noLinger: Runner = async (cmd) => ({ ok: cmd !== 'loginctl', output: 'Access denied' });
+    assert.equal((await installService(ctx('linux', home), { start: true }, noLinger)).started, true);
     const failing: Runner = async () => ({ ok: false, output: 'Failed to connect to bus' });
     const f = await installService(ctx('linux', home), { start: true }, failing);
     assert.equal(f.started, false);
