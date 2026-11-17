@@ -11,7 +11,9 @@
  */
 import { copyFile, rename, rm } from 'node:fs/promises';
 import { IntegrityError, type KnowledgeStore } from './store.js';
-import { KNOWLEDGE_SCHEMA_VERSION, SqlKnowledgeStore, sqliteDriver, type SqlDriver } from './sql-store.js';
+import { KNOWLEDGE_SCHEMA_VERSION, migrateKnowledgeSchema, SqlKnowledgeStore, sqliteDriver, type SqlDriver } from './sql-store.js';
+import { KnowledgeBase } from './knowledge-base.js';
+import { stateContentRoot } from './state-root.js';
 
 export interface KnowledgeCopyReport {
   readonly tenantId: string;
@@ -69,6 +71,13 @@ export async function copyKnowledge(from: KnowledgeStore, to: KnowledgeStore): P
       if (copied.seq !== seq || copied.prevDigest !== prevDigest || copied.digest !== digest)
         throw new KnowledgeTransferError(`event ${seq} did not reproduce in the target (digest ${copied.digest} ≠ ${digest})`);
     }
+    // UW-4b: a target with a head pointer gets the head the copied log names, in the same transaction.
+    const lastCreated = [...events].reverse().find((e) => e.type === 'state.created');
+    if (lastCreated !== undefined && to.casHead !== undefined) {
+      const head = states.find((s) => s.stateId === lastCreated.subjectId);
+      if (head === undefined) throw new KnowledgeTransferError(`the head state ${lastCreated.subjectId} is not in the source`);
+      await to.casHead(null, { stateId: head.stateId, contentRoot: stateContentRoot(head), eventSeq: lastCreated.seq });
+    }
     return {
       tenantId: to.tenantId,
       records: records.length,
@@ -107,6 +116,8 @@ export async function verifySqlKnowledge(driver: SqlDriver): Promise<KnowledgeVe
   for (const tenantId of await listKnowledgeTenants(driver)) {
     const store = await SqlKnowledgeStore.open(driver, tenantId);
     const events = await store.events();
+    const headFindings = await new KnowledgeBase(store).verifyHead();
+    if (headFindings.length > 0) throw new IntegrityError(`tenant "${tenantId}": ${headFindings.map((f) => f.message).join('; ')}`);
     const changeSets = await store.listChangeSets();
     let decisions = 0;
     for (const c of changeSets) if ((await store.getDecision(c.changeSetId)) !== undefined) decisions++;
@@ -135,6 +146,8 @@ export async function restoreSqliteKnowledge(backupPath: string, targetPath: str
   let verification: KnowledgeVerification;
   const driver = await sqliteDriver(staging);
   try {
+    // A backup taken by an older XO is brought to this build's schema on the staging copy (never on the backup itself).
+    await migrateKnowledgeSchema(driver);
     verification = await verifySqlKnowledge(driver);
   } catch (cause) {
     await driver.close();

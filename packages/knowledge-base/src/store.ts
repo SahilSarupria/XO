@@ -21,6 +21,7 @@
 import { mkdir, readFile, readdir, rename, writeFile, appendFile, open, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { digestOf, type Digest } from './canonical.js';
+import type { HeadPointer } from './state-root.js';
 import type { ChangeSet, KnowledgeEvent, KnowledgeRecord, KnowledgeState } from './types.js';
 import type { PackArtifact } from './packs.js';
 
@@ -61,6 +62,19 @@ export interface KnowledgeStore {
    * both approve against the same head.
    */
   exclusive<T>(fn: () => Promise<T>): Promise<T>;
+  /**
+   * UW-4b: the head pointer, when the store keeps one (the SQL stores, schema 2). Without it the head is the state named by the
+   * last `state.created` event (the file store, a development store).
+   */
+  getHead?(): Promise<HeadPointer | undefined>;
+  /**
+   * Moves the head from `expected` (null: the empty root) to `next`, or throws `StaleHeadError` when the head is not
+   * `expected`. Called inside `exclusive`, in the same transaction as the state, decision and events it publishes.
+   */
+  casHead?(expected: string | null, next: HeadPointer): Promise<void>;
+  /** UW-4c: a persisted retrieval index for one state (derived data, write-once per state; rebuildable at any time). */
+  putIndex?(stateId: string, index: unknown): Promise<void>;
+  getIndex?<T>(stateId: string): Promise<T | undefined>;
   /** Releases connections and flushes; the store is unusable afterwards. */
   close(): Promise<void>;
 }

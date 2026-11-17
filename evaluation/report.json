@@ -137,12 +137,12 @@
       "measures": [
         {
           "id": "injection-corpus/structural-checks",
-          "title": "Structural checks passing across compiler, intelligence and workflow runtime",
+          "title": "Structural checks passing across compiler, intelligence, workflow runtime and knowledge derivation",
           "unit": "ratio",
           "better": "higher",
           "value": 1,
-          "numerator": 6,
-          "denominator": 6
+          "numerator": 12,
+          "denominator": 12
         }
       ],
       "notes": [],

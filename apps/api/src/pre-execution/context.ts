@@ -21,6 +21,7 @@ import {
   workspaceApprovalsStore,
   workspaceCompilationsStore,
   workspaceRulingsStore,
+  workspaceSourcesStore,
   workspaceWaiversStore,
   type WorkspaceDataConfig,
 } from '../workspace/workspace-context.js';
@@ -31,7 +32,9 @@ import { verifyApproval } from '../approvals/approval-enforcement.js';
 import { FsWaiverStore } from '../waivers/waiver-store.js';
 import { FsRulingStore } from '../waivers/ruling-store.js';
 import { composeCompilationWorkflows } from '../workflows/workflow-catalog.js';
+import { executableKnowledge } from '@xo/knowledge-base';
 import { workspaceKnowledgeBase } from '../routes/knowledge-routes.js';
+import { WorkspaceEvidenceSources } from '../knowledge/evidence-sources.js';
 import { digestOf } from '@xo/pre-execution';
 import { readConnectorBindings } from './connector-bindings.js';
 
@@ -44,7 +47,12 @@ export interface PreExecutionContext {
   readonly sourceQuality: SourceQualityAssessment;
   readonly completeness: CompletenessAssessment;
   /** The workspace's head knowledge state, when any change set has been approved. */
-  readonly knowledge?: { readonly stateId: string; readonly digest: string; readonly unresolvedConflicts: readonly string[] };
+  readonly knowledge?: {
+    readonly stateId: string;
+    readonly digest: string;
+    readonly unresolvedConflicts: readonly string[];
+    readonly refused: readonly { readonly recordId: string; readonly reasons: readonly string[] }[];
+  };
   /** Digests of the waivers and rulings these assessments applied. */
   readonly decisionDigests: readonly string[];
   /** The workspace's connector bindings (ADR 0030), by capability name. */
@@ -104,14 +112,24 @@ export async function loadPreExecutionContext(
 
   const kb = await workspaceKnowledgeBase(workspace, dataConfig);
   const head = await kb.head();
-  const knowledge =
-    head.parentStateId === null && head.entries.length === 0
-      ? undefined
-      : {
-          stateId: head.stateId,
-          digest: head.digest,
-          unresolvedConflicts: head.conflicts.filter((c) => c.status === 'unresolved').map((c) => c.id),
-        };
+  let knowledge: PreExecutionContext['knowledge'];
+  if (!(head.parentStateId === null && head.entries.length === 0)) {
+    // UW-4a (UAC-12): the approved knowledge drawn from THIS workflow's sources goes through the executable-use gate; anything
+    // it refuses (evidence that no longer resolves, a lost conflict) is held for review. Other workspace knowledge is not this
+    // workflow's concern.
+    const fromTheseSources = (await kb.records(head.stateId))
+      .filter(({ record }) => record.evidence.some((e) => digests.has(e.sourceDigestSha256)))
+      .map(({ record }) => record.id);
+    const gate = await executableKnowledge(kb, head.stateId, new WorkspaceEvidenceSources(workspaceSourcesStore(workspace, dataConfig)), {
+      recordIds: fromTheseSources,
+    });
+    knowledge = {
+      stateId: head.stateId,
+      digest: head.digest,
+      unresolvedConflicts: head.conflicts.filter((c) => c.status === 'unresolved').map((c) => c.id),
+      refused: gate.refused.map((v) => ({ recordId: v.recordId, reasons: v.reasons })),
+    };
+  }
 
   return {
     compilationId,

@@ -9,6 +9,8 @@ const CHECKS = [
   'packages/compiler/test/reasoning/injection-corpus.test.ts',
   'packages/intelligence/test/injection-corpus.test.ts',
   'packages/workflow-runtime/test/injection-corpus.test.ts',
+  // UW-4c: the K4 knowledge text deriver.
+  'packages/knowledge-base/test/text-deriver.test.ts',
 ] as const;
 
 /** UAC-17 — the injection corpus never changes composition, recipients or approvals, on every path that checks it. */
@@ -56,7 +58,7 @@ export const injectionCorpusSuite: Suite = {
       measures: [
         {
           id: 'injection-corpus/structural-checks',
-          title: 'Structural checks passing across compiler, intelligence and workflow runtime',
+          title: 'Structural checks passing across compiler, intelligence, workflow runtime and knowledge derivation',
           unit: 'ratio',
           better: 'higher',
           value: total === 0 ? null : pass / total,

@@ -12,6 +12,15 @@
 import { digestOf, idOf, type Digest } from './canonical.js';
 import { checkTyped, PackSet, validatePackArtifact, type PackArtifact } from './packs.js';
 import { IntegrityError, type KnowledgeStore } from './store.js';
+import { stateContentRoot, StaleHeadError } from './state-root.js';
+import {
+  buildKnowledgeIndex,
+  indexMismatch,
+  indexText,
+  queryKnowledgeIndex,
+  type IndexQuery,
+  type KnowledgeIndex,
+} from './retrieval-index.js';
 import type {
   ChangeOperation,
   ChangeSet,
@@ -105,8 +114,27 @@ export class KnowledgeBase {
     return { ...body, stateId: `ks_${digest.slice(7, 31)}`, createdAt: '1970-01-01T00:00:00.000Z', digest };
   }
 
-  /** The current approved state: the one created by the last approval in the event log (the root when there is none). */
+  /**
+   * The current approved state: the one created by the last approval in the event log (the root when there is none). Reading
+   * it verifies the whole event chain, as before. A store with a head pointer (schema 2 SQL) must agree with the log — the
+   * pointer is what approvals compare-and-swap, the log is what proves it — and a disagreement is an integrity fault, never
+   * silently resolved either way.
+   */
   async head(): Promise<KnowledgeState> {
+    const fromEvents = await this.headFromEvents();
+    if (this.store.getHead !== undefined) {
+      const ptr = await this.store.getHead();
+      const expected = fromEvents.changeSetId === null ? undefined : fromEvents.stateId;
+      if (ptr?.stateId !== expected)
+        throw new KnowledgeError(
+          'integrity',
+          `the knowledge head pointer names ${ptr?.stateId ?? 'the empty root'} but the event log names ${expected ?? 'the empty root'}`,
+        );
+    }
+    return fromEvents;
+  }
+
+  private async headFromEvents(): Promise<KnowledgeState> {
     const events = await this.store.events();
     const last = [...events].reverse().find((e) => e.type === 'state.created');
     if (last === undefined) return this.rootState();
@@ -292,14 +320,65 @@ export class KnowledgeBase {
       subjectId: changeSetId,
       subjectDigest: cs.digest,
     });
-    await this.store.appendEvent({
+    const created = await this.store.appendEvent({
       type: 'state.created',
       at: this.now(),
       actor: reviewer,
       subjectId: next.stateId,
       subjectDigest: next.digest,
     });
+    // Same transaction: the state, its decision, both events and the head move together or not at all.
+    if (this.store.casHead !== undefined) {
+      try {
+        await this.store.casHead(head.changeSetId === null ? null : head.stateId, {
+          stateId: next.stateId,
+          contentRoot: stateContentRoot(next),
+          eventSeq: created.seq,
+        });
+      } catch (e) {
+        if (e instanceof StaleHeadError)
+          throw new KnowledgeError('stale_base', `change set ${changeSetId}: ${e.message}. Propose it again.`);
+        throw e;
+      }
+    }
     return next;
+  }
+
+  /**
+   * UW-4b: the head pointer agrees with the event log (it names the state of the last `state.created` event, at that event's
+   * sequence) and with the state's content. An empty result means it verifies; a store without a pointer always does.
+   */
+  async verifyHead(): Promise<readonly ValidationFinding[]> {
+    if (this.store.getHead === undefined) return [];
+    const ptr = await this.store.getHead();
+    const events = await this.store.events();
+    const last = [...events].reverse().find((e) => e.type === 'state.created');
+    const out: ValidationFinding[] = [];
+    if (ptr === undefined) {
+      if (last !== undefined)
+        out.push({
+          severity: 'error',
+          code: 'head-missing',
+          message: `the event log names head ${last.subjectId}, but no head pointer is stored`,
+        });
+      return out;
+    }
+    if (last === undefined || last.subjectId !== ptr.stateId || last.seq !== ptr.eventSeq)
+      out.push({
+        severity: 'error',
+        code: 'head-diverged',
+        message: `the head pointer names ${ptr.stateId} (event ${ptr.eventSeq}); the event log names ${last?.subjectId ?? 'the root'} (event ${last?.seq ?? 0})`,
+      });
+    const s = await this.store.getState(ptr.stateId);
+    if (s === undefined) out.push({ severity: 'error', code: 'head-missing', message: `the head state ${ptr.stateId} is missing` });
+    else if (stateContentRoot(s) !== ptr.contentRoot)
+      out.push({ severity: 'error', code: 'head-content-root', message: `the head's content root does not match state ${ptr.stateId}` });
+    return out;
+  }
+
+  /** The content root of a state (see `stateContentRoot`). */
+  async contentRoot(stateId: string): Promise<string> {
+    return stateContentRoot(await this.state(stateId));
   }
 
   /** Rejects a proposed change set. Its records stay stored (auditable) but never enter a state through it. */
@@ -525,41 +604,70 @@ export class KnowledgeBase {
     return { status: 'unresolved', candidates: similar };
   }
 
-  /** BM25 search over a state's active records (a derived index, rebuilt from the state on every call). */
-  async search(stateId: string, text: string, limit = 10): Promise<readonly SearchHit[]> {
-    const docs = (await this.records(stateId)).map(({ entry, record }) => ({ entry, record, tokens: tokens(searchText(record)) }));
-    const q = [...new Set(tokens(text))];
-    if (q.length === 0 || docs.length === 0) return [];
-    const avg = docs.reduce((n, d) => n + d.tokens.length, 0) / docs.length;
-    const df = new Map<string, number>();
-    for (const d of docs) for (const t of new Set(d.tokens)) df.set(t, (df.get(t) ?? 0) + 1);
-    const k1 = 1.2;
-    const b = 0.75;
-    const scored = docs
-      .map((d) => {
-        let score = 0;
-        for (const t of q) {
-          const f = d.tokens.filter((x) => x === t).length;
-          if (f === 0) continue;
-          const idf = Math.log(1 + (docs.length - (df.get(t) ?? 0) + 0.5) / ((df.get(t) ?? 0) + 0.5));
-          score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * d.tokens.length) / avg)));
+  private readonly indexCache = new Map<string, KnowledgeIndex>();
+
+  /**
+   * UW-4c: the retrieval index of a state — read from the store and checked when it was persisted, otherwise built from the
+   * state's records and persisted (stores that keep indexes). States are immutable, so an index is never rebuilt for a reason
+   * other than not having one; `rebuild` forces it (the result must equal the stored one, or the stored one is refused).
+   */
+  async index(stateId: string, options: { readonly rebuild?: boolean } = {}): Promise<KnowledgeIndex> {
+    const cached = options.rebuild === true ? undefined : this.indexCache.get(stateId);
+    if (cached !== undefined) return cached;
+    const state = await this.state(stateId);
+    const stored = options.rebuild === true ? undefined : await this.store.getIndex?.<KnowledgeIndex>(stateId);
+    let index: KnowledgeIndex;
+    if (stored !== undefined) {
+      const why = indexMismatch(stored, state);
+      if (why !== undefined) throw new KnowledgeError('integrity', `the stored index of state ${stateId} cannot be used: ${why}`);
+      index = stored;
+    } else {
+      const records = new Map((await this.records(stateId, { lifecycle: 'any' })).map((x) => [x.record.id, x.record]));
+      index = buildKnowledgeIndex(state, records);
+      // Write-once and content-addressed: a concurrent builder writes the same bytes; a different stored index is refused.
+      if (this.store.putIndex !== undefined) {
+        try {
+          await this.store.putIndex(stateId, index);
+        } catch (e) {
+          if (e instanceof IntegrityError)
+            throw new KnowledgeError('integrity', `the stored index of state ${stateId} differs from a rebuild: ${e.message}`);
+          throw e;
         }
-        return { d, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b2) => b2.score - a.score || a.d.record.id.localeCompare(b2.d.record.id))
-      .slice(0, limit);
-    return scored.map(({ d, score }) => ({
-      stateId,
-      recordId: d.record.id,
-      kind: d.record.kind,
-      type: d.record.kind === 'claim' ? d.record.predicate : d.record.type,
-      text: searchText(d.record),
-      lifecycle: d.entry.lifecycle,
-      ...(d.record.kind === 'claim' ? { authority: d.record.authority } : {}),
-      evidence: d.record.evidence,
-      score: Math.round(score * 1000) / 1000,
-    }));
+      }
+    }
+    if (this.indexCache.size >= 16) this.indexCache.delete(this.indexCache.keys().next().value!);
+    this.indexCache.set(stateId, index);
+    return index;
+  }
+
+  /**
+   * BM25 search over a state, through its retrieval index. By default only approved (`active`) records are searched; pass
+   * `lifecycle` to include others (review screens). Each hit's record is read and checked against the state.
+   */
+  async search(stateId: string, text: string, limit = 10, options: Omit<IndexQuery, 'text' | 'limit'> = {}): Promise<readonly SearchHit[]> {
+    const index = await this.index(stateId);
+    const state = await this.state(stateId);
+    const entries = new Map(state.entries.map((e) => [e.id, e]));
+    const hits = queryKnowledgeIndex(index, { ...options, text, limit });
+    const out: SearchHit[] = [];
+    for (const h of hits) {
+      const entry = entries.get(h.id)!;
+      const record = await this.store.getRecord(h.id);
+      if (record === undefined) throw new KnowledgeError('integrity', `record ${h.id} of state ${stateId} is missing`);
+      if (digestOf(record) !== entry.recordDigest) throw new KnowledgeError('integrity', `record ${h.id} of state ${stateId} was altered`);
+      out.push({
+        stateId,
+        recordId: record.id,
+        kind: record.kind,
+        type: record.kind === 'claim' ? record.predicate : record.type,
+        text: indexText(record),
+        lifecycle: entry.lifecycle,
+        ...(record.kind === 'claim' ? { authority: record.authority } : {}),
+        evidence: record.evidence,
+        score: h.score,
+      });
+    }
+    return out;
   }
 }
 
@@ -580,18 +688,6 @@ function recordsOf(op: ChangeOperation): readonly KnowledgeRecord[] {
   if (op.op === 'supersede') return [op.by];
   if (op.op === 'split-entity') return op.into;
   return [];
-}
-
-function searchText(r: KnowledgeRecord): string {
-  if (r.kind === 'entity') return [r.canonicalName, ...r.aliases].join(' ');
-  if (r.kind === 'claim') return r.text;
-  return r.type;
-}
-
-function tokens(s: string): string[] {
-  return norm(s)
-    .split(' ')
-    .filter((t) => t.length > 1);
 }
 
 function jaccard(a: string, b: string): number {

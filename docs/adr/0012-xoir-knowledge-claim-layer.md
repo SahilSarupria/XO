@@ -4,6 +4,8 @@
 
 Accepted under owner delegation, 2026-11-13 (UW-0). Signed off 2026-11-13 by Claude under the owner's explicit delegation of sign-off authority (owner instruction of 2026-11-13); this is a delegated sign-off, not an independent review. Implemented by UW-4a.
 
+**Amended by ADR 0034 (UW-4, 2026-11-16):** the claim layer is the Business Knowledge Base (`@xo/knowledge-base`), not an XOIR extension. Every decision above is met there; see ADR 0034 decision 1 for the mapping and the one deviation (model-derived evidence also carries its quote verbatim).
+
 ## Context
 
 The UW-0 knowledge-mapping spike (`docs/baseline/UW0_BASELINE.md` §8) compared the environment-intelligence (EI) knowledge model with

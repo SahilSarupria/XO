@@ -102,7 +102,17 @@ export interface ReadinessInput {
   readonly goal: GoalSpecification;
   /** The scope selection that chose `candidate`, when the goal chose it (absent: the workflow was named explicitly). */
   readonly scope?: ScopeSelection;
-  readonly knowledge?: { readonly stateId: string; readonly digest: string; readonly unresolvedConflicts: readonly string[] };
+  readonly knowledge?: {
+    readonly stateId: string;
+    readonly digest: string;
+    readonly unresolvedConflicts: readonly string[];
+    /**
+     * UW-4a (UAC-12): approved records drawn from this workflow's sources that may NOT feed execution (the executable-use gate
+     * of @xo/knowledge-base refused them: evidence that no longer resolves, a lost conflict, no authority), with the reasons.
+     * Absent when the caller did not run the gate.
+     */
+    readonly refused?: readonly { readonly recordId: string; readonly reasons: readonly string[] }[];
+  };
   /** Owner-accepted bounded conditions (decision 14). */
   readonly accepted?: { readonly ambiguousStepOrder?: boolean };
   /** Digests of the waivers and rulings applied in the assessments (bound so a revoked decision makes the certificate stale). */
@@ -191,9 +201,19 @@ export function assessReadiness(input: ReadinessInput): WorkflowReadinessCertifi
   gates.push(
     gate(
       'knowledge',
-      (input.knowledge?.unresolvedConflicts ?? []).map((c) => ({ outcome: 'review' as const, text: `unresolved knowledge conflict ${c}` })),
+      [
+        ...(input.knowledge?.unresolvedConflicts ?? []).map((c) => ({
+          outcome: 'review' as const,
+          text: `unresolved knowledge conflict ${c}`,
+        })),
+        // Knowledge that may not feed execution needs a person: re-approve it against the current source, or retire it.
+        ...(input.knowledge?.refused ?? []).map((r) => ({
+          outcome: 'review' as const,
+          text: `knowledge ${r.recordId} may not feed execution: ${r.reasons.join('; ')}`,
+        })),
+      ],
       input.knowledge !== undefined
-        ? `knowledge state ${input.knowledge.stateId} has no unresolved conflict`
+        ? `knowledge state ${input.knowledge.stateId} has no unresolved conflict${input.knowledge.refused !== undefined ? ' and every record from these sources may feed execution' : ''}`
         : 'no knowledge state is pinned for this workspace',
     ),
   );

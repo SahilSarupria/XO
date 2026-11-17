@@ -7,3 +7,8 @@ export * from './knowledge-base.js';
 export * from './xoir-adapter.js';
 export * from './sql-store.js';
 export * from './transfer.js';
+export * from './evidence.js';
+export * from './ei-mapping.js';
+export * from './state-root.js';
+export * from './retrieval-index.js';
+export * from './text-deriver.js';

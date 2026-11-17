@@ -39,10 +39,25 @@ export interface EvidenceRef {
   };
   /** A short quote of the evidence, when one was recorded. */
   readonly quote?: string;
+  /**
+   * UW-4 (ADR 0012 decision 2): `sha256:` over the NORMALISED quoted words (see `normaliseQuote`). The words themselves are the
+   * record's own text (a claim's `text`, an entity's name) or `quote`; the hash lets the evidence resolver prove they are found
+   * in the stored source without copying customer text into the evidence.
+   */
+  readonly quoteHash?: string;
+  /** When the source was read (EI evidence carries it; compiled evidence uses the compilation time). */
+  readonly observedAt?: string;
   readonly method: { readonly kind: Derivation; readonly name: string; readonly version: string };
 }
 
 export type Derivation = 'source' | 'model' | 'human' | 'system';
+
+/**
+ * UW-4 (ADR 0012 decision 1): how the claim is known, apart from who stands behind it (`authority`) and how it was produced
+ * (`derivation`): `observed` in a source as written, `stated` by a person, `inferred` from other facts. An inferred claim is
+ * corroborated only with at least two independent evidence entries (decision 7).
+ */
+export type ClaimOrigin = 'observed' | 'stated' | 'inferred';
 
 export type Lifecycle = 'proposed' | 'needs_review' | 'active' | 'rejected' | 'superseded' | 'expired';
 
@@ -92,6 +107,8 @@ export interface ClaimRecord extends RecordBase {
   readonly authority: Authority;
   /** The claim's text as a person would read it (retrieval, review). */
   readonly text: string;
+  /** UW-4: how the claim is known. Absent on records written before UW-4 (read as `observed` for source-derived claims). */
+  readonly origin?: ClaimOrigin;
 }
 
 export interface RelationshipRecord extends RecordBase {
@@ -189,7 +206,8 @@ export interface ChangeSet {
   readonly baseStateId: string | null;
   readonly operations: readonly ChangeOperation[];
   readonly origin: {
-    readonly kind: 'xoir-reconciliation' | 'manual' | 'import';
+    /** `model-derivation` (UW-4c): claims a model read from a source's text, checked against it, for review. */
+    readonly kind: 'xoir-reconciliation' | 'manual' | 'import' | 'model-derivation';
     /** What it came from: a compilation id, an import batch, a ticket. Display and audit only. */
     readonly ref?: string;
     readonly sourceSetId?: string;

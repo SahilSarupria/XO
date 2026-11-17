@@ -462,3 +462,35 @@ test('"what information do you have access to?" is answered from the workspace c
     assert.match(sent, /agreement\.md \(uploaded file\): compiled: \d+ capabilities/);
   });
 });
+
+test('UW-4c: approved knowledge answers first — the reviewed claim reaches the model ahead of raw compiled output, with its source', async () => {
+  const p = new ScriptableTestProvider('gemini', [
+    j(route({ standaloneQuery: 'who notifies the client of a delay' })),
+    j(answer({ answer: 'The team notifies the Client of any delay within 24 hours [E1].' })),
+  ]);
+  await withApp({ gemini: p }, undefined, async ({ server, base }) => {
+    const src = (await server.request('POST', `${base}/sources?filename=agreement.md`, Buffer.from(AGREEMENT_MD))).json<{
+      sourceId: string;
+    }>();
+    const c = (await server.request('POST', `${base}/sources/${src.sourceId}/compile`)).json<{ compilationId: string }>().compilationId;
+    const proposal = (await server.request('POST', `${base}/compilations/${c}/knowledge-change-sets`)).json<{
+      changeSet: { changeSetId: string };
+    }>();
+    assert.equal(
+      (await server.request('POST', `${base}/knowledge/change-sets/${proposal.changeSet.changeSetId}/approve`, { reason: 'checked' }))
+        .status,
+      200,
+    );
+    const id = await start(server, base);
+    const t = (
+      await server.request('POST', `${base}/intelligence/conversations/${id}/turns`, { message: 'who notifies the client of a delay?' })
+    ).json<Turn>();
+    assert.equal(t.assistantMessage.result.grounded, true, t.assistantMessage.content);
+    assert.equal(t.assistantMessage.result.citations[0]?.sourceName, 'agreement.md');
+    const prompt = p.callLog[1]!.messages.at(-1)!.content;
+    const approved = prompt.indexOf('approved knowledge');
+    const compiled = prompt.search(/Capability "[^"]+" from agreement\.md/);
+    assert.ok(approved >= 0, 'approved knowledge is offered as evidence');
+    assert.ok(compiled === -1 || approved < compiled, 'and ranks before unreviewed compiled output');
+  });
+});
