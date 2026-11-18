@@ -15,6 +15,7 @@ import {
   defaultCompileConfiguration,
   goalSpecification,
   lowerCandidateWorkflow,
+  neededCapability,
   readinessBindings,
   selectWorkflowScope,
   verifyReadinessCertificate,
@@ -180,4 +181,30 @@ test('the certificate is deterministic for the same inputs', async () => {
   const a = assessReadiness(await setup(PROCEDURE));
   const b = assessReadiness(await setup(PROCEDURE));
   assert.equal(a.digest, b.digest);
+});
+
+// UW-10 (ADR 0041): a bound credential that is not active, or not connected for the capability the operation needs, blocks.
+test('readiness: a revoked or wrong-capability connection blocks the authorization gate; an active one passes', async () => {
+  const input = await setup(PROCEDURE);
+  const gateOf = (c: ReturnType<typeof assessReadiness>) => c.gates.find((g) => g.id === 'authorization')!;
+  const ok = assessReadiness({
+    ...input,
+    credentialChecks: [{ credentialId: 'crd_a', state: 'active', capabilities: ['message.send'], needed: 'message.send' }],
+  });
+  assert.equal(gateOf(ok).outcome, gateOf(assessReadiness(input)).outcome);
+  const revoked = assessReadiness({
+    ...input,
+    credentialChecks: [{ credentialId: 'crd_a', state: 'revoked', capabilities: ['message.send'], needed: 'message.send' }],
+  });
+  assert.equal(gateOf(revoked).outcome, 'block');
+  assert.equal(revoked.status, 'BLOCKED');
+  assert.match(gateOf(revoked).findings.join(' '), /crd_a is revoked/);
+  const wrong = assessReadiness({
+    ...input,
+    credentialChecks: [{ credentialId: 'crd_b', state: 'active', capabilities: ['files.read'], needed: 'message.send' }],
+  });
+  assert.equal(gateOf(wrong).outcome, 'block');
+  assert.match(gateOf(wrong).findings.join(' '), /not connected for message\.send/);
+  assert.equal(neededCapability({ operation: 'send' }), 'message.send');
+  assert.equal(neededCapability({ operation: 'read_rows' }), undefined);
 });

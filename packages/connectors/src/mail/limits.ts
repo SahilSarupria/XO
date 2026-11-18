@@ -57,3 +57,25 @@ export class SendGovernor {
     this.providerLimited = true;
   }
 }
+
+export interface EmailLimits {
+  readonly maxAttachmentBytes: number;
+  readonly limits: SendLimits;
+}
+
+/** The email limits for a tier from the instance settings (`XO_EMAIL_*`, see docs/CONFIGURATION.md). Tier 1 is not paced by XO (the provider is). */
+export function emailLimitsFromEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  tier: 'native_api' | 'smtp_imap' | 'send_only',
+): EmailLimits {
+  const int = (name: string, fallback: number): number => {
+    const n = Number(env[name]);
+    return Number.isInteger(n) && n >= 0 && env[name] !== undefined && env[name] !== '' ? n : fallback;
+  };
+  const pacingMs =
+    tier === 'send_only' ? int('XO_EMAIL_PACING_SEND_ONLY_MS', 5000) : tier === 'smtp_imap' ? int('XO_EMAIL_PACING_SMTP_IMAP_MS', 1000) : 0;
+  return {
+    maxAttachmentBytes: int('XO_EMAIL_MAX_ATTACHMENT_MB', 20) * 1024 * 1024,
+    limits: { pacingMs, dailyCap: int('XO_EMAIL_DAILY_CAP', 400) },
+  };
+}

@@ -92,6 +92,37 @@ export interface WorkflowReadinessCertificate {
   readonly digest: Digest;
 }
 
+/**
+ * UW-10 (ADR 0041): the state of a connection credential a connector binding names, as of now. A credential that is not active, or
+ * that was not connected for the capability the binding's operation needs, blocks the authorization gate: it would be refused at use
+ * time, and a person should learn that before approving, not mid-run. No account names or secrets: ids, a state and capability names.
+ */
+export interface CredentialCheck {
+  readonly credentialId: string;
+  /** `active`, `revoked`, `expired`, ... as the broker reports it. */
+  readonly state: string;
+  /** What the credential was connected for (`message.send`, ...). */
+  readonly capabilities: readonly string[];
+  /** The capability this binding's operation needs, when it is one the broker knows (see {@link neededCapability}). */
+  readonly needed?: string;
+}
+
+/** The broker capability a bound operation needs. Only the sending operation is mapped; others return undefined (state is still checked). */
+export function neededCapability(binding: { readonly operation: string }): string | undefined {
+  return binding.operation === 'send' ? 'message.send' : undefined;
+}
+
+export function credentialFindings(checks: readonly CredentialCheck[]): { outcome: GateOutcome; text: string }[] {
+  const out: { outcome: GateOutcome; text: string }[] = [];
+  for (const c of checks) {
+    if (c.state !== 'active')
+      out.push({ outcome: 'block', text: `connection ${c.credentialId} is ${c.state}; reconnect it before this workflow runs` });
+    else if (c.needed !== undefined && !c.capabilities.includes(c.needed))
+      out.push({ outcome: 'block', text: `connection ${c.credentialId} was not connected for ${c.needed}` });
+  }
+  return out;
+}
+
 export interface ReadinessInput {
   readonly artifact: CompilationArtifact;
   readonly sourceQuality: SourceQualityAssessment;
@@ -119,6 +150,8 @@ export interface ReadinessInput {
   readonly decisionDigests?: readonly string[];
   /** The connector bindings the lowering used (bound so a changed binding makes the certificate stale). */
   readonly connectorBindings?: readonly ConnectorBinding[];
+  /** UW-10: the current state of every credential the bindings name. */
+  readonly credentialChecks?: readonly CredentialCheck[];
   readonly compilationId?: string;
   readonly definitionId?: string;
   readonly issuedBy: { readonly id: string; readonly kind: string };
@@ -254,6 +287,7 @@ export function assessReadiness(input: ReadinessInput): WorkflowReadinessCertifi
   gates.push(
     gate('capabilities', capFindings, `${input.candidate.steps.length} step(s), each eligible, bound and supported by the runtime`),
   );
+  authFindings.push(...credentialFindings(input.credentialChecks ?? []));
   gates.push(gate('authorization', authFindings, 'every step is approved for its current contract (permission is rechecked at start)'));
 
   // Workflow definition: mandatory; plus the composer's own gaps.

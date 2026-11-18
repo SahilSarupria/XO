@@ -139,7 +139,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
   - Pacing and the daily cap are in memory per connector instance: a restart resets them.
   - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.
-  - Not yet wired: settings registry entries, the `app_password` credential kind, the readiness credential check, the Studio tier text and the API connection binding (part b).
+  - No workflow run reaches the mail connectors yet: the adapter wiring (recipient-rule store and route, attachment store, adapter registration) and the Studio tier text are open (ADR 0041, "Not built yet").
+  - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

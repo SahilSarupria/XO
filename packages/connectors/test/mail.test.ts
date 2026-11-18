@@ -399,3 +399,17 @@ test('provider guess: known domain, then MX, else manual, each with the tier in 
     'manual',
   );
 });
+
+test('email limits come from the instance settings with the owner defaults', async () => {
+  const { emailLimitsFromEnv } = await import('../src/index.js');
+  assert.deepEqual(emailLimitsFromEnv({}, 'smtp_imap'), {
+    maxAttachmentBytes: 20 * 1024 * 1024,
+    limits: { pacingMs: 1000, dailyCap: 400 },
+  });
+  assert.equal(emailLimitsFromEnv({}, 'send_only').limits.pacingMs, 5000);
+  assert.equal(emailLimitsFromEnv({}, 'native_api').limits.pacingMs, 0);
+  assert.deepEqual(
+    emailLimitsFromEnv({ XO_EMAIL_DAILY_CAP: '50', XO_EMAIL_MAX_ATTACHMENT_MB: '5', XO_EMAIL_PACING_SEND_ONLY_MS: 'x' }, 'send_only'),
+    { maxAttachmentBytes: 5 * 1024 * 1024, limits: { pacingMs: 5000, dailyCap: 50 } },
+  );
+});

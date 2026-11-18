@@ -6,8 +6,8 @@ Accepted under owner delegation, 2026-11-18 (UW-10 part a, wave W3). Signed off 
 decision authority. This is a delegated sign-off, not an independent review.
 
 Part a covers the connector contract, tier 2 (SMTP + IMAP), tier 1 Gmail and Microsoft Graph, tier 3 (send only), the recipient
-policy, limits, and provider guessing. Part b (listed under "Not built yet") covers the settings registry entries, the `app_password`
-credential kind, the readiness credential check and the Studio preview text.
+policy, limits, and provider guessing. Part b covers the settings registry entries, the app-password credential, and the readiness
+credential check (see "Part b decisions"). The adapter wiring and the Studio preview text are still open (see "Not built yet").
 
 ## Context
 
@@ -79,12 +79,30 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
 - No automatic resend exists in any connector; the engine's one-dispatch-per-key and reconciliation-by-a-person rules are unchanged.
 - The old `smtpConnector` and its domain allowlist stay for existing users; new work should use `smtpMailConnector`.
 
-## Not built yet (UW-10 part b)
+## Part b decisions
 
-Settings registry entries for the per-connection limits (so `docs/CONFIGURATION.md` lists them); the `app_password` credential kind
-in the UW-9 broker; the readiness check that a bound credential is active and holds the needed capability; the one-line tier text in
-the Studio pre-start preview; wiring the connectors into the API's connection binding; DSN/bounce parsing (deferred by the owner);
-a read-mail capability for tier 1 lookup (owner decision, item 6); the owner prerequisites list (below).
+14. **App passwords use the existing `basic` credential kind; no `app_password` kind was added.** The UW-9 broker already stores a
+    user name, host and sealed password (`storeBasic`, `POST /workspaces/{ws}/credentials/basic`, with `capabilities` such as
+    `message.send`), sealed the same way as OAuth secrets. A second kind would change the sealed record's authenticated data for
+    no gain. This amends the handoff's "new credential kind (`app_password`)".
+15. **Readiness checks the bound credential.** `assessReadiness` takes `credentialChecks` (credential id, state, capabilities, the
+    capability the operation needs; ids and names of capabilities only). A credential that is not active, missing, or not connected for
+    `message.send` (the capability the `send` operation needs, `neededCapability`) **blocks** the authorization gate, so a person
+    learns it before approving. The API computes the checks from the workspace broker when it issues a certificate. The refusal at
+    use time still exists as the last line of defence. The checks are not part of the certificate digest; a later revocation is caught at use time.
+16. **Limits are instance settings** (`XO_EMAIL_MAX_ATTACHMENT_MB` 20, `XO_EMAIL_DAILY_CAP` 400, `XO_EMAIL_PACING_SMTP_IMAP_MS` 1000,
+    `XO_EMAIL_PACING_SEND_ONLY_MS` 5000), in the registry and `docs/CONFIGURATION.md`; `emailLimitsFromEnv` reads them. The handoff
+    said "per connection"; per-connection overrides are not built (the same values apply to every connection of the instance).
+
+## Not built yet
+
+- **Adapter wiring (UW-10c).** The instance's `connectorAdapters` map holds `ExternalToolAdapter`s that receive a credential per call.
+  A mail adapter needs, per workspace: the recipient policy (confirmed `contact_list` records or UW-5 `Resolved` results, plus a
+  manage-role recipient rule set that has no store or route yet) and an attachment store keyed by content hash. Until those exist,
+  the connectors are usable and tested but no workflow run reaches them.
+- The one-line tier text in Studio's pre-start preview (`guessProvider` returns the text; nothing displays it yet).
+- DSN/bounce parsing (deferred by the owner); a read-mail capability for tier 1 lookup (owner decision, item 6); the optional
+  transactional-API tier.
 
 ## Owner prerequisites for real email
 

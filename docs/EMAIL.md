@@ -15,3 +15,12 @@ recipients must come from a confirmed record or a workspace rule (default deny);
 Limits (per connection): attachments 20 MB total, 400 sends a day, one send per second (tier 2) or per 5 seconds (tier 3). Graph refuses messages over 3 MB.
 
 Code: `packages/connectors/src/mail/`. Tests use local fake servers: `packages/connectors/test/mail.test.ts`.
+
+## Settings
+
+`XO_EMAIL_MAX_ATTACHMENT_MB`, `XO_EMAIL_DAILY_CAP`, `XO_EMAIL_PACING_SMTP_IMAP_MS`, `XO_EMAIL_PACING_SEND_ONLY_MS` (see `docs/CONFIGURATION.md`).
+
+## Connections
+
+OAuth for Gmail and Microsoft (capability `message.send`); for other hosts an app password through `POST /workspaces/{ws}/credentials/basic`.
+Readiness blocks a workflow whose bound connection is revoked, missing or not connected for `message.send`.
