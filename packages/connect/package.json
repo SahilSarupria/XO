@@ -21,6 +21,7 @@
   "dependencies": {
     "@xo/audit": "0.1.0",
     "@xo/environment-intelligence": "0.1.0",
+    "@xo/knowledge-base": "0.1.0",
     "@xo/permissions": "0.1.0",
     "@xo/types": "0.1.0"
   },

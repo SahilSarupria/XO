@@ -211,6 +211,30 @@
         "ratifiedBy": "owner delegation (ADR 0030)",
         "ratifiedAt": "2026-11-16"
       }
+    },
+    {
+      "measure": "entity-resolution/precision",
+      "min": 0.99,
+      "status": "ratified",
+      "rationale": "UW-5: resolved results must be the right match. Ratified 2026-11-17 by owner delegation; labelled set is synthetic.",
+      "ratifiedBy": "owner (via W3 handoff)",
+      "ratifiedAt": "2026-11-17"
+    },
+    {
+      "measure": "entity-resolution/recall",
+      "min": 0.9,
+      "status": "ratified",
+      "rationale": "UW-5: most true matches resolve. Ratified 2026-11-17 by owner delegation; labelled set is synthetic.",
+      "ratifiedBy": "owner (via W3 handoff)",
+      "ratifiedAt": "2026-11-17"
+    },
+    {
+      "measure": "entity-resolution/wrong-identity-confirmations",
+      "max": 0,
+      "status": "ratified",
+      "rationale": "UW-5: a wrong-identity confirmation is the highest-impact failure. Ratified 2026-11-17 by owner delegation; labelled set is synthetic.",
+      "ratifiedBy": "owner (via W3 handoff)",
+      "ratifiedAt": "2026-11-17"
     }
   ]
 }

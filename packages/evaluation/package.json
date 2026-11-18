@@ -23,7 +23,8 @@
   "dependencies": {
     "@xo/ai-core": "0.1.0",
     "@xo/compiler": "0.1.0",
-    "@xo/intelligence-eval": "0.1.0"
+    "@xo/intelligence-eval": "0.1.0",
+    "@xo/knowledge-base": "0.1.0"
   },
   "devDependencies": {
     "tsx": "^4.16.0"

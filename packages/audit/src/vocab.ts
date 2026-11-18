@@ -43,6 +43,8 @@ export const AUDIT_EVENT_TYPES = [
   'knowledge.change-set.rejected',
   'knowledge.change-set.denied',
   'knowledge.pack.installed',
+  // UW-5: a deterministic entity-resolution run (counts and hashes only).
+  'resolution.computed',
   // PX-7: a readiness certificate was issued, or a start was refused at the certificate gate.
   'readiness.certificate.issued',
   'readiness.start.refused',

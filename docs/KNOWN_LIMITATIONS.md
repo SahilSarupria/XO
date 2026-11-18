@@ -124,6 +124,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Measured accuracy is on a synthetic labelled set (`docs/INGESTION.md`); accuracy on real customer documents needs a real labelled
     set (UW-13).
   - The API still has its own `.docx` reader beside the compiler's.
+- **Entity resolution (UW-5, ADR 0040):**
+  - Accuracy is measured only on a synthetic labelled set of 72 cases written with the matcher in view (precision, recall and
+    wrong-identity count all at their best value). Real name lists are not measured.
+  - Names in non-Latin scripts and unusual transliterations are not covered; the nickname table is fixed.
+  - A reordered name ("Rao Asha") resolves as a full-name match.
+  - Resolution claims are not executable knowledge until a Domain Knowledge Pack defines the `xo-resolution` namespace.
+  - There are no Studio screens; the API takes the item sets from the caller (batch preview wiring is UW-8).
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
