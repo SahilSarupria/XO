@@ -33,7 +33,9 @@ export function checkMailRecipients(to: unknown, policy: RecipientPolicy, maxRec
     const a = r.toLowerCase();
     const domain = a.slice(a.lastIndexOf('@') + 1);
     const ok =
-      policy.confirmed.has(a) || policy.rules.addresses.some((x) => x.toLowerCase() === a) || policy.rules.domains.some((d) => d.toLowerCase() === domain);
+      policy.confirmed.has(a) ||
+      policy.rules.addresses.some((x) => x.toLowerCase() === a) ||
+      policy.rules.domains.some((d) => d.toLowerCase() === domain);
     if (!ok) throw new ConnectorError('DENIED', 'recipient is not from a confirmed source record or a workspace recipient rule', 'none');
     return r;
   });
@@ -53,12 +55,17 @@ export interface LoadedAttachment extends AttachmentRef {
 }
 
 /** Re-verifies every attachment at send time. A missing file or different bytes refuses the send before anything leaves (no effect). */
-export async function loadAttachments(refs: readonly AttachmentRef[], store: AttachmentStore, maxTotalBytes: number): Promise<LoadedAttachment[]> {
+export async function loadAttachments(
+  refs: readonly AttachmentRef[],
+  store: AttachmentStore,
+  maxTotalBytes: number,
+): Promise<LoadedAttachment[]> {
   const out: LoadedAttachment[] = [];
   let total = 0;
   for (const r of refs) {
     if (!/^[0-9a-f]{64}$/.test(r.sha256)) throw new ConnectorError('DENIED', 'attachment hash is malformed', 'none');
-    if (!/^[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+$/.test(r.contentType)) throw new ConnectorError('DENIED', 'attachment content type is invalid', 'none');
+    if (!/^[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+$/.test(r.contentType))
+      throw new ConnectorError('DENIED', 'attachment content type is invalid', 'none');
     const bytes = await store.read(r.sha256);
     if (bytes === undefined) throw new ConnectorError('DENIED', 'an approved attachment is no longer available', 'none');
     if (createHash('sha256').update(bytes).digest('hex') !== r.sha256)
@@ -87,7 +94,8 @@ export interface BuildInput {
 
 /** A complete RFC 5322 message: text body plus attachments (multipart/mixed). Header values are checked for line breaks. */
 export function buildMessage(m: BuildInput): string {
-  for (const v of [m.from, m.subject, m.messageId, ...m.to]) if (CTL.test(v)) throw new ConnectorError('DENIED', 'a header value contains a line break', 'none');
+  for (const v of [m.from, m.subject, m.messageId, ...m.to])
+    if (CTL.test(v)) throw new ConnectorError('DENIED', 'a header value contains a line break', 'none');
   const boundary = `xo-${createHash('sha256').update(m.messageId).digest('hex').slice(0, 24)}`;
   const head = [
     `From: ${m.from}`,
@@ -126,7 +134,8 @@ export interface MessageSendArgs {
 export function parseSendArgs(args: Readonly<Record<string, unknown>>): MessageSendArgs {
   const subject = args['subject'];
   const body = args['body'];
-  if (typeof subject !== 'string' || subject.length === 0 || subject.length > 200 || CTL.test(subject)) throw new ConnectorError('DENIED', 'invalid subject', 'none');
+  if (typeof subject !== 'string' || subject.length === 0 || subject.length > 200 || CTL.test(subject))
+    throw new ConnectorError('DENIED', 'invalid subject', 'none');
   if (typeof body !== 'string') throw new ConnectorError('DENIED', 'invalid body', 'none');
   const att = args['attachments'] ?? [];
   if (!Array.isArray(att) || att.length > 10) throw new ConnectorError('DENIED', 'invalid attachments', 'none');

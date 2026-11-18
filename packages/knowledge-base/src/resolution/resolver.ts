@@ -43,7 +43,12 @@ export type AmbiguityReason = 'several_candidates' | 'several_subjects' | 'simil
 
 export type SubjectResolution =
   | { readonly outcome: 'resolved'; readonly subject: string; readonly candidates: readonly CandidateEvidence[] }
-  | { readonly outcome: 'ambiguous'; readonly subject: string; readonly reason: AmbiguityReason; readonly candidates: readonly CandidateEvidence[] }
+  | {
+      readonly outcome: 'ambiguous';
+      readonly subject: string;
+      readonly reason: AmbiguityReason;
+      readonly candidates: readonly CandidateEvidence[];
+    }
   | { readonly outcome: 'unmatched'; readonly subject: string };
 
 export interface CardinalityViolation {
@@ -120,10 +125,11 @@ export function resolveEntities(
 ): ResolutionReport {
   const minWords = schema.minNameWords ?? 2;
   const edges: Edge[] = [];
-  for (const s of subjects) for (const c of candidates) {
-    const e = pairEvidence(schema, minWords, s, c);
-    if (e !== undefined) edges.push(e);
-  }
+  for (const s of subjects)
+    for (const c of candidates) {
+      const e = pairEvidence(schema, minWords, s, c);
+      if (e !== undefined) edges.push(e);
+    }
   const bestOf = (es: readonly Edge[]): number => Math.min(...es.map((e) => rank(e.basis)));
   const bySubject = new Map<string, Edge[]>();
   const byCandidate = new Map<string, Edge[]>();
@@ -158,19 +164,21 @@ export function resolveEntities(
         return others.length > 0;
       });
     if (severalCandidates || severalSubjects) {
-      const reason: AmbiguityReason = severalCandidates && severalSubjects ? 'both' : severalCandidates ? 'several_candidates' : 'several_subjects';
+      const reason: AmbiguityReason =
+        severalCandidates && severalSubjects ? 'both' : severalCandidates ? 'several_candidates' : 'several_subjects';
       return { outcome: 'ambiguous', subject: s.ref, reason, candidates: evidence };
     }
     return { outcome: 'resolved', subject: s.ref, candidates: evidence };
   });
 
-  const resolvedLinks = results.flatMap((r) => (r.outcome === 'resolved' ? r.candidates.map((c) => ({ subject: r.subject, candidate: c.candidate })) : []));
+  const resolvedLinks = results.flatMap((r) =>
+    r.outcome === 'resolved' ? r.candidates.map((c) => ({ subject: r.subject, candidate: c.candidate })) : [],
+  );
   const violations = validateCardinality(schema, resolvedLinks);
   const linkedCandidates = new Set(resolvedLinks.map((l) => l.candidate));
   const unmatchedSubjects = results.filter((r) => r.outcome === 'unmatched').map((r) => r.subject);
   const unmatchedCandidates = candidates.filter((c) => !linkedCandidates.has(c.ref)).map((c) => c.ref);
-  const clean =
-    results.every((r) => r.outcome === 'resolved') && violations.length === 0 && unmatchedCandidates.length === 0;
+  const clean = results.every((r) => r.outcome === 'resolved') && violations.length === 0 && unmatchedCandidates.length === 0;
   return {
     schema: { relationship: schema.relationship, cardinality: schema.cardinality },
     results,
@@ -200,8 +208,10 @@ export function validateCardinality(
     return m;
   };
   if (schema.cardinality !== 'one_to_many')
-    for (const [item, to] of group('subject')) if (to.size > 1) out.push({ relationship: schema.relationship, kind: 'subject_has_many', item, linkedTo: [...to].sort() });
+    for (const [item, to] of group('subject'))
+      if (to.size > 1) out.push({ relationship: schema.relationship, kind: 'subject_has_many', item, linkedTo: [...to].sort() });
   if (schema.cardinality !== 'many_to_one')
-    for (const [item, to] of group('candidate')) if (to.size > 1) out.push({ relationship: schema.relationship, kind: 'candidate_has_many', item, linkedTo: [...to].sort() });
+    for (const [item, to] of group('candidate'))
+      if (to.size > 1) out.push({ relationship: schema.relationship, kind: 'candidate_has_many', item, linkedTo: [...to].sort() });
   return out.sort((a, b) => (a.kind + a.item).localeCompare(b.kind + b.item));
 }

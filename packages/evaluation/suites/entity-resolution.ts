@@ -40,7 +40,13 @@ export const entityResolutionSuite: Suite = {
       );
       for (const r of report.results) {
         const want = c.expected[r.subject] ?? 'unmatched';
-        const got = r.outcome === 'resolved' ? `resolved:${r.candidates.map((x) => x.candidate).sort().join(',')}` : r.outcome;
+        const got =
+          r.outcome === 'resolved'
+            ? `resolved:${r.candidates
+                .map((x) => x.candidate)
+                .sort()
+                .join(',')}`
+            : r.outcome;
         if (want.startsWith('resolved')) expectedResolved++;
         else if (want === 'ambiguous') ambiguityExpected++;
         if (r.outcome === 'resolved') {
@@ -61,13 +67,50 @@ export const entityResolutionSuite: Suite = {
       uac: ['UAC-5', 'UAC-19'],
       mode: 'deterministic',
       sets: [
-        { id: set.id, version: set.version, provenance: set.provenance, cases: set.cases.length, contentHash: contentHash(set.cases), description: set.description },
+        {
+          id: set.id,
+          version: set.version,
+          provenance: set.provenance,
+          cases: set.cases.length,
+          contentHash: contentHash(set.cases),
+          description: set.description,
+        },
       ],
       measures: [
-        { id: 'entity-resolution/precision', title: 'Resolved results that are the right match', unit: 'ratio', better: 'higher', value: r(correct, systemResolved), numerator: correct, denominator: systemResolved },
-        { id: 'entity-resolution/recall', title: 'Right matches that were resolved', unit: 'ratio', better: 'higher', value: r(correct, expectedResolved), numerator: correct, denominator: expectedResolved },
-        { id: 'entity-resolution/wrong-identity-confirmations', title: 'Wrong-identity confirmations', unit: 'count', better: 'lower', value: wrongIdentity },
-        { id: 'entity-resolution/ambiguity-kept', title: 'Ambiguous cases left ambiguous', unit: 'ratio', better: 'higher', value: r(ambiguityKept, ambiguityExpected), numerator: ambiguityKept, denominator: ambiguityExpected },
+        {
+          id: 'entity-resolution/precision',
+          title: 'Resolved results that are the right match',
+          unit: 'ratio',
+          better: 'higher',
+          value: r(correct, systemResolved),
+          numerator: correct,
+          denominator: systemResolved,
+        },
+        {
+          id: 'entity-resolution/recall',
+          title: 'Right matches that were resolved',
+          unit: 'ratio',
+          better: 'higher',
+          value: r(correct, expectedResolved),
+          numerator: correct,
+          denominator: expectedResolved,
+        },
+        {
+          id: 'entity-resolution/wrong-identity-confirmations',
+          title: 'Wrong-identity confirmations',
+          unit: 'count',
+          better: 'lower',
+          value: wrongIdentity,
+        },
+        {
+          id: 'entity-resolution/ambiguity-kept',
+          title: 'Ambiguous cases left ambiguous',
+          unit: 'ratio',
+          better: 'higher',
+          value: r(ambiguityKept, ambiguityExpected),
+          numerator: ambiguityKept,
+          denominator: ambiguityExpected,
+        },
       ],
       notes: misses.length > 0 ? [`Missed: ${misses.join('; ')}.`] : [],
       limits: [

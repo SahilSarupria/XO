@@ -78,8 +78,10 @@ export interface MailDeps extends LimitDeps {
 
 export function smtpMailConnector(cfg: SmtpMailConfig, deps: MailDeps = {}): Connector {
   const governor = new SendGovernor(cfg.limits, deps);
-  const transport = deps.transport ?? nodeSmtpTransport({ ...cfg.smtp, from: cfg.from, allowedRecipientDomains: [], maxBodyBytes: cfg.maxAttachmentBytes });
-  const lookup = cfg.tier === 'smtp_imap' ? (deps.sentLookup ?? (cfg.imap !== undefined ? imapSentLookup(cfg.imap) : undefined)) : undefined;
+  const transport =
+    deps.transport ?? nodeSmtpTransport({ ...cfg.smtp, from: cfg.from, allowedRecipientDomains: [], maxBodyBytes: cfg.maxAttachmentBytes });
+  const lookup =
+    cfg.tier === 'smtp_imap' ? (deps.sentLookup ?? (cfg.imap !== undefined ? imapSentLookup(cfg.imap) : undefined)) : undefined;
   const operations: Connector['operations'] = {
     send: {
       sideEffect: 'write',
@@ -88,9 +90,21 @@ export function smtpMailConnector(cfg: SmtpMailConfig, deps: MailDeps = {}): Con
         const to = checkMailRecipients(a.to, cfg.recipientPolicy(), cfg.maxRecipients);
         const files = await loadAttachments(a.attachments, cfg.attachments, cfg.maxAttachmentBytes);
         const messageIdHeader = messageIdFor(keyOf(ctx), cfg.from);
-        const raw = buildMessage({ from: cfg.from, to, subject: a.subject, body: a.body, messageId: messageIdHeader, date: new Date(), attachments: files });
+        const raw = buildMessage({
+          from: cfg.from,
+          to,
+          subject: a.subject,
+          body: a.body,
+          messageId: messageIdHeader,
+          date: new Date(),
+          attachments: files,
+        });
         await governor.take(ctx.signal);
-        await transport.send({ from: cfg.from, to, subject: a.subject, body: a.body, messageId: messageIdHeader.slice(1, -1), messageIdHeader, raw }, cfg.auth(ctx), ctx.signal);
+        await transport.send(
+          { from: cfg.from, to, subject: a.subject, body: a.body, messageId: messageIdHeader.slice(1, -1), messageIdHeader, raw },
+          cfg.auth(ctx),
+          ctx.signal,
+        );
         return { sent: true, recipients: to.length, messageId: messageIdHeader, tier: cfg.tier, delivery: delivery('smtp_250') };
       },
     },
@@ -122,7 +136,13 @@ export function gmailConnector(cfg: GmailConfig, deps: MailDeps = {}): Connector
   const governor = new SendGovernor(cfg.limits, deps);
   const call = async (ctx: OperationContext, method: 'GET' | 'POST', path: string, headers: Record<string, string>, body?: string) =>
     egress(
-      { url: `${cfg.baseUrl}${path}`, method, headers: { ...headers, authorization: `Bearer ${await cfg.accessToken(ctx)}` }, ...(body === undefined ? {} : { body }), signal: ctx.signal },
+      {
+        url: `${cfg.baseUrl}${path}`,
+        method,
+        headers: { ...headers, authorization: `Bearer ${await cfg.accessToken(ctx)}` },
+        ...(body === undefined ? {} : { body }),
+        signal: ctx.signal,
+      },
       cfg.egress,
     );
   const operations: Record<string, Connector['operations'][string]> = {
@@ -140,14 +160,27 @@ export function gmailConnector(cfg: GmailConfig, deps: MailDeps = {}): Connector
         try {
           res = big
             ? await call(ctx, 'POST', '/upload/gmail/v1/users/me/messages/send?uploadType=media', { 'content-type': 'message/rfc822' }, raw)
-            : await call(ctx, 'POST', '/gmail/v1/users/me/messages/send', { 'content-type': 'application/json' }, JSON.stringify({ raw: Buffer.from(raw).toString('base64url') }));
+            : await call(
+                ctx,
+                'POST',
+                '/gmail/v1/users/me/messages/send',
+                { 'content-type': 'application/json' },
+                JSON.stringify({ raw: Buffer.from(raw).toString('base64url') }),
+              );
         } catch (e) {
           if (e instanceof ConnectorError) throw e;
           throw new ConnectorError('FAILED', 'gmail request failed'); // unknown: it may have been accepted
         }
         if (res.status === 200) {
           const id = (JSON.parse(res.body) as { id?: unknown }).id;
-          return { sent: true, recipients: to.length, messageId, tier: 'native_api', providerId: typeof id === 'string' ? id : null, delivery: delivery('gmail_api') };
+          return {
+            sent: true,
+            recipients: to.length,
+            messageId,
+            tier: 'native_api',
+            providerId: typeof id === 'string' ? id : null,
+            delivery: delivery('gmail_api'),
+          };
         }
         if (res.status === 429 || (res.status === 403 && /rateLimitExceeded|dailyLimitExceeded|userRateLimitExceeded/.test(res.body))) {
           governor.markProviderLimited();
@@ -191,7 +224,13 @@ export function graphConnector(cfg: GraphConfig, deps: MailDeps = {}): Connector
   const governor = new SendGovernor(cfg.limits, deps);
   const call = async (ctx: OperationContext, method: 'GET' | 'POST', path: string, headers: Record<string, string>, body?: string) =>
     egress(
-      { url: `${cfg.baseUrl}${path}`, method, headers: { ...headers, authorization: `Bearer ${await cfg.accessToken(ctx)}` }, ...(body === undefined ? {} : { body }), signal: ctx.signal },
+      {
+        url: `${cfg.baseUrl}${path}`,
+        method,
+        headers: { ...headers, authorization: `Bearer ${await cfg.accessToken(ctx)}` },
+        ...(body === undefined ? {} : { body }),
+        signal: ctx.signal,
+      },
       cfg.egress,
     );
   const operations: Record<string, Connector['operations'][string]> = {
@@ -204,7 +243,11 @@ export function graphConnector(cfg: GraphConfig, deps: MailDeps = {}): Connector
         const messageId = messageIdFor(keyOf(ctx), cfg.from);
         const raw = buildMessage({ from: cfg.from, to, subject: a.subject, body: a.body, messageId, date: new Date(), attachments: files });
         if (Buffer.byteLength(raw) > GRAPH_MIME_LIMIT)
-          throw new ConnectorError('DENIED', 'the message is larger than Microsoft Graph accepts in one call; this send was not made', 'none');
+          throw new ConnectorError(
+            'DENIED',
+            'the message is larger than Microsoft Graph accepts in one call; this send was not made',
+            'none',
+          );
         await governor.take(ctx.signal);
         let res;
         try {
@@ -213,7 +256,8 @@ export function graphConnector(cfg: GraphConfig, deps: MailDeps = {}): Connector
           if (e instanceof ConnectorError) throw e;
           throw new ConnectorError('FAILED', 'graph request failed'); // unknown
         }
-        if (res.status === 202) return { sent: true, recipients: to.length, messageId, tier: 'native_api', delivery: delivery('graph_202') };
+        if (res.status === 202)
+          return { sent: true, recipients: to.length, messageId, tier: 'native_api', delivery: delivery('graph_202') };
         if (res.status === 429) {
           governor.markProviderLimited();
           throw new ConnectorError('DENIED', 'the provider limit was reached; this send was not made', 'none');

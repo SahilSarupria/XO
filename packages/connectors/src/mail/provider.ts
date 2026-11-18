@@ -31,11 +31,30 @@ const KNOWN: Readonly<Record<string, ProviderGuess['provider']>> = {
 };
 
 const TEXT: Readonly<Record<ProviderGuess['provider'], { tier: MailTier; explanation: string }>> = {
-  google: { tier: 'native_api', explanation: 'Sends through Gmail with your sign-in. XO can check whether a message was sent only if you also allow reading your mailbox; otherwise an uncertain send waits for you to confirm it.' },
-  microsoft: { tier: 'native_api', explanation: 'Sends through Microsoft 365 or Outlook with your sign-in. XO can check whether a message was sent only if you also allow reading your mailbox; otherwise an uncertain send waits for you to confirm it.' },
-  yahoo: { tier: 'smtp_imap', explanation: 'Sends by SMTP and checks your Sent folder over IMAP before deciding anything about an uncertain send. Needs an app password.' },
-  zoho: { tier: 'smtp_imap', explanation: 'Sends by SMTP and checks your Sent folder over IMAP before deciding anything about an uncertain send.' },
-  manual: { tier: 'send_only', explanation: 'Sends by SMTP only. XO cannot check what was sent, so any uncertain send waits for you to confirm it, and sending is slower.' },
+  google: {
+    tier: 'native_api',
+    explanation:
+      'Sends through Gmail with your sign-in. XO can check whether a message was sent only if you also allow reading your mailbox; otherwise an uncertain send waits for you to confirm it.',
+  },
+  microsoft: {
+    tier: 'native_api',
+    explanation:
+      'Sends through Microsoft 365 or Outlook with your sign-in. XO can check whether a message was sent only if you also allow reading your mailbox; otherwise an uncertain send waits for you to confirm it.',
+  },
+  yahoo: {
+    tier: 'smtp_imap',
+    explanation:
+      'Sends by SMTP and checks your Sent folder over IMAP before deciding anything about an uncertain send. Needs an app password.',
+  },
+  zoho: {
+    tier: 'smtp_imap',
+    explanation: 'Sends by SMTP and checks your Sent folder over IMAP before deciding anything about an uncertain send.',
+  },
+  manual: {
+    tier: 'send_only',
+    explanation:
+      'Sends by SMTP only. XO cannot check what was sent, so any uncertain send waits for you to confirm it, and sending is slower.',
+  },
 };
 
 const guess = (provider: ProviderGuess['provider'], how: ProviderGuess['how']): ProviderGuess => ({ provider, how, ...TEXT[provider] });
@@ -45,7 +64,13 @@ export async function guessProvider(
   deps: { readonly mx?: (domain: string) => Promise<readonly string[]> } = {},
 ): Promise<ProviderGuess> {
   const at = address.lastIndexOf('@');
-  const domain = at < 0 ? '' : address.slice(at + 1).trim().toLowerCase();
+  const domain =
+    at < 0
+      ? ''
+      : address
+          .slice(at + 1)
+          .trim()
+          .toLowerCase();
   if (domain === '') return guess('manual', 'manual');
   const known = KNOWN[domain];
   if (known !== undefined) return guess(known, 'known_domain');

@@ -42,7 +42,8 @@ export class SendGovernor {
         this.providerLimited = false;
       }
       if (this.providerLimited) throw new ConnectorError('DENIED', 'the provider daily limit was reached; this send was not made', 'none');
-      if (this.count >= this.limits.dailyCap) throw new ConnectorError('DENIED', 'the daily send cap was reached; this send was not made', 'none');
+      if (this.count >= this.limits.dailyCap)
+        throw new ConnectorError('DENIED', 'the daily send cap was reached; this send was not made', 'none');
       const wait = this.last + this.limits.pacingMs - this.now();
       if (wait > 0) await (this.deps.sleep ?? realSleep)(wait, signal);
       this.last = this.now();

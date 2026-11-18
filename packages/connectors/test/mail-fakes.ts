@@ -18,7 +18,10 @@ export interface FakeSmtpOptions {
   storeOnDrop?: boolean;
 }
 
-export async function fakeSmtp(box: FakeMailbox, opts: FakeSmtpOptions = {}): Promise<{ port: number; attempts: () => number; close: () => Promise<void> }> {
+export async function fakeSmtp(
+  box: FakeMailbox,
+  opts: FakeSmtpOptions = {},
+): Promise<{ port: number; attempts: () => number; close: () => Promise<void> }> {
   let attempts = 0;
   const server: Server = netServer((s: Socket) => {
     s.setEncoding('utf8');
@@ -63,18 +66,31 @@ export async function fakeSmtp(box: FakeMailbox, opts: FakeSmtpOptions = {}): Pr
           from = line.slice(10);
           to.length = 0;
           s.write('250 ok\r\n');
-        } else if (u.startsWith('RCPT TO')) (to.push(line.slice(8)), s.write('250 ok\r\n'));
-        else if (u === 'DATA') (inData = true, s.write('354 go\r\n'));
-        else if (u === 'QUIT') (s.write('221 bye\r\n'), s.end());
-        else s.write('502 no\r\n');
+        } else if (u.startsWith('RCPT TO')) {
+          to.push(line.slice(8));
+          s.write('250 ok\r\n');
+        } else if (u === 'DATA') {
+          inData = true;
+          s.write('354 go\r\n');
+        } else if (u === 'QUIT') {
+          s.write('221 bye\r\n');
+          s.end();
+        } else s.write('502 no\r\n');
       }
     });
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { port: (server.address() as AddressInfo).port, attempts: () => attempts, close: () => new Promise((r) => server.close(() => r())) };
+  return {
+    port: (server.address() as AddressInfo).port,
+    attempts: () => attempts,
+    close: () => new Promise((r) => server.close(() => r())),
+  };
 }
 
-export async function fakeImap(box: FakeMailbox, opts: { appearAfterSearches?: number } = {}): Promise<{ port: number; searches: () => number; close: () => Promise<void> }> {
+export async function fakeImap(
+  box: FakeMailbox,
+  opts: { appearAfterSearches?: number } = {},
+): Promise<{ port: number; searches: () => number; close: () => Promise<void> }> {
   let searches = 0;
   const server = netServer((s) => {
     s.setEncoding('utf8');
@@ -97,13 +113,19 @@ export async function fakeImap(box: FakeMailbox, opts: { appearAfterSearches?: n
           const id = /"(<[^"]+>)"/.exec(line)?.[1];
           const visible = id !== undefined && box.sent.has(id) && searches > (opts.appearAfterSearches ?? 0);
           s.write(`* SEARCH${visible ? ' 1' : ''}\r\n${tag} OK done\r\n`);
-        } else if (c === 'LOGOUT') (s.write(`* BYE\r\n${tag} OK bye\r\n`), s.end());
-        else s.write(`${tag} BAD unknown\r\n`);
+        } else if (c === 'LOGOUT') {
+          s.write(`* BYE\r\n${tag} OK bye\r\n`);
+          s.end();
+        } else s.write(`${tag} BAD unknown\r\n`);
       }
     });
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { port: (server.address() as AddressInfo).port, searches: () => searches, close: () => new Promise((r) => server.close(() => r())) };
+  return {
+    port: (server.address() as AddressInfo).port,
+    searches: () => searches,
+    close: () => new Promise((r) => server.close(() => r())),
+  };
 }
 
 export interface FakeGmailOptions {
@@ -113,7 +135,10 @@ export interface FakeGmailOptions {
   fail500AfterStoring?: boolean;
 }
 
-export async function fakeGmail(box: FakeMailbox, opts: FakeGmailOptions = {}): Promise<{ baseUrl: string; requests: () => string[]; close: () => Promise<void> }> {
+export async function fakeGmail(
+  box: FakeMailbox,
+  opts: FakeGmailOptions = {},
+): Promise<{ baseUrl: string; requests: () => string[]; close: () => Promise<void> }> {
   const reqs: string[] = [];
   let ok = 0;
   const server: HttpServer = httpServer((req, res) => {
@@ -122,11 +147,17 @@ export async function fakeGmail(box: FakeMailbox, opts: FakeGmailOptions = {}): 
     req.on('end', () => {
       const body = Buffer.concat(chunks).toString('utf8');
       reqs.push(`${req.method} ${req.url}`);
-      const send = (code: number, o: unknown): void => (res.writeHead(code, { 'content-type': 'application/json' }), res.end(JSON.stringify(o)));
+      const send = (code: number, o: unknown): void => (
+        res.writeHead(code, { 'content-type': 'application/json' }),
+        res.end(JSON.stringify(o))
+      );
       if (!/^Bearer fake-token/.test(req.headers.authorization ?? '')) return send(401, { error: 'unauthenticated' });
       if (req.method === 'POST' && req.url?.includes('/messages/send')) {
-        if (opts.limitAfter !== undefined && ok >= opts.limitAfter) return send(429, { error: { errors: [{ reason: 'rateLimitExceeded' }] } });
-        const raw = req.url.startsWith('/upload') ? body : Buffer.from((JSON.parse(body) as { raw: string }).raw, 'base64url').toString('utf8');
+        if (opts.limitAfter !== undefined && ok >= opts.limitAfter)
+          return send(429, { error: { errors: [{ reason: 'rateLimitExceeded' }] } });
+        const raw = req.url.startsWith('/upload')
+          ? body
+          : Buffer.from((JSON.parse(body) as { raw: string }).raw, 'base64url').toString('utf8');
         box.messages.push({ from: '', to: [], data: raw });
         const id = idOf(raw);
         if (id) box.sent.add(id);
@@ -137,16 +168,26 @@ export async function fakeGmail(box: FakeMailbox, opts: FakeGmailOptions = {}): 
       if (req.method === 'GET' && req.url?.startsWith('/gmail/v1/users/me/messages?')) {
         const q = decodeURIComponent(new URL(req.url, 'http://x').searchParams.get('q') ?? '');
         const id = /^rfc822msgid:(.+)$/.exec(q)?.[1];
-        return send(200, id !== undefined && box.sent.has(`<${id}>`) ? { messages: [{ id: 'g1' }], resultSizeEstimate: 1 } : { resultSizeEstimate: 0 });
+        return send(
+          200,
+          id !== undefined && box.sent.has(`<${id}>`) ? { messages: [{ id: 'g1' }], resultSizeEstimate: 1 } : { resultSizeEstimate: 0 },
+        );
       }
       send(404, {});
     });
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requests: () => reqs, close: () => new Promise((r) => (server.closeAllConnections?.(), server.close(() => r()))) };
+  return {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    requests: () => reqs,
+    close: () => new Promise((r) => (server.closeAllConnections?.(), server.close(() => r()))),
+  };
 }
 
-export async function fakeGraph(box: FakeMailbox, opts: { limitAfter?: number } = {}): Promise<{ baseUrl: string; requests: () => string[]; close: () => Promise<void> }> {
+export async function fakeGraph(
+  box: FakeMailbox,
+  opts: { limitAfter?: number } = {},
+): Promise<{ baseUrl: string; requests: () => string[]; close: () => Promise<void> }> {
   const reqs: string[] = [];
   let ok = 0;
   const server: HttpServer = httpServer((req, res) => {
@@ -154,7 +195,10 @@ export async function fakeGraph(box: FakeMailbox, opts: { limitAfter?: number } 
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
       reqs.push(`${req.method} ${req.url}`);
-      const send = (code: number, o?: unknown): void => (res.writeHead(code, { 'content-type': 'application/json' }), res.end(o === undefined ? '' : JSON.stringify(o)));
+      const send = (code: number, o?: unknown): void => (
+        res.writeHead(code, { 'content-type': 'application/json' }),
+        res.end(o === undefined ? '' : JSON.stringify(o))
+      );
       if (!/^Bearer fake-token/.test(req.headers.authorization ?? '')) return send(401, {});
       if (req.method === 'POST' && req.url === '/v1.0/me/sendMail') {
         if (opts.limitAfter !== undefined && ok >= opts.limitAfter) return send(429, {});
@@ -174,5 +218,9 @@ export async function fakeGraph(box: FakeMailbox, opts: { limitAfter?: number } 
     });
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requests: () => reqs, close: () => new Promise((r) => (server.closeAllConnections?.(), server.close(() => r()))) };
+  return {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    requests: () => reqs,
+    close: () => new Promise((r) => (server.closeAllConnections?.(), server.close(() => r()))),
+  };
 }

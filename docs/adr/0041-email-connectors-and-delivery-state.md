@@ -20,7 +20,7 @@ destination". The UW-9 broker already maps the `message.send` capability to `gma
 ## Decisions
 
 1. **One contract, in `@xo/connectors` (`src/mail/`).** `send` (write): `{ to, subject, body, attachments: [{ filename,
-   contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-contract` is **not changed**: the effect class
+contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-contract` is **not changed**: the effect class
    of a capability is derived from the operator's binding (`write`), per ADR 0033. Tiers differ only in which operations exist.
 2. **Message-ID.** Every tier sets it: `<xo.{sha256(key) first 32 hex}@{sender domain}>`. The same idempotency key always gives
    the same Message-ID, so a lookup can find an earlier attempt.
@@ -51,7 +51,7 @@ destination". The UW-9 broker already maps the `message.send` capability to `gma
     provider limit response (Gmail 429 / `rateLimitExceeded`, Graph 429) makes the connection refuse every later send that day
     **untried** (`effect: 'none'`) and is never retried. In memory per connector instance (see limits).
 12. **Delivery projection.** Output carries `delivery: { status: 'accepted', basis, delivered: 'not_confirmed', bounces:
-    'not_tracked' }`. Accepted is not delivered. Bounce data is recorded only where a provider offers it; none is wired in part a.
+'not_tracked' }`. Accepted is not delivered. Bounce data is recorded only where a provider offers it; none is wired in part a.
 13. **Provider guess.** `guessProvider`: known-provider table, then MX lookup, else manual host form; returns the tier and a
     plain-words explanation for the preview. ISPDB/autodiscover are deferred. The optional transactional-API tier is later work.
 

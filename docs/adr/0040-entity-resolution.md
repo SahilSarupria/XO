@@ -25,8 +25,7 @@ What existed before this change:
    `email` | `alnum` | `exact`) and `minNameWords`; the nickname table and tiers are the matcher's data.
 3. **Result per subject:** `resolved | ambiguous | unmatched`, each with candidate evidence (basis, tier, scheme name, whether the
    evidence alone can confirm). Raw identifier values are never in the evidence.
-4. **When `resolved`.** Only with (a) a strong identifier match, or (b) a `full` name-tier match of at least `minNameWords` (default
-   2) words. In both cases no other candidate may match the same subject at the same level (unless the declared cardinality allows
+4. **When `resolved`.** Only with (a) a strong identifier match, or (b) a `full` name-tier match of at least `minNameWords` (default 2) words. In both cases no other candidate may match the same subject at the same level (unless the declared cardinality allows
    it) and no other subject may match the same candidate at an equal or stronger level. Anything weaker (`joined`, `spelling`,
    `nickname`, `initials`, a one-word name) is at most `ambiguous` (`similarity_only` / `weak_name`). Similarity never confirms.
 5. **Conflicting strong identifiers exclude a match.** Same scheme, different values, is evidence of two different things, even

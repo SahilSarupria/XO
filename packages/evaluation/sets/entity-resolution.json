@@ -1,1963 +1,1963 @@
 {
- "id": "entity-resolution",
- "version": "1",
- "provenance": "synthetic",
- "description": "Synthetic labelled scenarios for UW-5 entity resolution: identifiers, full names, same-name pairs with and without distinguishing evidence, initials, nicknames, transliteration, cardinality and unmatched sets. Names are invented.",
- "cases": [
-  {
-   "id": "er-001",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
+  "id": "entity-resolution",
+  "version": "1",
+  "provenance": "synthetic",
+  "description": "Synthetic labelled scenarios for UW-5 entity resolution: identifiers, full names, same-name pairs with and without distinguishing evidence, initials, nicknames, transliteration, cardinality and unmatched sets. Names are invented.",
+  "cases": [
     {
-     "ref": "s1",
-     "name": "Asha Rao",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "asha.rao@example.org"
+      "id": "er-001",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "asha.rao@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_0.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " ASHA.RAO@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_0.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " ASHA.RAO@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-002",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "v.iyengar@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_1.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " V.IYENGAR@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-003",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "lsriv@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_2.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " LSRIV@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-004",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "rdsouza@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_3.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " RDSOUZA@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-005",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "anirudhc@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_4.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " ANIRUDHC@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-006",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "pnair@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_5.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " PNAIR@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-007",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Imran Sheikh",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "imrans@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_6.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " IMRANS@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-008",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Joseph Fernandes",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "jfern@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_7.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " JFERN@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-009",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Meera Kulkarni",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "meerak@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_8.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " MEERAK@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-010",
-   "category": "identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Sanjay Gupta",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "sgupta@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "file_9.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": " SGUPTA@Example.org "
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-011",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao"
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha_Rao_certificate.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-012",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar"
+      "id": "er-002",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "v.iyengar@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_1.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " V.IYENGAR@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Iyengar Venkatesh.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-013",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava"
+      "id": "er-003",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "lsriv@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_2.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " LSRIV@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Lakshmi_Srivastava_certificate.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-014",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza"
+      "id": "er-004",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "rdsouza@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_3.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " RDSOUZA@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Dsouza Robert.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-015",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary"
+      "id": "er-005",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "anirudhc@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_4.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " ANIRUDHC@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh_Chaudhary_certificate.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-016",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair"
+      "id": "er-006",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "pnair@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_5.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " PNAIR@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Nair Priya.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-017",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Imran Sheikh"
+      "id": "er-007",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Imran Sheikh",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "imrans@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_6.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " IMRANS@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Imran_Sheikh_certificate.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-018",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Joseph Fernandes"
+      "id": "er-008",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Joseph Fernandes",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "jfern@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_7.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " JFERN@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Fernandes Joseph.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-019",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Meera Kulkarni"
+      "id": "er-009",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Meera Kulkarni",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "meerak@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_8.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " MEERAK@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Meera_Kulkarni_certificate.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-020",
-   "category": "full-name",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Sanjay Gupta"
+      "id": "er-010",
+      "category": "identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Sanjay Gupta",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "sgupta@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "file_9.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": " SGUPTA@Example.org "
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Zed Quarrel"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Gupta Sanjay.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "unmatched"
-   }
-  },
-  {
-   "id": "er-021",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao"
+      "id": "er-011",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha_Rao_certificate.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Asha Rao"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha Rao.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-022",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar"
+      "id": "er-012",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Iyengar Venkatesh.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Venkatesh Iyengar"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venkatesh Iyengar.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-023",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava"
+      "id": "er-013",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Lakshmi_Srivastava_certificate.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Lakshmi Srivastava"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Lakshmi Srivastava.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-024",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza"
+      "id": "er-014",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Dsouza Robert.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Robert Dsouza"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Robert Dsouza.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-025",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary"
+      "id": "er-015",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh_Chaudhary_certificate.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Anirudh Chaudhary"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh Chaudhary.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-026",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair"
+      "id": "er-016",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Nair Priya.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Priya Nair"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Priya Nair.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-027",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Imran Sheikh"
+      "id": "er-017",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Imran Sheikh"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Imran_Sheikh_certificate.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Imran Sheikh"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Imran Sheikh.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-028",
-   "category": "homonym",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Joseph Fernandes"
+      "id": "er-018",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Joseph Fernandes"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Fernandes Joseph.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Joseph Fernandes"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Joseph Fernandes.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-029",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "asha.rao.one@example.org"
+      "id": "er-019",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Meera Kulkarni"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Meera_Kulkarni_certificate.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
       }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Asha Rao",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "asha.rao.two@example.org"
+      "id": "er-020",
+      "category": "full-name",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Sanjay Gupta"
+        },
+        {
+          "ref": "s2",
+          "name": "Zed Quarrel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Gupta Sanjay.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "unmatched"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha Rao.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "asha.rao.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-030",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "v.iyengar.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Venkatesh Iyengar",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "v.iyengar.two@example.org"
+      "id": "er-021",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao"
+        },
+        {
+          "ref": "s2",
+          "name": "Asha Rao"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha Rao.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venkatesh Iyengar.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "v.iyengar.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-031",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "lsriv.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Lakshmi Srivastava",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "lsriv.two@example.org"
+      "id": "er-022",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar"
+        },
+        {
+          "ref": "s2",
+          "name": "Venkatesh Iyengar"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venkatesh Iyengar.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Lakshmi Srivastava.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "lsriv.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-032",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "rdsouza.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Robert Dsouza",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "rdsouza.two@example.org"
+      "id": "er-023",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava"
+        },
+        {
+          "ref": "s2",
+          "name": "Lakshmi Srivastava"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Lakshmi Srivastava.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Robert Dsouza.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "rdsouza.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-033",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "anirudhc.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Anirudh Chaudhary",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "anirudhc.two@example.org"
+      "id": "er-024",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza"
+        },
+        {
+          "ref": "s2",
+          "name": "Robert Dsouza"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Robert Dsouza.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh Chaudhary.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "anirudhc.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-034",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "pnair.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Priya Nair",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "pnair.two@example.org"
+      "id": "er-025",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary"
+        },
+        {
+          "ref": "s2",
+          "name": "Anirudh Chaudhary"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh Chaudhary.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Priya Nair.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "pnair.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-035",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Imran Sheikh",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "imrans.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Imran Sheikh",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "imrans.two@example.org"
+      "id": "er-026",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair"
+        },
+        {
+          "ref": "s2",
+          "name": "Priya Nair"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Priya Nair.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Imran Sheikh.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "imrans.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-036",
-   "category": "homonym-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Joseph Fernandes",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "jfern.one@example.org"
-      }
-     ]
     },
     {
-     "ref": "s2",
-     "name": "Joseph Fernandes",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "jfern.two@example.org"
+      "id": "er-027",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Imran Sheikh"
+        },
+        {
+          "ref": "s2",
+          "name": "Imran Sheikh"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Imran Sheikh.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
       }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Joseph Fernandes.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "jfern.two@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-037",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "asha.rao@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha Rao.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.asha.rao@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-038",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "v.iyengar@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venkatesh Iyengar.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.v.iyengar@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-039",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "lsriv@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Lakshmi Srivastava.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.lsriv@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-040",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "rdsouza@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Robert Dsouza.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.rdsouza@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-041",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "anirudhc@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh Chaudhary.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.anirudhc@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-042",
-   "category": "conflicting-identifier",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "pnair@example.org"
-      }
-     ]
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Priya Nair.pdf",
-     "identifiers": [
-      {
-       "scheme": "email",
-       "value": "other.pnair@example.org"
-      }
-     ]
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-043",
-   "category": "initials",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "A Rao.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-044",
-   "category": "initials",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "P_Nair.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-045",
-   "category": "initials",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Sanjay Gupta"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Gupta S.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-046",
-   "category": "initials",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Meera Kulkarni"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "mkulkarni.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-047",
-   "category": "nickname",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Bob Dsouza.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-048",
-   "category": "nickname",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venky Iyengar.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-049",
-   "category": "nickname",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Joseph Fernandes"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Joe Fernandes.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-050",
-   "category": "nickname",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Sanjay Gupta"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Sanju Gupta.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-051",
-   "category": "transliteration",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Laxmi Shrivastav.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-052",
-   "category": "transliteration",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh Choudhari.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-053",
-   "category": "transliteration",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Meera Kulkarni"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Mira Kulkarny.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-054",
-   "category": "transliteration",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venkatesh Iyenger.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-055",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha Rao 2025.pdf"
     },
     {
-     "ref": "c2",
-     "name": "Asha Rao 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-056",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Venkatesh Iyengar"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Venkatesh Iyengar 2025.pdf"
+      "id": "er-028",
+      "category": "homonym",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Joseph Fernandes"
+        },
+        {
+          "ref": "s2",
+          "name": "Joseph Fernandes"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Joseph Fernandes.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
+      }
     },
     {
-     "ref": "c2",
-     "name": "Venkatesh Iyengar 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-057",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Lakshmi Srivastava"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Lakshmi Srivastava 2025.pdf"
+      "id": "er-029",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "asha.rao.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Asha Rao",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "asha.rao.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha Rao.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "asha.rao.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "c2",
-     "name": "Lakshmi Srivastava 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-058",
-   "category": "cardinality",
-   "cardinality": "one_to_many",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Robert Dsouza"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Robert Dsouza 2025.pdf"
+      "id": "er-030",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "v.iyengar.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Venkatesh Iyengar",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "v.iyengar.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venkatesh Iyengar.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "v.iyengar.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "c2",
-     "name": "Robert Dsouza 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1,c2"
-   }
-  },
-  {
-   "id": "er-059",
-   "category": "cardinality",
-   "cardinality": "one_to_many",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anirudh Chaudhary"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anirudh Chaudhary 2025.pdf"
+      "id": "er-031",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "lsriv.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Lakshmi Srivastava",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "lsriv.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Lakshmi Srivastava.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "lsriv.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "c2",
-     "name": "Anirudh Chaudhary 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1,c2"
-   }
-  },
-  {
-   "id": "er-060",
-   "category": "cardinality",
-   "cardinality": "one_to_many",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Priya Nair 2025.pdf"
+      "id": "er-032",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "rdsouza.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Robert Dsouza",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "rdsouza.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Robert Dsouza.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "rdsouza.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "c2",
-     "name": "Priya Nair 2026.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1,c2"
-   }
-  },
-  {
-   "id": "er-061",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Asha Rao"
+      "id": "er-033",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "anirudhc.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Anirudh Chaudhary",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "anirudhc.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh Chaudhary.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "anirudhc.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Asha Rao Kumar"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Asha Rao Kumar.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-062",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Sanjay Gupta"
+      "id": "er-034",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "pnair.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Priya Nair",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "pnair.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Priya Nair.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "pnair.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Sanjay Gupta Jr"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Sanjay Gupta Jr.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-063",
-   "category": "cardinality",
-   "cardinality": "one_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Priya Nair"
+      "id": "er-035",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Imran Sheikh",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "imrans.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Imran Sheikh",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "imrans.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Imran Sheikh.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "imrans.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Priya Nair Menon"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Priya Nair Menon.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous",
-    "s2": "ambiguous"
-   }
-  },
-  {
-   "id": "er-064",
-   "category": "cardinality",
-   "cardinality": "many_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Anita Shah"
+      "id": "er-036",
+      "category": "homonym-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Joseph Fernandes",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "jfern.one@example.org"
+            }
+          ]
+        },
+        {
+          "ref": "s2",
+          "name": "Joseph Fernandes",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "jfern.two@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Joseph Fernandes.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "jfern.two@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched",
+        "s2": "resolved:c1"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Rohit Shah"
-    }
-   ],
-   "candidates": [
-    {
-     "ref": "c1",
-     "name": "Anita Shah Rohit Shah team.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-065",
-   "category": "cardinality",
-   "cardinality": "many_to_one",
-   "subjects": [
-    {
-     "ref": "s1",
-     "name": "Dev Patel"
+      "id": "er-037",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "asha.rao@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha Rao.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.asha.rao@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
     },
     {
-     "ref": "s2",
-     "name": "Isha Patel"
-    }
-   ],
-   "candidates": [
+      "id": "er-038",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "v.iyengar@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venkatesh Iyengar.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.v.iyengar@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Dev Patel Isha Patel joint.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "resolved:c1",
-    "s2": "resolved:c1"
-   }
-  },
-  {
-   "id": "er-066",
-   "category": "unmatched",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-039",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "lsriv@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Lakshmi Srivastava.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.lsriv@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Kavita Joshi"
-    }
-   ],
-   "candidates": [
+      "id": "er-040",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "rdsouza@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Robert Dsouza.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.rdsouza@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Someone Else.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-067",
-   "category": "unmatched",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-041",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "anirudhc@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh Chaudhary.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.anirudhc@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Tarun Bose"
-    }
-   ],
-   "candidates": [
+      "id": "er-042",
+      "category": "conflicting-identifier",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "pnair@example.org"
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Priya Nair.pdf",
+          "identifiers": [
+            {
+              "scheme": "email",
+              "value": "other.pnair@example.org"
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Someone Else.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-068",
-   "category": "unmatched",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-043",
+      "category": "initials",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "A Rao.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Neha Arora"
-    }
-   ],
-   "candidates": [
+      "id": "er-044",
+      "category": "initials",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "P_Nair.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Someone Else.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-069",
-   "category": "unmatched",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-045",
+      "category": "initials",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Sanjay Gupta"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Gupta S.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Farhan Qureshi"
-    }
-   ],
-   "candidates": [
+      "id": "er-046",
+      "category": "initials",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Meera Kulkarni"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "mkulkarni.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Someone Else.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "unmatched"
-   }
-  },
-  {
-   "id": "er-070",
-   "category": "one-word",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-047",
+      "category": "nickname",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Bob Dsouza.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Imran"
-    }
-   ],
-   "candidates": [
+      "id": "er-048",
+      "category": "nickname",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venky Iyengar.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Imran.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-071",
-   "category": "one-word",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-049",
+      "category": "nickname",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Joseph Fernandes"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Joe Fernandes.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Madonna"
-    }
-   ],
-   "candidates": [
+      "id": "er-050",
+      "category": "nickname",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Sanjay Gupta"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Sanju Gupta.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Madonna.pdf"
-    }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  },
-  {
-   "id": "er-072",
-   "category": "one-word",
-   "cardinality": "one_to_one",
-   "subjects": [
+      "id": "er-051",
+      "category": "transliteration",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Laxmi Shrivastav.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "s1",
-     "name": "Suresh"
-    }
-   ],
-   "candidates": [
+      "id": "er-052",
+      "category": "transliteration",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh Choudhari.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
     {
-     "ref": "c1",
-     "name": "Suresh.pdf"
+      "id": "er-053",
+      "category": "transliteration",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Meera Kulkarni"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Mira Kulkarny.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-054",
+      "category": "transliteration",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venkatesh Iyenger.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-055",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha Rao 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Asha Rao 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-056",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Venkatesh Iyengar"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Venkatesh Iyengar 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Venkatesh Iyengar 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-057",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Lakshmi Srivastava"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Lakshmi Srivastava 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Lakshmi Srivastava 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-058",
+      "category": "cardinality",
+      "cardinality": "one_to_many",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Robert Dsouza"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Robert Dsouza 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Robert Dsouza 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1,c2"
+      }
+    },
+    {
+      "id": "er-059",
+      "category": "cardinality",
+      "cardinality": "one_to_many",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anirudh Chaudhary"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anirudh Chaudhary 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Anirudh Chaudhary 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1,c2"
+      }
+    },
+    {
+      "id": "er-060",
+      "category": "cardinality",
+      "cardinality": "one_to_many",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Priya Nair 2025.pdf"
+        },
+        {
+          "ref": "c2",
+          "name": "Priya Nair 2026.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1,c2"
+      }
+    },
+    {
+      "id": "er-061",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Asha Rao"
+        },
+        {
+          "ref": "s2",
+          "name": "Asha Rao Kumar"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Asha Rao Kumar.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
+      }
+    },
+    {
+      "id": "er-062",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Sanjay Gupta"
+        },
+        {
+          "ref": "s2",
+          "name": "Sanjay Gupta Jr"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Sanjay Gupta Jr.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
+      }
+    },
+    {
+      "id": "er-063",
+      "category": "cardinality",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Priya Nair"
+        },
+        {
+          "ref": "s2",
+          "name": "Priya Nair Menon"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Priya Nair Menon.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous",
+        "s2": "ambiguous"
+      }
+    },
+    {
+      "id": "er-064",
+      "category": "cardinality",
+      "cardinality": "many_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Anita Shah"
+        },
+        {
+          "ref": "s2",
+          "name": "Rohit Shah"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Anita Shah Rohit Shah team.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "resolved:c1"
+      }
+    },
+    {
+      "id": "er-065",
+      "category": "cardinality",
+      "cardinality": "many_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Dev Patel"
+        },
+        {
+          "ref": "s2",
+          "name": "Isha Patel"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Dev Patel Isha Patel joint.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "resolved:c1",
+        "s2": "resolved:c1"
+      }
+    },
+    {
+      "id": "er-066",
+      "category": "unmatched",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Kavita Joshi"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Someone Else.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
+    {
+      "id": "er-067",
+      "category": "unmatched",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Tarun Bose"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Someone Else.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
+    {
+      "id": "er-068",
+      "category": "unmatched",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Neha Arora"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Someone Else.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
+    {
+      "id": "er-069",
+      "category": "unmatched",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Farhan Qureshi"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Someone Else.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "unmatched"
+      }
+    },
+    {
+      "id": "er-070",
+      "category": "one-word",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Imran"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Imran.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-071",
+      "category": "one-word",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Madonna"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Madonna.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
+    },
+    {
+      "id": "er-072",
+      "category": "one-word",
+      "cardinality": "one_to_one",
+      "subjects": [
+        {
+          "ref": "s1",
+          "name": "Suresh"
+        }
+      ],
+      "candidates": [
+        {
+          "ref": "c1",
+          "name": "Suresh.pdf"
+        }
+      ],
+      "expected": {
+        "s1": "ambiguous"
+      }
     }
-   ],
-   "expected": {
-    "s1": "ambiguous"
-   }
-  }
- ]
+  ]
 }

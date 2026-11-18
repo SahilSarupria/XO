@@ -1514,7 +1514,13 @@ export const openApiDocument = {
           'Body { schema: { relationship, cardinality: one_to_one|one_to_many|many_to_one, strongSchemes: { scheme: email|alnum|exact }, minNameWords? }, subjects: [{ ref, name?, identifiers? }], candidates: [...] }. Deterministic, no model. Resolved needs a strong identifier match or a unique full-name match of at least two words; similarity (initials, nicknames, spelling variants) is at most ambiguous; conflicting identifiers exclude a match. The report lists unmatched subjects and candidates and cardinality violations. Needs the author role; audited as resolution.computed with counts and hashes only.',
         'x-xo-permission': 'author',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { '200': { description: '{ report }' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Needs the author role' }, '404': { description: 'Unknown workspace' } },
+        responses: {
+          '200': { description: '{ report }' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthenticated' },
+          '403': { description: 'Needs the author role' },
+          '404': { description: 'Unknown workspace' },
+        },
       },
     },
     '/workspaces/{workspaceId}/entity-resolutions/proposals': {
@@ -1524,7 +1530,14 @@ export const openApiDocument = {
           'Same body as entity-resolutions plus evidence: { <ref>: { sourceDigestSha256, sourceName, locator } }. Only resolved results with evidence on both sides become claims (status proposed); nothing is applied. A reviewer with a recent sign-in approves or rejects through the knowledge change-set routes. Needs the author role; audited as knowledge.change-set.proposed.',
         'x-xo-permission': 'author',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
-        responses: { '201': { description: '{ changeSet, report, proposed }' }, '200': { description: '{ changeSet: null }: nothing resolved' }, '400': { description: 'Invalid body' }, '401': { description: 'Unauthenticated' }, '403': { description: 'Needs the author role' }, '404': { description: 'Unknown workspace' } },
+        responses: {
+          '201': { description: '{ changeSet, report, proposed }' },
+          '200': { description: '{ changeSet: null }: nothing resolved' },
+          '400': { description: 'Invalid body' },
+          '401': { description: 'Unauthenticated' },
+          '403': { description: 'Needs the author role' },
+          '404': { description: 'Unknown workspace' },
+        },
       },
     },
     '/workspaces/{workspaceId}/knowledge/records': {

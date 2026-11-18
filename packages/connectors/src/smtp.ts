@@ -168,7 +168,10 @@ export function nodeSmtpTransport(cfg: SmtpConfig): SmtpTransport {
         if (auth !== undefined) {
           if (cfg.security === 'none') throw new ConnectorError('DENIED', 'refusing to send credentials without TLS');
           if (auth.accessToken !== undefined) {
-            const x = await ses.cmd(`AUTH XOAUTH2 ${b64(`user=${auth.user}\u0001auth=Bearer ${auth.accessToken}\u0001\u0001`)}`, [235, 334]);
+            const x = await ses.cmd(
+              `AUTH XOAUTH2 ${b64(`user=${auth.user}\u0001auth=Bearer ${auth.accessToken}\u0001\u0001`)}`,
+              [235, 334],
+            );
             if (x.code === 334) {
               // The server sent a JSON error challenge; an empty line ends the exchange with a 535.
               ses.sock.write('\r\n');
