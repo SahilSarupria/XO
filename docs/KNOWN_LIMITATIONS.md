@@ -131,6 +131,15 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - A reordered name ("Rao Asha") resolves as a full-name match.
   - Resolution claims are not executable knowledge until a Domain Knowledge Pack defines the `xo-resolution` namespace.
   - There are no Studio screens; the API takes the item sets from the caller (batch preview wiring is UW-8).
+- **Email (UW-10 part a, ADR 0041):**
+  - Verified only against local fake SMTP, IMAP, Gmail and Graph servers. Real-provider behaviour (TLS/STARTTLS, OAuth, Message-ID
+    handling, throttling, limits) was not verified.
+  - Tier 1 (Gmail, Graph) cannot look up a sent message: `gmail.send` and `Mail.Send` cannot search, and the broker has no read-mail
+    capability. Until the owner adds one, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
+  - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
+  - Pacing and the daily cap are in memory per connector instance: a restart resets them.
+  - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.
+  - Not yet wired: settings registry entries, the `app_password` credential kind, the readiness credential check, the Studio tier text and the API connection binding (part b).
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
