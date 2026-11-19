@@ -16,6 +16,7 @@ import {
   workspaceRulingsStore,
   requirePrincipal,
   type WorkspaceDataConfig,
+  installedAdapterIds,
 } from '../workspace/workspace-context.js';
 import { recordAudit } from '../audit/record.js';
 import type { WorkspaceStore } from '../workspace/workspace.js';
@@ -487,7 +488,7 @@ export function registerCompilationRoutes(
     const connectorBound = await (async () => {
       if (capability.status === 'resolved') return false;
       const b = (await readConnectorBindings(workspace, dataConfig)).bindings.find((x) => x.capability === capability.name);
-      return b !== undefined && (dataConfig.preExecution?.connectorAdapters.has(b.adapter) ?? false);
+      return b !== undefined && installedAdapterIds(dataConfig).has(b.adapter);
     })();
     const blockedCode = connectorBound ? undefined : approvalBlockedCode(capability.status);
     if (blockedCode !== undefined) {

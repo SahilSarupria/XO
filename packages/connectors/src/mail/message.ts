@@ -137,7 +137,20 @@ export function parseSendArgs(args: Readonly<Record<string, unknown>>): MessageS
   if (typeof subject !== 'string' || subject.length === 0 || subject.length > 200 || CTL.test(subject))
     throw new ConnectorError('DENIED', 'invalid subject', 'none');
   if (typeof body !== 'string') throw new ConnectorError('DENIED', 'invalid body', 'none');
-  const att = args['attachments'] ?? [];
+  // Typed workflow inputs are scalars: one recipient and one attachment per send (the per-recipient case) can be given flat as
+  // `to`, `attachmentSha256`, `attachmentFilename`, `attachmentContentType`. The list form below is the same contract.
+  const flat = args['attachmentSha256'];
+  const att =
+    args['attachments'] ??
+    (typeof flat === 'string' && flat !== ''
+      ? [
+          {
+            filename: args['attachmentFilename'] ?? 'attachment',
+            contentType: args['attachmentContentType'] ?? 'application/octet-stream',
+            sha256: flat,
+          },
+        ]
+      : []);
   if (!Array.isArray(att) || att.length > 10) throw new ConnectorError('DENIED', 'invalid attachments', 'none');
   const attachments = att.map((a): AttachmentRef => {
     const o = a as Record<string, unknown>;

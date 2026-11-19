@@ -413,3 +413,18 @@ test('email limits come from the instance settings with the owner defaults', asy
     { maxAttachmentBytes: 5 * 1024 * 1024, limits: { pacingMs: 5000, dailyCap: 50 } },
   );
 });
+
+test('the flat scalar form (one recipient, one attachment) is the same contract as the list form', async () => {
+  const { parseSendArgs } = await import('../src/index.js');
+  const flat = parseSendArgs({
+    to: 'asha@client.example',
+    subject: 's',
+    body: 'b',
+    attachmentSha256: SHA,
+    attachmentFilename: 'a.pdf',
+    attachmentContentType: 'application/pdf',
+  });
+  assert.deepEqual(flat.attachments, [{ filename: 'a.pdf', contentType: 'application/pdf', sha256: SHA }]);
+  assert.deepEqual(flat.to, ['asha@client.example']);
+  assert.deepEqual(parseSendArgs({ to: 'a@b.example', subject: 's', body: 'b' }).attachments, []);
+});

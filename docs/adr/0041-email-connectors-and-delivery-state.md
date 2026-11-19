@@ -96,10 +96,7 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
 
 ## Not built yet
 
-- **Adapter wiring (UW-10c).** The instance's `connectorAdapters` map holds `ExternalToolAdapter`s that receive a credential per call.
-  A mail adapter needs, per workspace: the recipient policy (confirmed `contact_list` records or UW-5 `Resolved` results, plus a
-  manage-role recipient rule set that has no store or route yet) and an attachment store keyed by content hash. Until those exist,
-  the connectors are usable and tested but no workflow run reaches them.
+- **Adapter wiring (UW-10c): done, see ADR 0042** (recipient-rule store and route, confirmed-contacts reader, attachment store, the `email` adapter).
 - The one-line tier text in Studio's pre-start preview (`guessProvider` returns the text; nothing displays it yet).
 - DSN/bounce parsing (deferred by the owner); a read-mail capability for tier 1 lookup (owner decision, item 6); the optional
   transactional-API tier.

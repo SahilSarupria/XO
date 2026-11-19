@@ -24,3 +24,10 @@ Code: `packages/connectors/src/mail/`. Tests use local fake servers: `packages/c
 
 OAuth for Gmail and Microsoft (capability `message.send`); for other hosts an app password through `POST /workspaces/{ws}/credentials/basic`.
 Readiness blocks a workflow whose bound connection is revoked, missing or not connected for `message.send`.
+
+## In a workflow
+
+Bind the declared send operation to adapter `email` (`PUT /workspaces/{ws}/connector-bindings`, with the connection's `credentialId`).
+Inputs: `to`, `subject`, `body`, and optionally `attachmentSha256` (+ `attachmentFilename`, `attachmentContentType`), or the list form `to: [...]`, `attachments: [...]`.
+Who may be emailed: people in confirmed contact lists, plus `PUT /workspaces/{ws}/email/recipient-rules` (manage role, recent sign-in).
+Attachments are workspace sources, named by the SHA-256 of their bytes. App passwords: host `smtp.example.com:587|imap.example.com` for tier 2, `smtp.example.com:587` for tier 3.

@@ -1,3 +1,8 @@
+import { createMailAdapter } from './email/mail-adapter.js';
+import { workspaceAttachmentStore } from './email/attachments.js';
+import { confirmedContactEmails } from './email/confirmed-contacts.js';
+import { readRecipientRules } from './email/recipient-rules.js';
+import { FsSourceConnectionStore } from './source-connections/store.js';
 import type { ExternalToolAdapter } from '@xo/adapters';
 import { AGENT_PATHS } from './routes/agent-routes.js';
 import { runWithProtection } from '@xo/ai-core';
@@ -17,7 +22,7 @@ import { writeResponse } from './http/respond.js';
 import { createAuthMiddleware, type OidcAuthDeps } from './http/auth.js';
 import type { ApiKeyStore } from './auth/api-key-store.interface.js';
 import { FsApiKeyStore } from './auth/fs-api-key-store.js';
-import type { WorkspaceStore } from './workspace/workspace.js';
+import type { WorkspaceRecord, WorkspaceStore } from './workspace/workspace.js';
 import { FsWorkspaceStore } from './workspace/fs-workspace-store.js';
 import type { WorkspaceDataConfig } from './workspace/workspace-context.js';
 import { loadConfig } from './config.js';
@@ -97,6 +102,8 @@ export interface ServerDeps {
   readonly externalTools?: ExternalToolWiring;
   /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
   readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
+  /** UW-10c: per-workspace adapters. Default: the `email` adapter (message.send). */
+  readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
   /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */
   readonly readinessCertificate?: 'required' | 'workspace';
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
@@ -276,6 +283,23 @@ export function buildRouter(deps: ServerDeps = {}): Router {
   const residency = deps.residency ?? resolveResidency(deps.env ?? process.env);
   const dataRootDir = deps.workspaceDataDir ?? loadConfig().workspaceDataDir;
   let credentialsLoaded: Promise<CredentialsConfig | undefined> | undefined;
+  // UW-10c: the `email` adapter is built per workspace, from that workspace's confirmed contacts, recipient rules and sources.
+  const emailAdapterFactory = (workspace: WorkspaceRecord): ExternalToolAdapter =>
+    createMailAdapter({
+      env: deps.env ?? process.env,
+      attachments: workspaceAttachmentStore(workspace, workspaceDataConfig),
+      recipientPolicy: async () => {
+        const rules = await readRecipientRules(workspace, workspaceDataConfig);
+        return {
+          confirmed: await confirmedContactEmails(
+            workspace,
+            workspaceDataConfig,
+            new FsSourceConnectionStore(workspace, workspaceDataConfig),
+          ),
+          rules: { addresses: rules.addresses, domains: rules.domains },
+        };
+      },
+    });
   const workspaceDataConfig: WorkspaceDataConfig = {
     dataRootDir,
     // UW-9: injected (tests), or loaded once from the instance environment.
@@ -290,6 +314,7 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env, undefined, residency),
     preExecution: {
       connectorAdapters: deps.connectorAdapters ?? new Map(),
+      adapterFactories: deps.adapterFactories ?? new Map([['email', emailAdapterFactory]]),
       certificatePolicy: deps.readinessCertificate ?? readinessCertificatePolicy(deps.env ?? process.env),
     },
     knowledgeStore: knowledgeStoreConfig(deps.env ?? process.env),

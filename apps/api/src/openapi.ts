@@ -1507,6 +1507,51 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/email/recipient-rules': {
+      get: {
+        summary: 'The explicit email recipient rules (UW-10c)',
+        description:
+          '`{ revision, addresses, domains }`: who XO may email besides the people in confirmed contact lists. Default deny: empty allows nothing by itself.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'RecipientRules' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace' },
+        },
+      },
+      put: {
+        summary: 'Replace the explicit email recipient rules (UW-10c)',
+        description:
+          'Body `{ addresses?, domains?, expectedRevision? }`. Manage role, recent sign-in, revision-guarded; audited as email.recipient-rules.updated with counts only.',
+        'x-xo-permission': 'manage',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'RecipientRules' },
+          '400': { description: 'Invalid rules' },
+          '401': { description: 'Not signed in or needs a recent sign-in' },
+          '403': { description: 'Needs the manage role' },
+          '412': { description: 'The rules changed; reload' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/email/provider-guess': {
+      get: {
+        summary: 'Which email tier an address would get, in plain words (UW-10c)',
+        description:
+          'Query `address`. Known-provider table, then MX lookup, else manual. `{ provider, tier: native_api|smtp_imap|send_only, how, explanation }`.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'address', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'ProviderGuess' },
+          '400': { description: 'Not an email address' },
+          '401': { description: 'Not signed in' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/entity-resolutions': {
       post: {
         summary: 'Resolve entities across two sources: resolved, ambiguous or unmatched, with evidence (UW-5)',

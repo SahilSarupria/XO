@@ -139,7 +139,12 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
   - Pacing and the daily cap are in memory per connector instance: a restart resets them.
   - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.
-  - No workflow run reaches the mail connectors yet: the adapter wiring (recipient-rule store and route, attachment store, adapter registration) and the Studio tier text are open (ADR 0041, "Not built yet").
+  - (UW-10c, ADR 0042) Runs reach the mail connectors through the `email` adapter, verified end to end only against a local fake Gmail with an injected
+    credential. STARTTLS/TLS SMTP and IMAP, Graph and real OAuth connections have not been run through a workflow.
+  - An app-password connection gets tier 2 only if its host reads `smtp-host[:port]|imap-host[:port]`; otherwise tier 3. There is no dedicated IMAP field.
+  - Recipients: confirmed contact lists (re-confirm after the table changes) and explicit rules. UW-5 claims are not read as a recipient source.
+  - Typed run inputs are scalars, so a send takes one recipient and one attachment (flat form); a multi-recipient send needs the list form from a step, not the run input.
+  - The Studio tier text is not shown yet (the provider-guess route returns it).
   - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
