@@ -146,6 +146,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Typed run inputs are scalars, so a send takes one recipient and one attachment (flat form); a multi-recipient send needs the list form from a step, not the run input.
   - The Studio tier text is not shown yet (the provider-guess route returns it).
   - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
+- **Intent composition (UW-6, ADR 0043):**
+  - A bare instruction line planted in a source document compiles into a task for a person (or, if it sounds automated, an unbound capability that stops
+    composition). It cannot act; each compiled capability must still be approved. Text alone cannot tell it from a genuine step.
+  - Needs are matched by name (the inventory's normalisation), not by meaning; a loosely named need is reported as a gap.
+  - Free text needs an instance `intentProposer`; none is wired to the UW-14 guard, so the default (`strict_local`) answers 501. Model behaviour was tested only with a scripted proposer.
+  - The `needs_model` step and its use of the reversible-token vault are not built (no such IR step); the vault still has no consumer.
+  - Composition builds on compiled sources only; it does not compose a workflow from nothing.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

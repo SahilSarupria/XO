@@ -11,6 +11,8 @@ const CHECKS = [
   'packages/workflow-runtime/test/injection-corpus.test.ts',
   // UW-4c: the K4 knowledge text deriver.
   'packages/knowledge-base/test/text-deriver.test.ts',
+  // UW-6: workflow composition (goal text, needs, sections, model proposals and planted document lines).
+  'packages/pre-execution/test/intent-injection-corpus.test.ts',
 ] as const;
 
 /** UAC-17 — the injection corpus never changes composition, recipients or approvals, on every path that checks it. */

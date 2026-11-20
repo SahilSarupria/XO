@@ -45,6 +45,8 @@ export const AUDIT_EVENT_TYPES = [
   'knowledge.pack.installed',
   // UW-5: a deterministic entity-resolution run (counts and hashes only).
   'resolution.computed',
+  // UW-6: free text was turned into a structured proposal by a model and composed (counts and digests only).
+  'intent.proposed',
   // UW-10c: the workspace's explicit email recipient rules were replaced (counts only).
   'email.recipient-rules.updated',
   // PX-7: a readiness certificate was issued, or a start was refused at the certificate gate.

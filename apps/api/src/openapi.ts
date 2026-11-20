@@ -1552,6 +1552,24 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/intent-proposals': {
+      post: {
+        summary: 'Propose a workflow from free text, through a model when the instance has one (UW-6)',
+        description:
+          "Body `{ text }`. Refused (501) unless the instance configures a proposer; the default `strict_local` has none: give a structured goal to the generated-workflows route instead. The proposer returns the text of a structured proposal; it is untrusted, parsed strictly and composed like a person's goal (a need the catalogue does not have is a gap). The definition records the proposal-to-validation trace. Needs the author role; audited as intent.proposed with counts only.",
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'A gap or a clarification: no definition' },
+          '201': { description: 'The generated definition, proposal and findings' },
+          '422': { description: 'The model did not return a usable proposal' },
+          '501': { description: 'No model is configured' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/entity-resolutions': {
       post: {
         summary: 'Resolve entities across two sources: resolved, ambiguous or unmatched, with evidence (UW-5)',

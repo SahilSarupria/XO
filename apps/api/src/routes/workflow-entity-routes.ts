@@ -98,6 +98,7 @@ function versionFrom(definition: WorkflowDefinitionRecord, version: number, by: 
     definitionDigest: definition.lowered.definitionDigest,
     compilationId: definition.compilationId,
     candidateWorkflowId: definition.candidateWorkflowId,
+    ...(definition.intentTraceDigest !== undefined ? { intentTraceDigest: definition.intentTraceDigest } : {}),
   };
   return {
     version,
@@ -274,7 +275,7 @@ export function registerWorkflowEntityRoutes(
       readonly goalText?: string;
       readonly goal?: Omit<WorkflowDefinitionRecord['goal'], 'schema' | 'statedBy'>;
     },
-  ): Promise<{ readonly definition: WorkflowDefinitionRecord | null; readonly selection?: unknown }> {
+  ): Promise<{ readonly definition: WorkflowDefinitionRecord | null; readonly selection?: unknown; readonly gaps?: readonly unknown[] }> {
     const actor = requirePrincipal(req);
     if (body['definitionId'] !== undefined) {
       if (body['goal'] !== undefined || body['compilationId'] !== undefined || body['workflowId'] !== undefined)
@@ -342,7 +343,12 @@ export function registerWorkflowEntityRoutes(
     const note = parseNote(body['note']);
     const generated = await definitionFor(req, workspace, body, prompt !== undefined ? { goalText: prompt } : {});
     // A goal that fits no workflow, or two equally, creates nothing: the response asks the one question instead (PX-6).
-    if (generated.definition === null) return json(200, { workflow: null, selection: generated.selection });
+    if (generated.definition === null)
+      return json(200, {
+        workflow: null,
+        selection: generated.selection,
+        ...(generated.gaps !== undefined ? { gaps: generated.gaps } : {}),
+      });
     const now = new Date();
     const by = actorOf(actor);
     const name = parseName(body['name'], generated.definition.workflowName || generated.definition.goal.text);
@@ -498,7 +504,12 @@ export function registerWorkflowEntityRoutes(
     const currentDefinition = await workspaceDefinitionsStore(workspace, dataConfig).get(cur.definition.definitionId);
     const { schema: _schema, statedBy: _statedBy, ...goal } = currentDefinition.goal;
     const generated = await definitionFor(req, workspace, body, { compilationId: cur.definition.compilationId, goal });
-    if (generated.definition === null) return json(200, { workflow: null, selection: generated.selection });
+    if (generated.definition === null)
+      return json(200, {
+        workflow: null,
+        selection: generated.selection,
+        ...(generated.gaps !== undefined ? { gaps: generated.gaps } : {}),
+      });
     const definition = generated.definition;
     const note = parseNote(body['note']);
     const now = new Date();
