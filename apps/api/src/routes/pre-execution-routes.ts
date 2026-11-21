@@ -1,10 +1,12 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import {
+  catalogueVersion,
   composeIntent,
   digestOf,
   intentToGoal,
   parseIntentProposal,
   proposalFromModelAnswer,
+  reuseKey,
   goalDigest,
   goalSpecification,
   lowerCandidateWorkflow,
@@ -28,6 +30,8 @@ import { requireOwnedWorkspace, requirePermission, requirePrincipal, type Worksp
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { actorFromPrincipal } from '@xo/audit';
+import { checkDataDrift, compiledSchemaDigest } from '../drift/data-drift.js';
+import { lookupReuse, recordReuse } from '../reuse/definition-reuse.js';
 import { loadPreExecutionContext } from '../pre-execution/context.js';
 import { JsonRecordStore } from '../pre-execution/record-store.js';
 
@@ -125,8 +129,25 @@ export async function generateDefinition(
   readonly selection: WorkflowDefinitionRecord['selection'] | ScopeSelection;
   /** UW-6: what the compiled sources cannot provide (a needed capability nothing usable offers, a step with no connector bound). */
   readonly gaps?: readonly IntentGap[];
+  /** UW-15: this definition was composed earlier for the same goal, schema, catalogue and bindings; nothing was recomposed. */
+  readonly reused?: boolean;
 }> {
   const ctx = await loadPreExecutionContext(workspace, dataConfig, compilationId, goal.needs ?? []);
+  // UW-15: the same goal over the same schema with the same catalogue reuses the definition composed before instead of recomposing.
+  const key = reuseKey({
+    goalDigest: goalDigest(goal),
+    schemaDigest: await compiledSchemaDigest(workspace, dataConfig, compilationId),
+    catalogueVersion: catalogueVersion(ctx.inventory),
+    compilationId,
+    bindingsDigest: digestOf([...ctx.connectorBindings.values()]),
+    ...(workflowId !== undefined ? { workflowId } : {}),
+  });
+  const defs = workspaceDefinitionsStore(workspace, dataConfig);
+  const hit = await lookupReuse(workspace, dataConfig, key);
+  if (hit !== undefined && hit.compilationId === compilationId) {
+    const stored = await defs.get(hit.definitionId).catch(() => undefined);
+    if (stored !== undefined && stored.lowered.definitionDigest === hit.definitionDigest) return { definition: stored, selection: stored.selection, reused: true };
+  }
   // UW-6: the intent is composed and validated first; a gap stops here, before anything is generated.
   const intent = composeIntent(
     ctx,
@@ -193,7 +214,8 @@ export async function generateDefinition(
   };
   const store = workspaceDefinitionsStore(workspace, dataConfig);
   await store.put(record.definitionId, record);
-  return { definition: await store.get(record.definitionId), selection };
+  await recordReuse(workspace, dataConfig, key, { definitionId: record.definitionId, compilationId, definitionDigest: lowered.definitionDigest });
+  return { definition: await store.get(record.definitionId), selection, reused: false };
 }
 
 export function registerPreExecutionRoutes(
@@ -285,6 +307,18 @@ export function registerPreExecutionRoutes(
         parsed.findings,
       );
       return json(generated.definition === null ? 200 : 201, { ...generated, proposal: parsed.proposal, findings: parsed.findings });
+    }),
+  );
+
+  /** UW-15: has the data this compilation read changed shape? Read-only; the same check a run start applies (ADR 0044). */
+  router.get(
+    '/workspaces/:workspaceId/compilations/:compilationId/data-drift',
+    guarded(async (req) => {
+      const workspace = await requireOwnedWorkspace(req, workspaceStore);
+      await requirePermission(req, workspace, 'read', dataConfig, { action: 'check data drift' });
+      const compilationId = req.params['compilationId'];
+      if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+      return json(200, { drift: await checkDataDrift(workspace, dataConfig, compilationId) });
     }),
   );
 }

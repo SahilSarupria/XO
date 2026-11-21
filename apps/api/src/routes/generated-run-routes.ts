@@ -39,6 +39,8 @@ import { approvalKeyring, currentPublicKeys, verifyJournaledDecision } from '../
 import { effectAuthorizer, type EffectCall } from '../pre-execution/effect-authorization.js';
 import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { enforceNotPaused } from '../workflow-controls/service.js';
+import { exceptionReport } from '../workflow-controls/exceptions.js';
+import { checkDataDrift, driftSummary } from '../drift/data-drift.js';
 import { adapterFor, installedAdapterIds, workspaceStateStore } from '../workspace/workspace-context.js';
 import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
 
@@ -387,6 +389,19 @@ export async function startGeneratedRun(
     );
   }
   await enforceNotPaused(new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId));
+  // UW-15 (UAC-34): the data must still have the shape this workflow was compiled for. A used column renamed, removed or retyped, or
+  // reformatted, stops the run HERE, before a run record or any effect exists, with the differences in the error.
+  const drift = await checkDataDrift(workspace, dataConfig, definition.compilationId);
+  if (drift.status === 'blocking') {
+    await audit?.tryRecord({
+      ...draft,
+      type: 'generated-workflow.drift.refused',
+      outcome: 'denied',
+      reasonCode: 'data_schema_drift',
+      metadata: { sources: drift.sources.filter((x) => x.status === 'blocking').length, differences: drift.sources.reduce((n, x) => n + x.tables.reduce((m, t) => m + t.report.differences.filter((d) => d.severity === 'blocking').length, 0), 0) },
+    });
+    throw new XoError(ErrorCode.DATA_SCHEMA_DRIFT, driftSummary(drift), { context: { report: drift } });
+  }
   const idem = s.idempotencyKey;
   // The run id is fixed before the run starts, so who started it is on record before its first effect. A run started for a
   // Workflow entity also binds the entity into the id, so one key on two workflows that share a definition are two runs.
@@ -757,6 +772,17 @@ export function registerGeneratedRunRoutes(
     return json(200, { runs: runs.filter((r) => r !== undefined) });
   }
 
+  /** UW-15 (UAC-36): how often this workflow needed a person over the last 30 days, and only the items still waiting for one. */
+  async function exceptions(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read workflow exceptions' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const store = new RunStore(runsDir(dataConfig, workspace.workspaceId, definition.definitionId));
+    const runs = [];
+    for (const id of await store.list().catch(() => [] as string[])) runs.push({ runId: id, entries: await store.read(id).catch(() => []) });
+    return json(200, exceptionReport(runs, new Date()));
+  }
+
   /** A person decides a human step: review role, recent sign-in; the platform signs the decision as theirs. */
   async function decide(req: ApiRequest): Promise<ApiResponse> {
     const correlationId = newCorrelationId();
@@ -879,6 +905,7 @@ export function registerGeneratedRunRoutes(
   router.get('/workspaces/:workspaceId/connector-bindings', guarded(getBindings));
   router.put('/workspaces/:workspaceId/connector-bindings', guarded(putBindings));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(start));
+  router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/exceptions', guarded(exceptions));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(list));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId', guarded(status));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId/approvals/:approvalId', guarded(decide));

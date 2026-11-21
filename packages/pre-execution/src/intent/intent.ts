@@ -325,3 +325,20 @@ export function proposalFromModelAnswer(answer: string): unknown {
     return undefined;
   }
 }
+
+/**
+ * UW-15 (ADR 0044) — the key under which a compiled definition is reused: the same goal over the same schema with the same catalogue
+ * gives the same key. Stricter than goal + schema + catalogue, because a definition also depends on what it was lowered against:
+ * the compilation, the connector bindings and an explicit workflow choice are part of the key, so a change to any of them composes afresh.
+ */
+export function reuseKey(parts: {
+  readonly goalDigest: Digest;
+  /** Digest of the compiled tables' schema (headers, types, value shapes), or null when the compilation has none. */
+  readonly schemaDigest: Digest | null;
+  readonly catalogueVersion: Digest;
+  readonly compilationId: string;
+  readonly bindingsDigest: Digest;
+  readonly workflowId?: string;
+}): Digest {
+  return digestOf({ v: 1, ...parts, workflowId: parts.workflowId ?? null });
+}

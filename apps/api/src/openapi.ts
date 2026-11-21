@@ -1570,6 +1570,32 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/data-drift': {
+      get: {
+        summary: 'Has the data this compilation read changed shape? (UW-15, UAC-34)',
+        description:
+          'Compares each table (.csv, .xlsx) the compilation was built from, as compiled, with the newest source of the same name: header names (trimmed, case-folded), the type of each column and the shape of its values. A renamed, removed or retyped column, or a changed format pattern, is blocking (a run start is refused 409 XO_DATA_SCHEMA_DRIFT before any effect, with this report in the error context); a new unused column is a warning. Reports headers and shapes, never cell values.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ drift: { status: none|warning|blocking, sources, checkedSources } }' }, '401': { description: 'Not signed in' }, '404': { description: 'Unknown workspace or compilation' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/exceptions': {
+      get: {
+        summary: 'How often a workflow needed a person, and what is still waiting (UW-15, UAC-36)',
+        description:
+          'Over the last 30 days: runs, runs that asked for an approval or escalated, the share, and (for fan-out runs) items and the share that needed a person. `queue` lists only open items: approvals not yet decided and escalations, oldest first. Counts, ids and step names only.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: '{ stats, queue }' }, '401': { description: 'Not signed in' }, '404': { description: 'Unknown workspace or workflow' } },
+      },
+    },
     '/workspaces/{workspaceId}/entity-resolutions': {
       post: {
         summary: 'Resolve entities across two sources: resolved, ambiguous or unmatched, with evidence (UW-5)',

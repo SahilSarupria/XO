@@ -315,6 +315,8 @@ export const ErrorCode = {
   // certificate is stale (a bound digest changed), tampered, for another workflow, or its status does not allow a start.
   READINESS_CERTIFICATE_REQUIRED: 'XO_READINESS_CERTIFICATE_REQUIRED',
   READINESS_CERTIFICATE_REFUSED: 'XO_READINESS_CERTIFICATE_REFUSED',
+  /** UW-15: the data a workflow reads changed shape since it was compiled (a used column renamed, removed or retyped, or reformatted). Refused before any effect. */
+  DATA_SCHEMA_DRIFT: 'XO_DATA_SCHEMA_DRIFT',
   // ADR 0031 — the certified definition uses constructs (act, wait, branch, compensate, for_each, extract) only the Workflow IR
   // runtime executes; it starts through POST …/generated-workflows/{definitionId}/runs, never through the composed-workflow runner.
   WORKFLOW_REQUIRES_IR_RUNTIME: 'XO_WORKFLOW_REQUIRES_IR_RUNTIME',
