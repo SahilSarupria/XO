@@ -24,7 +24,18 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, requirePermission, requirePrincipal, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  requirePermission,
+  requirePrincipal,
+  workspaceStateStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
+import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { LOCAL_PROVIDER_IDS } from '../settings/workspace-settings.js';
+import { proposeIntent, typedModelChoice } from '../intent/model-proposer.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { actorFromPrincipal } from '@xo/audit';
@@ -201,7 +212,11 @@ export function registerPreExecutionRoutes(
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
   audit: AuditService,
+  options: { readonly providerFactory?: ProviderFactory; readonly residency?: ResidencyPolicy } = {},
 ): void {
+  // UW-6: free text reaches a model only through the residency-guarded factory and the typed egress boundary (UW-14), like K4.
+  const residency = options.residency ?? resolveResidency(process.env);
+  const providerFor = guardedFactory(options.providerFactory ?? envProviderFactory(process.env, residency), residency);
   async function createDefinition(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'generate a workflow definition' });
@@ -254,14 +269,15 @@ export function registerPreExecutionRoutes(
       const text = body.value?.text;
       if (typeof text !== 'string' || text.trim() === '' || text.length > 2000)
         throw new XoError(ErrorCode.INVALID_ARGUMENT, 'text must be 1 to 2000 characters');
-      const proposer = dataConfig.intentProposer;
-      if (proposer === undefined)
+      const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+      const model = typedModelChoice(settings, providerFor, LOCAL_PROVIDER_IDS);
+      if (model === undefined)
         throw new XoError(
           ErrorCode.UNIMPLEMENTED,
-          'turning free text into a workflow needs a model, and this instance runs with none (strict_local). Give the goal as structured fields instead: POST .../generated-workflows with { goal: { text, needs, section, forEach } }.',
+          'turning free text into a workflow needs a model this instance may send a typed request to, and none is selected or allowed (strict_local allows only a local one). Give the goal as structured fields instead: POST .../generated-workflows with { goal: { text, needs, section, forEach } }.',
         );
       const actor = requirePrincipal(req);
-      const answer = await proposer(text);
+      const answer = await proposeIntent(model.provider, model.choice.model, text);
       const parsed = parseIntentProposal(proposalFromModelAnswer(typeof answer === 'string' ? answer : ''));
       await audit.tryRecord({
         action: 'intent.propose',

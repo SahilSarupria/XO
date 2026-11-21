@@ -34,9 +34,13 @@ What existed before this change (audit):
    the selection and ranking, the lowering version and definition digest, step count, validity, outcome and gaps. Content-hashed
    (`intentTraceDigest`); stored on the definition record (`intentTrace`), and each UW-2 version's definition reference carries the digest
    (`GeneratedDefinitionRef.intentTraceDigest`, additive). Versions made earlier have none.
-5. **Free text.** `POST /workspaces/{ws}/compilations/{cid}/intent-proposals` needs an instance `intentProposer` (a function from text to the text of a
-   proposal). The default has none (`strict_local`), and the route answers 501 and points to the structured goal. The proposer must call a model only
-   through the UW-14 guard with a typed request; **that wiring is not built** (see below). Audited as `intent.proposed` with counts only.
+5. **Free text.** `POST /workspaces/{ws}/compilations/{cid}/intent-proposals` sends the person's text to the workspace's selected model
+   (primary, then fallback) **only through the UW-14 boundary** (amended 2026-11-21): the provider comes from the residency-guarded factory
+   (the same one chat and K4 use), and the request is built by `buildEgressRequest` from a fixed template (`intent/propose-system`), a
+   response schema (`intent/propose-schema`) and the text after the intent filter (`filterIntent`), nothing else (`apps/api/src/intent/model-proposer.ts`).
+   So `strict_local` reaches only a local model, `masked_hosted` only a contracted provider, and the leak guard scans the request before it leaves.
+   With no selected model that may take a typed request, the route answers 501 and points to the structured goal. The earlier raw
+   `intentProposer` hook (text in, text out) is removed, since it could send text past the guard. Audited as `intent.proposed` with counts only.
 6. **Output on the UW-2 entity.** `workflow-entities` create/revise already generate through `generateDefinition`, so a composed definition becomes a
    new version of the entity; gaps are returned with `workflow: null`.
 7. **Three unrelated verticals** (certificate distribution, invoice reconciliation, supply-chain risk) are small synthetic procedure documents in the
@@ -63,8 +67,8 @@ What existed before this change (audit):
 ## Not built
 
 - **The `needs_model` step and its use of the UW-14d token vault.** No such IR step exists (the IR has `extract`, the model-assisted fact reading), and adding
-  a step kind is a Workflow IR change plus an owner-enabled setting. The vault still has no consumer. Left for a workstream that owns the IR.
-- **The proposer through the UW-14 guard**: the route and the contract exist; the typed request template and provider wiring do not, and `strict_local` offers no model.
+  a step kind is a Workflow IR change plus an owner-enabled setting. The vault still has no consumer. Moved out of W3 by the owner's decision (2026-11-21):
+  no workflow needs it yet.
 - Multi-source composition from several compilations, and composition of a workflow from scratch with no compiled source (the design is "build on PX-6, no new free-form planner").
 
 ## Reopen if

@@ -150,7 +150,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - A bare instruction line planted in a source document compiles into a task for a person (or, if it sounds automated, an unbound capability that stops
     composition). It cannot act; each compiled capability must still be approved. Text alone cannot tell it from a genuine step.
   - Needs are matched by name (the inventory's normalisation), not by meaning; a loosely named need is reported as a gap.
-  - Free text needs an instance `intentProposer`; none is wired to the UW-14 guard, so the default (`strict_local`) answers 501. Model behaviour was tested only with a scripted proposer.
+  - Free text needs a selected model that may take a typed request (in `strict_local`, a local one); otherwise 501. It goes only through the UW-14 guard and the typed boundary. Model behaviour was tested only with stand-in providers.
   - The `needs_model` step and its use of the reversible-token vault are not built (no such IR step); the vault still has no consumer.
   - Composition builds on compiled sources only; it does not compose a workflow from nothing.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
