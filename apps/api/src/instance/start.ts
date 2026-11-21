@@ -156,8 +156,9 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
     });
     // Schedule triggers fire from this process. XO_SCHEDULER=off turns them off (for example on a second instance).
     if (schedulerOn) {
-      const stopScheduler = startScheduler(
-        schedulerDepsFrom(
+      const missedSlots = env['XO_SCHEDULE_MISSED_SLOTS'] === 'skip' ? ('skip' as const) : ('run_latest' as const);
+      const stopScheduler = startScheduler({
+        ...schedulerDepsFrom(
           config.workspacesDir,
           config.workspaceDataDir,
           {
@@ -168,7 +169,8 @@ export async function startInstance(opts: StartInstanceOptions = {}): Promise<Ru
           },
           (line) => logger.warn(line),
         ),
-      );
+        missedSlots,
+      });
       cleanups.push(stopScheduler);
     }
     const address = server.address() as AddressInfo;

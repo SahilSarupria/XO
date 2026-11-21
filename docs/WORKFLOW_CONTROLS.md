@@ -71,10 +71,11 @@ The daily limit counts composed runs only. Workflow-runtime runs are not counted
 
 ### What the schedule does and does not promise
 
-- It runs **inside one API process while that process is up**. For an uncertified (composed) schedule, two API processes on the same
-  data directory would start the same run twice. Run one, or set `XO_SCHEDULER=off` on the others. A certified schedule is keyed by
-  its slot, so it does not have this problem.
-- It does **not catch up**. If the server was off for a day, the next tick starts **one** run, not a day's worth.
+- It runs **inside one API process while that process is up**; a lease in the data directory keeps a second process on the same
+  directory from ticking (UW-15). Set `XO_SCHEDULER=off` on instances that should never fire schedules. A certified schedule is also keyed by
+  its slot, so a takeover cannot start a slot twice; an uncertified (composed) schedule relies on the lease alone.
+- It does **not replay a run per missed slot**. After downtime, `XO_SCHEDULE_MISSED_SLOTS` decides (UW-15, ADR 0044): `run_latest` (default) runs only the most recent missed slot, if it ended within 24 hours, and the others are recorded as `skipped: missed`; `skip` runs none of them and the schedule resumes from now.
+- Only one process fires schedules at a time: a lease in the data directory (`scheduler-lease.sqlite`). A second process on the same data directory waits and takes over if the first stops renewing. This covers processes on one machine sharing that directory; a network-shared directory or several machines need a distributed lease (the lease interface is in `@xo/automation`).
 - Timing is "at least N minutes since the last slot", checked every 30 seconds. It is not wall-clock cron.
 - A workflow whose required fields are not in the stored input cannot start; that is recorded (`lastOutcome`:
   `could not start: ...`) and not retried in a loop.

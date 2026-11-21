@@ -116,6 +116,14 @@ export const SETTINGS: readonly SettingSpec[] = [
     description: 'Fire schedule triggers from this instance. One instance per data directory runs them.',
   },
   {
+    name: 'XO_SCHEDULE_MISSED_SLOTS',
+    group: 'workflows',
+    kind: { type: 'enum', values: ['run_latest', 'skip'] },
+    defaultText: 'run_latest',
+    description:
+      'What a schedule does about slots that passed while nothing was running (UW-15). `run_latest`: run only the most recent missed slot, if it ended within 24 hours, and record the others as `skipped: missed`. `skip`: run none of them. Either way only one process fires schedules at a time (a lease in the data directory).',
+  },
+  {
     name: 'XO_CONFIG_FILE',
     group: 'operations',
     kind: PATH,

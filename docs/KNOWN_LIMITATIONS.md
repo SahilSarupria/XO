@@ -153,6 +153,13 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Free text needs an instance `intentProposer`; none is wired to the UW-14 guard, so the default (`strict_local`) answers 501. Model behaviour was tested only with a scripted proposer.
   - The `needs_model` step and its use of the reversible-token vault are not built (no such IR step); the vault still has no consumer.
   - Composition builds on compiled sources only; it does not compose a workflow from nothing.
+- **Automation, drift and reuse (UW-15, ADR 0044):**
+  - The interval scheduler was NOT removed and the API does not run on `@xo/automation`'s engine; only the slot function is shared (tested). Owner decision pending.
+  - The scheduler lease covers processes sharing one local data directory; a network-shared directory or several machines need a distributed lease.
+  - The drift gate only fires for a compilation whose own source is a table. A workflow compiled from a procedure document is not yet linked to the workbooks it reads (UW-8).
+  - Format checks need a dominant value shape (80% of at least three cells); amounts of varying width are type-checked only. Shapes describe how values are written.
+  - Reuse is within one compilation (definitions are bound to it); the key also includes bindings, which is stricter than goal + schema + catalogue.
+  - Exception item rates count distinct steps named by approval and escalation events; no Studio screen for the exceptions queue.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

@@ -17,16 +17,20 @@ import { makeRunnerContext } from '../workflows/workflow-views.js';
 import { FsControlsStore } from './fs-controls-store.js';
 import { scheduleDue } from './model.js';
 import { startGated, StartRefusedError } from './service.js';
+import { SqliteLeaseStore, missedSlotPlan, type LeaseStore, type MissedSlotPolicy } from '@xo/automation';
 import { startCertifiedTrigger } from './certified-trigger.js';
 import { ErrorCode, XoError } from '@xo/errors';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 
 /**
  * Starts runs for workflows that have an "every N minutes" schedule and are practising or live.
  *
  * What it does and does not promise (stated here and in the docs, because "scheduler" invites assumptions):
- *  - It runs inside ONE API process while that process is up. A second API process on the same data directory would
- *    start the same run twice: run one.
- *  - It does not catch up. If the server was off for a day, the next tick starts ONE run, not a day's worth.
+ *  - Only ONE API process ticks at a time: a lease in the data directory (UW-15, ADR 0044). A second process waits and takes over
+ *    if the first stops renewing it. Each slot is also the run's idempotency key, so a takeover cannot start a slot twice.
+ *  - After downtime it does not catch up a run per missed slot. `missedSlots` decides: `run_latest` (default) runs only the most
+ *    recent missed slot, if it ended within 24 hours, and records the others as `skipped: missed`; `skip` runs none of them.
  *  - Timing is "at least N minutes since the last slot", checked every tick (default 30 s), not wall-clock cron.
  *  - A scheduled run starts with the fixed input stored on the schedule (empty if none). A workflow whose required
  *    fields are missing cannot start; that is recorded as `could not start` (`lastOutcome`), never retried in a loop.
@@ -43,6 +47,10 @@ export interface SchedulerDeps {
   /** Environment for the workflow runtime's connectors and signing (default: the process environment). */
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly log?: (line: string) => void;
+  /** UW-15: what to do about slots that passed while nothing was running (default `run_latest`). */
+  readonly missedSlots?: MissedSlotPolicy;
+  /** UW-15: who may fire schedules. Absent: a lease in `<data directory>/scheduler-lease.sqlite`. */
+  readonly lease?: { readonly store: LeaseStore; readonly holder: string; readonly ttlMs?: number };
 }
 
 export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{ started: number; skipped: number }> {
@@ -96,6 +104,41 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
       continue;
     }
     for (const d of due) {
+      // UW-15: slots that passed unfired. `run_latest` runs the latest recent one (its slot is the idempotency key); the rest are recorded.
+      const everyMs = (d.triggers.schedule?.everyMinutes ?? 1) * 60_000;
+      const plan = missedSlotPlan({
+        lastFiredMs: Date.parse(d.triggers.schedule?.lastFiredAt ?? ''),
+        nowMs: now.getTime(),
+        everyMs,
+        policy: deps.missedSlots ?? 'run_latest',
+      });
+      if (plan.skipped.length > 0 && plan.run === undefined) {
+        skipped += 1;
+        const text = `skipped: missed ${plan.skipped.length} slot${plan.skipped.length === 1 ? '' : 's'} while nothing was running`;
+        try {
+          await store.mutate(d.compilationId, d.workflowId, 'trigger-schedule', now.toISOString(), (cur) =>
+            cur.triggers.schedule === undefined
+              ? cur
+              : {
+                  ...cur,
+                  triggers: { ...cur.triggers, schedule: { ...cur.triggers.schedule, lastFiredAt: now.toISOString(), lastOutcome: text } },
+                },
+          );
+          await openWorkspaceAuditLog(ws.value, deps.dataConfig).append({
+            event: 'workflow.triggered',
+            actor: { identityId: 'trigger-schedule', kind: 'system' },
+            result: 'denied',
+            target: { kind: 'workflow', id: d.workflowId },
+            detail: { compilationId: d.compilationId, trigger: 'schedule', outcome: text, missedSlots: plan.skipped.length },
+          });
+        } catch (cause) {
+          deps.log?.(
+            `scheduler: could not record missed slots for ${id}/${d.workflowId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+        continue;
+      }
+      const slot = plan.run ?? Math.floor(now.getTime() / everyMs);
       const ctx = makeRunnerContext(ws.value, principalResult.value, deps.dataConfig, deps.permissionManager);
       let outcome: string;
       let result: 'succeeded' | 'failed' | 'denied' = 'succeeded';
@@ -125,7 +168,7 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
               workflowId: d.workflowId,
               certificateId: sched.certificateId,
               input: { ...(sched.input ?? {}) },
-              idempotencyKey: `schedule:${sched.everyMinutes}:${Math.floor(now.getTime() / (sched.everyMinutes * 60_000))}`,
+              idempotencyKey: `schedule:${sched.everyMinutes}:${slot}`,
               correlationId: newCorrelationId(),
               trigger: 'schedule',
               now,
@@ -137,6 +180,8 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
             state === 'failed'
               ? 'started on the workflow runtime, but the run failed (check its input)'
               : 'started on the workflow runtime';
+          if (plan.skipped.length > 0)
+            outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
           if (state === 'failed') result = 'failed';
         } else {
           const { record } = await startGated(
@@ -153,6 +198,8 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
           );
           runId = record.workflowExecutionId;
           outcome = record.status === 'failed' ? 'started, but the run failed (check its input)' : 'started';
+          if (plan.skipped.length > 0)
+            outcome += `; skipped: missed ${plan.skipped.length} earlier slot${plan.skipped.length === 1 ? '' : 's'}`;
           if (record.status === 'failed') result = 'failed';
         }
         started += 1;
@@ -196,20 +243,51 @@ export async function runDueSchedules(deps: SchedulerDeps, now: Date): Promise<{
   return { started, skipped };
 }
 
+/**
+ * One tick, under the lease: only the holder fires. Returns undefined when another process holds the lease. The lease outlives a
+ * tick (three times the interval by default) so a busy tick does not lose it; a stopped process stops renewing and another takes over.
+ */
+export async function tickWithLease(
+  deps: SchedulerDeps,
+  now: Date,
+  intervalMs: number,
+): Promise<{ started: number; skipped: number } | undefined> {
+  const lease = deps.lease ?? defaultLease(deps);
+  const held = await lease.store.acquire('scheduler', lease.holder, lease.ttlMs ?? intervalMs * 3, now.getTime());
+  if (held === undefined) return undefined;
+  return runDueSchedules(deps, now);
+}
+
+const defaultStores = new Map<string, LeaseStore>();
+function defaultLease(deps: SchedulerDeps): NonNullable<SchedulerDeps['lease']> {
+  const path = join(deps.dataConfig.dataRootDir, 'scheduler-lease.sqlite');
+  let store = defaultStores.get(path);
+  if (store === undefined) {
+    store = new SqliteLeaseStore(path);
+    defaultStores.set(path, store);
+  }
+  return { store, holder: `${process.pid}:${randomUUID().slice(0, 8)}` };
+}
+
 /** Checks on an interval until stopped. A failed tick is logged and the timer carries on. */
 export function startScheduler(deps: SchedulerDeps, intervalMs = 30_000): () => void {
+  const lease = deps.lease ?? defaultLease(deps);
+  const withLease: SchedulerDeps = { ...deps, lease };
   let running = false;
   const timer = setInterval(() => {
     if (running) return; // never overlap two ticks
     running = true;
-    runDueSchedules(deps, new Date())
+    tickWithLease(withLease, new Date(), intervalMs)
       .catch((cause) => deps.log?.(`scheduler tick failed: ${cause instanceof Error ? cause.message : String(cause)}`))
       .finally(() => {
         running = false;
       });
   }, intervalMs);
   timer.unref();
-  return () => clearInterval(timer);
+  return () => {
+    clearInterval(timer);
+    void lease.store.release('scheduler', lease.holder).catch(() => undefined);
+  };
 }
 
 export function schedulerDepsFrom(
