@@ -22,7 +22,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import type { ExternalToolAdapter } from '@xo/adapters';
 import type { WorkflowComponent } from '@xo/workflow-ir';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { requireRecentAuthentication } from '../auth/step-up.js';
 import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
@@ -59,6 +59,9 @@ import {
 } from '../approvals/batch-approval.js';
 import { adapterFor, installedAdapterIds, workspaceStateStore } from '../workspace/workspace-context.js';
 import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
+import { EmergencyStops, describeHit, enforceNoEmergencyStop } from '../workflow-controls/emergency-stops.js';
+import { StartRefusedError } from '../workflow-controls/service.js';
+import { componentSha256, writeManifest } from '../runs/run-manifest.js';
 
 /**
  * ADR 0030 — generated workflows run as Workflow IR, interpreted by `@xo/workflow-runtime`: the definition the readiness
@@ -221,6 +224,8 @@ export async function runnerFor(
   // One lease owner per runner: two requests in one process exclude each other exactly as two processes do.
   const owner = `${deps.owner ?? INSTANCE}-${randomBytes(4).toString('hex')}`;
   const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
+  // RX-1a (ADR 0048): the emergency stops, read again before every call; the engine's kill switch reads the latest view between calls.
+  const stops = await EmergencyStops.load(dataConfig.dataRootDir, workspace.workspaceId);
   // UW-8: the batch approval a run was started with (read from the run's record), with its preview, once per runner.
   const batches = new Map<string, Promise<BatchContext | undefined>>();
   const batchOf = (runId: string): Promise<BatchContext | undefined> => {
@@ -252,16 +257,24 @@ export async function runnerFor(
     const gate: EffectGate = async (call) => {
       const root = await rootRunId(store, call.runId);
       const meta = options.starting?.runId === root ? options.starting.meta : await readMeta(dir, root);
+      const stopped = await stops.checkNow({
+        definitionId: definition.definitionId,
+        ...(meta?.workflow !== undefined ? { workflowId: meta.workflow.workflowId } : {}),
+        connector: call.connector,
+        operation: call.operation,
+      });
       let reason =
-        meta === undefined
-          ? 'the run has no record of who started it'
-          : await authorizer.check({
-              stepId: call.stepId,
-              connector: call.connector,
-              operation: call.operation,
-              adapterId,
-              initiator: meta.initiator,
-            });
+        stopped !== undefined
+          ? describeHit(stopped)
+          : meta === undefined
+            ? 'the run has no record of who started it'
+            : await authorizer.check({
+                stepId: call.stepId,
+                connector: call.connector,
+                operation: call.operation,
+                adapterId,
+                initiator: meta.initiator,
+              });
       // UW-8: a run started with a batch approval makes exactly the calls that were approved, argument for argument.
       if (reason === undefined && meta?.batch !== undefined)
         reason = await batchCallCheck(await batchOf(call.runId), store, call, bindingDigests);
@@ -334,6 +347,9 @@ export async function runnerFor(
       detach: (id) => leased.detach(id),
     },
     connectors: host,
+    // RX-1a: an emergency stop holds the run before its next step, a batch before its next item, and a stopped connector or
+    // operation before its call. Released, the run carries on at the next tick. The effect gate above is the backstop.
+    hold: async (call) => (await stops.checkNow({ definitionId: definition.definitionId, ...(call ?? {}) })) !== undefined,
     approvals: {
       reviewers: new StaticReviewerRegistry(
         reviewer !== undefined ? [{ id: reviewer.id, roles: ['reviewer'], publicKeyPem: keys.active.publicKeyPem }] : [],
@@ -455,10 +471,19 @@ async function batchCallCheck(
   return `item ${index}: this call differs from what was approved (a recipient, attachment, message, sender or setting changed)`;
 }
 
-export async function view(runner: WorkflowRunner, runId: string, dir: string, dataRootDir: string): Promise<Record<string, unknown>> {
+export async function view(
+  runner: WorkflowRunner,
+  runId: string,
+  dir: string,
+  dataRootDir: string,
+  /** RX-1a: when given, a stop on any connector or operation it declares is reported as holding the run. */
+  component?: WorkflowComponent,
+): Promise<Record<string, unknown>> {
   // A due timer or an expired approval on THIS run advances now (under its lease); another instance holding it is fine.
   const before = await runner.status(runId);
-  if (before.state === 'waiting')
+  // A run left `running` (an emergency stop held it, or its process ended) carries on when read, as a waiting one does; a run another
+  // request is driving holds its lease, so this is a no-op there.
+  if (before.state === 'waiting' || before.state === 'running')
     await runner.resume(runId).catch((e: unknown) => (e instanceof LeaseError ? undefined : Promise.reject(e)));
   const status = await runner.status(runId);
   const pending = (await runner.listApprovals()).filter((a) => a.runId === runId);
@@ -481,8 +506,23 @@ export async function view(runner: WorkflowRunner, runId: string, dir: string, d
       };
     });
   const meta = await readMeta(dir, runId);
+  // RX-1a: a run in progress that an emergency stop holds says so (runsDir is <data>/<workspace>/generated-runs/<definition>).
+  let held: string | undefined;
+  if (status.state === 'running' || status.state === 'waiting') {
+    const stops = await EmergencyStops.load(dataRootDir, basename(dirname(dirname(dir))));
+    const hit =
+      stops.check({
+        definitionId: basename(dir),
+        ...(meta?.workflow !== undefined ? { workflowId: meta.workflow.workflowId } : {}),
+      }) ??
+      (component?.connectors ?? [])
+        .flatMap((c) => c.operations.map((o) => stops.check({ connector: c.id, operation: o.name })))
+        .find((h) => h !== undefined);
+    if (hit !== undefined) held = describeHit(hit);
+  }
   return {
     ...status,
+    ...(held !== undefined ? { held } : {}),
     pendingApprovals: pending,
     decisions,
     // UW-7 (ADR 0033, UAC-9): every external call of this run in the one effect vocabulary.
@@ -540,7 +580,7 @@ export async function startGeneratedRun(
     correlationId: s.correlationId,
     target: { kind: 'workflow' as const, id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
   };
-  const certificateId = await requireStartable(deps, workspace, definition, s.certificateId, draft);
+  const certificateId = await requireStartable(deps, workspace, definition, s.certificateId, draft, s.workflow?.workflowId);
   // UW-8 (ADR 0046): a run with effects starts with a person's batch approval over its exact preview (required in production).
   const component = definition.lowered.component as WorkflowComponent | undefined;
   let input = s.input;
@@ -593,6 +633,28 @@ export async function startGeneratedRun(
   const stored = (await readMeta(dir, runId)) ?? meta;
   if (s.workflow !== undefined && stored.workflow?.workflowId !== s.workflow.workflowId)
     throw new XoError(ErrorCode.ALREADY_EXISTS, `run ${runId} already exists for another workflow; use another Idempotency-Key`);
+  // RX-1b (ADR 0048): what this run is bound to, in one place, before its first journal entry (a retry keeps the first).
+  if (component !== undefined) {
+    const cert = await workspaceCertificatesStore(workspace, dataConfig).get(certificateId);
+    const identities = await bindingIdentities(deps, workspace, component);
+    await writeManifest(dir, {
+      v: 1,
+      runId,
+      workspaceId: workspace.workspaceId,
+      definitionId: definition.definitionId,
+      workflowName: definition.workflowName,
+      compilationId: definition.compilationId,
+      componentSha256: componentSha256(component),
+      ...(stored.workflow !== undefined ? { workflow: stored.workflow } : {}),
+      certificate: { certificateId, digest: String(cert.digest) },
+      bindings: Object.fromEntries([...identities].map(([k, v]) => [k, v.digest])),
+      inputDigest: digestOfJson(input),
+      ...(stored.batch !== undefined ? { batch: stored.batch } : {}),
+      packs: [],
+      initiator: stored.initiator,
+      admittedAt: stored.startedAt,
+    });
+  }
   const runner = await runnerFor(deps, workspace, definition, { starting: { runId, meta: stored } });
   let result: RunResult;
   try {
@@ -639,6 +701,8 @@ async function requireStartable(
   definition: WorkflowDefinitionRecord,
   certificateId: unknown,
   draft: Omit<Parameters<AuditService['tryRecord']>[0], 'type' | 'outcome'>,
+  /** RX-1a: the Workflow entity this start is for, when it is one (a stop on the entity holds it). */
+  workflowId?: string,
 ): Promise<string> {
   const { dataConfig } = deps;
   const audit = deps.audit;
@@ -671,6 +735,18 @@ async function requireStartable(
     );
   }
   await enforceNotPaused(new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId));
+  // RX-1a (ADR 0048): an emergency stop on the instance, this workflow, or a connector or operation it can call holds the start.
+  try {
+    await enforceNoEmergencyStop(dataConfig.dataRootDir, workspace.workspaceId, {
+      definitionId: definition.definitionId,
+      ...(workflowId !== undefined ? { workflowId } : {}),
+      ...(definition.lowered.component !== undefined ? { component: definition.lowered.component as WorkflowComponent } : {}),
+    });
+  } catch (e) {
+    if (e instanceof StartRefusedError)
+      await audit?.tryRecord({ ...draft, type: 'emergency-stop.refused', outcome: 'denied', reasonCode: 'emergency_stop' });
+    throw e;
+  }
   // UW-15 (UAC-34): the data must still have the shape this workflow was compiled for. A used column renamed, removed or retyped, or
   // reformatted, stops the run HERE, before a run record or any effect exists, with the differences in the error.
   const drift = await checkDataDrift(workspace, dataConfig, definition.compilationId, definition.dataReads ?? []);
@@ -1460,7 +1536,13 @@ export function registerGeneratedRunRoutes(
     try {
       return json(
         200,
-        await view(runner, runId, runsDir(dataConfig, workspace.workspaceId, definition.definitionId), dataConfig.dataRootDir),
+        await view(
+          runner,
+          runId,
+          runsDir(dataConfig, workspace.workspaceId, definition.definitionId),
+          dataConfig.dataRootDir,
+          definition.lowered.component as WorkflowComponent | undefined,
+        ),
       );
     } catch {
       throw new NotFoundError(`run "${runId}"`);

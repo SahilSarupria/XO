@@ -358,3 +358,40 @@ describe('UW-8 presigned decisions (ADR 0046)', () => {
     }
   });
 });
+
+describe('RX-1a hold (emergency stop)', () => {
+  it('a hold engaged mid-batch starts no further item; released, the batch carries on and every item acts exactly once', async () => {
+    const s = await setup({ concurrency: 1, maxItems: 20 });
+    let holding = false;
+    const hold = async () => {
+      if (s.effects.length >= 3) holding = true;
+      return holding;
+    };
+    const r = await s.mk(undefined, { hold }).start({ inputs: { items: rows(8), batch: 'b' } });
+    assert.equal(r.state, 'running', 'held, not escalated or failed');
+    assert.deepEqual(s.effects, ['r0', 'r1', 'r2']);
+    // Still held: a resume changes nothing.
+    assert.equal((await s.mk(undefined, { hold }).resume(r.runId)).state, 'running');
+    assert.equal(s.effects.length, 3);
+    // Released.
+    const done = await s.mk(undefined, { hold: () => false }).resume(r.runId);
+    assert.equal(done.state, 'completed');
+    assert.deepEqual(
+      [...s.effects].sort(),
+      rows(8)
+        .map((x) => x.ref)
+        .sort(),
+    );
+  });
+
+  it('a hold on one connector operation leaves that call unstarted; the run is not failed', async () => {
+    const s = await setup();
+    const hold = (call?: { connector: string; operation: string }) => call?.connector === 'bank' && call.operation === 'pay';
+    const r = await s.mk(undefined, { hold }).start({ inputs: { items: rows(2), batch: 'b' } });
+    assert.notEqual(r.state, 'failed');
+    assert.notEqual(r.state, 'escalated');
+    assert.deepEqual(s.effects, []);
+    assert.equal((await s.mk().resume(r.runId)).state, 'completed');
+    assert.equal(s.effects.length, 2);
+  });
+});

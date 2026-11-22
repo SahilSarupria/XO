@@ -9,7 +9,10 @@ import {
   describeSettings,
   directoryUsage,
   EncryptedFileSecretStore,
+  engageInstanceStop,
   eraseInstance,
+  readInstanceStop,
+  releaseInstanceStop,
   LATEST_SCHEMA_VERSION,
   loadOrCreateSecretsKey,
   loadSettings,
@@ -370,7 +373,8 @@ export function registerCommands(registry: CommandRegistry): void {
       'xo instance restore <file.tar.gz> [--data <dir>] [--force]           Verified before anything is written; --force moves the old folder aside\n' +
       'xo instance upgrade [--data <dir>] [--backup-dir <dir>]              Backs up, then migrates the data to this version\n' +
       'xo instance access-key [--data <dir>] [--identity owner] [--days 90] [--service]   Issue a sign-in key (shown once)\n' +
-      'xo instance delete --data <dir> --confirm <instance-id> [--receipt <file>]   Removes data, keys and anchors, and verifies they are gone',
+      'xo instance delete --data <dir> --confirm <instance-id> [--receipt <file>]   Removes data, keys and anchors, and verifies they are gone\n' +
+      'xo instance emergency-stop [--data <dir>] --reason <text> | --release | --status   Stops every run and call on this instance (RX-1a)',
     run: async (args) => {
       const sub = args.positionals[0];
       try {
@@ -433,9 +437,31 @@ export function registerCommands(registry: CommandRegistry): void {
             return await upgrade(args);
           case 'delete':
             return await erase(args);
+          case 'emergency-stop': {
+            // RX-1a: works with the API stopped or unresponsive; every API process sharing the data directory sees it at its next check.
+            const dataDir = dataDirFrom(args);
+            if ((await readInstance(dataDir)) === undefined) return fail(`${dataDir} is not an XO instance`);
+            if (flag(args.flags, 'status')) {
+              const s = await readInstanceStop(dataDir);
+              out(s === undefined ? 'not engaged' : `ENGAGED by ${s.by} at ${s.at}${s.reason !== undefined ? `: ${s.reason}` : ''}`);
+              return 0;
+            }
+            if (flag(args.flags, 'release')) {
+              out((await releaseInstanceStop(dataDir)) ? 'released; runs held by it carry on at their next tick' : 'was not engaged');
+              return 0;
+            }
+            const reason = str(args.flags, 'reason');
+            if (reason === undefined || reason.trim() === '') return fail('say why: xo instance emergency-stop --reason "<text>"');
+            const by = `operator:${process.env['USER'] ?? process.env['USERNAME'] ?? 'unknown'}`;
+            const s = await engageInstanceStop(dataDir, { by, reason });
+            out(
+              `ENGAGED at ${s.at}: no run starts and no external call is made on this instance until: xo instance emergency-stop --release`,
+            );
+            return 0;
+          }
           default:
             return fail(
-              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|access-key|delete> ... (xo instance --help)',
+              'usage: xo instance <create|status|backup|verify-backup|restore|upgrade|access-key|delete|emergency-stop> ... (xo instance --help)',
             );
         }
       } catch (cause) {

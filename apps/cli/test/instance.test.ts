@@ -221,3 +221,26 @@ test(
     });
   },
 );
+
+test('RX-1a: xo instance emergency-stop engages, reports and releases the instance-wide stop; a reason is required', async () => {
+  await withHome(async (home, env) => {
+    const data = join(home, 'data');
+    assert.equal((await xo(['instance', 'create', '--data', data], env)).code, 0);
+    const noReason = await xo(['instance', 'emergency-stop', '--data', data], env);
+    assert.equal(noReason.code, 1);
+    assert.match(noReason.out, /say why/);
+    assert.match((await xo(['instance', 'emergency-stop', '--data', data, '--status'], env)).out, /not engaged/);
+    const on = await xo(['instance', 'emergency-stop', '--data', data, '--reason', 'provider sending duplicates'], env);
+    assert.equal(on.code, 0, on.out);
+    const file = JSON.parse(await readFile(join(data, 'instance-emergency-stop.json'), 'utf8')) as { reason: string; by: string };
+    assert.equal(file.reason, 'provider sending duplicates');
+    assert.match(file.by, /^operator:/);
+    assert.match(
+      (await xo(['instance', 'emergency-stop', '--data', data, '--status'], env)).out,
+      /ENGAGED by operator:.*provider sending duplicates/,
+    );
+    assert.match((await xo(['instance', 'emergency-stop', '--data', data, '--release'], env)).out, /released/);
+    assert.equal(existsSync(join(data, 'instance-emergency-stop.json')), false);
+    assert.match((await xo(['instance', 'emergency-stop', '--data', data, '--release'], env)).out, /was not engaged/);
+  });
+});

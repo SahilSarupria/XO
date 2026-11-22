@@ -1793,6 +1793,82 @@ export const openApiDocument = {
         responses: { '201': { description: 'WorkflowReadinessCertificate' }, '404': { description: 'Unknown generated workflow' } },
       },
     },
+    '/workspaces/{workspaceId}/emergency-stops': {
+      get: {
+        summary: 'The emergency stops that apply to this workspace (RX-1a)',
+        description:
+          'Read role. `{ instance, workspacePaused, stops }`: the instance-wide stop (set by an operator with `xo instance emergency-stop`; `null` when not engaged), the workspace pause, and the scoped stops `{ scope, target, by, at, reason?, definitionIds? }`.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'EmergencyStops' }, '403': { description: 'Not a member' } },
+      },
+      post: {
+        summary: 'Engage a scoped emergency stop (RX-1a, ADR 0048)',
+        description:
+          'Manage role and a recent sign-in. Body `{ scope, target, reason? }` with scope `workflow` (a `wfl_` workflow, every version, or a `gwf_` generated workflow), `connector` (a connector bound in the workspace) or `capability` (`<connector>.<operation>`, bound). While engaged: a start or preview it covers is refused (412, reason `emergency_stop`, audited as emergency-stop.refused); a run in progress is held before its next step, a batch before its next item, and a covered call is not started (the effect gate refuses any that race it); a call already in flight finishes. The run view shows `held`. Released, held runs carry on at the next tick or read. An unknown target is 404. Audited as emergency-stop.engaged.',
+        'x-xo-permission': 'manage',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '201': { description: '{ stop, stops }' },
+          '400': { description: 'Invalid scope or target' },
+          '403': { description: 'Not a manager, or no recent sign-in' },
+          '404': { description: 'The target does not exist in this workspace' },
+          '412': { description: 'The stop record cannot be read; everything stays stopped until it is repaired' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/emergency-stops/release': {
+      post: {
+        summary: 'Release a scoped emergency stop (RX-1a)',
+        description:
+          'Manage role and a recent sign-in. Body `{ scope, target }`. `{ released, stops }`; releasing restarts nothing by itself. Audited as emergency-stop.released.',
+        'x-xo-permission': 'manage',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: '{ released, stops }' }, '403': { description: 'Not a manager, or no recent sign-in' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/manifest': {
+      get: {
+        summary: 'What a run was bound to at admission (RX-1b)',
+        description:
+          'Read role. `{ manifest, digest, digestOk }`: definition and component digest, workflow and version, certificate and its digest, binding and sending-account digests per connector, input digest, batch approval, pinned packs, initiator and admission time. Digests and ids only, never the input. 404 for a run admitted before manifests existed, or an item of a batch (see its batch).',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'StoredManifest' }, '404': { description: 'No manifest' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/audit-bundle': {
+      get: {
+        summary: 'The signed audit bundle of a run (RX-1b)',
+        description:
+          "Audit role. The engine's AuditBundle (format 1) of the run and, for a batch, every item: each journal with its hash chain, a Merkle root over the heads, the component digest, the connector grants and the run manifest, signed (Ed25519) with the instance's approval key (`signer` is its key id). It holds the journals in full, arguments included. Audited as generated-workflow.audit-bundle.exported.",
+        'x-xo-permission': 'audit',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'AuditBundle' },
+          '403': { description: 'No audit role' },
+          '404': { description: 'Unknown run' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/audit-bundles/verify': {
+      post: {
+        summary: 'Verify an audit bundle against this instance (RX-1b)',
+        description:
+          "Read role. Body: the bundle. `{ ok, problems, signer, signerKnown, runs, manifest? }`: the signature under the instance's keyring (every key ever active here), the Merkle root, every run's hash chain, and the manifest's digest.",
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Verification' } },
+      },
+    },
     '/workspaces/{workspaceId}/control/inbox': {
       get: {
         summary: 'Everything on the workflow runtime that waits for a person (UW-12b)',

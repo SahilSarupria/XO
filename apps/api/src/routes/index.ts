@@ -23,6 +23,8 @@ import { registerPreExecutionRoutes } from './pre-execution-routes.js';
 import { registerReadinessRoutes } from './readiness-routes.js';
 import { registerGeneratedRunRoutes } from './generated-run-routes.js';
 import { registerWorkflowEntityRoutes } from './workflow-entity-routes.js';
+import { registerEmergencyStopRoutes } from './emergency-stop-routes.js';
+import { registerRunEvidenceRoutes } from './run-evidence-routes.js';
 import { registerExecutionRoutes } from './execution-routes.js';
 import { registerHumanTaskRoutes } from './human-task-routes.js';
 import { registerWorkflowRoutes } from './workflow-routes.js';
@@ -186,6 +188,15 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
   });
   registerReadinessRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerGeneratedRunRoutes(
+    router,
+    deps.workspaceStore,
+    deps.workspaceDataConfig,
+    deps.audit,
+    deps.permissionManager,
+    deps.env ?? process.env,
+  );
+  registerEmergencyStopRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerRunEvidenceRoutes(
     router,
     deps.workspaceStore,
     deps.workspaceDataConfig,

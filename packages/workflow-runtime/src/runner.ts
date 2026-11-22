@@ -110,6 +110,12 @@ export interface RunnerOptions {
   readonly dryRun?: boolean;
   /** Checked before every step start; true escalates the run without executing anything further. */
   readonly killSwitch?: () => boolean;
+  /**
+   * RX-1a: an emergency stop that HOLDS work instead of ending it. Checked before every step and before every item of a batch, and
+   * for an `act` step with its connector and operation. True leaves the run where it is (nothing more starts, nothing is journaled,
+   * nothing escalates); the next resume or tick after the hold is released carries on. A call already in flight finishes.
+   */
+  readonly hold?: (call?: { readonly connector: string; readonly operation: string }) => boolean | Promise<boolean>;
   readonly onEscalate?: (e: Escalation) => void | Promise<void>;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -780,6 +786,7 @@ export class WorkflowRunner {
     const pending: number[] = [];
     for (let i = 0; i < fanout.count; i++) pending.push(i);
     let killed = false;
+    let held = false;
     // ADR 0024: once the batch is asked to cancel, no further item is started (each running item obeys the same request itself).
     let cancel = rec.cancel ?? (await this.requestedCancel(runId, rec));
     const worker = async (): Promise<void> => {
@@ -790,6 +797,11 @@ export class WorkflowRunner {
         if (i === undefined) return;
         if (this.o.killSwitch?.() === true) {
           killed = true;
+          return;
+        }
+        if ((await this.o.hold?.()) === true) {
+          held = true;
+          pending.unshift(i);
           return;
         }
         const id = itemRunId(runId, i);
@@ -821,6 +833,11 @@ export class WorkflowRunner {
       Array.from({ length: Math.max(1, Math.min(fe.concurrency, this.o.maxItemConcurrency ?? Infinity, fanout.count)) }, () => worker()),
     );
     if (killed) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged; remaining items were not started');
+    // RX-1a: held, the batch stays as it is; items not started yet start on the next resume after the hold is released.
+    if (held || (await this.o.hold?.()) === true) {
+      if (cancel === undefined) cancel = await this.requestedCancel(runId, rec);
+      if (cancel === undefined) return { runId, state: rec.state };
+    }
     if (cancel === undefined) cancel = await this.requestedCancel(runId, rec);
     if (cancel !== undefined) return this.cancelBatch(runId, rec, cancel);
 
@@ -979,6 +996,7 @@ export class WorkflowRunner {
         const cancel = rec.cancel ?? (await this.requestedCancel(runId, rec));
         if (cancel !== undefined && this.hasOpenWork(rec)) return await this.applyCancel(runId, cancel);
         if (this.o.killSwitch?.() === true) return this.escalate(runId, null, 'KILL_SWITCH', 'kill switch is engaged');
+        if ((await this.o.hold?.()) === true) return this.summary(runId, rec);
         if (this.now() - rec.startedAt > this.wf.runTimeoutMs)
           return this.escalate(runId, null, 'RUN_TIMEOUT', `run exceeded ${this.wf.runTimeoutMs}ms`);
 
@@ -1082,7 +1100,17 @@ export class WorkflowRunner {
           break; // nothing runnable and not waiting: a dependency failed; state was already set by failStep
         }
 
-        const batch = toRun.slice(0, Math.max(1, this.wf.maxConcurrency));
+        // RX-1a: a held connector or operation leaves its call unstarted (the run stays where it is until the hold is released).
+        const runnable: Step[] = [];
+        for (const st of toRun)
+          if (!(
+            st.type === 'act' &&
+            this.o.hold !== undefined &&
+            (await this.o.hold({ connector: st.connector, operation: st.operation })) === true
+          ))
+            runnable.push(st);
+        if (runnable.length === 0) return this.summary(runId, rec);
+        const batch = runnable.slice(0, Math.max(1, this.wf.maxConcurrency));
         const failures = await Promise.all(batch.map((s) => this.runStep(runId, s, rec as RunRec)));
         const failed = failures.find((f) => f !== undefined);
         if (failed !== undefined) return failed;
