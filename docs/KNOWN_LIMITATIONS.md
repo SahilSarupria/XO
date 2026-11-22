@@ -154,7 +154,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - The `needs_model` step and its use of the reversible-token vault are not built (no such IR step); the vault still has no consumer.
   - Composition builds on compiled sources only; it does not compose a workflow from nothing.
 - **Automation, drift and reuse (UW-15, ADR 0044):**
-  - The interval scheduler was NOT removed and the API does not run on `@xo/automation`'s engine; only the slot function is shared (tested). Owner decision pending.
+  - Schedules run on `@xo/automation`'s engine; webhooks stay on the API route (same policy layer, not the engine's ledger). The engine's schedule ledger is never compacted.
   - The scheduler lease covers processes sharing one local data directory; a network-shared directory or several machines need a distributed lease.
   - The drift gate checks a compilation's own tables and the tables named in `reads` when the workflow was generated. Naming them is explicit until the UW-8 batch preview fills them from the list a person picks; a workflow generated without `reads` is not checked against other tables.
   - Format checks need a dominant value shape (80% of at least three cells); amounts of varying width are type-checked only. Shapes describe how values are written.

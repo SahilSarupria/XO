@@ -5,8 +5,8 @@
 Accepted under owner delegation, 2026-11-20 (UW-15, wave W3). Signed off by Claude under the owner's delegation of decision
 authority. This is a delegated sign-off, not an independent review.
 
-**This ADR deviates from the handoff on one point, stated first:** the interval scheduler was **not** removed and the API does **not** run
-on the `AutomationEngine` of `packages/automation`. See "Trigger unification: what was and was not done".
+**Amended 2026-11-22 under the owner's delegation:** the API's schedules now run on the `AutomationEngine` (item 4). Webhooks stay on
+the API route, sharing the same policy layer (item 4a). The original version of this ADR left both undone.
 
 ## Context (audit)
 
@@ -32,12 +32,32 @@ on the `AutomationEngine` of `packages/automation`. See "Trigger unification: wh
    Missed slots are those strictly between the last fired slot and the current one. `run_latest` runs only the latest missed slot, if it ended within 24
    hours (its slot is the idempotency key), and records the others as `skipped: missed N earlier slots` in `lastOutcome` and the audit detail;
    `skip` runs none and resumes from now. On time or one slot late nothing is missed, so existing behaviour is unchanged.
-4. **Not done: replacing the scheduler with the engine, and deleting the interval scheduler.** Doing it needs the engine to accept
-   workflows registered at runtime (or a custom trigger emitting one event per due deployment into a single engine workflow), the engine's ledger
-   and directory lock to coexist with the workflow runtime's journals, and the sync and vault sweeps to move to their own timer. That is a restructure
-   with real risk to certified schedules and webhooks (ADR 0035), larger than the rest of this workstream, and not verifiable here without the full test suite.
-   The timer, the controls policy layer (modes, daily cap, pause, sign-off) and certificate re-verification stay as they are. **Owner decision needed:**
-   keep this (one slot function, shared lease), or commission the unification as its own workstream.
+4. **Done (amended): schedules run on the engine.** The API tick keeps its clock, its lease, and the source-sync and vault sweeps (maintenance,
+   not triggers). What is due becomes one `TickTrigger` event per slot, emitted into a single engine (workflow `schedule`) in
+   `<data directory>/automation/schedules/`. The event carries ids and counts only, and is keyed
+   `<workspace>/<compilation>/<workflow>@<N>m:<slot>`. The engine's handler fires the slot through the existing policy layer: the controls
+   (modes, daily cap, pause, sign-off) for uncertified starts, and `startCertifiedTrigger` with the slot key for certified ones (ADR 0035
+   unchanged). What this adds over the old direct firing:
+   - **At most once per slot, across restarts.** The keys are rebuilt from the engine's hash-chained ledger. Before, an uncertified schedule
+     relied on the lease alone.
+   - **A ledger of every fire.**
+   - **Bounded intake.**
+   - **Recovery of a slot accepted just before a crash.** It is the same at-least-once window as before: a crash between start and record
+     refired before too.
+
+   Settings: `concurrency: 1` and `maxAttempts: 1`, as before (in order, never retried in a loop); `outbox: false`, a new engine option,
+   because outcomes are recorded on the deployment and in the audit log.
+
+   **Two processes:** the engine's directory lock is held only by the lease holder. A tick without the lease stops its engine, freeing the
+   lock. If another live process holds the lock, the tick fires nothing and logs it.
+
+   **Parity:** every earlier scheduler test passes unchanged (`scheduler-slots`, `workflow-controls`, `composed-runner-retirement`,
+   source-connection syncs). New tests cover the ledger, refiring after a restart and the lock. The old direct-firing loop is removed;
+   `runDueSchedules`, `tickWithLease` and `startScheduler` keep their signatures.
+   4a. **Webhooks stay on the API route.** The engine's `WebhookTrigger` is its own HTTP server, outside the API's authentication, rate limits
+   and routing, so it cannot take the API's webhook route without weakening it. The route keeps calling the same policy layer
+   (`startGated` / `startCertifiedTrigger`), and certified webhooks are keyed by the caller's idempotency key (ADR 0035). This is the one case
+   kept outside the engine, as the owner's decision allows.
 
 ### Drift (UAC-34)
 
@@ -81,6 +101,7 @@ on the `AutomationEngine` of `packages/automation`. See "Trigger unification: wh
 
 ## Reopen if
 
-- The owner wants the engine to be the only trigger engine (item 4).
+- Webhooks need the engine's ledger or bounds (item 4a): emit them as `TickTrigger` events from the route.
+- The engine's ledger grows by one entry per fired slot and is never compacted; add compaction if it becomes large.
 - Real workbooks show the 80% shape rule is too strict or too loose (amounts of varying width have no dominant shape and are never format-checked).
 - UW-8 picks the list for a batch: fill `reads` from it automatically.

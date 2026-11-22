@@ -99,3 +99,50 @@ test('lease: only the holder ticks; the other waits, and takes over once the hol
     assert.ok(lastA !== undefined);
   });
 });
+
+test('every slot goes through the automation engine: recorded in its ledger by ids only, and at most once even after a restart', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { releaseEngine } = await import('../src/workflow-controls/scheduler.js');
+  await setup(async ({ deps, controls }) => {
+    const due = new Date(T0 + EVERY * 60_000 + 1_000);
+    const first = await runDueSchedules(deps, due);
+    assert.equal(first.started + first.skipped, 1, 'the due slot fired once');
+    const fired = (await controls.getDeployment('cmp_x', 'wf_x'))?.triggers.schedule?.lastFiredAt;
+    // A crash after the slot fired but before it was recorded: put the old lastFiredAt back, and restart the engine.
+    await controls.mutate('cmp_x', 'wf_x', 'test', due.toISOString(), (d) => ({
+      ...d,
+      triggers: { ...d.triggers, schedule: { ...d.triggers.schedule!, lastFiredAt: new Date(T0).toISOString() } },
+    }));
+    await releaseEngine(deps);
+    assert.deepEqual(await runDueSchedules(deps, due), { started: 0, skipped: 0 }, 'the same slot is never fired twice');
+    const ledger = await readFile(join(deps.dataConfig.dataRootDir, 'automation', 'schedules', 'ledger.jsonl'), 'utf8');
+    const types = ledger
+      .trim()
+      .split('\n')
+      .map((l) => (JSON.parse(l) as { type: string }).type);
+    assert.equal(types.filter((t) => t === 'job.accepted').length, 1);
+    assert.equal(types.filter((t) => t === 'job.duplicate').length, 1);
+    assert.ok(ledger.includes(`cmp_x/wf_x@${EVERY}m:`), 'keyed by workflow and slot');
+    assert.ok(fired !== undefined);
+    await releaseEngine(deps);
+  });
+});
+
+test('a second live process cannot fire schedules while the first holds the engine directory', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { hostname } = await import('node:os');
+  const { releaseEngine } = await import('../src/workflow-controls/scheduler.js');
+  await setup(async ({ deps }) => {
+    const dir = join(deps.dataConfig.dataRootDir, 'automation', 'schedules');
+    await mkdir(dir, { recursive: true });
+    // The parent process stands in for another live API process holding the engine.
+    await writeFile(join(dir, 'engine.lock'), JSON.stringify({ pid: process.ppid, host: hostname(), startedAt: new Date().toISOString() }));
+    const lines: string[] = [];
+    const r = await runDueSchedules({ ...deps, log: (l) => lines.push(l) }, new Date(T0 + EVERY * 60_000 + 1_000));
+    assert.deepEqual(r, { started: 0, skipped: 0 });
+    assert.ok(lines.some((l) => l.includes('another process holds the schedule engine')));
+    await releaseEngine(deps);
+  });
+});

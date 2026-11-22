@@ -73,7 +73,12 @@ The daily limit counts composed runs only. Workflow-runtime runs are not counted
 
 - It runs **inside one API process while that process is up**; a lease in the data directory keeps a second process on the same
   directory from ticking (UW-15). Set `XO_SCHEDULER=off` on instances that should never fire schedules. A certified schedule is also keyed by
-  its slot, so a takeover cannot start a slot twice; an uncertified (composed) schedule relies on the lease alone.
+  its slot, so a takeover cannot start a slot twice.
+- Every due slot is an event in the `@xo/automation` engine (UW-15, ADR 0044), with the controls (modes, daily limit, pause, sign-off,
+  certificates) as its policy layer: each slot fires **at most once**, also after a restart (the engine rebuilds its keys from its
+  hash-chained ledger in `<data directory>/automation/schedules/ledger.jsonl`, which holds ids and counts, never inputs), and a slot
+  accepted just before a crash is fired again on the next start. The engine's directory lock and the lease together keep a second
+  process from firing.
 - It does **not replay a run per missed slot**. After downtime, `XO_SCHEDULE_MISSED_SLOTS` decides (UW-15, ADR 0044): `run_latest` (default) runs only the most recent missed slot, if it ended within 24 hours, and the others are recorded as `skipped: missed`; `skip` runs none of them and the schedule resumes from now.
 - Only one process fires schedules at a time: a lease in the data directory (`scheduler-lease.sqlite`). A second process on the same data directory waits and takes over if the first stops renewing. This covers processes on one machine sharing that directory; a network-shared directory or several machines need a distributed lease (the lease interface is in `@xo/automation`).
 - Timing is "at least N minutes since the last slot", checked every 30 seconds. It is not wall-clock cron.

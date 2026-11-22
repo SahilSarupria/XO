@@ -53,6 +53,8 @@ export interface EngineOptions {
   readonly lock?: boolean;
   /** Publish the ledger head to places an attacker with write access to `dir` cannot edit. A publish failure is recorded in the ledger, never fatal. */
   readonly anchors?: { readonly sinks: readonly AnchorSink[]; readonly everyEntries?: number };
+  /** Write each outcome to `outbox/<lane>/` (default true). A host that records outcomes itself turns it off so nothing piles up. */
+  readonly outbox?: boolean;
 }
 
 interface Job {
@@ -282,6 +284,7 @@ export class AutomationEngine {
   }
 
   private async writeOutbox(job: Job, out: WorkflowOutcome): Promise<void> {
+    if (this.opts.outbox === false) return;
     const lane = out.lane.replace(/[^A-Za-z0-9_\-/ ]/g, '_').replace(/\.\./g, '_');
     const dir = join(this.opts.dir, 'outbox', lane);
     await mkdir(dir, { recursive: true });

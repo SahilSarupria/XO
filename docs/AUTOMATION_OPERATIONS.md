@@ -61,7 +61,7 @@ Per-adapter `*.sent.<adapter>` markers mean a retry re-sends only to adapters th
 ## 6. Scheduling
 
 `--cron "m h dom mon dow"` (UTC, five fields; lists, ranges, steps; `7` = Sunday; day-of-month and day-of-week are OR-ed when both are restricted). The idempotency key is the scheduled
-minute, so a restart inside the minute cannot double-fire. **Missed ticks are not replayed** after downtime by the engine (no catch-up). The API's scheduler has a defined missed-slot rule (`XO_SCHEDULE_MISSED_SLOTS`, UW-15, ADR 0044). Time-zone-aware schedules and named months/days are **not provided**.
+minute, so a restart inside the minute cannot double-fire. **Missed ticks are not replayed** after downtime by the engine (no catch-up). The API's schedules also run on this engine (one `TickTrigger` per instance, state in `<data directory>/automation/schedules/`, `outbox: false`), with a defined missed-slot rule (`XO_SCHEDULE_MISSED_SLOTS`, UW-15, ADR 0044). Time-zone-aware schedules and named months/days are **not provided**.
 
 ## 7. Metrics
 
