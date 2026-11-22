@@ -8,6 +8,7 @@
  * `outcome_unknown`. A failed `find_sent` is ALWAYS `outcome_unknown`: "I could not look" must never read as "it was not sent".
  */
 import {
+  OAUTH_PROVIDERS,
   revealSecret,
   emailLimitsFromEnv,
   gmailConnector,
@@ -34,7 +35,6 @@ export interface MailAdapterDeps {
 
 const GMAIL = 'https://gmail.googleapis.com';
 const GRAPH = 'https://graph.microsoft.com';
-const READ_SCOPE = /(gmail\.readonly|gmail\.modify|mail\.google\.com|mail\.read)/i;
 
 function hostPort(s: string, defaultPort: number): { host: string; port: number } {
   const i = s.lastIndexOf(':');
@@ -77,7 +77,10 @@ export function createMailAdapter(deps: MailAdapterDeps): ExternalToolAdapter {
       });
     }
     const { maxAttachmentBytes, limits } = emailLimitsFromEnv(deps.env, 'native_api');
-    const canLookup = h.record.scopes.some((s) => READ_SCOPE.test(s));
+    // Lookup only with the `mail.lookup` capability granted (ADR 0041 amended); otherwise an uncertain send waits for a person.
+    const provider = OAUTH_PROVIDERS[h.record.provider as 'google' | 'microsoft'];
+    const granted = new Set(h.record.scopes.map((s) => (provider?.normalizeScope(s) ?? s).toLowerCase()));
+    const canLookup = provider !== undefined && provider.capabilityScopes['mail.lookup'].every((s) => granted.has(s.toLowerCase()));
     if (h.record.provider === 'google') {
       const baseUrl = deps.endpoints?.gmail ?? GMAIL;
       return gmailConnector({

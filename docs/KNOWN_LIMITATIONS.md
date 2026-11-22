@@ -134,8 +134,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Email (UW-10 part a, ADR 0041):**
   - Verified only against local fake SMTP, IMAP, Gmail and Graph servers. Real-provider behaviour (TLS/STARTTLS, OAuth, Message-ID
     handling, throttling, limits) was not verified.
-  - Tier 1 (Gmail, Graph) cannot look up a sent message: `gmail.send` and `Mail.Send` cannot search, and the broker has no read-mail
-    capability. Until the owner adds one, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
+  - Tier 1 (Gmail, Graph) looks up a sent message only with the optional `mail.lookup` capability (`gmail.readonly`, a Google
+    restricted scope; Microsoft `Mail.ReadBasic`); without it, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
   - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
   - Pacing and the daily cap are in memory per connector instance: a restart resets them.
   - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.

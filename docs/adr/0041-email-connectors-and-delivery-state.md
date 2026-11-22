@@ -34,10 +34,13 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
 5. **Tier 1 Gmail:** `users.messages.send` with base64url `raw` (our own MIME, so we control the Message-ID); messages over 4 MB use
    the media upload endpoint (`message/rfc822`). **Tier 1 Graph:** `POST /me/sendMail` with a base64 MIME body; a message over
    3 MB is **refused** (the draft + upload-session flow is not built, and it does not obviously keep our Message-ID).
-6. **Tier 1 lookup needs a read capability.** `gmail.send` and `Mail.Send` cannot search the mailbox. The connectors expose
-   `find_sent` only when the connection says `canLookup`. UW-9's broker has no read-mail capability today, so **tier 1 behaves
-   like tier 3 (an unknown outcome waits for a person) until one is added**. That would be `gmail.readonly` (a Google restricted scope
-   with its own verification) or Microsoft `Mail.Read`/`Mail.ReadBasic`; adding it is a UW-9 change and an owner decision.
+6. **Tier 1 lookup needs a read capability** (amended 2026-11-22 under the owner's delegation). `gmail.send` and `Mail.Send` cannot
+   search the mailbox, so the broker has a separate, optional capability **`mail.lookup`**: Google `gmail.readonly` (the `q` search
+   used for `rfc822msgid:` is not allowed with `gmail.metadata`, so nothing narrower can search; Google classes it as restricted) and
+   Microsoft delegated `Mail.ReadBasic` (least privileged for listing messages; no body, preview or attachments). Both were checked
+   against the provider references on 2026-11-22. The connectors expose `find_sent` only when the connection was granted every
+   `mail.lookup` scope; **a tier 1 connection without it behaves like tier 3** (an unknown outcome waits for a person), and the
+   tier text already says so. A person adds it by connecting with `capabilities: ["message.send", "mail.lookup"]`.
 7. **Tier 3** is tier 2 without `find_sent`; pacing is slower (see limits).
 8. **Effects.** Failures before the message body is sent are `effect: 'none'` (connect, greeting, auth, RCPT, DATA refusal, refused
    recipient, failed attachment check, provider 4xx, provider limit). A lost connection after the body is sent, a provider 5xx
@@ -98,13 +101,13 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
 
 - **Adapter wiring (UW-10c): done, see ADR 0042** (recipient-rule store and route, confirmed-contacts reader, attachment store, the `email` adapter).
 - The one-line tier text in Studio's pre-start preview (`guessProvider` returns the text; nothing displays it yet).
-- DSN/bounce parsing (deferred by the owner); a read-mail capability for tier 1 lookup (owner decision, item 6); the optional
+- DSN/bounce parsing (deferred by the owner); the optional
   transactional-API tier.
 
 ## Owner prerequisites for real email
 
 `XO_CREDENTIALS_KEY`, `XO_OAUTH_REDIRECT_URI`, Google and Microsoft OAuth clients (Google needs app verification for `gmail.send`; a
-read capability for lookup would need Google's restricted-scope assessment: check current rules), `XO_APPROVAL_SIGNING_KEY` in
+`mail.lookup` on Google is a restricted scope, so production use needs Google's restricted-scope verification and assessment), `XO_APPROVAL_SIGNING_KEY` in
 production. No new environment variable was added in part a.
 
 ## Reopen if

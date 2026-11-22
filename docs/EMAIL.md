@@ -4,7 +4,7 @@ One `message.send` contract, three tiers. See ADR 0041.
 
 | Tier          | Hosts                          | Sends by                                | Checks what was sent                                                         |
 | ------------- | ------------------------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
-| 1 native      | Gmail, Microsoft 365 / Outlook | provider API with your sign-in          | only with a read capability (not granted today); otherwise a person confirms |
+| 1 native      | Gmail, Microsoft 365 / Outlook | provider API with your sign-in          | only with the optional `mail.lookup` capability; otherwise a person confirms |
 | 2 SMTP + IMAP | Yahoo, Zoho, many custom hosts | SMTP, then Sent-folder search over IMAP | yes: by Message-ID, three tries over two minutes                             |
 | 3 send only   | SMTP-only hosts                | SMTP, paced at one send per 5 seconds   | never: a person confirms every uncertain send                                |
 
