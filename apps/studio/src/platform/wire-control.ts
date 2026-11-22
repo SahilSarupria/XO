@@ -9,6 +9,15 @@ export const PREVIEW_ITEM_STATES = ['sends', 'no_effect', 'stops', 'not_exact'] 
 export type PreviewItemState = (typeof PREVIEW_ITEM_STATES)[number];
 export type PreviewCounts = Readonly<Record<PreviewItemState, number>>;
 
+/** Who would send: the connector, the account its owner recognises, and for email the tier it sends in (UAC-32). */
+export interface SenderLine {
+  readonly connector: string;
+  readonly provider?: string;
+  readonly account?: string;
+  readonly tier?: string;
+  readonly tierExplanation?: string;
+}
+
 export interface BatchApprovalView {
   readonly approvalId: string;
   readonly reviewerId: string;
@@ -26,7 +35,7 @@ export interface InboxBatch {
   readonly root: string;
   readonly total: number;
   readonly counts: PreviewCounts;
-  readonly senders: readonly { readonly connector: string; readonly account?: string }[];
+  readonly senders: readonly SenderLine[];
   readonly createdBy: string;
   readonly createdAt: string;
   readonly expiresAt: string;
@@ -93,7 +102,7 @@ export interface BatchPreviewView {
   readonly forEach: boolean;
   readonly effects: boolean;
   readonly counts: PreviewCounts;
-  readonly senders: readonly { readonly connector: string; readonly provider?: string; readonly account?: string }[];
+  readonly senders: readonly SenderLine[];
   readonly createdBy: string;
   readonly createdAt: string;
   readonly expiresAt: string;
@@ -134,15 +143,17 @@ function itemRef(o: Record<string, unknown>, path: string): { parentRunId?: stri
   return { ...(parentRunId !== undefined ? { parentRunId } : {}), ...(item !== undefined ? { item } : {}) };
 }
 
-function senders(v: unknown, path: string): { connector: string; provider?: string; account?: string }[] {
+function senders(v: unknown, path: string): SenderLine[] {
   return arr(v ?? [], path).map((s, i) => {
     const o = obj(s, `${path}[${i}]`);
-    const account = optStr(o['account'], `${path}[${i}].account`);
-    const provider = optStr(o['provider'], `${path}[${i}].provider`);
+    const opt = (k: string) => optStr(o[k], `${path}[${i}].${k}`);
+    const [account, provider, tier, tierExplanation] = [opt('account'), opt('provider'), opt('tier'), opt('tierExplanation')];
     return {
       connector: str(o['connector'], `${path}[${i}].connector`),
       ...(provider !== undefined ? { provider } : {}),
       ...(account !== undefined ? { account } : {}),
+      ...(tier !== undefined ? { tier } : {}),
+      ...(tierExplanation !== undefined ? { tierExplanation } : {}),
     };
   });
 }

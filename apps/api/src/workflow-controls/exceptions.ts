@@ -32,7 +32,13 @@ export interface ExceptionStats {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-export function runException(entries: readonly JournalLike[]): { readonly needs: boolean; readonly steps: ReadonlySet<string>; readonly fanout: number | undefined; readonly startedAt: string | undefined; readonly open: readonly Omit<ExceptionQueueItem, 'runId'>[] } {
+export function runException(entries: readonly JournalLike[]): {
+  readonly needs: boolean;
+  readonly steps: ReadonlySet<string>;
+  readonly fanout: number | undefined;
+  readonly startedAt: string | undefined;
+  readonly open: readonly Omit<ExceptionQueueItem, 'runId'>[];
+} {
   const steps = new Set<string>();
   const decided = new Set<string>();
   const requested: { step: string; at: string }[] = [];
@@ -85,5 +91,16 @@ export function exceptionReport(
   }
   queue.sort((a, b) => a.at.localeCompare(b.at) || a.runId.localeCompare(b.runId));
   const rate = (a: number, b: number): number | null => (b === 0 ? null : Math.round((a / b) * 10_000) / 10_000);
-  return { stats: { windowDays, runs: n, runsNeedingPerson: needing, runRate: rate(needing, n), items, itemsNeedingPerson: itemsNeeding, itemRate: rate(itemsNeeding, items) }, queue };
+  return {
+    stats: {
+      windowDays,
+      runs: n,
+      runsNeedingPerson: needing,
+      runRate: rate(needing, n),
+      items,
+      itemsNeedingPerson: itemsNeeding,
+      itemRate: rate(itemsNeeding, items),
+    },
+    queue,
+  };
 }

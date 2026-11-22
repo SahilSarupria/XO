@@ -843,7 +843,15 @@ export class FakeXo {
         forEach: true,
         effects: true,
         counts: { sends: 2, no_effect: 0, stops: 1, not_exact: 0 },
-        senders: [{ connector: 'mail', provider: 'google', account: 'office@example.org' }],
+        senders: [
+          {
+            connector: 'mail',
+            provider: 'google',
+            account: 'office@example.org',
+            tier: 'native_api',
+            tierExplanation: 'Sends through the Gmail API; XO can look up what was sent.',
+          },
+        ],
         createdBy: p.createdBy,
         createdAt: '2026-11-20T10:00:00.000Z',
         expiresAt: '2030-01-01T00:00:00.000Z',

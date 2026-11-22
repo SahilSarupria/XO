@@ -124,6 +124,17 @@ export function BatchCard(props: {
           .
         </p>
       ) : null}
+      {p?.senders.some((x) => x.tierExplanation !== undefined) ? (
+        <ul className="cc-args" aria-label="How it is sent">
+          {p.senders
+            .filter((x) => x.tierExplanation !== undefined)
+            .map((x, i) => (
+              <li key={`${x.connector}-${i}`} data-tier={x.tier}>
+                {x.tierExplanation}
+              </li>
+            ))}
+        </ul>
+      ) : null}
       <p className="muted small">
         Prepared by {b.preparedByYou ? 'you' : b.createdBy} {formatWhen(b.createdAt)}.{' '}
         {b.state === 'awaiting_approval' ? `The preview expires ${formatWhen(b.expiresAt)}.` : null}

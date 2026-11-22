@@ -79,6 +79,8 @@ describe('the control surface', () => {
     const card = await screen.findByLabelText('Batch to approve');
     expect(within(card).getByText('3 items: 2 would send, 1 stop for a person.')).toBeInTheDocument();
     expect(within(card).getByText('office@example.org')).toBeInTheDocument();
+    // UAC-32: the preview says which tier the email goes out in.
+    expect((await within(card).findByText(/Sends through the Gmail API/)).closest('li')).toHaveAttribute('data-tier', 'native_api');
 
     // Exceptions first: only the item that stops is shown until the person asks for all of them.
     expect(await within(card).findByText('the reviewer must check the address')).toBeInTheDocument();
