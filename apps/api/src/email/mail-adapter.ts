@@ -42,6 +42,49 @@ function hostPort(s: string, defaultPort: number): { host: string; port: number 
   return Number.isInteger(port) && port > 0 && port < 65536 ? { host: s.slice(0, i), port } : { host: s, port: defaultPort };
 }
 
+/** UW-10: which tier an email connection sends in, whether it can look up a sent message, and what that means, in plain words. */
+export interface EmailTierView {
+  readonly tier: 'native_api' | 'smtp_imap' | 'send_only';
+  readonly lookup: boolean;
+  readonly explanation: string;
+}
+
+/** Derived from the connection's record (kind, provider, servers, granted scopes); the same rules the adapter applies when it sends. */
+export function emailTierOf(c: {
+  readonly kind: string;
+  readonly provider: string;
+  readonly host?: string | undefined;
+  readonly scopes: readonly string[];
+}): EmailTierView | undefined {
+  if (c.kind === 'basic') {
+    const imapPart = (c.host ?? '').split('|')[1];
+    return imapPart === undefined || imapPart === ''
+      ? {
+          tier: 'send_only',
+          lookup: false,
+          explanation:
+            'Sends by SMTP only. XO cannot check what was sent, so any uncertain send waits for a person to confirm it, and sending is slower.',
+        }
+      : {
+          tier: 'smtp_imap',
+          lookup: true,
+          explanation: 'Sends by SMTP and checks the Sent folder over IMAP before deciding anything about an uncertain send.',
+        };
+  }
+  if (c.provider !== 'google' && c.provider !== 'microsoft') return undefined;
+  const provider = OAUTH_PROVIDERS[c.provider];
+  const granted = new Set(c.scopes.map((s) => provider.normalizeScope(s).toLowerCase()));
+  const lookup = provider.capabilityScopes['mail.lookup'].every((s) => granted.has(s.toLowerCase()));
+  const name = c.provider === 'google' ? 'Gmail' : 'Microsoft 365 or Outlook';
+  return {
+    tier: 'native_api',
+    lookup,
+    explanation: lookup
+      ? `Sends through ${name} with the account's sign-in, and looks for a message in the mailbox before deciding anything about an uncertain send.`
+      : `Sends through ${name} with the account's sign-in. This connection was not allowed to read the mailbox, so an uncertain send waits for a person to confirm it.`,
+  };
+}
+
 export function createMailAdapter(deps: MailAdapterDeps): ExternalToolAdapter {
   const egressFor = (host: string): EgressPolicy => ({
     allowedHosts: [host],
@@ -78,9 +121,7 @@ export function createMailAdapter(deps: MailAdapterDeps): ExternalToolAdapter {
     }
     const { maxAttachmentBytes, limits } = emailLimitsFromEnv(deps.env, 'native_api');
     // Lookup only with the `mail.lookup` capability granted (ADR 0041 amended); otherwise an uncertain send waits for a person.
-    const provider = OAUTH_PROVIDERS[h.record.provider as 'google' | 'microsoft'];
-    const granted = new Set(h.record.scopes.map((s) => (provider?.normalizeScope(s) ?? s).toLowerCase()));
-    const canLookup = provider !== undefined && provider.capabilityScopes['mail.lookup'].every((s) => granted.has(s.toLowerCase()));
+    const canLookup = emailTierOf(h.record)?.lookup === true;
     if (h.record.provider === 'google') {
       const baseUrl = deps.endpoints?.gmail ?? GMAIL;
       return gmailConnector({

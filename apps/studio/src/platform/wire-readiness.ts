@@ -2,7 +2,7 @@
  * PX-8 (gap PX-G26) — the Workflow Readiness Certificate as Studio reads it. Parsed strictly: a certificate Studio cannot
  * read is reported as untrusted, never shown as ready.
  */
-import { WireParseError, arr, obj, optStr, str, strArr } from './wire';
+import { WireParseError, arr, bool, obj, optStr, str, strArr } from './wire';
 
 export const READINESS_STATUSES = ['READY', 'READY_WITH_CONDITIONS', 'NEEDS_REVIEW', 'BLOCKED'] as const;
 export type ReadinessStatus = (typeof READINESS_STATUSES)[number];
@@ -153,4 +153,34 @@ export function parseGeneratedRun(v: unknown, path = 'run'): GeneratedRunView {
 
 export function parseGeneratedRunList(v: unknown): GeneratedRunView[] {
   return arr(obj(v, 'body')['runs'], 'runs').map((r, i) => parseGeneratedRun(r, `runs[${i}]`));
+}
+
+/** UW-10: how a workspace email binding sends, as the platform describes it (Studio only shows it). */
+export interface EmailTierLine {
+  readonly connector: string;
+  readonly tier: 'native_api' | 'smtp_imap' | 'send_only';
+  readonly lookup: boolean;
+  readonly explanation: string;
+}
+
+const TIERS = new Set(['native_api', 'smtp_imap', 'send_only']);
+
+/** The `emailTier` of each email binding in `GET …/connector-bindings`; bindings without one are skipped. */
+export function parseEmailTiers(v: unknown): EmailTierLine[] {
+  const o = obj(v, 'connector-bindings');
+  return arr(o['bindings'], 'bindings').flatMap((b, i) => {
+    const binding = obj(b, `bindings[${i}]`);
+    if (binding['emailTier'] === undefined) return [];
+    const t = obj(binding['emailTier'], `bindings[${i}].emailTier`);
+    const tier = str(t['tier'], `bindings[${i}].emailTier.tier`);
+    if (!TIERS.has(tier)) throw new WireParseError(`bindings[${i}].emailTier.tier`, 'native_api, smtp_imap or send_only');
+    return [
+      {
+        connector: str(binding['connector'], `bindings[${i}].connector`),
+        tier: tier as EmailTierLine['tier'],
+        lookup: bool(t['lookup'], `bindings[${i}].emailTier.lookup`),
+        explanation: str(t['explanation'], `bindings[${i}].emailTier.explanation`),
+      },
+    ];
+  });
 }

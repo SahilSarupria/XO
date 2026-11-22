@@ -31,3 +31,4 @@ Bind the declared send operation to adapter `email` (`PUT /workspaces/{ws}/conne
 Inputs: `to`, `subject`, `body`, and optionally `attachmentSha256` (+ `attachmentFilename`, `attachmentContentType`), or the list form `to: [...]`, `attachments: [...]`.
 Who may be emailed: people in confirmed contact lists, plus `PUT /workspaces/{ws}/email/recipient-rules` (manage role, recent sign-in).
 Attachments are workspace sources, named by the SHA-256 of their bytes. App passwords: host `smtp.example.com:587|imap.example.com` for tier 2, `smtp.example.com:587` for tier 3.
+Before a start, Studio's pre-start check says how each email connection sends (`emailTier` on `GET …/connector-bindings`: tier, whether it can look up a sent message, plain words).

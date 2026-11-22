@@ -4,6 +4,7 @@ import type { ApiProblem } from '../platform/client';
 import type { WorkspaceRole } from '../platform/wire';
 import type {
   CertificateCheck,
+  EmailTierLine,
   GateOutcome,
   GeneratedRunView,
   ReadinessCertificateView,
@@ -52,6 +53,7 @@ export function ReadinessCertificatePanel(props: {
   const [check, setCheck] = useState<CertificateCheck | undefined>();
   const [problem, setProblem] = useState<ApiProblem | undefined>();
   const [runs, setRuns] = useState<readonly GeneratedRunView[] | undefined>();
+  const [email, setEmail] = useState<readonly EmailTierLine[] | undefined>();
   const author = can(props.role, 'author');
   const reviewer = can(props.role, 'review');
   const definitionId = cert?.scope.definitionId;
@@ -78,6 +80,9 @@ export function ReadinessCertificatePanel(props: {
       const r = await client.certifyWorkflow(props.workspaceId, props.compilationId, props.workflowId, props.workflowName);
       if (r.ok) setCert(r.value);
       else setProblem(r.problem);
+      // UW-10: how email would be sent, in plain words. Not part of the certificate; a failure to load it just leaves it out.
+      const e = await client.emailTiers(props.workspaceId);
+      setEmail(e.ok ? e.value : undefined);
     });
   const recheck = (id: string) =>
     void run(async () => {
@@ -118,6 +123,18 @@ export function ReadinessCertificatePanel(props: {
               </li>
             ))}
           </ul>
+          {email !== undefined && email.length > 0 ? (
+            <section aria-label="How email is sent">
+              <h4>How email is sent</h4>
+              <ul className="wr-findings">
+                {email.map((e) => (
+                  <li key={e.connector} data-tier={e.tier}>
+                    {e.explanation}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <small>
             Certificate {cert.certificateId}, issued {formatWhen(cert.issuedAt)}
           </small>

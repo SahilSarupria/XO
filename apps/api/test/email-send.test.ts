@@ -240,3 +240,26 @@ test('a connection that cannot say its sender, or an unreachable SMTP host, is a
   });
   assert.equal(refused.kind, 'confirmed_failure_no_effect', 'connection refused before anything was sent');
 });
+
+test('the tier an email connection sends in, and whether it can look up a sent message, follow from its record', async () => {
+  const { emailTierOf } = await import('../src/email/mail-adapter.js');
+  const gmail = (scopes: string[]) => emailTierOf({ kind: 'oauth', provider: 'google', scopes });
+  assert.deepEqual(
+    [gmail(['https://www.googleapis.com/auth/gmail.send'])?.tier, gmail(['https://www.googleapis.com/auth/gmail.send'])?.lookup],
+    ['native_api', false],
+  );
+  assert.match(gmail(['https://www.googleapis.com/auth/gmail.send'])!.explanation, /waits for a person/);
+  assert.equal(gmail(['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.readonly'])?.lookup, true);
+  // Microsoft scopes may come back with the Graph prefix; Mail.Read alone is not the lookup capability.
+  assert.equal(
+    emailTierOf({ kind: 'oauth', provider: 'microsoft', scopes: ['https://graph.microsoft.com/Mail.ReadBasic', 'Mail.Send'] })?.lookup,
+    true,
+  );
+  assert.equal(emailTierOf({ kind: 'oauth', provider: 'microsoft', scopes: ['Mail.Send'] })?.lookup, false);
+  assert.deepEqual(
+    emailTierOf({ kind: 'basic', provider: 'smtp', host: 'smtp.x.example:587|imap.x.example:993', scopes: [] })?.tier,
+    'smtp_imap',
+  );
+  assert.deepEqual(emailTierOf({ kind: 'basic', provider: 'smtp', host: 'smtp.x.example:587', scopes: [] })?.tier, 'send_only');
+  assert.equal(emailTierOf({ kind: 'oauth', provider: 'other', scopes: [] }), undefined);
+});

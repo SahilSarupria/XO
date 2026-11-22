@@ -41,6 +41,9 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
    against the provider references on 2026-11-22. The connectors expose `find_sent` only when the connection was granted every
    `mail.lookup` scope; **a tier 1 connection without it behaves like tier 3** (an unknown outcome waits for a person), and the
    tier text already says so. A person adds it by connecting with `capabilities: ["message.send", "mail.lookup"]`.
+   6a. **The tier is shown before a start** (2026-11-22). `GET …/connector-bindings` gives each `email` binding with a connection an
+   `emailTier` (`tier`, `lookup`, plain words), derived from the connection's record by `emailTierOf`, the same rule the adapter sends by.
+   Studio's pre-start check lists it under "How email is sent".
 7. **Tier 3** is tier 2 without `find_sent`; pacing is slower (see limits).
 8. **Effects.** Failures before the message body is sent are `effect: 'none'` (connect, greeting, auth, RCPT, DATA refusal, refused
    recipient, failed attachment check, provider 4xx, provider limit). A lost connection after the body is sent, a provider 5xx
@@ -100,7 +103,6 @@ contentType, sha256 }] }`. `find_sent` (read): `{ key }`. `packages/capability-c
 ## Not built yet
 
 - **Adapter wiring (UW-10c): done, see ADR 0042** (recipient-rule store and route, confirmed-contacts reader, attachment store, the `email` adapter).
-- The one-line tier text in Studio's pre-start preview (`guessProvider` returns the text; nothing displays it yet).
 - DSN/bounce parsing (deferred by the owner); the optional
   transactional-API tier.
 

@@ -144,7 +144,6 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - An app-password connection gets tier 2 only if its host reads `smtp-host[:port]|imap-host[:port]`; otherwise tier 3. There is no dedicated IMAP field.
   - Recipients: confirmed contact lists (re-confirm after the table changes) and explicit rules. UW-5 claims are not read as a recipient source.
   - Typed run inputs are scalars, so a send takes one recipient and one attachment (flat form); a multi-recipient send needs the list form from a step, not the run input.
-  - The Studio tier text is not shown yet (the provider-guess route returns it).
   - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
