@@ -74,7 +74,16 @@ export interface ConnectorBinding {
    * (tenant, state and scopes checked at every use). Absent: the adapter uses whatever the host configured it with.
    */
   readonly credentialId?: string;
+  /**
+   * V1-1 (ADR 0049): the call's arguments, each from a field of the item (or of the run's input, without a forEach) or a constant the
+   * operator wrote. A binding with arguments makes the step it names an `act` step whatever its source says, a person's task included:
+   * which steps XO carries out is the operator's decision (manage role, recent sign-in, audited), never the source's.
+   */
+  readonly arguments?: Readonly<Record<string, BindingArgument>>;
 }
+
+/** One argument of a bound call: a field of the item or input, or a constant. */
+export type BindingArgument = { readonly field: string } | { readonly const: string | number | boolean };
 
 export interface LoweringIssue {
   readonly stepId?: string;
@@ -320,7 +329,8 @@ type PlannedStep =
       readonly id: string;
       readonly cs: CandidateWorkflow['steps'][number];
       readonly binding: ConnectorBinding;
-      readonly contract: SemanticCapabilityContract;
+      /** Absent for a binding with arguments over a step that declares no operation (a person's task, a prose action). */
+      readonly contract?: SemanticCapabilityContract;
       readonly provenance: readonly string[];
     };
 
@@ -403,6 +413,11 @@ export function lowerCandidateWorkflow(
     if (strategy === 'external_tool') {
       const binding = options.connectorBindings?.get(cs.capabilityName);
       const built = buildSemanticCapabilityContract(graph, cs.capabilityId as XoirNodeId);
+      // V1-1: a binding with arguments needs no declared operation: the operator named every argument.
+      if (binding?.arguments !== undefined) {
+        plan.push({ kind: 'act', id, cs, binding, ...(built.ok ? { contract: built.value } : {}), provenance });
+        continue;
+      }
       if (binding === undefined || !built.ok) {
         issues.push({
           stepId: id,
@@ -497,7 +512,7 @@ export function lowerCandidateWorkflow(
   let lastHuman: string | undefined;
   for (const p of plan) {
     const needs = new Set<string>(previous !== undefined ? [previous] : []);
-    const inputs: Record<string, { from: string; optional?: boolean }> = {};
+    const inputs: Record<string, { from: string; optional?: boolean } | { const: string | number | boolean }> = {};
     const guards: string[] = [];
     // After a person's task, everything until the next task runs only when the person confirmed it; a refusal (or a skipped
     // task, which leaves no decision) skips the rest, never runs it on the assumption that the task happened.
@@ -659,11 +674,21 @@ export function lowerCandidateWorkflow(
 
     // act
     const b = p.binding;
-    for (const param of p.contract.inputs) {
-      const f = contractFieldName(param.name);
-      inputs[f] = { from: ref(f) };
-      declareInput(f, { type: scalarType(param.semanticType), description: param.name, required: param.required ?? true });
-    }
+    if (b.arguments !== undefined) {
+      // V1-1: the operator's argument map, verbatim: a field of the item (or input), or a constant.
+      for (const [name, a] of Object.entries(b.arguments)) {
+        if ('const' in a) inputs[name] = { const: a.const };
+        else {
+          inputs[name] = { from: ref(a.field) };
+          declareInput(a.field, { type: 'string', description: a.field, required: true });
+        }
+      }
+    } else
+      for (const param of p.contract!.inputs) {
+        const f = contractFieldName(param.name);
+        inputs[f] = { from: ref(f) };
+        declareInput(f, { type: scalarType(param.semanticType), description: param.name, required: param.required ?? true });
+      }
     const effectful = b.sideEffect !== 'read';
     const key = overInput !== undefined ? '{{workflow.id}}:{{run.id}}:{{run.index}}:{{step.id}}' : '{{workflow.id}}:{{run.id}}:{{step.id}}';
     const undoId = b.compensation !== undefined ? `${p.id}_undo`.slice(0, 64) : undefined;
@@ -671,7 +696,10 @@ export function lowerCandidateWorkflow(
     c.ops.set(b.operation, b.sideEffect);
     if (b.compensation !== undefined) c.ops.set(b.compensation.operation, b.compensation.sideEffect);
     connectors.set(b.connector, c);
-    const outputs = Object.fromEntries(p.contract.outputs.map((o) => [contractFieldName(o.name), { type: scalarType(o.semanticType) }]));
+    const outputs =
+      b.arguments !== undefined
+        ? {}
+        : Object.fromEntries(p.contract!.outputs.map((o) => [contractFieldName(o.name), { type: scalarType(o.semanticType) }]));
     steps.push({
       id: p.id,
       type: 'act',
@@ -695,7 +723,10 @@ export function lowerCandidateWorkflow(
       capabilityId: p.cs.capabilityId,
       capabilityName: p.cs.capabilityName,
       construct: 'act',
-      reason: `bound to ${b.connector}.${b.operation} (${b.sideEffect}) by the workspace`,
+      reason:
+        b.arguments !== undefined
+          ? `carried out by ${b.connector}.${b.operation} (${b.sideEffect}) with the arguments the workspace's binding maps`
+          : `bound to ${b.connector}.${b.operation} (${b.sideEffect}) by the workspace`,
     });
     if (undoId !== undefined && b.compensation !== undefined) {
       const undoInputs = Object.fromEntries(Object.entries(inputs).filter(([k]) => k !== 'previous_decision' && k !== 'route'));

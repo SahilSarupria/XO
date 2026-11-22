@@ -330,3 +330,74 @@ test('UAC-32: the batch preview says which tier an email binding sends in, in pl
     }
   });
 });
+
+test('V1-G1: a plain-language "email each client their certificate" becomes an act step once the workspace binds it with arguments', async () => {
+  const PROCEDURE = `# Certificate distribution procedure\n\n## Procedure\n1. For each client, email the client their certificate.\n`;
+  await withTempDir('xo-api-v1-g1-', async (dataDir) => {
+    const server = await TestServer.start({ workspaceDataDir: dataDir, ...NO_OCR });
+    try {
+      const ws = (await server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+      const src = (await server.request('POST', `/workspaces/${ws}/sources?filename=procedure.md`, Buffer.from(PROCEDURE))).json<{
+        sourceId: string;
+      }>();
+      const cid = (await server.request('POST', `/workspaces/${ws}/sources/${src.sourceId}/compile`)).json<{ compilationId: string }>()
+        .compilationId;
+      const generate = async () =>
+        (
+          await server.request('POST', `/workspaces/${ws}/compilations/${cid}/generated-workflows`, {
+            goal: { text: 'send each client their certificate', forEach: 'client' },
+          })
+        ).json<{ definition: { lowered: { component: { workflows: { steps: { id: string; type: string; inputs?: unknown }[] }[] } } } }>()
+          .definition.lowered.component.workflows[0]!.steps;
+
+      const emailStep = (steps: { id: string; type: string }[]) => steps.find((s) => /email_client_their_certificate$/.test(s.id))!;
+      // Without a binding, the step is a person's task: XO sends nothing.
+      assert.equal(emailStep(await generate()).type, 'approve');
+      // A binding without arguments does not change that: the source declares no operation.
+      const plain = {
+        capability: 'Email the client their certificate',
+        connector: 'email',
+        kind: 'http',
+        operation: 'send',
+        sideEffect: 'write',
+        adapter: 'email',
+      };
+      assert.equal((await server.request('PUT', `/workspaces/${ws}/connector-bindings`, { bindings: [plain] })).status, 200);
+      assert.equal(emailStep(await generate()).type, 'approve');
+      // With arguments, the operator states that XO sends it, and with exactly what.
+      const args = {
+        to: { field: 'email' },
+        subject: { const: 'Your certificate' },
+        body: { const: 'Your certificate is attached.' },
+        attachmentSha256: { field: 'document_sha256' },
+        attachmentFilename: { field: 'document_name' },
+        attachmentContentType: { field: 'document_type' },
+      };
+      const put = await server.request('PUT', `/workspaces/${ws}/connector-bindings`, { bindings: [{ ...plain, arguments: args }] });
+      assert.equal(put.status, 200, put.bodyText);
+      const steps = await generate();
+      const act = emailStep(steps) as { type: string; inputs?: Record<string, unknown> };
+      assert.equal(act.type, 'act');
+      assert.ok(!steps.some((s) => /email_client_their_certificate_not_done$/.test(s.id)), 'no person is asked whether XO sent it');
+      const { previous_decision: _p, ...mapped } = act.inputs ?? {};
+      assert.deepEqual(mapped, {
+        to: { from: 'item.email' },
+        subject: { const: 'Your certificate' },
+        body: { const: 'Your certificate is attached.' },
+        attachmentSha256: { from: 'item.document_sha256' },
+        attachmentFilename: { from: 'item.document_name' },
+        attachmentContentType: { from: 'item.document_type' },
+      });
+      const inv = (await server.request('GET', `/workspaces/${ws}/compilations/${cid}/capability-inventory`)).json<{
+        inventory: { capabilities: { name: string; effect: { class: string } }[] };
+      }>().inventory;
+      assert.equal(inv.capabilities.find((c) => c.name === 'Email the client their certificate')!.effect.class, 'write');
+      const refused = await server.request('PUT', `/workspaces/${ws}/connector-bindings`, {
+        bindings: [{ ...plain, arguments: { to: { field: 'Email Address' } } }],
+      });
+      assert.equal(refused.status, 400);
+    } finally {
+      await server.stop();
+    }
+  });
+});
