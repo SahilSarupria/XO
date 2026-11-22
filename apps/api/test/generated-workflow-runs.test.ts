@@ -85,6 +85,20 @@ test('a procedure runs as Workflow IR: certificate required, each step waits for
       assert.equal(run.pendingApprovals.length, 1);
       assert.match(run.pendingApprovals[0]!.summary, /Pull the latest code/);
 
+      // UW-12b: the workspace inbox lists the waiting step, with the workflow's name and the route's ids.
+      const inbox = (await server.request('GET', `/workspaces/${ws}/control/inbox`)).json<{
+        steps: { definitionId: string; runId: string; approvalId: string; summary: string; workflowName: string }[];
+        batches: unknown[];
+        attention: unknown[];
+      }>();
+      assert.deepEqual(
+        inbox.steps.map((x) => [x.definitionId, x.runId, x.approvalId]),
+        [[def.definitionId, run.runId, run.pendingApprovals[0]!.approvalId]],
+      );
+      assert.match(inbox.steps[0]!.summary, /Pull the latest code/);
+      assert.ok(inbox.steps[0]!.workflowName.length > 0);
+      assert.deepEqual([inbox.batches, inbox.attention], [[], []]);
+
       const decide = (r: Run, action: string) =>
         server.request('POST', `${runs}/${r.runId}/approvals/${r.pendingApprovals[0]!.approvalId}`, { action });
       const second = (await decide(run, 'approve')).json<Run>();
@@ -93,6 +107,11 @@ test('a procedure runs as Workflow IR: certificate required, each step waits for
       const done = (await decide(second, 'approve')).json<Run>();
       assert.equal(done.state, 'completed');
       assert.equal(done.pendingApprovals.length, 0);
+      assert.deepEqual(
+        (await server.request('GET', `/workspaces/${ws}/control/inbox`)).json<{ steps: unknown[] }>().steps,
+        [],
+        'a decided step leaves the inbox',
+      );
 
       const listed = (await server.request('GET', runs)).json<{ runs: { runId: string; state: string }[] }>().runs;
       assert.deepEqual(

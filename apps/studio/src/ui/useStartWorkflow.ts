@@ -91,6 +91,23 @@ export function useStartWorkflow(args: {
                   ? `Started on the workflow runtime. It is waiting for a person: ${ir.value.pendingApprovals[0]!.summary}`
                   : `Started on the workflow runtime (${ir.value.state}).`,
             });
+          } else if (ir.problem.code === 'XO_BATCH_APPROVAL_REQUIRED') {
+            // UW-8/UW-12b: in production, work that sends or changes things starts only from a batch a reviewer approved. Prepare
+            // the preview now (nothing is sent); it waits in the Inbox for a reviewer, and starts from there once approved.
+            intentKey.current = undefined;
+            const p = await client.prepareBatchPreview(args.workspaceId, definitionId, cert.value.certificateId);
+            if (!p.ok) {
+              setNotice({ problem: p.problem });
+              return;
+            }
+            args.onChanged();
+            const exceptions = p.value.counts.stops + p.value.counts.not_exact;
+            setNotice({
+              info:
+                p.value.counts.not_exact > 0
+                  ? `XO prepared a preview of ${p.value.total} items, but ${p.value.counts.not_exact} cannot be shown exactly, so it cannot be approved as a batch. Nothing was sent.`
+                  : `Nothing was sent yet. XO prepared a preview of exactly what this would do (${p.value.total} ${p.value.total === 1 ? 'item' : 'items'}${exceptions > 0 ? `, ${exceptions} needing attention` : ''}). A reviewer approves it in the Inbox, and it starts from there.`,
+            });
           } else {
             intentKey.current = undefined;
             setNotice({ problem: ir.problem });

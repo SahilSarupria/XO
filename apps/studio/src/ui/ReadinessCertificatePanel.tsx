@@ -11,6 +11,7 @@ import type {
   ReadinessStatus,
 } from '../platform/wire-readiness';
 import { useGuardedAction } from './actions';
+import { CancelRun } from './ControlCards';
 import { Button, formatWhen, ProblemNotice } from './primitives';
 import { useSession } from './session';
 
@@ -154,6 +155,19 @@ export function ReadinessCertificatePanel(props: {
               <li key={r.runId} data-state={r.state}>
                 {r.runId}: {r.state}
                 {r.startedBy !== undefined ? `, started by ${r.startedBy}` : ''}
+                {/* UW-12b: a run still in progress can be cancelled; the platform records it first and starts no call after it. */}
+                {['created', 'running', 'waiting'].includes(r.state) ? (
+                  <div className="wm-row">
+                    <CancelRun
+                      workspaceId={props.workspaceId}
+                      definitionId={definitionId}
+                      runId={r.runId}
+                      batch={false}
+                      role={props.role}
+                      onChanged={() => loadRuns(definitionId)}
+                    />
+                  </div>
+                ) : null}
                 {r.pendingApprovals.map((a) => (
                   <div key={a.approvalId} className="wm-row">
                     <span>Waiting for a person: {a.summary}</span>

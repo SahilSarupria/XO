@@ -1,5 +1,5 @@
 import { createHash, randomBytes, sign as edSign } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { canonicalJson, type WorkflowComponent } from '@xo/workflow-ir';
@@ -286,6 +286,19 @@ export class BatchStore {
     const p = ID.test(previewId) ? await readJson<PreviewRecord>(join(this.dir, 'previews', `${previewId}.json`)) : undefined;
     if (p === undefined) throw new NotFoundError(`batch preview "${previewId}"`);
     return p;
+  }
+
+  /** UW-12b: every preview of this definition, newest first (the inbox filters them). An unreadable file is skipped. */
+  async listPreviews(): Promise<PreviewRecord[]> {
+    const names = await readdir(join(this.dir, 'previews')).catch(() => [] as string[]);
+    const out: PreviewRecord[] = [];
+    for (const n of names) {
+      const id = n.replace(/\.json$/, '');
+      if (!ID.test(id)) continue;
+      const p = await readJson<PreviewRecord>(join(this.dir, 'previews', n)).catch(() => undefined);
+      if (p !== undefined) out.push(p);
+    }
+    return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   /** At most one approval per preview: the first one stands. */
