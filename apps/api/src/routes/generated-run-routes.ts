@@ -18,7 +18,7 @@ import {
 } from '@xo/workflow-runtime';
 import type { AuthenticatedPrincipal, PermissionManager } from '@xo/permissions';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import type { ExternalToolAdapter } from '@xo/adapters';
 import type { WorkflowComponent } from '@xo/workflow-ir';
@@ -42,6 +42,21 @@ import { enforceNotPaused } from '../workflow-controls/service.js';
 import { exceptionReport } from '../workflow-controls/exceptions.js';
 import { checkDataDrift, driftSummary } from '../drift/data-drift.js';
 import { emailTierOf } from '../email/mail-adapter.js';
+import {
+  BatchStore,
+  actionDigest,
+  batchDir,
+  buildPreview,
+  digestOfJson,
+  exceptionsFirst,
+  hasEffects,
+  newBatchApprovalId,
+  signBatchApproval,
+  type BatchApprovalPayload,
+  type BatchApprovalRecord,
+  type PreviewRecord,
+  type SenderView,
+} from '../approvals/batch-approval.js';
 import { adapterFor, installedAdapterIds, workspaceStateStore } from '../workspace/workspace-context.js';
 import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
 
@@ -77,6 +92,8 @@ export interface RunMeta {
   readonly startedAt: string;
   /** UW-2 (ADR 0032): the Workflow entity and version this run belongs to, recorded before the run's first entry. */
   readonly workflow?: { readonly workflowId: string; readonly version: number };
+  /** UW-8 (ADR 0046): the batch approval this run was started with; every approval step and call of it is checked against it. */
+  readonly batch?: { readonly approvalId: string; readonly previewId: string; readonly root: string };
 }
 
 export async function readMeta(dir: string, runId: string): Promise<RunMeta | undefined> {
@@ -119,6 +136,8 @@ export type EffectGate = (call: {
   readonly stepId: string;
   readonly connector: string;
   readonly operation: string;
+  /** UW-8: the call's actual arguments, compared with what a batch approval covered. */
+  readonly args: Readonly<Record<string, unknown>>;
 }) => Promise<string | undefined>;
 
 export function bridge(
@@ -134,7 +153,13 @@ export function bridge(
     ops[name] = {
       sideEffect,
       execute: async (args, ctx) => {
-        const refused = await gate({ runId: ctx.runId, stepId: ctx.stepId, connector: connectorId, operation: name });
+        const refused = await gate({
+          runId: ctx.runId,
+          stepId: ctx.stepId,
+          connector: connectorId,
+          operation: name,
+          args: args as Record<string, unknown>,
+        });
         if (refused !== undefined) throw new ConnectorError('DENIED', `not authorized now: ${refused}`, 'none');
         const r = await adapter.invoke({
           capabilityId: `${connectorId}.${name}`,
@@ -169,7 +194,12 @@ export async function runnerFor(
   deps: RunnerDeps,
   workspace: WorkspaceRecord,
   definition: WorkflowDefinitionRecord,
-  options: { readonly reviewer?: { readonly id: string }; readonly starting?: { readonly runId: string; readonly meta: RunMeta } } = {},
+  options: {
+    readonly reviewer?: { readonly id: string };
+    readonly starting?: { readonly runId: string; readonly meta: RunMeta };
+    /** UW-8: a preview runner over this scratch journal (engine preview mode: nothing is ever sent, no lease). */
+    readonly preview?: { readonly store: RunStore };
+  } = {},
 ): Promise<WorkflowRunner> {
   const { dataConfig } = deps;
   const reviewer = options.reviewer;
@@ -191,6 +221,26 @@ export async function runnerFor(
   // One lease owner per runner: two requests in one process exclude each other exactly as two processes do.
   const owner = `${deps.owner ?? INSTANCE}-${randomBytes(4).toString('hex')}`;
   const keys = await approvalKeyring(dataConfig.dataRootDir, deps.env);
+  // UW-8: the batch approval a run was started with (read from the run's record), with its preview, once per runner.
+  const batches = new Map<string, Promise<BatchContext | undefined>>();
+  const batchOf = (runId: string): Promise<BatchContext | undefined> => {
+    let p = batches.get(runId);
+    if (p === undefined) {
+      p = (async () => {
+        const root = await rootRunId(store, runId);
+        const meta = options.starting?.runId === root ? options.starting.meta : await readMeta(dir, root);
+        if (meta?.batch === undefined) return undefined;
+        const bs = new BatchStore(batchDir(dir));
+        const [approval, preview] = await Promise.all([bs.getApproval(meta.batch.approvalId), bs.getPreview(meta.batch.previewId)]);
+        return { root, approval, preview };
+      })();
+      batches.set(runId, p);
+    }
+    return p;
+  };
+  let identities: Promise<ReadonlyMap<string, string>> | undefined;
+  const bindingDigests = (): Promise<ReadonlyMap<string, string>> =>
+    (identities ??= bindingIdentities(deps, workspace, component).then((m) => new Map([...m].map(([k, v]) => [k, v.digest]))));
   const implementations: Record<string, Connector> = {};
   const grants: Record<string, { grant: string[] }> = {};
   for (const decl of component.connectors) {
@@ -202,7 +252,7 @@ export async function runnerFor(
     const gate: EffectGate = async (call) => {
       const root = await rootRunId(store, call.runId);
       const meta = options.starting?.runId === root ? options.starting.meta : await readMeta(dir, root);
-      const reason =
+      let reason =
         meta === undefined
           ? 'the run has no record of who started it'
           : await authorizer.check({
@@ -212,6 +262,9 @@ export async function runnerFor(
               adapterId,
               initiator: meta.initiator,
             });
+      // UW-8: a run started with a batch approval makes exactly the calls that were approved, argument for argument.
+      if (reason === undefined && meta?.batch !== undefined)
+        reason = await batchCallCheck(await batchOf(call.runId), store, call, bindingDigests);
       if (reason !== undefined)
         await deps.audit?.tryRecord({
           action: 'generated-workflow.effect',
@@ -258,6 +311,17 @@ export async function runnerFor(
     implementations[decl.id] = { ...bridge(adapter, decl.id, ops, gate, lend), kind: decl.kind };
     grants[decl.id] = { grant: decl.operations.map((o) => o.name) };
   }
+  const host = new ConnectorHost({ component, policy: { connectors: grants }, implementations, vault: new MapVault({}) });
+  if (options.preview !== undefined)
+    return new WorkflowRunner({
+      component,
+      workflowId: component.workflows[0]!.id,
+      store: options.preview.store,
+      connectors: host,
+      preview: true,
+      // Approval steps pass as approved in a preview; the runner still needs the approvals configuration to accept them.
+      approvals: { reviewers: new StaticReviewerRegistry([]) },
+    });
   return new WorkflowRunner({
     component,
     workflowId: component.workflows[0]!.id,
@@ -269,13 +333,126 @@ export async function runnerFor(
       attach: (id, token) => leased.attach(id, owner, token),
       detach: (id) => leased.detach(id),
     },
-    connectors: new ConnectorHost({ component, policy: { connectors: grants }, implementations, vault: new MapVault({}) }),
+    connectors: host,
     approvals: {
       reviewers: new StaticReviewerRegistry(
         reviewer !== undefined ? [{ id: reviewer.id, roles: ['reviewer'], publicKeyPem: keys.active.publicKeyPem }] : [],
       ),
+      // UW-8: an approval step of a run started with a batch approval is decided by that approval, when the preview the person
+      // approved showed this item reaching this step. The decision is that person's, signed as theirs; the engine verifies it.
+      presigned: async (request) => {
+        const b = await batchOf(request.runId);
+        if (b === undefined) return undefined;
+        const index = await itemIndexOf(store, request.runId);
+        const item = b.preview.items.find((i) => i.index === index);
+        if (item === undefined || !item.approvals.includes(request.step) || Date.parse(b.approval.payload.expiresAt) < Date.now())
+          return undefined;
+        const reviewerId = b.approval.payload.reviewerId;
+        const decision = signDecision(keys.active.privateKeyPem, {
+          v: 1,
+          approvalId: request.approvalId,
+          runId: request.runId,
+          step: request.step,
+          action: 'approve',
+          edits: {},
+          reviewerId,
+          at: new Date().toISOString(),
+          comment: `batch approval ${b.approval.payload.approvalId}`,
+        });
+        return { decision, reviewer: { id: reviewerId, roles: ['reviewer'], publicKeyPem: keys.active.publicKeyPem } };
+      },
     },
   });
+}
+
+/**
+ * UW-8: per connector of the definition, a digest of its workspace bindings and of the account its connection sends as, and what to
+ * show the reviewer about that sender. A changed binding or a reconnected account changes the digest, so it changes what was approved.
+ */
+export async function bindingIdentities(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  component: WorkflowComponent,
+): Promise<Map<string, { readonly digest: string; readonly sender: SenderView }>> {
+  const all = (await readConnectorBindings(workspace, deps.dataConfig)).bindings;
+  const out = new Map<string, { digest: string; sender: SenderView }>();
+  let config: Awaited<ReturnType<typeof loadCredentialsConfig>> | undefined | null = null;
+  for (const decl of component.connectors) {
+    const bindings = all.filter((b) => b.connector === decl.id);
+    if (bindings.length === 0) continue;
+    const credentialId = bindings.find((b) => b.credentialId !== undefined)?.credentialId;
+    let account: string | undefined;
+    let sender: SenderView = { connector: decl.id };
+    if (credentialId !== undefined) {
+      if (config === null)
+        config = await (deps.dataConfig.credentials ?? (() => loadCredentialsConfig(deps.dataConfig.dataRootDir, deps.env)))().catch(
+          () => undefined,
+        );
+      const c =
+        config !== undefined
+          ? await workspaceBroker(workspace, deps.dataConfig.dataRootDir, config)
+              .describe(credentialId)
+              .catch(() => undefined)
+          : undefined;
+      account = c?.accountRef ?? (c?.username !== undefined ? `${c.username}@${c.host ?? ''}` : undefined);
+      const label = c?.accountLabel ?? c?.username;
+      sender = {
+        connector: decl.id,
+        credentialId,
+        ...(c !== undefined ? { provider: c.provider } : {}),
+        ...(label !== undefined ? { account: label } : {}),
+      };
+    }
+    const digest = digestOfJson({
+      bindings: [...bindings].sort((a, b) => a.operation.localeCompare(b.operation)),
+      account: account ?? null,
+    });
+    out.set(decl.id, { digest, sender });
+  }
+  return out;
+}
+
+interface BatchContext {
+  readonly root: string;
+  readonly approval: BatchApprovalRecord;
+  readonly preview: PreviewRecord;
+}
+
+/** Which item of its batch a run is (a run that is not an item is item 0 of a batch of one). */
+async function itemIndexOf(store: RunStore, runId: string): Promise<number> {
+  if (!runId.startsWith('fe_')) return 0;
+  const first = (await store.read(runId))[0];
+  const i = (first?.data as { index?: unknown } | undefined)?.index;
+  return typeof i === 'number' ? i : -1;
+}
+
+/**
+ * UW-8: immediately before a call of a batch-approved run, the call must be one the approved preview showed for this item, with the
+ * same connector, operation, binding (so the same sending account) and argument digest. Anything else is refused and nothing is sent.
+ */
+async function batchCallCheck(
+  b: BatchContext | undefined,
+  store: RunStore,
+  call: Parameters<EffectGate>[0],
+  bindingDigests: () => Promise<ReadonlyMap<string, string>>,
+): Promise<string | undefined> {
+  if (b === undefined) return 'the batch approval this run was started with cannot be read';
+  if (Date.parse(b.approval.payload.expiresAt) < Date.now()) return 'the batch approval expired before this call';
+  const index = await itemIndexOf(store, call.runId);
+  const item = b.preview.items.find((i) => i.index === index);
+  const approved = item?.actions.filter((x) => x.step === call.stepId) ?? [];
+  if (approved.length === 0) return `item ${index} was not approved to make a call at step "${call.stepId}"`;
+  const binding = (await bindingDigests()).get(call.connector) ?? 'unbound';
+  const now = actionDigest({
+    step: call.stepId,
+    connector: call.connector,
+    operation: call.operation,
+    sideEffect: approved[0]!.sideEffect,
+    binding,
+    argsDigest: digestOfJson(call.args),
+  });
+  if (approved.some((x) => x.digest === now)) return undefined;
+  return `item ${index}: this call differs from what was approved (a recipient, attachment, message, sender or setting changed)`;
 }
 
 export async function view(runner: WorkflowRunner, runId: string, dir: string, dataRootDir: string): Promise<Record<string, unknown>> {
@@ -289,7 +466,8 @@ export async function view(runner: WorkflowRunner, runId: string, dir: string, d
   const keys = await currentPublicKeys(dataRootDir);
   const entries = await new RunStore(dir).read(runId);
   const decisions = entries
-    .filter((e) => e.type === 'approval_decided')
+    // UW-8: a decision presented from a batch approval is journaled as `approval_presigned`; it is shown and re-verified the same way.
+    .filter((e) => e.type === 'approval_decided' || e.type === 'approval_presigned')
     .map((e) => {
       const d = e.data as { step: string; reviewerId: string; action: string; payload: Record<string, unknown>; signature: string };
       const keyId = verifyJournaledDecision(d.payload, d.signature, keys);
@@ -341,6 +519,8 @@ export interface StartGeneratedRun {
   readonly idempotencyKey?: unknown;
   readonly correlationId: string;
   readonly workflow?: { readonly workflowId: string; readonly version: number };
+  /** UW-8: the batch approval to start with (required for a run with effects when XO_RUN_APPROVAL is `required`). */
+  readonly batchApprovalId?: unknown;
 }
 
 /**
@@ -360,7 +540,108 @@ export async function startGeneratedRun(
     correlationId: s.correlationId,
     target: { kind: 'workflow' as const, id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
   };
-  const certificateId = s.certificateId;
+  const certificateId = await requireStartable(deps, workspace, definition, s.certificateId, draft);
+  // UW-8 (ADR 0046): a run with effects starts with a person's batch approval over its exact preview (required in production).
+  const component = definition.lowered.component as WorkflowComponent | undefined;
+  let input = s.input;
+  let batch: RunMeta['batch'] | undefined;
+  let batchRunId: string | undefined;
+  if (s.batchApprovalId !== undefined) {
+    const v = await verifyBatchForStart(deps, {
+      workspace,
+      definition,
+      certificateId,
+      input: s.input,
+      approvalId: s.batchApprovalId,
+      actor,
+      draft,
+    });
+    ({ input, batch, runId: batchRunId } = v);
+  } else if (dataConfig.preExecution?.runApproval === 'required' && component !== undefined && hasEffects(component)) {
+    await audit?.tryRecord({
+      ...draft,
+      type: 'generated-workflow.batch.required',
+      outcome: 'denied',
+      reasonCode: 'batch_approval_required',
+    });
+    throw new XoError(
+      ErrorCode.BATCH_APPROVAL_REQUIRED,
+      "this workflow can send or change things, so it starts only with a person's approval of exactly what it will do: prepare a preview (POST …/previews), have it approved, and start with its batchApprovalId",
+    );
+  }
+  const idem = s.idempotencyKey;
+  // The run id is fixed before the run starts, so who started it is on record before its first effect. A run started for a
+  // Workflow entity also binds the entity into the id, so one key on two workflows that share a definition are two runs.
+  const scope = s.workflow !== undefined ? `\u0000${s.workflow.workflowId}` : '';
+  const runId =
+    batchRunId ??
+    (typeof idem === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(idem)
+      ? `run_${createHash('sha256').update(`${definition.definitionId}\u0000${actor.id}\u0000${idem}${scope}`).digest('hex').slice(0, 32)}`
+      : `run_${randomBytes(16).toString('hex')}`);
+  const meta: RunMeta = {
+    initiator: { kind: actor.kind, id: actor.id },
+    certificateId,
+    startedAt: new Date().toISOString(),
+    ...(s.workflow !== undefined ? { workflow: { workflowId: s.workflow.workflowId, version: s.workflow.version } } : {}),
+    ...(batch !== undefined ? { batch } : {}),
+  };
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  await mkdir(join(dir, 'meta'), { recursive: true });
+  await writeFile(join(dir, 'meta', `${runId}.json`), JSON.stringify(meta), { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== 'EEXIST') throw e; // a retry of the same request: the first record stands
+  });
+  const stored = (await readMeta(dir, runId)) ?? meta;
+  if (s.workflow !== undefined && stored.workflow?.workflowId !== s.workflow.workflowId)
+    throw new XoError(ErrorCode.ALREADY_EXISTS, `run ${runId} already exists for another workflow; use another Idempotency-Key`);
+  const runner = await runnerFor(deps, workspace, definition, { starting: { runId, meta: stored } });
+  let result: RunResult;
+  try {
+    result = await runner.start({ inputs: input, runId });
+  } catch (e) {
+    // The same run is being started or driven by another request right now (a retried start, the same Idempotency-Key, or the
+    // same batch approval twice): it is one run, so answer with where it stands instead of failing (UW-8).
+    if (!(e instanceof LeaseError && e.code === 'HELD')) throw e;
+    // The other request may hold the lease a moment before it writes the run's first entry: wait for the run to exist.
+    let status: Awaited<ReturnType<typeof runner.status>> | undefined;
+    for (let attempt = 0; status === undefined; attempt++) {
+      try {
+        status = await runner.status(runId);
+      } catch (cause) {
+        if (attempt >= 100) throw cause;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    result = { ...status, accepted: false };
+  }
+  await audit?.tryRecord({
+    ...draft,
+    type: 'generated-workflow.run.started',
+    outcome: 'completed',
+    metadata: {
+      runId: result.runId,
+      certificateId,
+      state: result.state,
+      ...(batch !== undefined ? { batchApprovalId: batch.approvalId } : {}),
+      ...(stored.workflow !== undefined ? { workflowEntityId: stored.workflow.workflowId, workflowVersion: stored.workflow.version } : {}),
+    },
+  });
+  await publishRunChange(dataConfig, workspace.workspaceId, stored, result.runId, result.state);
+  return {
+    status: result.accepted ? 201 : 200,
+    body: { ...(await view(runner, result.runId, dir, dataConfig.dataRootDir)), certificateId },
+  };
+}
+
+/** The gates every start (and every preview) passes: a current certificate for this definition, the workspace not paused, no drift. */
+async function requireStartable(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  definition: WorkflowDefinitionRecord,
+  certificateId: unknown,
+  draft: Omit<Parameters<AuditService['tryRecord']>[0], 'type' | 'outcome'>,
+): Promise<string> {
+  const { dataConfig } = deps;
+  const audit = deps.audit;
   if (typeof certificateId !== 'string') {
     await audit?.tryRecord({ ...draft, type: 'readiness.start.refused', outcome: 'denied', reasonCode: 'certificate_required' });
     throw new XoError(
@@ -409,46 +690,271 @@ export async function startGeneratedRun(
     });
     throw new XoError(ErrorCode.DATA_SCHEMA_DRIFT, driftSummary(drift), { context: { report: drift } });
   }
-  const idem = s.idempotencyKey;
-  // The run id is fixed before the run starts, so who started it is on record before its first effect. A run started for a
-  // Workflow entity also binds the entity into the id, so one key on two workflows that share a definition are two runs.
-  const scope = s.workflow !== undefined ? `\u0000${s.workflow.workflowId}` : '';
-  const runId =
-    typeof idem === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(idem)
-      ? `run_${createHash('sha256').update(`${definition.definitionId}\u0000${actor.id}\u0000${idem}${scope}`).digest('hex').slice(0, 32)}`
-      : `run_${randomBytes(16).toString('hex')}`;
-  const meta: RunMeta = {
-    initiator: { kind: actor.kind, id: actor.id },
-    certificateId,
-    startedAt: new Date().toISOString(),
-    ...(s.workflow !== undefined ? { workflow: { workflowId: s.workflow.workflowId, version: s.workflow.version } } : {}),
-  };
-  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
-  await mkdir(join(dir, 'meta'), { recursive: true });
-  await writeFile(join(dir, 'meta', `${runId}.json`), JSON.stringify(meta), { flag: 'wx' }).catch((e: NodeJS.ErrnoException) => {
-    if (e.code !== 'EEXIST') throw e; // a retry of the same request: the first record stands
-  });
-  const stored = (await readMeta(dir, runId)) ?? meta;
-  if (s.workflow !== undefined && stored.workflow?.workflowId !== s.workflow.workflowId)
-    throw new XoError(ErrorCode.ALREADY_EXISTS, `run ${runId} already exists for another workflow; use another Idempotency-Key`);
-  const runner = await runnerFor(deps, workspace, definition, { starting: { runId, meta: stored } });
-  const result: RunResult = await runner.start({ inputs: s.input, runId });
-  await audit?.tryRecord({
-    ...draft,
-    type: 'generated-workflow.run.started',
-    outcome: 'completed',
-    metadata: {
-      runId: result.runId,
+  return certificateId;
+}
+
+// ------------------------------------------------------------------------------------------------ UW-8 batch preview and approval
+
+type AuditDraft = Omit<Parameters<AuditService['tryRecord']>[0], 'type' | 'outcome'>;
+
+/**
+ * Runs the definition over this input in the engine's preview mode (nothing is sent) in a scratch journal, and builds the preview:
+ * each item's exact calls, one leaf per item, one root. The scratch journal is removed afterwards.
+ */
+async function computePreview(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  definition: WorkflowDefinitionRecord,
+  input: Record<string, unknown>,
+  certificateId: string,
+  createdBy: string,
+  previewId?: string,
+): Promise<PreviewRecord> {
+  const component = definition.lowered.component as WorkflowComponent | undefined;
+  if (component === undefined)
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, `generated workflow ${definition.definitionId} has no definition to run`);
+  const dir = runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId);
+  const scratch = join(batchDir(dir), 'scratch', randomBytes(8).toString('hex'));
+  await mkdir(scratch, { recursive: true });
+  try {
+    const store = new RunStore(scratch);
+    const runner = await runnerFor(deps, workspace, definition, { preview: { store } });
+    const runId = `run_${randomBytes(16).toString('hex')}`;
+    await runner.start({ inputs: input, runId });
+    return await buildPreview({
+      component,
+      definitionId: definition.definitionId,
       certificateId,
-      state: result.state,
-      ...(stored.workflow !== undefined ? { workflowEntityId: stored.workflow.workflowId, workflowVersion: stored.workflow.version } : {}),
-    },
-  });
-  await publishRunChange(dataConfig, workspace.workspaceId, stored, result.runId, result.state);
-  return {
-    status: result.accepted ? 201 : 200,
-    body: { ...(await view(runner, result.runId, dir, dataConfig.dataRootDir)), certificateId },
+      input,
+      store,
+      runId,
+      bindings: await bindingIdentities(deps, workspace, component),
+      createdBy,
+      now: new Date(),
+      ...(previewId !== undefined ? { previewId } : {}),
+    });
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+export interface PreviewGeneratedRun {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly input: Record<string, unknown>;
+  readonly certificateId: unknown;
+  readonly correlationId: string;
+}
+
+/** UW-8: prepares a batch preview (author role). The same gates as a start apply; nothing is sent. */
+export async function previewGeneratedRun(deps: RunnerDeps, p: PreviewGeneratedRun): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition } = p;
+  const draft: AuditDraft = {
+    action: 'generated-workflow.batch',
+    actor: actorFromPrincipal(actor),
+    correlationId: p.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
   };
+  const certificateId = await requireStartable(deps, workspace, definition, p.certificateId, draft);
+  const preview = await computePreview(deps, workspace, definition, p.input, certificateId, actor.id);
+  await new BatchStore(batchDir(runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId))).putPreview(preview);
+  await deps.audit?.tryRecord({
+    ...draft,
+    type: 'generated-workflow.batch.previewed',
+    outcome: 'completed',
+    metadata: { previewId: preview.previewId, items: preview.items.length, ...preview.counts },
+  });
+  return previewView(preview, undefined, undefined, {});
+}
+
+/** One page of a preview, exceptions first (or only the exceptions), with its approval and use if any. */
+export function previewView(
+  p: PreviewRecord,
+  approval: BatchApprovalRecord | undefined,
+  used: { readonly runId: string } | undefined,
+  q: { readonly page?: number; readonly size?: number; readonly show?: string },
+): Record<string, unknown> {
+  const size = Math.min(Math.max(q.size ?? 50, 1), 200);
+  const ordered = exceptionsFirst(p.items).filter((i) => q.show !== 'exceptions' || i.state === 'stops' || i.state === 'not_exact');
+  const pages = Math.max(1, Math.ceil(ordered.length / size));
+  const page = Math.min(Math.max(q.page ?? 1, 1), pages);
+  return {
+    previewId: p.previewId,
+    definitionId: p.definitionId,
+    certificateId: p.certificateId,
+    root: p.root,
+    forEach: p.forEach,
+    effects: p.effects,
+    counts: p.counts,
+    senders: p.senders,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt,
+    expiresAt: p.expiresAt,
+    approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined,
+    ...(approval !== undefined
+      ? {
+          approval: {
+            approvalId: approval.payload.approvalId,
+            reviewerId: approval.payload.reviewerId,
+            approvedAt: approval.payload.at,
+            expiresAt: approval.payload.expiresAt,
+            ...(used !== undefined ? { usedBy: used.runId } : {}),
+          },
+        }
+      : {}),
+    page,
+    pages,
+    total: ordered.length,
+    items: ordered.slice((page - 1) * size, page * size).map((i) => ({
+      index: i.index,
+      state: i.state,
+      ...(i.reason !== undefined ? { reason: i.reason } : {}),
+      approvals: i.approvals,
+      actions: i.actions.map((x) => ({
+        step: x.step,
+        connector: x.connector,
+        operation: x.operation,
+        sideEffect: x.sideEffect,
+        args: x.args,
+      })),
+    })),
+  };
+}
+
+export interface ApproveBatchPreview {
+  readonly workspace: WorkspaceRecord;
+  readonly actor: AuthenticatedPrincipal;
+  readonly definition: WorkflowDefinitionRecord;
+  readonly previewId: string;
+  readonly root: unknown;
+  readonly correlationId: string;
+}
+
+/**
+ * UW-8: a person approves the preview they were shown, named by its root. Callers check the review role and a recent sign-in first.
+ * Refused when the root differs, the preview expired or has items that cannot be shown exactly, it was already approved, or (with
+ * separation required) the approver prepared it.
+ */
+export async function approveBatchPreview(deps: RunnerDeps, a: ApproveBatchPreview): Promise<Record<string, unknown>> {
+  const { workspace, actor, definition } = a;
+  const dir = runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId);
+  const bs = new BatchStore(batchDir(dir));
+  const preview = await bs.getPreview(a.previewId);
+  const draft: AuditDraft = {
+    action: 'generated-workflow.batch',
+    actor: actorFromPrincipal(actor),
+    correlationId: a.correlationId,
+    target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
+  };
+  const refuse = async (code: string, message: string): Promise<never> => {
+    await deps.audit?.tryRecord({
+      ...draft,
+      type: 'generated-workflow.batch.refused',
+      outcome: 'denied',
+      reasonCode: code,
+      metadata: { previewId: preview.previewId },
+    });
+    throw new XoError(ErrorCode.BATCH_APPROVAL_REFUSED, message, { context: { reason: code } });
+  };
+  if (preview.definitionId !== definition.definitionId) throw new NotFoundError(`batch preview "${a.previewId}"`);
+  if (typeof a.root !== 'string' || a.root !== preview.root)
+    return refuse(
+      'root_mismatch',
+      'this is not the preview you were shown (its root differs); review the current preview and approve that',
+    );
+  if (Date.parse(preview.expiresAt) <= Date.now()) return refuse('preview_expired', 'this preview expired; prepare a new one');
+  if (preview.counts.not_exact > 0)
+    return refuse('not_exact', `${preview.counts.not_exact} item(s) cannot be shown exactly, so they cannot be approved as a batch`);
+  if (deps.dataConfig.preExecution?.approvalSeparation === 'required' && actor.id === preview.createdBy)
+    return refuse('separation_of_duties', 'someone other than the person who prepared this batch must approve it');
+  const keys = await approvalKeyring(deps.dataConfig.dataRootDir, deps.env);
+  const at = new Date();
+  const payload: BatchApprovalPayload = {
+    v: 1,
+    kind: 'batch',
+    approvalId: newBatchApprovalId(),
+    previewId: preview.previewId,
+    root: preview.root,
+    definitionId: definition.definitionId,
+    certificateId: preview.certificateId,
+    inputDigest: preview.inputDigest,
+    items: preview.items.length,
+    reviewerId: actor.id,
+    at: at.toISOString(),
+    expiresAt: preview.expiresAt,
+  };
+  const record = signBatchApproval(payload, keys.active);
+  await bs.putApproval(record);
+  await bs.indexApproval(payload.approvalId, preview.previewId);
+  await deps.audit?.tryRecord({
+    ...draft,
+    type: 'generated-workflow.batch.approved',
+    outcome: 'completed',
+    metadata: { previewId: preview.previewId, approvalId: payload.approvalId, items: payload.items, sends: preview.counts.sends },
+  });
+  return previewView(preview, record, undefined, {});
+}
+
+/**
+ * UW-8: the checks a start with a batch approval passes. The approval verifies under the keyring, is for this definition and
+ * certificate, is unexpired and unused; the input is the approved one; and the preview computed NOW gives the same root (any change
+ * to a recipient, attachment, message, sender or setting since the approval changes it). The run id follows from the approval, so a
+ * retried start is the same run; the approval is consumed exactly once.
+ */
+async function verifyBatchForStart(
+  deps: RunnerDeps,
+  v: {
+    readonly workspace: WorkspaceRecord;
+    readonly definition: WorkflowDefinitionRecord;
+    readonly certificateId: string;
+    readonly input: Record<string, unknown>;
+    readonly approvalId: unknown;
+    readonly actor: AuthenticatedPrincipal;
+    readonly draft: AuditDraft;
+  },
+): Promise<{ input: Record<string, unknown>; batch: NonNullable<RunMeta['batch']>; runId: string }> {
+  const { workspace, definition } = v;
+  const refuse = async (code: string, message: string, context: Record<string, unknown> = {}): Promise<never> => {
+    await deps.audit?.tryRecord({ ...v.draft, type: 'generated-workflow.batch.refused', outcome: 'denied', reasonCode: code });
+    throw new XoError(ErrorCode.BATCH_APPROVAL_REFUSED, message, { context: { reason: code, ...context } });
+  };
+  if (typeof v.approvalId !== 'string') return refuse('invalid', 'batchApprovalId must be a string');
+  const bs = new BatchStore(batchDir(runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId)));
+  const approval = await bs.getApproval(v.approvalId);
+  const p = approval.payload;
+  if (
+    verifyJournaledDecision(
+      p as unknown as Record<string, unknown>,
+      approval.signature,
+      await currentPublicKeys(deps.dataConfig.dataRootDir),
+    ) === undefined
+  )
+    return refuse('signature', 'the batch approval does not verify under the approval keyring');
+  if (p.definitionId !== definition.definitionId || p.certificateId !== v.certificateId)
+    return refuse('scope', 'the batch approval is for another workflow definition or certificate');
+  if (Date.parse(p.expiresAt) <= Date.now()) return refuse('expired', 'the batch approval expired; prepare and approve a new preview');
+  const preview = await bs.getPreview(p.previewId);
+  const given = Object.keys(v.input).length > 0;
+  if (given && digestOfJson(v.input) !== p.inputDigest) return refuse('input_changed', 'the input differs from the one that was approved');
+  const input = given ? v.input : (preview.input as Record<string, unknown>);
+  const runId = `run_${createHash('sha256').update(`batch\u0000${p.approvalId}`).digest('hex').slice(0, 32)}`;
+  const prior = await bs.consumedBy(p.approvalId);
+  if (prior !== undefined && prior.runId !== runId) return refuse('used', `the batch approval was already used for run ${prior.runId}`);
+  const now = await computePreview(deps, workspace, definition, input, v.certificateId, preview.createdBy, preview.previewId);
+  if (now.root !== p.root) {
+    const was = new Map(preview.items.map((i) => [i.index, i.leaf]));
+    const changed = now.items.filter((i) => was.get(i.index) !== i.leaf).map((i) => i.index);
+    if (now.items.length !== preview.items.length)
+      changed.push(...preview.items.filter((i) => i.index >= now.items.length).map((i) => i.index));
+    return refuse(
+      'changed',
+      `what this run would do has changed since it was approved (${changed.length} item(s)); prepare and approve a new preview`,
+      { changedItems: changed.slice(0, 50) },
+    );
+  }
+  await bs.consume(p.approvalId, runId, v.actor.id);
+  return { input, batch: { approvalId: p.approvalId, previewId: p.previewId, root: p.root }, runId };
 }
 
 const RUN_REF = /^(run|fe)_[0-9a-f]{32,40}$/;
@@ -744,9 +1250,9 @@ export function registerGeneratedRunRoutes(
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.run', correlationId });
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'run a generated workflow' });
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
-    const body = await req.json<{ input?: unknown; certificateId?: unknown }>();
+    const body = await req.json<{ input?: unknown; certificateId?: unknown; batchApprovalId?: unknown }>();
     if (!body.ok) throw body.error;
-    const unknown = Object.keys(body.value).filter((k) => k !== 'input' && k !== 'certificateId');
+    const unknown = Object.keys(body.value).filter((k) => k !== 'input' && k !== 'certificateId' && k !== 'batchApprovalId');
     if (unknown.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${unknown.join(', ')}`);
     const input = body.value.input ?? {};
     if (typeof input !== 'object' || input === null || Array.isArray(input))
@@ -761,8 +1267,79 @@ export function registerGeneratedRunRoutes(
       certificateId: body.value.certificateId,
       idempotencyKey: req.headers['idempotency-key'],
       correlationId,
+      ...(body.value.batchApprovalId !== undefined ? { batchApprovalId: body.value.batchApprovalId } : {}),
     });
     return json(started.status, started.body);
+  }
+
+  // UW-8 (ADR 0046): batch preview and batch-bound approval.
+  async function createPreview(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.batch', correlationId });
+    await requirePermission(req, workspace, 'author', dataConfig, { action: 'prepare a batch preview' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const body = await req.json<{ input?: unknown; certificateId?: unknown }>();
+    if (!body.ok) throw body.error;
+    const unknown = Object.keys(body.value).filter((k) => k !== 'input' && k !== 'certificateId');
+    if (unknown.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${unknown.join(', ')}`);
+    const input = body.value.input ?? {};
+    if (typeof input !== 'object' || input === null || Array.isArray(input))
+      throw new XoError(ErrorCode.INVALID_ARGUMENT, 'input must be an object');
+    if (JSON.stringify(input).length > 1_048_576) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'input must be at most 1 MiB');
+    return json(
+      201,
+      await previewGeneratedRun(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        input: input as Record<string, unknown>,
+        certificateId: body.value.certificateId,
+        correlationId,
+      }),
+    );
+  }
+
+  async function getPreview(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const bs = new BatchStore(batchDir(runsDir(dataConfig, workspace.workspaceId, definition.definitionId)));
+    const preview = await bs.getPreview(req.params['previewId'] ?? '');
+    if (preview.definitionId !== definition.definitionId) throw new NotFoundError(`batch preview "${preview.previewId}"`);
+    const approval = await bs.getApprovalOfPreview(preview.previewId);
+    const used = approval !== undefined ? await bs.consumedBy(approval.payload.approvalId) : undefined;
+    const num = (v: string | null): number | undefined => (v !== null && /^[0-9]{1,6}$/.test(v) ? Number(v) : undefined);
+    const page = num(req.query.get('page'));
+    const size = num(req.query.get('size'));
+    const show = req.query.get('show') ?? undefined;
+    return json(
+      200,
+      previewView(preview, approval, used, {
+        ...(page !== undefined ? { page } : {}),
+        ...(size !== undefined ? { size } : {}),
+        ...(show !== undefined ? { show } : {}),
+      }),
+    );
+  }
+
+  async function approvePreview(req: ApiRequest): Promise<ApiResponse> {
+    const correlationId = newCorrelationId();
+    const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.batch', correlationId });
+    await requirePermission(req, workspace, 'review', dataConfig, { action: 'approve a batch' });
+    await requireRecentAuthentication(req, workspace, dataConfig, 'approve a batch');
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const body = await req.json<{ root?: unknown }>();
+    if (!body.ok) throw body.error;
+    return json(
+      201,
+      await approveBatchPreview(deps, {
+        workspace,
+        actor: requirePrincipal(req),
+        definition,
+        previewId: req.params['previewId'] ?? '',
+        root: body.value.root,
+        correlationId,
+      }),
+    );
   }
 
   async function status(req: ApiRequest): Promise<ApiResponse> {
@@ -934,6 +1511,9 @@ export function registerGeneratedRunRoutes(
   router.get('/workspaces/:workspaceId/connector-bindings', guarded(getBindings));
   router.put('/workspaces/:workspaceId/connector-bindings', guarded(putBindings));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(start));
+  router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/previews', guarded(createPreview));
+  router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/previews/:previewId', guarded(getPreview));
+  router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/previews/:previewId/approve', guarded(approvePreview));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/exceptions', guarded(exceptions));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(list));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/runs/:runId', guarded(status));

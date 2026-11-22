@@ -159,6 +159,11 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Format checks need a dominant value shape (80% of at least three cells); amounts of varying width are type-checked only. Shapes describe how values are written.
   - Reuse is within one compilation (definitions are bound to it); the key also includes bindings, which is stricter than goal + schema + catalogue.
   - Exception item rates count distinct steps named by approval and escalation events; no Studio screen for the exceptions queue.
+- **Batch preview and approval (UW-8, ADR 0046):**
+  - In production (`XO_RUN_APPROVAL=required`) a generated workflow that can send or change things starts only with a batch approval from someone other than whoever prepared it. Studio has no preview or approval screen yet (UW-12b); until then those starts go through the API.
+  - A workflow whose sends depend on a model, an outside event or another call's result cannot be previewed exactly, so it cannot be batch-approved; in production it needs its own approval steps.
+  - One approver; no delegation or quorum. A preview is held whole (bounded by the `forEach` limit) and kept 24 hours; previews and approvals are not swept.
+  - The sending account is bound by the connection's `accountRef` (or user@host); a reconnected account with the same id is caught, an account change the provider does not report is not.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

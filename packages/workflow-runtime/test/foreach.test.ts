@@ -287,3 +287,74 @@ describe('forEach', () => {
     await assert.rejects(() => s.mk().decideApproval(other.runId, decide(first, 'approve')));
   });
 });
+
+describe('UW-8 preview (ADR 0046)', () => {
+  it('records every would-be call with its exact arguments, approvals counted as approved, and sends nothing', async () => {
+    const { dir, effects, sunk, mk } = await setup({ withApproval: true });
+    const store = new RunStore(join(dir, 'preview'));
+    const r = await mk(store, { preview: true }).start({ inputs: { items: rows(3, { 1: 5000 }), batch: 'b1' } });
+    assert.deepEqual(effects, [], 'nothing was sent');
+    assert.deepEqual(sunk, [], 'no approval was requested');
+    const items = [0, 1, 2].map((i) => itemRunId(r.runId, i));
+    const journal = async (id: string) => (await store.read(id)) as readonly JournalEntry[];
+    const actions = async (id: string) =>
+      (await journal(id)).filter((e) => e.type === 'shadow_action').map((e) => (e.data as { args: Record<string, unknown> }).args);
+    assert.deepEqual(await actions(items[0]!), [{ amount: 10, ref: 'r0', decision: 'approved' }]);
+    assert.deepEqual(await actions(items[2]!), [{ amount: 12, ref: 'r2', decision: 'approved' }]);
+    // Item 1 is over the rule's limit: it stops for a person in the preview exactly as it would in the run, and would send nothing.
+    assert.deepEqual(await actions(items[1]!), []);
+    assert.ok((await journal(items[0]!)).some((e) => e.type === 'preview_approval'));
+    assert.equal((await journal(items[0]!))[0]?.data['preview'], true, 'an item of a preview is a preview');
+  });
+});
+
+describe('UW-8 presigned decisions (ADR 0046)', () => {
+  const decisionFor = (r: ApprovalRequest, key = ann.privateKeyPem, action: 'approve' | 'reject' = 'approve') => ({
+    decision: signDecision(key, {
+      v: 1,
+      approvalId: r.approvalId,
+      runId: r.runId,
+      step: r.step,
+      action,
+      edits: {},
+      reviewerId: 'bob',
+      at: new Date().toISOString(),
+    }),
+    reviewer: { id: 'bob', roles: ['reviewer'] as const, publicKeyPem: ann.publicKeyPem },
+  });
+
+  it('a decision a person already signed for exactly this step lets the item go on; it is journaled as presigned', async () => {
+    const { dir, effects, sunk, mk } = await setup({ withApproval: true });
+    const store = new RunStore(join(dir, 'runs'));
+    const presigned = async (r: ApprovalRequest) => decisionFor(r);
+    const res = await mk(store, { approvals: { reviewers: new StaticReviewerRegistry([]), presigned } }).start({
+      inputs: { items: rows(2), batch: 'b1' },
+    });
+    assert.equal(res.state, 'completed');
+    assert.deepEqual(effects.sort(), ['r0', 'r1']);
+    assert.deepEqual(sunk, []);
+    const j = await store.read(itemRunId(res.runId, 0));
+    const pre = j.find((e) => e.type === 'approval_presigned');
+    assert.equal((pre?.data as { reviewerId: string }).reviewerId, 'bob');
+  });
+
+  it('nothing, a forged signature or a rejection leaves the step for a person; nothing is sent', async () => {
+    const forged = generateReviewerKeys();
+    for (const presigned of [
+      async () => undefined,
+      async (r: ApprovalRequest) => decisionFor(r, forged.privateKeyPem),
+      async (r: ApprovalRequest) => decisionFor(r, ann.privateKeyPem, 'reject'),
+      async (r: ApprovalRequest) => {
+        const d = decisionFor(r);
+        return { ...d, decision: { ...d.decision, payload: { ...d.decision.payload, step: 'other' } } };
+      },
+    ]) {
+      const { effects, mk } = await setup({ withApproval: true });
+      const res = await mk(undefined, {
+        approvals: { reviewers: new StaticReviewerRegistry([]), presigned: presigned as never },
+      }).start({ inputs: { items: rows(1), batch: 'b1' } });
+      assert.equal(res.state, 'waiting');
+      assert.deepEqual(effects, []);
+    }
+  });
+});

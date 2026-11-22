@@ -124,6 +124,22 @@ export const SETTINGS: readonly SettingSpec[] = [
       'What a schedule does about slots that passed while nothing was running (UW-15). `run_latest`: run only the most recent missed slot, if it ended within 24 hours, and record the others as `skipped: missed`. `skip`: run none of them. Either way only one process fires schedules at a time (a lease in the data directory).',
   },
   {
+    name: 'XO_RUN_APPROVAL',
+    group: 'workflows',
+    kind: { type: 'enum', values: ['required', 'optional'] },
+    defaultText: 'required in production, otherwise optional',
+    description:
+      "Whether a generated workflow run that can write or do something irreversible needs a person's batch approval before it starts (UW-8, ADR 0046). required: the run starts only with a batchApprovalId whose preview still matches exactly; optional: approval is up to the workflow's own approval steps.",
+  },
+  {
+    name: 'XO_APPROVAL_SEPARATION',
+    group: 'workflows',
+    kind: { type: 'enum', values: ['required', 'off'] },
+    defaultText: 'required in production, otherwise off',
+    description:
+      'Whether the person who prepared a batch preview may also approve it (UW-8). required: someone else must approve it; off: anyone with the review role may.',
+  },
+  {
     name: 'XO_CONFIG_FILE',
     group: 'operations',
     kind: PATH,

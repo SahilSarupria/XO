@@ -1822,11 +1822,64 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews': {
+      post: {
+        summary: 'Prepare a batch preview: exactly what a run over this input would do, sending nothing (UW-8, ADR 0046)',
+        description:
+          "Body `{ input?, certificateId }`. The same gates as a start (certificate, pause, drift). The definition runs in the engine's preview mode over the exact input: approval steps count as approved, timers as elapsed, and every would-be call is recorded with its exact arguments; nothing is sent. Each item (or the run, as a batch of one) gets a state (`sends`, `no_effect`, `stops` for a person, `not_exact` when what it sends depends on a model, an outside event or another call's result) and a leaf digest; one `root` covers them with the definition, certificate and input. Returns the first page, exceptions first. Kept 24 hours. Audited with ids and counts only.",
+        'x-xo-permission': 'author',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'BatchPreview { previewId, root, counts, senders, approvable, items[page], page, pages, total }' },
+          '400': { description: 'Invalid input' },
+          '403': { description: 'Not an author' },
+          '404': { description: 'Unknown generated workflow' },
+          '409': { description: 'No certificate, the certificate does not allow it, or the data changed shape' },
+          '412': { description: 'The workspace is paused' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews/{previewId}': {
+      get: {
+        summary: 'Read a batch preview page by page, exceptions first (UW-8)',
+        description:
+          'Query `page`, `size` (1–200, default 50), `show=exceptions` (only items that stop or cannot be shown exactly). Includes the approval and the run that used it, if any.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'previewId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'BatchPreview' }, '404': { description: 'Unknown preview' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/previews/{previewId}/approve': {
+      post: {
+        summary: 'Approve a batch preview by the root you were shown (UW-8)',
+        description:
+          "Body `{ root }`. Review role and a recent sign-in. Signed with the platform approval key as the reviewer's decision; one approval per preview, used once. Refused (409 XO_BATCH_APPROVAL_REFUSED) when the root differs, the preview expired, any item cannot be shown exactly, or, with `XO_APPROVAL_SEPARATION` `required` (production default), the approver prepared the preview.",
+        'x-xo-permission': 'review',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'previewId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '201': { description: 'BatchPreview with its approval { approvalId, reviewerId, approvedAt, expiresAt }' },
+          '403': { description: 'Not a reviewer, or no recent sign-in' },
+          '404': { description: 'Unknown preview' },
+          '409': { description: 'Refused (see description)' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs': {
       post: {
         summary: 'Run a generated workflow through the Workflow IR runtime (ADR 0030)',
         description:
-          'Body `{ input?, certificateId }`. The certificate is always required on this path and verified against the current state (409 XO_READINESS_CERTIFICATE_REQUIRED / XO_READINESS_CERTIFICATE_REFUSED otherwise). The stored Workflow IR runs in @xo/workflow-runtime: act and compensate steps go through the host adapter the binding names, approvals wait for a reviewer, waits and timeouts are advanced by the server. An `Idempotency-Key` header returns the original run for a retry. ADR 0031: a paused workspace refuses the start (412); every connector call is authorized again immediately before it is made (the person who started the run still holds `author`, the workspace is not paused, the binding is unchanged, the capability is still approved; an undo is checked for the binding only), and a refusal sends nothing and is audited as generated-workflow.effect.denied; a call whose outcome is unknown escalates to a person, never retried or compensated blindly; every write to a run holds its lease, so several API instances never drive one run. The run view carries `decisions` (each re-verified against the approval keyring: `signatureVerified`, `keyId`) and `startedBy`. Audited as generated-workflow.run.started.',
+          "Body `{ input?, certificateId, batchApprovalId? }`. UW-8 (ADR 0046): with `batchApprovalId` the run starts from a person's batch approval: it must verify under the approval keyring, be for this definition and certificate, be unexpired and unused, the input must be the approved one (omit it to use it), and the preview computed now must give the approved root (409 XO_BATCH_APPROVAL_REFUSED otherwise, with the changed items). The run id follows from the approval, so a repeat is the same run; each approval step the preview showed is decided by it as the approver, and each call must equal what was approved. When `XO_RUN_APPROVAL` is `required` (production default), a run that can write or do something irreversible without one is refused 409 XO_BATCH_APPROVAL_REQUIRED. The certificate is always required on this path and verified against the current state (409 XO_READINESS_CERTIFICATE_REQUIRED / XO_READINESS_CERTIFICATE_REFUSED otherwise). The stored Workflow IR runs in @xo/workflow-runtime: act and compensate steps go through the host adapter the binding names, approvals wait for a reviewer, waits and timeouts are advanced by the server. An `Idempotency-Key` header returns the original run for a retry. ADR 0031: a paused workspace refuses the start (412); every connector call is authorized again immediately before it is made (the person who started the run still holds `author`, the workspace is not paused, the binding is unchanged, the capability is still approved; an undo is checked for the binding only), and a refusal sends nothing and is audited as generated-workflow.effect.denied; a call whose outcome is unknown escalates to a person, never retried or compensated blindly; every write to a run holds its lease, so several API instances never drive one run. The run view carries `decisions` (each re-verified against the approval keyring: `signatureVerified`, `keyId`) and `startedBy`. Audited as generated-workflow.run.started.",
         'x-xo-permission': 'author',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },

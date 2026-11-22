@@ -317,6 +317,10 @@ export const ErrorCode = {
   READINESS_CERTIFICATE_REFUSED: 'XO_READINESS_CERTIFICATE_REFUSED',
   /** UW-15: the data a workflow reads changed shape since it was compiled (a used column renamed, removed or retyped, or reformatted). Refused before any effect. */
   DATA_SCHEMA_DRIFT: 'XO_DATA_SCHEMA_DRIFT',
+  /** UW-8 (ADR 0046): a run with effects needs a person's batch approval over its preview. */
+  BATCH_APPROVAL_REQUIRED: 'XO_BATCH_APPROVAL_REQUIRED',
+  /** UW-8: the batch approval does not allow this (changed since approved, used, expired, or the same person prepared it). */
+  BATCH_APPROVAL_REFUSED: 'XO_BATCH_APPROVAL_REFUSED',
   // ADR 0031 — the certified definition uses constructs (act, wait, branch, compensate, for_each, extract) only the Workflow IR
   // runtime executes; it starts through POST …/generated-workflows/{definitionId}/runs, never through the composed-workflow runner.
   WORKFLOW_REQUIRES_IR_RUNTIME: 'XO_WORKFLOW_REQUIRES_IR_RUNTIME',
