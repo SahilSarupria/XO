@@ -39,10 +39,6 @@ export interface WorkspaceDataConfig {
   /** UW-3 — how compiles read pages and photos with no text layer (`compilations/extraction-tiers.ts`). Absent = no recovery. */
   readonly extraction?: CompileExtraction;
   /**
-   * UW-6 (ADR 0043): turns free text into the text of a structured proposal. Absent by default (`strict_local`: no model). In a
-   * deployment it must call a model only through the UW-14 guard with a typed request; its answer is untrusted and is only parsed.
-   */
-  /**
    * ADR 0030 — the pre-execution host: adapters that carry out connector bindings (act steps of generated workflows), and
    * whether every workflow start needs a readiness certificate (`XO_READINESS_CERTIFICATE`; `required` in production).
    */
@@ -54,6 +50,13 @@ export interface WorkspaceDataConfig {
      */
     readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
     readonly certificatePolicy: 'required' | 'workspace';
+    /**
+     * UW-8 (ADR 0046, ADR 0045 decision 5) — `XO_RUN_APPROVAL`: `required` (production default) means a run that can write or do
+     * something irreversible starts only with a person's batch approval over its preview; `optional` leaves it to the workflow.
+     */
+    readonly runApproval?: 'required' | 'optional';
+    /** UW-8 — `XO_APPROVAL_SEPARATION`: `required` (production default) means whoever prepared a preview cannot approve it. */
+    readonly approvalSeparation?: 'required' | 'off';
   };
   /**
    * ADR 0030 — where the Business Knowledge Base lives (`XO_KNOWLEDGE_STORE`): `sqlite` (default, `<dataRootDir>/knowledge.sqlite`),

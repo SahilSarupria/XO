@@ -71,7 +71,7 @@ The first vertical (V1, certificate distribution by email) sets the envelope.
 10. **Approval quorum and separation of duties.**
     - One approver. Separation of duties is not claimed.
     - UW-8 decides whether the person who started a run may approve its `irreversible` steps. The conservative default it should
-      implement: not in production workspaces, configurable per workspace.
+      implement: not in production workspaces, configurable per workspace. Implemented by ADR 0046 as the instance setting `XO_APPROVAL_SEPARATION` (production default `required`): whoever prepared a batch preview cannot approve it.
 11. **Run outcomes as knowledge.**
     - None become knowledge automatically.
     - A person's correction to a run may be proposed as a knowledge change set (UW-11). A reviewer with a recent sign-in approves it.

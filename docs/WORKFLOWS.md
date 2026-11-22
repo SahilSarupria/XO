@@ -46,6 +46,16 @@ A typical thin client does the following:
 1. Fetch a page with `GET /workflow-entities`. Keep its `changesCursor`.
 2. Loop on `GET /workflow-entities/changes?cursor=…&wait=25`. When a change names a workflow, re-read that workflow.
 
+## Batch preview and approval (UW-8, ADR 0046)
+
+Before a run that can send or change things, prepare a preview (`POST …/generated-workflows/{id}/previews` with the input and
+certificate). It shows exactly what each item would do, with each call's arguments and the account it would send as, and sends
+nothing. Items that would stop for a person, or that cannot be shown exactly, come first. Someone with the review role (and, in
+production, not the person who prepared it) approves the preview by its `root`. Start with `batchApprovalId`: the start is refused
+if anything changed since the approval, each approval step the preview showed is decided by it, and each call must equal what was
+approved. The approval is used once; starting again with it returns the same run. In production (`XO_RUN_APPROVAL=required`) a
+run with effects cannot start without one.
+
 ## Privacy
 
 Conversations are private to the person who started them. Anyone who can read the workspace can read its workflows,

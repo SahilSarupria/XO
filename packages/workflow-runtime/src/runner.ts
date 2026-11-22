@@ -18,6 +18,7 @@ import {
   type CompensateStep,
   type FieldSpec,
   type RunState,
+  type ReviewerRole,
   type Scalar,
   type Step,
   type StepState,
@@ -28,9 +29,11 @@ import {
 import { CircuitBreakers, Semaphore } from './breaker.js';
 import {
   ApprovalError,
+  StaticReviewerRegistry,
   verifyDecision,
   type ApprovalRequest,
   type ApprovalSink,
+  type Reviewer,
   type ReviewerRegistry,
   type SignedDecision,
 } from './approvals.js';
@@ -117,10 +120,28 @@ export interface RunnerOptions {
   /** Required to run workflows with approve steps. */
   /** Shadow mode: decide everything, execute NO connector call; each would-be action is journaled as `shadow_action`. */
   readonly shadow?: boolean;
+  /**
+   * UW-8 (ADR 0046) preview: shadow mode in which an approval step counts as approved with no edits and a timer wait as elapsed (both
+   * journaled), so every would-be call, with its exact arguments, is journaled. A step whose result needs a model, or a wait for an
+   * outside event, escalates (`PREVIEW_NOT_EXACT`): what such an item would send cannot be shown exactly. Nothing is ever sent.
+   */
+  readonly preview?: boolean;
   readonly caps?: UsageCaps;
   /** Directory for extraction memoization. Identical normalized cases reuse validated facts instead of calling the model. */
   readonly memoDir?: string;
-  readonly approvals?: { readonly reviewers: ReviewerRegistry; readonly sink?: ApprovalSink };
+  readonly approvals?: {
+    readonly reviewers: ReviewerRegistry;
+    readonly sink?: ApprovalSink;
+    /**
+     * UW-8 (ADR 0046): asked when an approval step is reached. The host may present a decision a person ALREADY made for exactly this
+     * step (a batch approval over a preview that included it), with that person's reviewer entry. The runner verifies it like any
+     * decision (signature, role, approval id, run, step, expiry) and journals it as `approval_presigned`; anything else (undefined, or a
+     * decision that does not verify) leaves the step waiting for a person as before. Never a way to approve without a person.
+     */
+    readonly presigned?: (
+      request: ApprovalRequest,
+    ) => Promise<{ readonly decision: SignedDecision; readonly reviewer: Reviewer } | undefined>;
+  };
   /** Per-connector call-rate limits (token bucket). A call that would have to wait longer than its step timeout fails RATE_LIMITED (retryable). */
   readonly rateLimits?: RateLimiters;
   /** Every step that ends failed or escalated is also written here (never instead of failing/escalating). */
@@ -175,6 +196,7 @@ interface RunRec {
   startedAt: number;
   dryRun: boolean;
   shadow: boolean;
+  preview: boolean;
   steps: Map<string, StepRec>;
   order: string[];
   result?: Record<string, unknown>;
@@ -232,7 +254,8 @@ export function replayRun(entries: readonly JournalEntry[], wf: WorkflowDef, run
         inputs: d['inputs'],
         startedAt: d['startedAtMs'],
         dryRun: d['dryRun'] === true,
-        shadow: d['shadow'] === true,
+        shadow: d['shadow'] === true || d['preview'] === true,
+        preview: d['preview'] === true,
         steps: new Map(),
         order: [],
         ...(typeof d['index'] === 'number' ? { index: d['index'] } : {}),
@@ -419,7 +442,8 @@ export class WorkflowRunner {
         inputs: req.inputs,
         triggerId: req.triggerId ?? null,
         dryRun: this.o.dryRun === true,
-        shadow: this.o.shadow === true,
+        shadow: this.o.shadow === true || this.o.preview === true,
+        ...(this.o.preview === true ? { preview: true } : {}),
         startedAtMs: this.now(),
         ...(this.o.environment !== undefined ? { environment: this.o.environment } : {}),
         ...(fe !== undefined ? { fanout: { over: fe.over, count: (req.inputs[fe.over] as unknown[]).length } } : {}),
@@ -785,6 +809,7 @@ export class WorkflowRunner {
                 triggerId: null,
                 dryRun: rec.dryRun,
                 shadow: rec.shadow,
+                ...(rec.preview ? { preview: true } : {}),
                 startedAtMs: this.now(),
               });
           }
@@ -1428,6 +1453,12 @@ export class WorkflowRunner {
         return { kind: 'ok', outputs: { route: step.default } };
       }
       case 'extract':
+        if (rec.preview)
+          return {
+            kind: 'escalate',
+            code: 'PREVIEW_NOT_EXACT',
+            message: `step "${step.id}" needs a model, so what follows cannot be previewed exactly`,
+          };
         return this.extract(step, values);
       case 'wait': {
         if (step.for.kind === 'approval') {
@@ -1437,6 +1468,12 @@ export class WorkflowRunner {
             : { kind: 'escalate', code: 'WAIT_APPROVAL_NOT_GRANTED', message: `approval step "${step.for.step}" did not complete` };
         }
         if (step.for.kind === 'event') {
+          if (rec.preview)
+            return {
+              kind: 'escalate',
+              code: 'PREVIEW_NOT_EXACT',
+              message: `step "${step.id}" waits for an outside event, so what follows cannot be previewed exactly`,
+            };
           if (this.o.events === undefined)
             return { kind: 'escalate', code: 'UNSUPPORTED_WAIT', message: 'this runner has no event inbox, so it cannot wait for events' };
           const raw = rec.inputs[step.for.correlationKey];
@@ -1454,6 +1491,10 @@ export class WorkflowRunner {
               message: `input "${step.for.correlationKey}" is not a usable correlation value`,
             };
           return { kind: 'event_wait', name: step.for.name, correlation, deadline: this.now() + step.timeoutMs };
+        }
+        if (rec.preview) {
+          await this.o.store.append(runId, 'preview_wait', { step: step.id, delayMs: step.for.delayMs });
+          return { kind: 'ok', outputs: {} };
         }
         return sr.waitUntil !== undefined ? { kind: 'ok', outputs: {} } : { kind: 'wait', until: this.now() + step.for.delayMs };
       }
@@ -1473,8 +1514,39 @@ export class WorkflowRunner {
           extra: { target: render(step.target), ...(step.lane !== undefined ? { lane: step.lane } : {}) },
         };
       }
-      case 'approve':
-        return { kind: 'approval', request: this.buildRequest(runId, step, values, rec) };
+      case 'approve': {
+        const request = this.buildRequest(runId, step, values, rec);
+        if (rec.preview) {
+          // Previewed as approved with no edits: the outputs an approve decision gives (decision plus each editable field as null).
+          await this.o.store.append(runId, 'preview_approval', { step: step.id });
+          return {
+            kind: 'ok',
+            outputs: { ...Object.fromEntries(Object.keys(request.editable).map((k) => [k, null])), decision: 'approved' },
+          };
+        }
+        const pre = await this.o.approvals?.presigned?.(request);
+        if (pre !== undefined) {
+          let verified: { role: ReviewerRole; outputs: Record<string, Scalar> } | undefined;
+          try {
+            verified = verifyDecision(request, pre.decision, new StaticReviewerRegistry([pre.reviewer]), this.now());
+          } catch {
+            verified = undefined; // not a valid decision for this step: a person decides it as usual
+          }
+          if (verified !== undefined && pre.decision.payload.action !== 'reject') {
+            await this.o.store.append(runId, 'approval_presigned', {
+              step: step.id,
+              approvalId: request.approvalId,
+              reviewerId: pre.decision.payload.reviewerId,
+              role: verified.role,
+              action: pre.decision.payload.action,
+              payload: pre.decision.payload as unknown as Record<string, unknown>,
+              signature: pre.decision.signature,
+            });
+            return { kind: 'ok', outputs: verified.outputs };
+          }
+        }
+        return { kind: 'approval', request };
+      }
       case 'act':
       case 'compensate': {
         const r = await this.callConnector(runId, step, rec, false, sr);

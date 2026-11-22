@@ -569,7 +569,7 @@ export function registerWorkflowEntityRoutes(
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.run', correlationId });
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'run a workflow' });
     const body = await readBody(req);
-    onlyFields(body, ['input', 'certificateId']);
+    onlyFields(body, ['input', 'certificateId', 'batchApprovalId']);
     const input = body['input'] ?? {};
     if (typeof input !== 'object' || input === null || Array.isArray(input))
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'input must be an object');
@@ -591,6 +591,8 @@ export function registerWorkflowEntityRoutes(
       idempotencyKey: req.headers['idempotency-key'],
       correlationId,
       workflow: { workflowId: e.workflowId, version: cur.version },
+      // UW-8: a batch approval over this version's definition (required in production for a run that can send or change things).
+      ...(body['batchApprovalId'] !== undefined ? { batchApprovalId: body['batchApprovalId'] } : {}),
     });
     return json(started.status, { ...started.body, workflowId: e.workflowId, version: cur.version });
   }

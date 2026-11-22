@@ -47,6 +47,11 @@ export const AUDIT_EVENT_TYPES = [
   'resolution.computed',
   // UW-15: a run was refused before any effect because its data changed shape since it was compiled (counts only).
   'generated-workflow.drift.refused',
+  // UW-8 (ADR 0046): a batch preview was prepared, approved, refused, or a start or call was refused against it (counts and ids only).
+  'generated-workflow.batch.previewed',
+  'generated-workflow.batch.approved',
+  'generated-workflow.batch.refused',
+  'generated-workflow.batch.required',
   // UW-6: free text was turned into a structured proposal by a model and composed (counts and digests only).
   'intent.proposed',
   // UW-10c: the workspace's explicit email recipient rules were replaced (counts only).

@@ -102,11 +102,13 @@ export interface ServerDeps {
   readonly externalTools?: ExternalToolWiring;
   /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
   readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
-  /** UW-6: free text to the text of a structured proposal (a model behind the UW-14 guard). Default: none. */
   /** UW-10c: per-workspace adapters. Default: the `email` adapter (message.send). */
   readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
   /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */
   readonly readinessCertificate?: 'required' | 'workspace';
+  /** UW-8 — overrides `XO_RUN_APPROVAL` and `XO_APPROVAL_SEPARATION` (tests). */
+  readonly runApproval?: 'required' | 'optional';
+  readonly approvalSeparation?: 'required' | 'off';
   /** Root directory workspace-scoped package/registry data lives under (see `workspace/workspace-context.ts`). Defaults to `loadConfig().workspaceDataDir` (`WORKSPACE_DATA_DIR`). */
   readonly workspaceDataDir?: string;
   /** UW-1 — path of the persisted operator policy. Default `<workspaceDataDir>/_instance/policy.json`. */
@@ -317,6 +319,9 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       connectorAdapters: deps.connectorAdapters ?? new Map(),
       adapterFactories: deps.adapterFactories ?? new Map([['email', emailAdapterFactory]]),
       certificatePolicy: deps.readinessCertificate ?? readinessCertificatePolicy(deps.env ?? process.env),
+      runApproval: deps.runApproval ?? productionDefault(deps.env ?? process.env, 'XO_RUN_APPROVAL', ['required', 'optional']),
+      approvalSeparation:
+        deps.approvalSeparation ?? productionDefault(deps.env ?? process.env, 'XO_APPROVAL_SEPARATION', ['required', 'off']),
     },
     knowledgeStore: knowledgeStoreConfig(deps.env ?? process.env),
   };
@@ -492,6 +497,18 @@ export function readinessCertificatePolicy(env: Readonly<Record<string, string |
   if (v === 'required' || v === 'workspace') return v;
   if (v !== undefined && v.trim() !== '') throw new Error(`XO_READINESS_CERTIFICATE must be "required" or "workspace" (got "${v}")`);
   return env['NODE_ENV'] === 'production' || env['XO_ENV'] === 'production' ? 'required' : 'workspace';
+}
+
+/** A two-valued setting whose first value is the production default and second the development default (UW-8). */
+export function productionDefault<A extends string, B extends string>(
+  env: Readonly<Record<string, string | undefined>>,
+  name: string,
+  values: readonly [A, B],
+): A | B {
+  const v = env[name];
+  if (v === values[0] || v === values[1]) return v as A | B;
+  if (v !== undefined && v.trim() !== '') throw new Error(`${name} must be "${values[0]}" or "${values[1]}" (got "${v}")`);
+  return env['NODE_ENV'] === 'production' || env['XO_ENV'] === 'production' ? values[0] : values[1];
 }
 
 /** `XO_KNOWLEDGE_STORE` (+ `XO_KNOWLEDGE_DATABASE_URL`): where the knowledge base lives. Invalid configuration fails start-up. */
