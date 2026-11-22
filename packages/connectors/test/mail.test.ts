@@ -256,8 +256,26 @@ test('Gmail: native send (JSON and upload paths), lookup by Message-ID, and no l
   }
 });
 
-test('Gmail provider limit: the batch stops, later sends are refused untried, a 5xx is unknown, nothing is retried', async () => {
-  const gm = await fakeGmail(newMailbox(), { limitAfter: 2 });
+test('RX-1c: a Gmail "slow down" is RATE_LIMITED with the pause it asked for; later sends are still tried', async () => {
+  const gm = await fakeGmail(newMailbox(), { limitAfter: 1 });
+  try {
+    const c = gmail(gm.baseUrl);
+    await c.operations['send']!.execute(args, ctx('s1'));
+    await assert.rejects(
+      c.operations['send']!.execute(args, ctx('s2')),
+      (e) => e instanceof ConnectorError && e.code === 'RATE_LIMITED' && e.effect === 'none' && e.retryAfterMs === 3_000,
+    );
+    const before = gm.requests().length;
+    await assert.rejects(c.operations['send']!.execute(args, ctx('s3')), (e) => e instanceof ConnectorError && e.code === 'RATE_LIMITED');
+    assert.equal(gm.requests().length, before + 1, 'a pause is not a daily stop: the next send was tried');
+  } finally {
+    await gm.close();
+  }
+});
+
+test('Gmail daily limit: the batch stops, later sends are refused untried, a 5xx is unknown, nothing is retried', async () => {
+  // RX-1c: the batch stop is for the daily quota; a short-term "slow down" is paced instead (test above).
+  const gm = await fakeGmail(newMailbox(), { limitAfter: 2, limitReason: 'dailyLimitExceeded' });
   try {
     const c = gmail(gm.baseUrl);
     await c.operations['send']!.execute(args, ctx('l1'));
@@ -338,7 +356,8 @@ test('errors never carry addresses, subjects, bodies or tokens', async () => {
 
 test('Microsoft Graph: MIME send keeps the Message-ID, 202 is accepted not delivered, lookup needs a read capability, limits stop the batch', async () => {
   const box = newMailbox();
-  const g = await fakeGraph(box, { limitAfter: 1 });
+  // RX-1c: a daily send quota stops the batch; plain Graph throttling is a pause (see the RATE_LIMITED assertion below).
+  const g = await fakeGraph(box, { limitAfter: 1, limitBody: { error: { code: 'ErrorExceededMessageLimit' } } });
   try {
     const mk = (extra: Partial<Parameters<typeof graphConnector>[0]> = {}) =>
       graphConnector(
@@ -371,6 +390,29 @@ test('Microsoft Graph: MIME send keeps the Message-ID, 202 is accepted not deliv
       ),
       (e) => e instanceof ConnectorError && e.effect === 'none' && /larger than/.test(e.message),
     );
+  } finally {
+    await g.close();
+  }
+});
+
+test('RX-1c: Microsoft Graph throttling (429 with Retry-After) is RATE_LIMITED, not a daily stop', async () => {
+  const g = await fakeGraph(newMailbox(), { limitAfter: 0 });
+  try {
+    const c = graphConnector(
+      {
+        ...common,
+        baseUrl: g.baseUrl,
+        egress: { ...egressPolicy, allowedPorts: [Number(new URL(g.baseUrl).port)] },
+        accessToken: async () => 'fake-token-9',
+      },
+      noSleep,
+    );
+    for (const k of ['t1', 't2'])
+      await assert.rejects(
+        c.operations['send']!.execute(args, ctx(k)),
+        (e) => e instanceof ConnectorError && e.code === 'RATE_LIMITED' && e.effect === 'none' && e.retryAfterMs === 5_000,
+      );
+    assert.equal(g.requests().length, 2, 'both were tried: throttling does not stop the day');
   } finally {
     await g.close();
   }

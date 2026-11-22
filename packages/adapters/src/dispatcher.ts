@@ -641,7 +641,13 @@ function normalize(raw: unknown): AdapterInvokeResult {
   if (isPlainObject(raw)) {
     if (raw['kind'] === 'confirmed_success' && 'output' in raw) return { kind: 'confirmed_success', output: raw['output'] };
     if (raw['kind'] === 'confirmed_failure_no_effect' && typeof raw['code'] === 'string' && typeof raw['message'] === 'string') {
-      return { kind: 'confirmed_failure_no_effect', code: raw['code'], message: raw['message'] };
+      const after = raw['retryAfterMs'];
+      return {
+        kind: 'confirmed_failure_no_effect',
+        code: raw['code'],
+        message: raw['message'],
+        ...(typeof after === 'number' && Number.isFinite(after) && after >= 0 ? { retryAfterMs: after } : {}),
+      };
     }
     if (raw['kind'] === 'outcome_unknown' && typeof raw['reason'] === 'string') return { kind: 'outcome_unknown', reason: raw['reason'] };
   }

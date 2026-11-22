@@ -7,7 +7,7 @@ import { validateWorkflowComponent, type WorkflowComponent } from '@xo/workflow-
 import { RunStore, WorkflowRunner } from '../src/index.js';
 
 /** An "external system" that dedupes by idempotency key, like a payment API would. */
-export function external(opts: { failFirst?: number; failCode?: ConnectorError['code'] } = {}) {
+export function external(opts: { failFirst?: number; failCode?: ConnectorError['code']; failWith?: () => ConnectorError } = {}) {
   const effects: string[] = [];
   const calls: { op: string; key?: string }[] = [];
   const seenKeys = new Set<string>();
@@ -23,7 +23,7 @@ export function external(opts: { failFirst?: number; failCode?: ConnectorError['
           calls.push({ op: 'pay', ...(ctx.idempotencyKey !== undefined ? { key: ctx.idempotencyKey } : {}) });
           if (failures > 0) {
             failures--;
-            throw new ConnectorError(opts.failCode ?? 'FAILED', 'upstream down');
+            throw opts.failWith?.() ?? new ConnectorError(opts.failCode ?? 'FAILED', 'upstream down');
           }
           if (ctx.idempotencyKey !== undefined && seenKeys.has(ctx.idempotencyKey)) return { id: 'dup-suppressed' };
           seenKeys.add(ctx.idempotencyKey ?? `n${effects.length}`);

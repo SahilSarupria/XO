@@ -53,7 +53,13 @@ export interface AdapterCredentialHandle {
 
 export type AdapterInvokeResult =
   | { readonly kind: 'confirmed_success'; readonly output: unknown }
-  | { readonly kind: 'confirmed_failure_no_effect'; readonly code: string; readonly message: string }
+  | {
+      readonly kind: 'confirmed_failure_no_effect';
+      readonly code: string;
+      readonly message: string;
+      /** RX-1c: with code `rate_limited`, how long the destination asked to wait before trying again. */
+      readonly retryAfterMs?: number;
+    }
   | { readonly kind: 'outcome_unknown'; readonly reason: string };
 
 /**

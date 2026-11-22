@@ -62,6 +62,7 @@ import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-stor
 import { EmergencyStops, describeHit, enforceNoEmergencyStop } from '../workflow-controls/emergency-stops.js';
 import { StartRefusedError } from '../workflow-controls/service.js';
 import { componentSha256, writeManifest } from '../runs/run-manifest.js';
+import { workspaceRateLimiters } from '../workflow-controls/connector-rate-limits.js';
 
 /**
  * ADR 0030 — generated workflows run as Workflow IR, interpreted by `@xo/workflow-runtime`: the definition the readiness
@@ -171,6 +172,9 @@ export function bridge(
           ...(credential !== undefined ? { credential: credential(name) } : {}),
         });
         if (r.kind === 'confirmed_success') return (r.output ?? null) as Json;
+        // RX-1c: the destination asked to slow down; nothing was done, and the engine tries again after the pause, within the deadline.
+        if (r.kind === 'confirmed_failure_no_effect' && /^(rate_limited|too_many_requests)$/i.test(r.code))
+          throw new ConnectorError('RATE_LIMITED', `${r.code}: ${r.message}`, 'none', r.retryAfterMs ?? 2_000);
         if (r.kind === 'confirmed_failure_no_effect') throw new ConnectorError('FAILED', `${r.code}: ${r.message}`, 'none');
         throw new ConnectorError('FAILED', `outcome unknown: ${r.reason}`);
       },
@@ -347,6 +351,9 @@ export async function runnerFor(
       detach: (id) => leased.detach(id),
     },
     connectors: host,
+    // RX-1c (ADR 0048): per-connector pace from XO_CONNECTOR_RATE_LIMITS, shared by every runner of this workspace, and the pauses
+    // providers asked for.
+    rateLimits: workspaceRateLimiters(workspace.workspaceId, deps.env),
     // RX-1a: an emergency stop holds the run before its next step, a batch before its next item, and a stopped connector or
     // operation before its call. Released, the run carries on at the next tick. The effect gate above is the backstop.
     hold: async (call) => (await stops.checkNow({ definitionId: definition.definitionId, ...(call ?? {}) })) !== undefined,
@@ -650,7 +657,8 @@ export async function startGeneratedRun(
       bindings: Object.fromEntries([...identities].map(([k, v]) => [k, v.digest])),
       inputDigest: digestOfJson(input),
       ...(stored.batch !== undefined ? { batch: stored.batch } : {}),
-      packs: [],
+      // RX-1d: the packs the certificate pinned (verified unchanged at admission, just above).
+      packs: cert.bindings.packs ?? [],
       initiator: stored.initiator,
       admittedAt: stored.startedAt,
     });

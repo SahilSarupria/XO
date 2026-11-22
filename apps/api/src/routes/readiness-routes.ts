@@ -82,6 +82,7 @@ export async function currentReadiness(
     ...(ctx.knowledge !== undefined ? { knowledge: ctx.knowledge } : {}),
     decisionDigests: ctx.decisionDigests,
     connectorBindings: [...ctx.connectorBindings.values()],
+    packs: ctx.packs,
   });
   return { ctx, bindings, lowered, ...(scope !== undefined ? { scope } : {}) };
 }
@@ -136,6 +137,7 @@ export async function issueCertificate(
     ...(accept ? { accepted: { ambiguousStepOrder: true } } : {}),
     decisionDigests: now.ctx.decisionDigests,
     connectorBindings: [...now.ctx.connectorBindings.values()],
+    packs: now.ctx.packs,
     credentialChecks: await credentialChecksFor(workspace, dataConfig, [...now.ctx.connectorBindings.values()]),
     compilationId: definition.compilationId,
     definitionId: definition.definitionId,

@@ -200,6 +200,9 @@ export function createMailAdapter(deps: MailAdapterDeps): ExternalToolAdapter {
               kind: 'outcome_unknown',
               reason: lookup ? 'the sent message could not be confirmed' : 'the send may or may not have reached the mail server',
             };
+          // RX-1c: a provider "slow down" carries the pause it asked for, so the engine can try again within the step deadline.
+          if (e.code === 'RATE_LIMITED')
+            return { kind: 'confirmed_failure_no_effect', code: 'rate_limited', message: e.message, retryAfterMs: e.retryAfterMs ?? 2_000 };
           return noEffect(String(e.code).toLowerCase(), e.message);
         }
         // Not ours (for example the connection could not be used): nothing was sent, but only if we never reached the send.

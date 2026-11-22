@@ -1859,6 +1859,34 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/replay': {
+      get: {
+        summary: 'Replay a run from its journal under what it was pinned to (RX-1e)',
+        description:
+          'Read role. Rebuilds the run (or an item of a batch) from its verified journal under the stored definition; nothing is executed or sent. `{ runId, reproducible, reasons, journalEntries, manifestDigest?, replayed: { state, steps, escalation? } }`. Not reproducible, with the reasons, when: the run has no manifest; the manifest does not match its digest; the stored definition is not the one admitted; the journal names another workflow version; or a Domain Knowledge Pack the run pinned was removed or changed.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'RunReplay' }, '404': { description: 'Unknown run' } },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/runs/{runId}/explain': {
+      get: {
+        summary: 'Why a run did what it did (RX-1e)',
+        description:
+          "Read role. The engine's explanation, from the verified journal and the definition: each step in the order it started with its state, attempts, outputs, rules fired, provenance and call digests; approvals; model calls; escalation and result; plus `text`, the same in plain lines.",
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'runId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: { '200': { description: 'RunExplanation' }, '404': { description: 'Unknown run' } },
+      },
+    },
     '/workspaces/{workspaceId}/audit-bundles/verify': {
       post: {
         summary: 'Verify an audit bundle against this instance (RX-1b)',

@@ -58,6 +58,8 @@ export interface PreExecutionContext {
   readonly decisionDigests: readonly string[];
   /** The workspace's connector bindings (ADR 0030), by capability name. */
   readonly connectorBindings: ReadonlyMap<string, ConnectorBinding>;
+  /** RX-1d (ADR 0048): the Domain Knowledge Packs installed in the workspace now (pinned by a certificate). */
+  readonly packs: readonly { readonly packId: string; readonly namespace: string; readonly version: string; readonly digest: string }[];
 }
 
 export async function loadPreExecutionContext(
@@ -132,8 +134,12 @@ export async function loadPreExecutionContext(
     };
   }
 
+  const packs = (await kb.packs())
+    .bindings()
+    .map((p) => ({ packId: p.packId, namespace: p.namespace, version: p.version, digest: String(p.digest) }));
   return {
     compilationId,
+    packs,
     graph,
     workflows,
     artifact: artifact.value,

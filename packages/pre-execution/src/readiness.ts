@@ -63,7 +63,20 @@ export interface CertificateBindings {
   readonly connectorBindingsDigest: string;
   /** Digests of the waivers and rulings the assessment applied (sorted). */
   readonly decisions: readonly string[];
+  /**
+   * RX-1d (ADR 0048): the Domain Knowledge Packs installed in the workspace when the certificate was issued, by namespace. Any
+   * pack removed, added or changed (version or digest) makes the certificate stale. Absent on certificates issued before RX-1d.
+   */
+  readonly packs?: readonly PinnedPack[];
   readonly policyVersion: typeof READINESS_POLICY_VERSION;
+}
+
+/** RX-1d: one pinned Domain Knowledge Pack. */
+export interface PinnedPack {
+  readonly packId: string;
+  readonly namespace: string;
+  readonly version: string;
+  readonly digest: string;
 }
 
 export interface WorkflowReadinessCertificate {
@@ -152,6 +165,8 @@ export interface ReadinessInput {
   readonly connectorBindings?: readonly ConnectorBinding[];
   /** UW-10: the current state of every credential the bindings name. */
   readonly credentialChecks?: readonly CredentialCheck[];
+  /** RX-1d: the workspace's installed Domain Knowledge Packs (pinned in the bindings). */
+  readonly packs?: readonly PinnedPack[];
   readonly compilationId?: string;
   readonly definitionId?: string;
   readonly issuedBy: { readonly id: string; readonly kind: string };
@@ -184,8 +199,30 @@ export function readinessBindings(
         .sort((a, b) => a.capability.localeCompare(b.capability)),
     ),
     decisions: [...(input.decisionDigests ?? [])].sort(),
+    ...(input.packs !== undefined
+      ? {
+          packs: [...input.packs]
+            .map((p) => ({ packId: p.packId, namespace: p.namespace, version: p.version, digest: p.digest }))
+            .sort((a, b) => a.namespace.localeCompare(b.namespace)),
+        }
+      : {}),
     policyVersion: READINESS_POLICY_VERSION,
   };
+}
+
+/** RX-1d: what changed between the pinned packs and the installed ones, one sentence each (empty when nothing did). */
+export function packChanges(pinned: readonly PinnedPack[], now: readonly PinnedPack[]): string[] {
+  const out: string[] = [];
+  const cur = new Map(now.map((p) => [p.namespace, p]));
+  for (const p of pinned) {
+    const c = cur.get(p.namespace);
+    if (c === undefined) out.push(`the Domain Knowledge Pack ${p.packId} ${p.version} was removed`);
+    else if (c.digest !== p.digest || c.version !== p.version || c.packId !== p.packId)
+      out.push(`the Domain Knowledge Pack ${p.packId} changed (${p.version} → ${c.packId} ${c.version})`);
+  }
+  const had = new Set(pinned.map((p) => p.namespace));
+  for (const c of now) if (!had.has(c.namespace)) out.push(`the Domain Knowledge Pack ${c.packId} ${c.version} was added`);
+  return out;
 }
 
 function gate(id: ReadinessGateId, findings: { outcome: GateOutcome; text: string }[], passNote: string): ReadinessGate {
@@ -378,5 +415,7 @@ export function verifyReadinessCertificate(cert: WorkflowReadinessCertificate, c
   diff('the goal', b.goalDigest, current.goalDigest);
   diff('the connector bindings', b.connectorBindingsDigest, current.connectorBindingsDigest);
   diff('the applied waivers and rulings', b.decisions, current.decisions);
+  // RX-1d: a certificate issued before packs were pinned does not pin them (it predates the check).
+  if (b.packs !== undefined) for (const c of packChanges(b.packs, current.packs ?? [])) reasons.push(`stale: ${c}`);
   return reasons.length === 0 ? { ok: true } : { ok: false, reasons };
 }
