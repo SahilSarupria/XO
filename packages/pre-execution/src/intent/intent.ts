@@ -339,6 +339,8 @@ export function reuseKey(parts: {
   readonly compilationId: string;
   readonly bindingsDigest: Digest;
   readonly workflowId?: string;
+  /** UW-15: digest of the tables the workflow reads besides its compilation's sources; absent when none (earlier keys unchanged). */
+  readonly readsDigest?: Digest;
 }): Digest {
   return digestOf({ v: 1, ...parts, workflowId: parts.workflowId ?? null });
 }

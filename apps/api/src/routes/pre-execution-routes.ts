@@ -30,7 +30,7 @@ import { requireOwnedWorkspace, requirePermission, requirePrincipal, type Worksp
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
 import { actorFromPrincipal } from '@xo/audit';
-import { checkDataDrift, compiledSchemaDigest } from '../drift/data-drift.js';
+import { checkDataDrift, compiledSchemaDigest, resolveDataReads, type DataRead } from '../drift/data-drift.js';
 import { lookupReuse, recordReuse } from '../reuse/definition-reuse.js';
 import { loadPreExecutionContext } from '../pre-execution/context.js';
 import { JsonRecordStore } from '../pre-execution/record-store.js';
@@ -59,6 +59,8 @@ export interface WorkflowDefinitionRecord {
   /** UW-6 (ADR 0043): how the intent became this definition (origin, validation findings, catalogue version, selection, lowering), and its digest. */
   readonly intentTrace?: IntentTrace;
   readonly intentTraceDigest?: string;
+  /** UW-15 (ADR 0044 amended): tables the workflow reads besides its compilation's sources, with their schema when generated; checked at start. */
+  readonly dataReads?: readonly DataRead[];
   readonly createdAt: string;
   readonly createdBy: { readonly id: string; readonly kind: string };
 }
@@ -124,6 +126,7 @@ export async function generateDefinition(
   workflowId: string | undefined,
   origin: ProposalOrigin = 'structured',
   priorFindings: readonly IntentFinding[] = [],
+  reads: readonly DataRead[] = [],
 ): Promise<{
   readonly definition: WorkflowDefinitionRecord | null;
   readonly selection: WorkflowDefinitionRecord['selection'] | ScopeSelection;
@@ -141,12 +144,17 @@ export async function generateDefinition(
     compilationId,
     bindingsDigest: digestOf([...ctx.connectorBindings.values()]),
     ...(workflowId !== undefined ? { workflowId } : {}),
+    // A different set of read tables is a different definition (its drift gate differs); absent when none, so earlier keys hold.
+    ...(reads.length > 0
+      ? { readsDigest: digestOf(reads.map((r) => ({ s: r.sourceId, t: r.recordSetId, f: r.fingerprint.digest }))) }
+      : {}),
   });
   const defs = workspaceDefinitionsStore(workspace, dataConfig);
   const hit = await lookupReuse(workspace, dataConfig, key);
   if (hit !== undefined && hit.compilationId === compilationId) {
     const stored = await defs.get(hit.definitionId).catch(() => undefined);
-    if (stored !== undefined && stored.lowered.definitionDigest === hit.definitionDigest) return { definition: stored, selection: stored.selection, reused: true };
+    if (stored !== undefined && stored.lowered.definitionDigest === hit.definitionDigest)
+      return { definition: stored, selection: stored.selection, reused: true };
   }
   // UW-6: the intent is composed and validated first; a gap stops here, before anything is generated.
   const intent = composeIntent(
@@ -196,7 +204,13 @@ export async function generateDefinition(
     ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
   });
   const gd = goalDigest(goal);
-  const id = digestOf({ compilationId, candidateId, goal: gd, definition: lowered.definitionDigest });
+  const id = digestOf({
+    compilationId,
+    candidateId,
+    goal: gd,
+    definition: lowered.definitionDigest,
+    ...(reads.length > 0 ? { reads: reads.map((r) => ({ s: r.sourceId, t: r.recordSetId, f: r.fingerprint.digest })) } : {}),
+  });
   const record: WorkflowDefinitionRecord = {
     schema: WORKFLOW_DEFINITION_RECORD_SCHEMA,
     definitionId: `gwf_${id.slice(7, 31)}`,
@@ -209,12 +223,17 @@ export async function generateDefinition(
     lowered,
     intentTrace: intent.trace,
     intentTraceDigest: intent.traceDigest,
+    ...(reads.length > 0 ? { dataReads: reads } : {}),
     createdAt: new Date().toISOString(),
     createdBy: { id: actor.id, kind: actor.kind },
   };
   const store = workspaceDefinitionsStore(workspace, dataConfig);
   await store.put(record.definitionId, record);
-  await recordReuse(workspace, dataConfig, key, { definitionId: record.definitionId, compilationId, definitionDigest: lowered.definitionDigest });
+  await recordReuse(workspace, dataConfig, key, {
+    definitionId: record.definitionId,
+    compilationId,
+    definitionDigest: lowered.definitionDigest,
+  });
   return { definition: await store.get(record.definitionId), selection, reused: false };
 }
 
@@ -229,7 +248,7 @@ export function registerPreExecutionRoutes(
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'generate a workflow definition' });
     const compilationId = req.params['compilationId'];
     if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
-    const body = await req.json<{ goal?: unknown; workflowId?: unknown }>();
+    const body = await req.json<{ goal?: unknown; workflowId?: unknown; reads?: unknown }>();
     if (!body.ok) throw body.error;
     const actor = requirePrincipal(req);
     const goal = parseGoal(body.value.goal, actor.id);
@@ -242,6 +261,9 @@ export function registerPreExecutionRoutes(
       compilationId,
       goal,
       typeof body.value.workflowId === 'string' ? body.value.workflowId : undefined,
+      'structured',
+      [],
+      await resolveDataReads(workspace, dataConfig, body.value.reads),
     );
     return json(generated.definition === null ? 200 : 201, generated);
   }

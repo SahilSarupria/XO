@@ -156,7 +156,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Automation, drift and reuse (UW-15, ADR 0044):**
   - The interval scheduler was NOT removed and the API does not run on `@xo/automation`'s engine; only the slot function is shared (tested). Owner decision pending.
   - The scheduler lease covers processes sharing one local data directory; a network-shared directory or several machines need a distributed lease.
-  - The drift gate only fires for a compilation whose own source is a table. A workflow compiled from a procedure document is not yet linked to the workbooks it reads (UW-8).
+  - The drift gate checks a compilation's own tables and the tables named in `reads` when the workflow was generated. Naming them is explicit until the UW-8 batch preview fills them from the list a person picks; a workflow generated without `reads` is not checked against other tables.
   - Format checks need a dominant value shape (80% of at least three cells); amounts of varying width are type-checked only. Shapes describe how values are written.
   - Reuse is within one compilation (definitions are bound to it); the key also includes bindings, which is stricter than goal + schema + catalogue.
   - Exception item rates count distinct steps named by approval and escalation events; no Studio screen for the exceptions queue.

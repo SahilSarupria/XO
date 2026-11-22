@@ -51,9 +51,12 @@ on the `AutomationEngine` of `packages/automation`. See "Trigger unification: wh
    `409 XO_DATA_SCHEMA_DRIFT` (new error code) **before a run record or any effect exists**, with the report in the error context; the refusal is audited as
    `generated-workflow.drift.refused` with counts only. `GET /workspaces/{ws}/compilations/{cid}/data-drift` previews the same check.
    Reports carry headers, types and shapes, never cell values (a shape such as `A-999` does describe how values are written).
-7. **Limit that matters:** in the API a compilation has one source, so a workflow compiled from a procedure document is **not** tied to the workbooks its steps
-   read. The gate therefore fires only for compilations whose own source is a table. Linking a workflow to the confirmed source roles it uses (UW-12a roles)
-   is the missing piece and belongs with the batch preview (UW-8). The detector, the gate and the route are in place and tested.
+7. **Tables a workflow reads (amended 2026-11-22 under the owner's delegation).** A compilation in the API has one source, so a workflow compiled
+   from a procedure document was not tied to the workbooks its steps read. Generation (`…/generated-workflows` and the UW-2 workflow-entity create
+   and revise) now takes `reads: [{ sourceId, recordSetId }]` (at most 20; each must be a current `.csv`/`.xlsx` table). Each table's schema
+   fingerprint is recorded on the definition (`dataReads`), the reads are part of the definition id and the reuse key, and the start gate checks
+   them against the newest same-named source exactly like the compilation's own tables; a table that is gone blocks. Declaring the reads is explicit
+   for now: the UW-8 batch preview will fill them from the list a person picks (a confirmed source role).
 
 ### Reuse
 
@@ -80,4 +83,4 @@ on the `AutomationEngine` of `packages/automation`. See "Trigger unification: wh
 
 - The owner wants the engine to be the only trigger engine (item 4).
 - Real workbooks show the 80% shape rule is too strict or too loose (amounts of varying width have no dominant shape and are never format-checked).
-- A workflow is linked to its source roles (UW-8): move the drift gate to those roles.
+- UW-8 picks the list for a batch: fill `reads` from it automatically.

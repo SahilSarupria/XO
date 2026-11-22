@@ -1,3 +1,4 @@
+import { resolveDataReads } from '../drift/data-drift.js';
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import { eraseTokenVault } from '../protection/data-protection.js';
 import { ApprovalError, RunInputError, RunStore } from '@xo/workflow-runtime';
@@ -292,7 +293,17 @@ export function registerWorkflowEntityRoutes(
     const goal = parseGoal(rawGoal, actor.id);
     if (body['workflowId'] !== undefined && typeof body['workflowId'] !== 'string')
       throw new XoError(ErrorCode.INVALID_ARGUMENT, 'workflowId must be a string');
-    return generateDefinition(w, dataConfig, actor, compilationId, goal, body['workflowId'] as string | undefined);
+    return generateDefinition(
+      w,
+      dataConfig,
+      actor,
+      compilationId,
+      goal,
+      body['workflowId'] as string | undefined,
+      'structured',
+      [],
+      await resolveDataReads(w, dataConfig, body['reads']),
+    );
   }
 
   async function readBody(req: ApiRequest): Promise<Record<string, unknown>> {

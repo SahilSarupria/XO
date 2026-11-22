@@ -391,14 +391,20 @@ export async function startGeneratedRun(
   await enforceNotPaused(new FsControlsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId));
   // UW-15 (UAC-34): the data must still have the shape this workflow was compiled for. A used column renamed, removed or retyped, or
   // reformatted, stops the run HERE, before a run record or any effect exists, with the differences in the error.
-  const drift = await checkDataDrift(workspace, dataConfig, definition.compilationId);
+  const drift = await checkDataDrift(workspace, dataConfig, definition.compilationId, definition.dataReads ?? []);
   if (drift.status === 'blocking') {
     await audit?.tryRecord({
       ...draft,
       type: 'generated-workflow.drift.refused',
       outcome: 'denied',
       reasonCode: 'data_schema_drift',
-      metadata: { sources: drift.sources.filter((x) => x.status === 'blocking').length, differences: drift.sources.reduce((n, x) => n + x.tables.reduce((m, t) => m + t.report.differences.filter((d) => d.severity === 'blocking').length, 0), 0) },
+      metadata: {
+        sources: drift.sources.filter((x) => x.status === 'blocking').length,
+        differences: drift.sources.reduce(
+          (n, x) => n + x.tables.reduce((m, t) => m + t.report.differences.filter((d) => d.severity === 'blocking').length, 0),
+          0,
+        ),
+      },
     });
     throw new XoError(ErrorCode.DATA_SCHEMA_DRIFT, driftSummary(drift), { context: { report: drift } });
   }
@@ -779,7 +785,8 @@ export function registerGeneratedRunRoutes(
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
     const store = new RunStore(runsDir(dataConfig, workspace.workspaceId, definition.definitionId));
     const runs = [];
-    for (const id of await store.list().catch(() => [] as string[])) runs.push({ runId: id, entries: await store.read(id).catch(() => []) });
+    for (const id of await store.list().catch(() => [] as string[]))
+      runs.push({ runId: id, entries: await store.read(id).catch(() => []) });
     return json(200, exceptionReport(runs, new Date()));
   }
 
