@@ -130,3 +130,11 @@ A certificate bound the knowledge state, and the state pins the packs it was bui
 ### Consequences
 
 - Mandatory scenario 17 holds: replay uses the pinned versions and says when it cannot (`pack-pinning.test.ts`).
+
+## RX-1g: Runbooks
+
+`docs/runbooks/` holds the seven runbooks the specification names (section 21.11): emergency stop, incident, provider outage, credential revocation, unknown side effect, recovery and deletion. Each says what to check first, what to do with today's API, CLI and Studio, what never to do, and when it is done. Two rules run through all of them: never re-send to find out whether something happened, and keep the evidence (the audit bundle) before changing anything.
+
+## RX-1h: Mandatory scenario index
+
+`docs/runtime/MANDATORY_SCENARIOS.md` lists the twenty scenarios with the tests that prove each. `apps/api/test/scenario-index.test.ts` checks that every scenario appears once, that every Done scenario names evidence, and that each named test file exists and has a test with that title, so the index cannot drift. A failing-compensation engine test was added for scenario 13. Result: 18 Done, scenario 10 not applicable (ADR 0045), scenario 18 Planned (UW-11).

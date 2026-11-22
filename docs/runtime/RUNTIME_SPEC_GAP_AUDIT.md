@@ -37,7 +37,7 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 | Outputs and delivery (section 14)                                            | Done for email delivery state; typed output artifacts Planned (UW-12b)                                                   |
 | Post-run learning (section 15)                                               | Planned (UW-11); the engine's promotion loop already never auto-applies                                                  |
 | API, CLI, Studio parity (section 17)                                         | Partial: API complete, Studio screens Planned (UW-12b), CLI partial                                                      |
-| Mandatory scenarios (section 18)                                             | 14 Done, 4 Partial, 1 Planned, 1 not applicable; see the table                                                           |
+| Mandatory scenarios (section 18)                                             | 18 Done, 1 Planned, 1 not applicable after RX-1; see the table and `MANDATORY_SCENARIOS.md`                              |
 
 ## Section by section
 
@@ -257,14 +257,14 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 | 10  | Parallel branch failure policy                                | Not applicable | Parallel branches are not an IR construct; unknown step types are rejected (ADR 0045)                                    |
 | 11  | Loop exceeds bounds                                           | Done           | PX-10 forEach bounds; `packages/workflow-ir/conformance` vectors                                                         |
 | 12  | Cancellation in deterministic, human-wait and connector steps | Done           | UW-7 (`cancel.test.ts`, ADR 0033)                                                                                        |
-| 13  | Compensation succeeds, fails, partly succeeds                 | Partial        | Compensation and `onCancel` are tested (UW-7); a failing-compensation case is to be added in RX-1h                       |
-| 14  | Provider rate limit, bounded backoff, deadline                | Partial        | Engine `ratelimit.ts` tests; the API does not wire limiters (RX-1c)                                                      |
+| 13  | Compensation succeeds, fails, partly succeeds                 | Done           | UW-7 and RX-1h; see `MANDATORY_SCENARIOS.md`                                                                             |
+| 14  | Provider rate limit, bounded backoff, deadline                | Done           | RX-1c end to end (`rate-limits.test.ts`); see `MANDATORY_SCENARIOS.md`                                                   |
 | 15  | OAuth revoked or expired blocks and asks to reconnect         | Done           | UW-9 (`invalid_grant` ends the credential); readiness blocks an inactive credential (`readiness.ts`, UW-10)              |
 | 16  | Tenant isolation                                              | Done           | UW-9 cross-tenant matrix; 404 for outsiders                                                                              |
-| 17  | Replay uses pinned versions                                   | Partial        | `replayRun` from the journal with pinned definitions; no API replay and no pack pinning (RX-1d, RX-1e)                   |
+| 17  | Replay uses pinned versions                                   | Done           | RX-1d and RX-1e (`pack-pinning.test.ts`); see `MANDATORY_SCENARIOS.md`                                                   |
 | 18  | Post-run correction proposes, never activates                 | Planned        | UW-11 (UW-4 change sets already require approval)                                                                        |
 | 19  | Accepted but delivery unknown is not "delivered"              | Done           | UW-10 delivery projection                                                                                                |
-| 20  | Kill switch stops new dispatch, handles in-flight work        | Partial        | Workspace pause at start and at every effect (PX-10); scoped switches in RX-1a                                           |
+| 20  | Kill switch stops new dispatch, handles in-flight work        | Done           | RX-1a (`emergency-stop.test.ts`); see `MANDATORY_SCENARIOS.md`                                                           |
 
 ### 19–21 Work plan, execution model, deliverables
 
@@ -284,6 +284,10 @@ the spec's own E0/C0 step (sections 19, 9.12) and deliverable 1 (section 21). No
 
 - Met for the V1 envelope except the RX-1 items and the Planned items above.
 - Not met for the horizontals (registry, event gateway, Composio, sandboxing), which are outside the V1 envelope by ADR 0045.
+
+## Update, 2026-11-23: RX-1 delivered
+
+RX-1a to RX-1h are implemented (ADR 0048, PRs #48 to #50): scoped emergency stops that hold work, the run manifest and signed audit bundle, connector rate limits and provider pauses, pack pinning, replay and explain over the API, the seven runbooks (`docs/runbooks/`), and the scenario index (`docs/runtime/MANDATORY_SCENARIOS.md`, checked by `apps/api/test/scenario-index.test.ts`). 18 of the 20 mandatory scenarios are Done; scenario 10 is not applicable and scenario 18 (post-run correction) is Planned for UW-11. UW-12b (minimal, ADR 0047) added the Studio cancel and reconcile screens and the approval inbox. The rows above keep their original wording where nothing changed.
 
 ## Proposed RX-1 (wave W4, beside UW-8 and UW-12b)
 

@@ -316,6 +316,35 @@ describe('compensation (saga)', () => {
     assert.equal(r.state, 'compensated');
     assert.deepEqual(ext.effects, ['pay:40', 'refund:40']);
   });
+  it('RX-1h scenario 13: a compensation that fails escalates COMPENSATION_FAILED to a person; it is not retried or reported as undone', async () => {
+    const s = steps();
+    s[3].inputs = { amount: { from: 'input.amount' } };
+    s[3].operation = 'ship';
+    s[3].sideEffect = 'irreversible';
+    s[3].idempotencyKey = 'ship:{{input.claim}}';
+    const ext = external();
+    ext.conn.operations['ship'] = {
+      sideEffect: 'irreversible',
+      execute: async () => {
+        throw new ConnectorError('DENIED', 'carrier refused');
+      },
+    };
+    ext.conn.operations['refund'] = {
+      sideEffect: 'write',
+      idempotency: 'supports_key',
+      execute: async (_a, ctx) => {
+        ext.calls.push({ op: 'refund', ...(ctx.idempotencyKey !== undefined ? { key: ctx.idempotencyKey } : {}) });
+        throw new ConnectorError('DENIED', 'refund window closed');
+      },
+    };
+    const h = await harness(comp(s), ext);
+    const r = await h.mk().runner.start({ inputs: { amount: 40, claim: 'c8' } });
+    assert.equal(r.state, 'escalated');
+    assert.equal(r.escalation?.code, 'COMPENSATION_FAILED');
+    assert.match(r.escalation?.reason ?? '', /compensation undo_pay failed after "ship" failed/);
+    assert.deepEqual(ext.effects, ['pay:40'], 'the payment stands; nothing claims it was undone');
+    assert.equal(ext.calls.filter((c) => c.op === 'refund').length, 1, 'the refund was tried once, not retried blindly');
+  });
   it('escalates, naming what cannot be undone, when a completed write has no compensation', async () => {
     const s = [
       decide(),
