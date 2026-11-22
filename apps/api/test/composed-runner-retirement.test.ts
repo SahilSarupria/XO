@@ -137,7 +137,10 @@ test('a certificate-requiring workspace: no trigger reaches the composed runner;
           triggers: { ...d.triggers, schedule: { ...d.triggers.schedule!, startsAs: { id: server.identityId, kind: 'human' } } },
         }));
         assert.deepEqual(await runDueSchedules(deps, new Date(due.getTime() + 5 * 60_000)), { started: 0, skipped: 0 }, 'not due yet');
-        const human = new Date(due.getTime() + 22 * 60_000);
+        // 15 minutes, not 22: with 10-minute slots, 22 minutes after `due` lands three slot boundaries later whenever `due` falls in
+        // the last 2 minutes of its slot (Date.now based), and UW-15's missed-slot rule then rightly reports one missed slot. 15 minutes
+        // is always one or two boundaries: due, and never a missed slot. The assertion is unchanged.
+        const human = new Date(due.getTime() + 15 * 60_000);
         assert.deepEqual(await runDueSchedules(deps, human), { started: 1, skipped: 0 });
         assert.equal((await controls.getDeployment(cid, wf))?.triggers.schedule?.lastOutcome, 'started on the workflow runtime');
 
