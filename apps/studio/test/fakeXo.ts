@@ -127,12 +127,18 @@ export class FakeXo {
   previewPreparer = 'sally';
   /** With separation on, the person who prepared a preview cannot approve it. */
   separation = false;
+  /** V1-1: where a once-per-item workflow's items can come from (default: it does not run once per item). */
+  itemSources: { forEach: boolean; over?: string; fieldsUsed?: string[]; sources: Record<string, unknown>[] } = {
+    forEach: false,
+    sources: [],
+  };
   previews: Array<{
     previewId: string;
     definitionId: string;
     certificateId: string;
     root: string;
     createdBy: string;
+    items?: { connectionId: string; proposalId: string };
     approval?: { approvalId: string; reviewerId: string; approvedAt: string; expiresAt: string; usedBy?: string };
   }> = [];
   /** Calls whose outcome is unknown, waiting for a person to reconcile them. */
@@ -857,6 +863,23 @@ export class FakeXo {
         expiresAt: '2030-01-01T00:00:00.000Z',
         approvable: p.approval === undefined,
         ...(p.approval !== undefined ? { approval: p.approval } : {}),
+        ...(p.items !== undefined
+          ? {
+              itemsSource: {
+                ...p.items,
+                role: 'per_person_documents',
+                label: "each client's certificate",
+                connectionName: 'Renewals',
+                over: 'client_items',
+                digests: [],
+                changedSinceConfirmation: false,
+                counts: { items: 3, excludedRows: 1, excludedDocuments: 0, loose: 0 },
+                excludedRows: [{ row: 4, reason: 'no_document' }],
+                excludedDocuments: [],
+                looseRows: [],
+              },
+            }
+          : {}),
         page: 1,
         pages: 1,
         total: shown.length,
@@ -907,13 +930,17 @@ export class FakeXo {
         truncated: false,
       });
     }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/item-sources$/.test(path))
+      return reply(200, this.itemSources);
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/previews$/))) {
+      const given = (body as unknown as { items?: { connectionId: string; proposalId: string } }).items;
       const p = {
         previewId: `pvw_${String(this.previews.length + 1).padStart(24, '0')}`,
         definitionId: m[1]!,
         certificateId: String((body as unknown as { certificateId?: string }).certificateId),
         root: `sha256:${'r'.repeat(8)}${this.previews.length + 1}`,
         createdBy: this.previewPreparer,
+        ...(given !== undefined ? { items: given } : {}),
       };
       this.previews.push(p);
       return reply(201, previewView(p, ''));

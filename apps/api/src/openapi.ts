@@ -1944,19 +1944,37 @@ export const openApiDocument = {
       post: {
         summary: 'Prepare a batch preview: exactly what a run over this input would do, sending nothing (UW-8, ADR 0046)',
         description:
-          "Body `{ input?, certificateId }`. The same gates as a start (certificate, pause, drift). The definition runs in the engine's preview mode over the exact input: approval steps count as approved, timers as elapsed, and every would-be call is recorded with its exact arguments; nothing is sent. `senders` names who would send (connector, provider, the account its owner recognises) and, for email, the tier it sends in with its plain-words explanation (UAC-32). Each item (or the run, as a batch of one) gets a state (`sends`, `no_effect`, `stops` for a person, `not_exact` when what it sends depends on a model, an outside event or another call's result) and a leaf digest; one `root` covers them with the definition, certificate and input. Returns the first page, exceptions first. Kept 24 hours. Audited with ids and counts only.",
+          'Body `{ input?, items?, certificateId }`. `items` `{ connectionId, proposalId }` (V1-1, ADR 0049) builds the items of a once-per-item workflow from a confirmed list or "each person’s document" pairing of a source connection: one item per row, its columns as fields (lower snake case), and for a pairing the row’s one document (`document_sha256`, `document_name`, `document_type`); rows without exactly one document are left out and listed in `itemsSource` with why (412 when the source is not confirmed or lacks a field the workflow reads; 400 with both `items` and that input). A start with the approval builds them again from the files and is refused (`source_changed`) if they differ. The same gates as a start (certificate, pause, drift). The definition runs in the engine\'s preview mode over the exact input: approval steps count as approved, timers as elapsed, and every would-be call is recorded with its exact arguments; nothing is sent. `senders` names who would send (connector, provider, the account its owner recognises) and, for email, the tier it sends in with its plain-words explanation (UAC-32). Each item (or the run, as a batch of one) gets a state (`sends`, `no_effect`, `stops` for a person, `not_exact` when what it sends depends on a model, an outside event or another call\'s result) and a leaf digest; one `root` covers them with the definition, certificate and input. Returns the first page, exceptions first. Kept 24 hours. Audited with ids and counts only.',
         'x-xo-permission': 'author',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '201': { description: 'BatchPreview { previewId, root, counts, senders, approvable, items[page], page, pages, total }' },
+          '201': {
+            description: 'BatchPreview { previewId, root, counts, senders, itemsSource?, approvable, items[page], page, pages, total }',
+          },
           '400': { description: 'Invalid input' },
           '403': { description: 'Not an author' },
           '404': { description: 'Unknown generated workflow' },
           '409': { description: 'No certificate, the certificate does not allow it, or the data changed shape' },
           '412': { description: 'The workspace is paused' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/item-sources': {
+      get: {
+        summary: 'Where the items of a once-per-item workflow can come from (V1-1, ADR 0049)',
+        description:
+          'The confirmed lists and pairings of the workspace’s active source connections, each with the fields its items would have, how many items it gives now and how many rows it leaves out, the fields this workflow reads for an item that it lacks (`missingFields`), and whether it can be used (`usable`). `{ forEach: false }` for a workflow that does not run once per item.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ forEach, over?, fieldsUsed?, sources[] }' },
+          '404': { description: 'Unknown generated workflow' },
         },
       },
     },

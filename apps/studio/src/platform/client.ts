@@ -36,7 +36,14 @@ import {
   type EmailTierLine,
   type ReadinessCertificateView,
 } from './wire-readiness';
-import { parseBatchPreview, parseControlInbox, type BatchPreviewView, type ControlInbox } from './wire-control';
+import {
+  parseBatchPreview,
+  parseControlInbox,
+  parseItemSources,
+  type BatchPreviewView,
+  type ControlInbox,
+  type ItemSourcesView,
+} from './wire-control';
 import {
   parseApiDescription,
   parseCapabilityList,
@@ -923,13 +930,19 @@ export class XoClient {
     definitionId: string,
     certificateId: string,
     input: Readonly<Record<string, unknown>> = {},
+    /** V1-1 (ADR 0049): build the items from this confirmed list or pairing. */
+    items?: { readonly connectionId: string; readonly proposalId: string },
   ): Promise<Result<BatchPreviewView>> {
     return this.call(
       'POST',
       `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews`,
       (b) => parseBatchPreview(b),
-      this.json({ input, certificateId }),
+      this.json({ input, certificateId, ...(items !== undefined ? { items } : {}) }),
     );
+  }
+  /** V1-1: the confirmed lists and pairings a once-per-item workflow can take its items from. */
+  itemSources(ws: string, definitionId: string): Promise<Result<ItemSourcesView>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/item-sources`, (b) => parseItemSources(b));
   }
   /** One page of a preview, exceptions first (or only the exceptions). */
   getBatchPreview(

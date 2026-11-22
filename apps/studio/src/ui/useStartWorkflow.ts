@@ -8,6 +8,7 @@ import {
   type StartReadiness,
 } from '../domain/work';
 import type { Capability, Workflow, WorkflowRun } from '../platform/wire';
+import type { ItemSourcesView, ItemSourceView } from '../platform/wire-control';
 import { useGuardedAction, type ActionNotice } from './actions';
 import { useSession } from './session';
 
@@ -95,7 +96,24 @@ export function useStartWorkflow(args: {
             // UW-8/UW-12b: in production, work that sends or changes things starts only from a batch a reviewer approved. Prepare
             // the preview now (nothing is sent); it waits in the Inbox for a reviewer, and starts from there once approved.
             intentKey.current = undefined;
-            const p = await client.prepareBatchPreview(args.workspaceId, definitionId, cert.value.certificateId);
+            // V1-1 (ADR 0049): a process that runs once per item takes its items from a list (and folder) a person confirmed.
+            const sources = await client.itemSources(args.workspaceId, definitionId);
+            if (!sources.ok) {
+              setNotice({ problem: sources.problem });
+              return;
+            }
+            const choice = chooseItemSource(sources.value);
+            if (choice.kind === 'none' || choice.kind === 'several') {
+              setNotice({ info: choice.message });
+              return;
+            }
+            const p = await client.prepareBatchPreview(
+              args.workspaceId,
+              definitionId,
+              cert.value.certificateId,
+              {},
+              choice.kind === 'one' ? { connectionId: choice.source.connectionId, proposalId: choice.source.proposalId } : undefined,
+            );
             if (!p.ok) {
               setNotice({ problem: p.problem });
               return;
@@ -106,7 +124,7 @@ export function useStartWorkflow(args: {
               info:
                 p.value.counts.not_exact > 0
                   ? `XO prepared a preview of ${p.value.total} items, but ${p.value.counts.not_exact} cannot be shown exactly, so it cannot be approved as a batch. Nothing was sent.`
-                  : `Nothing was sent yet. XO prepared a preview of exactly what this would do (${p.value.total} ${p.value.total === 1 ? 'item' : 'items'}${exceptions > 0 ? `, ${exceptions} needing attention` : ''}). A reviewer approves it in the Inbox, and it starts from there.`,
+                  : `Nothing was sent yet. XO prepared a preview of exactly what this would do (${p.value.total} ${p.value.total === 1 ? 'item' : 'items'}${exceptions > 0 ? `, ${exceptions} needing attention` : ''}${p.value.itemsSource !== undefined ? `, from ${p.value.itemsSource.label} in ${p.value.itemsSource.connectionName}${p.value.itemsSource.excludedRows > 0 ? `; ${p.value.itemsSource.excludedRows} left out` : ''}` : ''}). A reviewer approves it in the Inbox, and it starts from there.`,
             });
           } else {
             intentKey.current = undefined;
@@ -146,4 +164,29 @@ export function useStartWorkflow(args: {
   }
 
   return { start, busy, notice, ready, active };
+}
+
+/**
+ * V1-1 (ADR 0049): where a once-per-item process takes its items from. Exactly one confirmed source that gives what it reads is
+ * used; none, or more than one, is said plainly and nothing is prepared (XO does not pick between a person's lists).
+ */
+export function chooseItemSource(
+  v: ItemSourcesView,
+):
+  | { readonly kind: 'not_per_item' }
+  | { readonly kind: 'one'; readonly source: ItemSourceView }
+  | { readonly kind: 'none' | 'several'; readonly message: string } {
+  if (!v.forEach) return { kind: 'not_per_item' };
+  const usable = v.sources.filter((s) => s.usable);
+  if (usable.length === 1) return { kind: 'one', source: usable[0]! };
+  if (usable.length > 1)
+    return {
+      kind: 'several',
+      message: `Nothing was sent. This process runs once per item, and more than one confirmed source could give its items (${usable.map((s) => `${s.label} in ${s.connectionName}`).join('; ')}). In Sources, reject the ones it should not use, then start again.`,
+    };
+  const near = v.sources.find((s) => s.items > 0);
+  return {
+    kind: 'none',
+    message: `Nothing was sent. This process runs once per item, and no confirmed source gives what it needs for each one${v.fieldsUsed.length > 0 ? ` (${v.fieldsUsed.join(', ')})` : ''}.${near !== undefined ? ` ${near.label} in ${near.connectionName} lacks ${near.missingFields.join(', ')}.` : ''} In Sources, confirm the list, and if each item needs a document, which document is each person's.`,
+  };
 }

@@ -19,5 +19,6 @@ export * from './source-connections/folder-reader.js';
 export * from './source-connections/discovery.js';
 export * from './source-connections/entity.js';
 export * from './source-connections/names.js';
+export * from './source-connections/items.js';
 export * from './source-connections/cloud-drives.js';
 export * from './source-connections/agent.js';

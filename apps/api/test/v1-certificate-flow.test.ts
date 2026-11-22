@@ -2,16 +2,16 @@
  * V1 acceptance (docs/runtime/V1_ACCEPTANCE.md): the certificate-distribution vertical through the integrated API, as far as it runs
  * today, on one instance with production approval rules and strict-local residency. A LOCAL FAKE Gmail stands in for the provider.
  *
- * What it proves end to end: a client list and certificates uploaded as sources; a send operation bound to the email adapter; a goal
- * composed per client; a READY certificate; a batch preview that shows every recipient and attachment; approval by a reviewer who did
- * not prepare it; a start that sends exactly what was approved, once each, with the right certificate attached; a run manifest; a signed
- * audit bundle that verifies; a reproducible replay; nothing left waiting for a person; no model asked anything.
- *
- * Where today's path needs the caller (the gaps V1-G1 and V1-G2 in the acceptance report): the send step comes from a declared operation
- * (a plain-language "email the client their certificate" compiles to a person's task), and the per-client items are assembled by the
- * caller from the client list, not by XO from the confirmed list and the matched certificates. Those two lines are marked below.
+ * What it proves end to end: a connected folder holding a client list and one certificate per client; a person confirming "each
+ * client's certificate"; the customer's own procedure in plain words ("email the client their certificate") bound once to the email
+ * connector with the arguments it maps (V1-G1, ADR 0049); a READY certificate; a batch preview whose items XO built from the confirmed
+ * pairing (V1-G2), showing every recipient and attachment and what it left out; approval by a reviewer who did not prepare it; a start
+ * that sends exactly what was approved, once each, with each client's own certificate; a run manifest; a signed audit bundle that
+ * verifies; a reproducible replay; nothing left waiting for a person; no model asked anything.
  */
 import { test } from 'node:test';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { NonProductionAuditSink } from '@xo/audit';
@@ -28,14 +28,36 @@ import { fakeGmail, newMailbox } from '../../../packages/connectors/test/mail-fa
 const NO_OCR = { extraction: { pageTiers: [], ocr: { mode: 'off' as const } } };
 
 const CLIENTS = [
-  { name: 'Asha Rao', email: 'asha@client.example' },
-  { name: 'Bilal Khan', email: 'bilal@client.example' },
-  { name: 'Chen Wei', email: 'chen@client.example' },
+  { name: 'Asha Rao', email: 'asha@client.example', file: 'Asha_Rao_certificate.pdf' },
+  { name: 'Bilal Khan', email: 'bilal@client.example', file: 'bilal-khan-certificate.pdf' },
+  { name: 'Chen Wei', email: 'chen@client.example', file: 'Certificate - Chen Wei.pdf' },
 ];
-const csv = `Name,Email,Certificate\n${CLIENTS.map((c) => `${c.name},${c.email},${c.name.toLowerCase().replace(' ', '-')}.pdf`).join('\n')}\n`;
+// Dev Patel has no certificate yet: XO leaves him out and says so, rather than sending him anything.
+const csv = `Client name,Email\n${CLIENTS.map((c) => `${c.name},${c.email}`).join('\n')}\nDev Patel,dev@client.example\n`;
 const certificate = (name: string) => Buffer.from(`%PDF-1.4\n% Certificate of completion for ${name}\n%%EOF\n`);
 
-// V1-G1: the send is a declared operation (the flat form of the email contract), not composed from the procedure's own words.
+// The customer's procedure, in their own words.
+const PROCEDURE =
+  '# Certificate distribution\n\n| Step | What to do | Done when | Owner |\n|---|---|---|---|\n| 1 | Email the client their certificate. | The client has their certificate. | Office manager |\n';
+// The one thing an operator states: XO sends that step through the email connector, with these arguments.
+const SEND_BINDING = {
+  capability: 'Email the client their certificate',
+  connector: 'email',
+  kind: 'http',
+  operation: 'send',
+  sideEffect: 'write',
+  adapter: 'email',
+  arguments: {
+    to: { field: 'email' },
+    subject: { const: 'Your certificate' },
+    body: { const: 'Your certificate of completion is attached.' },
+    attachmentSha256: { field: 'document_sha256' },
+    attachmentFilename: { field: 'document_name' },
+    attachmentContentType: { field: 'document_type' },
+  },
+};
+
+// A declared send operation (the flat form of the email contract), for the tier check below.
 const SEND_OPERATION = JSON.stringify({
   openapi: '3.0.0',
   info: { title: 'Certificates', version: '1' },
@@ -73,6 +95,7 @@ const SEND_OPERATION = JSON.stringify({
 
 interface Preview {
   previewId: string;
+  itemsSource?: { label: string; counts: Record<string, number>; excludedRows: { row: number; reason: string }[] };
   root: string;
   counts: Record<string, number>;
   total: number;
@@ -80,182 +103,272 @@ interface Preview {
   approval?: { approvalId: string };
 }
 
-test('V1: the certificate flow runs end to end through the API with production approval rules, sending exactly what was approved', async () => {
-  await withTempDir('xo-api-v1-', async (dataDir) => {
-    const box = newMailbox();
-    const gm = await fakeGmail(box);
-    const cfg = { dataRootDir: dataDir } as never;
-    const credential: AdapterCredential = {
-      use: async (fn) =>
-        fn({
-          record: {
-            provider: 'google',
-            kind: 'oauth',
-            scopes: ['https://www.googleapis.com/auth/gmail.send'],
-            accountLabel: 'office@firm.example',
-          },
-          accessToken: new Secret('fake-token-v1'),
-        } as AdapterCredentialHandle),
-    };
-    const factory = (workspace: never) => {
-      const inner = createMailAdapter({
-        env: {},
-        attachments: workspaceAttachmentStore(workspace, cfg),
-        recipientPolicy: async () => {
-          const r = await readRecipientRules(workspace, cfg);
-          return { confirmed: new Set(), rules: { addresses: r.addresses, domains: r.domains } };
+/** The workspace, up to a READY certificate for "send each client their certificate", over a connected folder. */
+async function certificateWorkspace(dataDir: string, folderRoot: string, gmailUrl: string) {
+  const folder = join(folderRoot, 'Renewals');
+  await mkdir(join(folder, 'Certificates'), { recursive: true });
+  await writeFile(join(folder, 'clients.csv'), csv);
+  for (const c of CLIENTS) await writeFile(join(folder, 'Certificates', c.file), certificate(c.name));
+  const cfg = { dataRootDir: dataDir } as never;
+  const credential: AdapterCredential = {
+    use: async (fn) =>
+      fn({
+        record: {
+          provider: 'google',
+          kind: 'oauth',
+          scopes: ['https://www.googleapis.com/auth/gmail.send'],
+          accountLabel: 'office@firm.example',
         },
-        endpoints: { gmail: gm.baseUrl, egress: { allowPrivateNetwork: true, allowedPorts: [Number(new URL(gm.baseUrl).port)] } },
-      });
-      return { ...inner, invoke: (r: Parameters<typeof inner.invoke>[0]) => inner.invoke({ ...r, credential }) };
-    };
-    const audit = new NonProductionAuditSink();
-    const server = await TestServer.start({
-      workspaceDataDir: dataDir,
-      ...NO_OCR,
-      auditSink: audit,
-      adapterFactories: new Map([['email', factory]]),
-      residency: resolveResidency({ XO_RESIDENCY: 'strict_local' }),
-      runApproval: 'required',
-      approvalSeparation: 'required',
+        accessToken: new Secret('fake-token-v1'),
+      } as AdapterCredentialHandle),
+  };
+  const factory = (workspace: never) => {
+    const inner = createMailAdapter({
+      env: {},
+      attachments: workspaceAttachmentStore(workspace, cfg),
+      recipientPolicy: async () => {
+        const r = await readRecipientRules(workspace, cfg);
+        return { confirmed: new Set(), rules: { addresses: r.addresses, domains: r.domains } };
+      },
+      endpoints: { gmail: gmailUrl, egress: { allowPrivateNetwork: true, allowedPorts: [Number(new URL(gmailUrl).port)] } },
     });
-    try {
-      const ws = (await server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
-      assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'reviewer-1', role: 'reviewer' })).status, 201);
-      const reviewer = TestServer.authHeader((await server.issueAdditionalIdentity('reviewer-1')).apiKey);
-
-      // 1. Sources: the client list (read into a record set at the door) and one certificate per client, found later by content hash.
-      const list = await server.request('POST', `/workspaces/${ws}/sources?filename=clients.csv`, Buffer.from(csv));
-      assert.equal(list.status, 201, list.bodyText);
-      const hashes = new Map<string, string>();
-      for (const c of CLIENTS) {
-        const bytes = certificate(c.name);
-        const file = `${c.name.toLowerCase().replace(' ', '-')}.pdf`;
-        const up = await server.request('POST', `/workspaces/${ws}/sources?filename=${file}`, bytes);
-        assert.equal(up.status, 201, up.bodyText);
-        hashes.set(c.email, createHash('sha256').update(bytes).digest('hex'));
-      }
-      assert.equal((await server.request('PUT', `/workspaces/${ws}/email/recipient-rules`, { domains: ['client.example'] })).status, 200);
-
-      // 2. The send, bound to the workspace's email adapter; approved; composed per client.
-      const src = (await server.request('POST', `/workspaces/${ws}/sources?filename=certificates.json`, Buffer.from(SEND_OPERATION))).json<{
-        sourceId: string;
-      }>();
-      const cid = (await server.request('POST', `/workspaces/${ws}/sources/${src.sourceId}/compile`)).json<{ compilationId: string }>()
-        .compilationId;
-      const bound = await server.request('PUT', `/workspaces/${ws}/connector-bindings`, {
-        bindings: [
-          { capability: 'sendCertificate', connector: 'email', kind: 'http', operation: 'send', sideEffect: 'write', adapter: 'email' },
-        ],
-      });
-      assert.equal(bound.status, 200, bound.bodyText);
-      const inv = (await server.request('GET', `/workspaces/${ws}/compilations/${cid}/capability-inventory`)).json<{
-        inventory: { capabilities: { capabilityId: string }[] };
-      }>().inventory;
-      for (const c of inv.capabilities)
-        await server.request('POST', `/workspaces/${ws}/compilations/${cid}/capabilities/${encodeURIComponent(c.capabilityId)}/approve`);
-      const def = (
-        await server.request('POST', `/workspaces/${ws}/compilations/${cid}/generated-workflows`, {
-          goal: { text: 'send each client their certificate', forEach: 'client' },
-        })
-      ).json<{ definition: { definitionId: string; lowered: { complete: boolean; issues: unknown[] } } }>().definition;
-      assert.equal(def.lowered.complete, true, JSON.stringify(def.lowered.issues));
-      const base = `/workspaces/${ws}/generated-workflows/${def.definitionId}`;
-      const cert = (await server.request('POST', `${base}/readiness`, {})).json<{ certificateId: string; status: string }>();
-      assert.equal(cert.status, 'READY');
-
-      // 3. V1-G2: the items are assembled here from the client list, not by XO from the confirmed list and the matched certificates.
-      const items = CLIENTS.map((c) => ({
-        to: c.email,
-        subject: 'Your certificate',
-        body: `Dear ${c.name}, your certificate is attached.`,
-        attachmentSha256: hashes.get(c.email)!,
-        attachmentFilename: `${c.name.toLowerCase().replace(' ', '-')}.pdf`,
-        attachmentContentType: 'application/pdf',
-      }));
-
-      // 4. Production rules: no start without a batch approval; the preview shows every call; someone else approves it.
-      const refused = await server.request('POST', `${base}/runs`, { input: { client_items: items }, certificateId: cert.certificateId });
-      assert.equal(refused.status, 409);
-      assert.match(refused.bodyText, /XO_BATCH_APPROVAL_REQUIRED/);
-      const preview = await server.request('POST', `${base}/previews`, {
-        input: { client_items: items },
-        certificateId: cert.certificateId,
-      });
-      assert.equal(preview.status, 201, preview.bodyText);
-      const p = preview.json<Preview>();
-      assert.deepEqual(p.counts, { sends: 3, no_effect: 0, stops: 0, not_exact: 0 });
-      assert.deepEqual(
-        p.items.map((i) => [i.actions[0]!.args['to'], i.actions[0]!.args['attachmentSha256']]),
-        CLIENTS.map((c) => [c.email, hashes.get(c.email)]),
-      );
-      assert.equal(box.messages.length, 0, 'a preview sends nothing');
-      const inbox = (await server.request('GET', `/workspaces/${ws}/control/inbox`, undefined, reviewer)).json<{
-        batches: { previewId: string; state: string }[];
-      }>();
-      assert.deepEqual(
-        inbox.batches.map((b) => [b.previewId, b.state]),
-        [[p.previewId, 'awaiting_approval']],
-      );
-      assert.equal(
-        (await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root })).status,
-        409,
-        'not by its preparer',
-      );
-      const ok = await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer);
-      assert.equal(ok.status, 201, ok.bodyText);
-      const approvalId = ok.json<Preview>().approval!.approvalId;
-
-      // 5. The start sends exactly what was approved, once each, with each client's own certificate.
-      const started = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
-      assert.equal(started.status, 201, started.bodyText);
-      const run = started.json<{ runId: string; state: string }>();
-      assert.equal(run.state, 'completed', started.bodyText);
-      assert.equal(box.messages.length, 3);
-      for (const c of CLIENTS) {
-        const sent = box.messages.filter((m) => m.data.includes(`To: ${c.email}`) || m.data.includes(`<${c.email}>`));
-        assert.equal(sent.length, 1, `exactly one message to ${c.email}`);
-        assert.ok(sent[0]!.data.includes(certificate(c.name).toString('base64').slice(0, 24)), `${c.email} got their own certificate`);
-        assert.match(sent[0]!.data, /Message-ID: <xo\.[0-9a-f]{32}@firm\.example>/);
-      }
-      const again = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
-      assert.equal(again.json<{ runId: string }>().runId, run.runId);
-      assert.equal(box.messages.length, 3, 'a repeated start is the same run; nothing is sent twice');
-
-      // 6. Evidence: manifest, a signed bundle that verifies, a reproducible replay, nothing waiting for a person.
-      const manifest = (await server.request('GET', `${base}/runs/${run.runId}/manifest`)).json<{
-        digestOk: boolean;
-        manifest: { batch?: { approvalId: string }; certificate: { certificateId: string } };
-      }>();
-      assert.equal(manifest.digestOk, true);
-      assert.equal(manifest.manifest.batch?.approvalId, approvalId);
-      assert.equal(manifest.manifest.certificate.certificateId, cert.certificateId);
-      const bundle = await server.request('GET', `${base}/runs/${run.runId}/audit-bundle`, undefined, reviewer);
-      assert.equal(bundle.status, 200);
-      const verified = (await server.request('POST', `/workspaces/${ws}/audit-bundles/verify`, bundle.json<unknown>())).json<{
-        ok: boolean;
-        runs: number;
-      }>();
-      assert.deepEqual([verified.ok, verified.runs], [true, 4]);
-      const replay = (await server.request('GET', `${base}/runs/${run.runId}/replay`)).json<{ reproducible: boolean; reasons: string[] }>();
-      assert.deepEqual([replay.reproducible, replay.reasons], [true, []]);
-      const after = (await server.request('GET', `/workspaces/${ws}/control/inbox`)).json<{
-        batches: unknown[];
-        steps: unknown[];
-        attention: unknown[];
-      }>();
-      assert.deepEqual([after.batches, after.steps, after.attention], [[], [], []]);
-
-      // 7. Audit holds ids and counts, never a recipient or a certificate's content; no model was asked anything.
-      const trail = JSON.stringify(audit.events());
-      assert.ok(!trail.includes('@client.example'), 'no recipient in the audit trail');
-      assert.ok(!trail.includes('Certificate of completion'));
-      assert.equal(audit.events().filter((e) => e.type === 'model.egress.blocked' || e.type === 'intent.proposed').length, 0);
-    } finally {
-      await server.stop();
-      await gm.close();
-    }
+    return { ...inner, invoke: (r: Parameters<typeof inner.invoke>[0]) => inner.invoke({ ...r, credential }) };
+  };
+  const audit = new NonProductionAuditSink();
+  const server = await TestServer.start({
+    workspaceDataDir: dataDir,
+    ...NO_OCR,
+    auditSink: audit,
+    adapterFactories: new Map([['email', factory]]),
+    residency: resolveResidency({ XO_RESIDENCY: 'strict_local' }),
+    runApproval: 'required',
+    approvalSeparation: 'required',
+    env: { XO_SOURCE_FOLDER_ROOTS: folderRoot },
   });
+  try {
+    const ws = (await server.request('POST', '/workspaces', {})).json<{ workspaceId: string }>().workspaceId;
+    assert.equal((await server.request('POST', `/workspaces/${ws}/members`, { identityId: 'reviewer-1', role: 'reviewer' })).status, 201);
+    const reviewer = TestServer.authHeader((await server.issueAdditionalIdentity('reviewer-1')).apiKey);
+
+    // 1. The folder: XO reads it and proposes what it holds; a person confirms "each client's certificate".
+    const connected = await server.request('POST', `/workspaces/${ws}/source-connections`, { kind: 'local_folder', root: folder });
+    assert.equal(connected.status, 201, connected.bodyText);
+    const conn = connected.json<{
+      connection: { connectionId: string; proposals: { proposalId: string; role: string; label: string }[] };
+    }>().connection;
+    const pairing = conn.proposals.find((x) => x.role === 'per_person_documents')!;
+    assert.equal(pairing.label, "each client's certificate");
+    const confirmed = await server.request(
+      'POST',
+      `/workspaces/${ws}/source-connections/${conn.connectionId}/proposals/${pairing.proposalId}/decision`,
+      { decision: 'confirmed' },
+    );
+    assert.equal(confirmed.status, 200, confirmed.bodyText);
+    assert.equal((await server.request('PUT', `/workspaces/${ws}/email/recipient-rules`, { domains: ['client.example'] })).status, 200);
+
+    // 2. The procedure in plain words; the send step bound once, with its arguments (V1-G1); composed per client.
+    const src = (await server.request('POST', `/workspaces/${ws}/sources?filename=procedure.md`, Buffer.from(PROCEDURE))).json<{
+      sourceId: string;
+    }>();
+    const cid = (await server.request('POST', `/workspaces/${ws}/sources/${src.sourceId}/compile`)).json<{ compilationId: string }>()
+      .compilationId;
+    const bound = await server.request('PUT', `/workspaces/${ws}/connector-bindings`, { bindings: [SEND_BINDING] });
+    assert.equal(bound.status, 200, bound.bodyText);
+    const inv = (await server.request('GET', `/workspaces/${ws}/compilations/${cid}/capability-inventory`)).json<{
+      inventory: { capabilities: { capabilityId: string }[] };
+    }>().inventory;
+    for (const c of inv.capabilities)
+      await server.request('POST', `/workspaces/${ws}/compilations/${cid}/capabilities/${encodeURIComponent(c.capabilityId)}/approve`);
+    const def = (
+      await server.request('POST', `/workspaces/${ws}/compilations/${cid}/generated-workflows`, {
+        goal: { text: 'send each client their certificate', forEach: 'client' },
+      })
+    ).json<{ definition: { definitionId: string; lowered: { complete: boolean; issues: unknown[] } } }>().definition;
+    assert.equal(def.lowered.complete, true, JSON.stringify(def.lowered.issues));
+    const base = `/workspaces/${ws}/generated-workflows/${def.definitionId}`;
+    const ready = await server.request('POST', `${base}/readiness`, {});
+    const cert = ready.json<{ certificateId: string; status: string }>();
+    assert.equal(cert.status, 'READY', ready.bodyText);
+    return { server, audit, ws, reviewer, base, cert, folder, connectionId: conn.connectionId, pairing };
+  } catch (e) {
+    await server.stop();
+    throw e;
+  }
+}
+
+test('V1: the certificate flow runs end to end through the API with production approval rules, sending exactly what was approved', async () => {
+  await withTempDir('xo-api-v1-', async (dataDir) =>
+    withTempDir('xo-api-v1-files-', async (folderRoot) => {
+      const box = newMailbox();
+      const gm = await fakeGmail(box);
+      const { server, audit, ws, reviewer, base, cert, connectionId, pairing } = await certificateWorkspace(
+        dataDir,
+        folderRoot,
+        gm.baseUrl,
+      );
+      try {
+        // 3. V1-G2: where the items can come from, and whether each source gives what the workflow reads for an item.
+        const sources = (await server.request('GET', `${base}/item-sources`)).json<{
+          over: string;
+          fieldsUsed: string[];
+          sources: { proposalId: string; usable: boolean; items: number; excluded: number; missingFields: string[] }[];
+        }>();
+        assert.equal(sources.over, 'client_items');
+        assert.deepEqual(sources.fieldsUsed, ['document_name', 'document_sha256', 'document_type', 'email']);
+        assert.deepEqual(
+          sources.sources.map((x) => [x.proposalId, x.usable, x.items, x.excluded]),
+          [[pairing.proposalId, true, 3, 1]],
+        );
+        const items = { connectionId, proposalId: pairing.proposalId };
+
+        // 4. Production rules: no start without a batch approval; the preview shows every call; someone else approves it.
+        const refused = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId });
+        assert.equal(refused.status, 409);
+        assert.match(refused.bodyText, /XO_BATCH_APPROVAL_REQUIRED/);
+        const preview = await server.request('POST', `${base}/previews`, { items, certificateId: cert.certificateId });
+        assert.equal(preview.status, 201, preview.bodyText);
+        const p = preview.json<Preview>();
+        assert.deepEqual(p.counts, { sends: 3, no_effect: 0, stops: 0, not_exact: 0 });
+        const hashOf = (name: string) => createHash('sha256').update(certificate(name)).digest('hex');
+        assert.deepEqual(
+          p.items.map((i) => [i.actions[0]!.args['to'], i.actions[0]!.args['attachmentSha256'], i.actions[0]!.args['attachmentFilename']]),
+          CLIENTS.map((c) => [c.email, hashOf(c.name), c.file]),
+        );
+        assert.deepEqual(p.itemsSource?.counts, { items: 3, excludedRows: 1, excludedDocuments: 0, loose: 0 });
+        assert.deepEqual(
+          p.itemsSource?.excludedRows,
+          [{ row: 4, reason: 'no_document' }],
+          'Dev Patel has no certificate: left out, said so',
+        );
+        assert.equal(box.messages.length, 0, 'a preview sends nothing');
+        const inbox = (await server.request('GET', `/workspaces/${ws}/control/inbox`, undefined, reviewer)).json<{
+          batches: { previewId: string; state: string }[];
+        }>();
+        assert.deepEqual(
+          inbox.batches.map((b) => [b.previewId, b.state]),
+          [[p.previewId, 'awaiting_approval']],
+        );
+        assert.equal(
+          (await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root })).status,
+          409,
+          'not by its preparer',
+        );
+        const ok = await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer);
+        assert.equal(ok.status, 201, ok.bodyText);
+        const approvalId = ok.json<Preview>().approval!.approvalId;
+
+        // 5. The start builds the items again from the files, finds them unchanged, and sends exactly what was approved, once each.
+        const started = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
+        assert.equal(started.status, 201, started.bodyText);
+        const run = started.json<{ runId: string; state: string }>();
+        assert.equal(run.state, 'completed', started.bodyText);
+        assert.equal(box.messages.length, 3);
+        for (const c of CLIENTS) {
+          const sent = box.messages.filter((m) => m.data.includes(`To: ${c.email}`) || m.data.includes(`<${c.email}>`));
+          assert.equal(sent.length, 1, `exactly one message to ${c.email}`);
+          assert.ok(sent[0]!.data.includes(certificate(c.name).toString('base64').slice(0, 24)), `${c.email} got their own certificate`);
+          assert.match(sent[0]!.data, /Message-ID: <xo\.[0-9a-f]{32}@firm\.example>/);
+        }
+        assert.ok(!box.messages.some((m) => m.data.includes('dev@client.example')), 'nothing to the client without a certificate');
+        const again = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
+        assert.equal(again.json<{ runId: string }>().runId, run.runId);
+        assert.equal(box.messages.length, 3, 'a repeated start is the same run; nothing is sent twice');
+
+        // 6. Evidence: manifest, a signed bundle that verifies, a reproducible replay, nothing waiting for a person.
+        const manifest = (await server.request('GET', `${base}/runs/${run.runId}/manifest`)).json<{
+          digestOk: boolean;
+          manifest: { batch?: { approvalId: string }; certificate: { certificateId: string } };
+        }>();
+        assert.equal(manifest.digestOk, true);
+        assert.equal(manifest.manifest.batch?.approvalId, approvalId);
+        assert.equal(manifest.manifest.certificate.certificateId, cert.certificateId);
+        const bundle = await server.request('GET', `${base}/runs/${run.runId}/audit-bundle`, undefined, reviewer);
+        assert.equal(bundle.status, 200);
+        const verified = (await server.request('POST', `/workspaces/${ws}/audit-bundles/verify`, bundle.json<unknown>())).json<{
+          ok: boolean;
+          runs: number;
+        }>();
+        assert.deepEqual([verified.ok, verified.runs], [true, 4]);
+        const replay = (await server.request('GET', `${base}/runs/${run.runId}/replay`)).json<{
+          reproducible: boolean;
+          reasons: string[];
+        }>();
+        assert.deepEqual([replay.reproducible, replay.reasons], [true, []]);
+        const after = (await server.request('GET', `/workspaces/${ws}/control/inbox`)).json<{
+          batches: unknown[];
+          steps: unknown[];
+          attention: unknown[];
+        }>();
+        assert.deepEqual([after.batches, after.steps, after.attention], [[], [], []]);
+
+        // 7. Audit holds ids and counts, never a recipient or a certificate's content; no model was asked anything.
+        const trail = JSON.stringify(audit.events());
+        assert.ok(!trail.includes('@client.example'), 'no recipient in the audit trail');
+        assert.ok(!trail.includes('Certificate of completion'));
+        assert.equal(audit.events().filter((e) => e.type === 'model.egress.blocked' || e.type === 'intent.proposed').length, 0);
+      } finally {
+        await server.stop();
+        await gm.close();
+      }
+    }),
+  );
+});
+
+test('V1-G2: a certificate replaced after the batch was approved stops the start; nothing is sent', async () => {
+  await withTempDir('xo-api-v1-chg-', async (dataDir) =>
+    withTempDir('xo-api-v1-chg-files-', async (folderRoot) => {
+      const box = newMailbox();
+      const gm = await fakeGmail(box);
+      const { server, ws, reviewer, base, cert, folder, connectionId, pairing } = await certificateWorkspace(
+        dataDir,
+        folderRoot,
+        gm.baseUrl,
+      );
+      try {
+        const items = { connectionId, proposalId: pairing.proposalId };
+        // Not both ways at once, and only from a confirmed pairing or list.
+        const both = await server.request('POST', `${base}/previews`, {
+          items,
+          input: { client_items: [] },
+          certificateId: cert.certificateId,
+        });
+        assert.equal(both.status, 400, both.bodyText);
+        const bad = await server.request('POST', `${base}/previews`, { items: { connectionId }, certificateId: cert.certificateId });
+        assert.equal(bad.status, 400);
+        // The client list alone is a source of rows too, but only once confirmed, and it has no certificate for each row.
+        const detail = (await server.request('GET', `/workspaces/${ws}/source-connections/${connectionId}`)).json<{
+          connection: { proposals: { proposalId: string; role: string }[] };
+        }>().connection;
+        const list = { connectionId, proposalId: detail.proposals.find((x) => x.role === 'contact_list')!.proposalId };
+        const unconfirmed = await server.request('POST', `${base}/previews`, { items: list, certificateId: cert.certificateId });
+        assert.equal(unconfirmed.status, 412, unconfirmed.bodyText);
+        assert.match(unconfirmed.bodyText, /not confirmed yet/);
+        await server.request('POST', `/workspaces/${ws}/source-connections/${connectionId}/proposals/${list.proposalId}/decision`, {
+          decision: 'confirmed',
+        });
+        const lacking = await server.request('POST', `${base}/previews`, { items: list, certificateId: cert.certificateId });
+        assert.equal(lacking.status, 412, lacking.bodyText);
+        assert.deepEqual(lacking.json<{ error: { context: { missingFields: string[] } } }>().error.context.missingFields, [
+          'document_name',
+          'document_sha256',
+          'document_type',
+        ]);
+        const p = (await server.request('POST', `${base}/previews`, { items, certificateId: cert.certificateId })).json<Preview>();
+        const approvalId = (
+          await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer)
+        ).json<Preview>().approval!.approvalId;
+        await writeFile(join(folder, 'Certificates', CLIENTS[1]!.file), certificate('Bilal Khan (corrected)'));
+        assert.equal((await server.request('POST', `/workspaces/${ws}/source-connections/${connectionId}/sync`, {})).status, 200);
+        const started = await server.request('POST', `${base}/runs`, { certificateId: cert.certificateId, batchApprovalId: approvalId });
+        assert.equal(started.status, 409, started.bodyText);
+        assert.match(started.bodyText, /source_changed/);
+        assert.equal(box.messages.length, 0);
+      } finally {
+        await server.stop();
+        await gm.close();
+      }
+    }),
+  );
 });
 
 test('UAC-32: the batch preview says which tier an email binding sends in, in plain words', async () => {
