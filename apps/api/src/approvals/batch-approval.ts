@@ -75,6 +75,25 @@ export interface PreviewRecord {
   readonly createdBy: string;
   readonly createdAt: string;
   readonly expiresAt: string;
+  /** V1-1 (ADR 0049): the items came from a confirmed source; a start rebuilds them from it and compares. */
+  readonly itemsSource?: PreviewItemsSource;
+}
+
+/** Where a preview's items came from, and what was left out (each list bounded; the counts are whole). */
+export interface PreviewItemsSource {
+  readonly connectionId: string;
+  readonly proposalId: string;
+  readonly role: string;
+  readonly label: string;
+  readonly connectionName: string;
+  /** The workflow input the items fill (`forEach.over`). */
+  readonly over: string;
+  readonly digests: readonly string[];
+  readonly changedSinceConfirmation: boolean;
+  readonly counts: { readonly items: number; readonly excludedRows: number; readonly excludedDocuments: number; readonly loose: number };
+  readonly excludedRows: readonly { readonly row: number; readonly reason: string }[];
+  readonly excludedDocuments: readonly { readonly name: string; readonly reason: string }[];
+  readonly looseRows: readonly { readonly row: number; readonly kind: string }[];
 }
 
 export interface BatchApprovalPayload {

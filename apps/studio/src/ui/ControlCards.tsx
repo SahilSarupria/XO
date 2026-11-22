@@ -38,6 +38,29 @@ export function argLines(args: Readonly<Record<string, unknown>>): string[] {
   return Object.entries(args).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.map(one).join(', ') : one(v)}`);
 }
 
+const LEFT_OUT: Readonly<Record<string, string>> = {
+  no_document: 'no document found',
+  several_documents: 'more than one document',
+  name_on_several_rows: 'the same name on several rows',
+  no_name: 'no name',
+  blank: 'an empty row',
+};
+
+/** V1-1 (ADR 0049): where a batch's items came from, and what was left out and why. */
+export function itemsSourceLine(src: NonNullable<BatchPreviewView['itemsSource']>): string {
+  const why = Object.entries(src.reasons)
+    .map(([r, n]) => `${LEFT_OUT[r] ?? r.replace(/_/g, ' ')} (${n})`)
+    .join(', ');
+  return [
+    `Items from ${src.label} in ${src.connectionName}.`,
+    src.excludedRows > 0 ? `${src.excludedRows} ${src.excludedRows === 1 ? 'row was' : 'rows were'} left out: ${why}.` : '',
+    src.loose > 0 ? `${src.loose} matched only by another spelling, a short name or initials; check them below.` : '',
+    src.changedSinceConfirmation ? 'The files changed since this pairing was confirmed.' : '',
+  ]
+    .filter((x) => x !== '')
+    .join(' ');
+}
+
 export function countsLine(c: BatchPreviewView['counts'], total: number): string {
   const parts = [`${c.sends} would send`];
   if (c.no_effect > 0) parts.push(`${c.no_effect} change nothing`);
@@ -122,6 +145,11 @@ export function BatchCard(props: {
             </span>
           ))}
           .
+        </p>
+      ) : null}
+      {p?.itemsSource !== undefined ? (
+        <p className="small" aria-label="Where the items came from">
+          {itemsSourceLine(p.itemsSource)}
         </p>
       ) : null}
       {p?.senders.some((x) => x.tierExplanation !== undefined) ? (

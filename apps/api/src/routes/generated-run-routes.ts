@@ -54,6 +54,7 @@ import {
   signBatchApproval,
   type BatchApprovalPayload,
   type BatchApprovalRecord,
+  type PreviewItemsSource,
   type PreviewRecord,
   type SenderView,
 } from '../approvals/batch-approval.js';
@@ -63,6 +64,12 @@ import { EmergencyStops, describeHit, enforceNoEmergencyStop } from '../workflow
 import { StartRefusedError } from '../workflow-controls/service.js';
 import { componentSha256, writeManifest } from '../runs/run-manifest.js';
 import { workspaceRateLimiters } from '../workflow-controls/connector-rate-limits.js';
+import {
+  itemsFromConfirmedSource,
+  listItemSources,
+  parseItemSourceRef,
+  type ItemSourceRef,
+} from '../source-connections/items-from-sources.js';
 
 /**
  * ADR 0030 — generated workflows run as Workflow IR, interpreted by `@xo/workflow-runtime`: the definition the readiness
@@ -832,6 +839,67 @@ export interface PreviewGeneratedRun {
   readonly input: Record<string, unknown>;
   readonly certificateId: unknown;
   readonly correlationId: string;
+  /** V1-1 (ADR 0049): build the items from this confirmed list or pairing. */
+  readonly items?: ItemSourceRef;
+}
+
+const SHOWN_EXCLUSIONS = 200;
+
+/** The fields of an item the workflow reads (`item.<field>` in an input or a template). */
+export function itemFieldsUsed(component: WorkflowComponent): string[] {
+  const text = JSON.stringify(component.workflows);
+  const out = new Set<string>();
+  for (const m of text.matchAll(/"from":"item\.([a-z][a-z0-9_]{0,63})"|\{\{\s*item\.([a-z][a-z0-9_]{0,63})\s*\}\}/g))
+    out.add(m[1] ?? m[2]!);
+  return [...out].sort();
+}
+
+/** The input a forEach workflow gets from a confirmed source, and the record of where its items came from. */
+async function inputFromSource(
+  deps: RunnerDeps,
+  workspace: WorkspaceRecord,
+  definition: WorkflowDefinitionRecord,
+  input: Record<string, unknown>,
+  ref: ItemSourceRef,
+): Promise<{ input: Record<string, unknown>; itemsSource: PreviewItemsSource }> {
+  const component = definition.lowered.component as WorkflowComponent | undefined;
+  const over = component?.workflows[0]?.forEach?.over;
+  if (component === undefined || over === undefined)
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, 'this workflow does not run once per item, so it takes no "items"');
+  if (Object.hasOwn(input, over))
+    throw new XoError(ErrorCode.INVALID_ARGUMENT, `give the items either as "items" or as input "${over}", not both`);
+  const built = await itemsFromConfirmedSource({ workspace, dataConfig: deps.dataConfig }, ref);
+  const missing = itemFieldsUsed(component).filter((f) => !built.fields.includes(f));
+  if (missing.length > 0)
+    throw new XoError(
+      ErrorCode.PRECONDITION_FAILED,
+      `"${built.source.label}" gives no ${missing.map((f) => `"${f}"`).join(', ')}, which this workflow reads for each item; its items have ${built.fields.map((f) => `"${f}"`).join(', ')}`,
+      { context: { missingFields: missing, fields: built.fields } },
+    );
+  if (built.items.length === 0)
+    throw new XoError(
+      ErrorCode.PRECONDITION_FAILED,
+      `"${built.source.label}" gives no items now (${built.excludedRows.length} row(s) left out)`,
+      {
+        context: { excludedRows: built.excludedRows.slice(0, SHOWN_EXCLUSIONS) },
+      },
+    );
+  return {
+    input: { ...input, [over]: built.items },
+    itemsSource: {
+      ...built.source,
+      over,
+      counts: {
+        items: built.items.length,
+        excludedRows: built.excludedRows.length,
+        excludedDocuments: built.excludedDocuments.length,
+        loose: built.looseRows.length,
+      },
+      excludedRows: built.excludedRows.slice(0, SHOWN_EXCLUSIONS),
+      excludedDocuments: built.excludedDocuments.slice(0, SHOWN_EXCLUSIONS),
+      looseRows: built.looseRows.slice(0, SHOWN_EXCLUSIONS),
+    },
+  };
 }
 
 /** UW-8: prepares a batch preview (author role). The same gates as a start apply; nothing is sent. */
@@ -844,13 +912,22 @@ export async function previewGeneratedRun(deps: RunnerDeps, p: PreviewGeneratedR
     target: { kind: 'workflow', id: safeId(definition.candidateWorkflowId) ?? 'workflow', workspaceId: workspace.workspaceId },
   };
   const certificateId = await requireStartable(deps, workspace, definition, p.certificateId, draft);
-  const preview = await computePreview(deps, workspace, definition, p.input, certificateId, actor.id);
+  const fromSource = p.items !== undefined ? await inputFromSource(deps, workspace, definition, p.input, p.items) : undefined;
+  const computed = await computePreview(deps, workspace, definition, fromSource?.input ?? p.input, certificateId, actor.id);
+  const preview: PreviewRecord = fromSource !== undefined ? { ...computed, itemsSource: fromSource.itemsSource } : computed;
   await new BatchStore(batchDir(runsDir(deps.dataConfig, workspace.workspaceId, definition.definitionId))).putPreview(preview);
   await deps.audit?.tryRecord({
     ...draft,
     type: 'generated-workflow.batch.previewed',
     outcome: 'completed',
-    metadata: { previewId: preview.previewId, items: preview.items.length, ...preview.counts },
+    metadata: {
+      previewId: preview.previewId,
+      items: preview.items.length,
+      ...preview.counts,
+      ...(preview.itemsSource !== undefined
+        ? { itemsFrom: preview.itemsSource.proposalId, excludedRows: preview.itemsSource.counts.excludedRows }
+        : {}),
+    },
   });
   return previewView(preview, undefined, undefined, {});
 }
@@ -878,6 +955,7 @@ export function previewView(
     createdBy: p.createdBy,
     createdAt: p.createdAt,
     expiresAt: p.expiresAt,
+    ...(p.itemsSource !== undefined ? { itemsSource: p.itemsSource } : {}),
     approvable: p.counts.not_exact === 0 && Date.parse(p.expiresAt) > Date.now() && approval === undefined,
     ...(approval !== undefined
       ? {
@@ -1024,7 +1102,26 @@ async function verifyBatchForStart(
   const preview = await bs.getPreview(p.previewId);
   const given = Object.keys(v.input).length > 0;
   if (given && digestOfJson(v.input) !== p.inputDigest) return refuse('input_changed', 'the input differs from the one that was approved');
-  const input = given ? v.input : (preview.input as Record<string, unknown>);
+  let input = given ? v.input : (preview.input as Record<string, unknown>);
+  // V1-1 (ADR 0049): items built from a confirmed source are built again now, from the files as they are; a changed list or
+  // document, or a pairing no longer confirmed, means the approved batch is not what would run.
+  const src = preview.itemsSource;
+  if (src !== undefined) {
+    const { [src.over]: _approved, ...rest } = input;
+    let rebuilt: Awaited<ReturnType<typeof inputFromSource>>;
+    try {
+      rebuilt = await inputFromSource(deps, workspace, definition, rest, { connectionId: src.connectionId, proposalId: src.proposalId });
+    } catch (e) {
+      if (!(e instanceof XoError)) throw e;
+      return refuse('source_unavailable', `the items cannot be built again from "${src.label}": ${e.message}`);
+    }
+    if (digestOfJson(rebuilt.input) !== p.inputDigest)
+      return refuse(
+        'source_changed',
+        `"${src.label}" in ${src.connectionName} changed since the batch was approved; prepare and approve a new preview`,
+      );
+    input = rebuilt.input;
+  }
   const runId = `run_${createHash('sha256').update(`batch\u0000${p.approvalId}`).digest('hex').slice(0, 32)}`;
   const prior = await bs.consumedBy(p.approvalId);
   if (prior !== undefined && prior.runId !== runId) return refuse('used', `the batch approval was already used for run ${prior.runId}`);
@@ -1479,9 +1576,9 @@ export function registerGeneratedRunRoutes(
     const workspace = await auditedOwnedWorkspace(req, auditCtx, { action: 'generated-workflow.batch', correlationId });
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'prepare a batch preview' });
     const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
-    const body = await req.json<{ input?: unknown; certificateId?: unknown }>();
+    const body = await req.json<{ input?: unknown; certificateId?: unknown; items?: unknown }>();
     if (!body.ok) throw body.error;
-    const unknown = Object.keys(body.value).filter((k) => k !== 'input' && k !== 'certificateId');
+    const unknown = Object.keys(body.value).filter((k) => k !== 'input' && k !== 'certificateId' && k !== 'items');
     if (unknown.length > 0) throw new XoError(ErrorCode.INVALID_ARGUMENT, `unknown field(s): ${unknown.join(', ')}`);
     const input = body.value.input ?? {};
     if (typeof input !== 'object' || input === null || Array.isArray(input))
@@ -1496,8 +1593,25 @@ export function registerGeneratedRunRoutes(
         input: input as Record<string, unknown>,
         certificateId: body.value.certificateId,
         correlationId,
+        ...(body.value.items !== undefined ? { items: parseItemSourceRef(body.value.items) } : {}),
       }),
     );
+  }
+
+  /** V1-1 (ADR 0049): the confirmed lists and pairings this workflow's items can come from, and whether each gives what it reads. */
+  async function itemSources(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig);
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const component = definition.lowered.component as WorkflowComponent | undefined;
+    const over = component?.workflows[0]?.forEach?.over;
+    if (component === undefined || over === undefined) return json(200, { forEach: false, sources: [] });
+    const needs = itemFieldsUsed(component);
+    const sources = (await listItemSources({ workspace, dataConfig })).map((s) => {
+      const missing = needs.filter((f) => !s.fields.includes(f));
+      return { ...s, missingFields: missing, usable: missing.length === 0 && s.items > 0 };
+    });
+    return json(200, { forEach: true, over, fieldsUsed: needs, sources });
   }
 
   async function getPreview(req: ApiRequest): Promise<ApiResponse> {
@@ -1727,6 +1841,7 @@ export function registerGeneratedRunRoutes(
   router.put('/workspaces/:workspaceId/connector-bindings', guarded(putBindings));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(start));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/previews', guarded(createPreview));
+  router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/item-sources', guarded(itemSources));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/previews/:previewId', guarded(getPreview));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/previews/:previewId/approve', guarded(approvePreview));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId/exceptions', guarded(exceptions));

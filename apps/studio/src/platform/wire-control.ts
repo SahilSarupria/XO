@@ -108,10 +108,85 @@ export interface BatchPreviewView {
   readonly expiresAt: string;
   readonly approvable: boolean;
   readonly approval?: BatchApprovalView;
+  /** V1-1 (ADR 0049): the items were built from this confirmed source, leaving these rows out. */
+  readonly itemsSource?: PreviewItemsSourceView;
   readonly page: number;
   readonly pages: number;
   readonly total: number;
   readonly items: readonly PreviewItemView[];
+}
+
+export interface PreviewItemsSourceView {
+  readonly label: string;
+  readonly connectionName: string;
+  readonly changedSinceConfirmation: boolean;
+  readonly items: number;
+  readonly excludedRows: number;
+  readonly loose: number;
+  /** Why rows were left out, counted by reason (from the bounded list the platform returns). */
+  readonly reasons: Readonly<Record<string, number>>;
+}
+
+function itemsSource(v: unknown, path: string): PreviewItemsSourceView | undefined {
+  if (v === undefined) return undefined;
+  const o = obj(v, path);
+  const c = obj(o['counts'], `${path}.counts`);
+  const reasons: Record<string, number> = {};
+  for (const [i, r] of arr(o['excludedRows'] ?? [], `${path}.excludedRows`).entries()) {
+    const why = str(obj(r, `${path}.excludedRows[${i}]`)['reason'], `${path}.excludedRows[${i}].reason`);
+    reasons[why] = (reasons[why] ?? 0) + 1;
+  }
+  return {
+    label: str(o['label'], `${path}.label`),
+    connectionName: str(o['connectionName'], `${path}.connectionName`),
+    changedSinceConfirmation: bool(o['changedSinceConfirmation'], `${path}.changedSinceConfirmation`),
+    items: num(c['items'], `${path}.counts.items`),
+    excludedRows: num(c['excludedRows'], `${path}.counts.excludedRows`),
+    loose: num(c['loose'], `${path}.counts.loose`),
+    reasons,
+  };
+}
+
+/** V1-1: a confirmed list or pairing a once-per-item workflow can take its items from. */
+export interface ItemSourceView {
+  readonly connectionId: string;
+  readonly proposalId: string;
+  readonly role: string;
+  readonly label: string;
+  readonly connectionName: string;
+  readonly items: number;
+  readonly excluded: number;
+  readonly missingFields: readonly string[];
+  readonly usable: boolean;
+}
+
+export interface ItemSourcesView {
+  readonly forEach: boolean;
+  readonly fieldsUsed: readonly string[];
+  readonly sources: readonly ItemSourceView[];
+}
+
+export function parseItemSources(v: unknown, path = 'itemSources'): ItemSourcesView {
+  const o = obj(v, path);
+  return {
+    forEach: bool(o['forEach'], `${path}.forEach`),
+    fieldsUsed: strArr(o['fieldsUsed'] ?? [], `${path}.fieldsUsed`),
+    sources: arr(o['sources'], `${path}.sources`).map((x, i) => {
+      const p = `${path}.sources[${i}]`;
+      const y = obj(x, p);
+      return {
+        connectionId: str(y['connectionId'], `${p}.connectionId`),
+        proposalId: str(y['proposalId'], `${p}.proposalId`),
+        role: str(y['role'], `${p}.role`),
+        label: str(y['label'], `${p}.label`),
+        connectionName: str(y['connectionName'], `${p}.connectionName`),
+        items: num(y['items'], `${p}.items`),
+        excluded: num(y['excluded'], `${p}.excluded`),
+        missingFields: strArr(y['missingFields'] ?? [], `${p}.missingFields`),
+        usable: bool(y['usable'], `${p}.usable`),
+      };
+    }),
+  };
 }
 
 function counts(v: unknown, path: string): PreviewCounts {
@@ -223,6 +298,7 @@ export function parseControlInbox(v: unknown): ControlInbox {
 export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewView {
   const o = obj(v, path);
   const a = approval(o['approval'], `${path}.approval`);
+  const src = itemsSource(o['itemsSource'], `${path}.itemsSource`);
   return {
     previewId: str(o['previewId'], `${path}.previewId`),
     definitionId: str(o['definitionId'], `${path}.definitionId`),
@@ -237,6 +313,7 @@ export function parseBatchPreview(v: unknown, path = 'preview'): BatchPreviewVie
     expiresAt: str(o['expiresAt'], `${path}.expiresAt`),
     approvable: bool(o['approvable'], `${path}.approvable`),
     ...(a !== undefined ? { approval: a } : {}),
+    ...(src !== undefined ? { itemsSource: src } : {}),
     page: num(o['page'], `${path}.page`),
     pages: num(o['pages'], `${path}.pages`),
     total: num(o['total'], `${path}.total`),

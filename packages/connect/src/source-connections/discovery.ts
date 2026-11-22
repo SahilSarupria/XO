@@ -67,7 +67,20 @@ export interface RoleProposal {
   readonly counts: Readonly<Record<string, number>>;
 }
 
-const DOCUMENT_EXTENSIONS = new Set(['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.eml', '.html', '.htm', '.txt', '.md']);
+export const DOCUMENT_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.pdf',
+  '.docx',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.eml',
+  '.html',
+  '.htm',
+  '.txt',
+  '.md',
+]);
 const TABLE_EXTENSIONS = new Set(['.xlsx', '.csv']);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_HEADER = /\b(?:name|client|customer|insured|member|employee|contact|person|party|holder|policyholder|student|patient)\b/;

@@ -69,6 +69,101 @@ describe('the control surface', () => {
     expect(api.generatedRuns).toHaveLength(0);
   });
 
+  const perItemSource = (over: Partial<Record<string, unknown>> = {}) => ({
+    connectionId: `scn_${'1'.repeat(24)}`,
+    proposalId: `rol_${'2'.repeat(16)}`,
+    role: 'per_person_documents',
+    label: "each client's certificate",
+    connectionName: 'Renewals',
+    digests: [],
+    changedSinceConfirmation: false,
+    fields: ['client_name', 'email', 'document_sha256', 'document_name', 'document_type'],
+    items: 3,
+    excluded: 1,
+    missingFields: [],
+    usable: true,
+    ...over,
+  });
+  const startPerItem = async (api: FakeXo): Promise<Awaited<ReturnType<typeof signedIn>>> => {
+    api.approvals.all = true;
+    api.certificateStatus = 'READY';
+    api.requireCertificate = true;
+    api.irOnly = true;
+    api.runApprovalRequired = true;
+    const user = await signedIn(api);
+    await user.click(screen.getByRole('button', { name: /^my xos/i }));
+    await user.upload(
+      document.getElementById('file-upload') as HTMLInputElement,
+      new File(['%PDF'], 'procedure.pdf', { type: 'application/pdf' }),
+    );
+    await user.click(await screen.findByRole('button', { name: /^analyse$/i }));
+    await screen.findByText(/settlement amount must be recorded/i);
+    await openScreen(user, 'Work');
+    await user.click(await findStart(user));
+    return user;
+  };
+
+  it('V1-1: a process that runs once per item takes its items from the one confirmed source that gives them', async () => {
+    const api = new FakeXo();
+    api.itemSources = {
+      forEach: true,
+      over: 'client_items',
+      fieldsUsed: ['document_sha256', 'email'],
+      sources: [
+        perItemSource(),
+        perItemSource({
+          proposalId: `rol_${'3'.repeat(16)}`,
+          role: 'contact_list',
+          label: 'a client list',
+          usable: false,
+          missingFields: ['document_sha256'],
+        }),
+      ],
+    };
+    const user = await startPerItem(api);
+    expect(
+      await screen.findByText(/from each client's certificate in Renewals; 1 left out\)\. A reviewer approves it in the Inbox/),
+    ).toBeInTheDocument();
+    expect(api.previews.map((p) => p.items)).toEqual([{ connectionId: `scn_${'1'.repeat(24)}`, proposalId: `rol_${'2'.repeat(16)}` }]);
+    // The reviewer sees where the items came from and who was left out, and why.
+    await openScreen(user, 'Inbox');
+    expect(
+      await screen.findByText("Items from each client's certificate in Renewals. 1 row was left out: no document found (1)."),
+    ).toBeInTheDocument();
+  });
+
+  it('V1-1: with no confirmed source that gives what it needs, it says so and prepares nothing', async () => {
+    const none = new FakeXo();
+    none.itemSources = {
+      forEach: true,
+      fieldsUsed: ['document_sha256', 'email'],
+      sources: [perItemSource({ role: 'contact_list', label: 'a client list', usable: false, missingFields: ['document_sha256'] })],
+    };
+    await startPerItem(none);
+    expect(
+      await screen.findByText(
+        /no confirmed source gives what it needs for each one \(document_sha256, email\)\. a client list in Renewals lacks document_sha256\./,
+      ),
+    ).toBeInTheDocument();
+    expect(none.previews).toHaveLength(0);
+  });
+
+  it('V1-1: with more than one usable source, it does not pick between them', async () => {
+    const two = new FakeXo();
+    two.itemSources = {
+      forEach: true,
+      fieldsUsed: ['email'],
+      sources: [perItemSource(), perItemSource({ proposalId: `rol_${'3'.repeat(16)}`, label: 'a client list', connectionName: 'Office' })],
+    };
+    await startPerItem(two);
+    expect(
+      await screen.findByText(
+        /more than one confirmed source could give its items \(each client's certificate in Renewals; a client list in Office\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(two.previews).toHaveLength(0);
+  });
+
   it('shows the batch (counts, sending account, exceptions first), approves the root shown, and starts it with the approval', async () => {
     const api = new FakeXo();
     api.previews.push(preview('ana'));
