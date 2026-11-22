@@ -26,12 +26,14 @@ import {
 import type { AuthResult } from '../auth/oidc';
 import {
   parseCertificateCheck,
+  parseEmailTiers,
   parseGeneratedRun,
   parseGeneratedRunList,
   type GeneratedRunView,
   parseGeneratedWorkflowReply,
   parseReadinessCertificate,
   type CertificateCheck,
+  type EmailTierLine,
   type ReadinessCertificateView,
 } from './wire-readiness';
 import {
@@ -1114,6 +1116,10 @@ export class XoClient {
     );
   }
   /** Whether a certificate still allows a start: the same check the start gate makes. */
+  /** UW-10: how each email binding of the workspace sends (tier, lookup, plain words). */
+  emailTiers(ws: string): Promise<Result<EmailTierLine[]>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/connector-bindings`, parseEmailTiers);
+  }
   checkReadinessCertificate(ws: string, certificateId: string): Promise<Result<CertificateCheck>> {
     return this.call('GET', `/workspaces/${enc(ws)}/readiness-certificates/${enc(certificateId)}/verify`, parseCertificateCheck);
   }

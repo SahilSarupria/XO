@@ -12,7 +12,7 @@ or create a workflow entity (`/workspaces/{ws}/workflow-entities`) with the same
 | `selection.status: needs_clarification` / `no_match` | One question: which of these workflows, or name a section or the steps needed.                                  |
 | `lowered.complete: false`                            | A step with no connector bound is reported, not invented.                                                       |
 
-**Free text:** `POST .../intent-proposals` `{ text }` works only when the instance configures a proposer (a model behind the UW-14 guard). Default: 501.
+**Free text:** `POST .../intent-proposals` `{ text }` goes to the workspace's selected model only as a typed request through the UW-14 guard (fixed template plus the filtered text). With no model that may take one (in `strict_local`, a local model), 501.
 Its answer is untrusted: parsed strictly, composed like a person's goal; unknown fields and invented capabilities change nothing.
 
 Tests: `packages/pre-execution/test/intent.test.ts`, `intent-injection-corpus.test.ts`, `apps/api/test/intent-proposals.test.ts`.

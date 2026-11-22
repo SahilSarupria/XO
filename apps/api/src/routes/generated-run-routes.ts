@@ -41,6 +41,7 @@ import { FsControlsStore } from '../workflow-controls/fs-controls-store.js';
 import { enforceNotPaused } from '../workflow-controls/service.js';
 import { exceptionReport } from '../workflow-controls/exceptions.js';
 import { checkDataDrift, driftSummary } from '../drift/data-drift.js';
+import { emailTierOf } from '../email/mail-adapter.js';
 import { adapterFor, installedAdapterIds, workspaceStateStore } from '../workspace/workspace-context.js';
 import { workspaceWorkflowEntitiesStore } from '../workflow-entities/entity-store.js';
 
@@ -673,7 +674,28 @@ export function registerGeneratedRunRoutes(
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     const stored = await readConnectorBindings(workspace, dataConfig);
     const available = installedAdapterIds(dataConfig);
-    return json(200, { ...stored, bindings: stored.bindings.map((b) => ({ ...b, adapterInstalled: available.has(b.adapter) })) });
+    // UW-10: for an email binding with a connection, the tier it sends in and what that means (shown in Studio's pre-start check).
+    const tiers = new Map<string, ReturnType<typeof emailTierOf>>();
+    const emailCreds = [
+      ...new Set(stored.bindings.flatMap((b) => (b.adapter === 'email' && b.credentialId !== undefined ? [b.credentialId] : []))),
+    ];
+    if (emailCreds.length > 0) {
+      const config = await (dataConfig.credentials ?? (() => loadCredentialsConfig(dataConfig.dataRootDir, env)))().catch(() => undefined);
+      if (config !== undefined) {
+        const broker = workspaceBroker(workspace, dataConfig.dataRootDir, config);
+        for (const id of emailCreds) {
+          const c = await broker.describe(id).catch(() => undefined);
+          if (c !== undefined) tiers.set(id, emailTierOf(c));
+        }
+      }
+    }
+    return json(200, {
+      ...stored,
+      bindings: stored.bindings.map((b) => {
+        const tier = b.credentialId !== undefined ? tiers.get(b.credentialId) : undefined;
+        return { ...b, adapterInstalled: available.has(b.adapter), ...(tier !== undefined ? { emailTier: tier } : {}) };
+      }),
+    });
   }
 
   /** Replaces the workspace's connector bindings (manage role, recent sign-in, revision-guarded, audited). */

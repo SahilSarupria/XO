@@ -42,7 +42,6 @@ export interface WorkspaceDataConfig {
    * UW-6 (ADR 0043): turns free text into the text of a structured proposal. Absent by default (`strict_local`: no model). In a
    * deployment it must call a model only through the UW-14 guard with a typed request; its answer is untrusted and is only parsed.
    */
-  readonly intentProposer?: (text: string, signal?: AbortSignal) => Promise<string>;
   /**
    * ADR 0030 — the pre-execution host: adapters that carry out connector bindings (act steps of generated workflows), and
    * whether every workflow start needs a readiness certificate (`XO_READINESS_CERTIFICATE`; `required` in production).

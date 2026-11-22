@@ -134,8 +134,8 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
 - **Email (UW-10 part a, ADR 0041):**
   - Verified only against local fake SMTP, IMAP, Gmail and Graph servers. Real-provider behaviour (TLS/STARTTLS, OAuth, Message-ID
     handling, throttling, limits) was not verified.
-  - Tier 1 (Gmail, Graph) cannot look up a sent message: `gmail.send` and `Mail.Send` cannot search, and the broker has no read-mail
-    capability. Until the owner adds one, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
+  - Tier 1 (Gmail, Graph) looks up a sent message only with the optional `mail.lookup` capability (`gmail.readonly`, a Google
+    restricted scope; Microsoft `Mail.ReadBasic`); without it, tier 1 behaves like tier 3 on an unknown outcome. Whether Gmail or Exchange keep our Message-ID is unverified.
   - Graph refuses messages over 3 MB; Gmail large messages use the upload endpoint, untested against Google.
   - Pacing and the daily cap are in memory per connector instance: a restart resets them.
   - Bounces and delivery status are not tracked (DSN parsing is deferred); the transactional-email tier is not built.
@@ -144,13 +144,12 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - An app-password connection gets tier 2 only if its host reads `smtp-host[:port]|imap-host[:port]`; otherwise tier 3. There is no dedicated IMAP field.
   - Recipients: confirmed contact lists (re-confirm after the table changes) and explicit rules. UW-5 claims are not read as a recipient source.
   - Typed run inputs are scalars, so a send takes one recipient and one attachment (flat form); a multi-recipient send needs the list form from a step, not the run input.
-  - The Studio tier text is not shown yet (the provider-guess route returns it).
   - Email limits are instance-wide settings, not per connection. A connection revoked after a readiness certificate was issued is caught at use time, not by the certificate.
 - **Intent composition (UW-6, ADR 0043):**
   - A bare instruction line planted in a source document compiles into a task for a person (or, if it sounds automated, an unbound capability that stops
     composition). It cannot act; each compiled capability must still be approved. Text alone cannot tell it from a genuine step.
   - Needs are matched by name (the inventory's normalisation), not by meaning; a loosely named need is reported as a gap.
-  - Free text needs an instance `intentProposer`; none is wired to the UW-14 guard, so the default (`strict_local`) answers 501. Model behaviour was tested only with a scripted proposer.
+  - Free text needs a selected model that may take a typed request (in `strict_local`, a local one); otherwise 501. It goes only through the UW-14 guard and the typed boundary. Model behaviour was tested only with stand-in providers.
   - The `needs_model` step and its use of the reversible-token vault are not built (no such IR step); the vault still has no consumer.
   - Composition builds on compiled sources only; it does not compose a workflow from nothing.
 - **Automation, drift and reuse (UW-15, ADR 0044):**

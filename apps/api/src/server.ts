@@ -103,7 +103,6 @@ export interface ServerDeps {
   /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
   readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
   /** UW-6: free text to the text of a structured proposal (a model behind the UW-14 guard). Default: none. */
-  readonly intentProposer?: (text: string, signal?: AbortSignal) => Promise<string>;
   /** UW-10c: per-workspace adapters. Default: the `email` adapter (message.send). */
   readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
   /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */
@@ -314,7 +313,6 @@ export function buildRouter(deps: ServerDeps = {}): Router {
     // UW-3: local OCR for scans and photos by default; throws on invalid configuration so startup fails visibly.
     // UW-14: a hosted vision tier is refused unless residency allows sending page images.
     extraction: deps.extraction ?? extractionFromEnv(deps.env ?? process.env, undefined, residency),
-    ...(deps.intentProposer !== undefined ? { intentProposer: deps.intentProposer } : {}),
     preExecution: {
       connectorAdapters: deps.connectorAdapters ?? new Map(),
       adapterFactories: deps.adapterFactories ?? new Map([['email', emailAdapterFactory]]),

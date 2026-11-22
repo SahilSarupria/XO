@@ -4,7 +4,7 @@ One `message.send` contract, three tiers. See ADR 0041.
 
 | Tier          | Hosts                          | Sends by                                | Checks what was sent                                                         |
 | ------------- | ------------------------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
-| 1 native      | Gmail, Microsoft 365 / Outlook | provider API with your sign-in          | only with a read capability (not granted today); otherwise a person confirms |
+| 1 native      | Gmail, Microsoft 365 / Outlook | provider API with your sign-in          | only with the optional `mail.lookup` capability; otherwise a person confirms |
 | 2 SMTP + IMAP | Yahoo, Zoho, many custom hosts | SMTP, then Sent-folder search over IMAP | yes: by Message-ID, three tries over two minutes                             |
 | 3 send only   | SMTP-only hosts                | SMTP, paced at one send per 5 seconds   | never: a person confirms every uncertain send                                |
 
@@ -31,3 +31,4 @@ Bind the declared send operation to adapter `email` (`PUT /workspaces/{ws}/conne
 Inputs: `to`, `subject`, `body`, and optionally `attachmentSha256` (+ `attachmentFilename`, `attachmentContentType`), or the list form `to: [...]`, `attachments: [...]`.
 Who may be emailed: people in confirmed contact lists, plus `PUT /workspaces/{ws}/email/recipient-rules` (manage role, recent sign-in).
 Attachments are workspace sources, named by the SHA-256 of their bytes. App passwords: host `smtp.example.com:587|imap.example.com` for tier 2, `smtp.example.com:587` for tier 3.
+Before a start, Studio's pre-start check says how each email connection sends (`emailTier` on `GET …/connector-bindings`: tier, whether it can look up a sent message, plain words).

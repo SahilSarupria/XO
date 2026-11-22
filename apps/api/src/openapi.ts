@@ -1797,7 +1797,7 @@ export const openApiDocument = {
       get: {
         summary: 'The workspace connector bindings (ADR 0030)',
         description:
-          'How each declared operation is carried out: `{ revision, bindings: [{ capability, connector, kind, operation, sideEffect, compensation?, adapter, adapterInstalled }] }`, where `adapterInstalled` says whether this server has the host adapter the binding names. Act and compensate steps are generated only from these.',
+          'How each declared operation is carried out: `{ revision, bindings: [{ capability, connector, kind, operation, sideEffect, compensation?, adapter, adapterInstalled }] }`, where `adapterInstalled` says whether this server has the host adapter the binding names. An `email` binding with a connection also has `emailTier: { tier: native_api|smtp_imap|send_only, lookup, explanation }` (UW-10): the tier it sends in, whether it can look up a sent message, and what that means in plain words. Act and compensate steps are generated only from these.',
         'x-xo-permission': 'read',
         parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
         responses: {
