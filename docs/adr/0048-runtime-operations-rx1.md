@@ -71,3 +71,62 @@ Accepted under the owner's delegation, 2026-11-23. Implements the RX-1 items pro
 
 - Runs admitted before this change have no manifest (404); their bundle has no `manifest`.
 - An item of a batch has no manifest of its own: its batch's manifest covers it.
+
+## RX-1c: Connector rate limits
+
+### Context
+
+- The engine had a per-connector token bucket (`RateLimiters`), but the API never set one.
+- A provider's "slow down" stopped work. Gmail's `rateLimitExceeded` and every Graph 429 were treated as the daily quota: every later send that day was refused untried (UW-10). The engine also had no way to honour a requested pause.
+
+### Decision
+
+1. **`XO_CONNECTOR_RATE_LIMITS`** (settings registry): `<connector>=<perSecond>[/<burst>]`, comma-separated, with `*` as the default. Unset means no XO limit. An invalid value stops start-up.
+   - One limiter set per workspace for the life of the process, shared by every runner, so the pace holds across requests and batches.
+   - A call whose slot would come after its step deadline fails `RATE_LIMITED` without being sent (the engine's existing check).
+2. **A provider's "slow down" is a pause, not a stop.**
+   - `ConnectorError` gains the code `RATE_LIMITED` and `retryAfterMs`. The adapter contract's `confirmed_failure_no_effect` gains `retryAfterMs` (code `rate_limited`).
+   - The mail connectors map Gmail 429, `rateLimitExceeded` and `userRateLimitExceeded`, and Graph throttling, to it, with the `Retry-After` the provider sent (bounded to 1 s to 10 min; 2 s when absent).
+   - The daily quota (Gmail `dailyLimitExceeded`/`quotaExceeded`, Graph message-limit errors) still stops the day's sends, as UW-10 decided.
+3. **The engine honours the pause.** A refused call that provably did nothing:
+   - records the pause in the limiter (`backoff`), so every later call to that connector queues behind it;
+   - is made again after the pause, at most 5 times, while that fits the step deadline;
+   - otherwise fails `RATE_LIMITED`, provably not sent.
+   - A "slow down" does not count toward opening the circuit breaker.
+
+### Consequences
+
+- Mandatory scenario 14 holds end to end (`rate-limits.test.ts`): pacing across a batch, a requested pause honoured with each item sent once, and a pause past the deadline failing without sending. Calls that already held a slot when the pause began may still go; none starts after it.
+- Limits are per process, as `RateLimiters` documents. Several processes sharing a provider each keep their own pace.
+- This supersedes UW-10's "never retried automatically" for short-term throttling only.
+
+## RX-1d: Domain Knowledge Pack pinning
+
+### Context
+
+A certificate bound the knowledge state, and the state pins the packs it was built with. A pack installed later was not a new state, so it did not make a certificate stale.
+
+### Decision
+
+- The certificate bindings gain `packs`: every Domain Knowledge Pack installed in the workspace, as `packId`, `namespace`, `version` and `digest`. At admission, a pack removed, added or changed makes the certificate stale, so the start is refused, naming the pack.
+- The run manifest records the pinned packs.
+- Certificates issued before RX-1d carry no `packs` and are not checked for them.
+- There is no pack revocation in the knowledge base. Removing a pack is how it stops being trusted, and that refuses the start.
+
+## RX-1e: Replay and explain over the API
+
+### Decision
+
+- **Replay:** `GET …/runs/{runId}/replay` (read role) rebuilds the run, or an item, from its verified journal under the stored definition. Nothing runs or is sent.
+  - It reports `reproducible: false`, with reasons, when:
+    - there is no manifest;
+    - the manifest does not match its digest;
+    - the stored definition is not the one admitted;
+    - the journal names another workflow version;
+    - a pinned pack was removed or changed (a pack added since does not matter).
+  - An item is checked against its batch's manifest.
+- **Explain:** `GET …/runs/{runId}/explain` (read role) returns the engine's explanation, plus the same in plain lines.
+
+### Consequences
+
+- Mandatory scenario 17 holds: replay uses the pinned versions and says when it cannot (`pack-pinning.test.ts`).

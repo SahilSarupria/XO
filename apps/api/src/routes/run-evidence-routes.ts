@@ -1,6 +1,15 @@
 import { NotFoundError } from '@xo/errors';
 import { actorFromPrincipal } from '@xo/audit';
-import { RunStore, buildAuditBundle, verifyAuditBundle, type AuditBundle } from '@xo/workflow-runtime';
+import {
+  RunStore,
+  buildAuditBundle,
+  explainRun,
+  renderExplanation,
+  replayRun,
+  verifyAuditBundle,
+  type AuditBundle,
+} from '@xo/workflow-runtime';
+import { packChanges } from '@xo/pre-execution';
 import { canonicalJson, type WorkflowComponent } from '@xo/workflow-ir';
 import type { PermissionManager } from '@xo/permissions';
 import type { Router } from '../http/router.js';
@@ -13,7 +22,8 @@ import type { AuditService } from '../audit/audit-service.js';
 import { newCorrelationId, safeId } from '../audit/audit-service.js';
 import { approvalKeyring, currentPublicKeys } from '../pre-execution/approval-keys.js';
 import { digestOfJson } from '../approvals/batch-approval.js';
-import { readManifest, type StoredManifest } from '../runs/run-manifest.js';
+import { componentSha256, readManifest, type StoredManifest } from '../runs/run-manifest.js';
+import { workspaceKnowledgeBase } from './knowledge-routes.js';
 import { runsDir } from './generated-run-routes.js';
 import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-execution-routes.js';
 
@@ -23,6 +33,9 @@ import { workspaceDefinitionsStore, type WorkflowDefinitionRecord } from './pre-
  *   - `GET …/runs/{runId}/audit-bundle` (audit role): the engine's signed audit bundle of the run and, for a batch, every item: each
  *     journal with its hash chain, a Merkle root over the heads, the component digest, the connector grants and the manifest, signed
  *     with the instance's approval key;
+ *   - RX-1e: `GET …/runs/{runId}/replay` and `GET …/runs/{runId}/explain` (read role): the run rebuilt from its verified journal
+ *     under the definition it was admitted with, marked not reproducible when a pinned piece is gone or changed; and why each step
+ *     did what it did;
  *   - `POST /workspaces/{id}/audit-bundles/verify` (read role): checks a bundle against this instance's keyring: the signature, the
  *     Merkle root, every chain, and the manifest's digest. Anyone holding the public key can check the same offline.
  */
@@ -104,6 +117,64 @@ export async function verifyBundle(
   };
 }
 
+/**
+ * RX-1e (ADR 0048): rebuilds a run from its journal (the hash chain is verified while reading) under the stored definition, and says
+ * whether that replay is faithful to what ran: the definition must be the one the manifest pinned, the journal must name it, and
+ * every Domain Knowledge Pack the run pinned must still be installed unchanged. Nothing is executed or sent.
+ */
+export async function replayOf(
+  dataConfig: WorkspaceDataConfig,
+  workspace: WorkspaceRecord,
+  definition: WorkflowDefinitionRecord,
+  runId: string,
+): Promise<Record<string, unknown>> {
+  const dir = runsDir(dataConfig, workspace.workspaceId, definition.definitionId);
+  const store = new RunStore(dir);
+  const entries = RUN_ID.test(runId) ? await store.read(runId).catch(() => []) : [];
+  if (entries.length === 0) throw new NotFoundError(`run "${runId}"`);
+  const component = definition.lowered.component as WorkflowComponent | undefined;
+  if (component === undefined) throw new NotFoundError(`a runnable definition for run "${runId}"`);
+  const wf = component.workflows[0]!;
+  const reasons: string[] = [];
+  const started = entries[0]!.data as { workflow?: unknown; version?: unknown; parent?: unknown };
+  if (started.workflow !== wf.id || started.version !== wf.version)
+    reasons.push(
+      `the journal names workflow ${String(started.workflow)} ${String(started.version)}, not the stored ${wf.id} ${wf.version}`,
+    );
+  // An item of a batch is covered by its batch's manifest.
+  const manifestOf = typeof started.parent === 'string' ? started.parent : runId;
+  const m = await readManifest(dir, manifestOf);
+  if (m === undefined)
+    reasons.push('the run has no manifest (it was admitted before manifests were recorded), so what it was bound to cannot be checked');
+  else {
+    if (m.digest === 'mismatch') reasons.push('the run manifest does not match its digest');
+    if (m.manifest.componentSha256 !== componentSha256(component))
+      reasons.push('the stored definition is not the one the run was admitted with');
+    const installed = (await (await workspaceKnowledgeBase(workspace, dataConfig)).packs())
+      .bindings()
+      .map((p) => ({ packId: p.packId, namespace: p.namespace, version: p.version, digest: String(p.digest) }));
+    // A pack installed since does not change what this run used; one removed or changed does.
+    reasons.push(...packChanges(m.manifest.packs, installed).filter((c) => !c.endsWith(' was added')));
+  }
+  const rec = replayRun(entries, wf, runId);
+  return {
+    runId,
+    reproducible: reasons.length === 0,
+    reasons,
+    journalEntries: entries.length,
+    ...(m !== undefined ? { manifestDigest: m.digest } : {}),
+    replayed: {
+      state: rec?.state ?? 'unknown',
+      steps: [...(rec?.steps ?? new Map())].map(([step, x]) => ({
+        step,
+        state: (x as { state: string }).state,
+        attempts: (x as { attempt?: number }).attempt ?? 0,
+      })),
+      ...(rec?.escalation !== undefined ? { escalation: rec.escalation } : {}),
+    },
+  };
+}
+
 export function registerRunEvidenceRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -153,6 +224,26 @@ export function registerRunEvidenceRoutes(
     return json(200, b);
   }
 
+  async function replay(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'replay a run' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    return json(200, await replayOf(dataConfig, workspace, definition, req.params['runId'] ?? ''));
+  }
+
+  async function explain(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'explain a run' });
+    const definition = await workspaceDefinitionsStore(workspace, dataConfig).get(req.params['definitionId'] ?? '');
+    const runId = req.params['runId'] ?? '';
+    const component = definition.lowered.component as WorkflowComponent | undefined;
+    const store = new RunStore(runsDir(dataConfig, workspace.workspaceId, definition.definitionId));
+    if (component === undefined || !RUN_ID.test(runId) || (await store.read(runId).catch(() => [])).length === 0)
+      throw new NotFoundError(`run "${runId}"`);
+    const x = await explainRun(store, component.workflows[0]!, runId);
+    return json(200, { ...x, text: renderExplanation(x) });
+  }
+
   async function verify(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'read', dataConfig, { action: 'verify an audit bundle' });
@@ -163,5 +254,7 @@ export function registerRunEvidenceRoutes(
 
   router.get(`${base}/manifest`, guarded(manifest));
   router.get(`${base}/audit-bundle`, guarded(bundle));
+  router.get(`${base}/replay`, guarded(replay));
+  router.get(`${base}/explain`, guarded(explain));
   router.post('/workspaces/:workspaceId/audit-bundles/verify', guarded(verify));
 }

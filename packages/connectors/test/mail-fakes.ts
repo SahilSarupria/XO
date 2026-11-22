@@ -131,6 +131,8 @@ export async function fakeImap(
 export interface FakeGmailOptions {
   /** After this many successful sends, answer 429. */
   limitAfter?: number;
+  /** The reason in that answer (default `rateLimitExceeded`, a short-term pause; `dailyLimitExceeded` is the daily quota). */
+  limitReason?: string;
   /** Answer 500 to every send (after accepting it: the message IS stored, as a real 5xx can hide an accepted send). */
   fail500AfterStoring?: boolean;
 }
@@ -153,8 +155,10 @@ export async function fakeGmail(
       );
       if (!/^Bearer fake-token/.test(req.headers.authorization ?? '')) return send(401, { error: 'unauthenticated' });
       if (req.method === 'POST' && req.url?.includes('/messages/send')) {
-        if (opts.limitAfter !== undefined && ok >= opts.limitAfter)
-          return send(429, { error: { errors: [{ reason: 'rateLimitExceeded' }] } });
+        if (opts.limitAfter !== undefined && ok >= opts.limitAfter) {
+          res.setHeader('retry-after', '3');
+          return send(429, { error: { errors: [{ reason: opts.limitReason ?? 'rateLimitExceeded' }] } });
+        }
         const raw = req.url.startsWith('/upload')
           ? body
           : Buffer.from((JSON.parse(body) as { raw: string }).raw, 'base64url').toString('utf8');
@@ -186,7 +190,7 @@ export async function fakeGmail(
 
 export async function fakeGraph(
   box: FakeMailbox,
-  opts: { limitAfter?: number } = {},
+  opts: { limitAfter?: number; limitBody?: unknown } = {},
 ): Promise<{ baseUrl: string; requests: () => string[]; close: () => Promise<void> }> {
   const reqs: string[] = [];
   let ok = 0;
@@ -201,7 +205,10 @@ export async function fakeGraph(
       );
       if (!/^Bearer fake-token/.test(req.headers.authorization ?? '')) return send(401, {});
       if (req.method === 'POST' && req.url === '/v1.0/me/sendMail') {
-        if (opts.limitAfter !== undefined && ok >= opts.limitAfter) return send(429, {});
+        if (opts.limitAfter !== undefined && ok >= opts.limitAfter) {
+          res.setHeader('retry-after', '5');
+          return send(429, opts.limitBody ?? {});
+        }
         const raw = Buffer.from(Buffer.concat(chunks).toString('utf8'), 'base64').toString('utf8');
         box.messages.push({ from: '', to: [], data: raw });
         const id = idOf(raw);

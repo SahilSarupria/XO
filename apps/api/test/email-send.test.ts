@@ -165,7 +165,8 @@ const handle = (
 
 test('the email adapter sends through Gmail with a hash-checked attachment and maps results to effect states', async () => {
   const box = newMailbox();
-  const gm = await fakeGmail(box, { limitAfter: 1 });
+  // RX-1c: the daily quota stops the batch; a short-term pause is RATE_LIMITED instead (packages/connectors/test/mail.test.ts).
+  const gm = await fakeGmail(box, { limitAfter: 1, limitReason: 'dailyLimitExceeded' });
   try {
     const adapter = createMailAdapter({
       env: {},

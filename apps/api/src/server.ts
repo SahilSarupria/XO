@@ -1,4 +1,5 @@
 import { createMailAdapter } from './email/mail-adapter.js';
+import { parseConnectorRateLimits } from './workflow-controls/connector-rate-limits.js';
 import { workspaceAttachmentStore } from './email/attachments.js';
 import { confirmedContactEmails } from './email/confirmed-contacts.js';
 import { readRecipientRules } from './email/recipient-rules.js';
@@ -303,6 +304,8 @@ export function buildRouter(deps: ServerDeps = {}): Router {
         };
       },
     });
+  // RX-1c: an invalid connector rate limit stops start-up here, visibly, rather than at the first call.
+  parseConnectorRateLimits((deps.env ?? process.env)['XO_CONNECTOR_RATE_LIMITS']);
   const workspaceDataConfig: WorkspaceDataConfig = {
     dataRootDir,
     // UW-9: injected (tests), or loaded once from the instance environment.

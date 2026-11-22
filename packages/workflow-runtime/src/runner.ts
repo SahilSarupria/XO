@@ -1752,6 +1752,11 @@ export class WorkflowRunner {
    * After a crash: outcome present => reuse it, never call again; intent without outcome => call again with the SAME key (the
    * external system dedupes if it supports idempotency; if it does not, a duplicate is possible and is documented, not hidden).
    */
+  /**
+   * RX-1c: a call the destination refused with "slow down" (nothing was done) is made again after the pause it asked for, through the
+   * rate limiter (so other calls to it queue behind the pause too), for as long as the step's deadline allows and at most 5 times.
+   * Past the deadline the step fails RATE_LIMITED, provably not sent; nothing hammers the destination.
+   */
   private async callConnector(
     runId: string,
     step: ActStep | CompensateStep,
@@ -1759,6 +1764,26 @@ export class WorkflowRunner {
     isCompensation: boolean,
     sr?: StepRec,
   ): Promise<{ ok: true; data: Json } | { ok: false; code: string; message: string; cancel?: CancelRequest }> {
+    const deadline = this.now() + step.timeoutMs;
+    for (let tries = 1; ; tries++) {
+      const r = await this.callConnectorOnce(runId, step, rec, isCompensation, sr);
+      if (r.ok || r.code !== 'RATE_LIMITED' || r.retryAfterMs === undefined) return r;
+      const pause = Math.max(r.retryAfterMs, 1);
+      // Every later call to this destination honours the pause, whether or not this one is tried again.
+      this.o.rateLimits?.backoff(step.connector, pause);
+      if (tries >= 5 || this.now() + pause >= deadline)
+        return { ok: false, code: 'RATE_LIMITED', message: `${r.message}; the next attempt would pass the step deadline` };
+      if (this.o.rateLimits === undefined) await this.sleep(pause);
+    }
+  }
+
+  private async callConnectorOnce(
+    runId: string,
+    step: ActStep | CompensateStep,
+    rec: RunRec,
+    isCompensation: boolean,
+    sr?: StepRec,
+  ): Promise<{ ok: true; data: Json } | { ok: false; code: string; message: string; cancel?: CancelRequest; retryAfterMs?: number }> {
     const { store } = this.o;
     if (sr?.callOutcome !== undefined)
       return sr.callOutcome.ok
@@ -1851,12 +1876,19 @@ export class WorkflowRunner {
       callResult = res;
     } catch (e) {
       const ce = e instanceof ConnectorError ? e : new ConnectorError('FAILED', (e as Error).message);
-      if (TRANSIENT.has(ce.code)) this.breakers.failure(step.connector);
+      // A "slow down" is the destination working as intended, not a fault: it does not count toward opening the circuit.
+      if (TRANSIENT.has(ce.code) && ce.code !== 'RATE_LIMITED') this.breakers.failure(step.connector);
       // Permanent refusals are final and recorded. A transient failure is NOT an outcome: the destination may have acted, so the intent stays pending and
       // the next attempt must settle it (see settlePriorAttempt) before sending again. Unless the failure proves nothing was sent.
       if (!TRANSIENT.has(ce.code)) await store.append(runId, 'call_outcome', { step: step.id, ok: false, code: ce.code });
       else if (ce.effect === 'none') await store.append(runId, 'call_not_sent', { step: step.id, code: ce.code });
-      return { ok: false, code: ce.code, message: ce.message };
+      return {
+        ok: false,
+        code: ce.code,
+        message: ce.message,
+        // Only a refusal that provably did nothing is retried after a pause.
+        ...(ce.code === 'RATE_LIMITED' && ce.effect === 'none' ? { retryAfterMs: ce.retryAfterMs ?? 1_000 } : {}),
+      };
     } finally {
       release();
     }

@@ -193,7 +193,7 @@ export class ConnectorHost {
     } catch (e) {
       const ce = e instanceof ConnectorError ? e : new ConnectorError('FAILED', (e as Error).message);
       finish({ sideEffect: se, outcome: 'error', errorCode: ce.code });
-      throw new ConnectorError(ce.code, this.redactor.redact(ce.message), ce.effect);
+      throw new ConnectorError(ce.code, this.redactor.redact(ce.message), ce.effect, ce.retryAfterMs);
     } finally {
       clearTimeout(timer);
     }

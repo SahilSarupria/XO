@@ -71,7 +71,9 @@ export type ConnectorErrorCode =
   | 'MISSING_IDEMPOTENCY_KEY'
   | 'DENIED'
   | 'TIMEOUT'
-  | 'FAILED';
+  | 'FAILED'
+  /** RX-1c: the destination asked the caller to slow down; nothing was done. Retried after `retryAfterMs`, within the step's deadline. */
+  | 'RATE_LIMITED';
 
 export class ConnectorError extends Error {
   constructor(
@@ -79,6 +81,8 @@ export class ConnectorError extends Error {
     message: string,
     /** `none`: failed BEFORE anything could have reached the destination (so repeating cannot duplicate). Default: unknown, which is treated as possibly-delivered. */
     readonly effect?: 'none',
+    /** RX-1c: for RATE_LIMITED, how long the destination asked the caller to wait, when it said. */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'ConnectorError';

@@ -124,6 +124,14 @@ export const SETTINGS: readonly SettingSpec[] = [
       'What a schedule does about slots that passed while nothing was running (UW-15). `run_latest`: run only the most recent missed slot, if it ended within 24 hours, and record the others as `skipped: missed`. `skip`: run none of them. Either way only one process fires schedules at a time (a lease in the data directory).',
   },
   {
+    name: 'XO_CONNECTOR_RATE_LIMITS',
+    group: 'workflows',
+    kind: STR,
+    defaultText: 'unset: no limit set by XO (a provider that asks to slow down is still paced)',
+    description:
+      'Calls per second XO allows per bound connector, per workspace and per process (RX-1c, ADR 0048): comma-separated `<connector>=<perSecond>[/<burst>]`, and `*=…` for every other connector, for example `mail=2/5,*=20`. A call that would wait past its step deadline fails RATE_LIMITED without being sent. Separately, when a provider answers "slow down", later calls to it wait the pause it asked for, and the refused call is tried again within its deadline (at most 5 times). An invalid value stops the instance at start-up.',
+  },
+  {
     name: 'XO_RUN_APPROVAL',
     group: 'workflows',
     kind: { type: 'enum', values: ['required', 'optional'] },

@@ -13,6 +13,15 @@ import {
   type RecipientPolicy,
 } from './message.js';
 
+/** RX-1c: the pause a provider asked for (`Retry-After`, seconds or an HTTP date), bounded to 1 s to 10 min; 2 s when it did not say. */
+export function retryAfterMs(headers: Readonly<Record<string, string>>, now: number = Date.now()): number {
+  const v = headers['retry-after'] ?? headers['Retry-After'];
+  let ms = 2_000;
+  if (v !== undefined && /^\d+$/.test(v.trim())) ms = Number(v.trim()) * 1000;
+  else if (v !== undefined && Number.isFinite(Date.parse(v))) ms = Date.parse(v) - now;
+  return Math.min(Math.max(ms, 1_000), 600_000);
+}
+
 /**
  * UW-10 (ADR 0041) — one `message.send` contract, three tiers.
  *   operation `send` (write):  { to, subject, body, attachments: [{ filename, contentType, sha256 }] }
@@ -182,10 +191,19 @@ export function gmailConnector(cfg: GmailConfig, deps: MailDeps = {}): Connector
             delivery: delivery('gmail_api'),
           };
         }
-        if (res.status === 429 || (res.status === 403 && /rateLimitExceeded|dailyLimitExceeded|userRateLimitExceeded/.test(res.body))) {
+        // RX-1c: a daily quota stops every later send today (UW-10). A short-term "slow down" (429, rateLimitExceeded,
+        // userRateLimitExceeded) is RATE_LIMITED: nothing was sent, and the engine tries again after the pause, within the deadline.
+        if ((res.status === 429 || res.status === 403) && /dailyLimitExceeded|quotaExceeded/.test(res.body)) {
           governor.markProviderLimited();
-          throw new ConnectorError('DENIED', 'the provider limit was reached; this send was not made', 'none');
+          throw new ConnectorError('DENIED', 'the provider daily limit was reached; this send was not made', 'none');
         }
+        if (res.status === 429 || (res.status === 403 && /rateLimitExceeded|userRateLimitExceeded/.test(res.body)))
+          throw new ConnectorError(
+            'RATE_LIMITED',
+            'the provider asked to slow down; this send was not made',
+            'none',
+            retryAfterMs(res.headers),
+          );
         if (res.status >= 400 && res.status < 500) throw new ConnectorError('DENIED', `gmail refused the send (${res.status})`, 'none');
         throw new ConnectorError('FAILED', `gmail answered ${res.status}`); // 5xx: unknown
       },
@@ -258,10 +276,18 @@ export function graphConnector(cfg: GraphConfig, deps: MailDeps = {}): Connector
         }
         if (res.status === 202)
           return { sent: true, recipients: to.length, messageId, tier: 'native_api', delivery: delivery('graph_202') };
-        if (res.status === 429) {
+        if (res.status === 429 && /ExceededMessageLimit|SubmissionQuotaExceeded|daily/i.test(res.body)) {
           governor.markProviderLimited();
-          throw new ConnectorError('DENIED', 'the provider limit was reached; this send was not made', 'none');
+          throw new ConnectorError('DENIED', 'the provider daily limit was reached; this send was not made', 'none');
         }
+        // RX-1c: Graph throttling (429 with Retry-After) is a pause, not a stop.
+        if (res.status === 429)
+          throw new ConnectorError(
+            'RATE_LIMITED',
+            'the provider asked to slow down; this send was not made',
+            'none',
+            retryAfterMs(res.headers),
+          );
         if (res.status >= 400 && res.status < 500) throw new ConnectorError('DENIED', `graph refused the send (${res.status})`, 'none');
         throw new ConnectorError('FAILED', `graph answered ${res.status}`); // 5xx: unknown
       },

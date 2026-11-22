@@ -46,6 +46,24 @@ export class RateLimiters {
     return this.limits.has(key) || this.fallback !== undefined;
   }
 
+  /**
+   * RX-1c: the destination said "slow down" for `ms`. The bucket is drained to one token and its clock moved past the pause, so the next
+   * reservation waits at least that long and those after it queue in order. A key with no limit gets one at the fallback, or one call per second.
+   */
+  backoff(key: string, ms: number): void {
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    if (!this.limits.has(key) && this.fallback === undefined) this.limits.set(key, normalize(key, { perSecond: 1 }));
+    const now = this.now();
+    const b = this.buckets.get(key);
+    const until = now + ms;
+    // One call may go when the pause ends; any queue already waiting stays in order behind the pause.
+    if (b === undefined) this.buckets.set(key, { tokens: 1, at: until });
+    else {
+      b.tokens = Math.min(b.tokens, 1);
+      b.at = Math.max(b.at, until);
+    }
+  }
+
   reserve(key: string): Reservation {
     const limit = this.limits.get(key) ?? (this.fallback !== undefined ? normalize('(default)', this.fallback) : undefined);
     if (limit === undefined) return { waitMs: 0, cancel: () => undefined };
@@ -60,7 +78,9 @@ export class RateLimiters {
     b.tokens = Math.min(limit.burst, b.tokens + (elapsed * limit.perSecond) / 1000);
     b.at = Math.max(b.at, now);
     b.tokens -= 1; // may go negative: that is the queue of reservations ahead of this one
-    const waitMs = b.tokens >= 0 ? 0 : Math.ceil((-b.tokens * 1000) / limit.perSecond);
+    // A backoff moved the bucket's clock into the future: nothing is handed out before then.
+    const paused = Math.max(0, b.at - now);
+    const waitMs = paused + (b.tokens >= 0 ? 0 : Math.ceil((-b.tokens * 1000) / limit.perSecond));
     let cancelled = false;
     const bucket = b;
     return {
@@ -72,6 +92,11 @@ export class RateLimiters {
       },
     };
   }
+}
+
+export interface BackoffAware {
+  /** RX-1c: the destination asked to slow down: no token for `key` is handed out for `ms` (later reservations queue behind it). */
+  backoff(key: string, ms: number): void;
 }
 
 function normalize(key: string, l: RateLimit): Required<RateLimit> {

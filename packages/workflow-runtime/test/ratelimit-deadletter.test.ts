@@ -65,6 +65,41 @@ describe('runner: rate limiting', () => {
   });
 });
 
+describe('RX-1c: the destination says slow down', () => {
+  const slowDown = (ms: number) => () => new ConnectorError('RATE_LIMITED', '429 too many requests', 'none', ms);
+  it('a backoff pauses the bucket for that long, then hands out one token and queues the rest in order', () => {
+    let t = 1_000;
+    const rl = new RateLimiters({ bank: { perSecond: 2, burst: 2 } }, () => t);
+    rl.backoff('bank', 3_000);
+    assert.equal(rl.reserve('bank').waitMs, 3_000);
+    assert.equal(rl.reserve('bank').waitMs, 3_500);
+    t += 5_000;
+    assert.equal(rl.reserve('bank').waitMs, 0);
+    const none = new RateLimiters({});
+    none.backoff('mail', 2_000);
+    assert.equal(none.has('mail'), true, 'a destination that said slow down is limited from then on');
+  });
+  it('retries after the pause it asked for, through the limiter; one effect; the circuit stays closed', async () => {
+    const h = await harness(comp([decide(), pay()]), external({ failFirst: 2, failWith: slowDown(300) }));
+    let t = 5_000;
+    const rl = new RateLimiters({ bank: { perSecond: 100, burst: 1 } }, () => t);
+    const { runner, sleeps } = h.mk({ rateLimits: rl, now: () => t, sleep: async (ms: number) => void (sleeps.push(ms), (t += ms)) });
+    const r = await runner.start({ inputs: { amount: 10, claim: 'c1' } });
+    assert.equal(r.state, 'completed');
+    assert.equal(h.ext.calls.length, 3);
+    assert.deepEqual(h.ext.effects, ['pay:10']);
+    assert.ok(sleeps.filter((ms) => ms >= 300).length >= 2, `waited ${sleeps.join(',')}`);
+  });
+  it('past the step deadline it fails RATE_LIMITED, provably not sent, after one call', async () => {
+    const h = await harness(comp([decide(), pay({ timeoutMs: 100 })]), external({ failFirst: 99, failWith: slowDown(10_000) }));
+    const { runner } = h.mk({ rateLimits: new RateLimiters({}) });
+    const r = await runner.start({ inputs: { amount: 10, claim: 'c1' } });
+    assert.equal(r.state, 'failed');
+    assert.equal(h.ext.calls.length, 1);
+    assert.deepEqual(h.ext.effects, []);
+  });
+});
+
 describe('dead letters', () => {
   it('stores an exhausted step AND stops the run; the record carries no arguments', async () => {
     const ext = external({ failFirst: 99 });

@@ -172,6 +172,9 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Emergency stops have no Studio screen yet; they are set over the API (workflow, connector, operation) or with `xo instance emergency-stop` (instance). A held run still ages toward its run timeout.
   - The instance stop does not hold the older composed-workflow runner (development-only starts with no external calls).
   - Runs admitted before RX-1b have no manifest. The audit bundle holds full journals, so it needs the audit role.
+  - Connector rate limits are per process and per workspace (`XO_CONNECTOR_RATE_LIMITS`); several processes each keep their own pace. A provider's requested pause is honoured by the process that received it.
+  - Certificates issued before RX-1d do not pin packs. There is no pack revocation: removing a pack is how it stops being used, and that refuses the start.
+  - Replay rebuilds a run from its journal; it does not re-execute decisions against new inputs.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
