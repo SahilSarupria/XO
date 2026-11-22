@@ -175,6 +175,7 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Connector rate limits are per process and per workspace (`XO_CONNECTOR_RATE_LIMITS`); several processes each keep their own pace. A provider's requested pause is honoured by the process that received it.
   - Certificates issued before RX-1d do not pin packs. There is no pack revocation: removing a pack is how it stops being used, and that refuses the start.
   - Replay rebuilds a run from its journal; it does not re-execute decisions against new inputs.
+  - The runbooks describe today's tools; a single workspace cannot yet be deleted through the API (see `docs/runbooks/deletion.md`).
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).
