@@ -110,6 +110,8 @@ export class FakeXo {
   certificateStatus: 'READY' | 'NEEDS_REVIEW' | 'BLOCKED' = 'NEEDS_REVIEW';
   certificateCurrent = true;
   certifyCalls = 0;
+  /** UW-10: the email bindings' tiers, as `GET …/connector-bindings` reports them. */
+  emailTiers: Array<{ connector: string; tier: string; lookup: boolean; explanation: string }> = [];
   /** ADR 0031: the workspace requires a certificate to start; the certified definition needs the workflow runtime. */
   requireCertificate = false;
   irOnly = false;
@@ -827,6 +829,21 @@ export class FakeXo {
         signatureVerified: true,
       });
       return reply(200, run);
+    }
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/connector-bindings$/.test(path)) {
+      return reply(200, {
+        revision: 1,
+        bindings: this.emailTiers.map((t) => ({
+          capability: 'sendEmail',
+          connector: t.connector,
+          kind: 'http',
+          operation: 'send',
+          sideEffect: 'write',
+          adapter: 'email',
+          adapterInstalled: true,
+          emailTier: { tier: t.tier, lookup: t.lookup, explanation: t.explanation },
+        })),
+      });
     }
     if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/readiness-certificates\/([^/]+)\/verify$/))) {
       return reply(200, {

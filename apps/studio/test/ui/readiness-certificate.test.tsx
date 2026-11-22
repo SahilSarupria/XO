@@ -44,6 +44,26 @@ describe('the pre-start check', () => {
     expect(panel().getByText('The documents could be read').closest('li')).toHaveAttribute('data-outcome', 'pass');
   });
 
+  it('UW-10: says in plain words how email would be sent, as the platform describes each email connection', async () => {
+    const api = new FakeXo();
+    api.emailTiers = [
+      {
+        connector: 'mail',
+        tier: 'send_only',
+        lookup: false,
+        explanation: 'Sends by SMTP only. Any uncertain send waits for a person to confirm it.',
+      },
+    ];
+    const { user, panel } = await openedWorkflow(api);
+    await user.click(panel().getByRole('button', { name: 'Check before starting' }));
+    const email = await panel().findByRole('region', { name: 'How email is sent' });
+    expect(
+      within(email)
+        .getByText(/waits for a person to confirm it/)
+        .closest('li'),
+    ).toHaveAttribute('data-tier', 'send_only');
+  });
+
   it('shows READY, and says when a certificate is no longer current', async () => {
     const api = new FakeXo();
     api.certificateStatus = 'READY';

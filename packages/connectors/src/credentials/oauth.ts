@@ -13,8 +13,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { egress, type EgressDeps, type EgressPolicy } from '../egress.js';
 import { ConnectorError } from '../types.js';
 
-export type OAuthCapability = 'message.send' | 'files.read';
-export const OAUTH_CAPABILITIES: readonly OAuthCapability[] = ['message.send', 'files.read'];
+/**
+ * `mail.lookup` (UW-10, ADR 0041 amended): find an earlier send by its Message-ID before deciding an uncertain outcome. Separate from
+ * `message.send` and optional: a connection without it treats an uncertain send like the send-only tier (it waits for a person).
+ */
+export type OAuthCapability = 'message.send' | 'files.read' | 'mail.lookup';
+export const OAUTH_CAPABILITIES: readonly OAuthCapability[] = ['message.send', 'files.read', 'mail.lookup'];
 
 export interface OAuthClientConfig {
   readonly clientId: string;
@@ -61,6 +65,9 @@ export const GOOGLE: OAuthProvider = {
   capabilityScopes: {
     'message.send': ['https://www.googleapis.com/auth/gmail.send'],
     'files.read': ['https://www.googleapis.com/auth/drive.readonly'],
+    // mail.lookup: messages.list with q=rfc822msgid:<id>. The `q` parameter is not allowed with gmail.metadata, so the narrowest scope
+    // that can search is gmail.readonly (checked against the messages.list reference, 2026-11-22). Google classes it as RESTRICTED.
+    'mail.lookup': ['https://www.googleapis.com/auth/gmail.readonly'],
   },
   // offline: a refresh token; consent: Google issues the refresh token only on a consent screen. No include_granted_scopes: a
   // grant never silently picks up scopes from an earlier consent.
@@ -86,7 +93,9 @@ export const MICROSOFT: OAuthProvider = {
   // Mail.Send (delegated): send mail as the signed-in user; no read of the mailbox. A bare name means Microsoft Graph.
   // Files.Read.All (delegated, UW-12a part 2): read the files the signed-in person can access, including SharePoint libraries and
   // shared folders; no write. (Files.Read reaches only their own OneDrive.) Delegated: never more than the person can see.
-  capabilityScopes: { 'message.send': ['Mail.Send'], 'files.read': ['Files.Read.All'] },
+  // mail.lookup: GET /me/messages?$filter=internetMessageId eq '…'. Mail.ReadBasic is the least-privileged delegated permission for
+  // listing messages and excludes body, preview and attachments (checked against the Graph references, 2026-11-22).
+  capabilityScopes: { 'message.send': ['Mail.Send'], 'files.read': ['Files.Read.All'], 'mail.lookup': ['Mail.ReadBasic'] },
   authorizeParams: { prompt: 'select_account' },
   implicitScopes: ['openid', 'email', 'profile', 'offline_access'],
   normalizeScope: (s) => (s.toLowerCase().startsWith('https://graph.microsoft.com/') ? s.slice('https://graph.microsoft.com/'.length) : s),
