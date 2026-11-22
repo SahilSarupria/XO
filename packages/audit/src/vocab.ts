@@ -45,6 +45,8 @@ export const AUDIT_EVENT_TYPES = [
   'knowledge.pack.installed',
   // UW-5: a deterministic entity-resolution run (counts and hashes only).
   'resolution.computed',
+  // UW-15: a run was refused before any effect because its data changed shape since it was compiled (counts only).
+  'generated-workflow.drift.refused',
   // UW-6: free text was turned into a structured proposal by a model and composed (counts and digests only).
   'intent.proposed',
   // UW-10c: the workspace's explicit email recipient rules were replaced (counts only).

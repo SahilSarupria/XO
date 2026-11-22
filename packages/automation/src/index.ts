@@ -8,3 +8,4 @@ export * from './anchor.js';
 export * from './cron.js';
 export * from './metrics.js';
 export * from './delivery.js';
+export * from './slots.js';

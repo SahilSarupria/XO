@@ -37,6 +37,28 @@ export interface Trigger {
 const sha = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 /**
+ * Emits only when its owner calls `fire` (UW-15, ADR 0044): for a host that already has a clock and decides what is due itself (the
+ * API's scheduler tick, which also holds the lease). Every event still goes through the engine: at-most-once per key, ledger, bounds.
+ */
+export class TickTrigger implements Trigger {
+  private emit: Emit | undefined;
+  constructor(readonly id: string) {}
+  async start(emit: Emit): Promise<void> {
+    this.emit = emit;
+  }
+  async stop(): Promise<void> {
+    this.emit = undefined;
+  }
+  /** Emits each event; an event offered while the engine is not running is answered `stopped`. */
+  async fire(events: readonly Omit<TriggerEvent, 'trigger'>[]): Promise<EmitResult[]> {
+    const out: EmitResult[] = [];
+    for (const e of events)
+      out.push(this.emit === undefined ? { accepted: false, reason: 'stopped' } : await this.emit({ ...e, trigger: this.id }));
+    return out;
+  }
+}
+
+/**
  * Fires every `everyMs`. The idempotency key is the *time slot* (`floor(now/everyMs)`), not the firing, so a
  * restart inside the same slot — or two instances racing — cannot run the same scheduled job twice.
  */

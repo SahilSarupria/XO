@@ -1570,6 +1570,40 @@ export const openApiDocument = {
         },
       },
     },
+    '/workspaces/{workspaceId}/compilations/{compilationId}/data-drift': {
+      get: {
+        summary: 'Has the data this compilation read changed shape? (UW-15, UAC-34)',
+        description:
+          'Compares each table (.csv, .xlsx) the compilation was built from, as compiled, with the newest source of the same name: header names (trimmed, case-folded), the type of each column and the shape of its values. A renamed, removed or retyped column, or a changed format pattern, is blocking (a run start is refused 409 XO_DATA_SCHEMA_DRIFT before any effect, with this report in the error context); a new unused column is a warning. Reports headers and shapes, never cell values.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ drift: { status: none|warning|blocking, sources, checkedSources } }' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or compilation' },
+        },
+      },
+    },
+    '/workspaces/{workspaceId}/generated-workflows/{definitionId}/exceptions': {
+      get: {
+        summary: 'How often a workflow needed a person, and what is still waiting (UW-15, UAC-36)',
+        description:
+          'Over the last 30 days: runs, runs that asked for an approval or escalated, the share, and (for fan-out runs) items and the share that needed a person. `queue` lists only open items: approvals not yet decided and escalations, oldest first. Counts, ids and step names only.',
+        'x-xo-permission': 'read',
+        parameters: [
+          { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'definitionId', in: 'path', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: '{ stats, queue }' },
+          '401': { description: 'Not signed in' },
+          '404': { description: 'Unknown workspace or workflow' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/entity-resolutions': {
       post: {
         summary: 'Resolve entities across two sources: resolved, ambiguous or unmatched, with evidence (UW-5)',
@@ -1718,7 +1752,7 @@ export const openApiDocument = {
       post: {
         summary: 'Generate Workflow IR from a goal (PX-6)',
         description:
-          'Body `{ goal: { text, needs?, section?, intake?: "structured"|"text", forEach? }, workflowId? }` (any other goal field is a 400). The goal selects the candidate workflow (scored on needed steps, section and words, with the reasons) unless `workflowId` names one; when two fit equally the response is `{ definition: null, selection: { status: "needs_clarification", question, options } }` and nothing is generated, and `no_match` likewise. The candidate is lowered by the one lowering function (ADR 0030: human-task steps → approve, with a timeout when the source states a deadline; rule-bound steps → decide with rules rendered from the stated conditions, plus a branch on its outcome when a later step names one; a stated delay → wait; a declared operation with a workspace connector binding → act with a server-derived idempotency key, and compensate when the binding names an undo; `intake: "text"` → a leading extract step; `forEach` → for_each over a bounded list input; anything without its evidence reported, never invented), validated with the package validator, and persisted with its digest. Distinct from the Studio\'s authored `workflow-definitions`.',
+          'Body `{ goal: { text, needs?, section?, intake?: "structured"|"text", forEach? }, workflowId?, reads? }` (any other goal field is a 400). `reads` (UW-15, at most 20 `{ sourceId, recordSetId }`) names the tables the workflow reads besides its compilation\'s own sources; their schema is recorded on the definition and a renamed, removed, retyped or reformatted column there stops a start with 409 XO_DATA_SCHEMA_DRIFT. The goal selects the candidate workflow (scored on needed steps, section and words, with the reasons) unless `workflowId` names one; when two fit equally the response is `{ definition: null, selection: { status: "needs_clarification", question, options } }` and nothing is generated, and `no_match` likewise. The candidate is lowered by the one lowering function (ADR 0030: human-task steps → approve, with a timeout when the source states a deadline; rule-bound steps → decide with rules rendered from the stated conditions, plus a branch on its outcome when a later step names one; a stated delay → wait; a declared operation with a workspace connector binding → act with a server-derived idempotency key, and compensate when the binding names an undo; `intake: "text"` → a leading extract step; `forEach` → for_each over a bounded list input; anything without its evidence reported, never invented), validated with the package validator, and persisted with its digest. Distinct from the Studio\'s authored `workflow-definitions`.',
         parameters: [
           { name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } },
           { name: 'compilationId', in: 'path', required: true, schema: { type: 'string' } },
