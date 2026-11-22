@@ -160,10 +160,14 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - Reuse is within one compilation (definitions are bound to it); the key also includes bindings, which is stricter than goal + schema + catalogue.
   - Exception item rates count distinct steps named by approval and escalation events; no Studio screen for the exceptions queue.
 - **Batch preview and approval (UW-8, ADR 0046):**
-  - In production (`XO_RUN_APPROVAL=required`) a generated workflow that can send or change things starts only with a batch approval from someone other than whoever prepared it. Studio has no preview or approval screen yet (UW-12b); until then those starts go through the API.
+  - In production (`XO_RUN_APPROVAL=required`) a generated workflow that can send or change things starts only with a batch approval from someone other than whoever prepared it. Studio prepares the preview, and the approval and start are in its Inbox (UW-12b, ADR 0047).
   - A workflow whose sends depend on a model, an outside event or another call's result cannot be previewed exactly, so it cannot be batch-approved; in production it needs its own approval steps.
   - One approver; no delegation or quorum. A preview is held whole (bounded by the `forEach` limit) and kept 24 hours; previews and approvals are not swept.
   - The sending account is bound by the connection's `accountRef` (or user@host); a reconnected account with the same id is caught, an account change the provider does not report is not.
+- **Control surface, minimal (UW-12b, ADR 0047):**
+  - The control inbox is computed on each read by walking the workspace's runs (no index); each list is capped at 200 entries. Fine for the first vertical's volumes; an index comes with the rest of UW-12b.
+  - The Inbox refreshes when the screen loads and after an action; it does not poll or listen to the change feed for runtime items.
+  - No evidence view, what-XO-knows screen, request-changes or delegation outcomes, or typed output artefacts yet (the rest of UW-12b, W5). The mobile experience is the responsive Inbox, not a separate app.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

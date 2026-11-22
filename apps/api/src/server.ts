@@ -319,9 +319,9 @@ export function buildRouter(deps: ServerDeps = {}): Router {
       connectorAdapters: deps.connectorAdapters ?? new Map(),
       adapterFactories: deps.adapterFactories ?? new Map([['email', emailAdapterFactory]]),
       certificatePolicy: deps.readinessCertificate ?? readinessCertificatePolicy(deps.env ?? process.env),
-      runApproval: deps.runApproval ?? productionDefault(deps.env ?? process.env, 'XO_RUN_APPROVAL', ['required', 'optional']),
+      runApproval: deps.runApproval ?? productionDefault(deps.env ?? process.env, 'XO_RUN_APPROVAL', ['required', 'optional'] as const),
       approvalSeparation:
-        deps.approvalSeparation ?? productionDefault(deps.env ?? process.env, 'XO_APPROVAL_SEPARATION', ['required', 'off']),
+        deps.approvalSeparation ?? productionDefault(deps.env ?? process.env, 'XO_APPROVAL_SEPARATION', ['required', 'off'] as const),
     },
     knowledgeStore: knowledgeStoreConfig(deps.env ?? process.env),
   };

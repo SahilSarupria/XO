@@ -121,6 +121,24 @@ export class FakeXo {
     pendingApprovals: { approvalId: string; step: string; summary: string; expiresAt: string }[];
     decisions: unknown[];
   }> = [];
+  /** UW-8/UW-12b: in production a run that sends starts only from an approved batch. */
+  runApprovalRequired = false;
+  /** Who the fake says prepared each preview (the caller is the workspace admin 'sally'). */
+  previewPreparer = 'sally';
+  /** With separation on, the person who prepared a preview cannot approve it. */
+  separation = false;
+  previews: Array<{
+    previewId: string;
+    definitionId: string;
+    certificateId: string;
+    root: string;
+    createdBy: string;
+    approval?: { approvalId: string; reviewerId: string; approvedAt: string; expiresAt: string; usedBy?: string };
+  }> = [];
+  /** Calls whose outcome is unknown, waiting for a person to reconcile them. */
+  unknownEffects: Array<{ definitionId: string; runId: string; parentRunId?: string; item?: number; step: string; connector: string }> = [];
+  cancelled: string[] = [];
+  reconciled: Array<{ runId: string; step: string; decision: string; reason: string }> = [];
   /** Workflow controls (mode, triggers, limit, sign-off, practice reviews, pause). `false` simulates a platform that predates them (404). */
   supportsControls = true;
   controls: {
@@ -796,9 +814,163 @@ export class FakeXo {
         digest: `sha256:${'a'.repeat(64)}`,
       });
     }
+    // ---- UW-12b: the control surface (batch previews, approvals, the runtime inbox, cancel, reconcile)
+    const items = [
+      { index: 0, state: 'stops', reason: 'the reviewer must check the address', approvals: ['check'], actions: [] },
+      ...[1, 2].map((i) => ({
+        index: i,
+        state: 'sends',
+        approvals: [],
+        actions: [
+          {
+            step: 'send',
+            connector: 'mail',
+            operation: 'send_certificate',
+            sideEffect: 'irreversible',
+            args: { to: `person${i}@example.org`, attachments: [{ filename: `cert-${i}.pdf`, sha256: `${i}`.repeat(64) }] },
+          },
+        ],
+      })),
+    ];
+    const previewView = (p: (typeof this.previews)[number], q: string) => {
+      const exceptionsOnly = /[?&]show=exceptions/.test(q);
+      const shown = exceptionsOnly ? items.filter((i) => i.state === 'stops') : items;
+      return {
+        previewId: p.previewId,
+        definitionId: p.definitionId,
+        certificateId: p.certificateId,
+        root: p.root,
+        forEach: true,
+        effects: true,
+        counts: { sends: 2, no_effect: 0, stops: 1, not_exact: 0 },
+        senders: [{ connector: 'mail', provider: 'google', account: 'office@example.org' }],
+        createdBy: p.createdBy,
+        createdAt: '2026-11-20T10:00:00.000Z',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        approvable: p.approval === undefined,
+        ...(p.approval !== undefined ? { approval: p.approval } : {}),
+        page: 1,
+        pages: 1,
+        total: shown.length,
+        items: shown,
+      };
+    };
+    if (method === 'GET' && /^\/workspaces\/[^/]+\/control\/inbox$/.test(path)) {
+      return reply(200, {
+        batches: this.previews
+          .filter((p) => p.approval?.usedBy === undefined)
+          .map((p) => ({
+            definitionId: p.definitionId,
+            workflowName: 'Send certificates',
+            state: p.approval === undefined ? 'awaiting_approval' : 'ready_to_start',
+            previewId: p.previewId,
+            certificateId: p.certificateId,
+            root: p.root,
+            total: 3,
+            counts: { sends: 2, no_effect: 0, stops: 1, not_exact: 0 },
+            senders: [{ connector: 'mail', account: 'office@example.org' }],
+            createdBy: p.createdBy,
+            createdAt: '2026-11-20T10:00:00.000Z',
+            expiresAt: '2030-01-01T00:00:00.000Z',
+            preparedByYou: p.createdBy === 'sally',
+            ...(p.approval !== undefined ? { approval: p.approval } : {}),
+          })),
+        steps: this.generatedRuns.flatMap((r) =>
+          r.pendingApprovals.map((a) => ({
+            definitionId: `gwf_${'0'.repeat(23)}1`,
+            workflowName: 'Send certificates',
+            runId: r.runId,
+            approvalId: a.approvalId,
+            step: a.step,
+            summary: a.summary,
+            proposedActions: ['mail.send_certificate'],
+            requestedAt: '2026-11-20T10:00:00.000Z',
+            expiresAt: a.expiresAt,
+          })),
+        ),
+        attention: this.unknownEffects.map((e) => ({
+          ...e,
+          workflowName: 'Send certificates',
+          operation: 'send_certificate',
+          state: 'outcome_unknown',
+          intentAt: '2026-11-20T10:00:00.000Z',
+          detail: 'connection reset after the request was written',
+        })),
+        truncated: false,
+      });
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/previews$/))) {
+      const p = {
+        previewId: `pvw_${String(this.previews.length + 1).padStart(24, '0')}`,
+        definitionId: m[1]!,
+        certificateId: String((body as unknown as { certificateId?: string }).certificateId),
+        root: `sha256:${'r'.repeat(8)}${this.previews.length + 1}`,
+        createdBy: this.previewPreparer,
+      };
+      this.previews.push(p);
+      return reply(201, previewView(p, ''));
+    }
+    if (method === 'GET' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/previews\/([^/?]+)(\?.*)?$/))) {
+      const p = this.previews.find((x) => x.previewId === m![1]);
+      return p === undefined ? err(404, 'XO_NOT_FOUND', 'no preview') : reply(200, previewView(p, m[2] ?? ''));
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/previews\/([^/]+)\/approve$/))) {
+      const p = this.previews.find((x) => x.previewId === m![1]);
+      if (p === undefined) return err(404, 'XO_NOT_FOUND', 'no preview');
+      const refuse = (reason: string, message: string) =>
+        reply(409, { error: { code: 'XO_BATCH_APPROVAL_REFUSED', message, context: { reason } } });
+      if ((body as unknown as { root?: string }).root !== p.root)
+        return refuse(
+          'root_mismatch',
+          'this is not the preview you were shown (its root differs); review the current preview and approve that',
+        );
+      if (this.separation && p.createdBy === 'sally')
+        return refuse('separation_of_duties', 'someone other than the person who prepared this batch must approve it');
+      p.approval = {
+        approvalId: `bap_${String(this.previews.indexOf(p) + 1).padStart(24, '0')}`,
+        reviewerId: 'sally',
+        approvedAt: '2026-11-20T11:00:00.000Z',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      };
+      return reply(201, previewView(p, ''));
+    }
+    if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/cancel$/))) {
+      this.cancelled.push(m[1]!);
+      const run = this.generatedRuns.find((x) => x.runId === m![1]);
+      if (run !== undefined) {
+        run.state = 'cancelled';
+        run.pendingApprovals = [];
+      }
+      return reply(200, { runId: m[1], state: 'cancelled', pendingApprovals: [], decisions: [], cancelRecorded: true });
+    }
+    if (
+      method === 'POST' &&
+      (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/[^/]+\/runs\/([^/]+)\/effects\/([^/]+)\/reconciliation$/))
+    ) {
+      const b = body as unknown as { decision: string; reason: string };
+      this.reconciled.push({ runId: m[1]!, step: m[2]!, decision: b.decision, reason: b.reason });
+      this.unknownEffects = this.unknownEffects.filter((e) => !(e.runId === m![1] && e.step === m![2]));
+      return reply(200, { runId: m[1], effect: { step: m[2], state: b.decision } });
+    }
     if (method === 'POST' && (m = path.match(/^\/workspaces\/[^/]+\/generated-workflows\/([^/]+)\/runs$/))) {
       if ((body as unknown as { certificateId?: string }).certificateId === undefined)
         return reply(409, { error: { code: 'XO_READINESS_CERTIFICATE_REQUIRED', message: 'a certificate is required' } });
+      const batchApprovalId = (body as unknown as { batchApprovalId?: string }).batchApprovalId;
+      if (batchApprovalId !== undefined) {
+        const p = this.previews.find((x) => x.approval?.approvalId === batchApprovalId);
+        if (p === undefined) return err(404, 'XO_NOT_FOUND', 'no batch approval');
+        const run = { runId: `run_${this.generatedRuns.length + 1}`, state: 'completed', pendingApprovals: [], decisions: [] };
+        this.generatedRuns.push(run);
+        p.approval!.usedBy = run.runId;
+        return reply(201, run);
+      }
+      if (this.runApprovalRequired)
+        return reply(409, {
+          error: {
+            code: 'XO_BATCH_APPROVAL_REQUIRED',
+            message: 'this run can send or change things; it starts only from an approved batch',
+          },
+        });
       const run = {
         runId: `run_${this.generatedRuns.length + 1}`,
         state: 'waiting',

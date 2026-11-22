@@ -20,6 +20,8 @@ import { NoteField } from './NoteField';
 import { RecoveryCard } from './RecoveryCard';
 import { RunSummary, runTitle } from './RunCard';
 import { ExecutionOutcome } from './runs';
+import { BatchCard, ReconcileCard, RuntimeStepCard } from './ControlCards';
+import type { InboxAttention, InboxBatch, InboxStep } from '../platform/wire-control';
 import { useSession } from './session';
 import '../styles/inbox.css';
 
@@ -48,6 +50,17 @@ export function TasksSection(props: {
   // platform, or a failure) the screen simply works without those extras rather than claiming anything about them.
   const inbox = useLoad(() => client.listInbox(props.workspaceId), [client, props.workspaceId, props.runs, props.executions]);
   const meta = loadedValue(inbox.state);
+  // UW-12b: work on the workflow runtime that waits for a person (batches, steps, unknown outcomes). An older platform without
+  // this read, or a failure, leaves these out; the rest of the inbox still works.
+  const control = useLoad(() => client.controlInbox(props.workspaceId), [client, props.workspaceId, props.runs]);
+  const runtime = loadedValue(control.state);
+  // What the person just did on a runtime item; the item itself may leave the list on the reload, so the outcome is kept here.
+  const [outcome, setOutcome] = useState<string | undefined>();
+  const changed = (message?: string) => {
+    if (message !== undefined) setOutcome(message);
+    control.reload();
+    props.onChanged();
+  };
   const openQuestions = new Map((meta?.items ?? []).map((i) => [i.executionId, i.openInfoRequests]));
   const doneItems = (meta?.items ?? []).filter((i) => i.state === 'done');
   const tasks = pendingTasks(props.runs);
@@ -68,6 +81,32 @@ export function TasksSection(props: {
 
   /** One list for everything waiting on a person. The detail pane always shows the platform's own record for the chosen item. */
   const items: InboxItem[] = [
+    ...(runtime?.batches ?? []).map((b): InboxItem => ({
+      key: `batch:${b.previewId}`,
+      title: `${tidyName(b.workflowName)}: ${b.total} ${b.total === 1 ? 'item' : 'items'}`,
+      sub:
+        b.state === 'ready_to_start'
+          ? `Approved by ${b.approval?.reviewerId ?? 'a reviewer'} \u00b7 ready to start`
+          : b.preparedByYou
+            ? 'Prepared by you \u00b7 waiting for a reviewer'
+            : `Prepared by ${b.createdBy} \u00b7 waiting for your approval`,
+      badge: b.state === 'ready_to_start' ? 'Ready to start' : 'Approve the batch',
+      batch: b,
+    })),
+    ...(runtime?.steps ?? []).map((st): InboxItem => ({
+      key: `rstep:${st.runId}:${st.approvalId}`,
+      title: tidyName(st.workflowName),
+      sub: `${st.summary}${st.item !== undefined ? ` \u00b7 item ${st.item + 1}` : ''}`,
+      badge: 'Needs a decision',
+      runtimeStep: st,
+    })),
+    ...(runtime?.attention ?? []).map((a): InboxItem => ({
+      key: `effect:${a.runId}:${a.step}`,
+      title: tidyName(a.workflowName),
+      sub: `Outcome unknown \u00b7 ${a.connector}${a.item !== undefined ? ` \u00b7 item ${a.item + 1}` : ''}`,
+      badge: 'Check what happened',
+      attention: a,
+    })),
     ...tasks.map((r): InboxItem => ({
       key: `run:${r.workflowExecutionId}`,
       title: runTitle(r),
@@ -115,6 +154,16 @@ export function TasksSection(props: {
         {banner !== undefined ? (
           <p className="notice notice-warning" role="alert">
             {banner}
+          </p>
+        ) : null}
+        {outcome !== undefined ? (
+          <p className="notice notice-success" role="status">
+            {outcome}
+          </p>
+        ) : null}
+        {runtime?.truncated === true ? (
+          <p className="muted small" role="status">
+            More is waiting on the workflow runtime than is shown here; deal with these first.
           </p>
         ) : null}
         {tab === 'done' ? <DoneList items={doneItems} picked={pickedDone ?? doneItems[0]?.executionId} onPick={setPickedDone} /> : null}
@@ -198,6 +247,27 @@ export function TasksSection(props: {
                 onFinished={(done) => setFinished((f) => [done, ...f.filter((x) => x.workflowExecutionId !== done.workflowExecutionId)])}
               />
             ) : null}
+            {selected.batch !== undefined ? (
+              <BatchCard key={selected.key} workspaceId={props.workspaceId} batch={selected.batch} role={props.role} onChanged={changed} />
+            ) : null}
+            {selected.runtimeStep !== undefined ? (
+              <RuntimeStepCard
+                key={selected.key}
+                workspaceId={props.workspaceId}
+                step={selected.runtimeStep}
+                role={props.role}
+                onChanged={changed}
+              />
+            ) : null}
+            {selected.attention !== undefined ? (
+              <ReconcileCard
+                key={selected.key}
+                workspaceId={props.workspaceId}
+                attention={selected.attention}
+                role={props.role}
+                onChanged={changed}
+              />
+            ) : null}
             {selected.stopped !== undefined ? (
               <div className="ib-card">
                 <RecoveryCard workspaceId={props.workspaceId} run={selected.stopped} onChanged={props.onChanged} onInfo={setBanner} />
@@ -237,6 +307,10 @@ interface InboxItem {
   readonly run?: WorkflowRun;
   readonly stopped?: WorkflowRun;
   readonly execution?: Execution;
+  /** UW-12b: work on the workflow runtime. */
+  readonly batch?: InboxBatch;
+  readonly runtimeStep?: InboxStep;
+  readonly attention?: InboxAttention;
   /** The platform's human-task id for this item, when it has one (what questions are attached to). */
   readonly executionId?: string;
 }

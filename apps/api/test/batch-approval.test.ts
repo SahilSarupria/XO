@@ -155,6 +155,21 @@ test('UAC-7: a 300-item batch is previewed exactly, approved once by someone els
     const page6 = (await server.request('GET', `${base}/previews/${p.previewId}?page=6`)).json<PreviewView>();
     assert.equal(page6.items.at(-1)!.index, 299);
 
+    // UW-12b: the inbox shows the preview waiting for an approval; to the person who prepared it, that it was theirs.
+    type Inbox = {
+      batches: { previewId: string; state: string; preparedByYou: boolean; total: number; approval?: { approvalId: string } }[];
+    };
+    const inboxAs = async (h?: Record<string, string>) =>
+      (await server.request('GET', `/workspaces/${ws}/control/inbox`, undefined, h)).json<Inbox>().batches;
+    assert.deepEqual(
+      (await inboxAs()).map((b) => [b.previewId, b.state, b.preparedByYou, b.total]),
+      [[p.previewId, 'awaiting_approval', true, 300]],
+    );
+    assert.deepEqual(
+      (await inboxAs(reviewer)).map((b) => [b.state, b.preparedByYou]),
+      [['awaiting_approval', false]],
+    );
+
     // The person who prepared it cannot approve it; a root other than the one shown is refused; the reviewer approves the root.
     const self = await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root });
     assert.equal(self.status, 409, self.bodyText);
@@ -167,6 +182,11 @@ test('UAC-7: a 300-item batch is previewed exactly, approved once by someone els
     assert.equal(ok.json<PreviewView>().approval!.reviewerId, 'reviewer-1');
     const twice = await server.request('POST', `${base}/previews/${p.previewId}/approve`, { root: p.root }, reviewer);
     assert.equal(twice.status, 409, 'one approval per preview');
+
+    assert.deepEqual(
+      (await inboxAs()).map((b) => [b.state, b.approval?.approvalId]),
+      [['ready_to_start', approvalId]],
+    );
 
     // Start with the approval (the approved input is used); every item sends once, exactly as previewed.
     const started = await server.request('POST', `${base}/runs`, { certificateId: certId, batchApprovalId: approvalId });
@@ -183,6 +203,7 @@ test('UAC-7: a 300-item batch is previewed exactly, approved once by someone els
     assert.equal(mail.sent.length, 300, 'nothing was sent twice');
     const shown = (await server.request('GET', `${base}/previews/${p.previewId}`)).json<PreviewView>();
     assert.equal(shown.approval?.usedBy, runId);
+    assert.deepEqual(await inboxAs(), [], 'a used approval leaves the inbox');
 
     // Audit holds ids and counts, never a recipient.
     const events = audit.events().filter((e) => e.type.startsWith('generated-workflow.batch.'));

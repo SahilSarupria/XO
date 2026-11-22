@@ -36,6 +36,7 @@ import {
   type EmailTierLine,
   type ReadinessCertificateView,
 } from './wire-readiness';
+import { parseBatchPreview, parseControlInbox, type BatchPreviewView, type ControlInbox } from './wire-control';
 import {
   parseApiDescription,
   parseCapabilityList,
@@ -909,6 +910,85 @@ export class XoClient {
       `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/approvals/${enc(approvalId)}`,
       (b) => parseGeneratedRun(b),
       this.json({ action, ...(comment !== undefined ? { comment } : {}) }),
+    );
+  }
+  // ---- UW-12b (ADR 0047): the control surface. The platform decides every action again; Studio only shows and asks.
+  /** Everything on the workflow runtime waiting for a person: batches to approve or start, steps to decide, calls to reconcile. */
+  controlInbox(ws: string): Promise<Result<ControlInbox>> {
+    return this.call('GET', `/workspaces/${enc(ws)}/control/inbox`, parseControlInbox);
+  }
+  /** UW-8: prepares a batch preview (author role). Nothing is sent; the same gates as a start apply. */
+  prepareBatchPreview(
+    ws: string,
+    definitionId: string,
+    certificateId: string,
+    input: Readonly<Record<string, unknown>> = {},
+  ): Promise<Result<BatchPreviewView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews`,
+      (b) => parseBatchPreview(b),
+      this.json({ input, certificateId }),
+    );
+  }
+  /** One page of a preview, exceptions first (or only the exceptions). */
+  getBatchPreview(
+    ws: string,
+    definitionId: string,
+    previewId: string,
+    q: { readonly page?: number; readonly exceptionsOnly?: boolean } = {},
+  ): Promise<Result<BatchPreviewView>> {
+    const params = new URLSearchParams();
+    if (q.page !== undefined) params.set('page', String(q.page));
+    if (q.exceptionsOnly === true) params.set('show', 'exceptions');
+    const qs = params.toString();
+    return this.call(
+      'GET',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews/${enc(previewId)}${qs.length > 0 ? `?${qs}` : ''}`,
+      (b) => parseBatchPreview(b),
+    );
+  }
+  /** A reviewer approves the preview they were shown, named by its root; the platform refuses any other root. */
+  approveBatchPreview(ws: string, definitionId: string, previewId: string, root: string): Promise<Result<BatchPreviewView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/previews/${enc(previewId)}/approve`,
+      (b) => parseBatchPreview(b),
+      this.json({ root }),
+    );
+  }
+  /** Starts an approved batch with the approved input. A repeat with the same approval returns the same run. */
+  startApprovedBatch(ws: string, definitionId: string, certificateId: string, batchApprovalId: string): Promise<Result<GeneratedRunView>> {
+    return this.call('POST', `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs`, (b) => parseGeneratedRun(b), {
+      ...this.json({ certificateId, batchApprovalId }),
+    });
+  }
+  /** Cancels a run, a whole batch or one item; the platform records it first and starts no call after it. */
+  cancelGeneratedRun(ws: string, definitionId: string, runId: string, reason?: string): Promise<Result<GeneratedRunView>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/cancel`,
+      (b) => parseGeneratedRun(b),
+      this.json(reason !== undefined ? { reason } : {}),
+    );
+  }
+  /** A person records what happened to a call whose outcome is unknown. Nothing is sent again. */
+  reconcileGeneratedEffect(
+    ws: string,
+    definitionId: string,
+    runId: string,
+    step: string,
+    input: {
+      readonly decision: 'confirmed_success' | 'confirmed_failure_no_effect' | 'unresolved';
+      readonly reason: string;
+      readonly evidenceExamined?: string;
+    },
+  ): Promise<Result<{ readonly runId: string }>> {
+    return this.call(
+      'POST',
+      `/workspaces/${enc(ws)}/generated-workflows/${enc(definitionId)}/runs/${enc(runId)}/effects/${enc(step)}/reconciliation`,
+      (b) => ({ runId: String((b as { runId?: unknown }).runId ?? runId) }),
+      this.json(input),
     );
   }
   // ---- UW-2: Workflow entities (durable work items, linked to the conversation they were asked in) ----

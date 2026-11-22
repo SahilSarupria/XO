@@ -137,3 +137,95 @@
     padding: 1.25rem 1rem;
   }
 }
+
+/*
+ * UW-12b: work on the workflow runtime (batch previews, waiting steps, unknown outcomes). Scoped under .ib like the rest.
+ */
+.cc-lead {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+.cc-toolbar,
+.cc-actions,
+.cc-pager,
+.cc-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.cc-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cc-item {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface-2);
+}
+.cc-item[data-state='stops'],
+.cc-item[data-state='not_exact'] {
+  border-color: var(--warning);
+  background: var(--warning-wash);
+}
+.cc-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.cc-item-no {
+  font-variant-numeric: tabular-nums;
+}
+.cc-action {
+  margin-top: 0.35rem;
+}
+.cc-args {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.cc-form fieldset {
+  margin: 0.75rem 0;
+  padding: 0;
+  border: 0;
+}
+.cc-radio {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.35rem 0;
+}
+.cc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+/* A phone (the list is already above the chosen item from 52rem down): every control a comfortable tap target, actions full width. */
+@media (max-width: 44rem) {
+  .ib-list {
+    padding: 1rem 0.75rem;
+  }
+  .ib-card {
+    padding: 0.9rem 0.85rem;
+  }
+  .ib .btn,
+  .ib-chip,
+  .ib-row,
+  .cc-radio {
+    min-height: 2.75rem;
+  }
+  .cc-actions .btn,
+  .cc-confirm .btn {
+    flex: 1 1 100%;
+  }
+}

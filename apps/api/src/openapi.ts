@@ -1793,6 +1793,20 @@ export const openApiDocument = {
         responses: { '201': { description: 'WorkflowReadinessCertificate' }, '404': { description: 'Unknown generated workflow' } },
       },
     },
+    '/workspaces/{workspaceId}/control/inbox': {
+      get: {
+        summary: 'Everything on the workflow runtime that waits for a person (UW-12b)',
+        description:
+          'Read role. `{ batches, steps, attention, truncated }`: `batches` are batch previews waiting for an approval (unexpired, every item shown exactly, not yet approved; `state` `awaiting_approval`) and approved batches not yet used (`ready_to_start`, with `approval`); `steps` are approval steps of runs waiting for a reviewer (an item of a batch carries `parentRunId` and `item`); `attention` lists external calls whose outcome is unknown, for a person to reconcile. Each list is newest first and holds at most 200 entries (`truncated` when there were more). `preparedByYou` marks a preview the caller prepared. Nothing here decides: the routes that act check role, recent sign-in and separation again.',
+        'x-xo-permission': 'read',
+        parameters: [{ name: 'workspaceId', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'ControlInbox { batches, steps, attention, truncated }' },
+          '403': { description: 'Not a member' },
+          '404': { description: 'Unknown workspace' },
+        },
+      },
+    },
     '/workspaces/{workspaceId}/connector-bindings': {
       get: {
         summary: 'The workspace connector bindings (ADR 0030)',

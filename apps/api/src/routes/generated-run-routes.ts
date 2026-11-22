@@ -1165,6 +1165,116 @@ export async function decideGeneratedApproval(deps: RunnerDeps, d: DecideGenerat
   return view(runner, runId, dir, dataConfig.dataRootDir);
 }
 
+/** Most entries of each kind the inbox returns; `truncated` says when there were more. */
+const INBOX_LIMIT = 200;
+
+/**
+ * UW-12b (ADR 0047): everything on the workflow runtime that waits for a person in this workspace, in one read:
+ *   - `batches`: batch previews waiting for an approval (unexpired, every item shown exactly, not yet approved) and approved batches
+ *     not yet started (unexpired, unused);
+ *   - `steps`: approval steps of runs waiting for a reviewer;
+ *   - `attention`: external calls whose outcome is unknown, which only a person can reconcile.
+ * It decides nothing: each entry names the route that acts on it, and that route checks role, recent sign-in and separation again.
+ * `preparedByYou` lets a client say early that someone else must approve; the approve route is what refuses.
+ */
+export async function controlInbox(deps: RunnerDeps, workspace: WorkspaceRecord, actorId: string): Promise<Record<string, unknown>> {
+  const base = join(deps.dataConfig.dataRootDir, workspace.workspaceId, 'generated-runs');
+  const { readdir } = await import('node:fs/promises');
+  const now = Date.now();
+  const batches: Record<string, unknown>[] = [];
+  const steps: Record<string, unknown>[] = [];
+  const attention: Record<string, unknown>[] = [];
+  let truncated = false;
+  const push = (list: Record<string, unknown>[], v: Record<string, unknown>): void => {
+    if (list.length < INBOX_LIMIT) list.push(v);
+    else truncated = true;
+  };
+  for (const definitionId of (await readdir(base).catch(() => [] as string[])).sort()) {
+    let definition: WorkflowDefinitionRecord;
+    try {
+      definition = await workspaceDefinitionsStore(workspace, deps.dataConfig).get(definitionId);
+    } catch {
+      continue; // not a definition of this workspace (or unreadable): nothing to act on
+    }
+    const dir = join(base, definitionId);
+    const named = { definitionId, workflowName: definition.workflowName };
+    const bs = new BatchStore(batchDir(dir));
+    for (const p of await bs.listPreviews()) {
+      const approval = await bs.getApprovalOfPreview(p.previewId);
+      if (approval !== undefined) {
+        if (Date.parse(approval.payload.expiresAt) <= now || (await bs.consumedBy(approval.payload.approvalId)) !== undefined) continue;
+      } else if (Date.parse(p.expiresAt) <= now || p.counts.not_exact > 0) continue;
+      push(batches, {
+        ...named,
+        state: approval === undefined ? 'awaiting_approval' : 'ready_to_start',
+        previewId: p.previewId,
+        certificateId: p.certificateId,
+        root: p.root,
+        forEach: p.forEach,
+        total: p.items.length,
+        counts: p.counts,
+        senders: p.senders.map((x) => ({ connector: x.connector, ...(x.account !== undefined ? { account: x.account } : {}) })),
+        createdBy: p.createdBy,
+        createdAt: p.createdAt,
+        expiresAt: approval?.payload.expiresAt ?? p.expiresAt,
+        preparedByYou: p.createdBy === actorId,
+        ...(approval !== undefined
+          ? {
+              approval: {
+                approvalId: approval.payload.approvalId,
+                reviewerId: approval.payload.reviewerId,
+                approvedAt: approval.payload.at,
+                expiresAt: approval.payload.expiresAt,
+              },
+            }
+          : {}),
+      });
+    }
+    const store = new RunStore(dir);
+    const ids = await store.list().catch(() => [] as string[]);
+    if (ids.length === 0) continue;
+    const itemOf = async (runId: string): Promise<Record<string, unknown>> => {
+      if (!runId.startsWith('fe_')) return {};
+      const d = ((await store.read(runId).catch(() => []))[0]?.data ?? {}) as { parent?: unknown; index?: unknown };
+      return typeof d.parent === 'string' && typeof d.index === 'number' ? { parentRunId: d.parent, item: d.index } : {};
+    };
+    const runner = await runnerFor(deps, workspace, definition);
+    for (const a of await runner.listApprovals().catch(() => []))
+      push(steps, {
+        ...named,
+        runId: a.runId,
+        ...(await itemOf(a.runId)),
+        approvalId: a.approvalId,
+        step: a.step,
+        summary: a.summary,
+        proposedActions: a.proposedActions,
+        requestedAt: a.requestedAt,
+        expiresAt: a.expiresAt,
+      });
+    for (const runId of ids)
+      for (const e of effectsOf(await store.read(runId).catch(() => [])))
+        if (e.state === 'outcome_unknown' || e.state === 'reconciliation_required')
+          push(attention, {
+            ...named,
+            runId,
+            ...(await itemOf(runId)),
+            step: e.step,
+            connector: e.connector,
+            operation: e.operation,
+            state: e.state,
+            intentAt: e.intentAt,
+            detail: e.detail,
+          });
+  }
+  const newest = (k: string) => (a: Record<string, unknown>, b: Record<string, unknown>) => String(b[k]).localeCompare(String(a[k]));
+  return {
+    batches: batches.sort(newest('createdAt')),
+    steps: steps.sort(newest('requestedAt')),
+    attention: attention.sort(newest('intentAt')),
+    truncated,
+  };
+}
+
 export function registerGeneratedRunRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
@@ -1377,6 +1487,13 @@ export function registerGeneratedRunRoutes(
     return json(200, { runs: runs.filter((r) => r !== undefined) });
   }
 
+  /** UW-12b: the workspace's runtime inbox (read role). */
+  async function inbox(req: ApiRequest): Promise<ApiResponse> {
+    const workspace = await requireOwnedWorkspace(req, workspaceStore);
+    await requirePermission(req, workspace, 'read', dataConfig, { action: 'read the approval inbox' });
+    return json(200, await controlInbox(deps, workspace, requirePrincipal(req).id));
+  }
+
   /** UW-15 (UAC-36): how often this workflow needed a person over the last 30 days, and only the items still waiting for one. */
   async function exceptions(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
@@ -1508,6 +1625,7 @@ export function registerGeneratedRunRoutes(
   };
   setInterval(() => void tickAll(), 60_000).unref();
 
+  router.get('/workspaces/:workspaceId/control/inbox', guarded(inbox));
   router.get('/workspaces/:workspaceId/connector-bindings', guarded(getBindings));
   router.put('/workspaces/:workspaceId/connector-bindings', guarded(putBindings));
   router.post('/workspaces/:workspaceId/generated-workflows/:definitionId/runs', guarded(start));

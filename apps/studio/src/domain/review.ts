@@ -210,6 +210,28 @@ export function describeProblem(p: ApiProblem): ProblemView {
       next: 'Sign out, sign in again, and repeat the action.',
     };
   }
+  // UW-12b: batch approval (ADR 0046). The platform's own sentence says exactly what changed or why; it is shown as written.
+  if (p.code === 'XO_BATCH_APPROVAL_REQUIRED') {
+    return {
+      title: 'A person must approve this batch first',
+      body: 'This workflow sends or changes things, so it starts only from a batch a reviewer approved. Nothing was sent.',
+      next: 'Prepare a preview of the batch; a reviewer approves it in the Inbox, then it can start.',
+    };
+  }
+  if (p.code === 'XO_BATCH_APPROVAL_REFUSED') {
+    return {
+      title: 'XO did not accept this batch approval',
+      body: `${p.message.charAt(0).toUpperCase()}${p.message.slice(1)}. Nothing was sent.`,
+      next:
+        p.reason === 'separation_of_duties'
+          ? 'Ask another reviewer to approve it.'
+          : p.reason === 'root_mismatch'
+            ? 'Reload the preview and approve what it shows now.'
+            : p.reason === 'used'
+              ? 'Open the run that approval already started.'
+              : 'Prepare a new preview and have it approved again.',
+    };
+  }
   switch (p.kind) {
     case 'unauthenticated':
       return {

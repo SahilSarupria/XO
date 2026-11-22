@@ -231,6 +231,17 @@ test('UAC-8 / UAC-9: a 300-item batch that loses its connection mid-way never re
       ['confirmed_success'],
     );
 
+    // UW-12b: the inbox lists the five unknown outcomes, each named by its batch and item, for a person to reconcile.
+    const attentionOf = async () =>
+      (await server.request('GET', `/workspaces/${ws}/control/inbox`)).json<{
+        attention: { runId: string; parentRunId?: string; item?: number; state: string; definitionId: string }[];
+      }>().attention;
+    const waiting = await attentionOf();
+    assert.equal(waiting.length, 5);
+    assert.deepEqual(new Set(waiting.map((a) => a.parentRunId)), new Set([batch.runId]));
+    assert.deepEqual(waiting.map((a) => a.runId).sort(), blocked.map((b) => b.runId).sort());
+    assert.ok(waiting.every((a) => a.state === 'outcome_unknown' && a.definitionId === defId && typeof a.item === 'number'));
+
     // A person checks the destination and records what happened. Nothing is sent.
     const step = item.effects[0]!.step;
     const at = `${runs}/${blocked[0]!.runId}/effects/${step}/reconciliation`;
@@ -245,6 +256,7 @@ test('UAC-8 / UAC-9: a 300-item batch that loses its connection mid-way never re
     assert.equal(rec.json<{ effect: Effect }>().effect.state, 'confirmed_success');
     assert.equal((await server.request('POST', at, { decision: 'confirmed_success', reason: 'again' })).status, 412, 'already settled');
     assert.equal(pay.calls.length, 104, 'reconciling never re-sends');
+    assert.equal((await attentionOf()).length, 4, 'a reconciled call leaves the inbox');
     const reconciled = audit.events().filter((e) => e.type === 'generated-workflow.effect.reconciled');
     assert.deepEqual(
       reconciled.map((e) => (e.metadata as { decision: string }).decision),

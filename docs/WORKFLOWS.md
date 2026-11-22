@@ -56,6 +56,15 @@ if anything changed since the approval, each approval step the preview showed is
 approved. The approval is used once; starting again with it returns the same run. In production (`XO_RUN_APPROVAL=required`) a
 run with effects cannot start without one.
 
+## The control inbox (UW-12b, ADR 0047)
+
+`GET /workspaces/{id}/control/inbox` (read role) lists everything on the workflow runtime that waits for a person: batch previews
+waiting for an approval, approved batches not yet started, approval steps of runs, and calls whose outcome is unknown. Each entry
+names the definition, run and step that the acting routes above take; those routes check role, recent sign-in and separation again.
+Studio shows these in its Inbox beside the other decisions: a batch with its counts, sending account and items (exceptions first),
+approved by the root on screen and then started; a waiting step; a call to reconcile; and cancel, after a confirmation. A Studio start
+that needs a batch approval prepares the preview instead and says that it waits in the Inbox.
+
 ## Privacy
 
 Conversations are private to the person who started them. Anyone who can read the workspace can read its workflows,
@@ -76,7 +85,7 @@ engine's journal (`generated-runs/`). Each run records which workflow and versio
 
 - **Definitions.** Only generated, certified Workflow IR definitions can be a version today. Authored Studio graphs are not yet
   versions. The composed-workflow runner is retired wherever certificates are required (ADR 0035). It remains only for uncertified
-  starts in development workspaces, and it is removed once the Studio execution screens move to the Workflow entity (UW-12b).
+  starts in development workspaces, and it is removed once the Studio execution screens move to the Workflow entity (the rest of UW-12b, W5).
 - **Pausing.** Pausing a workflow holds new starts only. To stop a run that is already in progress, cancel it (UW-7, ADR 0033).
 - **Sizes.** A workspace can hold up to 2,000 workflows, and each workflow up to 100 versions.
 - **Change feed.** The feed is not compacted yet.
