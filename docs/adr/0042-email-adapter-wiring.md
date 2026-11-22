@@ -21,8 +21,8 @@ attachments. The run-input route also accepts only scalar values (string, number
    error with effect `none` is `confirmed_failure_no_effect`; every other failure is `outcome_unknown`. **A failed `find_sent` is always
    `outcome_unknown`**, and so is any unexpected error after the operation started. Approval mode is `payload` (a person approves the exact
    recipient, subject and attachment hashes); how a 300-recipient batch is approved at once is UW-8's design.
-3. **Tier from the connection.** An OAuth sign-in is tier 1; its lookup (`find_sent`) exists only if the connection's granted scopes include a
-   read scope (`gmail.readonly`/`gmail.modify`/`Mail.Read...`), which the broker does not request today (ADR 0041 item 6). An app password
+3. **Tier from the connection.** An OAuth sign-in is tier 1; its lookup (`find_sent`) exists only if the connection was granted the optional
+   `mail.lookup` capability (amended 2026-11-22: `gmail.readonly` or `Mail.ReadBasic`; ADR 0041 item 6). `emailTierOf` is the one rule. An app password
    (`basic`) is tier 2 when its host is `smtp-host[:port]|imap-host[:port]` and tier 3 with no IMAP part (SMTP port 465 is implicit TLS, otherwise
    STARTTLS; IMAP defaults to 993 TLS). The host-string convention avoids changing the UW-9 credential record; a dedicated IMAP field is a UW-9 change.
 4. **Recipient policy = confirmed contacts + explicit rules.** Allowed: an address in a **confirmed** `contact_list` table whose source is
@@ -34,8 +34,7 @@ attachments. The run-input route also accepts only scalar values (string, number
    The connector re-hashes at send (ADR 0041).
 6. **Contract: a flat scalar form** (`to` as a string, `attachmentSha256`, `attachmentFilename`, `attachmentContentType`) is accepted beside the list
    form, because typed workflow run inputs are scalars. One recipient and one attachment per send is the per-recipient case.
-7. **Provider guess route:** `GET /workspaces/{ws}/email/provider-guess?address=` (read) returns tier and plain-words text, for the pre-start
-   preview and connection screens to show. No Studio screen was built (owner: preview text only, still open).
+7. **Provider guess route:** `GET /workspaces/{ws}/email/provider-guess?address=` (read) returns tier and plain-words text, for the connection screens to show. The pre-start check shows each bound connection's tier (ADR 0041 item 6a).
 
 ## Consequences
 
