@@ -35,6 +35,8 @@ const OPEN_TO_ANY_MEMBER: Readonly<Record<string, string>> = {
     'creates the caller’s own private conversation about what the workspace’s connections hold; changes no connection or source',
   'POST /workspaces/{workspaceId}/data-protection/scan':
     'pure analysis of the caller’s own text against the leak guard; stores nothing, sends nothing, names no dictionary entry',
+  'POST /workspaces/{workspaceId}/audit-bundles/verify':
+    'RX-1b: pure verification of a bundle the caller supplies against the public keyring; stores nothing, reads no workspace data',
   'POST /workspaces/{workspaceId}/packages/resolve':
     'pure dependency resolution against the installed set; writes nothing (the sibling /packages/lock, which writes, is gated)',
 };
