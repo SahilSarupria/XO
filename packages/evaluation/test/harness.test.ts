@@ -112,10 +112,16 @@ test('the committed register: R1 to R18, ten pilot-blocking items, every one wit
 
 test('the committed thresholds are valid, all still proposals, and each names a measure a suite produces', async () => {
   assert.deepEqual(validateThresholds(thresholds), []);
-  assert.ok(
-    thresholds.every((t) => t.status === 'proposed'),
-    'nothing is ratified until the owner does it',
+  // UW-5 (ADR 0040): the owner ratified the three entity-resolution thresholds through the W3 handoff (2026-11-17, by delegation).
+  // Every other threshold is still a proposal, and a ratified one must say who ratified it and when.
+  const ratified = thresholds.filter((t) => t.status !== 'proposed');
+  assert.deepEqual(
+    ratified.map((t) => t.measure),
+    ['entity-resolution/precision', 'entity-resolution/recall', 'entity-resolution/wrong-identity-confirmations'],
+    'nothing else is ratified until the owner does it',
   );
+  for (const t of ratified)
+    assert.ok(t.ratifiedBy !== undefined && t.ratifiedAt !== undefined, `${t.measure} names who ratified it and when`);
   const results = [];
   for (const s of SUITES.filter((x) => x.slow !== true)) results.push(await s.run());
   const measured = new Set(results.flatMap((r) => r.measures.map((x) => x.id)));
