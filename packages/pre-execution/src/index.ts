@@ -11,3 +11,4 @@ export * from './goal.js';
 export * from './lower-workflow.js';
 export * from './connector-bindings.js';
 export * from './readiness.js';
+export * from './intent/index.js';

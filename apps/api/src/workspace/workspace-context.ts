@@ -39,6 +39,10 @@ export interface WorkspaceDataConfig {
   /** UW-3 — how compiles read pages and photos with no text layer (`compilations/extraction-tiers.ts`). Absent = no recovery. */
   readonly extraction?: CompileExtraction;
   /**
+   * UW-6 (ADR 0043): turns free text into the text of a structured proposal. Absent by default (`strict_local`: no model). In a
+   * deployment it must call a model only through the UW-14 guard with a typed request; its answer is untrusted and is only parsed.
+   */
+  /**
    * ADR 0030 — the pre-execution host: adapters that carry out connector bindings (act steps of generated workflows), and
    * whether every workflow start needs a readiness certificate (`XO_READINESS_CERTIFICATE`; `required` in production).
    */

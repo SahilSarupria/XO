@@ -180,7 +180,10 @@ export function registerRoutes(router: Router, deps: RegisterRoutesDeps): void {
     ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
     ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
   });
-  registerPreExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
+  registerPreExecutionRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit, {
+    ...(deps.chatProviderFactory !== undefined ? { providerFactory: deps.chatProviderFactory } : {}),
+    ...(deps.residency !== undefined ? { residency: deps.residency } : {}),
+  });
   registerReadinessRoutes(router, deps.workspaceStore, deps.workspaceDataConfig, deps.audit);
   registerGeneratedRunRoutes(
     router,

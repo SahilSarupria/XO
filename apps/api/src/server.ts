@@ -102,6 +102,7 @@ export interface ServerDeps {
   readonly externalTools?: ExternalToolWiring;
   /** ADR 0030 — adapters that carry out the workspace connector bindings of generated workflows (by adapter id). */
   readonly connectorAdapters?: ReadonlyMap<string, ExternalToolAdapter>;
+  /** UW-6: free text to the text of a structured proposal (a model behind the UW-14 guard). Default: none. */
   /** UW-10c: per-workspace adapters. Default: the `email` adapter (message.send). */
   readonly adapterFactories?: ReadonlyMap<string, (workspace: WorkspaceRecord) => ExternalToolAdapter>;
   /** ADR 0030 — overrides `XO_READINESS_CERTIFICATE` (tests). */

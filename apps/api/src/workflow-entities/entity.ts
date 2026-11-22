@@ -41,6 +41,8 @@ export interface GeneratedDefinitionRef {
   readonly definitionDigest: string;
   readonly compilationId: string;
   readonly candidateWorkflowId: string;
+  /** UW-6 (ADR 0043): digest of the proposal-to-validation trace stored with the definition this version points at. Absent on versions made before UW-6. */
+  readonly intentTraceDigest?: string;
 }
 export type DefinitionRef = GeneratedDefinitionRef;
 

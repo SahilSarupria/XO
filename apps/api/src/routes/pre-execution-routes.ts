@@ -1,13 +1,21 @@
 import { ErrorCode, NotFoundError, XoError } from '@xo/errors';
 import {
+  composeIntent,
   digestOf,
+  intentToGoal,
+  parseIntentProposal,
+  proposalFromModelAnswer,
   goalDigest,
   goalSpecification,
   lowerCandidateWorkflow,
   selectWorkflowScope,
   sourceNamesOf,
   type GoalSpecification,
+  type IntentFinding,
+  type IntentGap,
+  type IntentTrace,
   type LoweredWorkflow,
+  type ProposalOrigin,
   type ScopeSelection,
 } from '@xo/pre-execution';
 import { join } from 'node:path';
@@ -16,9 +24,21 @@ import type { Router } from '../http/router.js';
 import type { ApiRequest, ApiResponse } from '../http/types.js';
 import { json } from '../http/types.js';
 import { errorToResponse } from '../http/error-mapping.js';
-import { requireOwnedWorkspace, requirePermission, requirePrincipal, type WorkspaceDataConfig } from '../workspace/workspace-context.js';
+import {
+  requireOwnedWorkspace,
+  requirePermission,
+  requirePrincipal,
+  workspaceStateStore,
+  type WorkspaceDataConfig,
+} from '../workspace/workspace-context.js';
+import { resolveResidency, type ResidencyPolicy } from '@xo/ai-core';
+import { envProviderFactory, guardedFactory, type ProviderFactory } from '../chat/model-provider.js';
+import { FsSettingsStore } from '../settings/fs-settings-store.js';
+import { LOCAL_PROVIDER_IDS } from '../settings/workspace-settings.js';
+import { proposeIntent, typedModelChoice } from '../intent/model-proposer.js';
 import type { WorkspaceRecord, WorkspaceStore } from '../workspace/workspace.js';
 import type { AuditService } from '../audit/audit-service.js';
+import { actorFromPrincipal } from '@xo/audit';
 import { loadPreExecutionContext } from '../pre-execution/context.js';
 import { JsonRecordStore } from '../pre-execution/record-store.js';
 
@@ -43,6 +63,9 @@ export interface WorkflowDefinitionRecord {
   /** How the candidate was chosen: by the goal (the selection, with its ranking) or named explicitly. */
   readonly selection: ScopeSelection | { readonly status: 'explicit'; readonly workflowId: string };
   readonly lowered: LoweredWorkflow;
+  /** UW-6 (ADR 0043): how the intent became this definition (origin, validation findings, catalogue version, selection, lowering), and its digest. */
+  readonly intentTrace?: IntentTrace;
+  readonly intentTraceDigest?: string;
   readonly createdAt: string;
   readonly createdBy: { readonly id: string; readonly kind: string };
 }
@@ -106,11 +129,42 @@ export async function generateDefinition(
   compilationId: string,
   goal: GoalSpecification,
   workflowId: string | undefined,
+  origin: ProposalOrigin = 'structured',
+  priorFindings: readonly IntentFinding[] = [],
 ): Promise<{
   readonly definition: WorkflowDefinitionRecord | null;
   readonly selection: WorkflowDefinitionRecord['selection'] | ScopeSelection;
+  /** UW-6: what the compiled sources cannot provide (a needed capability nothing usable offers, a step with no connector bound). */
+  readonly gaps?: readonly IntentGap[];
 }> {
   const ctx = await loadPreExecutionContext(workspace, dataConfig, compilationId, goal.needs ?? []);
+  // UW-6: the intent is composed and validated first; a gap stops here, before anything is generated.
+  const intent = composeIntent(
+    ctx,
+    {
+      text: goal.text,
+      ...(goal.needs !== undefined ? { needs: goal.needs } : {}),
+      ...(goal.section !== undefined ? { section: goal.section } : {}),
+      ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
+      ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
+    },
+    origin,
+    {
+      sourceNames: sourceNamesOf(ctx.artifact),
+      connectorBindings: ctx.connectorBindings,
+      ...(goal.intake !== undefined ? { intake: goal.intake } : {}),
+      ...(goal.forEach !== undefined ? { forEach: goal.forEach } : {}),
+      ...(workflowId !== undefined ? { workflowId } : {}),
+      priorFindings,
+    },
+  );
+  // An unbound step is not blocking here: it is generated and reported (`lowered.complete: false`), as before UW-6.
+  if (intent.status === 'gap' && intent.gaps.some((g) => g.kind === 'missing_capability'))
+    return {
+      definition: null,
+      selection: { status: 'no_match', reason: 'a needed capability is missing', ranking: [] },
+      gaps: intent.gaps,
+    };
 
   let selection: WorkflowDefinitionRecord['selection'];
   let candidateId: string;
@@ -143,6 +197,8 @@ export async function generateDefinition(
     goalDigest: gd,
     selection,
     lowered,
+    intentTrace: intent.trace,
+    intentTraceDigest: intent.traceDigest,
     createdAt: new Date().toISOString(),
     createdBy: { id: actor.id, kind: actor.kind },
   };
@@ -155,8 +211,12 @@ export function registerPreExecutionRoutes(
   router: Router,
   workspaceStore: WorkspaceStore,
   dataConfig: WorkspaceDataConfig,
-  _audit: AuditService,
+  audit: AuditService,
+  options: { readonly providerFactory?: ProviderFactory; readonly residency?: ResidencyPolicy } = {},
 ): void {
+  // UW-6: free text reaches a model only through the residency-guarded factory and the typed egress boundary (UW-14), like K4.
+  const residency = options.residency ?? resolveResidency(process.env);
+  const providerFor = guardedFactory(options.providerFactory ?? envProviderFactory(process.env, residency), residency);
   async function createDefinition(req: ApiRequest): Promise<ApiResponse> {
     const workspace = await requireOwnedWorkspace(req, workspaceStore);
     await requirePermission(req, workspace, 'author', dataConfig, { action: 'generate a workflow definition' });
@@ -192,4 +252,55 @@ export function registerPreExecutionRoutes(
   router.post('/workspaces/:workspaceId/compilations/:compilationId/generated-workflows', guarded(createDefinition));
   router.get('/workspaces/:workspaceId/generated-workflows', guarded(listDefinitions));
   router.get('/workspaces/:workspaceId/generated-workflows/:definitionId', guarded(getDefinition));
+
+  /**
+   * UW-6: free text to a workflow, when (and only when) the instance has a proposer. The proposer's answer is untrusted text: it
+   * is parsed as a structured proposal and then composed exactly like a person's goal; whatever else it says is never read.
+   */
+  router.post(
+    '/workspaces/:workspaceId/compilations/:compilationId/intent-proposals',
+    guarded(async (req) => {
+      const workspace = await requireOwnedWorkspace(req, workspaceStore);
+      await requirePermission(req, workspace, 'author', dataConfig, { action: 'propose a workflow from free text' });
+      const compilationId = req.params['compilationId'];
+      if (compilationId === undefined) throw new XoError(ErrorCode.INVALID_ARGUMENT, 'missing compilation id');
+      const body = await req.json<{ text?: unknown }>();
+      if (!body.ok) throw body.error;
+      const text = body.value?.text;
+      if (typeof text !== 'string' || text.trim() === '' || text.length > 2000)
+        throw new XoError(ErrorCode.INVALID_ARGUMENT, 'text must be 1 to 2000 characters');
+      const settings = await new FsSettingsStore(workspaceStateStore(workspace, dataConfig), workspace.workspaceId).get();
+      const model = typedModelChoice(settings, providerFor, LOCAL_PROVIDER_IDS);
+      if (model === undefined)
+        throw new XoError(
+          ErrorCode.UNIMPLEMENTED,
+          'turning free text into a workflow needs a model this instance may send a typed request to, and none is selected or allowed (strict_local allows only a local one). Give the goal as structured fields instead: POST .../generated-workflows with { goal: { text, needs, section, forEach } }.',
+        );
+      const actor = requirePrincipal(req);
+      const answer = await proposeIntent(model.provider, model.choice.model, text);
+      const parsed = parseIntentProposal(proposalFromModelAnswer(typeof answer === 'string' ? answer : ''));
+      await audit.tryRecord({
+        action: 'intent.propose',
+        actor: actorFromPrincipal(actor),
+        correlationId: req.headers['x-correlation-id']?.toString() ?? 'intent',
+        target: { kind: 'compilation', id: compilationId, workspaceId: workspace.workspaceId },
+        type: 'intent.proposed',
+        outcome: parsed.proposal === undefined ? 'failed' : 'completed',
+        metadata: { findings: parsed.findings.length, needs: parsed.proposal?.needs?.length ?? 0, textLength: text.length },
+      });
+      if (parsed.proposal === undefined)
+        return json(422, { error: 'the model did not return a usable proposal', findings: parsed.findings });
+      const generated = await generateDefinition(
+        workspace,
+        dataConfig,
+        actor,
+        compilationId,
+        intentToGoal(parsed.proposal, actor.id),
+        undefined,
+        'model',
+        parsed.findings,
+      );
+      return json(generated.definition === null ? 200 : 201, { ...generated, proposal: parsed.proposal, findings: parsed.findings });
+    }),
+  );
 }
