@@ -168,6 +168,10 @@ Each item names the workstream that owns the fix. None is fixed by UW-0 except w
   - The control inbox is computed on each read by walking the workspace's runs (no index); each list is capped at 200 entries. Fine for the first vertical's volumes; an index comes with the rest of UW-12b.
   - The Inbox refreshes when the screen loads and after an action; it does not poll or listen to the change feed for runtime items.
   - No evidence view, what-XO-knows screen, request-changes or delegation outcomes, or typed output artefacts yet (the rest of UW-12b, W5). The mobile experience is the responsive Inbox, not a separate app.
+- **Runtime operations (RX-1, ADR 0048):**
+  - Emergency stops have no Studio screen yet; they are set over the API (workflow, connector, operation) or with `xo instance emergency-stop` (instance). A held run still ages toward its run timeout.
+  - The instance stop does not hold the older composed-workflow runner (development-only starts with no external calls).
+  - Runs admitted before RX-1b have no manifest. The audit bundle holds full journals, so it needs the audit role.
 - **`.xlsx` is not accepted by the API upload list**, and the merged XLSX reader flattens rows to text (no header detection, column types, dates or cell provenance). CSV has no quoted-field support (documented choice). UW-3.
 - **`cht_` chat routes have no client** and are deprecated (ADR 0013); workflows have no conversation link yet. UW-2.
 - **Five workflow execution paths and two trigger designs** exist side by side until UW-7 and UW-15 (ADRs 0011, 0025).

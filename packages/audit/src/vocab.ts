@@ -52,6 +52,12 @@ export const AUDIT_EVENT_TYPES = [
   'generated-workflow.batch.approved',
   'generated-workflow.batch.refused',
   'generated-workflow.batch.required',
+  // RX-1a (ADR 0048): an emergency stop was engaged or released (scope and target), or held a start.
+  'emergency-stop.engaged',
+  'emergency-stop.released',
+  'emergency-stop.refused',
+  // RX-1b (ADR 0048): a signed audit bundle of a run was exported (run id and counts only).
+  'generated-workflow.audit-bundle.exported',
   // UW-6: free text was turned into a structured proposal by a model and composed (counts and digests only).
   'intent.proposed',
   // UW-10c: the workspace's explicit email recipient rules were replaced (counts only).
